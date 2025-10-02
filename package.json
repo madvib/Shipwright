@@ -2,9 +2,10 @@
   "name": "vibe-cli",
   "version": "1.0.0",
   "description": "Structured and declarative framework for AI-driven software",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "test": "test"
+    "test": "test",
+    "vibe": "node ./src/index.js"
   },
   "repository": {
     "type": "git",
