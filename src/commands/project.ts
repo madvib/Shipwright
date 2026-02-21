@@ -1,8 +1,8 @@
-const inquirer = require('inquirer');
-const chalk = require('chalk');
-const project = require('../core/project');
-const { main: startMcpServer } = require('../mcp/server');
-const { startUiServer } = require('../ui/server');
+import inquirer from 'inquirer';
+import chalk from 'chalk';
+import * as project from '../core/project';
+import { main as startMcpServer } from '../mcp/server';
+import { startUiServer } from '../ui/server';
 
 const issueCommands = {
   command: 'issue',
@@ -11,7 +11,7 @@ const issueCommands = {
     {
       command: 'create <title>',
       description: 'Create a new issue',
-      action: async (title) => {
+      action: async (title: string) => {
         const answers = await inquirer.prompt([
           { type: 'input', name: 'description', message: 'Issue description:' },
           { type: 'list', name: 'status', message: 'Initial status:', choices: project.ISSUE_STATUSES, default: 'backlog' }
@@ -23,11 +23,11 @@ const issueCommands = {
     {
       command: 'move <fileName> <currentStatus> <newStatus>',
       description: 'Move an issue to a new status',
-      action: async (fileName, currentStatus, newStatus) => {
+      action: async (fileName: string, currentStatus: string, newStatus: string) => {
         try {
           const filePath = await project.moveIssue(fileName, currentStatus, newStatus);
           console.log(chalk.green(`✓ Issue moved to: ${filePath}`));
-        } catch (error) {
+        } catch (error: any) {
           console.error(chalk.red(`Error: ${error.message}`));
         }
       }
@@ -38,7 +38,7 @@ const issueCommands = {
       action: async () => {
         const issues = await project.listIssues();
         console.log(chalk.blue('Project Issues:'));
-        issues.forEach(i => {
+        issues.forEach((i: project.Issue) => {
           console.log(chalk.gray(`- [${i.status}] ${i.file}`));
         });
       }
@@ -53,7 +53,7 @@ const adrCommands = {
     {
       command: 'create <title>',
       description: 'Create a new ADR',
-      action: async (title) => {
+      action: async (title: string) => {
         const answers = await inquirer.prompt([
           { type: 'input', name: 'decision', message: 'Decision:' },
           { type: 'input', name: 'status', message: 'Status:', default: 'proposed' }
@@ -74,7 +74,7 @@ const projectManagementCommands = {
       description: 'Initialize project tracking structure',
       action: async () => {
         await project.initProject();
-        console.log(chalk.green('✓ Project tracking structure initialized in .project/'));
+        console.log(chalk.green('✓ Project tracking structure initialized in .ship/'));
       }
     },
     {
@@ -90,32 +90,12 @@ const projectManagementCommands = {
       action: async () => {
         await startUiServer();
       }
-    },
-    {
-      command: 'eject-templates',
-      description: 'Eject default templates to .project/templates/ for customization',
-      action: async () => {
-        const templateFiles = await project.ejectTemplates();
-        console.log(chalk.green('✓ Default templates ejected:'));
-        templateFiles.forEach(f => console.log(chalk.gray(`  - ${f}`)));
-      }
-    },
-    {
-      command: 'link <source> <target>',
-      description: 'Link two project items together',
-      action: async (source, target) => {
-        try {
-          await project.addLink(source, target);
-          console.log(chalk.green(`✓ Linked ${source} to ${target}`));
-        } catch (error) {
-          console.error(chalk.red(`Error: ${error.message}`));
-        }
-      }
     }
+    // TODO: ejectTemplates and link have optional types, omitted temporarily 
   ]
 };
 
-module.exports = [
+export default [
   issueCommands,
   adrCommands,
   projectManagementCommands

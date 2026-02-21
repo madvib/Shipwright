@@ -1,10 +1,10 @@
-# vibe-cli
+# ship-cli
 
 AI-assisted project tracking and feature development CLI.
 
 ## Features
 
-- **Project Tracking**: Manage Issues and Architecture Decision Records (ADRs) directly in your repository under the `.project/` directory.
+- **Project Tracking**: Manage Issues and Architecture Decision Records (ADRs) directly in your repository under the `.ship/` directory.
 - **MCP Server**: Built-in Model Context Protocol server for AI agents to interact with your project state.
 - **Web Dashboard**: Visual dashboard to view project progress, ADRs, and logs.
 - **Customizable Templates**: Eject and customize Markdown templates for Issues and ADRs.
@@ -13,7 +13,7 @@ AI-assisted project tracking and feature development CLI.
 ## Installation
 
 ```bash
-npm install -g vibe-cli
+npm install -g ship-cli
 ```
 
 ## Quick Start
@@ -21,33 +21,33 @@ npm install -g vibe-cli
 Initialize project tracking in your repo:
 
 ```bash
-vibe project init
+ship project init
 ```
 
 Start the Web UI:
 
 ```bash
-vibe project ui
+ship project ui
 ```
 
 Start the MCP server:
 
 ```bash
-vibe project mcp
+ship project mcp
 ```
 
 ## Commands
 
-- `vibe issue create <title>`: Create a new issue.
-- `vibe issue move <file> <from> <to>`: Move issue status.
-- `vibe adr create <title>`: Create a new ADR.
-- `vibe project link <source> <target>`: Link two items together.
-- `vibe project eject-templates`: Customize templates.
+- `ship issue create <title>`: Create a new issue.
+- `ship issue move <file> <from> <to>`: Move issue status.
+- `ship adr create <title>`: Create a new ADR.
+- `ship project link <source> <target>`: Link two items together.
+- `ship project eject-templates`: Customize templates.
 
 ## Directory Structure
 
 ```
-.project/
+.ship/
 ├── ADR/           # Architecture Decision Records
 ├── Issues/        # Issues categorized by status
 │   ├── backlog/

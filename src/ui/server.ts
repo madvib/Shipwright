@@ -1,15 +1,15 @@
-const express = require('express');
-const path = require('path');
-const fs = require('fs-extra');
-const MarkdownIt = require('markdown-it');
-const project = require('../core/project');
+import express from 'express';
+import path from 'path';
+import fs from 'fs-extra';
+import MarkdownIt from 'markdown-it';
+import * as project from '../core/project';
 
 const md = new MarkdownIt();
-const app = express();
-const PORT = process.env.PORT || 3000;
+export const app = express();
+const PORT = process.env.PORT || 4747;
 
 // Simple HTML escaping
-const escapeHtml = (unsafe) => {
+const escapeHtml = (unsafe: string): string => {
   return unsafe
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -18,7 +18,7 @@ const escapeHtml = (unsafe) => {
     .replace(/'/g, "&#039;");
 };
 
-const stripFrontmatter = (content) => {
+const stripFrontmatter = (content: string): string => {
   if (content.startsWith('---')) {
     const endOfFrontmatter = content.indexOf('---', 3);
     if (endOfFrontmatter !== -1) {
@@ -28,15 +28,15 @@ const stripFrontmatter = (content) => {
   return content;
 };
 
-const getLinksFromFrontmatter = (content) => {
-    const linksMatch = content.match(/links: \[(.*)\]/);
-    if (linksMatch) {
-        return linksMatch[1].split(',').map(l => l.trim().replace(/"/g, '')).filter(l => l);
-    }
-    return [];
+const getLinksFromFrontmatter = (content: string): string[] => {
+  const linksMatch = content.match(/links: \[(.*)\]/);
+  if (linksMatch) {
+    return linksMatch[1].split(',').map(l => l.trim().replace(/"/g, '')).filter(l => l);
+  }
+  return [];
 };
 
-const layout = (title, body) => `
+const layout = (title: string, body: string): string => `
   <html>
     <head>
       <title>${escapeHtml(title)}</title>
@@ -67,30 +67,34 @@ const layout = (title, body) => `
   </html>
 `;
 
-app.get('/', async (req, res) => {
+app.get('/', async (req: express.Request, res: express.Response) => {
   try {
+    const projectDir = await project.getProjectDir();
+    const adrDir = path.join(projectDir, 'ADR');
+    const issuesDir = path.join(projectDir, 'Issues');
+
     const issues = await project.listIssues();
-    const adrFiles = await fs.pathExists(project.ADR_DIR) ? await fs.readdir(project.ADR_DIR) : [];
-    const logPath = path.join(project.PROJECT_DIR, 'log.md');
+    const adrFiles = await fs.pathExists(adrDir) ? await fs.readdir(adrDir) : [];
+    const logPath = path.join(projectDir, 'log.md');
     const logContent = await fs.pathExists(logPath)
       ? await fs.readFile(logPath, 'utf8')
       : '';
 
     let issuesHtml = '';
     for (const status of project.ISSUE_STATUSES) {
-      const statusIssues = issues.filter(i => i.status === status);
+      const statusIssues = issues.filter((i: project.Issue) => i.status === status);
       issuesHtml += `
         <div class="card">
           <h3 style="margin-top: 0"><span class="status-badge ${status}">${status}</span></h3>
           <ul style="list-style: none; padding: 0">
-            ${statusIssues.map(i => `<li><a href="/view?path=${encodeURIComponent(path.join(project.ISSUES_DIR, status, i.file))}">${escapeHtml(i.file)}</a></li>`).join('') || '<li>No issues</li>'}
+            ${statusIssues.map((i: project.Issue) => `<li><a href="/view?path=${encodeURIComponent(path.join(issuesDir, status, i.file))}">${escapeHtml(i.file)}</a></li>`).join('') || '<li>No issues</li>'}
           </ul>
         </div>
       `;
     }
 
     const body = `
-      <h1>Project Dashboard</h1>
+      <h1>Ship Project Dashboard</h1>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         <div>
@@ -101,7 +105,7 @@ app.get('/', async (req, res) => {
           <h2>ADRs</h2>
           <div class="card">
             <ul style="list-style: none; padding: 0">
-              ${adrFiles.filter(f => f.endsWith('.md')).map(f => `<li><a href="/view?path=${encodeURIComponent(path.join(project.ADR_DIR, f))}">${escapeHtml(f)}</a></li>`).join('') || '<li>No ADRs</li>'}
+              ${adrFiles.filter(f => f.endsWith('.md')).map(f => `<li><a href="/view?path=${encodeURIComponent(path.join(adrDir, f))}">${escapeHtml(f)}</a></li>`).join('') || '<li>No ADRs</li>'}
             </ul>
           </div>
 
@@ -114,32 +118,33 @@ app.get('/', async (req, res) => {
     `;
 
     res.send(layout('Project Dashboard', body));
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).send(error.message);
   }
 });
 
-app.get('/view', async (req, res) => {
-    try {
-        const queryPath = req.query.path;
-        if (!queryPath) return res.status(400).send('Path is required');
+app.get('/view', async (req: express.Request, res: express.Response): Promise<any> => {
+  try {
+    const queryPath = req.query.path as string;
+    if (!queryPath) return res.status(400).send('Path is required');
 
-        const resolvedBase = path.resolve(project.PROJECT_DIR);
-        const resolvedPath = path.resolve(queryPath);
+    const projectDir = await project.getProjectDir();
+    const resolvedBase = path.resolve(projectDir);
+    const resolvedPath = path.resolve(queryPath);
 
-        // Security check: is the resolvedPath inside resolvedBase?
-        const relative = path.relative(resolvedBase, resolvedPath);
-        const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    // Security check: is the resolvedPath inside resolvedBase?
+    const relative = path.relative(resolvedBase, resolvedPath);
+    const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 
-        if (!isSafe && resolvedBase !== resolvedPath) {
-            return res.status(403).send('Access denied');
-        }
+    if (!isSafe && resolvedBase !== resolvedPath) {
+      return res.status(403).send('Access denied');
+    }
 
-        const content = await fs.readFile(resolvedPath, 'utf8');
-        const stripped = stripFrontmatter(content);
-        const links = getLinksFromFrontmatter(content);
+    const content = await fs.readFile(resolvedPath, 'utf8');
+    const stripped = stripFrontmatter(content);
+    const links = getLinksFromFrontmatter(content);
 
-        const body = `
+    const body = `
             <a href="/" class="nav-link">← Back to Dashboard</a>
             <div class="card">
                 ${md.render(stripped)}
@@ -155,16 +160,14 @@ app.get('/view', async (req, res) => {
             </div>
         `;
 
-        res.send(layout(path.basename(resolvedPath), body));
-    } catch (error) {
-        res.status(404).send('File not found');
-    }
+    res.send(layout(path.basename(resolvedPath), body));
+  } catch (error: any) {
+    res.status(404).send('File not found');
+  }
 });
 
-const startUiServer = async () => {
+export const startUiServer = async (): Promise<void> => {
   app.listen(PORT, () => {
     console.log(`✓ Web UI server running at http://localhost:${PORT}`);
   });
 };
-
-module.exports = { startUiServer };

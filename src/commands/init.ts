@@ -1,45 +1,20 @@
-const inquirer = require('inquirer');
-const chalk = require('chalk');
-const { ensureConfigDir, saveConfig } = require('../core/config');
-const { AI_PROVIDERS, LANGUAGES } = require('../constants');
+import inquirer from 'inquirer';
+import chalk from 'chalk';
+import { ensureConfigDir, saveConfig, ProjectConfig } from '../core/config';
+import { LANGUAGES, LanguageConfig } from '../constants';
 
 const initCommand = {
   command: 'init',
   description: 'Initialize vibe in current project',
   action: async () => {
-    console.log(chalk.blue('🚀 Initializing vibe...'));
+    console.log(chalk.blue('🚀 Initializing vibe tracking...'));
 
     await ensureConfigDir();
-
-    const providerChoices = Object.keys(AI_PROVIDERS).map(key => ({
-      name: AI_PROVIDERS[key].name,
-      value: key
-    }));
 
     const languageChoices = Object.keys(LANGUAGES).map(key => ({
       name: LANGUAGES[key].name,
       value: key
     }));
-
-    const answers = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'aiProvider',
-        message: 'Choose AI provider:',
-        choices: providerChoices
-      }
-    ]);
-
-    const provider = AI_PROVIDERS[answers.aiProvider];
-
-    const modelAnswer = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'aiModel',
-        message: 'Choose model:',
-        choices: provider.models
-      }
-    ]);
 
     const languageAnswer = await inquirer.prompt([
       {
@@ -50,7 +25,7 @@ const initCommand = {
       }
     ]);
 
-    const language = LANGUAGES[languageAnswer.language];
+    const language: LanguageConfig = LANGUAGES[languageAnswer.language];
 
     const frameworkAnswer = await inquirer.prompt([
       {
@@ -73,32 +48,22 @@ const initCommand = {
         name: 'srcDir',
         message: 'Source directory:',
         default: 'src'
-      },
-      {
-        type: 'password',
-        name: 'apiKey',
-        message: `API Key (or set ${provider.envVar} env var):`,
-        default: process.env[provider.envVar] || ''
       }
     ]);
 
-    const config = {
-      aiProvider: answers.aiProvider,
-      aiModel: modelAnswer.aiModel,
+    const config: ProjectConfig = {
       language: languageAnswer.language,
       testFramework: frameworkAnswer.testFramework,
       testDir: pathAnswers.testDir,
-      srcDir: pathAnswers.srcDir,
-      apiKey: pathAnswers.apiKey
+      srcDir: pathAnswers.srcDir
     };
 
     await saveConfig(config);
 
     console.log(chalk.green('✓ Configuration saved!'));
     console.log(chalk.gray(`  Config directory: .vibe`));
-    console.log(chalk.gray(`  AI Provider: ${provider.name} (${config.aiModel})`));
     console.log(chalk.gray(`  Language: ${language.name}`));
   }
 };
 
-module.exports = initCommand;
+export default initCommand;

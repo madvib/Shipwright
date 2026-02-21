@@ -1,7 +1,7 @@
-const chalk = require('chalk');
-const { ensureConfigDir } = require('../core/config');
-const { listFeatures } = require('../core/features');
-const { LANGUAGES } = require('../constants');
+import chalk from 'chalk';
+import { ensureConfigDir } from '../core/config';
+import { listFeatures } from '../core/features';
+import { LANGUAGES } from '../constants';
 
 const listCommand = {
   command: 'list',
@@ -18,7 +18,7 @@ const listCommand = {
     console.log(chalk.blue('\n📋 Features:\n'));
 
     for (const feature of features) {
-      const statusColors = {
+      const statusColors: Record<string, Function> = {
         'documented': chalk.gray,
         'tests-generated': chalk.blue,
         'implemented': chalk.green
@@ -36,4 +36,4 @@ const listCommand = {
   }
 };
 
-module.exports = listCommand;
+export default listCommand;

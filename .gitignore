@@ -59,3 +59,4 @@ typings/
 
 # Vibe config
 .vibe/
+dist/

@@ -1,13 +1,13 @@
-const inquirer = require('inquirer');
-const chalk = require('chalk');
-const fs = require('fs-extra');
-const path = require('path');
-const { ensureConfigDir, FEATURES_DIR } = require('../core/config');
+import inquirer from 'inquirer';
+import chalk from 'chalk';
+import fs from 'fs-extra';
+import path from 'path';
+import { ensureConfigDir, FEATURES_DIR } from '../core/config';
 
 const deleteCommand = {
   command: 'delete <feature-id>',
   description: 'Delete a feature',
-  action: async (featureId) => {
+  action: async (featureId: string) => {
     await ensureConfigDir();
 
     const confirm = await inquirer.prompt([
@@ -31,4 +31,4 @@ const deleteCommand = {
   }
 };
 
-module.exports = deleteCommand;
+export default deleteCommand;

@@ -1,15 +1,15 @@
-const chalk = require('chalk');
-const { ensureConfigDir } = require('../core/config');
-const { loadFeature } = require('../core/features');
-const { LANGUAGES } = require('../constants');
+import chalk from 'chalk';
+import { ensureConfigDir } from '../core/config';
+import { loadFeature, Feature } from '../core/features';
+import { LANGUAGES } from '../constants';
 
 const showCommand = {
   command: 'show <feature-id>',
   description: 'Show feature details',
-  action: async (featureId) => {
+  action: async (featureId: string) => {
     await ensureConfigDir();
 
-    let feature;
+    let feature: Feature;
     try {
       feature = await loadFeature(featureId);
     } catch {
@@ -32,15 +32,15 @@ const showCommand = {
       console.log();
     }
 
-    if (feature.acceptanceCriteria.length > 0) {
+    if (feature.acceptanceCriteria && feature.acceptanceCriteria.length > 0) {
       console.log(chalk.bold('Acceptance Criteria:'));
-      feature.acceptanceCriteria.forEach((c, i) => {
+      feature.acceptanceCriteria.forEach((c: string, i: number) => {
         console.log(`  ${i + 1}. ${c}`);
       });
       console.log();
     }
 
-    if (Object.keys(feature.generatedFiles).length > 0) {
+    if (feature.generatedFiles && Object.keys(feature.generatedFiles).length > 0) {
       console.log(chalk.bold('Generated Files:'));
       for (const [type, filePath] of Object.entries(feature.generatedFiles)) {
         console.log(`  ${type}: ${chalk.cyan(filePath)}`);
@@ -50,4 +50,4 @@ const showCommand = {
   }
 };
 
-module.exports = showCommand;
+export default showCommand;

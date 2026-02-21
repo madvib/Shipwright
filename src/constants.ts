@@ -1,22 +1,11 @@
-const AI_PROVIDERS = {
-  anthropic: {
-    name: 'Anthropic (Claude)',
-    models: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
-    envVar: 'ANTHROPIC_API_KEY'
-  },
-  openai: {
-    name: 'OpenAI (GPT)',
-    models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    envVar: 'OPENAI_API_KEY'
-  },
-  google: {
-    name: 'Google (Gemini)',
-    models: ['gemini-pro', 'gemini-ultra'],
-    envVar: 'GOOGLE_API_KEY'
-  }
-};
+export interface LanguageConfig {
+  name: string;
+  testFrameworks: string[];
+  fileExtension: string;
+  testExtension: string;
+}
 
-const LANGUAGES = {
+export const LANGUAGES: Record<string, LanguageConfig> = {
   javascript: {
     name: 'JavaScript',
     testFrameworks: ['jest', 'vitest', 'mocha'],
@@ -53,9 +42,4 @@ const LANGUAGES = {
     fileExtension: '.java',
     testExtension: 'Test.java'
   }
-};
-
-module.exports = {
-  AI_PROVIDERS,
-  LANGUAGES,
 };

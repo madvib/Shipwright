@@ -1,22 +1,27 @@
 {
-  "name": "vibe-cli",
+  "name": "ship-cli",
   "version": "1.0.0",
   "description": "Structured and declarative framework for AI-driven software",
-  "main": "src/index.js",
+  "main": "dist/index.js",
+  "bin": {
+    "ship": "./dist/index.js"
+  },
   "scripts": {
-    "test": "test",
-    "vibe": "node ./src/index.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc",
+    "ship": "tsx ./src/index.ts"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/madvib/vibe-cli.git"
+    "url": "git+https://github.com/madvib/ship-cli.git"
   },
   "author": "Micah Cotton",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/madvib/vibe-cli/issues"
+    "url": "https://github.com/madvib/ship-cli/issues"
   },
-  "homepage": "https://github.com/madvib/vibe-cli#readme",
+  "homepage": "https://github.com/madvib/ship-cli#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "chalk": "^4.1.2",
@@ -26,5 +31,17 @@
     "inquirer": "^8.2.7",
     "markdown-it": "^14.1.1",
     "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/fs-extra": "^11.0.4",
+    "@types/inquirer": "^9.0.9",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.3.0",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
