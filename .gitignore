@@ -60,3 +60,7 @@ typings/
 # Vibe config
 .vibe/
 dist/
+
+# Added by cargo
+
+/target

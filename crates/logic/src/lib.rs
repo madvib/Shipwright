@@ -1,0 +1,217 @@
+pub mod adr;
+pub mod config;
+pub mod issue;
+pub mod log;
+pub mod project;
+
+// Re-export everything so existing call sites remain unchanged
+pub use adr::{ADR, AdrEntry, create_adr, list_adrs};
+pub use issue::{
+    Issue, IssueEntry, add_link, create_issue, delete_issue, get_issue, list_issues,
+    list_issues_full, move_issue, update_issue,
+};
+pub use log::{LogEntry, log_action, read_log, read_log_entries};
+pub use project::{
+    ISSUE_STATUSES, ProjectEntry, ProjectRegistry, SHIP_DIR_NAME, get_global_dir, get_project_dir,
+    get_project_name, get_registry_path, init_project, list_registered_projects, load_registry,
+    register_project, sanitize_file_name, save_registry, unregister_project,
+};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_create_issue() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let issue_path = create_issue(project_dir, "Test Issue", "Desc", "backlog")?;
+        assert!(issue_path.exists());
+        assert_eq!(issue_path.extension().unwrap(), "md");
+        let content = fs::read_to_string(issue_path)?;
+        assert!(content.contains("title: Test Issue"));
+        assert!(content.contains("Desc"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_list_issues() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        create_issue(project_dir.clone(), "Issue 1", "Desc 1", "backlog")?;
+        create_issue(project_dir.clone(), "Issue 2", "Desc 2", "in-progress")?;
+        let issues = list_issues(project_dir)?;
+        assert_eq!(issues.len(), 2);
+        let titles: Vec<String> = issues.iter().map(|(n, _)| n.clone()).collect();
+        assert!(titles.contains(&"issue-1.md".to_string()));
+        assert!(titles.contains(&"issue-2.md".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_list_issues_full() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        create_issue(
+            project_dir.clone(),
+            "Full Issue",
+            "Detailed desc",
+            "backlog",
+        )?;
+        let entries = list_issues_full(project_dir)?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].issue.metadata.title, "Full Issue");
+        assert_eq!(entries[0].issue.description, "Detailed desc");
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_issue() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let path = create_issue(project_dir, "Get Issue", "Some desc", "backlog")?;
+        let issue = get_issue(path)?;
+        assert_eq!(issue.metadata.title, "Get Issue");
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_issue() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let path = create_issue(project_dir, "Update Me", "original", "backlog")?;
+        let mut issue = get_issue(path.clone())?;
+        issue.description = "updated".to_string();
+        update_issue(path.clone(), issue)?;
+        let reloaded = get_issue(path)?;
+        assert_eq!(reloaded.description, "updated");
+        Ok(())
+    }
+
+    #[test]
+    fn test_delete_issue() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let path = create_issue(project_dir, "Delete Me", "bye", "backlog")?;
+        assert!(path.exists());
+        delete_issue(path.clone())?;
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_issue() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let path = create_issue(project_dir.clone(), "Test Issue", "Desc", "backlog")?;
+        let new_path = move_issue(project_dir.clone(), path, "backlog", "in-progress")?;
+        assert!(new_path.exists());
+        assert!(new_path.to_str().unwrap().contains("in-progress"));
+        assert_eq!(new_path.extension().unwrap(), "md");
+        let issues = list_issues(project_dir)?;
+        assert_eq!(issues[0].1, "in-progress");
+        Ok(())
+    }
+
+    #[test]
+    fn test_log_action() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        log_action(project_dir.clone(), "test", "details")?;
+        let content = fs::read_to_string(project_dir.join("log.md"))?;
+        assert!(content.contains("**test**: details"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_log_entries() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        log_action(project_dir.clone(), "create", "first entry")?;
+        log_action(project_dir.clone(), "update", "second entry")?;
+        let entries = read_log_entries(project_dir)?;
+        assert_eq!(entries.len(), 2);
+        // Most recent first
+        assert_eq!(entries[0].action, "update");
+        assert_eq!(entries[1].action, "create");
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_link() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let issue_path = create_issue(project_dir.clone(), "Issue Link", "Desc", "backlog")?;
+        add_link(issue_path.clone(), "target-link")?;
+        let content = fs::read_to_string(issue_path)?;
+        assert!(content.contains("target-link"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_init_project() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        assert!(ship_path.exists());
+        assert!(ship_path.join("Issues/backlog").is_dir());
+        assert!(ship_path.join("log.md").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn test_legacy_migration() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_path = tmp.path().join(".project");
+        fs::create_dir_all(&project_path)?;
+        assert!(project_path.exists());
+        assert!(!tmp.path().join(".ship").exists());
+        let project_dir = get_project_dir(Some(tmp.path().to_path_buf()))?;
+        assert!(!project_path.exists());
+        assert!(tmp.path().join(".ship").exists());
+        assert_eq!(project_dir, tmp.path().join(".ship"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_env_override() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let override_dir = tmp.path().join("override");
+        fs::create_dir_all(&override_dir)?;
+        unsafe {
+            std::env::set_var("SHIP_DIR", override_dir.to_str().unwrap());
+        }
+        let project_dir = get_project_dir(None)?;
+        assert_eq!(project_dir, override_dir);
+        unsafe {
+            std::env::remove_var("SHIP_DIR");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_sanitize_file_name() {
+        assert_eq!(sanitize_file_name("My Issue Title!"), "my-issue-title-");
+        assert_eq!(
+            sanitize_file_name("Already_Sanitized-123"),
+            "already_sanitized-123"
+        );
+    }
+
+    #[test]
+    fn test_create_adr() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let adr_path = create_adr(
+            project_dir,
+            "Use PostgreSQL",
+            "Chosen for robustness",
+            "accepted",
+        )?;
+        assert!(adr_path.exists());
+        let content = fs::read_to_string(adr_path)?;
+        assert!(content.contains("\"title\": \"Use PostgreSQL\""));
+        Ok(())
+    }
+}
