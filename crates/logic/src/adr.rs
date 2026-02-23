@@ -1,9 +1,10 @@
+use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
@@ -34,6 +35,15 @@ pub struct AdrEntry {
     pub adr: ADR,
 }
 
+// ─── Validation ───────────────────────────────────────────────────────────────
+
+fn validate_title(title: &str) -> Result<()> {
+    if title.trim().is_empty() {
+        return Err(anyhow!("ADR title cannot be empty"));
+    }
+    Ok(())
+}
+
 // ─── Serialisation ────────────────────────────────────────────────────────────
 
 impl ADR {
@@ -59,6 +69,23 @@ impl ADR {
     }
 }
 
+// ─── File helpers ─────────────────────────────────────────────────────────────
+
+fn unique_path(dir: &Path, base: &str) -> PathBuf {
+    let candidate = dir.join(format!("{}.md", base));
+    if !candidate.exists() {
+        return candidate;
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = dir.join(format!("{}-{}.md", base, n));
+        if !candidate.exists() {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 pub fn create_adr(
@@ -67,6 +94,8 @@ pub fn create_adr(
     decision: &str,
     status: &str,
 ) -> Result<PathBuf> {
+    validate_title(title)?;
+
     let adrs_dir = project_dir.join("adrs");
     fs::create_dir_all(&adrs_dir)?;
 
@@ -82,11 +111,10 @@ pub fn create_adr(
     let body = format!("## Decision\n\n{}\n", decision);
     let adr = ADR { metadata, body };
 
-    let file_name = format!("{}.md", sanitize_file_name(title));
-    let file_path = adrs_dir.join(&file_name);
+    let base = sanitize_file_name(title);
+    let file_path = unique_path(&adrs_dir, &base);
 
-    let content = adr.to_markdown()?;
-    fs::write(&file_path, content).context("Failed to write ADR file")?;
+    write_atomic(&file_path, adr.to_markdown()?)?;
     Ok(file_path)
 }
 
@@ -94,6 +122,12 @@ pub fn get_adr(path: PathBuf) -> Result<ADR> {
     let content = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read ADR: {}", path.display()))?;
     ADR::from_markdown(&content)
+}
+
+pub fn update_adr(path: PathBuf, adr: ADR) -> Result<()> {
+    let content = adr.to_markdown()?;
+    write_atomic(&path, content)
+        .with_context(|| format!("Failed to write ADR: {}", path.display()))
 }
 
 pub fn list_adrs(project_dir: PathBuf) -> Result<Vec<AdrEntry>> {

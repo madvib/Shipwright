@@ -1,5 +1,6 @@
+use crate::fs_util::write_atomic;
 use crate::{SHIP_DIR_NAME, get_global_dir};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -142,7 +143,7 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
     }
 
     let toml_str = toml::to_string_pretty(config)?;
-    fs::write(path, toml_str)?;
+    write_atomic(&path, toml_str)?;
     Ok(())
 }
 
@@ -216,6 +217,22 @@ pub fn add_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
 }
 
 pub fn remove_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
+    // Guard: refuse if any issues exist in this status folder
+    if let Some(ref dir) = project_dir {
+        let status_dir = dir.join("issues").join(status);
+        if status_dir.exists() {
+            let count = fs::read_dir(&status_dir)
+                .map(|d| d.filter_map(|e| e.ok()).count())
+                .unwrap_or(0);
+            if count > 0 {
+                return Err(anyhow!(
+                    "Cannot remove status '{}': {} issue(s) still in this status. Move them first.",
+                    status,
+                    count
+                ));
+            }
+        }
+    }
     let mut config = get_config(project_dir.clone())?;
     config.statuses.retain(|s| s.id != status);
     save_config(&config, project_dir)?;
@@ -273,7 +290,7 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     lines.push("# Internal".to_string());
     lines.push("workflow/".to_string());
     let content = lines.join("\n") + "\n";
-    fs::write(ship_dir.join(".gitignore"), content)?;
+    write_atomic(&ship_dir.join(".gitignore"), content)?;
     Ok(())
 }
 

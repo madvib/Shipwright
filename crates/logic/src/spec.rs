@@ -1,42 +1,189 @@
+use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
-#[derive(Debug, Clone)]
-pub struct SpecEntry {
-    pub file_name: String,
+// ─── Data types ───────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SpecMetadata {
+    #[serde(default)]
+    pub id: String,
     pub title: String,
-    pub path: String,
+    #[serde(default = "default_status")]
+    pub status: String, // draft | active | archived
+    pub created: DateTime<Utc>,
+    pub updated: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
+fn default_status() -> String {
+    "draft".to_string()
+}
+
+impl Default for SpecMetadata {
+    fn default() -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4().to_string(),
+            title: String::new(),
+            status: default_status(),
+            created: now,
+            updated: now,
+            author: None,
+            tags: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Spec {
+    pub metadata: SpecMetadata,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpecEntry {
+    pub file_name: String,
+    pub path: String,
+    pub title: String,
+    pub status: String,
+    pub updated: DateTime<Utc>,
+}
+
+// ─── Validation ───────────────────────────────────────────────────────────────
+
+fn validate_title(title: &str) -> Result<()> {
+    if title.trim().is_empty() {
+        return Err(anyhow!("Spec title cannot be empty"));
+    }
+    Ok(())
+}
+
+// ─── Serialisation ────────────────────────────────────────────────────────────
+
+impl Spec {
+    pub fn to_markdown(&self) -> Result<String> {
+        let toml_str = toml::to_string(&self.metadata)
+            .context("Failed to serialise spec metadata as TOML")?;
+        Ok(format!("+++\n{}+++\n\n{}", toml_str, self.body))
+    }
+
+    pub fn from_markdown(content: &str) -> Result<Self> {
+        if content.starts_with("+++\n") {
+            Self::from_toml_markdown(content)
+        } else {
+            // Legacy: raw markdown with no frontmatter — synthesise metadata from first heading
+            let title = content
+                .lines()
+                .find(|l| l.starts_with("# "))
+                .map(|l| l.trim_start_matches("# ").trim().to_string())
+                .unwrap_or_default();
+            let now = Utc::now();
+            Ok(Spec {
+                metadata: SpecMetadata {
+                    id: String::new(), // will be backfilled
+                    title,
+                    status: default_status(),
+                    created: now,
+                    updated: now,
+                    author: None,
+                    tags: Vec::new(),
+                },
+                body: content.to_string(),
+            })
+        }
+    }
+
+    fn from_toml_markdown(content: &str) -> Result<Self> {
+        let rest = &content[4..]; // skip "+++\n"
+        let end = rest
+            .find("\n+++")
+            .ok_or_else(|| anyhow!("Invalid spec format: missing closing +++"))?;
+        let toml_str = &rest[..end];
+        let body = rest[end + 4..].trim_start_matches('\n').to_string();
+        let metadata: SpecMetadata =
+            toml::from_str(toml_str).context("Failed to parse spec TOML frontmatter")?;
+        Ok(Spec { metadata, body })
+    }
+}
+
+// ─── File helpers ─────────────────────────────────────────────────────────────
+
+fn unique_path(dir: &Path, base: &str) -> PathBuf {
+    let candidate = dir.join(format!("{}.md", base));
+    if !candidate.exists() {
+        return candidate;
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = dir.join(format!("{}-{}.md", base, n));
+        if !candidate.exists() {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
 /// Create a new spec file in `.ship/specs/`.
-pub fn create_spec(project_dir: PathBuf, title: &str, content: &str) -> Result<PathBuf> {
+pub fn create_spec(project_dir: PathBuf, title: &str, body: &str) -> Result<PathBuf> {
+    validate_title(title)?;
+
     let specs_dir = project_dir.join("specs");
     fs::create_dir_all(&specs_dir)?;
 
-    let file_name = format!("{}.md", sanitize_file_name(title));
-    let file_path = specs_dir.join(&file_name);
-
-    let body = if content.is_empty() {
-        format!("# {}\n\n", title)
-    } else {
-        content.to_string()
+    let now = Utc::now();
+    let spec = Spec {
+        metadata: SpecMetadata {
+            id: Uuid::new_v4().to_string(),
+            title: title.to_string(),
+            status: default_status(),
+            created: now,
+            updated: now,
+            author: None,
+            tags: Vec::new(),
+        },
+        body: if body.is_empty() {
+            format!("## Overview\n\n\n## Goals\n\n\n## Non-Goals\n\n\n## Approach\n\n\n## Open Questions\n\n")
+        } else {
+            body.to_string()
+        },
     };
 
-    fs::write(&file_path, body).context("Failed to write spec file")?;
+    let base = sanitize_file_name(title);
+    let file_path = unique_path(&specs_dir, &base);
+    write_atomic(&file_path, spec.to_markdown()?)?;
     Ok(file_path)
 }
 
-/// Read the raw markdown content of a spec.
-pub fn get_spec(path: PathBuf) -> Result<String> {
+/// Read and parse a spec file.
+pub fn get_spec(path: PathBuf) -> Result<Spec> {
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read spec: {}", path.display()))?;
+    Spec::from_markdown(&content)
+}
+
+/// Read the raw markdown content of a spec (for MCP/AI consumption).
+pub fn get_spec_raw(path: PathBuf) -> Result<String> {
     fs::read_to_string(&path)
         .with_context(|| format!("Failed to read spec: {}", path.display()))
 }
 
-/// Overwrite a spec's content.
-pub fn update_spec(path: PathBuf, content: &str) -> Result<()> {
-    fs::write(&path, content)
+/// Overwrite a spec's body content, updating the `updated` timestamp.
+pub fn update_spec(path: PathBuf, body: &str) -> Result<()> {
+    let mut spec = get_spec(path.clone())?;
+    spec.metadata.updated = Utc::now();
+    spec.body = body.to_string();
+    write_atomic(&path, spec.to_markdown()?)
         .with_context(|| format!("Failed to write spec: {}", path.display()))
 }
 
@@ -57,27 +204,16 @@ pub fn list_specs(project_dir: PathBuf) -> Result<Vec<SpecEntry>> {
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
-            // Derive a display title: read first `# Heading` or fall back to filename stem
-            let title = derive_title(&path).unwrap_or_else(|| {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(&file_name)
-                    .replace('-', " ")
-            });
-            entries.push(SpecEntry {
-                file_name,
-                title,
-                path: path.to_string_lossy().to_string(),
-            });
+            if let Ok(spec) = get_spec(path.clone()) {
+                entries.push(SpecEntry {
+                    file_name,
+                    path: path.to_string_lossy().to_string(),
+                    title: spec.metadata.title,
+                    status: spec.metadata.status,
+                    updated: spec.metadata.updated,
+                });
+            }
         }
     }
     Ok(entries)
-}
-
-fn derive_title(path: &PathBuf) -> Option<String> {
-    let content = fs::read_to_string(path).ok()?;
-    content
-        .lines()
-        .find(|l| l.starts_with("# "))
-        .map(|l| l.trim_start_matches("# ").trim().to_string())
 }

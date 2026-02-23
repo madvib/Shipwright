@@ -1,12 +1,21 @@
+use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
+
+/// A typed link between issues or to external resources.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct IssueLink {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub target: String,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct IssueMetadata {
@@ -22,7 +31,7 @@ pub struct IssueMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<String>,
     #[serde(default)]
-    pub links: Vec<String>,
+    pub links: Vec<IssueLink>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,6 +47,28 @@ pub struct IssueEntry {
     pub status: String,
     pub path: String,
     pub issue: Issue,
+}
+
+// ─── Validation ───────────────────────────────────────────────────────────────
+
+fn validate_title(title: &str) -> Result<()> {
+    if title.trim().is_empty() {
+        return Err(anyhow!("Issue title cannot be empty"));
+    }
+    Ok(())
+}
+
+fn validate_status(status: &str) -> Result<()> {
+    if status.trim().is_empty() {
+        return Err(anyhow!("Status cannot be empty"));
+    }
+    if status.contains('/') || status.contains('\\') || status.contains("..") {
+        return Err(anyhow!(
+            "Invalid status '{}': must not contain path separators",
+            status
+        ));
+    }
+    Ok(())
 }
 
 // ─── Serialisation ────────────────────────────────────────────────────────────
@@ -84,7 +115,6 @@ impl Issue {
         let mut title = String::new();
         let mut created = Utc::now();
         let mut updated = Utc::now();
-        let mut links: Vec<String> = Vec::new();
 
         for line in yaml.lines() {
             if let Some(v) = line.strip_prefix("title: ") {
@@ -97,12 +127,6 @@ impl Issue {
                 if let Ok(dt) = v.trim().parse::<DateTime<Utc>>() {
                     updated = dt;
                 }
-            } else if line.starts_with("- ") {
-                // Naive list item under `links:`
-                let item = line.trim_start_matches("- ").trim().to_string();
-                if !item.is_empty() {
-                    links.push(item);
-                }
             }
         }
 
@@ -111,11 +135,29 @@ impl Issue {
                 title,
                 created,
                 updated,
-                links,
                 ..Default::default()
             },
             description,
         })
+    }
+}
+
+// ─── File helpers ─────────────────────────────────────────────────────────────
+
+/// Return a path that doesn't collide with existing files in `dir`.
+/// If `dir/base.md` exists, tries `dir/base-2.md`, `dir/base-3.md`, etc.
+fn unique_path(dir: &Path, base: &str) -> PathBuf {
+    let candidate = dir.join(format!("{}.md", base));
+    if !candidate.exists() {
+        return candidate;
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = dir.join(format!("{}-{}.md", base, n));
+        if !candidate.exists() {
+            return candidate;
+        }
+        n += 1;
     }
 }
 
@@ -127,6 +169,9 @@ pub fn create_issue(
     description: &str,
     status: &str,
 ) -> Result<PathBuf> {
+    validate_title(title)?;
+    validate_status(status)?;
+
     let issue = Issue {
         metadata: IssueMetadata {
             id: Uuid::new_v4().to_string(),
@@ -138,16 +183,12 @@ pub fn create_issue(
         description: description.to_string(),
     };
 
-    let file_name = format!("{}.md", sanitize_file_name(title));
-    let file_path = project_dir.join("issues").join(status).join(&file_name);
+    let base = sanitize_file_name(title);
+    let status_dir = project_dir.join("issues").join(status);
+    fs::create_dir_all(&status_dir)?;
 
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let content = issue.to_markdown()?;
-    fs::write(&file_path, content).context("Failed to write issue file")?;
-
+    let file_path = unique_path(&status_dir, &base);
+    write_atomic(&file_path, issue.to_markdown()?)?;
     Ok(file_path)
 }
 
@@ -160,9 +201,8 @@ pub fn get_issue(path: PathBuf) -> Result<Issue> {
 pub fn update_issue(path: PathBuf, mut issue: Issue) -> Result<()> {
     issue.metadata.updated = Utc::now();
     let content = issue.to_markdown()?;
-    fs::write(&path, content)
-        .with_context(|| format!("Failed to write issue: {}", path.display()))?;
-    Ok(())
+    write_atomic(&path, content)
+        .with_context(|| format!("Failed to write issue: {}", path.display()))
 }
 
 pub fn list_issues(project_dir: PathBuf) -> Result<Vec<(String, String)>> {
@@ -241,16 +281,19 @@ pub fn move_issue(
     _current_status: &str,
     new_status: &str,
 ) -> Result<PathBuf> {
+    validate_status(new_status)?;
     if !path.exists() {
         return Err(anyhow!("Issue not found: {}", path.display()));
     }
 
-    // path is .ship/issues/[STATUS]/file.md
     let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
     let issues_dir = path.parent().unwrap().parent().unwrap().to_path_buf();
     let target_dir = issues_dir.join(new_status);
     fs::create_dir_all(&target_dir)?;
-    let target_path = target_dir.join(&file_name);
+
+    // Resolve collisions in target directory
+    let base = file_name.trim_end_matches(".md");
+    let target_path = unique_path(&target_dir, base);
 
     fs::rename(&path, &target_path).context("Failed to move issue file")?;
     Ok(target_path)
@@ -258,8 +301,7 @@ pub fn move_issue(
 
 pub fn delete_issue(path: PathBuf) -> Result<()> {
     fs::remove_file(&path)
-        .with_context(|| format!("Failed to delete issue: {}", path.display()))?;
-    Ok(())
+        .with_context(|| format!("Failed to delete issue: {}", path.display()))
 }
 
 pub fn append_note(path: PathBuf, note: &str) -> Result<()> {
@@ -273,9 +315,12 @@ pub fn append_note(path: PathBuf, note: &str) -> Result<()> {
     update_issue(path, issue)
 }
 
-pub fn add_link(file_path: PathBuf, target: &str) -> Result<()> {
+pub fn add_link(file_path: PathBuf, link_type: &str, target: &str) -> Result<()> {
     let mut issue = get_issue(file_path.clone())?;
-    issue.metadata.links.push(target.to_string());
+    issue.metadata.links.push(IssueLink {
+        type_: link_type.to_string(),
+        target: target.to_string(),
+    });
     update_issue(file_path, issue)
 }
 
@@ -300,7 +345,7 @@ pub fn backfill_issue_ids(project_dir: &PathBuf) -> Result<usize> {
                     if issue.metadata.id.is_empty() {
                         issue.metadata.id = Uuid::new_v4().to_string();
                         let content = issue.to_markdown()?;
-                        fs::write(&path, content)?;
+                        write_atomic(&path, content)?;
                         count += 1;
                     }
                 }
@@ -329,7 +374,7 @@ pub fn migrate_yaml_issues(project_dir: &PathBuf) -> Result<usize> {
                 if content.starts_with("---\n") {
                     if let Ok(issue) = Issue::from_yaml_markdown_legacy(&content) {
                         let new_content = issue.to_markdown()?;
-                        fs::write(&path, new_content)?;
+                        write_atomic(&path, new_content)?;
                         count += 1;
                     }
                 }

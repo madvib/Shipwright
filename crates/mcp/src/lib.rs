@@ -3,7 +3,7 @@ use ghost_issues;
 use logic::{
     add_status, append_note, create_adr, create_issue, create_spec, delete_issue, get_adr,
     get_config, get_git_config, get_issue, get_project_dir, get_project_name,
-    get_project_statuses, get_spec, is_category_committed, list_adrs, list_issues,
+    get_project_statuses, get_spec_raw, is_category_committed, list_adrs, list_issues,
     list_issues_full, list_registered_projects, list_specs, log_action, log_action_by, move_issue,
     read_log, register_project, remove_status, set_category_committed, update_spec,
 };
@@ -675,7 +675,7 @@ impl ShipServer {
             Err(e) => return e,
         };
         let path = project_dir.join("specs").join(&req.file_name);
-        match get_spec(path) {
+        match get_spec_raw(path) {
             Ok(content) => content,
             Err(e) => format!("Error: {}", e),
         }
