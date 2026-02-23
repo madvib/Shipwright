@@ -5,6 +5,15 @@ mcp     := "./target/release/ship-mcp"
 # List available recipes
 default:
     @just --list
+# ── Install ────────────────────────────────────────────────────────────────────
+
+# Build and install `ship` + `ship-mcp` to ~/.cargo/bin (adds to PATH)
+install: build
+    cargo install --path crates/cli --locked
+    cargo install --path crates/mcp --locked
+
+# Alias: same as install
+reinstall: install
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 

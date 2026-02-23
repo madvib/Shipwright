@@ -57,6 +57,7 @@ export default function LogPanel({ entries, onRefresh }: LogPanelProps) {
                     ) : (
                         entries.map((entry, i) => (
                             <div key={i} className="log-entry">
+                                <span className="log-actor text-zinc-600">[{entry.actor}]</span>
                                 <span className={`log-action ${ACTION_COLORS[entry.action] ?? 'text-zinc-400'}`}>
                                     {entry.action}
                                 </span>

@@ -4,8 +4,8 @@ use logic::{
     add_status, append_note, create_adr, create_issue, create_spec, delete_issue, get_adr,
     get_config, get_git_config, get_issue, get_project_dir, get_project_name,
     get_project_statuses, get_spec, is_category_committed, list_adrs, list_issues,
-    list_issues_full, list_registered_projects, list_specs, log_action, move_issue, read_log,
-    register_project, remove_status, set_category_committed, update_spec,
+    list_issues_full, list_registered_projects, list_specs, log_action, log_action_by, move_issue,
+    read_log, register_project, remove_status, set_category_committed, update_spec,
 };
 use rmcp::transport::stdio;
 use rmcp::{
@@ -317,6 +317,77 @@ impl ShipServer {
         }
     }
 
+    /// Get full project context for an agent starting a new session
+    #[tool(description = "Get full project context: name, statuses, open issues, specs, ADRs, and recent log. Call this at the start of a session to understand the project without being told what exists.")]
+    async fn get_project_info(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+
+        let name = get_project_name(&project_dir);
+        let config = get_config(Some(project_dir.clone())).unwrap_or_default();
+        let statuses: Vec<String> = config.statuses.iter().map(|s| s.id.clone()).collect();
+
+        let issues = list_issues_full(project_dir.clone()).unwrap_or_default();
+        let specs = list_specs(project_dir.clone()).unwrap_or_default();
+        let adrs = list_adrs(project_dir.clone()).unwrap_or_default();
+
+        let mut out = format!("# Project: {}\n\n", name);
+
+        // Issue summary
+        out.push_str("## Open Issues\n");
+        let open: Vec<_> = issues.iter().filter(|e| e.status != "done").collect();
+        if open.is_empty() {
+            out.push_str("No open issues.\n");
+        } else {
+            for status in &statuses {
+                let in_status: Vec<_> = open.iter().filter(|e| &e.status == status).collect();
+                if !in_status.is_empty() {
+                    out.push_str(&format!("\n### {}\n", status));
+                    for e in in_status {
+                        out.push_str(&format!("- {} ({})\n", e.issue.metadata.title, e.file_name));
+                    }
+                }
+            }
+        }
+
+        // Specs
+        out.push_str("\n## Specs\n");
+        if specs.is_empty() {
+            out.push_str("No specs.\n");
+        } else {
+            for s in &specs {
+                out.push_str(&format!("- {} ({})\n", s.title, s.file_name));
+            }
+        }
+
+        // ADRs
+        out.push_str("\n## ADRs\n");
+        if adrs.is_empty() {
+            out.push_str("No ADRs.\n");
+        } else {
+            for a in &adrs {
+                out.push_str(&format!("- [{}] {} ({})\n", a.adr.metadata.status, a.adr.metadata.title, a.file_name));
+            }
+        }
+
+        // Recent log (last 10 lines)
+        if let Ok(log) = read_log(project_dir.clone()) {
+            let recent: Vec<&str> = log.lines()
+                .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+                .rev().take(10).collect::<Vec<_>>().into_iter().rev().collect();
+            if !recent.is_empty() {
+                out.push_str("\n## Recent Activity\n");
+                for line in recent {
+                    out.push_str(&format!("{}\n", line));
+                }
+            }
+        }
+
+        out
+    }
+
     // ─── Issue Tools ──────────────────────────────────────────────────────────
 
     /// List all issues in the project
@@ -390,14 +461,12 @@ impl ShipServer {
             Err(e) => return e,
         };
         let status = req.status.as_deref().unwrap_or("backlog");
-        match create_issue(project_dir, &req.title, &req.description, status) {
-            Ok(file) => format!(
-                "Created issue: {} ({})",
-                file.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown"),
-                status
-            ),
+        match create_issue(project_dir.clone(), &req.title, &req.description, status) {
+            Ok(file) => {
+                let fname = file.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+                log_action_by(project_dir, "agent", "issue create", &format!("{} ({})", fname, status)).ok();
+                format!("Created issue: {} ({})", fname, status)
+            }
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -469,8 +538,12 @@ impl ShipServer {
             .join("issues")
             .join(&req.from_status)
             .join(&req.file_name);
-        match move_issue(project_dir, path, &req.from_status, &req.to_status) {
-            Ok(_) => format!("{}: {} → {}", req.file_name, req.from_status, req.to_status),
+        match move_issue(project_dir.clone(), path, &req.from_status, &req.to_status) {
+            Ok(_) => {
+                log_action_by(project_dir, "agent", "issue move",
+                    &format!("{}: {} → {}", req.file_name, req.from_status, req.to_status)).ok();
+                format!("{}: {} → {}", req.file_name, req.from_status, req.to_status)
+            }
             Err(e) => format!("Error: {}", e),
         }
     }

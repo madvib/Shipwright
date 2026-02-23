@@ -36,6 +36,7 @@ export interface AdrEntry {
 
 export interface LogEntry {
     timestamp: string;
+    actor: string;
     action: string;
     details: string;
 }

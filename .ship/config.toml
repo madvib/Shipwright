@@ -1,0 +1,25 @@
+version = "1"
+
+[[statuses]]
+id = "backlog"
+name = "Backlog"
+color = "gray"
+
+[[statuses]]
+id = "blocked"
+name = "Blocked"
+color = "red"
+
+[[statuses]]
+id = "in-progress"
+name = "In Progress"
+color = "blue"
+
+[[statuses]]
+id = "done"
+name = "Done"
+color = "green"
+
+[git]
+ignore = []
+commit = []

@@ -14,7 +14,7 @@ pub use issue::{
     get_issue, list_issues, list_issues_full, migrate_yaml_issues, move_issue, update_issue,
 };
 pub use demo::init_demo_project;
-pub use log::{LogEntry, log_action, read_log, read_log_entries};
+pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use plugin::{Plugin, PluginRegistry};
 pub use config::{
     AiConfig, GitConfig, ProjectConfig, StatusConfig, add_status, generate_gitignore, get_config,
@@ -126,7 +126,7 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action(project_dir.clone(), "test", "details")?;
         let content = fs::read_to_string(project_dir.join("log.md"))?;
-        assert!(content.contains("**test**: details"));
+        assert!(content.contains("[ship] test: details"));
         Ok(())
     }
 
@@ -138,7 +138,9 @@ mod tests {
         log_action(project_dir.clone(), "update", "second entry")?;
         let entries = read_log_entries(project_dir)?;
         assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].actor, "ship");
         assert_eq!(entries[0].action, "update");
+        assert_eq!(entries[1].actor, "ship");
         assert_eq!(entries[1].action, "create");
         Ok(())
     }

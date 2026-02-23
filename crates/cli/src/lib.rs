@@ -20,7 +20,10 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Initialize a new project
-    Init,
+    Init {
+        /// Directory to initialize (defaults to current directory)
+        path: Option<PathBuf>,
+    },
     /// Manage project issues
     Issue {
         #[command(subcommand)]
@@ -201,17 +204,19 @@ pub enum ProjectCommands {
 
 pub fn handle_cli(cli: Cli) -> Result<()> {
     match cli.command {
-        Some(Commands::Init) => {
-            let current_dir = env::current_dir()?;
-            let path = init_project(current_dir.clone())?;
-            let project_name = current_dir
+        Some(Commands::Init { path: init_path }) => {
+            let target = match init_path {
+                Some(p) => std::fs::canonicalize(&p).unwrap_or_else(|_| env::current_dir().unwrap_or_default().join(&p)),
+                None => env::current_dir()?,
+            };
+            let project_name = target
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "New Project".to_string());
-
-            logic::register_project(project_name, current_dir)?;
-            println!("Initialized and tracked Ship project in {}", path.display());
-            log_action(path, "init", "Project initialized")?;
+                .unwrap_or_else(|| "project".to_string());
+            let ship_path = init_project(target.clone())?;
+            logic::register_project(project_name, target)?;
+            println!("Initialized and tracked Ship project in {}", ship_path.display());
+            log_action(ship_path, "init", "Project initialized")?;
         }
         Some(Commands::Issue { action }) => {
             let project_dir = get_project_dir(None)?;
