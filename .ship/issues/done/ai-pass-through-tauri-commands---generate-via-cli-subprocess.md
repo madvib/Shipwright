@@ -2,7 +2,7 @@
 id = "fdef05b2-9d0e-4882-988b-12e719dff2e8"
 title = "AI pass-through Tauri commands — generate via CLI subprocess"
 created = "2026-02-24T04:10:46.029637934Z"
-updated = "2026-02-24T04:10:46.029638734Z"
+updated = "2026-02-24T05:38:31.315949244Z"
 tags = []
 links = []
 +++
@@ -61,3 +61,5 @@ pub enum AiError {
 - Click "Generate" in NewIssueModal with a title → populated description within ~5s
 - Works with any of the three providers if installed
 - Graceful error if no provider configured
+
+Implemented in commit a247795. Added `invoke_ai_cli` helper + 3 Tauri commands (`generate_issue_description_cmd`, `generate_adr_cmd`, `brainstorm_issues_cmd`). Wired into `NewIssueModal` and `NewAdrModal` via existing `MarkdownEditor.onMcpSample` — the sparkles button, spinner, and undo state were already there. Also added `AiConfig` to `types.ts`.
