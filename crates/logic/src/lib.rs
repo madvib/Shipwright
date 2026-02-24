@@ -7,6 +7,7 @@ pub mod issue;
 pub mod log;
 pub mod plugin;
 pub mod project;
+pub mod prompt;
 pub mod spec;
 
 pub use adr::{ADR, AdrEntry, AdrMetadata, create_adr, get_adr, list_adrs, update_adr};
@@ -20,12 +21,15 @@ pub use demo::init_demo_project;
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use plugin::{Plugin, PluginRegistry};
 pub use config::{
-    AiConfig, GitConfig, McpServerConfig, ModeConfig, ProjectConfig, StatusConfig,
-    add_mcp_server, add_mode, add_status, generate_gitignore, get_active_mode, get_config,
-    get_git_config, get_project_statuses, is_category_committed, list_mcp_servers,
-    migrate_json_config_file, remove_mcp_server, remove_mode, remove_status, save_config,
-    set_active_mode, set_category_committed, set_git_config,
+    AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig,
+    PermissionConfig, ProjectConfig, StatusConfig,
+    add_hook, add_mcp_server, add_mode, add_status, generate_gitignore, get_active_mode,
+    get_config, get_git_config, get_project_statuses, is_category_committed, list_hooks,
+    list_mcp_servers, migrate_json_config_file, remove_hook, remove_mcp_server, remove_mode,
+    remove_status, save_config, set_active_mode, set_category_committed, set_git_config,
 };
+pub use prompt::{Prompt, create_prompt, delete_prompt, get_prompt, list_prompts, update_prompt};
+pub use agent_export::{export_to, import_from_claude, sync_active_mode};
 pub use project::{
     DEFAULT_STATUSES, ISSUE_STATUSES, ProjectEntry, ProjectRegistry, SHIP_DIR_NAME, get_global_dir,
     get_project_dir, get_project_name, get_registry_path, init_project, list_registered_projects,

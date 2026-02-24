@@ -56,6 +56,39 @@ impl AiConfig {
     }
 }
 
+/// Which lifecycle event triggers a hook.
+#[derive(Serialize, Deserialize, Debug, Clone, Type, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum HookTrigger {
+    PreToolUse,
+    PostToolUse,
+    Notification,
+    Stop,
+    SubagentStop,
+    PreCompact,
+}
+
+/// A shell command executed on a lifecycle event.
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct HookConfig {
+    pub id: String,
+    pub trigger: HookTrigger,
+    /// Glob/regex pattern to match tool name (e.g. "Bash", "mcp__*"). Empty = all tools.
+    #[serde(default)]
+    pub matcher: Option<String>,
+    /// The shell command to run
+    pub command: String,
+}
+
+/// Allow/deny permission set — tool name patterns.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct PermissionConfig {
+    #[serde(default)]
+    pub allow: Vec<String>,
+    #[serde(default)]
+    pub deny: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct ModeConfig {
     pub id: String,
@@ -68,12 +101,39 @@ pub struct ModeConfig {
     /// MCP server IDs active in this mode (empty = all)
     #[serde(default)]
     pub mcp_servers: Vec<String>,
+    /// Which prompt to activate (references a .ship/agents/prompts/<id>.md)
+    #[serde(default)]
+    pub prompt_id: Option<String>,
+    /// Hooks to apply when this mode is active
+    #[serde(default)]
+    pub hooks: Vec<HookConfig>,
+    /// Permission overrides for this mode
+    #[serde(default)]
+    pub permissions: PermissionConfig,
+    /// Which agent targets to sync to (e.g. ["claude", "gemini"])
+    #[serde(default)]
+    pub target_agents: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum McpServerType {
+    Stdio,
+    Sse,
+    Http,
+}
+
+impl Default for McpServerType {
+    fn default() -> Self {
+        McpServerType::Stdio
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct McpServerConfig {
     pub id: String,
     pub name: String,
+    /// For stdio servers: the binary to run
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
@@ -82,6 +142,16 @@ pub struct McpServerConfig {
     /// "global" | "project" | "mode"
     #[serde(default = "default_scope")]
     pub scope: String,
+    /// Transport type: stdio (default), sse, or http
+    #[serde(default)]
+    pub server_type: McpServerType,
+    /// URL for SSE or HTTP servers (ignored for stdio)
+    pub url: Option<String>,
+    /// If true, the server is registered but not started
+    #[serde(default)]
+    pub disabled: bool,
+    /// Optional connection timeout in seconds
+    pub timeout_secs: Option<u32>,
 }
 
 fn default_scope() -> String {
@@ -105,6 +175,9 @@ pub struct ProjectConfig {
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default)]
     pub active_mode: Option<String>,
+    /// Global hooks applied regardless of active mode
+    #[serde(default)]
+    pub hooks: Vec<HookConfig>,
 }
 
 fn default_version() -> String {
@@ -133,6 +206,7 @@ impl Default for ProjectConfig {
             modes: Vec::new(),
             mcp_servers: Vec::new(),
             active_mode: None,
+            hooks: Vec::new(),
         }
     }
 }
@@ -390,7 +464,12 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
         }
     }
     config.active_mode = id.map(|s| s.to_string());
-    save_config(&config, project_dir)
+    save_config(&config, project_dir.clone())?;
+    // Auto-sync to configured agent targets after mode change
+    if let Some(ref dir) = project_dir {
+        let _ = crate::agent_export::sync_active_mode(dir);
+    }
+    Ok(())
 }
 
 pub fn get_active_mode(project_dir: Option<PathBuf>) -> Result<Option<ModeConfig>> {
@@ -420,6 +499,28 @@ pub fn remove_mcp_server(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
 pub fn list_mcp_servers(project_dir: Option<PathBuf>) -> Result<Vec<McpServerConfig>> {
     let config = get_config(project_dir)?;
     Ok(config.mcp_servers)
+}
+
+// ─── Hook CRUD ────────────────────────────────────────────────────────────────
+
+pub fn add_hook(project_dir: Option<PathBuf>, hook: HookConfig) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    if config.hooks.iter().any(|h| h.id == hook.id) {
+        return Err(anyhow!("Hook '{}' already exists", hook.id));
+    }
+    config.hooks.push(hook);
+    save_config(&config, project_dir)
+}
+
+pub fn remove_hook(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    config.hooks.retain(|h| h.id != id);
+    save_config(&config, project_dir)
+}
+
+pub fn list_hooks(project_dir: Option<PathBuf>) -> Result<Vec<HookConfig>> {
+    let config = get_config(project_dir)?;
+    Ok(config.hooks)
 }
 
 /// Migrate `config.json` → `config.toml` in-place (no-op if already migrated).

@@ -491,6 +491,101 @@ The mode switcher is prominent in the UI — top bar, always visible. It is not 
 
 ---
 
+## External MCP Management
+
+Shipwright is the universal MCP config layer for every AI tool a developer uses.
+
+### The Problem It Solves
+
+Every developer using Claude, Cursor, or Windsurf today manages MCP servers through scattered, tool-specific config files — `.cursor/mcp.json`, `claude_desktop_config.json`, per-project configs that drift, global configs that conflict. There is no concept of "these servers are relevant for frontend work" vs "these for backend work." It's manual, fragile, and gets worse with every new MCP server added.
+
+Shipwright owns this entirely. One place to define all MCP servers. Mode-aware activation. Automatic export to every AI tool's native format.
+
+### Per-Project, Per-Mode MCP Server Config
+
+```toml
+# .ship/config.toml
+
+[[modes]]
+id = "frontend"
+name = "Frontend"
+mcp_servers = [
+  { id = "shipwright", url = "shipwright mcp start --stdio" },   # always present
+  { id = "figma",      url = "npx figma-mcp",       env = { FIGMA_TOKEN = "$FIGMA_TOKEN" } },
+  { id = "storybook",  url = "npx storybook-mcp" },
+]
+
+[[modes]]
+id = "backend"
+name = "Backend"
+mcp_servers = [
+  { id = "shipwright", url = "shipwright mcp start --stdio" },
+  { id = "postgres",   url = "npx postgres-mcp",    env = { DATABASE_URL = "$DATABASE_URL" } },
+  { id = "github",     url = "npx github-mcp",      env = { GITHUB_TOKEN = "$GITHUB_TOKEN" } },
+]
+
+[[modes]]
+id = "planning"
+name = "Planning"
+mcp_servers = [
+  { id = "shipwright", url = "shipwright mcp start --stdio" },
+  { id = "linear",     url = "npx linear-mcp",      env = { LINEAR_API_KEY = "$LINEAR_API_KEY" } },
+]
+```
+
+Switching modes reconfigures the MCP environment for all connected AI tools automatically. The agent wakes up with exactly the right tools for the current workflow — nothing more.
+
+**Shipwright's own MCP server is always present** — regardless of mode, Shipwright is in every config. That's the persistent project memory layer sitting underneath every agent interaction, in every tool, in every mode.
+
+### MCP Gateway
+
+Shipwright sits in front of all external MCP servers as a local gateway. Every external MCP call routes through Shipwright, which adds:
+
+- **Auth management** — credentials stored once, injected per-server. No tokens scattered across config files.
+- **Permission enforcement** — per-mode server allowlists enforced at the gateway level.
+- **Observability** — all MCP tool calls logged to the action log. Full audit trail of what agents did and through which servers.
+- **Rate limiting** — protect external API quotas across all AI tools simultaneously.
+
+### MCP Apps (SEP-1865)
+
+The MCP Apps Extension brings standardized interactive UI to MCP — servers can present visual interfaces rendered in sandboxed iframes inside any MCP-compatible client.
+
+Shipwright's module UI panels conform to SEP-1865. The Kanban board, spec editor, and ADR viewer render natively inside Claude Desktop, Cursor, Windsurf, and any future MCP client — without the developer opening the Shipwright desktop app.
+
+This solves the distribution problem directly. Shipwright is not a separate application the developer has to remember to open. It is ambient — present as a UI layer inside every tool they already use. The desktop app is the power user experience. MCP Apps is the everywhere experience.
+
+---
+
+## MCP Marketplace
+
+With 5,800+ MCP servers already available and growing rapidly, discovery is a genuine unsolved problem. The official MCP registry is a flat list. Shipwright's marketplace is opinionated.
+
+### What Makes It Different
+
+**Mode-aware recommendations** — "You're in backend mode with Postgres. Developers who use this also use these servers." Discovery tied to workflow context, not just categories.
+
+**Quality signals** — install counts, community ratings, last updated, security scan status. Not just a list of repos.
+
+**One-click install into config** — installing a server from the marketplace adds it to the appropriate mode config automatically. No manual JSON editing.
+
+**Verified servers** — a verified badge for servers that have passed security review and meet quality standards. Trust layer the official registry doesn't have.
+
+**Skills and prompt library** — reusable prompt patterns, context templates, and agent instructions organized by mode and workflow. "When doing code review, load these instructions." The `awesome-prompts` repo turned into a first-class product feature.
+
+### Revenue Model
+
+The marketplace is a standalone revenue stream independent of Shipwright's project management features:
+
+- **Free listing** — any server can be listed
+- **Featured placement** — paid promotion for server authors
+- **Verified badge** — paid review + certification process
+- **Enterprise registry** — private internal marketplace for organizations ($)
+- **Usage analytics** — server authors pay for install and usage data
+
+This is a business that grows with the MCP ecosystem regardless of whether Shipwright's project management features win. Every developer who manages MCP configs is a potential user — not just developers who want issue tracking.
+
+---
+
 ## Config Export
 
 Shipwright is the source of truth for AI configuration across all tools. Users define their workflow once in Shipwright. Shipwright generates the right config for whatever AI tools they use.
@@ -815,26 +910,28 @@ Append-only. Human-readable. Gitignored by default (configurable per project). G
 - `@shipwright/ui` extracted as standalone package
 - AI conversation panel (BYOM via MCP sampling)
 - Modes defined in config, basic mode switching
+- External MCP server config per project and per mode
+- Config export (`shipwright modes export --target claude/cursor/all`)
 
-### V1 — Premium Modules + Auth
-*Pay for what you actually use.*
+### V1 — MCP Platform + Premium Modules
+*The MCP config layer every AI developer needs.*
 
-- Auth flow (`shipwright auth login`)
-- Entitlement system + cloud API (Cloudflare Worker + Stripe)
+- MCP gateway (local proxy, auth management, observability)
+- MCP Apps (SEP-1865) conformance — Shipwright UI inside Claude Desktop + Cursor
+- MCP Marketplace (beta) — discovery, one-click install, quality signals
+- Auth flow + entitlement system
 - Five premium modules compiled in + gated
-- Config export (`shipwright modes export`)
-- Marketplace UI in Settings
-- Module-level git strategy config
+- Skills and prompt library
 
 ### V2 — Extension Runtime + Agent Sessions
 *The platform opens up.*
 
 - TypeScript extension runtime (deno_core embedded)
 - Extension SDK (`@shipwright/extension-sdk`)
-- `shipwright extension dev` build tooling
 - Native agent runner (local worktrees)
 - Session orchestration + summaries
-- Extension marketplace
+- Private enterprise marketplace registry
+- Cloud agent execution (optional, paid)
 
 ### V3 — Stakeholder Expansion
 *The whole team lives here.*
@@ -870,7 +967,11 @@ When evaluating any feature, roadmap decision, or architectural choice:
 
 **Does this make the full development workflow — across every stakeholder, every tool, every AI agent — more continuous, more persistent, and less lossy?**
 
-If yes, it belongs in Shipwright. If no, it probably doesn't.
+The secondary test for MCP platform features specifically:
+
+**Does this make Shipwright more ambient — present and useful in tools the developer is already using, without requiring them to change their workflow to get value?**
+
+If yes to either, it belongs in Shipwright. If no to both, it probably doesn't.
 
 ---
 
@@ -880,3 +981,4 @@ If yes, it belongs in Shipwright. If no, it probably doesn't.
 |---------|------|---------|
 | 0.1 | 2026-02-22 | Initial consolidated doc |
 | 0.2 | 2026-02-22 | Added modes, AI integration, config export, dynamic MCP, UI architecture, extracted @shipwright/ui |
+| 0.3 | 2026-02-22 | Added external MCP management, MCP gateway, MCP Apps (SEP-1865), MCP marketplace, updated roadmap |

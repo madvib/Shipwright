@@ -480,9 +480,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let mode = logic::ModeConfig {
                         id: id.clone(),
                         name: name.clone(),
-                        description: None,
-                        active_tools: vec![],
-                        mcp_servers: vec![],
+                        ..Default::default()
                     };
                     add_mode(project_dir, mode)?;
                     println!("Mode added: {} ({})", id, name);

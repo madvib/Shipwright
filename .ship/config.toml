@@ -1,4 +1,6 @@
 version = "1"
+modes = []
+mcp_servers = []
 
 [[statuses]]
 id = "backlog"
