@@ -928,6 +928,22 @@ fn remove_mcp_server_cmd(id: String, state: State<AppState>) -> Result<(), Strin
     remove_mcp_server(Some(dir), &id).map_err(|e| e.to_string())
 }
 
+// ─── Commands: Agent Export ───────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+async fn export_agent_config_cmd(
+    target: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    tokio::task::spawn_blocking(move || {
+        logic::agent_export::export_to(dir, &target).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ─── Commands: AI ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1050,6 +1066,8 @@ pub fn run() {
             list_mcp_servers_cmd,
             add_mcp_server_cmd,
             remove_mcp_server_cmd,
+            // Agent export
+            export_agent_config_cmd,
             // AI
             generate_issue_description_cmd,
             generate_adr_cmd,

@@ -99,6 +99,10 @@ export const addMcpServerCmd = (server: McpServerConfig): Promise<void> =>
 export const removeMcpServerCmd = (id: string): Promise<void> =>
   invoke('remove_mcp_server_cmd', { id });
 
+// Agent export
+export const exportAgentConfigCmd = (target: 'claude' | 'codex' | 'gemini'): Promise<void> =>
+  invoke('export_agent_config_cmd', { target });
+
 // AI
 export const generateIssueDescriptionCmd = (title: string): Promise<string> =>
   invoke('generate_issue_description_cmd', { title });
