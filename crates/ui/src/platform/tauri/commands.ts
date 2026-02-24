@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { AdrEntry, Issue, IssueEntry, LogEntry, ProjectConfig, SpecDocument, SpecEntry } from '../../types';
+import { AdrEntry, Issue, IssueEntry, LogEntry, McpServerConfig, ModeConfig, ProjectConfig, SpecDocument, SpecEntry } from '../../types';
 
 export interface ProjectInfo {
   name: string;
@@ -79,6 +79,27 @@ export const updateSpecCmd = (fileName: string, content: string): Promise<SpecDo
 export const deleteSpecCmd = (fileName: string): Promise<void> =>
   invoke('delete_spec_cmd', { fileName });
 
+// Modes
+export const listModesCmd = (): Promise<ModeConfig[]> =>
+  invoke('list_modes_cmd');
+export const addModeCmd = (mode: ModeConfig): Promise<void> =>
+  invoke('add_mode_cmd', { mode });
+export const removeModeCmd = (id: string): Promise<void> =>
+  invoke('remove_mode_cmd', { id });
+export const setActiveModeCmd = (id: string | null): Promise<void> =>
+  invoke('set_active_mode_cmd', { id });
+export const getActiveModeCmd = (): Promise<ModeConfig | null> =>
+  invoke('get_active_mode_cmd');
+
+// MCP servers
+export const listMcpServersCmd = (): Promise<McpServerConfig[]> =>
+  invoke('list_mcp_servers_cmd');
+export const addMcpServerCmd = (server: McpServerConfig): Promise<void> =>
+  invoke('add_mcp_server_cmd', { server });
+export const removeMcpServerCmd = (id: string): Promise<void> =>
+  invoke('remove_mcp_server_cmd', { id });
+
+// AI
 export const generateIssueDescriptionCmd = (title: string): Promise<string> =>
   invoke('generate_issue_description_cmd', { title });
 

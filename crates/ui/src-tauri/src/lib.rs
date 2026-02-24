@@ -1,4 +1,9 @@
-use logic::config::{generate_gitignore, get_config, save_config, AiConfig, ProjectConfig, ProjectDiscovery};
+use logic::config::{
+    generate_gitignore, get_config, save_config, AiConfig, McpServerConfig, ModeConfig,
+    ProjectConfig, ProjectDiscovery,
+    add_mode, remove_mode, set_active_mode, get_active_mode,
+    add_mcp_server, remove_mcp_server, list_mcp_servers,
+};
 use logic::{
     create_adr, create_issue, create_spec, delete_issue, get_issue, get_project_dir,
     get_project_name, get_spec_raw as get_spec_content, init_project, list_adrs, list_issues_full,
@@ -862,6 +867,67 @@ fn save_app_settings(config: ProjectConfig) -> Result<(), String> {
     save_config(&config, None).map_err(|e| e.to_string())
 }
 
+// ─── Commands: Modes ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+fn list_modes_cmd(state: State<AppState>) -> Result<Vec<ModeConfig>, String> {
+    let dir = get_active_dir(&state)?;
+    let config = get_config(Some(dir)).map_err(|e| e.to_string())?;
+    Ok(config.modes)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn add_mode_cmd(mode: ModeConfig, state: State<AppState>) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    add_mode(Some(dir), mode).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn remove_mode_cmd(id: String, state: State<AppState>) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    remove_mode(Some(dir), &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn set_active_mode_cmd(id: Option<String>, state: State<AppState>) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    set_active_mode(Some(dir), id.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_active_mode_cmd(state: State<AppState>) -> Result<Option<ModeConfig>, String> {
+    let dir = get_active_dir(&state)?;
+    get_active_mode(Some(dir)).map_err(|e| e.to_string())
+}
+
+// ─── Commands: MCP Servers ────────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+fn list_mcp_servers_cmd(state: State<AppState>) -> Result<Vec<McpServerConfig>, String> {
+    let dir = get_active_dir(&state)?;
+    list_mcp_servers(Some(dir)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn add_mcp_server_cmd(server: McpServerConfig, state: State<AppState>) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    add_mcp_server(Some(dir), server).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn remove_mcp_server_cmd(id: String, state: State<AppState>) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    remove_mcp_server(Some(dir), &id).map_err(|e| e.to_string())
+}
+
 // ─── Commands: AI ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -974,6 +1040,16 @@ pub fn run() {
             get_project_config,
             save_project_config,
             save_app_settings,
+            // Modes
+            list_modes_cmd,
+            add_mode_cmd,
+            remove_mode_cmd,
+            set_active_mode_cmd,
+            get_active_mode_cmd,
+            // MCP servers
+            list_mcp_servers_cmd,
+            add_mcp_server_cmd,
+            remove_mcp_server_cmd,
             // AI
             generate_issue_description_cmd,
             generate_adr_cmd,

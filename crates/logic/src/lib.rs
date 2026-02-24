@@ -19,9 +19,11 @@ pub use demo::init_demo_project;
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use plugin::{Plugin, PluginRegistry};
 pub use config::{
-    AiConfig, GitConfig, ProjectConfig, StatusConfig, add_status, generate_gitignore, get_config,
-    get_git_config, get_project_statuses, is_category_committed, migrate_json_config_file,
-    remove_status, save_config, set_category_committed, set_git_config,
+    AiConfig, GitConfig, McpServerConfig, ModeConfig, ProjectConfig, StatusConfig,
+    add_mcp_server, add_mode, add_status, generate_gitignore, get_active_mode, get_config,
+    get_git_config, get_project_statuses, is_category_committed, list_mcp_servers,
+    migrate_json_config_file, remove_mcp_server, remove_mode, remove_status, save_config,
+    set_active_mode, set_category_committed, set_git_config,
 };
 pub use project::{
     DEFAULT_STATUSES, ISSUE_STATUSES, ProjectEntry, ProjectRegistry, SHIP_DIR_NAME, get_global_dir,

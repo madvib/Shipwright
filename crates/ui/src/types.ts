@@ -15,6 +15,23 @@ export interface AiConfig {
     cli_path?: string | null;
 }
 
+export interface ModeConfig {
+    id: string;
+    name: string;
+    description?: string | null;
+    active_tools: string[];
+    mcp_servers: string[];
+}
+
+export interface McpServerConfig {
+    id: string;
+    name: string;
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+    scope: 'global' | 'project' | 'mode';
+}
+
 export interface ProjectConfig {
     version: string;
     name?: string | null;
@@ -22,6 +39,9 @@ export interface ProjectConfig {
     statuses: StatusConfig[];
     git?: GitConfig;
     ai?: AiConfig | null;
+    modes?: ModeConfig[];
+    mcp_servers?: McpServerConfig[];
+    active_mode?: string | null;
 }
 
 export interface GitConfig {

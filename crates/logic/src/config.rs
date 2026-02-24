@@ -3,6 +3,7 @@ use crate::{SHIP_DIR_NAME, get_global_dir};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -55,6 +56,38 @@ impl AiConfig {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct ModeConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Tool IDs visible in this mode (empty = all)
+    #[serde(default)]
+    pub active_tools: Vec<String>,
+    /// MCP server IDs active in this mode (empty = all)
+    #[serde(default)]
+    pub mcp_servers: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpServerConfig {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    /// "global" | "project" | "mode"
+    #[serde(default = "default_scope")]
+    pub scope: String,
+}
+
+fn default_scope() -> String {
+    "global".to_string()
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct ProjectConfig {
     #[serde(default = "default_version")]
@@ -66,6 +99,12 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub git: GitConfig,
     pub ai: Option<AiConfig>,
+    #[serde(default)]
+    pub modes: Vec<ModeConfig>,
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+    #[serde(default)]
+    pub active_mode: Option<String>,
 }
 
 fn default_version() -> String {
@@ -91,6 +130,9 @@ impl Default for ProjectConfig {
             statuses: default_statuses(),
             git: GitConfig::default(),
             ai: None,
+            modes: Vec::new(),
+            mcp_servers: Vec::new(),
+            active_mode: None,
         }
     }
 }
@@ -318,6 +360,66 @@ pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
         }
     }
     Ok(projects)
+}
+
+// ─── Mode CRUD ────────────────────────────────────────────────────────────────
+
+pub fn add_mode(project_dir: Option<PathBuf>, mode: ModeConfig) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    if config.modes.iter().any(|m| m.id == mode.id) {
+        return Err(anyhow!("Mode '{}' already exists", mode.id));
+    }
+    config.modes.push(mode);
+    save_config(&config, project_dir)
+}
+
+pub fn remove_mode(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    config.modes.retain(|m| m.id != id);
+    if config.active_mode.as_deref() == Some(id) {
+        config.active_mode = None;
+    }
+    save_config(&config, project_dir)
+}
+
+pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    if let Some(mode_id) = id {
+        if !config.modes.iter().any(|m| m.id == mode_id) {
+            return Err(anyhow!("Mode '{}' not found", mode_id));
+        }
+    }
+    config.active_mode = id.map(|s| s.to_string());
+    save_config(&config, project_dir)
+}
+
+pub fn get_active_mode(project_dir: Option<PathBuf>) -> Result<Option<ModeConfig>> {
+    let config = get_config(project_dir)?;
+    Ok(config.active_mode.as_ref().and_then(|id| {
+        config.modes.into_iter().find(|m| &m.id == id)
+    }))
+}
+
+// ─── MCP Server Registry CRUD ─────────────────────────────────────────────────
+
+pub fn add_mcp_server(project_dir: Option<PathBuf>, server: McpServerConfig) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    if config.mcp_servers.iter().any(|s| s.id == server.id) {
+        return Err(anyhow!("MCP server '{}' already exists", server.id));
+    }
+    config.mcp_servers.push(server);
+    save_config(&config, project_dir)
+}
+
+pub fn remove_mcp_server(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
+    let mut config = get_config(project_dir.clone())?;
+    config.mcp_servers.retain(|s| s.id != id);
+    save_config(&config, project_dir)
+}
+
+pub fn list_mcp_servers(project_dir: Option<PathBuf>) -> Result<Vec<McpServerConfig>> {
+    let config = get_config(project_dir)?;
+    Ok(config.mcp_servers)
 }
 
 /// Migrate `config.json` → `config.toml` in-place (no-op if already migrated).
