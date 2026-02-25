@@ -127,8 +127,7 @@ pub fn get_adr(path: PathBuf) -> Result<ADR> {
 
 pub fn update_adr(path: PathBuf, adr: ADR) -> Result<()> {
     let content = adr.to_markdown()?;
-    write_atomic(&path, content)
-        .with_context(|| format!("Failed to write ADR: {}", path.display()))
+    write_atomic(&path, content).with_context(|| format!("Failed to write ADR: {}", path.display()))
 }
 
 pub fn list_adrs(project_dir: PathBuf) -> Result<Vec<AdrEntry>> {

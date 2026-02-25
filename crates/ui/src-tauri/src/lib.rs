@@ -1,17 +1,16 @@
 use logic::config::{
-    generate_gitignore, get_config, save_config, AiConfig, McpServerConfig, ModeConfig,
-    ProjectConfig, ProjectDiscovery,
-    add_mode, remove_mode, set_active_mode, get_active_mode,
-    add_mcp_server, remove_mcp_server, list_mcp_servers,
+    add_mcp_server, add_mode, generate_gitignore, get_active_mode, get_config,
+    get_effective_config, list_mcp_servers, remove_mcp_server, remove_mode, save_config,
+    set_active_mode, AiConfig, McpServerConfig, ModeConfig, ProjectConfig, ProjectDiscovery,
 };
+use logic::project::{get_active_project_global, set_active_project_global};
 use logic::{
     create_adr, create_issue, create_spec, delete_issue, get_issue, get_project_dir,
     get_project_name, get_spec_raw as get_spec_content, init_project, list_adrs, list_issues_full,
-    list_specs, log_action, move_issue, read_log_entries, register_project, update_issue,
-    update_spec, ADR, AdrEntry, Issue, IssueEntry, LogEntry, SHIP_DIR_NAME,
-    list_registered_projects,
+    list_registered_projects, list_specs, log_action, move_issue, read_log_entries,
+    register_project, update_issue, update_spec, AdrEntry, Issue, IssueEntry, LogEntry, ADR,
+    SHIP_DIR_NAME,
 };
-use logic::project::{get_active_project_global, set_active_project_global};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashSet;
@@ -71,7 +70,11 @@ fn get_active_dir(state: &State<AppState>) -> Result<PathBuf, String> {
 }
 
 fn ensure_ship_path(path: &Path) -> PathBuf {
-    if path.file_name().map(|name| name == SHIP_DIR_NAME).unwrap_or(false) {
+    if path
+        .file_name()
+        .map(|name| name == SHIP_DIR_NAME)
+        .unwrap_or(false)
+    {
         path.to_path_buf()
     } else {
         path.join(SHIP_DIR_NAME)
@@ -137,7 +140,10 @@ fn issues_signature(dir: &Path) -> (u64, u128) {
 fn derive_spec_title(file_name: &str, content: &str) -> String {
     content
         .lines()
-        .find_map(|line| line.strip_prefix("# ").map(|value| value.trim().to_string()))
+        .find_map(|line| {
+            line.strip_prefix("# ")
+                .map(|value| value.trim().to_string())
+        })
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
             Path::new(file_name)
@@ -167,19 +173,41 @@ fn spec_document_from_path(path: PathBuf) -> Result<SpecDocument, String> {
 
 fn invoke_ai_cli(ai: &AiConfig, prompt: &str) -> Result<String, String> {
     let cli = ai.effective_cli().to_string();
-    let mut cmd = std::process::Command::new(&cli);
-    match ai.effective_provider() {
-        "codex" => { cmd.arg("exec").arg(prompt); }
-        _ => { cmd.arg("-p").arg(prompt); }
+    let provider = ai.effective_provider().to_ascii_lowercase();
+    let attempts: Vec<Vec<String>> = match provider.as_str() {
+        "claude" | "gemini" => {
+            vec![
+                vec!["-p".to_string(), prompt.to_string()],
+                vec![prompt.to_string()],
+            ]
+        }
+        "codex" | "chatgpt" => vec![
+            vec!["exec".to_string(), prompt.to_string()],
+            vec!["-p".to_string(), prompt.to_string()],
+            vec![prompt.to_string()],
+        ],
+        _ => vec![
+            vec!["-p".to_string(), prompt.to_string()],
+            vec![prompt.to_string()],
+        ],
+    };
+
+    let mut last_error = String::new();
+    for args in attempts {
+        let output = std::process::Command::new(&cli)
+            .args(&args)
+            .output()
+            .map_err(|e| format!("Failed to launch '{}': {}", cli, e))?;
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        }
+        last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
     }
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to launch '{}': {}", cli, e))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+
+    if last_error.is_empty() {
+        Err("AI CLI failed with no error output".to_string())
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("AI CLI error: {}", stderr.trim()))
+        Err(format!("AI CLI error: {}", last_error))
     }
 }
 
@@ -439,9 +467,8 @@ fn create_project_with_options(
         init_project(base_dir.clone()).map_err(|e| e.to_string())?
     };
 
-    let mut final_config = config.unwrap_or_else(|| {
-        get_config(Some(ship_path.clone())).unwrap_or_default()
-    });
+    let mut final_config =
+        config.unwrap_or_else(|| get_config(Some(ship_path.clone())).unwrap_or_default());
 
     if let Some(raw_name) = name {
         let trimmed = raw_name.trim();
@@ -796,7 +823,12 @@ fn create_spec_cmd(
 ) -> Result<SpecDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let path = create_spec(project_dir.clone(), &title, &content).map_err(|e| e.to_string())?;
-    log_action(project_dir, "spec create", &format!("Created Spec: {}", title)).ok();
+    log_action(
+        project_dir,
+        "spec create",
+        &format!("Created Spec: {}", title),
+    )
+    .ok();
     spec_document_from_path(path)
 }
 
@@ -813,7 +845,12 @@ fn update_spec_cmd(
         return Err(format!("Spec not found: {}", file_name));
     }
     update_spec(path.clone(), &content).map_err(|e| e.to_string())?;
-    log_action(project_dir, "spec update", &format!("Updated Spec: {}", file_name)).ok();
+    log_action(
+        project_dir,
+        "spec update",
+        &format!("Updated Spec: {}", file_name),
+    )
+    .ok();
     spec_document_from_path(path)
 }
 
@@ -826,7 +863,12 @@ fn delete_spec_cmd(file_name: String, state: State<AppState>) -> Result<(), Stri
         return Err(format!("Spec not found: {}", file_name));
     }
     fs::remove_file(&path).map_err(|e| e.to_string())?;
-    log_action(project_dir, "spec delete", &format!("Deleted Spec: {}", file_name)).ok();
+    log_action(
+        project_dir,
+        "spec delete",
+        &format!("Deleted Spec: {}", file_name),
+    )
+    .ok();
     Ok(())
 }
 
@@ -932,10 +974,7 @@ fn remove_mcp_server_cmd(id: String, state: State<AppState>) -> Result<(), Strin
 
 #[tauri::command]
 #[specta::specta]
-async fn export_agent_config_cmd(
-    target: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+async fn export_agent_config_cmd(target: String, state: State<'_, AppState>) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     tokio::task::spawn_blocking(move || {
         logic::agent_export::export_to(dir, &target).map_err(|e| e.to_string())
@@ -953,7 +992,7 @@ async fn generate_issue_description_cmd(
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let dir = get_active_dir(&state)?;
-    let config = get_config(Some(dir)).map_err(|e| e.to_string())?;
+    let config = get_effective_config(Some(dir)).map_err(|e| e.to_string())?;
     let ai = config.ai.unwrap_or_default();
     let prompt = format!(
         "Write a concise issue description for a software task titled: \"{}\". \
@@ -973,7 +1012,7 @@ async fn generate_adr_cmd(
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let dir = get_active_dir(&state)?;
-    let config = get_config(Some(dir)).map_err(|e| e.to_string())?;
+    let config = get_effective_config(Some(dir)).map_err(|e| e.to_string())?;
     let ai = config.ai.unwrap_or_default();
     let ctx = if context.trim().is_empty() {
         String::new()
@@ -998,7 +1037,7 @@ async fn brainstorm_issues_cmd(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
     let dir = get_active_dir(&state)?;
-    let config = get_config(Some(dir)).map_err(|e| e.to_string())?;
+    let config = get_effective_config(Some(dir)).map_err(|e| e.to_string())?;
     let ai = config.ai.unwrap_or_default();
     let prompt = format!(
         "List 5 actionable software task titles for: \"{}\". \
@@ -1019,8 +1058,8 @@ async fn brainstorm_issues_cmd(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri_specta::Builder::<tauri::Wry>::new().commands(
-        tauri_specta::collect_commands![
+    let builder =
+        tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
             // Project
             list_projects,
             get_active_project,
@@ -1072,8 +1111,7 @@ pub fn run() {
             generate_issue_description_cmd,
             generate_adr_cmd,
             brainstorm_issues_cmd,
-        ],
-    );
+        ]);
 
     // In debug builds, regenerate src/bindings.ts automatically.
     #[cfg(debug_assertions)]
@@ -1084,7 +1122,9 @@ pub fn run() {
         .export(
             specta_typescript::Typescript::default()
                 .bigint(specta_typescript::BigIntExportBehavior::Number)
-                .header("// This file is auto-generated by tauri-specta. Do not edit manually."),
+                .header(
+                    "// @ts-nocheck\n// This file is auto-generated by tauri-specta. Do not edit manually."
+                ),
             &bindings_path,
         )
         .expect("Failed to export TypeScript bindings");

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import {
+  Bot,
   ChevronRight,
   FileCode2,
   FileCog,
@@ -22,6 +23,7 @@ import {
   AppRoutePath,
   ACTIVITY_ROUTE as ACTIVITY_PATH,
   ADRS_ROUTE as ADRS_PATH,
+  AGENTS_ROUTE as AGENTS_PATH,
   ISSUES_ROUTE as ISSUES_PATH,
   OVERVIEW_ROUTE as OVERVIEW_PATH,
   PROJECTS_ROUTE as PROJECTS_PATH,
@@ -47,6 +49,7 @@ const NAV_ITEMS: {
   icon: ComponentType<{ className?: string }>;
 }[] = [
   { path: OVERVIEW_PATH, label: 'Overview', icon: LayoutDashboard },
+  { path: AGENTS_PATH, label: 'Agents', icon: Bot },
   { path: ISSUES_PATH, label: 'Issues', icon: FolderGit2 },
   { path: SPECS_PATH, label: 'Specs', icon: FileCode2 },
   { path: ADRS_PATH, label: 'Decisions', icon: FileStack },
@@ -77,11 +80,11 @@ export default function Sidebar({
         )}
       >
         <div className="bg-primary/10 border-primary/30 flex size-10 items-center justify-center rounded-md border">
-          <img src="/logo.svg" alt="Ship" className="size-8 object-contain" />
+          <img src="/logo.svg" alt="Shipwright" className="size-8 object-contain" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold tracking-tight">Ship</p>
+            <p className="truncate text-sm font-semibold tracking-tight">Shipwright</p>
           </div>
         )}
         <Button

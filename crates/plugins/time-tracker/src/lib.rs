@@ -145,8 +145,8 @@ pub fn start_timer(
 
 /// Stop the running timer and save the entry. Returns the completed entry.
 pub fn stop_timer(project_dir: &Path, note: Option<String>) -> Result<TimeEntry> {
-    let active = get_active_timer(project_dir)?
-        .ok_or_else(|| anyhow!("No timer is currently running."))?;
+    let active =
+        get_active_timer(project_dir)?.ok_or_else(|| anyhow!("No timer is currently running."))?;
 
     let ended_at = Utc::now();
     let duration = ended_at - active.started_at;
@@ -299,8 +299,8 @@ pub fn generate_report(project_dir: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use logic::init_project;
+    use tempfile::tempdir;
 
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
@@ -340,7 +340,14 @@ mod tests {
     #[test]
     fn test_log_time_manual() {
         let (_tmp, project_dir) = setup();
-        let entry = log_time(&project_dir, "issue.md", "Issue", 90, Some("manual".to_string())).unwrap();
+        let entry = log_time(
+            &project_dir,
+            "issue.md",
+            "Issue",
+            90,
+            Some("manual".to_string()),
+        )
+        .unwrap();
         assert_eq!(entry.duration_minutes, 90);
         let entries = list_entries(&project_dir, None).unwrap();
         assert_eq!(entries.len(), 1);

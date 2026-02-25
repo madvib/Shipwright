@@ -1,8 +1,13 @@
 # Shipwright — Vision & Architecture
 
+> Status update (2026-02-24): this is a historical reference document.
+> Canonical active docs are:
+> - `.ship/specs/vision.md`
+> - `.ship/specs/alpha-ai-config-and-modes.md`
+
 **Version:** 0.2  
-**Status:** Active  
-**Last Updated:** 2026-02-22  
+**Status:** Reference (Superseded by canonical specs)  
+**Last Updated:** 2026-02-24  
 **Replaces:** ship-vision-v2.md, shipwright-architecture.md, ship-plugin-monetization.md
 
 ---
@@ -72,6 +77,7 @@ The runtime has no opinions about what a project looks like. It provides the sub
 - Relationship graph (cross-document links, parent/child, blocks/blocked-by)
 - Mode manager (active mode, MCP tool filtering)
 - MCP server (dynamic tool registration, mode-aware capability surface)
+- MCP App descriptors/resources for tool-driven UI surfaces
 - Event bus (async, cross-module communication)
 - Auth + entitlements (JWT, cloud entitlement cache, offline grace period)
 - Config export (generates `.claude`, `.gemini`, `.cursor` configs from modes)
@@ -110,6 +116,17 @@ Modules are not called "plugins." They are not installed. They are not loaded at
 Third-party code written by the community. Runs in a sandboxed V8 isolate (deno_core). Communicates with the runtime exclusively via declared host functions. Cannot access Tauri IPC directly. Cannot exceed declared permissions.
 
 **Not built until V2.** The architecture is designed to accommodate extensions without requiring them. The host function surface that extensions will eventually use is the same surface the runtime exposes today — it just isn't accessible from outside the binary yet.
+
+### Cross-Cutting Surface — MCP Apps (Near-Term)
+
+MCP Apps are not a replacement for Shipwright modules or the desktop shell. They are an additional distribution surface: a way for the same runtime capabilities to render task-oriented UI inside MCP-capable clients.
+
+**Positioning:**
+- Modules remain the source of truth for business logic and document behavior.
+- Tauri remains the first-party desktop shell.
+- MCP Apps expose selected module experiences through MCP tool + resource contracts.
+
+**Design rule:** if a feature cannot be expressed as a typed command + structured result, it is not MCP Apps-ready.
 
 ---
 
@@ -745,12 +762,12 @@ export function KanbanView() {
 
 **UI trust boundary:**
 
-| | First-party modules | Third-party extensions (V2+) |
-|---|---|---|
-| React components | Direct mount in app shell | Sandboxed iframe |
-| Design system | `@shipwright/ui` direct import | `@shipwright/ui` via bundle |
-| Data access | `useDocuments()` Tauri hook | postMessage API only |
-| IPC | Direct `invoke()` | No Tauri access |
+| | First-party modules | Third-party extensions (V2+) | MCP Apps |
+|---|---|---|---|
+| UI host | Direct mount in app shell | Sandboxed iframe | MCP client webview/app surface |
+| Design system | `@shipwright/ui` direct import | `@shipwright/ui` via bundle | Client-defined (Shipwright tokens optional) |
+| Data access | `useDocuments()` Tauri hook | postMessage API only | MCP tools + resources only |
+| IPC/runtime access | Direct `invoke()` | No Tauri access | No Tauri access |
 
 ---
 

@@ -8,7 +8,7 @@
 
 ## Codebase Orientation
 
-**Monorepo:** `/home/madvib/dev/ship`
+**Monorepo:** `/Users/micahcotton/dev/vibe-cli`
 
 | Crate | Purpose |
 |---|---|
@@ -22,6 +22,7 @@
 ```
 cargo tauri dev        # dev server
 cargo tauri build      # production build
+pnpm --dir crates/ui build   # frontend build
 just build             # cli + mcp only (no UI)
 ```
 
@@ -78,6 +79,24 @@ Sub-hooks:
 ## Alpha Feature Priorities
 
 Work in this order. Each section lists Rust backend changes first, then UI.
+
+---
+
+### P0 — MCP Apps Alignment (New Direction Guardrail)
+**Ship direction:** MCP Apps is now a core product trajectory. Alpha UI work should preserve this path.
+
+The goal is to keep the desktop app as a first-party shell while ensuring core features can also be exposed as MCP-native app surfaces.
+
+**Architecture constraints to enforce now:**
+1. Keep all domain mutations behind typed Tauri commands and shared domain service wrappers (`commands.ts` + feature hooks). No direct view-layer data writes.
+2. Keep markdown editor surfaces modular (Issue/Spec/ADR) so each can become an MCP App surface without rewriting business logic.
+3. Standardize tool response contracts for AI-assisted actions (`generate`, `brainstorm`, `refine`) so they are reusable in both Tauri UI and MCP App UI.
+4. Keep route-level layouts thin. Feature pages own rendering; root shell owns navigation and global state only.
+
+**Immediate deliverables in this plan:**
+1. Add an "Apps readiness" checklist to each major feature PR (commands, types, state, UI isolation, fallback behavior).
+2. Add a lightweight `apps` route placeholder in UI shell for future MCP App embeds.
+3. Define a shared TypeScript interface for AI generation results (status, content, warnings, provenance) instead of ad-hoc strings.
 
 ---
 
@@ -417,7 +436,7 @@ Connect export buttons in `SettingsPanel` → Agents tab.
 
 ---
 
-## Secondary Items (do after P1-P5)
+## Secondary Items (do after P0-P5)
 
 ### Drag-and-Drop Kanban
 **Issue:** `drag-and-drop-kanban-columns-using--dnd-kit.md`
@@ -451,6 +470,7 @@ Settings → Global → MCP card: green dot if running, red dot if not.
 6. **Specta annotations**: Every new Tauri command in `lib.rs` needs `#[specta::specta]` below `#[tauri::command]`. Add it to `collect_commands![...]`. Run a debug build to regenerate `bindings.ts`.
 
 7. **Commit style**: No `Co-Authored-By` lines in commits.
+8. **MCP Apps compatibility**: Any new UI-only behavior should have a corresponding command/service boundary so the same capability can be exposed outside Tauri later.
 
 ---
 

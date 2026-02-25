@@ -28,6 +28,9 @@ export const listLogEntries = (): Promise<LogEntry[]> => invoke('get_log');
 export const getProjectConfigCmd = (): Promise<ProjectConfig> => invoke('get_project_config');
 export const saveProjectConfigCmd = (config: ProjectConfig): Promise<void> =>
   invoke('save_project_config', { config });
+export const getAppSettingsCmd = (): Promise<ProjectConfig> => invoke('get_app_settings');
+export const saveAppSettingsCmd = (config: ProjectConfig): Promise<void> =>
+  invoke('save_app_settings', { config });
 
 export const listProjects = (): Promise<ProjectDiscovery[]> => invoke('list_projects');
 export const detectCurrentProject = (): Promise<ProjectInfo | null> => invoke('detect_current_project');
@@ -100,7 +103,9 @@ export const removeMcpServerCmd = (id: string): Promise<void> =>
   invoke('remove_mcp_server_cmd', { id });
 
 // Agent export
-export const exportAgentConfigCmd = (target: 'claude' | 'codex' | 'gemini'): Promise<void> =>
+export const exportAgentConfigCmd = (
+  target: 'claude' | 'codex' | 'gemini'
+): Promise<void> =>
   invoke('export_agent_config_cmd', { target });
 
 // AI

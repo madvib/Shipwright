@@ -4,11 +4,6 @@ import { Config, DEFAULT_STATUSES, GitConfig, McpServerConfig, ModeConfig, Proje
 import {
   exportAgentConfigCmd,
   generateIssueDescriptionCmd,
-  addMcpServerCmd,
-  removeMcpServerCmd,
-  addModeCmd,
-  removeModeCmd,
-  setActiveModeCmd,
 } from '../platform/tauri/commands';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -28,13 +23,21 @@ import { Switch } from './ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Textarea } from './ui/textarea';
 
+type SettingsTab = 'global' | 'project' | 'agents' | 'modules';
+type SettingsPanelMode = 'full' | 'settings-only' | 'agents-only';
+
 interface SettingsPanelProps {
   config: Config;
   projectConfig: ProjectConfig | null;
+  globalAgentConfig: ProjectConfig | null;
   onThemePreview: (theme?: string) => void;
   onSave: (config: Config) => void;
   onSaveProject: (config: ProjectConfig) => void;
+  onSaveGlobalAgentConfig: (config: ProjectConfig) => void;
   onBack: () => void;
+  onOpenAgentsModule?: () => void;
+  initialTab?: SettingsTab;
+  panelMode?: SettingsPanelMode;
 }
 
 const GIT_CATEGORIES = ['issues', 'adrs', 'specs', 'config.toml', 'templates', 'log.md'];
@@ -44,6 +47,24 @@ const AI_PROVIDERS = [
   { id: 'codex', label: 'Codex (codex)' },
 ];
 const SCOPE_OPTIONS = ['global', 'project', 'mode'] as const;
+const EMPTY_AGENT_LAYER = {
+  skills: [],
+  prompts: [],
+  context: [],
+  rules: [],
+};
+const DEFAULT_MODE_VALUE = 'default';
+
+function parseLines(value: string): string[] {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function joinLines(values: string[] | undefined): string {
+  return (values ?? []).join('\n');
+}
 
 function normalizeProjectConfig(config: ProjectConfig | null): ProjectConfig {
   return {
@@ -63,10 +84,20 @@ function normalizeProjectConfig(config: ProjectConfig | null): ProjectConfig {
     modes: config?.modes ?? [],
     mcp_servers: config?.mcp_servers ?? [],
     active_mode: config?.active_mode ?? null,
+    agent: {
+      ...EMPTY_AGENT_LAYER,
+      ...(config?.agent ?? {}),
+    },
   };
 }
 
-const EMPTY_SERVER: Omit<McpServerConfig, 'env'> & { args_raw: string } = {
+const EMPTY_SERVER: {
+  id: string;
+  name: string;
+  command: string;
+  args_raw: string;
+  scope: 'global' | 'project' | 'mode';
+} = {
   id: '',
   name: '',
   command: '',
@@ -85,14 +116,27 @@ const EMPTY_MODE: ModeConfig = {
 export default function SettingsPanel({
   config,
   projectConfig,
+  globalAgentConfig,
   onThemePreview,
   onSave,
   onSaveProject,
+  onSaveGlobalAgentConfig,
   onBack,
+  onOpenAgentsModule,
+  initialTab = 'global',
+  panelMode = 'full',
 }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = useState<'global' | 'project' | 'agents'>('global');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() =>
+    panelMode === 'agents-only' ? 'agents' : initialTab
+  );
   const [local, setLocal] = useState<Config>(config);
   const [localProject, setLocalProject] = useState<ProjectConfig>(normalizeProjectConfig(projectConfig));
+  const [localGlobalAgent, setLocalGlobalAgent] = useState<ProjectConfig>(
+    normalizeProjectConfig(globalAgentConfig)
+  );
+  const [agentScope, setAgentScope] = useState<'project' | 'global'>(
+    projectConfig ? 'project' : 'global'
+  );
   const [newStatus, setNewStatus] = useState<StatusConfig>({ id: '', name: '', color: 'gray' });
   const [newServer, setNewServer] = useState(EMPTY_SERVER);
   const [newMode, setNewMode] = useState<ModeConfig>(EMPTY_MODE);
@@ -111,15 +155,47 @@ export default function SettingsPanel({
   }, [projectConfig]);
 
   useEffect(() => {
-    if (!projectConfig && (activeTab === 'project' || activeTab === 'agents')) {
+    setLocalGlobalAgent(normalizeProjectConfig(globalAgentConfig));
+  }, [globalAgentConfig]);
+
+  useEffect(() => {
+    if (panelMode !== 'agents-only' && !projectConfig && activeTab === 'project') {
       setActiveTab('global');
     }
-  }, [activeTab, projectConfig]);
+  }, [activeTab, panelMode, projectConfig]);
+
+  useEffect(() => {
+    if (panelMode === 'agents-only') {
+      setActiveTab('agents');
+      return;
+    }
+    const nextTab =
+      panelMode === 'settings-only' && (initialTab === 'agents' || initialTab === 'modules')
+        ? 'global'
+        : initialTab;
+    setActiveTab(nextTab);
+  }, [initialTab, panelMode]);
+
+  useEffect(() => {
+    if (!projectConfig) {
+      setAgentScope('global');
+    }
+  }, [projectConfig]);
 
   const availableStatuses = useMemo(
     () => (localProject.statuses.length > 0 ? localProject.statuses : DEFAULT_STATUSES),
     [localProject.statuses]
   );
+  const hasActiveProject = !!projectConfig;
+  const activeAgentConfig = agentScope === 'project' ? localProject : localGlobalAgent;
+
+  const updateActiveAgentConfig = (next: ProjectConfig) => {
+    if (agentScope === 'project') {
+      setLocalProject(next);
+      return;
+    }
+    setLocalGlobalAgent(next);
+  };
 
   const updateStatus = (index: number, patch: Partial<StatusConfig>) => {
     setLocalProject((current) => ({
@@ -178,42 +254,42 @@ export default function SettingsPanel({
       env: {},
       scope: newServer.scope,
     };
-    setLocalProject((current) => ({
-      ...current,
-      mcp_servers: [...(current.mcp_servers ?? []), server],
-    }));
+    updateActiveAgentConfig({
+      ...activeAgentConfig,
+      mcp_servers: [...(activeAgentConfig.mcp_servers ?? []), server],
+    });
     setNewServer(EMPTY_SERVER);
   };
 
   const handleRemoveServer = (id: string) => {
-    setLocalProject((current) => ({
-      ...current,
-      mcp_servers: (current.mcp_servers ?? []).filter((s) => s.id !== id),
-    }));
+    updateActiveAgentConfig({
+      ...activeAgentConfig,
+      mcp_servers: (activeAgentConfig.mcp_servers ?? []).filter((s) => s.id !== id),
+    });
   };
 
   const handleAddMode = () => {
     const id = newMode.id.trim();
     const name = newMode.name.trim();
     if (!id || !name) return;
-    setLocalProject((current) => ({
-      ...current,
-      modes: [...(current.modes ?? []), { ...newMode, id, name }],
-    }));
+    updateActiveAgentConfig({
+      ...activeAgentConfig,
+      modes: [...(activeAgentConfig.modes ?? []), { ...newMode, id, name }],
+    });
     setNewMode(EMPTY_MODE);
   };
 
   const handleRemoveMode = (id: string) => {
-    setLocalProject((current) => ({
-      ...current,
-      modes: (current.modes ?? []).filter((m) => m.id !== id),
-      active_mode: current.active_mode === id ? null : current.active_mode,
-    }));
+    updateActiveAgentConfig({
+      ...activeAgentConfig,
+      modes: (activeAgentConfig.modes ?? []).filter((m) => m.id !== id),
+      active_mode: activeAgentConfig.active_mode === id ? null : activeAgentConfig.active_mode,
+    });
   };
 
-  const handleSetActiveMode = (id: string) => {
-    const next = id === '__none__' ? null : id;
-    setLocalProject((current) => ({ ...current, active_mode: next }));
+  const handleSetActiveMode = (id: string | null) => {
+    const next = id === DEFAULT_MODE_VALUE ? null : id;
+    updateActiveAgentConfig({ ...activeAgentConfig, active_mode: next });
   };
 
   const handleTestProvider = async () => {
@@ -245,6 +321,9 @@ export default function SettingsPanel({
     onBack();
   };
 
+  const agentsOnly = panelMode === 'agents-only';
+  const settingsOnly = panelMode === 'settings-only';
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-5 md:p-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -254,23 +333,34 @@ export default function SettingsPanel({
             Back
           </Button>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Settings</h1>
-            <p className="text-muted-foreground text-sm">Global and project configuration</p>
+            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
+              {agentsOnly ? 'Agents' : 'Settings'}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {agentsOnly ? 'Agent config, modes, MCP, and client sync' : 'Global and project configuration'}
+            </p>
           </div>
         </div>
         <Badge variant="outline">Alpha</Badge>
       </header>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="global">Global</TabsTrigger>
-          <TabsTrigger value="project" disabled={!projectConfig}>
-            Project
-          </TabsTrigger>
-          <TabsTrigger value="agents" disabled={!projectConfig}>
-            Agents
-          </TabsTrigger>
-        </TabsList>
+        {!agentsOnly && (
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="global">Global</TabsTrigger>
+            <TabsTrigger value="project" disabled={!projectConfig}>
+              Project
+            </TabsTrigger>
+            {settingsOnly && (
+              <TabsTrigger value="modules">Modules</TabsTrigger>
+            )}
+            {!settingsOnly && (
+              <TabsTrigger value="agents">
+                Agents
+              </TabsTrigger>
+            )}
+          </TabsList>
+        )}
 
         {/* ── Global tab ──────────────────────────────────────────────────── */}
         <TabsContent value="global">
@@ -394,6 +484,22 @@ export default function SettingsPanel({
             </Card>
           </div>
         </TabsContent>
+
+        {settingsOnly && (
+          <TabsContent value="modules">
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>Module Settings</CardTitle>
+                <CardDescription>Open module-specific settings pages.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button type="button" variant="outline" onClick={onOpenAgentsModule}>
+                  Open Agents Module
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         {/* ── Project tab ─────────────────────────────────────────────────── */}
         <TabsContent value="project">
@@ -521,302 +627,430 @@ export default function SettingsPanel({
         </TabsContent>
 
         {/* ── Agents tab ──────────────────────────────────────────────────── */}
+        {!settingsOnly && (
         <TabsContent value="agents">
-          {!projectConfig ? (
+          <div className="grid gap-4">
             <Card size="sm">
               <CardHeader>
-                <CardTitle>Select a project first</CardTitle>
-                <CardDescription>Agent settings are stored per-project in `.ship/config.toml`.</CardDescription>
+                <CardTitle>Scope</CardTitle>
+                <CardDescription>
+                  Configure agent defaults globally, or override per project.
+                </CardDescription>
               </CardHeader>
+              <CardContent className="space-y-2">
+                <Label>Agent Config Scope</Label>
+                <Select
+                  value={agentScope}
+                  onValueChange={(value) => setAgentScope((value as 'project' | 'global') ?? 'global')}
+                >
+                  <SelectTrigger className="w-full sm:w-72">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global (~/.ship/config.toml)</SelectItem>
+                    <SelectItem value="project" disabled={!projectConfig}>
+                      Project (.ship/config.toml)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {agentScope === 'project' && !projectConfig && (
+                  <p className="text-xs text-destructive">Open a project to edit project-scoped agent config.</p>
+                )}
+              </CardContent>
             </Card>
-          ) : (
-            <div className="grid gap-4">
-              {/* AI Provider */}
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>AI Provider</CardTitle>
-                  <CardDescription>
-                    Ship invokes the provider CLI as a child process — no API keys required.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>AI Provider</CardTitle>
+                <CardDescription>
+                  Pass-through CLI provider used for generation features in the UI.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Provider</Label>
+                    <Select
+                      value={activeAgentConfig.ai?.provider ?? 'claude'}
+                      onValueChange={(value) =>
+                        updateActiveAgentConfig({
+                          ...activeAgentConfig,
+                          ai: { ...(activeAgentConfig.ai ?? {}), provider: value },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AI_PROVIDERS.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-ai-cli">Binary Path Override</Label>
+                    <Input
+                      id="settings-ai-cli"
+                      value={activeAgentConfig.ai?.cli_path ?? ''}
+                      onChange={(event) =>
+                        updateActiveAgentConfig({
+                          ...activeAgentConfig,
+                          ai: {
+                            ...(activeAgentConfig.ai ?? {}),
+                            cli_path: event.target.value || null,
+                          },
+                        })
+                      }
+                      placeholder="Leave blank to use PATH"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={testStatus === 'loading' || !hasActiveProject}
+                    onClick={() => void handleTestProvider()}
+                  >
+                    {testStatus === 'loading' ? 'Testing…' : 'Test Provider'}
+                  </Button>
+                  {testStatus === 'ok' && (
+                    <span className="text-xs text-emerald-500">Provider working ✓</span>
+                  )}
+                  {testStatus === 'error' && (
+                    <span className="text-xs text-destructive">Failed — check binary path</span>
+                  )}
+                </div>
+                {!hasActiveProject && (
+                  <p className="text-muted-foreground text-xs">
+                    Open a project to run provider tests.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>Agent Context Layer</CardTitle>
+                <CardDescription>
+                  One place for skills, prompts, context, and rules.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="settings-agent-skills">Skills (one per line)</Label>
+                  <Textarea
+                    id="settings-agent-skills"
+                    rows={6}
+                    value={joinLines(activeAgentConfig.agent?.skills)}
+                    onChange={(event) =>
+                      updateActiveAgentConfig({
+                        ...activeAgentConfig,
+                        agent: {
+                          ...(activeAgentConfig.agent ?? EMPTY_AGENT_LAYER),
+                          skills: parseLines(event.target.value),
+                        },
+                      })
+                    }
+                    placeholder="backend-rust&#10;frontend-react&#10;qa-regression"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="settings-agent-prompts">Prompt Snippets (one per line)</Label>
+                  <Textarea
+                    id="settings-agent-prompts"
+                    rows={6}
+                    value={joinLines(activeAgentConfig.agent?.prompts)}
+                    onChange={(event) =>
+                      updateActiveAgentConfig({
+                        ...activeAgentConfig,
+                        agent: {
+                          ...(activeAgentConfig.agent ?? EMPTY_AGENT_LAYER),
+                          prompts: parseLines(event.target.value),
+                        },
+                      })
+                    }
+                    placeholder="Always produce patch-ready diffs&#10;Summarize risks before coding"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="settings-agent-context">Context Paths (one per line)</Label>
+                  <Textarea
+                    id="settings-agent-context"
+                    rows={6}
+                    value={joinLines(activeAgentConfig.agent?.context)}
+                    onChange={(event) =>
+                      updateActiveAgentConfig({
+                        ...activeAgentConfig,
+                        agent: {
+                          ...(activeAgentConfig.agent ?? EMPTY_AGENT_LAYER),
+                          context: parseLines(event.target.value),
+                        },
+                      })
+                    }
+                    placeholder="AGENTS.md&#10;specs/&#10;adrs/"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="settings-agent-rules">Rules (one per line)</Label>
+                  <Textarea
+                    id="settings-agent-rules"
+                    rows={6}
+                    value={joinLines(activeAgentConfig.agent?.rules)}
+                    onChange={(event) =>
+                      updateActiveAgentConfig({
+                        ...activeAgentConfig,
+                        agent: {
+                          ...(activeAgentConfig.agent ?? EMPTY_AGENT_LAYER),
+                          rules: parseLines(event.target.value),
+                        },
+                      })
+                    }
+                    placeholder="Never rewrite git history&#10;Prefer rg for code search"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>Modes</CardTitle>
+                <CardDescription>
+                  Mode switching is capability control. Keep this central and explicit.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(activeAgentConfig.modes ?? []).length > 0 && (
+                  <>
                     <div className="space-y-2">
-                      <Label>Provider</Label>
+                      <Label>Active Mode</Label>
                       <Select
-                        value={localProject.ai?.provider ?? 'claude'}
-                        onValueChange={(value) =>
-                          setLocalProject({
-                            ...localProject,
-                            ai: { ...(localProject.ai ?? {}), provider: value },
-                          })
-                        }
+                        value={activeAgentConfig.active_mode ?? DEFAULT_MODE_VALUE}
+                        onValueChange={handleSetActiveMode}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className="w-full sm:w-64">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {AI_PROVIDERS.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.label}
+                          <SelectItem value={DEFAULT_MODE_VALUE}>Default (all capabilities)</SelectItem>
+                          {(activeAgentConfig.modes ?? []).map((mode) => (
+                            <SelectItem key={mode.id} value={mode.id}>
+                              {mode.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                    <Separator />
                     <div className="space-y-2">
-                      <Label htmlFor="settings-ai-cli">Binary Path Override</Label>
-                      <Input
-                        id="settings-ai-cli"
-                        value={localProject.ai?.cli_path ?? ''}
-                        onChange={(event) =>
-                          setLocalProject({
-                            ...localProject,
-                            ai: {
-                              ...(localProject.ai ?? {}),
-                              cli_path: event.target.value || null,
-                            },
-                          })
-                        }
-                        placeholder="Leave blank to use PATH"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={testStatus === 'loading'}
-                      onClick={() => void handleTestProvider()}
-                    >
-                      {testStatus === 'loading' ? 'Testing…' : 'Test Provider'}
-                    </Button>
-                    {testStatus === 'ok' && (
-                      <span className="text-xs text-emerald-500">Provider working ✓</span>
-                    )}
-                    {testStatus === 'error' && (
-                      <span className="text-xs text-destructive">Failed — check binary path</span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Active Mode */}
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>Modes</CardTitle>
-                  <CardDescription>
-                    Modes filter which MCP tools are active. Define project-specific workflows.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {(localProject.modes ?? []).length > 0 && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Active Mode</Label>
-                        <Select
-                          value={localProject.active_mode ?? '__none__'}
-                          onValueChange={handleSetActiveMode}
-                        >
-                          <SelectTrigger className="w-full sm:w-64">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">None (all tools)</SelectItem>
-                            {(localProject.modes ?? []).map((m) => (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Separator />
-                      <div className="space-y-2">
-                        {(localProject.modes ?? []).map((mode) => (
-                          <div
-                            key={mode.id}
-                            className="flex items-center justify-between rounded-md border px-3 py-2"
-                          >
-                            <div>
-                              <p className="text-sm font-medium">{mode.name}</p>
-                              <p className="text-muted-foreground text-xs font-mono">{mode.id}</p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => handleRemoveMode(mode.id)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                      <Separator />
-                    </>
-                  )}
-                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                    <Input
-                      value={newMode.id}
-                      onChange={(e) => setNewMode({ ...newMode, id: e.target.value })}
-                      placeholder="mode-id"
-                    />
-                    <Input
-                      value={newMode.name}
-                      onChange={(e) => setNewMode({ ...newMode, name: e.target.value })}
-                      placeholder="Display Name"
-                    />
-                    <Button onClick={handleAddMode} disabled={!newMode.id.trim() || !newMode.name.trim()}>
-                      <Plus className="size-3.5" />
-                      Add Mode
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* MCP Server Registry */}
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>MCP Server Registry</CardTitle>
-                  <CardDescription>
-                    Register MCP servers for this project. Export to AI client configs below.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {(localProject.mcp_servers ?? []).length > 0 && (
-                    <>
-                      {(localProject.mcp_servers ?? []).map((server) => (
+                      {(activeAgentConfig.modes ?? []).map((mode) => (
                         <div
-                          key={server.id}
-                          className="flex items-start justify-between gap-2 rounded-md border px-3 py-2"
+                          key={mode.id}
+                          className="flex items-center justify-between rounded-md border px-3 py-2"
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium">{server.name}</p>
-                              <Badge variant="outline" className="text-[10px]">
-                                {server.scope}
-                              </Badge>
-                            </div>
-                            <p className="text-muted-foreground truncate font-mono text-xs">
-                              {server.command} {server.args.join(' ')}
-                            </p>
+                          <div>
+                            <p className="text-sm font-medium">{mode.name}</p>
+                            <p className="text-muted-foreground text-xs font-mono">{mode.id}</p>
                           </div>
                           <Button
                             variant="ghost"
                             size="xs"
-                            onClick={() => handleRemoveServer(server.id)}
+                            onClick={() => handleRemoveMode(mode.id)}
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
                         </div>
                       ))}
-                      <Separator />
-                    </>
-                  )}
-                  <div className="grid gap-2">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Input
-                        value={newServer.id}
-                        onChange={(e) => setNewServer({ ...newServer, id: e.target.value })}
-                        placeholder="server-id"
-                      />
-                      <Input
-                        value={newServer.name}
-                        onChange={(e) => setNewServer({ ...newServer, name: e.target.value })}
-                        placeholder="Display Name"
-                      />
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
-                      <Input
-                        value={newServer.command}
-                        onChange={(e) => setNewServer({ ...newServer, command: e.target.value })}
-                        placeholder="command (e.g. ship-mcp)"
-                      />
-                      <Input
-                        value={newServer.args_raw}
-                        onChange={(e) => setNewServer({ ...newServer, args_raw: e.target.value })}
-                        placeholder="args (space-separated)"
-                      />
-                      <Select
-                        value={newServer.scope}
-                        onValueChange={(v) =>
-                          setNewServer({
-                            ...newServer,
-                            scope: v as typeof newServer.scope,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SCOPE_OPTIONS.map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {s}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={handleAddServer}
-                        disabled={!newServer.id.trim() || !newServer.command.trim()}
-                      >
-                        <Plus className="size-3.5" />
-                        Add
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    <Separator />
+                  </>
+                )}
+                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <Input
+                    value={newMode.id}
+                    onChange={(e) => setNewMode({ ...newMode, id: e.target.value })}
+                    placeholder="mode-id"
+                  />
+                  <Input
+                    value={newMode.name}
+                    onChange={(e) => setNewMode({ ...newMode, name: e.target.value })}
+                    placeholder="Display Name"
+                  />
+                  <Button onClick={handleAddMode} disabled={!newMode.id.trim() || !newMode.name.trim()}>
+                    <Plus className="size-3.5" />
+                    Add Mode
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-              {/* Export */}
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>Sync to AI Clients</CardTitle>
-                  <CardDescription>
-                    Push this project's MCP server registry into your AI client config files.
-                    Ship merges with existing entries — other settings are preserved.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {agentError && (
-                    <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                      {agentError}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    {(['claude', 'codex', 'gemini'] as const).map((target) => (
-                      <Button
-                        key={target}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={exportStatus[target] === 'loading'}
-                        onClick={() => void handleExport(target)}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>MCP Server Registry</CardTitle>
+                <CardDescription>
+                  Registry for MCP tools used by this scope.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(activeAgentConfig.mcp_servers ?? []).length > 0 && (
+                  <>
+                    {(activeAgentConfig.mcp_servers ?? []).map((server) => (
+                      <div
+                        key={server.id}
+                        className="flex items-start justify-between gap-2 rounded-md border px-3 py-2"
                       >
-                        <Upload className="size-3.5" />
-                        {exportStatus[target] === 'loading'
-                          ? 'Syncing…'
-                          : exportStatus[target] === 'ok'
-                          ? `Synced to ${target} ✓`
-                          : `Sync to ${target}`}
-                      </Button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{server.name}</p>
+                            <Badge variant="outline" className="text-[10px]">
+                              {server.scope}
+                            </Badge>
+                          </div>
+                          <p className="text-muted-foreground truncate font-mono text-xs">
+                            {server.command} {server.args.join(' ')}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => handleRemoveServer(server.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                     ))}
+                    <Separator />
+                  </>
+                )}
+                <div className="grid gap-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={newServer.id}
+                      onChange={(e) => setNewServer({ ...newServer, id: e.target.value })}
+                      placeholder="server-id"
+                    />
+                    <Input
+                      value={newServer.name}
+                      onChange={(e) => setNewServer({ ...newServer, name: e.target.value })}
+                      placeholder="Display Name"
+                    />
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+                    <Input
+                      value={newServer.command}
+                      onChange={(e) => setNewServer({ ...newServer, command: e.target.value })}
+                      placeholder="command (e.g. ship-mcp)"
+                    />
+                    <Input
+                      value={newServer.args_raw}
+                      onChange={(e) => setNewServer({ ...newServer, args_raw: e.target.value })}
+                      placeholder="args (space-separated)"
+                    />
+                    <Select
+                      value={newServer.scope}
+                      onValueChange={(v) =>
+                        setNewServer({
+                          ...newServer,
+                          scope: v as typeof newServer.scope,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SCOPE_OPTIONS.map((scope) => (
+                          <SelectItem key={scope} value={scope}>
+                            {scope}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleAddServer}
+                      disabled={!newServer.id.trim() || !newServer.command.trim()}
+                    >
+                      <Plus className="size-3.5" />
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>Sync to AI Clients</CardTitle>
+                <CardDescription>
+                  Export current scope MCP registry and agent layer docs to client configs.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {agentError && (
+                  <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {agentError}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {(['claude', 'codex', 'gemini'] as const).map((target) => (
+                    <Button
+                      key={target}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={exportStatus[target] === 'loading' || !hasActiveProject}
+                      onClick={() => void handleExport(target)}
+                    >
+                      <Upload className="size-3.5" />
+                      {exportStatus[target] === 'loading'
+                        ? 'Syncing…'
+                        : exportStatus[target] === 'ok'
+                        ? `Synced to ${target} ✓`
+                        : `Sync to ${target}`}
+                    </Button>
+                  ))}
+                </div>
+                {!hasActiveProject && (
+                  <p className="text-muted-foreground text-xs">
+                    Open a project to export client config files.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
+        )}
       </Tabs>
 
       <footer className="flex items-center justify-end gap-2 border-t pt-4">
         <Button variant="ghost" onClick={handleBack}>
-          Cancel
+          {agentsOnly ? 'Close' : 'Cancel'}
         </Button>
-        {activeTab === 'global' ? (
+        {settingsOnly && activeTab === 'modules' ? (
+          <Button type="button" variant="outline" onClick={onOpenAgentsModule}>
+            Open Agents Module
+          </Button>
+        ) : agentsOnly ? (
+          agentScope === 'global' ? (
+            <Button onClick={() => onSaveGlobalAgentConfig(localGlobalAgent)}>
+              Save Global Agent Config
+            </Button>
+          ) : (
+            <Button onClick={() => onSaveProject(localProject)} disabled={!projectConfig}>
+              Save Project Agent Config
+            </Button>
+          )
+        ) : activeTab === 'global' ? (
           <Button onClick={() => onSave(local)}>Save Global Settings</Button>
+        ) : activeTab === 'agents' && agentScope === 'global' ? (
+          <Button onClick={() => onSaveGlobalAgentConfig(localGlobalAgent)}>
+            Save Global Agent Config
+          </Button>
         ) : (
           <Button onClick={() => onSaveProject(localProject)} disabled={!projectConfig}>
             Save Project Settings

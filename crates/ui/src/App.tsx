@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import Sidebar from './components/Sidebar';
+import AgentModeControl from './components/AgentModeControl';
 import IssueDetail from './components/IssueDetail';
 import NewIssueModal from './components/NewIssueModal';
 import NewAdrModal from './components/NewAdrModal';
@@ -10,6 +11,7 @@ import { Button } from './components/ui/button';
 import { useWorkspace } from './hooks/workspace/WorkspaceContext';
 import {
   AppRoutePath,
+  AGENTS_ROUTE,
   ROUTE_LABELS,
   SETTINGS_ROUTE,
   OVERVIEW_ROUTE,
@@ -36,7 +38,11 @@ export default function App() {
     }
   };
 
-  const showProjectOnboarding = workspace.noProject && !workspace.loading && routePath !== SETTINGS_ROUTE;
+  const showProjectOnboarding =
+    workspace.noProject &&
+    !workspace.loading &&
+    routePath !== SETTINGS_ROUTE &&
+    routePath !== AGENTS_ROUTE;
 
   if (workspace.loading) {
     return (
@@ -106,37 +112,51 @@ export default function App() {
 
         {(!workspace.noProject || routePath === PROJECTS_ROUTE) && (
           <div className="mx-auto mt-4 w-full max-w-6xl px-5 md:px-6">
-            <nav className="text-muted-foreground flex items-center gap-1 text-xs">
-              {routePath === PROJECTS_ROUTE ? (
-                <span className="text-foreground">Projects</span>
-              ) : (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => navigateTo(PROJECTS_ROUTE)}
-                  >
-                    Projects
-                  </Button>
-                  <span>/</span>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => navigateTo(OVERVIEW_ROUTE)}
-                  >
-                    {workspace.activeProject?.name ?? 'Project'}
-                  </Button>
-                  {routePath !== OVERVIEW_ROUTE && (
-                    <>
-                      <span>/</span>
-                      <span className="text-foreground">{ROUTE_LABELS[routePath]}</span>
-                    </>
-                  )}
-                </>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <nav className="text-muted-foreground flex items-center gap-1 text-xs">
+                {routePath === PROJECTS_ROUTE ? (
+                  <span className="text-foreground">Projects</span>
+                ) : (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => navigateTo(PROJECTS_ROUTE)}
+                    >
+                      Projects
+                    </Button>
+                    <span>/</span>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => navigateTo(OVERVIEW_ROUTE)}
+                    >
+                      {workspace.activeProject?.name ?? 'Project'}
+                    </Button>
+                    {routePath !== OVERVIEW_ROUTE && (
+                      <>
+                        <span>/</span>
+                        <span className="text-foreground">{ROUTE_LABELS[routePath]}</span>
+                      </>
+                    )}
+                  </>
+                )}
+              </nav>
+
+              {!workspace.noProject && (
+                <AgentModeControl
+                  modes={workspace.modes}
+                  activeModeId={workspace.activeModeId}
+                  aiProvider={workspace.aiProvider}
+                  aiModel={workspace.aiModel}
+                  switchingMode={workspace.switchingMode}
+                  onSetMode={workspace.handleSetActiveMode}
+                  onOpenAgents={() => navigateTo(AGENTS_ROUTE)}
+                />
               )}
-            </nav>
+            </div>
           </div>
         )}
 

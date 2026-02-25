@@ -1,4 +1,7 @@
-use crate::config::{get_config, HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig};
+use crate::config::{
+    AgentLayerConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig,
+    get_config, get_effective_config,
+};
 use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
 use anyhow::{Result, anyhow};
@@ -64,10 +67,38 @@ pub struct SyncPayload {
 /// Export the active mode (or global config) to the specified AI client.
 pub fn export_to(project_dir: PathBuf, target: &str) -> Result<()> {
     let payload = build_payload(&project_dir)?;
+    let effective = get_effective_config(Some(project_dir.clone()))?;
+    let project_root = project_dir
+        .parent()
+        .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     match target {
-        "claude" => export_claude(&project_dir, &payload),
-        "codex"  => export_codex(&project_dir, &payload),
-        "gemini" => export_gemini(&project_dir, &payload),
+        "claude" => {
+            export_claude(&project_dir, &payload)?;
+            write_agent_layer_markdown(
+                project_root.join("SHIPWRIGHT.md"),
+                "Claude",
+                &effective.agent,
+                &payload.servers,
+            )
+        }
+        "codex" => {
+            export_codex(&project_dir, &payload)?;
+            write_agent_layer_markdown(
+                project_root.join(".codex").join("SHIPWRIGHT.md"),
+                "Codex",
+                &effective.agent,
+                &payload.servers,
+            )
+        }
+        "gemini" => {
+            export_gemini(&project_dir, &payload)?;
+            write_agent_layer_markdown(
+                project_root.join(".gemini").join("SHIPWRIGHT.md"),
+                "Gemini",
+                &effective.agent,
+                &payload.servers,
+            )
+        }
         other    => Err(anyhow!("Unknown target '{}': use claude, codex, or gemini", other)),
     }
 }
@@ -75,7 +106,7 @@ pub fn export_to(project_dir: PathBuf, target: &str) -> Result<()> {
 /// Sync all target agents configured for the active mode.
 /// Returns list of synced target names.
 pub fn sync_active_mode(project_dir: &Path) -> Result<Vec<String>> {
-    let config = get_config(Some(project_dir.to_path_buf()))?;
+    let config = get_effective_config(Some(project_dir.to_path_buf()))?;
     let targets: Vec<String> = config.active_mode
         .as_ref()
         .and_then(|id| config.modes.iter().find(|m| &m.id == id))
@@ -162,7 +193,7 @@ pub fn import_from_claude(project_dir: PathBuf) -> Result<usize> {
 // ─── Payload builder ──────────────────────────────────────────────────────────
 
 fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
-    let config = get_config(Some(project_dir.to_path_buf()))?;
+    let config = get_effective_config(Some(project_dir.to_path_buf()))?;
 
     if let Some(mode_id) = &config.active_mode {
         if let Some(mode) = config.modes.iter().find(|m| &m.id == mode_id) {
@@ -586,4 +617,78 @@ fn codex_mcp_entry(s: &McpServerConfig) -> toml::Value {
         entry.insert("startup_timeout_sec".to_string(), toml::Value::Integer(t as i64));
     }
     toml::Value::Table(entry)
+}
+
+fn write_agent_layer_markdown(
+    path: PathBuf,
+    target_name: &str,
+    agent: &AgentLayerConfig,
+    servers: &[McpServerConfig],
+) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut content = String::new();
+    content.push_str("# Shipwright Agent Layer\n\n");
+    content.push_str(&format!("Target: {}\n\n", target_name));
+
+    write_string_list_section(
+        &mut content,
+        "Skills",
+        &agent.skills,
+        "No skills configured.",
+    );
+    write_string_list_section(
+        &mut content,
+        "Prompt Snippets",
+        &agent.prompts,
+        "No prompts configured.",
+    );
+    write_string_list_section(
+        &mut content,
+        "Context Paths",
+        &agent.context,
+        "No context paths configured.",
+    );
+    write_string_list_section(&mut content, "Rules", &agent.rules, "No rules configured.");
+
+    content.push_str("## MCP Servers\n\n");
+    if servers.is_empty() {
+        content.push_str("_No MCP servers configured._\n");
+    } else {
+        for server in servers {
+            let args = if server.args.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", server.args.join(" "))
+            };
+            content.push_str(&format!(
+                "- `{}`: `{}`{} ({})\n",
+                server.id, server.command, args, server.scope
+            ));
+        }
+    }
+    content.push('\n');
+
+    crate::fs_util::write_atomic(&path, content)?;
+    Ok(())
+}
+
+fn write_string_list_section(
+    output: &mut String,
+    title: &str,
+    values: &[String],
+    empty_label: &str,
+) {
+    output.push_str(&format!("## {}\n\n", title));
+    if values.is_empty() {
+        output.push_str(&format!("_{}_\n\n", empty_label));
+        return;
+    }
+
+    for value in values {
+        output.push_str(&format!("- {}\n", value));
+    }
+    output.push('\n');
 }

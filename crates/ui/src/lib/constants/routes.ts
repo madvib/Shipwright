@@ -4,6 +4,7 @@ export const ISSUES_ROUTE = '/issues' as const;
 export const SPECS_ROUTE = '/specs' as const;
 export const ADRS_ROUTE = '/adrs' as const;
 export const ACTIVITY_ROUTE = '/activity' as const;
+export const AGENTS_ROUTE = '/agents' as const;
 export const SETTINGS_ROUTE = '/settings' as const;
 
 export type AppRoutePath =
@@ -13,6 +14,7 @@ export type AppRoutePath =
   | typeof SPECS_ROUTE
   | typeof ADRS_ROUTE
   | typeof ACTIVITY_ROUTE
+  | typeof AGENTS_ROUTE
   | typeof SETTINGS_ROUTE;
 
 export const ROUTE_LABELS: Record<AppRoutePath, string> = {
@@ -22,6 +24,7 @@ export const ROUTE_LABELS: Record<AppRoutePath, string> = {
   [SPECS_ROUTE]: 'Specs',
   [ADRS_ROUTE]: 'Decisions',
   [ACTIVITY_ROUTE]: 'Activity',
+  [AGENTS_ROUTE]: 'Agents',
   [SETTINGS_ROUTE]: 'Settings',
 };
 

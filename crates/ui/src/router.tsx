@@ -7,6 +7,7 @@ import { issuesRoute } from './routes/issues';
 import { specsRoute } from './routes/specs';
 import { adrsRoute } from './routes/adrs';
 import { activityRoute } from './routes/activity';
+import { agentsRoute } from './routes/agents';
 import { settingsRoute } from './routes/settings';
 
 const routeTree = rootRoute.addChildren([
@@ -17,6 +18,7 @@ const routeTree = rootRoute.addChildren([
   specsRoute,
   adrsRoute,
   activityRoute,
+  agentsRoute,
   settingsRoute,
 ]);
 

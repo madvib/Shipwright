@@ -1,6 +1,7 @@
 version = "1"
 modes = []
 mcp_servers = []
+hooks = []
 
 [[statuses]]
 id = "backlog"
@@ -25,3 +26,9 @@ color = "green"
 [git]
 ignore = []
 commit = []
+
+[agent]
+skills = []
+prompts = []
+context = []
+rules = []

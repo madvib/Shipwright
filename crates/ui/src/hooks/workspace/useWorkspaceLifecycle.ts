@@ -11,6 +11,7 @@ import {
 import { subscribeProjectEvents } from '../../platform/tauri/events';
 import {
   detectCurrentProject,
+  getAppSettingsCmd,
   getProjectConfigCmd,
   listAdrs,
   listIssues,
@@ -36,6 +37,7 @@ interface UseWorkspaceLifecycleParams {
   setSpecs: Dispatch<SetStateAction<SpecEntry[]>>;
   setLogEntries: Dispatch<SetStateAction<LogEntry[]>>;
   setProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
+  setGlobalAgentConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setDetectedProject: Dispatch<SetStateAction<Project | null>>;
   setDetectingProject: Dispatch<SetStateAction<boolean>>;
   setRecentProjects: Dispatch<SetStateAction<Project[]>>;
@@ -52,6 +54,7 @@ export function useWorkspaceLifecycle({
   setSpecs,
   setLogEntries,
   setProjectConfig,
+  setGlobalAgentConfig,
   setDetectedProject,
   setDetectingProject,
   setRecentProjects,
@@ -204,6 +207,7 @@ export function useWorkspaceLifecycle({
         if (!isTauriRuntime()) {
           const localConfig: Config = { ...localSettings, theme: localSettings.theme ?? savedTheme };
           setConfig(localConfig);
+          setGlobalAgentConfig(null);
           applyTheme(localConfig.theme);
           setLoading(false);
           return;
@@ -217,6 +221,12 @@ export function useWorkspaceLifecycle({
 
         await refreshDetectedProject();
 
+        const globalSettings = await getAppSettingsCmd().catch((error) => {
+          console.error('Failed to load global settings:', error);
+          return null;
+        });
+        setGlobalAgentConfig(globalSettings);
+
         const merged = { ...localSettings, theme: localSettings.theme ?? savedTheme ?? 'dark' };
         setConfig(merged);
         applyTheme(merged.theme);
@@ -227,7 +237,14 @@ export function useWorkspaceLifecycle({
         setLoading(false);
       }
     })();
-  }, [refreshDetectedProject, setConfig, setError, setLoading, setRecentProjects]);
+  }, [
+    refreshDetectedProject,
+    setConfig,
+    setError,
+    setGlobalAgentConfig,
+    setLoading,
+    setRecentProjects,
+  ]);
 
   return {
     loadProjectData,

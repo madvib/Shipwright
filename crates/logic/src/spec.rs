@@ -72,8 +72,8 @@ fn validate_title(title: &str) -> Result<()> {
 
 impl Spec {
     pub fn to_markdown(&self) -> Result<String> {
-        let toml_str = toml::to_string(&self.metadata)
-            .context("Failed to serialise spec metadata as TOML")?;
+        let toml_str =
+            toml::to_string(&self.metadata).context("Failed to serialise spec metadata as TOML")?;
         Ok(format!("+++\n{}+++\n\n{}", toml_str, self.body))
     }
 
@@ -154,7 +154,9 @@ pub fn create_spec(project_dir: PathBuf, title: &str, body: &str) -> Result<Path
             tags: Vec::new(),
         },
         body: if body.is_empty() {
-            format!("## Overview\n\n\n## Goals\n\n\n## Non-Goals\n\n\n## Approach\n\n\n## Open Questions\n\n")
+            format!(
+                "## Overview\n\n\n## Goals\n\n\n## Non-Goals\n\n\n## Approach\n\n\n## Open Questions\n\n"
+            )
         } else {
             body.to_string()
         },
@@ -175,8 +177,7 @@ pub fn get_spec(path: PathBuf) -> Result<Spec> {
 
 /// Read the raw markdown content of a spec (for MCP/AI consumption).
 pub fn get_spec_raw(path: PathBuf) -> Result<String> {
-    fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read spec: {}", path.display()))
+    fs::read_to_string(&path).with_context(|| format!("Failed to read spec: {}", path.display()))
 }
 
 /// Overwrite a spec's body content, updating the `updated` timestamp.

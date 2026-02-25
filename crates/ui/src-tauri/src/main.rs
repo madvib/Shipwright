@@ -2,13 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use clap::Parser;
-use cli::{Cli, Commands, handle_cli};
+use cli::{handle_cli, Cli, Commands};
 use std::env;
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     // If no arguments beyond the program name, run the GUI
     if args.len() <= 1 {
         gui::run();

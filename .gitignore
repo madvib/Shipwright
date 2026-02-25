@@ -60,5 +60,11 @@ typings/
 dist/
 
 # Added by cargo
-
 /target
+
+
+.claude
+.gemini
+.codex
+
+.devcontainer

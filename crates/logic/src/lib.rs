@@ -21,12 +21,13 @@ pub use demo::init_demo_project;
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use plugin::{Plugin, PluginRegistry};
 pub use config::{
-    AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig,
-    PermissionConfig, ProjectConfig, StatusConfig,
+    AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig,
+    McpServerType, ModeConfig, PermissionConfig, ProjectConfig, StatusConfig,
     add_hook, add_mcp_server, add_mode, add_status, generate_gitignore, get_active_mode,
-    get_config, get_git_config, get_project_statuses, is_category_committed, list_hooks,
-    list_mcp_servers, migrate_json_config_file, remove_hook, remove_mcp_server, remove_mode,
-    remove_status, save_config, set_active_mode, set_category_committed, set_git_config,
+    get_config, get_effective_config, get_git_config, get_project_statuses,
+    is_category_committed, list_hooks, list_mcp_servers, migrate_json_config_file, remove_hook,
+    remove_mcp_server, remove_mode, remove_status, save_config, set_active_mode,
+    set_category_committed, set_git_config,
 };
 pub use prompt::{Prompt, create_prompt, delete_prompt, get_prompt, list_prompts, update_prompt};
 pub use agent_export::{export_to, import_from_claude, sync_active_mode};
@@ -414,6 +415,32 @@ mod tests {
         let git = get_git_config(&project_dir)?;
         assert!(is_category_committed(&git, "issues"));
         assert!(!is_category_committed(&git, "log.md"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_agent_layer_roundtrip() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+
+        let mut config = get_config(Some(project_dir.clone()))?;
+        config.ai = Some(AiConfig {
+            provider: Some("codex".into()),
+            model: Some("gpt-5".into()),
+            cli_path: None,
+        });
+        config.agent.skills = vec!["backend-rust".into(), "frontend-react".into()];
+        config.agent.prompts = vec!["Summarize risks first".into()];
+        config.agent.context = vec!["AGENTS.md".into(), "specs/".into()];
+        config.agent.rules = vec!["Never force-push shared branches".into()];
+        save_config(&config, Some(project_dir.clone()))?;
+
+        let loaded = get_config(Some(project_dir))?;
+        assert_eq!(loaded.ai.and_then(|ai| ai.provider), Some("codex".into()));
+        assert_eq!(loaded.agent.skills.len(), 2);
+        assert_eq!(loaded.agent.prompts.len(), 1);
+        assert_eq!(loaded.agent.context.len(), 2);
+        assert_eq!(loaded.agent.rules.len(), 1);
         Ok(())
     }
 

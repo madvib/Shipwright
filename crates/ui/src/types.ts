@@ -12,7 +12,15 @@ export interface StatusConfig {
 
 export interface AiConfig {
     provider?: string | null;
+    model?: string | null;
     cli_path?: string | null;
+}
+
+export interface AgentLayerConfig {
+    skills: string[];
+    prompts: string[];
+    context: string[];
+    rules: string[];
 }
 
 export interface ModeConfig {
@@ -42,6 +50,7 @@ export interface ProjectConfig {
     modes?: ModeConfig[];
     mcp_servers?: McpServerConfig[];
     active_mode?: string | null;
+    agent?: AgentLayerConfig;
 }
 
 export interface GitConfig {
