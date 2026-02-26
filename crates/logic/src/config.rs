@@ -1,9 +1,10 @@
 use crate::fs_util::write_atomic;
+use crate::{EventAction, EventEntity, append_event};
 use crate::{SHIP_DIR_NAME, get_global_dir};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -22,7 +23,7 @@ fn default_color() -> String {
 }
 
 /// Controls which parts of .ship/ are committed to git.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct GitConfig {
     /// Paths/globs that should be gitignored (relative to .ship/).
     #[serde(default)]
@@ -32,13 +33,35 @@ pub struct GitConfig {
     pub commit: Vec<String>,
 }
 
+impl Default for GitConfig {
+    fn default() -> Self {
+        // Opinionated alpha default:
+        // - Keep delivery/context artifacts in git.
+        // - Keep volatile issue execution data local unless explicitly included.
+        Self {
+            ignore: Vec::new(),
+            commit: vec![
+                "releases".to_string(),
+                "features".to_string(),
+                "specs".to_string(),
+                "adrs".to_string(),
+                "config.toml".to_string(),
+                "templates".to_string(),
+            ],
+        }
+    }
+}
+
 /// Configuration for the AI pass-through CLI.
 /// Ship does not call any AI APIs directly — it spawns the configured CLI binary.
 /// Supported providers: "claude" (Claude Code CLI), "gemini", "codex".
+/// "chatgpt" is still accepted as a backwards-compatible alias.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct AiConfig {
     /// Which AI CLI to use. Defaults to "claude".
     pub provider: Option<String>,
+    /// Optional model identifier for UI/agent selection context.
+    pub model: Option<String>,
     /// Override the binary path if it's not on PATH. Defaults to the provider name.
     pub cli_path: Option<String>,
 }
@@ -87,6 +110,22 @@ pub struct PermissionConfig {
     pub allow: Vec<String>,
     #[serde(default)]
     pub deny: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct AgentLayerConfig {
+    /// Skill packs/instructions to load for the current project.
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// Reusable prompt snippets for common tasks.
+    #[serde(default)]
+    pub prompts: Vec<String>,
+    /// Context files/folders to preload for agents.
+    #[serde(default)]
+    pub context: Vec<String>,
+    /// High-level project rules for humans and agents.
+    #[serde(default)]
+    pub rules: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
@@ -178,6 +217,8 @@ pub struct ProjectConfig {
     /// Global hooks applied regardless of active mode
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
+    #[serde(default)]
+    pub agent: AgentLayerConfig,
 }
 
 fn default_version() -> String {
@@ -186,11 +227,31 @@ fn default_version() -> String {
 
 fn default_statuses() -> Vec<StatusConfig> {
     vec![
-        StatusConfig { id: "backlog".into(),     name: "Backlog".into(),      color: "gray".into() },
-        StatusConfig { id: "in-progress".into(), name: "In Progress".into(),  color: "blue".into() },
-        StatusConfig { id: "review".into(),      name: "Review".into(),       color: "yellow".into() },
-        StatusConfig { id: "blocked".into(),     name: "Blocked".into(),      color: "red".into() },
-        StatusConfig { id: "done".into(),        name: "Done".into(),         color: "green".into() },
+        StatusConfig {
+            id: "backlog".into(),
+            name: "Backlog".into(),
+            color: "gray".into(),
+        },
+        StatusConfig {
+            id: "in-progress".into(),
+            name: "In Progress".into(),
+            color: "blue".into(),
+        },
+        StatusConfig {
+            id: "review".into(),
+            name: "Review".into(),
+            color: "yellow".into(),
+        },
+        StatusConfig {
+            id: "blocked".into(),
+            name: "Blocked".into(),
+            color: "red".into(),
+        },
+        StatusConfig {
+            id: "done".into(),
+            name: "Done".into(),
+            color: "green".into(),
+        },
     ]
 }
 
@@ -207,6 +268,7 @@ impl Default for ProjectConfig {
             mcp_servers: Vec::new(),
             active_mode: None,
             hooks: Vec::new(),
+            agent: AgentLayerConfig::default(),
         }
     }
 }
@@ -224,23 +286,108 @@ pub struct ProjectDiscovery {
 // ─── Read / Write ─────────────────────────────────────────────────────────────
 
 pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
-    let mut config = ProjectConfig::default();
+    let config_dir = match project_dir {
+        Some(dir) => dir,
+        None => get_global_dir()?,
+    };
 
-    if let Some(p_dir) = project_dir {
-        // Try .toml first, then fall back to legacy .json
-        let toml_path = p_dir.join("config.toml");
-        let json_path = p_dir.join("config.json");
+    // Try .toml first, then fall back to legacy .json.
+    let toml_path = config_dir.join("config.toml");
+    let json_path = config_dir.join("config.json");
 
-        if toml_path.exists() {
-            let content = fs::read_to_string(&toml_path)?;
-            config = toml::from_str(&content)?;
-        } else if json_path.exists() {
-            // Legacy JSON config — read what we can and migrate
-            config = migrate_json_config(&json_path).unwrap_or_default();
+    if toml_path.exists() {
+        let content = fs::read_to_string(&toml_path)?;
+        return Ok(toml::from_str(&content)?);
+    }
+
+    if json_path.exists() {
+        // Legacy JSON config — read what we can and migrate.
+        return Ok(migrate_json_config(&json_path).unwrap_or_default());
+    }
+
+    Ok(ProjectConfig::default())
+}
+
+/// Returns a merged view of global + project config.
+/// Project values win; missing project AI/agent/mode/MCP values inherit from global.
+pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
+    let global = get_config(None)?;
+    let Some(project_dir) = project_dir else {
+        return Ok(global);
+    };
+
+    let mut project = get_config(Some(project_dir))?;
+
+    if project.ai.is_none() {
+        project.ai = global.ai;
+    }
+
+    project.agent.skills = merge_string_lists(&global.agent.skills, &project.agent.skills);
+    project.agent.prompts = merge_string_lists(&global.agent.prompts, &project.agent.prompts);
+    project.agent.context = merge_string_lists(&global.agent.context, &project.agent.context);
+    project.agent.rules = merge_string_lists(&global.agent.rules, &project.agent.rules);
+
+    project.modes = merge_modes(&global.modes, &project.modes);
+    project.mcp_servers = merge_mcp_servers(&global.mcp_servers, &project.mcp_servers);
+    project.hooks = merge_hooks(&global.hooks, &project.hooks);
+
+    if project.active_mode.is_none() {
+        project.active_mode = global.active_mode;
+    }
+
+    Ok(project)
+}
+
+fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
+    let mut merged = Vec::new();
+    let mut seen = HashSet::new();
+
+    for item in base.iter().chain(overlay.iter()) {
+        if seen.insert(item.clone()) {
+            merged.push(item.clone());
         }
     }
 
-    Ok(config)
+    merged
+}
+
+fn merge_modes(base: &[ModeConfig], overlay: &[ModeConfig]) -> Vec<ModeConfig> {
+    let mut merged = base.to_vec();
+    for mode in overlay {
+        if let Some(existing) = merged.iter_mut().find(|m| m.id == mode.id) {
+            *existing = mode.clone();
+        } else {
+            merged.push(mode.clone());
+        }
+    }
+    merged
+}
+
+fn merge_mcp_servers(
+    base: &[McpServerConfig],
+    overlay: &[McpServerConfig],
+) -> Vec<McpServerConfig> {
+    let mut merged = base.to_vec();
+    for server in overlay {
+        if let Some(existing) = merged.iter_mut().find(|s| s.id == server.id) {
+            *existing = server.clone();
+        } else {
+            merged.push(server.clone());
+        }
+    }
+    merged
+}
+
+fn merge_hooks(base: &[HookConfig], overlay: &[HookConfig]) -> Vec<HookConfig> {
+    let mut merged = base.to_vec();
+    for hook in overlay {
+        if let Some(existing) = merged.iter_mut().find(|h| h.id == hook.id) {
+            *existing = hook.clone();
+        } else {
+            merged.push(hook.clone());
+        }
+    }
+    merged
 }
 
 pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Result<()> {
@@ -298,12 +445,12 @@ fn id_to_name(id: &str) -> String {
 
 fn default_color_for(id: &str) -> String {
     match id {
-        "backlog"     => "gray".into(),
+        "backlog" => "gray".into(),
         "in-progress" => "blue".into(),
-        "review"      => "yellow".into(),
-        "done"        => "green".into(),
-        "blocked"     => "red".into(),
-        _             => "gray".into(),
+        "review" => "yellow".into(),
+        "done" => "green".into(),
+        "blocked" => "red".into(),
+        _ => "gray".into(),
     }
 }
 
@@ -312,6 +459,44 @@ fn default_color_for(id: &str) -> String {
 pub fn get_project_statuses(project_dir: Option<PathBuf>) -> Result<Vec<String>> {
     let config = get_config(project_dir)?;
     Ok(config.statuses.iter().map(|s| s.id.clone()).collect())
+}
+
+fn emit_config_event(
+    project_dir: &Option<PathBuf>,
+    action: EventAction,
+    subject: &str,
+    details: Option<String>,
+) -> Result<()> {
+    if let Some(dir) = project_dir {
+        append_event(
+            dir,
+            "logic",
+            EventEntity::Config,
+            action,
+            subject.to_string(),
+            details,
+        )?;
+    }
+    Ok(())
+}
+
+fn emit_mode_event(
+    project_dir: &Option<PathBuf>,
+    action: EventAction,
+    subject: &str,
+    details: Option<String>,
+) -> Result<()> {
+    if let Some(dir) = project_dir {
+        append_event(
+            dir,
+            "logic",
+            EventEntity::Mode,
+            action,
+            subject.to_string(),
+            details,
+        )?;
+    }
+    Ok(())
 }
 
 pub fn add_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
@@ -323,7 +508,13 @@ pub fn add_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
             name: id_to_name(&sanitized),
             color: default_color_for(&sanitized),
         });
-        save_config(&config, project_dir)?;
+        save_config(&config, project_dir.clone())?;
+        emit_config_event(
+            &project_dir,
+            EventAction::Add,
+            "status",
+            Some(format!("id={}", sanitized)),
+        )?;
     }
     Ok(())
 }
@@ -347,7 +538,13 @@ pub fn remove_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
     }
     let mut config = get_config(project_dir.clone())?;
     config.statuses.retain(|s| s.id != status);
-    save_config(&config, project_dir)?;
+    save_config(&config, project_dir.clone())?;
+    emit_config_event(
+        &project_dir,
+        EventAction::Remove,
+        "status",
+        Some(format!("id={}", status)),
+    )?;
     Ok(())
 }
 
@@ -378,7 +575,20 @@ pub fn set_category_committed(project_dir: &Path, category: &str, commit: bool) 
             git.ignore.push(category.to_string());
         }
     }
-    set_git_config(project_dir, git)
+    set_git_config(project_dir, git)?;
+    append_event(
+        project_dir,
+        "logic",
+        EventEntity::Config,
+        if commit {
+            EventAction::Set
+        } else {
+            EventAction::Clear
+        },
+        "git_category",
+        Some(format!("category={}", category)),
+    )?;
+    Ok(())
 }
 
 pub fn is_category_committed(git: &GitConfig, category: &str) -> bool {
@@ -387,7 +597,18 @@ pub fn is_category_committed(git: &GitConfig, category: &str) -> bool {
 
 /// Write `.ship/.gitignore`. Everything not in `git.commit` is ignored by default.
 pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
-    let known = ["issues", "adrs", "specs", "log.md", "config.toml", "templates", "plugins"];
+    let known = [
+        "issues",
+        "releases",
+        "features",
+        "adrs",
+        "specs",
+        "log.md",
+        "events.ndjson",
+        "config.toml",
+        "templates",
+        "plugins",
+    ];
     let mut lines = vec![
         "# Managed by Ship — edit via `ship git include/exclude`".to_string(),
         String::new(),
@@ -420,7 +641,16 @@ pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
             if name.starts_with('.') && name != ".ship" {
                 continue;
             }
-            if matches!(name.as_ref(), "Trash" | ".Trash" | ".DS_Store" | "._*" | "TemporaryItems" | ".Spotlight-V100" | ".fseventsd") {
+            if matches!(
+                name.as_ref(),
+                "Trash"
+                    | ".Trash"
+                    | ".DS_Store"
+                    | "._*"
+                    | "TemporaryItems"
+                    | ".Spotlight-V100"
+                    | ".fseventsd"
+            ) {
                 continue;
             }
             let ship_dir = path.join(SHIP_DIR_NAME);
@@ -443,8 +673,16 @@ pub fn add_mode(project_dir: Option<PathBuf>, mode: ModeConfig) -> Result<()> {
     if config.modes.iter().any(|m| m.id == mode.id) {
         return Err(anyhow!("Mode '{}' already exists", mode.id));
     }
+    let mode_id = mode.id.clone();
     config.modes.push(mode);
-    save_config(&config, project_dir)
+    save_config(&config, project_dir.clone())?;
+    emit_mode_event(
+        &project_dir,
+        EventAction::Add,
+        "mode",
+        Some(format!("id={}", mode_id)),
+    )?;
+    Ok(())
 }
 
 pub fn remove_mode(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
@@ -453,13 +691,27 @@ pub fn remove_mode(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
     if config.active_mode.as_deref() == Some(id) {
         config.active_mode = None;
     }
-    save_config(&config, project_dir)
+    save_config(&config, project_dir.clone())?;
+    emit_mode_event(
+        &project_dir,
+        EventAction::Remove,
+        "mode",
+        Some(format!("id={}", id)),
+    )?;
+    Ok(())
 }
 
 pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result<()> {
     let mut config = get_config(project_dir.clone())?;
     if let Some(mode_id) = id {
-        if !config.modes.iter().any(|m| m.id == mode_id) {
+        let mode_exists = match &project_dir {
+            Some(dir) => get_effective_config(Some(dir.clone()))?
+                .modes
+                .iter()
+                .any(|m| m.id == mode_id),
+            None => config.modes.iter().any(|m| m.id == mode_id),
+        };
+        if !mode_exists {
             return Err(anyhow!("Mode '{}' not found", mode_id));
         }
     }
@@ -469,14 +721,25 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
     if let Some(ref dir) = project_dir {
         let _ = crate::agent_export::sync_active_mode(dir);
     }
+    emit_mode_event(
+        &project_dir,
+        if id.is_some() {
+            EventAction::Set
+        } else {
+            EventAction::Clear
+        },
+        "active_mode",
+        Some(format!("id={}", id.unwrap_or("none"))),
+    )?;
     Ok(())
 }
 
 pub fn get_active_mode(project_dir: Option<PathBuf>) -> Result<Option<ModeConfig>> {
     let config = get_config(project_dir)?;
-    Ok(config.active_mode.as_ref().and_then(|id| {
-        config.modes.into_iter().find(|m| &m.id == id)
-    }))
+    Ok(config
+        .active_mode
+        .as_ref()
+        .and_then(|id| config.modes.into_iter().find(|m| &m.id == id)))
 }
 
 // ─── MCP Server Registry CRUD ─────────────────────────────────────────────────

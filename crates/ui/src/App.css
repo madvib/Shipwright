@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist-mono";
+@import "@milkdown/crepe/theme/common/style.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -183,5 +184,205 @@
     min-height: 0;
     overflow: auto;
     overflow-x: hidden;
+  }
+
+  .ship-milkdown-shell {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .ship-milkdown-shell .milkdown {
+    height: 100%;
+    overflow: auto;
+    background: var(--card);
+    color: var(--foreground);
+    font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+
+    --crepe-color-background: var(--card);
+    --crepe-color-on-background: var(--foreground);
+    --crepe-color-surface: var(--muted);
+    --crepe-color-surface-low: var(--muted);
+    --crepe-color-on-surface: var(--foreground);
+    --crepe-color-on-surface-variant: var(--muted-foreground);
+    --crepe-color-outline: var(--border);
+    --crepe-color-primary: var(--primary);
+    --crepe-color-secondary: var(--secondary);
+    --crepe-color-on-secondary: var(--secondary-foreground);
+    --crepe-color-inverse: var(--foreground);
+    --crepe-color-on-inverse: var(--background);
+    --crepe-color-inline-code: var(--primary);
+    --crepe-color-error: var(--destructive);
+    --crepe-color-hover: var(--muted);
+    --crepe-color-selected: var(--muted);
+    --crepe-color-inline-area: var(--muted);
+    --crepe-font-title: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+    --crepe-font-default: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+    --crepe-font-code: var(--font-mono);
+  }
+
+  .ship-milkdown-shell .milkdown .ProseMirror {
+    min-height: 100%;
+    padding: 0.85rem;
+  }
+
+  .ship-markdown-preview {
+    color: var(--foreground);
+    padding: 0.85rem;
+    overflow: auto;
+  }
+
+  .ship-markdown-frontmatter {
+    margin: 0 0 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--muted);
+  }
+
+  .ship-markdown-frontmatter summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--muted-foreground);
+    padding: 0.45rem 0.6rem;
+    user-select: none;
+  }
+
+  .ship-markdown-frontmatter pre {
+    margin: 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    padding: 0.55rem 0.6rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  .ship-markdown-frontmatter code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .ship-markdown-preview > *:first-child {
+    margin-top: 0;
+  }
+
+  .ship-markdown-preview > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .ship-markdown-preview h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0 0 0.9rem;
+  }
+
+  .ship-markdown-preview h2 {
+    font-size: 1.12rem;
+    font-weight: 650;
+    line-height: 1.3;
+    margin: 1.25rem 0 0.65rem;
+  }
+
+  .ship-markdown-preview h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 1rem 0 0.5rem;
+  }
+
+  .ship-markdown-preview p,
+  .ship-markdown-preview ul,
+  .ship-markdown-preview ol,
+  .ship-markdown-preview blockquote {
+    margin: 0 0 0.7rem;
+    line-height: 1.6;
+  }
+
+  .ship-markdown-preview ul,
+  .ship-markdown-preview ol {
+    padding-left: 1.2rem;
+  }
+
+  .ship-markdown-preview ul {
+    list-style: disc;
+  }
+
+  .ship-markdown-preview ol {
+    list-style: decimal;
+  }
+
+  .ship-markdown-preview li {
+    margin: 0.25rem 0;
+  }
+
+  .ship-markdown-preview hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+  }
+
+  .ship-markdown-preview blockquote {
+    border-left: 3px solid var(--border);
+    color: var(--muted-foreground);
+    padding-left: 0.75rem;
+  }
+
+  .ship-markdown-preview a {
+    color: var(--primary);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+    text-decoration-line: underline;
+  }
+
+  .ship-markdown-preview a:hover {
+    color: var(--primary);
+  }
+
+  .ship-markdown-preview code {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    padding: 0.12rem 0.33rem;
+    border-radius: 0.35rem;
+    background: var(--muted);
+  }
+
+  .ship-markdown-preview pre {
+    overflow: auto;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--muted);
+    padding: 0.7rem;
+    margin: 0 0 0.9rem;
+  }
+
+  .ship-markdown-preview pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: 0.82rem;
+  }
+
+  .ship-markdown-preview table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 0.9rem;
+    font-size: 0.9rem;
+  }
+
+  .ship-markdown-preview th,
+  .ship-markdown-preview td {
+    border: 1px solid var(--border);
+    padding: 0.42rem 0.55rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .ship-markdown-preview th {
+    font-weight: 600;
+    background: var(--muted);
   }
 }

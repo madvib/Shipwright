@@ -1,8 +1,7 @@
-import { createRoute, useNavigate } from '@tanstack/react-router';
-import ProjectsDashboard from '../components/ProjectsDashboard';
-import { useWorkspace } from '../hooks/workspace/WorkspaceContext';
-import { OVERVIEW_ROUTE } from '../lib/constants/routes';
-import { rootRoute } from './__root';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import ProjectsDashboard from '@/features/planning/ProjectsDashboard';
+import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
+import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
 
 function ProjectsRouteComponent() {
   const workspace = useWorkspace();
@@ -26,8 +25,6 @@ function ProjectsRouteComponent() {
   );
 }
 
-export const projectsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects',
+export const Route = createFileRoute('/projects')({
   component: ProjectsRouteComponent,
 });

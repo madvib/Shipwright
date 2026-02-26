@@ -1,12 +1,9 @@
 # Managed by Ship — edit via `ship git include/exclude`
-# https://github.com/your-org/ship
 
-
-ADR/
+issues
 log.md
-config.json
-plugins/
+events.ndjson
+plugins
 
-# Internal ship files
-templates/
-README.md
+# Internal
+workflow/

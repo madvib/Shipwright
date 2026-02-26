@@ -4,13 +4,14 @@ Ship is a local-first project memory and execution tool for software teams and A
 
 For alpha, the focus is one loop:
 
-`Chat -> Refine Spec -> Extract Issues -> Work Issues -> Update Issues -> Repeat`
+`Vision -> Release -> Feature -> Spec -> Issues -> ADRs -> Close Feature -> Ship Release`
 
 ## Alpha Scope
 
-- Markdown documents with TOML frontmatter for issues, specs, and ADRs
+- Markdown documents with TOML frontmatter for features, issues, specs, and ADRs
 - Local `.ship/` project state (no accounts, no cloud dependency)
 - CLI for project setup and issue/ADR workflows
+- Append-only event stream (`.ship/events.ndjson`) for cross-surface sync
 - MCP server over stdio (`ship mcp`) for agent access to project context
 - Tauri UI under active development
 
@@ -49,6 +50,14 @@ ship issue list
 ship issue move <file_name> <from_status> <to_status>
 ship issue note <file_name> <note>
 ship adr create <title>
+ship spec create <title>
+ship spec list
+ship release create <version>
+ship release list
+ship feature create <title>
+ship feature list
+ship event list --since 0 --limit 50
+ship event ingest
 ship projects
 ship mcp
 ship config
@@ -62,6 +71,14 @@ Run `ship --help` for the full command set.
 .ship/
 ├── config.toml
 ├── templates/
+│   ├── RELEASE.md
+│   ├── FEATURE.md
+│   ├── ISSUE.md
+│   ├── SPEC.md
+│   ├── VISION.md
+│   └── ADR.md
+├── releases/
+├── features/
 ├── issues/
 │   ├── backlog/
 │   ├── in-progress/
@@ -69,11 +86,18 @@ Run `ship --help` for the full command set.
 │   ├── done/
 │   └── blocked/
 ├── specs/
+│   └── vision.md
 ├── adrs/
-└── log.md
+├── log.md
+└── events.ndjson
 ```
 
 All `.ship` paths are lowercase.
+
+Default git policy is opinionated for alpha:
+
+- committed: `releases`, `features`, `specs`, `adrs`, `config.toml`, `templates`
+- local-only: `issues`, `log.md`, `events.ndjson`, `plugins`
 
 ## UI Development
 
@@ -84,6 +108,10 @@ pnpm install
 pnpm build
 pnpm dev
 ```
+
+## Example Workspace
+
+Use [`example/projects-e2e/`](./example/projects-e2e/) to validate project workflows end-to-end without committing generated `.ship/` state.
 
 ## Notes
 

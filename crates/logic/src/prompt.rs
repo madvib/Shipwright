@@ -122,7 +122,12 @@ pub fn create_prompt(project_dir: &Path, id: &str, name: &str, content: &str) ->
     Ok(prompt)
 }
 
-pub fn update_prompt(project_dir: &Path, id: &str, name: Option<&str>, content: Option<&str>) -> Result<Prompt> {
+pub fn update_prompt(
+    project_dir: &Path,
+    id: &str,
+    name: Option<&str>,
+    content: Option<&str>,
+) -> Result<Prompt> {
     let path = prompt_path(project_dir, id);
     let mut prompt = parse_prompt(&path)?;
     if let Some(n) = name {

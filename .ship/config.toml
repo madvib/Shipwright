@@ -1,6 +1,7 @@
 version = "1"
 modes = []
 mcp_servers = []
+hooks = []
 
 [[statuses]]
 id = "backlog"
@@ -23,5 +24,18 @@ name = "Done"
 color = "green"
 
 [git]
-ignore = []
-commit = []
+ignore = ["events.ndjson"]
+commit = [
+    "releases",
+    "features",
+    "specs",
+    "adrs",
+    "config.toml",
+    "templates",
+]
+
+[agent]
+skills = []
+prompts = []
+context = []
+rules = []

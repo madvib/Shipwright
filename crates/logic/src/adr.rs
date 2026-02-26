@@ -1,5 +1,6 @@
 use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
+use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,13 @@ pub struct AdrEntry {
     pub file_name: String,
     pub path: String,
     pub adr: ADR,
+}
+
+fn ship_dir_from_adr_path(path: &Path) -> Option<PathBuf> {
+    // .ship/adrs/<file>.md -> go up two levels
+    path.parent()
+        .and_then(|p| p.parent())
+        .map(Path::to_path_buf)
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -116,6 +124,19 @@ pub fn create_adr(
     let file_path = unique_path(&adrs_dir, &base);
 
     write_atomic(&file_path, adr.to_markdown()?)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    append_event(
+        &project_dir,
+        "logic",
+        EventEntity::Adr,
+        EventAction::Create,
+        file_name,
+        Some(format!("title={} status={}", title, status)),
+    )?;
     Ok(file_path)
 }
 
@@ -126,9 +147,46 @@ pub fn get_adr(path: PathBuf) -> Result<ADR> {
 }
 
 pub fn update_adr(path: PathBuf, adr: ADR) -> Result<()> {
+    let title = adr.metadata.title.clone();
     let content = adr.to_markdown()?;
     write_atomic(&path, content)
-        .with_context(|| format!("Failed to write ADR: {}", path.display()))
+        .with_context(|| format!("Failed to write ADR: {}", path.display()))?;
+    if let Some(project_dir) = ship_dir_from_adr_path(&path) {
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Adr,
+            EventAction::Update,
+            file_name,
+            Some(format!("title={}", title)),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn delete_adr(path: PathBuf) -> Result<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    fs::remove_file(&path).with_context(|| format!("Failed to delete ADR: {}", path.display()))?;
+    if let Some(project_dir) = ship_dir_from_adr_path(&path) {
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Adr,
+            EventAction::Delete,
+            file_name,
+            None,
+        )?;
+    }
+    Ok(())
 }
 
 pub fn list_adrs(project_dir: PathBuf) -> Result<Vec<AdrEntry>> {

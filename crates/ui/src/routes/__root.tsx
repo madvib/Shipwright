@@ -1,15 +1,15 @@
 import { createRootRoute } from '@tanstack/react-router';
-import App from '../App';
-import { WorkspaceProvider } from '../hooks/workspace/WorkspaceContext';
+import { WorkspaceProvider } from '@/lib/hooks/workspace/WorkspaceContext';
+import AppShell from '@/components/app/AppShell';
 
 function RootLayout() {
   return (
     <WorkspaceProvider>
-      <App />
+      <AppShell />
     </WorkspaceProvider>
   );
 }
 
-export const rootRoute = createRootRoute({
+export const Route = createRootRoute({
   component: RootLayout,
 });

@@ -1,9 +1,6 @@
-import { Navigate, createRoute } from '@tanstack/react-router';
-import { OVERVIEW_ROUTE } from '../lib/constants/routes';
-import { rootRoute } from './__root';
+import { Navigate, createFileRoute } from '@tanstack/react-router';
+import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
 
-export const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
+export const Route = createFileRoute('/')({
   component: () => <Navigate to={OVERVIEW_ROUTE} />,
 });

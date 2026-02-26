@@ -1,14 +1,43 @@
-# Vibe Project Task Policy
+# Shipwright Workflow Policy (Alpha)
 
-To ensure consistent project tracking and transparency, all contributors (human or AI) must adhere to the following rules:
+This policy defines how humans and agents execute work in alpha.
 
-1.  **Issue First**: Before starting work on any feature or bug, ensure a corresponding issue exists in `.project/Issues/`. Move it to `in-progress` using the `vibe issue move` command or MCP tool.
-2.  **Atomic Task Updates**: After completing a functional unit of work (e.g., a new test file, a major function implementation), update the `## Tasks` section of the active issue file.
-3.  **Action Logging**: Use `vibe log_action` (or the MCP equivalent) to record every significant decision or completion milestone.
-4.  **Verification**: Always run `npm run test` before finalizing a task to ensure the project remains stable.
+## Canonical Flow
 
-## Enforcement Mechanism (Proposed)
+`Vision -> Release -> Feature -> Spec -> Issues -> ADRs -> Close Feature -> Ship Release`
 
-To prevent issues from going out of sync, we recommend:
-- **Pre-commit Hook**: A script that verifies if the current branch matches an `in-progress` issue in `.project/Issues/in-progress/`.
-- **Sync Check**: A `vibe project check` command that flags issues missing recent activity or with incomplete task lists.
+## Execution Rules
+
+1. **Release Then Feature**
+- Associate work to a canonical release document (e.g. `v0.1.0-alpha.md`).
+- Start feature work within that release context.
+
+2. **Feature First**
+- Start work from a feature markdown document with delivery todos.
+- Keep acceptance criteria at feature level.
+
+3. **Spec As Contract**
+- Every non-trivial feature should have a spec.
+- Update spec when scope or implementation constraints change.
+
+4. **Issues Are Execution Scratch**
+- Issues track day-to-day execution.
+- Issues are local-only by default to avoid polluting git history.
+- Promote issue artifacts to git only when needed for durable records.
+
+5. **ADRs Capture Lasting Decisions**
+- Architecture-impacting decisions must be recorded in ADRs.
+- ADRs are committed by default.
+- MCP integration decisions should be recorded in ADR notes (without storing secrets).
+
+6. **Mode Is Agent Runtime, Not PM State**
+- Mode changes are explicit in alpha.
+- Workflow policy and current phase should be included in agent context.
+
+7. **Verification**
+- Run relevant tests before closing feature todos.
+
+## Logging and Events
+
+- Project actions append to `.ship/log.md`.
+- Event model should stay compatible with future global aggregation.

@@ -47,6 +47,7 @@ typings/
 
 # Optional npm cache directory
 .npm
+.pnpm-store
 
 # Optional eslint cache
 .eslintcache
@@ -60,5 +61,11 @@ typings/
 dist/
 
 # Added by cargo
-
 /target
+
+
+.claude
+.gemini
+.codex
+
+.devcontainer

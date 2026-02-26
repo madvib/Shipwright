@@ -1,4 +1,7 @@
-use crate::config::{get_config, HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig};
+use crate::config::{
+    AgentLayerConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig,
+    get_config, get_effective_config,
+};
 use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
 use crate::skill::list_skills;
@@ -65,19 +68,51 @@ pub struct SyncPayload {
 /// Export the active mode (or global config) to the specified AI client.
 pub fn export_to(project_dir: PathBuf, target: &str) -> Result<()> {
     let payload = build_payload(&project_dir)?;
+    let effective = get_effective_config(Some(project_dir.clone()))?;
+    let project_root = project_dir
+        .parent()
+        .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     match target {
-        "claude" => export_claude(&project_dir, &payload),
-        "codex"  => export_codex(&project_dir, &payload),
-        "gemini" => export_gemini(&project_dir, &payload),
-        other    => Err(anyhow!("Unknown target '{}': use claude, codex, or gemini", other)),
+        "claude" => {
+            export_claude(&project_dir, &payload)?;
+            write_agent_layer_markdown(
+                project_root.join("SHIPWRIGHT.md"),
+                "Claude",
+                &effective.agent,
+                &payload.servers,
+            )
+        }
+        "codex" => {
+            export_codex(&project_dir, &payload)?;
+            write_agent_layer_markdown(
+                project_root.join(".codex").join("SHIPWRIGHT.md"),
+                "Codex",
+                &effective.agent,
+                &payload.servers,
+            )
+        }
+        "gemini" => {
+            export_gemini(&project_dir, &payload)?;
+            write_agent_layer_markdown(
+                project_root.join(".gemini").join("SHIPWRIGHT.md"),
+                "Gemini",
+                &effective.agent,
+                &payload.servers,
+            )
+        }
+        other => Err(anyhow!(
+            "Unknown target '{}': use claude, codex, or gemini",
+            other
+        )),
     }
 }
 
 /// Sync all target agents configured for the active mode.
 /// Returns list of synced target names.
 pub fn sync_active_mode(project_dir: &Path) -> Result<Vec<String>> {
-    let config = get_config(Some(project_dir.to_path_buf()))?;
-    let targets: Vec<String> = config.active_mode
+    let config = get_effective_config(Some(project_dir.to_path_buf()))?;
+    let targets: Vec<String> = config
+        .active_mode
         .as_ref()
         .and_then(|id| config.modes.iter().find(|m| &m.id == id))
         .map(|m| {
@@ -122,22 +157,41 @@ pub fn import_from_claude(project_dir: PathBuf) -> Result<usize> {
             continue;
         }
         let server_type = match entry.get("type").and_then(|v| v.as_str()) {
-            Some("sse")  => McpServerType::Sse,
+            Some("sse") => McpServerType::Sse,
             Some("http") => McpServerType::Http,
-            _            => McpServerType::Stdio,
+            _ => McpServerType::Stdio,
         };
-        let command = entry.get("command")
-            .and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let args = entry.get("args").and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        let command = entry
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let args = entry
+            .get("args")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
-        let env = entry.get("env").and_then(|v| v.as_object())
-            .map(|o| o.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect::<HashMap<_, _>>())
+        let env = entry
+            .get("env")
+            .and_then(|v| v.as_object())
+            .map(|o| {
+                o.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect::<HashMap<_, _>>()
+            })
             .unwrap_or_default();
-        let url = entry.get("url").and_then(|v| v.as_str()).map(str::to_string);
-        let disabled = entry.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+        let url = entry
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let disabled = entry
+            .get("disabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         config.mcp_servers.push(McpServerConfig {
             id: id.clone(),
@@ -163,19 +217,23 @@ pub fn import_from_claude(project_dir: PathBuf) -> Result<usize> {
 // ─── Payload builder ──────────────────────────────────────────────────────────
 
 fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
-    let config = get_config(Some(project_dir.to_path_buf()))?;
+    let config = get_effective_config(Some(project_dir.to_path_buf()))?;
 
     if let Some(mode_id) = &config.active_mode {
         if let Some(mode) = config.modes.iter().find(|m| &m.id == mode_id) {
             let servers = if mode.mcp_servers.is_empty() {
                 config.mcp_servers.clone()
             } else {
-                config.mcp_servers.iter()
+                config
+                    .mcp_servers
+                    .iter()
                     .filter(|s| mode.mcp_servers.contains(&s.id))
                     .cloned()
                     .collect()
             };
-            let prompt = mode.prompt_id.as_ref()
+            let prompt = mode
+                .prompt_id
+                .as_ref()
                 .and_then(|id| get_prompt(project_dir, id).ok());
             let mut hooks = config.hooks.clone();
             hooks.extend(mode.hooks.clone());
@@ -225,7 +283,8 @@ fn ship_server_entry() -> (&'static str, serde_json::Value) {
 
 fn export_claude(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
     // project_dir is .ship/ — write .mcp.json one level up at the repo root
-    let project_root = project_dir.parent()
+    let project_root = project_dir
+        .parent()
         .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     let mcp_json = project_root.join(".mcp.json");
 
@@ -242,7 +301,8 @@ fn export_claude(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
     // Preserve user-defined servers (not ship-managed)
     if let Some(existing_mcp) = existing.get("mcpServers").and_then(|v| v.as_object()) {
         for (id, entry) in existing_mcp {
-            let is_managed = entry.get("_ship")
+            let is_managed = entry
+                .get("_ship")
                 .and_then(|v| v.get("managed"))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
@@ -260,7 +320,9 @@ fn export_claude(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
     // Write mode servers with Ship marker
     let mut written_ids = vec![ship_id.to_string()];
     for s in &payload.servers {
-        if s.disabled { continue; }
+        if s.disabled {
+            continue;
+        }
         let mut entry = claude_mcp_entry(s);
         entry["_ship"] = serde_json::json!({ "managed": true });
         mcp_servers.insert(s.id.clone(), entry);
@@ -282,14 +344,20 @@ fn export_claude(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
     save_managed_state(project_dir, &state)?;
 
     // Also write hooks + permissions to ~/.claude/settings.json
-    if !payload.hooks.is_empty() || !payload.permissions.allow.is_empty() || !payload.permissions.deny.is_empty() {
+    if !payload.hooks.is_empty()
+        || !payload.permissions.allow.is_empty()
+        || !payload.permissions.deny.is_empty()
+    {
         export_claude_settings(&payload.hooks, &payload.permissions)?;
     }
 
     // Write prompt to project CLAUDE.md if set
     if let Some(prompt) = &payload.prompt {
         let claude_md = project_root.join("CLAUDE.md");
-        let content = format!("<!-- managed by ship — prompt: {} -->\n\n{}\n", prompt.id, prompt.content);
+        let content = format!(
+            "<!-- managed by ship — prompt: {} -->\n\n{}\n",
+            prompt.id, prompt.content
+        );
         crate::fs_util::write_atomic(&claude_md, content)?;
     }
 
@@ -328,7 +396,7 @@ fn claude_mcp_entry(s: &McpServerConfig) -> serde_json::Value {
             entry
         }
         McpServerType::Http => serde_json::json!({ "type": "http", "url": s.url }),
-        McpServerType::Sse  => serde_json::json!({ "type": "sse",  "url": s.url }),
+        McpServerType::Sse => serde_json::json!({ "type": "sse",  "url": s.url }),
     }
 }
 
@@ -343,13 +411,16 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) 
     } else {
         serde_json::json!({})
     };
-    let obj = root.as_object_mut()
+    let obj = root
+        .as_object_mut()
         .ok_or_else(|| anyhow!("~/.claude/settings.json is not an object"))?;
 
     // Permissions
     if !permissions.allow.is_empty() || !permissions.deny.is_empty() {
         let perms = obj.entry("permissions").or_insert(serde_json::json!({}));
-        let p = perms.as_object_mut().ok_or_else(|| anyhow!("permissions not an object"))?;
+        let p = perms
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("permissions not an object"))?;
         if !permissions.allow.is_empty() {
             p.insert("allow".to_string(), serde_json::json!(permissions.allow));
         }
@@ -361,17 +432,18 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) 
     // Hooks — grouped by trigger name, each is an array of hook objects
     if !hooks.is_empty() {
         let hooks_val = obj.entry("hooks").or_insert(serde_json::json!({}));
-        let hooks_map = hooks_val.as_object_mut()
+        let hooks_map = hooks_val
+            .as_object_mut()
             .ok_or_else(|| anyhow!("hooks not an object"))?;
         let mut by_trigger: HashMap<&str, Vec<serde_json::Value>> = HashMap::new();
         for hook in hooks {
             let key = match hook.trigger {
-                HookTrigger::PreToolUse   => "PreToolUse",
-                HookTrigger::PostToolUse  => "PostToolUse",
+                HookTrigger::PreToolUse => "PreToolUse",
+                HookTrigger::PostToolUse => "PostToolUse",
                 HookTrigger::Notification => "Notification",
-                HookTrigger::Stop         => "Stop",
+                HookTrigger::Stop => "Stop",
                 HookTrigger::SubagentStop => "SubagentStop",
-                HookTrigger::PreCompact   => "PreCompact",
+                HookTrigger::PreCompact => "PreCompact",
             };
             let mut entry = serde_json::json!({ "type": "command", "command": hook.command });
             if let Some(m) = &hook.matcher {
@@ -398,7 +470,8 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) 
 // - Enablement state tracked in ~/.gemini/mcp-server-enablement.json (read-only for us)
 
 fn export_gemini(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
-    let project_root = project_dir.parent()
+    let project_root = project_dir
+        .parent()
         .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     let settings_path = project_root.join(".gemini").join("settings.json");
     if let Some(parent) = settings_path.parent() {
@@ -417,7 +490,8 @@ fn export_gemini(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
     // Preserve user servers
     if let Some(existing_mcp) = existing.get("mcpServers").and_then(|v| v.as_object()) {
         for (id, entry) in existing_mcp {
-            let is_managed = entry.get("_ship")
+            let is_managed = entry
+                .get("_ship")
                 .and_then(|v| v.get("managed"))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
@@ -436,7 +510,9 @@ fn export_gemini(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
 
     let mut written_ids = vec![ship_id.to_string()];
     for s in &payload.servers {
-        if s.disabled { continue; }
+        if s.disabled {
+            continue;
+        }
         let mut entry = gemini_mcp_entry(s);
         entry["_ship"] = serde_json::json!({ "managed": true });
         mcp_servers.insert(s.id.clone(), entry);
@@ -445,7 +521,9 @@ fn export_gemini(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
 
     // Rebuild preserving non-mcpServers fields (theme, selectedAuthType, etc.)
     let mut root = existing.clone();
-    if !root.is_object() { root = serde_json::json!({}); }
+    if !root.is_object() {
+        root = serde_json::json!({});
+    }
     root["mcpServers"] = serde_json::Value::Object(mcp_servers);
 
     crate::fs_util::write_atomic(&settings_path, serde_json::to_string_pretty(&root)?)?;
@@ -457,7 +535,10 @@ fn export_gemini(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
     // Write GEMINI.md if prompt set
     if let Some(prompt) = &payload.prompt {
         let gemini_md = project_root.join("GEMINI.md");
-        let content = format!("<!-- managed by ship — prompt: {} -->\n\n{}\n", prompt.id, prompt.content);
+        let content = format!(
+            "<!-- managed by ship — prompt: {} -->\n\n{}\n",
+            prompt.id, prompt.content
+        );
         crate::fs_util::write_atomic(&gemini_md, content)?;
     }
 
@@ -497,7 +578,8 @@ fn gemini_mcp_entry(s: &McpServerConfig) -> serde_json::Value {
 // Using `mcp-servers` silently does nothing.
 
 fn export_codex(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
-    let project_root = project_dir.parent()
+    let project_root = project_dir
+        .parent()
         .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     let config_path = project_root.join(".codex").join("config.toml");
     if let Some(parent) = config_path.parent() {
@@ -528,7 +610,7 @@ fn export_codex(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
 
     // Preserve user-defined servers
     let existing_mcp: toml::value::Table = root
-        .get("mcp_servers")  // UNDERSCORE — not hyphen
+        .get("mcp_servers") // UNDERSCORE — not hyphen
         .and_then(|v| v.as_table())
         .cloned()
         .unwrap_or_default();
@@ -544,14 +626,22 @@ fn export_codex(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
 
     // Ship self
     let mut ship_entry = toml::value::Table::new();
-    ship_entry.insert("command".to_string(), toml::Value::String("ship".to_string()));
-    ship_entry.insert("args".to_string(), toml::Value::Array(vec![toml::Value::String("mcp".to_string())]));
+    ship_entry.insert(
+        "command".to_string(),
+        toml::Value::String("ship".to_string()),
+    );
+    ship_entry.insert(
+        "args".to_string(),
+        toml::Value::Array(vec![toml::Value::String("mcp".to_string())]),
+    );
     new_mcp.insert("ship".to_string(), toml::Value::Table(ship_entry));
 
     let mut written_ids = vec!["ship".to_string()];
 
     for s in &payload.servers {
-        if s.disabled { continue; }
+        if s.disabled {
+            continue;
+        }
         new_mcp.insert(s.id.clone(), codex_mcp_entry(s));
         written_ids.push(s.id.clone());
     }
@@ -560,7 +650,10 @@ fn export_codex(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
 
     // System prompt → instructions field
     if let Some(prompt) = &payload.prompt {
-        root.insert("instructions".to_string(), toml::Value::String(prompt.content.clone()));
+        root.insert(
+            "instructions".to_string(),
+            toml::Value::String(prompt.content.clone()),
+        );
     }
 
     crate::fs_util::write_atomic(&config_path, toml::to_string_pretty(&doc)?)?;
@@ -576,13 +669,25 @@ fn codex_mcp_entry(s: &McpServerConfig) -> toml::Value {
     let mut entry = toml::value::Table::new();
     match s.server_type {
         McpServerType::Stdio => {
-            entry.insert("command".to_string(), toml::Value::String(s.command.clone()));
+            entry.insert(
+                "command".to_string(),
+                toml::Value::String(s.command.clone()),
+            );
             if !s.args.is_empty() {
-                entry.insert("args".to_string(),
-                    toml::Value::Array(s.args.iter().map(|a| toml::Value::String(a.clone())).collect()));
+                entry.insert(
+                    "args".to_string(),
+                    toml::Value::Array(
+                        s.args
+                            .iter()
+                            .map(|a| toml::Value::String(a.clone()))
+                            .collect(),
+                    ),
+                );
             }
             if !s.env.is_empty() {
-                let env_table: toml::value::Table = s.env.iter()
+                let env_table: toml::value::Table = s
+                    .env
+                    .iter()
                     .map(|(k, v)| (k.clone(), toml::Value::String(v.clone())))
                     .collect();
                 entry.insert("env".to_string(), toml::Value::Table(env_table));
@@ -596,16 +701,96 @@ fn codex_mcp_entry(s: &McpServerConfig) -> toml::Value {
             // For now: if env has exactly one key ending in _TOKEN, treat it as bearer
             for (k, _v) in &s.env {
                 if k.ends_with("_TOKEN") || k.ends_with("_KEY") {
-                    entry.insert("bearer_token_env_var".to_string(), toml::Value::String(k.clone()));
+                    entry.insert(
+                        "bearer_token_env_var".to_string(),
+                        toml::Value::String(k.clone()),
+                    );
                     break;
                 }
             }
         }
     }
     if let Some(t) = s.timeout_secs {
-        entry.insert("startup_timeout_sec".to_string(), toml::Value::Integer(t as i64));
+        entry.insert(
+            "startup_timeout_sec".to_string(),
+            toml::Value::Integer(t as i64),
+        );
     }
     toml::Value::Table(entry)
+}
+
+fn write_agent_layer_markdown(
+    path: PathBuf,
+    target_name: &str,
+    agent: &AgentLayerConfig,
+    servers: &[McpServerConfig],
+) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut content = String::new();
+    content.push_str("# Shipwright Agent Layer\n\n");
+    content.push_str(&format!("Target: {}\n\n", target_name));
+
+    write_string_list_section(
+        &mut content,
+        "Skills",
+        &agent.skills,
+        "No skills configured.",
+    );
+    write_string_list_section(
+        &mut content,
+        "Prompt Snippets",
+        &agent.prompts,
+        "No prompts configured.",
+    );
+    write_string_list_section(
+        &mut content,
+        "Context Paths",
+        &agent.context,
+        "No context paths configured.",
+    );
+    write_string_list_section(&mut content, "Rules", &agent.rules, "No rules configured.");
+
+    content.push_str("## MCP Servers\n\n");
+    if servers.is_empty() {
+        content.push_str("_No MCP servers configured._\n");
+    } else {
+        for server in servers {
+            let args = if server.args.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", server.args.join(" "))
+            };
+            content.push_str(&format!(
+                "- `{}`: `{}`{} ({})\n",
+                server.id, server.command, args, server.scope
+            ));
+        }
+    }
+    content.push('\n');
+
+    crate::fs_util::write_atomic(&path, content)?;
+    Ok(())
+}
+
+fn write_string_list_section(
+    output: &mut String,
+    title: &str,
+    values: &[String],
+    empty_label: &str,
+) {
+    output.push_str(&format!("## {}\n\n", title));
+    if values.is_empty() {
+        output.push_str(&format!("_{}_\n\n", empty_label));
+        return;
+    }
+
+    for value in values {
+        output.push_str(&format!("- {}\n", value));
+    }
+    output.push('\n');
 }
 
 #[cfg(test)]

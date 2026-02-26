@@ -2,13 +2,13 @@
 
 **Version:** 0.1-alpha  
 **Status:** Active  
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-25
 
 ---
 
 ## The Alpha in One Sentence
 
-Markdown todos in a git repo, with a clean UI, an MCP server that persists project memory across sessions, and just enough structure to go from spec to working issues.
+Markdown delivery artifacts in a git repo, with a clean UI, an MCP server that persists project memory across sessions, and one opinionated flow from feature to shipped work.
 
 ---
 
@@ -17,7 +17,7 @@ Markdown todos in a git repo, with a clean UI, an MCP server that persists proje
 This is the only workflow that matters for alpha:
 
 ```
-Chat → Refine Spec → Extract Issues → Work Issues (human or agent) → Update Issues → Repeat
+Vision → Release → Feature → Spec → Issues → ADRs → Close Feature → Ship Release
 ```
 
 Everything in the alpha exists to serve this loop. If a feature doesn't directly support it, it doesn't ship in alpha.
@@ -56,9 +56,14 @@ No YAML. No JSON. No exceptions.
 └── .ship/
     ├── config.toml
     ├── templates/
+    │   ├── RELEASE.md
+    │   ├── FEATURE.md
     │   ├── ISSUE.md
     │   ├── SPEC.md
+    │   ├── VISION.md
     │   └── ADR.md
+    ├── releases/
+    ├── features/
     ├── issues/
     │   ├── backlog/
     │   ├── in-progress/
@@ -66,6 +71,7 @@ No YAML. No JSON. No exceptions.
     │   ├── done/
     │   └── blocked/
     ├── specs/
+    │   └── vision.md
     ├── adrs/
     └── log.md
 
@@ -76,11 +82,71 @@ No YAML. No JSON. No exceptions.
 
 **Status is the folder.** Moving an issue = moving a file. No status field in frontmatter needed. This makes it trivially parseable by any tool, agent, or grep.
 
-**Templates are just markdown files.** `.ship/templates/ISSUE.md` is the template for new issues. Users edit it directly. No plugin required. Ship ships sensible defaults; teams replace them.
+**Templates are just markdown files.** `.ship/templates/RELEASE.md`, `.ship/templates/FEATURE.md`, `.ship/templates/ISSUE.md`, `.ship/templates/SPEC.md`, and `.ship/templates/ADR.md` are editable by users. No plugin required.
 
 ---
 
 ## Default Templates
+
+### `.ship/templates/RELEASE.md`
+
+```markdown
++++
+id = ""
+version = "v0.1.0-alpha"
+status = "planned"
+created = ""
+updated = ""
+target_date = ""
+features = []
+adrs = []
+tags = []
++++
+
+## Goal
+
+
+## Scope
+
+- [ ]
+
+## Included Features
+
+- [ ]
+
+## Notes
+
+```
+
+### `.ship/templates/FEATURE.md`
+
+```markdown
++++
+id = ""
+title = ""
+status = "active"
+created = ""
+updated = ""
+owner = ""
+spec = ""
+adrs = []
+tags = []
++++
+
+## Why
+
+
+## Acceptance Criteria
+
+- [ ]
+
+## Delivery Todos
+
+- [ ]
+
+## Notes
+
+```
 
 ### `.ship/templates/ISSUE.md`
 
@@ -219,8 +285,8 @@ color = "green"
 
 [git]
 # Ship manages .ship/.gitignore with these defaults
-ignore = ["log.md"]          # don't commit the action log by default
-commit = ["issues", "specs", "adrs", "config.toml", "templates"]
+ignore = []                  # generated from commit list by Ship
+commit = ["releases", "features", "specs", "adrs", "config.toml", "templates"]
 
 [ai]
 context_files = ["AGENTS.md"]

@@ -127,8 +127,7 @@ static PATTERN: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 
 fn get_pattern() -> &'static Regex {
     PATTERN.get_or_init(|| {
-        Regex::new(r"(?i)\b(TODO|FIXME|HACK|BUG)\b(?:\([^)]*\))?:?\s*(.*)")
-            .expect("valid regex")
+        Regex::new(r"(?i)\b(TODO|FIXME|HACK|BUG)\b(?:\([^)]*\))?:?\s*(.*)").expect("valid regex")
     })
 }
 
@@ -254,11 +253,13 @@ pub fn generate_report(project_dir: &Path) -> Result<String> {
     }
 
     // Group by kind
-    for kind in [GhostKind::Fixme, GhostKind::Bug, GhostKind::Todo, GhostKind::Hack] {
-        let group: Vec<&&GhostIssue> = unpromoted
-            .iter()
-            .filter(|g| g.kind == kind)
-            .collect();
+    for kind in [
+        GhostKind::Fixme,
+        GhostKind::Bug,
+        GhostKind::Todo,
+        GhostKind::Hack,
+    ] {
+        let group: Vec<&&GhostIssue> = unpromoted.iter().filter(|g| g.kind == kind).collect();
         if group.is_empty() {
             continue;
         }
@@ -310,7 +311,11 @@ mod tests {
         let (tmp, project_dir) = setup();
         write_file(tmp.path(), "lib.rs", "// TODO: add error handling\n");
         let result = scan(&project_dir, tmp.path()).unwrap();
-        let todo = result.issues.iter().find(|g| g.kind == GhostKind::Todo).unwrap();
+        let todo = result
+            .issues
+            .iter()
+            .find(|g| g.kind == GhostKind::Todo)
+            .unwrap();
         assert_eq!(todo.text, "add error handling");
         assert_eq!(todo.line, 1);
     }
@@ -387,9 +392,44 @@ mod tests {
 fn is_text_file(ext: &str) -> bool {
     matches!(
         ext,
-        "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "go" | "java" | "kt" | "swift" | "c"
-            | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh" | "bash" | "zsh" | "fish"
-            | "toml" | "yaml" | "yml" | "json" | "md" | "txt" | "lua" | "vim" | "el" | "ex"
-            | "exs" | "hs" | "ml" | "clj" | "scala" | "dart" | "r" | "jl" | "tf"
+        "rs" | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "py"
+            | "go"
+            | "java"
+            | "kt"
+            | "swift"
+            | "c"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "cs"
+            | "rb"
+            | "php"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "fish"
+            | "toml"
+            | "yaml"
+            | "yml"
+            | "json"
+            | "md"
+            | "txt"
+            | "lua"
+            | "vim"
+            | "el"
+            | "ex"
+            | "exs"
+            | "hs"
+            | "ml"
+            | "clj"
+            | "scala"
+            | "dart"
+            | "r"
+            | "jl"
+            | "tf"
     )
 }

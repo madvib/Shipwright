@@ -1,11 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use logic::{
-    add_mode, add_status, append_note, backfill_issue_ids, create_adr, create_issue,
-    get_active_mode, get_config, get_git_config, get_issue, get_project_dir, get_project_statuses,
-    init_demo_project, init_project, is_category_committed, list_issues,
-    log_action, migrate_json_config_file, migrate_yaml_issues, move_issue, remove_mode,
-    remove_status, set_active_mode, set_category_committed,
+    add_mode, add_status, append_note, backfill_issue_ids, create_adr, create_feature,
+    create_issue, create_release, create_spec, get_active_mode, get_config, get_feature_raw,
+    get_git_config, get_issue, get_project_dir, get_project_statuses, get_release_raw,
+    get_spec_raw, ingest_external_events, init_demo_project, init_project, is_category_committed,
+    list_events_since, list_features, list_issues, list_releases, list_specs, log_action,
+    migrate_json_config_file, migrate_yaml_issues, move_issue, remove_mode, remove_status,
+    set_active_mode, set_category_committed, update_feature, update_release,
 };
 use std::env;
 use std::path::PathBuf;
@@ -34,6 +36,26 @@ pub enum Commands {
     Adr {
         #[command(subcommand)]
         action: AdrCommands,
+    },
+    /// Manage specs
+    Spec {
+        #[command(subcommand)]
+        action: SpecCommands,
+    },
+    /// Manage releases
+    Release {
+        #[command(subcommand)]
+        action: ReleaseCommands,
+    },
+    /// Manage features
+    Feature {
+        #[command(subcommand)]
+        action: FeatureCommands,
+    },
+    /// Inspect the project event stream
+    Event {
+        #[command(subcommand)]
+        action: EventCommands,
     },
     /// Manage tracked projects
     Projects {
@@ -83,12 +105,12 @@ pub enum GitCommands {
     Status,
     /// Include a category in git commits
     Include {
-        /// One of: issues, adrs, log, config, plugins
+        /// One of: issues, releases, features, specs, adrs, log.md, events.ndjson, config.toml, templates, plugins
         category: String,
     },
     /// Exclude a category from git commits (adds to .ship/.gitignore)
     Exclude {
-        /// One of: issues, adrs, log, config, plugins
+        /// One of: issues, releases, features, specs, adrs, log.md, events.ndjson, config.toml, templates, plugins
         category: String,
     },
 }
@@ -228,6 +250,86 @@ pub enum AdrCommands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum SpecCommands {
+    /// Create a new spec
+    Create {
+        title: String,
+        /// Optional initial content (defaults to scaffold)
+        #[arg(short, long)]
+        content: Option<String>,
+    },
+    /// List spec documents
+    List,
+    /// Print a spec document's markdown content
+    Get { file_name: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ReleaseCommands {
+    /// Create a new release
+    Create {
+        version: String,
+        /// Optional initial content (defaults to scaffold)
+        #[arg(short, long)]
+        content: Option<String>,
+    },
+    /// List release documents
+    List,
+    /// Print a release document's markdown content
+    Get { file_name: String },
+    /// Replace release markdown content
+    Update {
+        file_name: String,
+        /// Full replacement content
+        #[arg(short, long)]
+        content: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum FeatureCommands {
+    /// Create a new feature
+    Create {
+        title: String,
+        /// Optional initial content (defaults to scaffold)
+        #[arg(short, long)]
+        content: Option<String>,
+        /// Link this feature to a release filename
+        #[arg(long)]
+        release: Option<String>,
+        /// Link this feature to a spec filename
+        #[arg(long)]
+        spec: Option<String>,
+    },
+    /// List feature documents
+    List,
+    /// Print a feature document's markdown content
+    Get { file_name: String },
+    /// Replace feature markdown content
+    Update {
+        file_name: String,
+        /// Full replacement content
+        #[arg(short, long)]
+        content: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum EventCommands {
+    /// List events from the append-only event stream
+    List {
+        /// Only include events with seq greater than this value
+        #[arg(long, default_value_t = 0)]
+        since: u64,
+        /// Maximum number of events to show
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// Scan tracked files and emit events for external filesystem changes
+    Ingest,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum ProjectCommands {
     /// List all tracked projects
     List,
@@ -241,7 +343,8 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
     match cli.command {
         Some(Commands::Init { path: init_path }) => {
             let target = match init_path {
-                Some(p) => std::fs::canonicalize(&p).unwrap_or_else(|_| env::current_dir().unwrap_or_default().join(&p)),
+                Some(p) => std::fs::canonicalize(&p)
+                    .unwrap_or_else(|_| env::current_dir().unwrap_or_default().join(&p)),
                 None => env::current_dir()?,
             };
             let project_name = target
@@ -250,7 +353,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 .unwrap_or_else(|| "project".to_string());
             let ship_path = init_project(target.clone())?;
             logic::register_project(project_name, target)?;
-            println!("Initialized and tracked Ship project in {}", ship_path.display());
+            println!(
+                "Initialized and tracked Ship project in {}",
+                ship_path.display()
+            );
             log_action(ship_path, "init", "Project initialized")?;
         }
         Some(Commands::Issue { action }) => {
@@ -271,11 +377,13 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         println!("[{}] {}", status, file);
                     }
                 }
-                IssueCommands::Note { file_name, status, note } => {
+                IssueCommands::Note {
+                    file_name,
+                    status,
+                    note,
+                } => {
                     let statuses = get_project_statuses(Some(project_dir.clone()))?;
-                    let search: Vec<String> = status
-                        .map(|s| vec![s])
-                        .unwrap_or(statuses);
+                    let search: Vec<String> = status.map(|s| vec![s]).unwrap_or(statuses);
                     let path = search.iter().find_map(|s| {
                         let p = project_dir.join("issues").join(s).join(&file_name);
                         p.exists().then_some(p)
@@ -318,6 +426,206 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Some(Commands::Spec { action }) => {
+            let project_dir = get_project_dir(None)?;
+            match action {
+                SpecCommands::Create { title, content } => {
+                    let body = content.unwrap_or_default();
+                    let path = create_spec(project_dir.clone(), &title, &body)?;
+                    println!("Spec created: {}", path.display());
+                    log_action(
+                        project_dir,
+                        "spec create",
+                        &format!("Created spec: {}", title),
+                    )?;
+                }
+                SpecCommands::List => {
+                    let mut specs = list_specs(project_dir)?;
+                    specs.sort_by(|a, b| b.updated.cmp(&a.updated));
+                    if specs.is_empty() {
+                        println!("No specs found.");
+                    } else {
+                        for spec in specs {
+                            println!("[{}] {} ({})", spec.status, spec.title, spec.file_name);
+                        }
+                    }
+                }
+                SpecCommands::Get { file_name } => {
+                    let path = project_dir.join("specs").join(&file_name);
+                    if !path.exists() {
+                        anyhow::bail!("Spec not found: {}", file_name);
+                    }
+                    let content = get_spec_raw(path)?;
+                    println!("{}", content);
+                }
+            }
+        }
+        Some(Commands::Release { action }) => {
+            let project_dir = get_project_dir(None)?;
+            match action {
+                ReleaseCommands::Create { version, content } => {
+                    let body = content.unwrap_or_default();
+                    let path = create_release(project_dir.clone(), &version, &body)?;
+                    println!("Release created: {}", path.display());
+                    log_action(
+                        project_dir,
+                        "release create",
+                        &format!("Created release: {}", version),
+                    )?;
+                }
+                ReleaseCommands::List => {
+                    let mut releases = list_releases(project_dir)?;
+                    releases.sort_by(|a, b| b.updated.cmp(&a.updated));
+                    if releases.is_empty() {
+                        println!("No releases found.");
+                    } else {
+                        for release in releases {
+                            println!(
+                                "[{}] {} ({})",
+                                release.status, release.version, release.file_name
+                            );
+                        }
+                    }
+                }
+                ReleaseCommands::Get { file_name } => {
+                    let path = project_dir.join("releases").join(&file_name);
+                    if !path.exists() {
+                        anyhow::bail!("Release not found: {}", file_name);
+                    }
+                    let content = get_release_raw(path)?;
+                    println!("{}", content);
+                }
+                ReleaseCommands::Update { file_name, content } => {
+                    let path = project_dir.join("releases").join(&file_name);
+                    if !path.exists() {
+                        anyhow::bail!("Release not found: {}", file_name);
+                    }
+                    update_release(path, &content)?;
+                    println!("Updated release: {}", file_name);
+                    log_action(
+                        project_dir,
+                        "release update",
+                        &format!("Updated release: {}", file_name),
+                    )?;
+                }
+            }
+        }
+        Some(Commands::Feature { action }) => {
+            let project_dir = get_project_dir(None)?;
+            match action {
+                FeatureCommands::Create {
+                    title,
+                    content,
+                    release,
+                    spec,
+                } => {
+                    let body = content.unwrap_or_default();
+                    let path = create_feature(
+                        project_dir.clone(),
+                        &title,
+                        &body,
+                        release.as_deref(),
+                        spec.as_deref(),
+                    )?;
+                    println!("Feature created: {}", path.display());
+                    log_action(
+                        project_dir,
+                        "feature create",
+                        &format!("Created feature: {}", title),
+                    )?;
+                }
+                FeatureCommands::List => {
+                    let mut features = list_features(project_dir)?;
+                    features.sort_by(|a, b| b.updated.cmp(&a.updated));
+                    if features.is_empty() {
+                        println!("No features found.");
+                    } else {
+                        for feature in features {
+                            let release = feature.release.unwrap_or_else(|| "unassigned".into());
+                            println!(
+                                "[{}] {} ({}) release={}",
+                                feature.status, feature.title, feature.file_name, release
+                            );
+                        }
+                    }
+                }
+                FeatureCommands::Get { file_name } => {
+                    let path = project_dir.join("features").join(&file_name);
+                    if !path.exists() {
+                        anyhow::bail!("Feature not found: {}", file_name);
+                    }
+                    let content = get_feature_raw(path)?;
+                    println!("{}", content);
+                }
+                FeatureCommands::Update { file_name, content } => {
+                    let path = project_dir.join("features").join(&file_name);
+                    if !path.exists() {
+                        anyhow::bail!("Feature not found: {}", file_name);
+                    }
+                    update_feature(path, &content)?;
+                    println!("Updated feature: {}", file_name);
+                    log_action(
+                        project_dir,
+                        "feature update",
+                        &format!("Updated feature: {}", file_name),
+                    )?;
+                }
+            }
+        }
+        Some(Commands::Event { action }) => {
+            let project_dir = get_project_dir(None)?;
+            match action {
+                EventCommands::List { since, limit } => {
+                    let events = list_events_since(&project_dir, since, Some(limit))?;
+                    if events.is_empty() {
+                        println!("No events found.");
+                    } else {
+                        for e in events {
+                            let details = e
+                                .details
+                                .as_ref()
+                                .map(|d| format!(" — {}", d))
+                                .unwrap_or_default();
+                            println!(
+                                "#{:04} {} [{}] {:?}.{:?} {}{}",
+                                e.seq,
+                                e.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                                e.actor,
+                                e.entity,
+                                e.action,
+                                e.subject,
+                                details
+                            );
+                        }
+                    }
+                }
+                EventCommands::Ingest => {
+                    let events = ingest_external_events(&project_dir)?;
+                    if events.is_empty() {
+                        println!("No external filesystem changes detected.");
+                    } else {
+                        println!("Ingested {} filesystem event(s).", events.len());
+                        for e in events {
+                            let details = e
+                                .details
+                                .as_ref()
+                                .map(|d| format!(" — {}", d))
+                                .unwrap_or_default();
+                            println!(
+                                "#{:04} {} [{}] {:?}.{:?} {}{}",
+                                e.seq,
+                                e.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                                e.actor,
+                                e.entity,
+                                e.action,
+                                e.subject,
+                                details
+                            );
+                        }
+                    }
+                }
+            }
+        }
         Some(Commands::Projects { action }) => match action {
             ProjectCommands::List => {
                 let projects = logic::list_registered_projects()?;
@@ -335,22 +643,39 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         },
         Some(Commands::Demo { path }) => {
-            let abs = std::fs::canonicalize(&path).unwrap_or_else(|_| {
-                env::current_dir().unwrap_or_default().join(&path)
-            });
+            let abs = std::fs::canonicalize(&path)
+                .unwrap_or_else(|_| env::current_dir().unwrap_or_default().join(&path));
             let project_dir = init_demo_project(abs.clone())?;
             println!("Demo project ready at {}", project_dir.display());
-            println!("Point Ship at it with: SHIP_DIR={} ship issue list", project_dir.display());
+            println!(
+                "Point Ship at it with: SHIP_DIR={} ship issue list",
+                project_dir.display()
+            );
         }
         Some(Commands::Git { action }) => {
             let project_dir = get_project_dir(None)?;
             let git = get_git_config(&project_dir)?;
             match action {
                 GitCommands::Status => {
-                    let cats = ["issues", "adrs", "specs", "log.md", "config.toml", "templates", "plugins"];
+                    let cats = [
+                        "issues",
+                        "releases",
+                        "features",
+                        "adrs",
+                        "specs",
+                        "log.md",
+                        "events.ndjson",
+                        "config.toml",
+                        "templates",
+                        "plugins",
+                    ];
                     println!("Ship git commit settings:");
                     for cat in cats {
-                        let state = if is_category_committed(&git, cat) { "committed" } else { "local only" };
+                        let state = if is_category_committed(&git, cat) {
+                            "committed"
+                        } else {
+                            "local only"
+                        };
                         println!("  {:<14} {}", cat, state);
                     }
                     println!("\n.gitignore: {}", project_dir.join(".gitignore").display());
@@ -393,7 +718,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         println!("  {}", g.display());
                     }
                     if unpromoted > 10 {
-                        println!("  ... and {} more. Run `ship ghost report` for full list.", unpromoted - 10);
+                        println!(
+                            "  ... and {} more. Run `ship ghost report` for full list.",
+                            unpromoted - 10
+                        );
                     }
                 }
                 GhostCommands::Report => {
@@ -406,19 +734,34 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         println!("Marked {}:{} as promoted.", file, line);
                         // Optionally create an issue
                         if let Ok(Some(scan)) = ghost_issues::load_last_scan(&project_dir) {
-                            if let Some(g) = scan.issues.iter().find(|g| g.file == file && g.line == line) {
+                            if let Some(g) = scan
+                                .issues
+                                .iter()
+                                .find(|g| g.file == file && g.line == line)
+                            {
                                 let title = g.suggested_title();
                                 let desc = format!(
                                     "Promoted from `{}:{}` ({}).\n\nOriginal comment: {}",
-                                    g.file, g.line, g.kind.as_str(), g.text.trim()
+                                    g.file,
+                                    g.line,
+                                    g.kind.as_str(),
+                                    g.text.trim()
                                 );
-                                let path = create_issue(project_dir.clone(), &title, &desc, "backlog")?;
+                                let path =
+                                    create_issue(project_dir.clone(), &title, &desc, "backlog")?;
                                 println!("Created issue: {}", path.display());
-                                log_action(project_dir, "issue create", &format!("Ghost promoted: {}", title))?;
+                                log_action(
+                                    project_dir,
+                                    "issue create",
+                                    &format!("Ghost promoted: {}", title),
+                                )?;
                             }
                         }
                     } else {
-                        println!("Ghost issue not found at {}:{}. Run `ship ghost scan` first.", file, line);
+                        println!(
+                            "Ghost issue not found at {}:{}. Run `ship ghost scan` first.",
+                            file, line
+                        );
                     }
                 }
             }
@@ -444,7 +787,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 },
                 ConfigCommands::Export { target } => {
-                    let dir = project_dir.ok_or_else(|| anyhow::anyhow!("No Ship project found in current directory"))?;
+                    let dir = project_dir.ok_or_else(|| {
+                        anyhow::anyhow!("No Ship project found in current directory")
+                    })?;
                     logic::agent_export::export_to(dir, &target)?;
                     println!("Exported MCP server registry to {} config.", target);
                 }
@@ -497,12 +842,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     set_active_mode(project_dir, None)?;
                     println!("Active mode cleared (all tools available).");
                 }
-                ModeCommands::Get => {
-                    match get_active_mode(project_dir)? {
-                        Some(m) => println!("Active mode: {} ({})", m.id, m.name),
-                        None => println!("No active mode set."),
-                    }
-                }
+                ModeCommands::Get => match get_active_mode(project_dir)? {
+                    Some(m) => println!("Active mode: {} ({})", m.id, m.name),
+                    None => println!("No active mode set."),
+                },
             }
         }
         Some(Commands::Time { action }) => {
@@ -523,7 +866,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 if issues == 1 { "" } else { "s" },
                 ids,
                 if ids == 1 { "" } else { "s" },
-                if config { ", config.json → config.toml" } else { "" },
+                if config {
+                    ", config.json → config.toml"
+                } else {
+                    ""
+                },
             );
         }
         None => {
@@ -534,9 +881,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-
 fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()> {
-    use time_tracker::{format_duration, generate_report, get_active_timer, list_entries, log_time, start_timer, stop_timer};
+    use time_tracker::{
+        format_duration, generate_report, get_active_timer, list_entries, log_time, start_timer,
+        stop_timer,
+    };
 
     match action {
         TimeCommands::Start { issue, note } => {
@@ -588,22 +937,18 @@ fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()
                 format_duration(entry.duration_minutes)
             );
         }
-        TimeCommands::Status => {
-            match get_active_timer(project_dir)? {
-                Some(t) => {
-                    let elapsed = (chrono::Utc::now() - t.started_at)
-                        .num_minutes()
-                        .max(0) as u64;
-                    println!(
-                        "Running: {} (started {}, elapsed {})",
-                        t.issue_title,
-                        t.started_at.format("%H:%M"),
-                        format_duration(elapsed)
-                    );
-                }
-                None => println!("No timer running."),
+        TimeCommands::Status => match get_active_timer(project_dir)? {
+            Some(t) => {
+                let elapsed = (chrono::Utc::now() - t.started_at).num_minutes().max(0) as u64;
+                println!(
+                    "Running: {} (started {}, elapsed {})",
+                    t.issue_title,
+                    t.started_at.format("%H:%M"),
+                    format_duration(elapsed)
+                );
             }
-        }
+            None => println!("No timer running."),
+        },
         TimeCommands::Log {
             issue,
             minutes,

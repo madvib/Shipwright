@@ -1,5 +1,6 @@
 use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
+use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,13 @@ pub struct SpecEntry {
     pub updated: DateTime<Utc>,
 }
 
+fn ship_dir_from_spec_path(path: &Path) -> Option<PathBuf> {
+    // .ship/specs/<file>.md -> go up two levels
+    path.parent()
+        .and_then(|p| p.parent())
+        .map(Path::to_path_buf)
+}
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 fn validate_title(title: &str) -> Result<()> {
@@ -72,8 +80,8 @@ fn validate_title(title: &str) -> Result<()> {
 
 impl Spec {
     pub fn to_markdown(&self) -> Result<String> {
-        let toml_str = toml::to_string(&self.metadata)
-            .context("Failed to serialise spec metadata as TOML")?;
+        let toml_str =
+            toml::to_string(&self.metadata).context("Failed to serialise spec metadata as TOML")?;
         Ok(format!("+++\n{}+++\n\n{}", toml_str, self.body))
     }
 
@@ -154,7 +162,9 @@ pub fn create_spec(project_dir: PathBuf, title: &str, body: &str) -> Result<Path
             tags: Vec::new(),
         },
         body: if body.is_empty() {
-            format!("## Overview\n\n\n## Goals\n\n\n## Non-Goals\n\n\n## Approach\n\n\n## Open Questions\n\n")
+            format!(
+                "## Overview\n\n\n## Goals\n\n\n## Non-Goals\n\n\n## Approach\n\n\n## Open Questions\n\n"
+            )
         } else {
             body.to_string()
         },
@@ -163,6 +173,19 @@ pub fn create_spec(project_dir: PathBuf, title: &str, body: &str) -> Result<Path
     let base = sanitize_file_name(title);
     let file_path = unique_path(&specs_dir, &base);
     write_atomic(&file_path, spec.to_markdown()?)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    append_event(
+        &project_dir,
+        "logic",
+        EventEntity::Spec,
+        EventAction::Create,
+        file_name,
+        Some(format!("title={}", title)),
+    )?;
     Ok(file_path)
 }
 
@@ -175,17 +198,53 @@ pub fn get_spec(path: PathBuf) -> Result<Spec> {
 
 /// Read the raw markdown content of a spec (for MCP/AI consumption).
 pub fn get_spec_raw(path: PathBuf) -> Result<String> {
-    fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read spec: {}", path.display()))
+    fs::read_to_string(&path).with_context(|| format!("Failed to read spec: {}", path.display()))
 }
 
 /// Overwrite a spec's body content, updating the `updated` timestamp.
 pub fn update_spec(path: PathBuf, body: &str) -> Result<()> {
     let mut spec = get_spec(path.clone())?;
     spec.metadata.updated = Utc::now();
+    let title = spec.metadata.title.clone();
     spec.body = body.to_string();
     write_atomic(&path, spec.to_markdown()?)
-        .with_context(|| format!("Failed to write spec: {}", path.display()))
+        .with_context(|| format!("Failed to write spec: {}", path.display()))?;
+    if let Some(project_dir) = ship_dir_from_spec_path(&path) {
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Spec,
+            EventAction::Update,
+            file_name,
+            Some(format!("title={}", title)),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn delete_spec(path: PathBuf) -> Result<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    fs::remove_file(&path).with_context(|| format!("Failed to delete spec: {}", path.display()))?;
+    if let Some(project_dir) = ship_dir_from_spec_path(&path) {
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Spec,
+            EventAction::Delete,
+            file_name,
+            None,
+        )?;
+    }
+    Ok(())
 }
 
 /// List all spec files in `.ship/specs/`.

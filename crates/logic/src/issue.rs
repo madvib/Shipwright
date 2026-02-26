@@ -1,5 +1,6 @@
 use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
+use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -48,6 +49,20 @@ pub struct IssueEntry {
     pub status: String,
     pub path: String,
     pub issue: Issue,
+}
+
+fn ship_dir_from_issue_path(path: &Path) -> Option<PathBuf> {
+    // .ship/issues/<status>/<file>.md -> go up three levels
+    path.parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .map(Path::to_path_buf)
+}
+
+fn persist_issue(path: &Path, issue: &Issue) -> Result<()> {
+    let content = issue.to_markdown()?;
+    write_atomic(path, content)
+        .with_context(|| format!("Failed to write issue: {}", path.display()))
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -101,14 +116,19 @@ impl Issue {
         let description = rest[end + 4..].trim_start_matches('\n').to_string();
         let metadata: IssueMetadata =
             toml::from_str(toml_str).context("Failed to parse issue TOML frontmatter")?;
-        Ok(Issue { metadata, description })
+        Ok(Issue {
+            metadata,
+            description,
+        })
     }
 
     /// Minimal YAML reader for the old `---` format — avoids keeping serde_yaml.
     fn from_yaml_markdown_legacy(content: &str) -> Result<Self> {
         let parts: Vec<&str> = content.splitn(3, "---\n").collect();
         if parts.len() < 3 {
-            return Err(anyhow!("Invalid legacy issue format: incomplete frontmatter"));
+            return Err(anyhow!(
+                "Invalid legacy issue format: incomplete frontmatter"
+            ));
         }
         let yaml = parts[1];
         let description = parts[2].trim_start_matches('\n').to_string();
@@ -190,6 +210,19 @@ pub fn create_issue(
 
     let file_path = unique_path(&status_dir, &base);
     write_atomic(&file_path, issue.to_markdown()?)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    append_event(
+        &project_dir,
+        "logic",
+        EventEntity::Issue,
+        EventAction::Create,
+        file_name,
+        Some(format!("title={} status={}", title, status)),
+    )?;
     Ok(file_path)
 }
 
@@ -201,9 +234,23 @@ pub fn get_issue(path: PathBuf) -> Result<Issue> {
 
 pub fn update_issue(path: PathBuf, mut issue: Issue) -> Result<()> {
     issue.metadata.updated = Utc::now();
-    let content = issue.to_markdown()?;
-    write_atomic(&path, content)
-        .with_context(|| format!("Failed to write issue: {}", path.display()))
+    persist_issue(&path, &issue)?;
+    if let Some(project_dir) = ship_dir_from_issue_path(&path) {
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Issue,
+            EventAction::Update,
+            file_name,
+            Some(format!("title={}", issue.metadata.title)),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn list_issues(project_dir: PathBuf) -> Result<Vec<(String, String)>> {
@@ -277,7 +324,7 @@ pub fn list_issues_full(project_dir: PathBuf) -> Result<Vec<IssueEntry>> {
 }
 
 pub fn move_issue(
-    _project_dir: PathBuf,
+    project_dir: PathBuf,
     path: PathBuf,
     _current_status: &str,
     new_status: &str,
@@ -297,32 +344,105 @@ pub fn move_issue(
     let target_path = unique_path(&target_dir, base);
 
     fs::rename(&path, &target_path).context("Failed to move issue file")?;
+    let from_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    let to_name = target_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    append_event(
+        &project_dir,
+        "logic",
+        EventEntity::Issue,
+        EventAction::Move,
+        to_name,
+        Some(format!("from={} to_status={}", from_name, new_status)),
+    )?;
     Ok(target_path)
 }
 
 pub fn delete_issue(path: PathBuf) -> Result<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
     fs::remove_file(&path)
-        .with_context(|| format!("Failed to delete issue: {}", path.display()))
+        .with_context(|| format!("Failed to delete issue: {}", path.display()))?;
+    if let Some(project_dir) = ship_dir_from_issue_path(&path) {
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Issue,
+            EventAction::Delete,
+            file_name,
+            None,
+        )?;
+    }
+    Ok(())
 }
 
 pub fn append_note(path: PathBuf, note: &str) -> Result<()> {
     let mut issue = get_issue(path.clone())?;
+    let title = issue.metadata.title.clone();
+    issue.metadata.updated = Utc::now();
     if !issue.description.is_empty() && !issue.description.ends_with('\n') {
         issue.description.push('\n');
     }
     issue.description.push('\n');
     issue.description.push_str(note.trim_end());
     issue.description.push('\n');
-    update_issue(path, issue)
+    persist_issue(&path, &issue)?;
+    if let Some(project_dir) = ship_dir_from_issue_path(&path) {
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Issue,
+            EventAction::Note,
+            file_name,
+            Some(format!("title={}", title)),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn add_link(file_path: PathBuf, link_type: &str, target: &str) -> Result<()> {
     let mut issue = get_issue(file_path.clone())?;
+    let title = issue.metadata.title.clone();
+    issue.metadata.updated = Utc::now();
     issue.metadata.links.push(IssueLink {
         type_: link_type.to_string(),
         target: target.to_string(),
     });
-    update_issue(file_path, issue)
+    persist_issue(&file_path, &issue)?;
+    if let Some(project_dir) = ship_dir_from_issue_path(&file_path) {
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        append_event(
+            &project_dir,
+            "logic",
+            EventEntity::Issue,
+            EventAction::Link,
+            file_name,
+            Some(format!(
+                "type={} target={} title={}",
+                link_type, target, title
+            )),
+        )?;
+    }
+    Ok(())
 }
 
 // ─── Migration ────────────────────────────────────────────────────────────────

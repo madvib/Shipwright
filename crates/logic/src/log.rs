@@ -1,3 +1,4 @@
+use crate::{EventAction, EventEntity, append_event};
 use anyhow::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,14 @@ pub fn log_action_by(project_dir: PathBuf, actor: &str, action: &str, details: &
     use std::io::Write;
     file.write_all(entry.as_bytes())?;
     prune_log_file(&log_path, MAX_LOG_ENTRIES)?;
+    let _ = append_event(
+        &project_dir,
+        actor,
+        EventEntity::Project,
+        EventAction::Log,
+        action.to_string(),
+        Some(details.to_string()),
+    );
     Ok(())
 }
 

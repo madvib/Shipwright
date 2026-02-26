@@ -81,6 +81,14 @@ issues-in-progress:
 ghost:
     SHIP_DIR={{ship_dir}} {{cli}} ghost scan
 
+# Run projects-module e2e checks
+e2e-projects:
+    ./example/projects-e2e/e2e/project-features.sh
+
+# Reset local example workspace with fresh generated .ship data
+e2e-reset:
+    ./example/projects-e2e/reset.sh
+
 # ── MCP ────────────────────────────────────────────────────────────────────────
 
 # Start the MCP server manually (usually Claude Code does this)

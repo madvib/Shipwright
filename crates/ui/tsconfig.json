@@ -4,7 +4,9 @@
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
+    "baseUrl": ".",
     "skipLibCheck": true,
+    "types": ["vite/client", "react", "react-dom"],
 
     /* Bundler mode */
     "moduleResolution": "bundler",
