@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use ghost_issues;
-use logic::{
+use runtime::{
     add_status, append_note, create_adr, create_feature, create_issue, create_release, create_spec,
     delete_issue, get_adr, get_config, get_feature_raw, get_git_config, get_issue, get_project_dir,
     get_project_name, get_project_statuses, get_release_raw, get_spec_raw, ingest_external_events,
@@ -643,7 +643,7 @@ impl ShipServer {
                 if let Some(desc) = req.description {
                     issue.description = desc;
                 }
-                match logic::update_issue(path, issue) {
+                match runtime::update_issue(path, issue) {
                     Ok(_) => format!("Updated: {}", req.file_name),
                     Err(e) => format!("Error: {}", e),
                 }
@@ -1604,7 +1604,7 @@ pub async fn run_server() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use logic::{
+    use runtime::{
         EventAction, EventEntity, init_project, list_events_since, list_features, list_releases,
     };
     use tempfile::tempdir;

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use logic::{
+use runtime::{
     add_mode, add_status, append_note, backfill_issue_ids, create_adr, create_feature,
     create_issue, create_release, create_spec, get_active_mode, get_config, get_feature_raw,
     get_git_config, get_issue, get_project_dir, get_project_statuses, get_release_raw,
@@ -352,7 +352,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "project".to_string());
             let ship_path = init_project(target.clone())?;
-            logic::register_project(project_name, target)?;
+            runtime::register_project(project_name, target)?;
             println!(
                 "Initialized and tracked Ship project in {}",
                 ship_path.display()
@@ -628,17 +628,17 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Projects { action }) => match action {
             ProjectCommands::List => {
-                let projects = logic::list_registered_projects()?;
+                let projects = runtime::list_registered_projects()?;
                 for p in projects {
                     println!("- {} ({})", p.name, p.path.display());
                 }
             }
             ProjectCommands::Track { name, path } => {
-                logic::register_project(name.clone(), path.clone())?;
+                runtime::register_project(name.clone(), path.clone())?;
                 println!("Now tracking project: {} ({})", name, path.display());
             }
             ProjectCommands::Untrack { path } => {
-                logic::unregister_project(path.clone())?;
+                runtime::unregister_project(path.clone())?;
                 println!("Stopped tracking project: {}", path.display());
             }
         },
@@ -790,7 +790,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let dir = project_dir.ok_or_else(|| {
                         anyhow::anyhow!("No Ship project found in current directory")
                     })?;
-                    logic::agent_export::export_to(dir, &target)?;
+                    runtime::agent_export::export_to(dir, &target)?;
                     println!("Exported MCP server registry to {} config.", target);
                 }
                 ConfigCommands::Ai => {
@@ -822,7 +822,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 ModeCommands::Add { id, name } => {
-                    let mode = logic::ModeConfig {
+                    let mode = runtime::ModeConfig {
                         id: id.clone(),
                         name: name.clone(),
                         ..Default::default()
@@ -903,7 +903,7 @@ fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()
                 } else {
                     // Search through statuses
                     let mut found = None;
-                    for status in logic::ISSUE_STATUSES {
+                    for status in runtime::ISSUE_STATUSES {
                         let p = project_dir.join("issues").join(status).join(&issue_file);
                         if p.exists() {
                             found = Some(p);

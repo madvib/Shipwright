@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
-use logic::{Issue, Plugin};
+use runtime::{Issue, Plugin};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -299,7 +299,7 @@ pub fn generate_report(project_dir: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use logic::init_project;
+    use runtime::init_project;
     use tempfile::tempdir;
 
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {

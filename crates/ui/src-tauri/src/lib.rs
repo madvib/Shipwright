@@ -1,10 +1,10 @@
-use logic::config::{
+use runtime::config::{
     add_mcp_server, add_mode, generate_gitignore, get_active_mode, get_config,
     get_effective_config, list_mcp_servers, remove_mcp_server, remove_mode, save_config,
     set_active_mode, AiConfig, McpServerConfig, ModeConfig, ProjectConfig, ProjectDiscovery,
 };
-use logic::project::{get_active_project_global, set_active_project_global};
-use logic::{
+use runtime::project::{get_active_project_global, set_active_project_global};
+use runtime::{
     create_adr, create_feature, create_issue, create_release, create_spec, delete_adr,
     delete_issue, delete_spec, get_feature, get_feature_raw as get_feature_content, get_issue,
     get_project_dir, get_project_name, get_release, get_release_raw as get_release_content,
@@ -843,7 +843,7 @@ fn create_new_adr(
     )
     .ok();
 
-    let adr_data = logic::get_adr(path.clone()).map_err(|e| e.to_string())?;
+    let adr_data = runtime::get_adr(path.clone()).map_err(|e| e.to_string())?;
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -864,7 +864,7 @@ fn get_adr_cmd(file_name: String, state: State<AppState>) -> Result<AdrEntry, St
     if !path.exists() {
         return Err(format!("ADR not found: {}", file_name));
     }
-    let adr = logic::get_adr(path.clone()).map_err(|e| e.to_string())?;
+    let adr = runtime::get_adr(path.clone()).map_err(|e| e.to_string())?;
     Ok(AdrEntry {
         file_name,
         path: path.to_string_lossy().to_string(),
@@ -887,7 +887,7 @@ fn update_adr_cmd(file_name: String, adr: ADR, state: State<AppState>) -> Result
         &format!("Updated ADR: {}", file_name),
     )
     .ok();
-    let refreshed = logic::get_adr(path.clone()).map_err(|e| e.to_string())?;
+    let refreshed = runtime::get_adr(path.clone()).map_err(|e| e.to_string())?;
     Ok(AdrEntry {
         file_name,
         path: path.to_string_lossy().to_string(),
@@ -1281,7 +1281,7 @@ fn remove_mcp_server_cmd(id: String, state: State<AppState>) -> Result<(), Strin
 async fn export_agent_config_cmd(target: String, state: State<'_, AppState>) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     tokio::task::spawn_blocking(move || {
-        logic::agent_export::export_to(dir, &target).map_err(|e| e.to_string())
+        runtime::agent_export::export_to(dir, &target).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/logic",
+    "crates/runtime",
     "crates/cli",
     "crates/mcp",
     "crates/plugins/time-tracker",

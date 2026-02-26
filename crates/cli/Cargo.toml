@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
-logic = { path = "../logic" }
+runtime = { path = "../runtime" }
 time-tracker = { path = "../plugins/time-tracker" }
 ghost-issues = { path = "../plugins/ghost-issues" }
 anyhow = "1.0"

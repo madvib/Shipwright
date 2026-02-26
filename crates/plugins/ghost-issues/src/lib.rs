@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use ignore::WalkBuilder;
-use logic::Plugin;
+use runtime::Plugin;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -278,7 +278,7 @@ pub fn generate_report(project_dir: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use logic::init_project;
+    use runtime::init_project;
     use std::fs;
     use tempfile::tempdir;
 
