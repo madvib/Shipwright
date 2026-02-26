@@ -579,7 +579,7 @@ impl ShipServer {
         };
 
         for status in &statuses {
-            let path = project_dir.join("issues").join(status).join(&req.file_name);
+            let path = runtime::project::issues_dir(&project_dir).join(status).join(&req.file_name);
             if path.exists() {
                 return match get_issue(path) {
                     Ok(issue) => format!(
@@ -631,8 +631,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir
-            .join("issues")
+        let path = runtime::project::issues_dir(&project_dir)
             .join(&req.status)
             .join(&req.file_name);
         match get_issue(path.clone()) {
@@ -668,7 +667,7 @@ impl ShipServer {
             configured
         };
         for status in &statuses {
-            let path = project_dir.join("issues").join(status).join(&req.file_name);
+            let path = runtime::project::issues_dir(&project_dir).join(status).join(&req.file_name);
             if path.exists() {
                 return match append_note(path, &req.note) {
                     Ok(_) => format!("Note appended to {}", req.file_name),
@@ -686,8 +685,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir
-            .join("issues")
+        let path = runtime::project::issues_dir(&project_dir)
             .join(&req.from_status)
             .join(&req.file_name);
         match move_issue(project_dir.clone(), path, &req.from_status, &req.to_status) {
@@ -712,8 +710,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir
-            .join("issues")
+        let path = runtime::project::issues_dir(&project_dir)
             .join(&req.status)
             .join(&req.file_name);
         match delete_issue(path) {
@@ -831,7 +828,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("specs").join(&req.file_name);
+        let path = runtime::project::specs_dir(&project_dir).join(&req.file_name);
         match get_spec_raw(path) {
             Ok(content) => content,
             Err(e) => format!("Error: {}", e),
@@ -864,7 +861,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("specs").join(&req.file_name);
+        let path = runtime::project::specs_dir(&project_dir).join(&req.file_name);
         match update_spec(path, &req.content) {
             Ok(_) => format!("Updated spec: {}", req.file_name),
             Err(e) => format!("Error: {}", e),
@@ -905,7 +902,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("releases").join(&req.file_name);
+        let path = runtime::project::releases_dir(&project_dir).join(&req.file_name);
         match get_release_raw(path) {
             Ok(content) => content,
             Err(e) => format!("Error: {}", e),
@@ -940,7 +937,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("releases").join(&req.file_name);
+        let path = runtime::project::releases_dir(&project_dir).join(&req.file_name);
         match update_release(path, &req.content) {
             Ok(_) => {
                 log_action_by(project_dir, "agent", "release update", &req.file_name).ok();
@@ -985,7 +982,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("features").join(&req.file_name);
+        let path = runtime::project::features_dir(&project_dir).join(&req.file_name);
         match get_feature_raw(path) {
             Ok(content) => content,
             Err(e) => format!("Error: {}", e),
@@ -1026,7 +1023,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("features").join(&req.file_name);
+        let path = runtime::project::features_dir(&project_dir).join(&req.file_name);
         match update_feature(path, &req.content) {
             Ok(_) => {
                 log_action_by(project_dir, "agent", "feature update", &req.file_name).ok();
@@ -1045,7 +1042,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = project_dir.join("adrs").join(&req.file_name);
+        let path = runtime::project::adrs_dir(&project_dir).join(&req.file_name);
         match get_adr(path) {
             Ok(adr) => format!(
                 "Title: {}\nStatus: {}\nDate: {}\n\n{}",
@@ -1442,8 +1439,7 @@ impl ShipServer {
             let mut title = req.issue_file.clone();
             let statuses = get_project_statuses(Some(project_dir.clone())).unwrap_or_default();
             for status in &statuses {
-                let p = project_dir
-                    .join("issues")
+                let p = runtime::project::issues_dir(&project_dir)
                     .join(status)
                     .join(&req.issue_file);
                 if p.exists() {
