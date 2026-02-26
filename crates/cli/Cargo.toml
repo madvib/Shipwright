@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 runtime = { path = "../runtime" }
+ship-module-git = { path = "../modules/git" }
 time-tracker = { path = "../plugins/time-tracker" }
 ghost-issues = { path = "../plugins/ghost-issues" }
 anyhow = "1.0"

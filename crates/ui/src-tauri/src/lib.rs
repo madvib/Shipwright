@@ -1117,6 +1117,7 @@ fn create_feature_cmd(
         &content,
         release.as_deref(),
         spec.as_deref(),
+        None,
     )
     .map_err(|e| e.to_string())?;
     log_action(

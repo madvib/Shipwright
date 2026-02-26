@@ -31,8 +31,8 @@ pub use events::{
     sync_event_snapshot,
 };
 pub use feature::{
-    Feature, FeatureEntry, FeatureMetadata, create_feature, get_feature, get_feature_raw,
-    list_features, update_feature,
+    Feature, FeatureAgentConfig, FeatureEntry, FeatureMcpRef, FeatureMetadata, FeatureSkillRef,
+    create_feature, get_feature, get_feature_raw, list_features, update_feature,
 };
 pub use issue::{
     Issue, IssueEntry, IssueLink, IssueMetadata, add_link, append_note, backfill_issue_ids,
@@ -222,10 +222,14 @@ mod tests {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let legacy = "---\ntitle: Legacy Issue\nstatus: backlog\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\nlinks: []\n---\n\nOld body.\n";
-        fs::write(project_dir.join("workflow/issues/backlog/legacy-issue.md"), legacy)?;
+        fs::write(
+            project_dir.join("workflow/issues/backlog/legacy-issue.md"),
+            legacy,
+        )?;
         let migrated = migrate_yaml_issues(&project_dir)?;
         assert_eq!(migrated, 1);
-        let content = fs::read_to_string(project_dir.join("workflow/issues/backlog/legacy-issue.md"))?;
+        let content =
+            fs::read_to_string(project_dir.join("workflow/issues/backlog/legacy-issue.md"))?;
         assert!(content.starts_with("+++\n"));
         assert!(content.contains("title = \"Legacy Issue\""));
         Ok(())
@@ -507,6 +511,7 @@ mod tests {
             "",
             Some("v0.1.0-alpha.md"),
             Some("agent-config.md"),
+            None,
         )?;
         assert!(path.exists());
         let feature = get_feature(path)?;
@@ -524,7 +529,7 @@ mod tests {
     fn test_create_feature_empty_title_rejected() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let result = create_feature(project_dir, "", "", None, None);
+        let result = create_feature(project_dir, "", "", None, None, None);
         assert!(result.is_err());
         Ok(())
     }
@@ -533,7 +538,7 @@ mod tests {
     fn test_get_and_update_feature() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_feature(project_dir, "UI Agent Panel", "initial", None, None)?;
+        let path = create_feature(project_dir, "UI Agent Panel", "initial", None, None, None)?;
         let initial = get_feature(path.clone())?;
         assert!(!initial.metadata.id.is_empty());
         update_feature(path.clone(), "updated")?;
@@ -547,8 +552,8 @@ mod tests {
     fn test_list_features() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        create_feature(project_dir.clone(), "Feature One", "", None, None)?;
-        create_feature(project_dir.clone(), "Feature Two", "", None, None)?;
+        create_feature(project_dir.clone(), "Feature One", "", None, None, None)?;
+        create_feature(project_dir.clone(), "Feature Two", "", None, None, None)?;
         let features = list_features(project_dir)?;
         assert_eq!(features.len(), 2);
         let titles: Vec<&str> = features.iter().map(|f| f.title.as_str()).collect();
@@ -561,8 +566,8 @@ mod tests {
     fn test_feature_collision_gets_suffix() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let p1 = create_feature(project_dir.clone(), "Ship Agents", "", None, None)?;
-        let p2 = create_feature(project_dir.clone(), "Ship Agents!", "", None, None)?;
+        let p1 = create_feature(project_dir.clone(), "Ship Agents", "", None, None, None)?;
+        let p2 = create_feature(project_dir.clone(), "Ship Agents!", "", None, None, None)?;
         assert_ne!(p1, p2);
         assert!(p1.exists());
         assert!(p2.exists());
@@ -729,7 +734,14 @@ mod tests {
         let ship_path = init_project(tmp.path().to_path_buf())?;
         let seq0 = latest_event_seq(&ship_path)?;
         create_release(ship_path.clone(), "v0.1.0-alpha", "")?;
-        create_feature(ship_path.clone(), "Event Stream Feature", "", None, None)?;
+        create_feature(
+            ship_path.clone(),
+            "Event Stream Feature",
+            "",
+            None,
+            None,
+            None,
+        )?;
         let events = list_events_since(&ship_path, seq0, None)?;
         assert!(events.len() >= 2);
         assert!(events.iter().all(|e| e.seq > seq0));

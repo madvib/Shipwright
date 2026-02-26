@@ -11,6 +11,28 @@ use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct FeatureMcpRef {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct FeatureSkillRef {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct FeatureAgentConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_cost_per_session: Option<f64>,
+    #[serde(default)]
+    pub mcp_servers: Vec<FeatureMcpRef>,
+    #[serde(default)]
+    pub skills: Vec<FeatureSkillRef>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct FeatureMetadata {
     #[serde(default)]
@@ -26,6 +48,10 @@ pub struct FeatureMetadata {
     pub release: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<FeatureAgentConfig>,
     #[serde(default)]
     pub adrs: Vec<String>,
     #[serde(default)]
@@ -97,6 +123,8 @@ impl Feature {
                     owner: None,
                     release: None,
                     spec: None,
+                    branch: None,
+                    agent: None,
                     adrs: Vec::new(),
                     tags: Vec::new(),
                 },
@@ -144,6 +172,7 @@ pub fn create_feature(
     body: &str,
     release: Option<&str>,
     spec: Option<&str>,
+    branch: Option<&str>,
 ) -> Result<PathBuf> {
     validate_title(title)?;
 
@@ -161,6 +190,8 @@ pub fn create_feature(
             owner: None,
             release: release.filter(|s| !s.trim().is_empty()).map(str::to_string),
             spec: spec.filter(|s| !s.trim().is_empty()).map(str::to_string),
+            branch: branch.filter(|s| !s.trim().is_empty()).map(str::to_string),
+            agent: None,
             adrs: Vec::new(),
             tags: Vec::new(),
         },

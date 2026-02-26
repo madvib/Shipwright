@@ -54,6 +54,7 @@ fn core_loop_paths_resolve_correctly() {
         "",
         Some(release.file_name().unwrap().to_str().unwrap()),
         None,
+        None,
     )
     .unwrap();
     assert!(feature.starts_with(features_dir(&p.ship_dir)));
@@ -61,7 +62,8 @@ fn core_loop_paths_resolve_correctly() {
     let spec = runtime::create_spec(p.ship_dir.clone(), "Auth Spec", "").unwrap();
     assert!(spec.starts_with(specs_dir(&p.ship_dir)));
 
-    let issue = runtime::create_issue(p.ship_dir.clone(), "Implement login", "", "backlog").unwrap();
+    let issue =
+        runtime::create_issue(p.ship_dir.clone(), "Implement login", "", "backlog").unwrap();
     assert!(issue.starts_with(issues_dir(&p.ship_dir).join("backlog")));
 }
 
@@ -83,7 +85,13 @@ fn issue_move_updates_path() {
 fn adrs_land_in_project_namespace() {
     let p = TestProject::new().unwrap();
 
-    let adr = runtime::create_adr(p.ship_dir.clone(), "Use TOML", "Simpler for AI agents", "accepted").unwrap();
+    let adr = runtime::create_adr(
+        p.ship_dir.clone(),
+        "Use TOML",
+        "Simpler for AI agents",
+        "accepted",
+    )
+    .unwrap();
     assert!(adr.starts_with(adrs_dir(&p.ship_dir)));
     p.assert_ship_file_contains(
         adr.strip_prefix(&p.ship_dir).unwrap().to_str().unwrap(),
@@ -98,7 +106,10 @@ fn gitignore_uses_namespace_paths() {
     let gitignore = std::fs::read_to_string(p.ship_dir.join(".gitignore")).unwrap();
 
     // Issues local by default
-    assert!(gitignore.contains("workflow/issues"), "issues should be gitignored");
+    assert!(
+        gitignore.contains("workflow/issues"),
+        "issues should be gitignored"
+    );
     assert!(gitignore.contains("events.ndjson"));
     assert!(gitignore.contains("ship.db"));
 
@@ -118,7 +129,7 @@ fn events_track_both_namespaces() {
     let seq0 = latest_event_seq(&p.ship_dir).unwrap();
 
     create_release(p.ship_dir.clone(), "v0.1.0", "").unwrap();
-    create_feature(p.ship_dir.clone(), "Feature A", "", None, None).unwrap();
+    create_feature(p.ship_dir.clone(), "Feature A", "", None, None, None).unwrap();
 
     let events = list_events_since(&p.ship_dir, seq0, None).unwrap();
     assert!(events.len() >= 2);

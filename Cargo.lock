@@ -558,6 +558,7 @@ dependencies = [
  "clap",
  "ghost-issues",
  "runtime",
+ "ship-module-git",
  "time-tracker",
 ]
 
@@ -980,6 +981,7 @@ dependencies = [
  "anyhow",
  "runtime",
  "serde_json",
+ "ship-module-git",
  "tempfile",
 ]
 
@@ -3654,6 +3656,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "runtime",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

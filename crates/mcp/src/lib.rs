@@ -1,14 +1,5 @@
 use anyhow::{Result, anyhow};
 use ghost_issues;
-use runtime::{
-    add_status, append_note, create_adr, create_feature, create_issue, create_release, create_spec,
-    delete_issue, get_adr, get_config, get_feature_raw, get_git_config, get_issue, get_project_dir,
-    get_project_name, get_project_statuses, get_release_raw, get_spec_raw, ingest_external_events,
-    is_category_committed, list_adrs, list_events_since, list_features, list_issues,
-    list_issues_full, list_registered_projects, list_releases, list_specs, log_action,
-    log_action_by, move_issue, read_log, register_project, remove_status, set_category_committed,
-    update_feature, update_release, update_spec,
-};
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::transport::stdio;
 use rmcp::{
@@ -20,6 +11,15 @@ use rmcp::{
     },
     service::Peer,
     tool, tool_handler, tool_router,
+};
+use runtime::{
+    add_status, append_note, create_adr, create_feature, create_issue, create_release, create_spec,
+    delete_issue, get_adr, get_config, get_feature_raw, get_git_config, get_issue, get_project_dir,
+    get_project_name, get_project_statuses, get_release_raw, get_spec_raw, ingest_external_events,
+    is_category_committed, list_adrs, list_events_since, list_features, list_issues,
+    list_issues_full, list_registered_projects, list_releases, list_specs, log_action,
+    log_action_by, move_issue, read_log, register_project, remove_status, set_category_committed,
+    update_feature, update_release, update_spec,
 };
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -242,6 +242,8 @@ pub struct CreateFeatureRequest {
     pub release: Option<String>,
     /// Linked spec filename (optional)
     pub spec: Option<String>,
+    /// Linked git branch name (optional)
+    pub branch: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -579,7 +581,9 @@ impl ShipServer {
         };
 
         for status in &statuses {
-            let path = runtime::project::issues_dir(&project_dir).join(status).join(&req.file_name);
+            let path = runtime::project::issues_dir(&project_dir)
+                .join(status)
+                .join(&req.file_name);
             if path.exists() {
                 return match get_issue(path) {
                     Ok(issue) => format!(
@@ -667,7 +671,9 @@ impl ShipServer {
             configured
         };
         for status in &statuses {
-            let path = runtime::project::issues_dir(&project_dir).join(status).join(&req.file_name);
+            let path = runtime::project::issues_dir(&project_dir)
+                .join(status)
+                .join(&req.file_name);
             if path.exists() {
                 return match append_note(path, &req.note) {
                     Ok(_) => format!("Note appended to {}", req.file_name),
@@ -1003,6 +1009,7 @@ impl ShipServer {
             content,
             req.release.as_deref(),
             req.spec.as_deref(),
+            req.branch.as_deref(),
         ) {
             Ok(file) => {
                 let fname = file
@@ -1635,6 +1642,7 @@ mod tests {
                 content: None,
                 release: Some(release_file),
                 spec: None,
+                branch: None,
             }))
             .await;
         assert!(

@@ -133,7 +133,14 @@ pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
         let slug = crate::sanitize_file_name(title);
         let path = project_dir.join("features").join(format!("{}.md", slug));
         if !path.exists() {
-            create_feature(project_dir.clone(), title, "", Some(release), Some(spec))?;
+            create_feature(
+                project_dir.clone(),
+                title,
+                "",
+                Some(release),
+                Some(spec),
+                None,
+            )?;
         }
     }
 

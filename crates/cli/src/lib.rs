@@ -9,8 +9,10 @@ use runtime::{
     migrate_json_config_file, migrate_yaml_issues, move_issue, remove_mode, remove_status,
     set_active_mode, set_category_committed, update_feature, update_release,
 };
+use ship_module_git::{install_hooks, on_post_checkout};
 use std::env;
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 
 #[derive(Parser, Debug)]
 #[command(name = "ship")]
@@ -113,6 +115,19 @@ pub enum GitCommands {
         /// One of: issues, releases, features, specs, adrs, log.md, events.ndjson, config.toml, templates, plugins
         category: String,
     },
+    /// Install git hooks for feature-aware checkout
+    InstallHooks,
+    /// Hook entrypoint: regenerate agent context after checkout
+    PostCheckout {
+        /// Previous HEAD (hook arg $1) or branch name when called manually
+        old: Option<String>,
+        /// New HEAD (hook arg $2)
+        new: Option<String>,
+        /// Checkout mode flag (hook arg $3)
+        flag: Option<String>,
+    },
+    /// Manually regenerate CLAUDE.md + .mcp.json for the current branch
+    Sync,
 }
 
 #[derive(Subcommand, Debug)]
@@ -300,6 +315,9 @@ pub enum FeatureCommands {
         /// Link this feature to a spec filename
         #[arg(long)]
         spec: Option<String>,
+        /// Link this feature to a git branch name
+        #[arg(long)]
+        branch: Option<String>,
     },
     /// List feature documents
     List,
@@ -352,6 +370,13 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "project".to_string());
             let ship_path = init_project(target.clone())?;
+            if let Err(err) = install_hooks(&target.join(".git")) {
+                eprintln!(
+                    "[ship] warning: failed to install git hooks in {}: {}",
+                    target.join(".git").display(),
+                    err
+                );
+            }
             runtime::register_project(project_name, target)?;
             println!(
                 "Initialized and tracked Ship project in {}",
@@ -518,6 +543,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     content,
                     release,
                     spec,
+                    branch,
                 } => {
                     let body = content.unwrap_or_default();
                     let path = create_feature(
@@ -526,6 +552,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         &body,
                         release.as_deref(),
                         spec.as_deref(),
+                        branch.as_deref(),
                     )?;
                     println!("Feature created: {}", path.display());
                     log_action(
@@ -654,9 +681,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Git { action }) => {
             let project_dir = get_project_dir(None)?;
-            let git = get_git_config(&project_dir)?;
             match action {
                 GitCommands::Status => {
+                    let git = get_git_config(&project_dir)?;
                     let cats = [
                         "issues",
                         "releases",
@@ -689,6 +716,47 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     set_category_committed(&project_dir, &category, false)?;
                     println!("{} will now be local only (gitignored).", category);
                     println!(".ship/.gitignore updated.");
+                }
+                GitCommands::InstallHooks => {
+                    let project_root = project_dir
+                        .parent()
+                        .ok_or_else(|| anyhow::anyhow!("Could not resolve project root"))?;
+                    install_hooks(&project_root.join(".git"))?;
+                    println!(
+                        "Installed git hooks in {}",
+                        project_root.join(".git/hooks").display()
+                    );
+                }
+                GitCommands::PostCheckout { old, new, flag } => {
+                    let project_root = project_dir
+                        .parent()
+                        .ok_or_else(|| anyhow::anyhow!("Could not resolve project root"))?;
+                    let old_ref = old
+                        .or_else(|| env::var("SHIP_GIT_OLD_REF").ok())
+                        .or_else(|| env::var("GIT_OLD_REF").ok());
+                    let _new_ref = new
+                        .or_else(|| env::var("SHIP_GIT_NEW_REF").ok())
+                        .or_else(|| env::var("GIT_NEW_REF").ok());
+                    let _checkout_flag = flag
+                        .or_else(|| env::var("SHIP_GIT_CHECKOUT_FLAG").ok())
+                        .or_else(|| env::var("GIT_CHECKOUT_FLAG").ok());
+
+                    let branch = if _new_ref.is_none() && _checkout_flag.is_none() {
+                        old_ref
+                    } else {
+                        None
+                    }
+                    .or_else(|| env::var("SHIP_GIT_BRANCH").ok())
+                    .unwrap_or(current_branch(project_root)?);
+
+                    on_post_checkout(&project_dir, &branch)?;
+                }
+                GitCommands::Sync => {
+                    let project_root = project_dir
+                        .parent()
+                        .ok_or_else(|| anyhow::anyhow!("Could not resolve project root"))?;
+                    let branch = current_branch(project_root)?;
+                    on_post_checkout(&project_dir, &branch)?;
                 }
             }
         }
@@ -879,6 +947,21 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn current_branch(project_root: &std::path::Path) -> Result<String> {
+    let output = ProcessCommand::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(project_root)
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("Failed to determine current git branch");
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
+    }
+    Ok(branch)
 }
 
 fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()> {
