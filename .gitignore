@@ -67,10 +67,9 @@ dist/
 .claude
 .gemini
 .codex
+CLAUDE.md
+SHIPWRIGHT.md
+.mcp.json
 
 .devcontainer
 
-# Ship runtime DB artifacts
-**/.ship/ship.db
-**/.ship/ship.db-shm
-**/.ship/ship.db-wal

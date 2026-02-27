@@ -97,6 +97,7 @@ pub fn find_feature_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<P
 
 pub fn on_post_checkout(ship_dir: &Path, new_branch: &str) -> Result<()> {
     let Some(feature_path) = find_feature_for_branch(ship_dir, new_branch)? else {
+        agent_export::teardown(ship_dir.to_path_buf(), "claude")?;
         return Ok(());
     };
 

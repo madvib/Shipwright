@@ -52,8 +52,16 @@ pub struct DatabaseMigrationReport {
     pub applied_migrations: usize,
 }
 
+/// Returns `~/.ship/state/<project-slug>/ship.db` for the given ship_dir.
+/// The slug is derived from the canonical project root path, making it stable
+/// across sessions and safe to store alongside the global DB.
+pub fn project_db_path(ship_dir: &Path) -> Result<PathBuf> {
+    let slug = project_slug(ship_dir)?;
+    Ok(ship_global_dir()?.join("state").join(slug).join("ship.db"))
+}
+
 pub fn ensure_project_database(ship_dir: &Path) -> Result<DatabaseMigrationReport> {
-    let db_path = ship_dir.join("ship.db");
+    let db_path = project_db_path(ship_dir)?;
     ensure_database(&db_path, PROJECT_MIGRATIONS)
 }
 
@@ -61,6 +69,47 @@ pub fn ensure_global_database(global_dir: &Path) -> Result<DatabaseMigrationRepo
     let db_path = global_dir.join("ship.db");
     ensure_database(&db_path, GLOBAL_MIGRATIONS)
 }
+
+// ─── Path helpers ─────────────────────────────────────────────────────────────
+
+fn ship_global_dir() -> Result<PathBuf> {
+    home::home_dir()
+        .map(|h| h.join(".ship"))
+        .ok_or_else(|| anyhow!("Could not determine home directory"))
+}
+
+/// Derives a filesystem-safe slug from the project root path.
+/// `/home/alice/dev/my-app` → `home-alice-dev-my-app`
+fn project_slug(ship_dir: &Path) -> Result<String> {
+    let project_root = ship_dir
+        .parent()
+        .ok_or_else(|| anyhow!("Cannot determine project root from {}", ship_dir.display()))?;
+
+    // Canonicalize if possible (resolves symlinks), fall back to raw path.
+    let canonical = std::fs::canonicalize(project_root)
+        .unwrap_or_else(|_| project_root.to_path_buf());
+
+    let raw = canonical.to_string_lossy();
+    // Strip leading slash, map non-alphanumeric/hyphen/underscore to hyphens,
+    // then collapse consecutive hyphens so the slug stays readable.
+    let slug: String = raw
+        .trim_start_matches('/')
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '-' })
+        .collect();
+    let slug = slug
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if slug.is_empty() {
+        return Err(anyhow!("Could not derive a project slug from path: {}", canonical.display()));
+    }
+    Ok(slug)
+}
+
+// ─── Core ─────────────────────────────────────────────────────────────────────
 
 fn ensure_database(db_path: &Path, migrations: &[(&str, &str)]) -> Result<DatabaseMigrationReport> {
     if let Some(parent) = db_path.parent() {
@@ -161,12 +210,35 @@ mod tests {
     #[test]
     fn ensure_project_database_is_idempotent() -> Result<()> {
         let tmp = tempdir()?;
-        let report_a = ensure_project_database(tmp.path())?;
-        let report_b = ensure_project_database(tmp.path())?;
+        // ship_dir must have a parent (project root) to derive the slug
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+
+        let report_a = ensure_project_database(&ship_dir)?;
+        let report_b = ensure_project_database(&ship_dir)?;
+
         assert!(report_a.created);
         assert!(report_a.applied_migrations >= 1);
         assert!(!report_b.created);
         assert_eq!(report_b.applied_migrations, 0);
+        // DB lives outside the project dir
+        assert!(!report_a.db_path.starts_with(tmp.path()));
+        assert!(report_a.db_path.to_string_lossy().contains("ship.db"));
+
+        // Clean up the DB we just created in ~/.ship/state/
+        std::fs::remove_file(&report_a.db_path).ok();
+        Ok(())
+    }
+
+    #[test]
+    fn project_slug_strips_leading_slash_and_collapses_separators() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        let slug = project_slug(&ship_dir)?;
+        assert!(!slug.starts_with('-'), "slug should not start with a dash");
+        assert!(!slug.contains("--"), "slug should not contain consecutive dashes");
+        assert!(!slug.is_empty());
         Ok(())
     }
 }

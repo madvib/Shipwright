@@ -683,7 +683,6 @@ mod tests {
         config.agent.skills = vec!["backend-rust".into(), "frontend-react".into()];
         config.agent.prompts = vec!["Summarize risks first".into()];
         config.agent.context = vec!["AGENTS.md".into(), "specs/".into()];
-        config.agent.rules = vec!["Never force-push shared branches".into()];
         save_config(&config, Some(project_dir.clone()))?;
 
         let loaded = get_config(Some(project_dir))?;
@@ -691,7 +690,6 @@ mod tests {
         assert_eq!(loaded.agent.skills.len(), 2);
         assert_eq!(loaded.agent.prompts.len(), 1);
         assert_eq!(loaded.agent.context.len(), 2);
-        assert_eq!(loaded.agent.rules.len(), 1);
         Ok(())
     }
 
@@ -704,7 +702,8 @@ mod tests {
         assert!(gitignore.contains("workflow/issues"));
         assert!(gitignore.contains("events.ndjson"));
         assert!(gitignore.contains("generated/"));
-        assert!(gitignore.contains("ship.db"));
+        // DB is now at ~/.ship/state/<slug>/ship.db — not inside .ship/
+        assert!(!gitignore.contains("ship.db"));
         assert!(!gitignore.contains("log.md"));
         assert!(!gitignore.contains("project/releases"));
         assert!(!gitignore.contains("workflow/features"));

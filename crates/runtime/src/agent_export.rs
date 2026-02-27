@@ -1,11 +1,11 @@
 use crate::config::{
-    AgentLayerConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig,
+    HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig,
     get_config, get_effective_config,
 };
 use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
 use crate::skill::list_effective_skills;
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -68,43 +68,160 @@ pub struct SyncPayload {
 /// Export the active mode (or global config) to the specified AI client.
 pub fn export_to(project_dir: PathBuf, target: &str) -> Result<()> {
     let payload = build_payload(&project_dir)?;
-    let effective = get_effective_config(Some(project_dir.clone()))?;
-    let project_root = project_dir
-        .parent()
-        .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     match target {
-        "claude" => {
-            export_claude(&project_dir, &payload)?;
-            write_agent_layer_markdown(
-                project_root.join("SHIPWRIGHT.md"),
-                "Claude",
-                &effective.agent,
-                &payload.servers,
-            )
-        }
-        "codex" => {
-            export_codex(&project_dir, &payload)?;
-            write_agent_layer_markdown(
-                project_root.join(".codex").join("SHIPWRIGHT.md"),
-                "Codex",
-                &effective.agent,
-                &payload.servers,
-            )
-        }
-        "gemini" => {
-            export_gemini(&project_dir, &payload)?;
-            write_agent_layer_markdown(
-                project_root.join(".gemini").join("SHIPWRIGHT.md"),
-                "Gemini",
-                &effective.agent,
-                &payload.servers,
-            )
-        }
+        "claude" => export_claude(&project_dir, &payload),
+        "codex" => export_codex(&project_dir, &payload),
+        "gemini" => export_gemini(&project_dir, &payload),
         other => Err(anyhow!(
             "Unknown target '{}': use claude, codex, or gemini",
             other
         )),
     }
+}
+
+/// Remove all Ship-generated agent config for the given target.
+/// Called on checkout of a non-feature branch to clean up stale generated files.
+pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
+    let project_root = project_dir
+        .parent()
+        .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
+    match target {
+        "claude" => teardown_claude(&project_dir, project_root),
+        "gemini" => teardown_gemini(&project_dir, project_root),
+        "codex" => teardown_codex(&project_dir, project_root),
+        other => Err(anyhow!(
+            "Unknown target '{}': use claude, codex, or gemini",
+            other
+        )),
+    }
+}
+
+fn teardown_claude(project_dir: &Path, project_root: &Path) -> Result<()> {
+    let mut state = load_managed_state(project_dir);
+
+    // Remove Ship-managed entries from .mcp.json
+    let mcp_json = project_root.join(".mcp.json");
+    if mcp_json.exists() {
+        let existing: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&mcp_json)?).unwrap_or(serde_json::json!({}));
+
+        let mut kept = serde_json::Map::new();
+        if let Some(servers) = existing.get("mcpServers").and_then(|v| v.as_object()) {
+            for (id, entry) in servers {
+                let is_managed = entry
+                    .get("_ship")
+                    .and_then(|v| v.get("managed"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    || state.claude.managed_servers.contains(id);
+                if !is_managed {
+                    kept.insert(id.clone(), entry.clone());
+                }
+            }
+        }
+
+        if kept.is_empty() {
+            fs::remove_file(&mcp_json).ok();
+        } else {
+            let mut root = existing.clone();
+            if !root.is_object() {
+                root = serde_json::json!({});
+            }
+            root["mcpServers"] = serde_json::Value::Object(kept);
+            crate::fs_util::write_atomic(&mcp_json, serde_json::to_string_pretty(&root)?)?;
+        }
+    }
+
+    // Remove CLAUDE.md
+    let claude_md = project_root.join("CLAUDE.md");
+    if claude_md.exists() {
+        fs::remove_file(&claude_md)
+            .with_context(|| format!("Failed to remove {}", claude_md.display()))?;
+    }
+
+    // Clear managed state
+    state.claude.managed_servers.clear();
+    state.claude.last_mode = None;
+    save_managed_state(project_dir, &state)?;
+
+    Ok(())
+}
+
+fn teardown_gemini(project_dir: &Path, project_root: &Path) -> Result<()> {
+    let mut state = load_managed_state(project_dir);
+    let settings_path = project_root.join(".gemini").join("settings.json");
+
+    if settings_path.exists() {
+        let existing: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&settings_path)?).unwrap_or(serde_json::json!({}));
+
+        let mut kept = serde_json::Map::new();
+        if let Some(servers) = existing.get("mcpServers").and_then(|v| v.as_object()) {
+            for (id, entry) in servers {
+                let is_managed = entry
+                    .get("_ship")
+                    .and_then(|v| v.get("managed"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    || state.gemini.managed_servers.contains(id);
+                if !is_managed {
+                    kept.insert(id.clone(), entry.clone());
+                }
+            }
+        }
+
+        let mut root = existing.clone();
+        if !root.is_object() {
+            root = serde_json::json!({});
+        }
+        root["mcpServers"] = serde_json::Value::Object(kept);
+        crate::fs_util::write_atomic(&settings_path, serde_json::to_string_pretty(&root)?)?;
+    }
+
+    let gemini_md = project_root.join("GEMINI.md");
+    if gemini_md.exists() {
+        fs::remove_file(&gemini_md).ok();
+    }
+
+    state.gemini.managed_servers.clear();
+    state.gemini.last_mode = None;
+    save_managed_state(project_dir, &state)?;
+
+    Ok(())
+}
+
+fn teardown_codex(project_dir: &Path, project_root: &Path) -> Result<()> {
+    let mut state = load_managed_state(project_dir);
+    let config_path = project_root.join(".codex").join("config.toml");
+
+    if config_path.exists() {
+        let raw = fs::read_to_string(&config_path)?;
+        let mut doc: toml::Value = toml::from_str(&raw).unwrap_or(toml::Value::Table(Default::default()));
+
+        if let toml::Value::Table(root) = &mut doc {
+            let existing_mcp: toml::value::Table = root
+                .get("mcp_servers")
+                .and_then(|v| v.as_table())
+                .cloned()
+                .unwrap_or_default();
+
+            let mut kept = toml::value::Table::new();
+            for (id, entry) in &existing_mcp {
+                if !state.codex.managed_servers.contains(id) {
+                    kept.insert(id.clone(), entry.clone());
+                }
+            }
+            root.insert("mcp_servers".to_string(), toml::Value::Table(kept));
+        }
+
+        crate::fs_util::write_atomic(&config_path, toml::to_string_pretty(&doc)?)?;
+    }
+
+    state.codex.managed_servers.clear();
+    state.codex.last_mode = None;
+    save_managed_state(project_dir, &state)?;
+
+    Ok(())
 }
 
 /// Sync all target agents configured for the active mode.
@@ -349,16 +466,6 @@ fn export_claude(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
         || !payload.permissions.deny.is_empty()
     {
         export_claude_settings(&payload.hooks, &payload.permissions)?;
-    }
-
-    // Write prompt to project CLAUDE.md if set
-    if let Some(prompt) = &payload.prompt {
-        let claude_md = project_root.join("CLAUDE.md");
-        let content = format!(
-            "<!-- managed by ship — prompt: {} -->\n\n{}\n",
-            prompt.id, prompt.content
-        );
-        crate::fs_util::write_atomic(&claude_md, content)?;
     }
 
     // Export skills → .claude/commands/<id>.md
@@ -722,79 +829,6 @@ fn codex_mcp_entry(s: &McpServerConfig) -> toml::Value {
     toml::Value::Table(entry)
 }
 
-fn write_agent_layer_markdown(
-    path: PathBuf,
-    target_name: &str,
-    agent: &AgentLayerConfig,
-    servers: &[McpServerConfig],
-) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let mut content = String::new();
-    content.push_str("# Shipwright Agent Layer\n\n");
-    content.push_str(&format!("Target: {}\n\n", target_name));
-
-    write_string_list_section(
-        &mut content,
-        "Skills",
-        &agent.skills,
-        "No skills configured.",
-    );
-    write_string_list_section(
-        &mut content,
-        "Prompt Snippets",
-        &agent.prompts,
-        "No prompts configured.",
-    );
-    write_string_list_section(
-        &mut content,
-        "Context Paths",
-        &agent.context,
-        "No context paths configured.",
-    );
-    write_string_list_section(&mut content, "Rules", &agent.rules, "No rules configured.");
-
-    content.push_str("## MCP Servers\n\n");
-    if servers.is_empty() {
-        content.push_str("_No MCP servers configured._\n");
-    } else {
-        for server in servers {
-            let args = if server.args.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", server.args.join(" "))
-            };
-            content.push_str(&format!(
-                "- `{}`: `{}`{} ({})\n",
-                server.id, server.command, args, server.scope
-            ));
-        }
-    }
-    content.push('\n');
-
-    crate::fs_util::write_atomic(&path, content)?;
-    Ok(())
-}
-
-fn write_string_list_section(
-    output: &mut String,
-    title: &str,
-    values: &[String],
-    empty_label: &str,
-) {
-    output.push_str(&format!("## {}\n\n", title));
-    if values.is_empty() {
-        output.push_str(&format!("_{}_\n\n", empty_label));
-        return;
-    }
-
-    for value in values {
-        output.push_str(&format!("- {}\n", value));
-    }
-    output.push('\n');
-}
 
 #[cfg(test)]
 mod tests {

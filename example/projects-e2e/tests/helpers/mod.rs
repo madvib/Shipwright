@@ -9,6 +9,12 @@ pub struct TestProject {
     pub ship_dir: PathBuf,
 }
 
+/// A git worktree checked out from a TestProject.
+pub struct TestWorktree {
+    pub path: PathBuf,
+    pub ship_dir: PathBuf,
+}
+
 impl TestProject {
     /// Create a new temp dir, run `ship init`, return the project.
     pub fn new() -> Result<Self> {
@@ -101,6 +107,86 @@ impl TestProject {
             .args(["checkout", "-b", branch])
             .current_dir(self.dir.path())
             .output()?)
+    }
+
+    /// Install git post-checkout hooks so real `git checkout` fires `ship git post-checkout`.
+    pub fn install_hooks(&self) -> Result<()> {
+        ship_module_git::install_hooks(&self.root().join(".git"))
+    }
+
+    /// Create an initial commit so branches can be created and worktrees can be added.
+    pub fn initial_commit(&self) -> Result<Output> {
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(self.root())
+            .output()?;
+        Ok(Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .current_dir(self.root())
+            .output()?)
+    }
+
+    /// Add a git worktree at a sibling directory and return a TestWorktree.
+    /// The branch must already exist. The worktree's .ship/ is resolved via SHIP_DIR.
+    pub fn add_worktree(&self, branch: &str) -> Result<TestWorktree> {
+        let worktree_path = self.root().parent().unwrap()
+            .join(format!("worktree-{}", branch.replace('/', "-")));
+        Command::new("git")
+            .args(["worktree", "add", worktree_path.to_str().unwrap(), branch])
+            .current_dir(self.root())
+            .output()?;
+        Ok(TestWorktree {
+            ship_dir: self.ship_dir.clone(),
+            path: worktree_path,
+        })
+    }
+
+    /// Assert a file exists at project root (not .ship/).
+    pub fn assert_root_file(&self, name: &str) {
+        let path = self.root().join(name);
+        assert!(path.exists(), "{} should exist at project root", name);
+    }
+
+    /// Assert a file does NOT exist at project root.
+    pub fn assert_no_root_file(&self, name: &str) {
+        let path = self.root().join(name);
+        assert!(!path.exists(), "{} should not exist at project root", name);
+    }
+
+    /// Assert a file at project root contains a substring.
+    pub fn assert_root_file_contains(&self, name: &str, needle: &str) {
+        let path = self.root().join(name);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("{} not readable", name));
+        assert!(
+            content.contains(needle),
+            "{} should contain {:?}\n--- content ---\n{}",
+            name, needle, content
+        );
+    }
+
+    /// Assert a file at project root does NOT contain a substring.
+    pub fn assert_root_file_not_contains(&self, name: &str, needle: &str) {
+        let path = self.root().join(name);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("{} not readable", name));
+        assert!(
+            !content.contains(needle),
+            "{} should NOT contain {:?}\n--- content ---\n{}",
+            name, needle, content
+        );
+    }
+}
+
+impl TestWorktree {
+    /// Run the ship CLI from the worktree directory with SHIP_DIR set to the main .ship/.
+    pub fn cli(&self, args: &[&str]) -> Command {
+        let bin = std::env::var("SHIP_BIN").unwrap_or_else(|_| ship_bin_path());
+        let mut cmd = Command::new(bin);
+        cmd.current_dir(&self.path)
+            .env("SHIP_DIR", &self.ship_dir);
+        cmd.args(args);
+        cmd
     }
 }
 

@@ -11,14 +11,68 @@ use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+#[derive(Serialize, Debug, Clone, Default, Type)]
 pub struct FeatureMcpRef {
     pub id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+impl<'de> serde::Deserialize<'de> for FeatureMcpRef {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = FeatureMcpRef;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an mcp server id string or {id = \"...\"} table")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(FeatureMcpRef { id: v.to_string() })
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+                let mut id = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "id" {
+                        id = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                Ok(FeatureMcpRef { id: id.ok_or_else(|| serde::de::Error::missing_field("id"))? })
+            }
+        }
+        d.deserialize_any(Visitor)
+    }
+}
+
+#[derive(Serialize, Debug, Clone, Default, Type)]
 pub struct FeatureSkillRef {
     pub id: String,
+}
+
+impl<'de> serde::Deserialize<'de> for FeatureSkillRef {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = FeatureSkillRef;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a skill id string or {id = \"...\"}  table")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(FeatureSkillRef { id: v.to_string() })
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+                let mut id = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "id" {
+                        id = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                Ok(FeatureSkillRef { id: id.ok_or_else(|| serde::de::Error::missing_field("id"))? })
+            }
+        }
+        d.deserialize_any(Visitor)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]

@@ -120,18 +120,15 @@ pub struct PermissionConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct AgentLayerConfig {
-    /// Skill packs/instructions to load for the current project.
+    /// Skill IDs to load for all sessions in this project.
     #[serde(default)]
     pub skills: Vec<String>,
-    /// Reusable prompt snippets for common tasks.
+    /// Prompt IDs to activate for all sessions in this project.
     #[serde(default)]
     pub prompts: Vec<String>,
     /// Context files/folders to preload for agents.
     #[serde(default)]
     pub context: Vec<String>,
-    /// High-level project rules for humans and agents.
-    #[serde(default)]
-    pub rules: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
@@ -375,7 +372,6 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     project.agent.skills = merge_string_lists(&global.agent.skills, &project.agent.skills);
     project.agent.prompts = merge_string_lists(&global.agent.prompts, &project.agent.prompts);
     project.agent.context = merge_string_lists(&global.agent.context, &project.agent.context);
-    project.agent.rules = merge_string_lists(&global.agent.rules, &project.agent.rules);
 
     project.modes = merge_modes(&global.modes, &project.modes);
     project.mcp_servers = merge_mcp_servers(&global.mcp_servers, &project.mcp_servers);
@@ -674,12 +670,6 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     if !lines.iter().any(|line| line == "generated/") {
         lines.push("generated/".to_string());
     }
-    // Always ignore SQLite runtime files
-    lines.push(String::new());
-    lines.push("# Runtime — never commit".to_string());
-    lines.push("ship.db".to_string());
-    lines.push("ship.db-shm".to_string());
-    lines.push("ship.db-wal".to_string());
     let content = lines.join("\n") + "\n";
     write_atomic(&ship_dir.join(".gitignore"), content)?;
     Ok(())
