@@ -216,6 +216,30 @@ fn unique_path(dir: &Path, base: &str) -> PathBuf {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
+/// Strip TOML frontmatter (`+++ ... +++`) if present and return only the body.
+/// Guards against callers (e.g. MCP tools) passing fully-formed markdown that
+/// would otherwise produce double frontmatter when wrapped by `to_markdown()`.
+fn extract_body(content: &str) -> String {
+    let body = if content.starts_with("+++\n") {
+        // Skip over the opening +++ and find the closing +++
+        let rest = &content[4..];
+        if let Some(end) = rest.find("\n+++") {
+            rest[end + 4..].trim_start_matches('\n').to_string()
+        } else {
+            content.to_string()
+        }
+    } else {
+        content.to_string()
+    };
+
+    if body.trim().is_empty() {
+        "## Why\n\n\n## Acceptance Criteria\n\n- [ ]\n\n## Delivery Todos\n\n- [ ]\n\n## Notes\n\n"
+            .to_string()
+    } else {
+        body
+    }
+}
+
 /// Create a new feature file in `.ship/features/`.
 pub fn create_feature(
     project_dir: PathBuf,
@@ -246,12 +270,7 @@ pub fn create_feature(
             adrs: Vec::new(),
             tags: Vec::new(),
         },
-        body: if body.is_empty() {
-            "## Why\n\n\n## Acceptance Criteria\n\n- [ ]\n\n## Delivery Todos\n\n- [ ]\n\n## Notes\n\n"
-                .to_string()
-        } else {
-            body.to_string()
-        },
+        body: extract_body(body),
     };
 
     let base = sanitize_file_name(title);
