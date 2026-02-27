@@ -96,27 +96,50 @@ pub fn find_feature_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<P
 }
 
 pub fn on_post_checkout(ship_dir: &Path, new_branch: &str) -> Result<()> {
+    let config = get_effective_config(Some(ship_dir.to_path_buf()))?;
+
     let Some(feature_path) = find_feature_for_branch(ship_dir, new_branch)? else {
-        agent_export::teardown(ship_dir.to_path_buf(), "claude")?;
+        for provider in &config.providers {
+            agent_export::teardown(ship_dir.to_path_buf(), provider)?;
+        }
         return Ok(());
     };
 
     let feature = get_feature(feature_path)?;
-    let config = get_effective_config(Some(ship_dir.to_path_buf()))?;
     let resolved_agent = resolve_agent_config(ship_dir, &config, feature.metadata.agent.as_ref())?;
 
-    let mut open_issues = list_issues_full(ship_dir.to_path_buf())?;
-    open_issues.retain(|issue| issue.status != "done");
+    // Effective providers: feature override wins, else project default.
+    let providers = if let Some(agent) = &feature.metadata.agent {
+        if !agent.providers.is_empty() {
+            agent.providers.clone()
+        } else {
+            config.providers.clone()
+        }
+    } else {
+        config.providers.clone()
+    };
 
     let project_root = ship_dir
         .parent()
         .ok_or_else(|| anyhow!("Cannot determine project root from {}", ship_dir.display()))?;
 
-    generate_claude_md(project_root, &feature, &open_issues, &resolved_agent.skills)?;
-    agent_export::export_to(ship_dir.to_path_buf(), "claude")?;
-    ensure_required_mcp_servers(project_root, &resolved_agent.mcp_server_ids)?;
+    let mut open_issues = list_issues_full(ship_dir.to_path_buf())?;
+    open_issues.retain(|issue| issue.status != "done");
 
-    println!("[ship] loaded feature: {}", feature.metadata.title);
+    for provider in &providers {
+        match provider.as_str() {
+            "claude" => {
+                generate_claude_md(project_root, &feature, &open_issues, &resolved_agent.skills)?;
+                agent_export::export_to(ship_dir.to_path_buf(), "claude")?;
+                ensure_required_mcp_servers(project_root, &resolved_agent.mcp_server_ids)?;
+            }
+            other => {
+                agent_export::export_to(ship_dir.to_path_buf(), other)?;
+            }
+        }
+    }
+
+    println!("[ship] loaded feature '{}' for: {}", feature.metadata.title, providers.join(", "));
     Ok(())
 }
 

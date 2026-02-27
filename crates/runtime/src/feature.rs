@@ -85,6 +85,10 @@ pub struct FeatureAgentConfig {
     pub mcp_servers: Vec<FeatureMcpRef>,
     #[serde(default)]
     pub skills: Vec<FeatureSkillRef>,
+    /// Providers to generate config for. Empty = inherit from project-level providers.
+    /// Alpha supports: "claude", "gemini", "codex"
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub providers: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]

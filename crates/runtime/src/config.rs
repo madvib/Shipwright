@@ -257,6 +257,10 @@ pub struct ProjectConfig {
     pub hooks: Vec<HookConfig>,
     #[serde(default)]
     pub agent: AgentLayerConfig,
+    /// Which agent providers to generate config for on branch checkout.
+    /// Alpha: "claude" | "gemini" | "codex". Defaults to ["claude"].
+    #[serde(default = "default_providers")]
+    pub providers: Vec<String>,
     /// Claimed `.ship` namespaces. First-party modules are always present.
     #[serde(default = "default_namespaces")]
     pub namespaces: Vec<NamespaceConfig>,
@@ -264,6 +268,10 @@ pub struct ProjectConfig {
 
 fn default_version() -> String {
     "1".to_string()
+}
+
+fn default_providers() -> Vec<String> {
+    vec!["claude".to_string()]
 }
 
 fn default_statuses() -> Vec<StatusConfig> {
@@ -311,6 +319,7 @@ impl Default for ProjectConfig {
             hooks: Vec::new(),
             agent: AgentLayerConfig::default(),
             namespaces: default_namespaces(),
+            providers: default_providers(),
         }
     }
 }
@@ -372,6 +381,11 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     project.agent.skills = merge_string_lists(&global.agent.skills, &project.agent.skills);
     project.agent.prompts = merge_string_lists(&global.agent.prompts, &project.agent.prompts);
     project.agent.context = merge_string_lists(&global.agent.context, &project.agent.context);
+
+    // Project providers win; fall back to global if project is still the default ["claude"].
+    if project.providers == default_providers() && global.providers != default_providers() {
+        project.providers = global.providers;
+    }
 
     project.modes = merge_modes(&global.modes, &project.modes);
     project.mcp_servers = merge_mcp_servers(&global.mcp_servers, &project.mcp_servers);

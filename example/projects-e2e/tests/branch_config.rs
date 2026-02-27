@@ -76,8 +76,7 @@ fn claude_md_inlines_skill_content() {
     let p = TestProject::with_git().unwrap();
     let feat = create_feature(p.ship_dir.clone(), "Auth Flow", "Body", None, None, Some("feature/auth")).unwrap();
     create_skill(&p.ship_dir, "conventions", "Project Conventions", "Always use anyhow for errors.").unwrap();
-    set_feature_agent(&feat, FeatureAgentConfig {
-        model: None,
+    set_feature_agent(&feat, FeatureAgentConfig { providers: vec![], model: None,
         max_cost_per_session: None,
         mcp_servers: vec![],
         skills: vec![FeatureSkillRef { id: "conventions".to_string() }],
@@ -102,8 +101,7 @@ fn mcp_json_contains_only_feature_declared_servers() {
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
     let feat = create_feature(p.ship_dir.clone(), "Auth Flow", "Body", None, None, Some("feature/auth")).unwrap();
-    set_feature_agent(&feat, FeatureAgentConfig {
-        model: None,
+    set_feature_agent(&feat, FeatureAgentConfig { providers: vec![], model: None,
         max_cost_per_session: None,
         mcp_servers: vec![FeatureMcpRef { id: "github".to_string() }],
         skills: vec![],
@@ -129,8 +127,7 @@ fn mcp_json_currently_includes_all_project_servers_ignoring_feature_filter() {
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
     let feat = create_feature(p.ship_dir.clone(), "Auth Flow", "Body", None, None, Some("feature/auth")).unwrap();
-    set_feature_agent(&feat, FeatureAgentConfig {
-        model: None, max_cost_per_session: None,
+    set_feature_agent(&feat, FeatureAgentConfig { providers: vec![], model: None, max_cost_per_session: None,
         mcp_servers: vec![FeatureMcpRef { id: "github".to_string() }], // only github
         skills: vec![],
     });
@@ -201,8 +198,7 @@ fn switching_to_main_removes_ship_managed_mcp_servers() {
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
     let feat = create_feature(p.ship_dir.clone(), "Auth Flow", "Body", None, None, Some("feature/auth")).unwrap();
-    set_feature_agent(&feat, FeatureAgentConfig {
-        model: None, max_cost_per_session: None,
+    set_feature_agent(&feat, FeatureAgentConfig { providers: vec![], model: None, max_cost_per_session: None,
         mcp_servers: vec![FeatureMcpRef { id: "github".to_string() }],
         skills: vec![],
     });
@@ -332,14 +328,16 @@ fn checkout_does_not_write_gemini_config_by_default() {
 }
 
 /// When a user declares gemini as their provider, checkout should write .gemini/settings.json.
-/// Currently broken: on_post_checkout hardcodes "claude".
 #[test]
-#[ignore = "multi-provider dispatch not yet implemented — hook hardcodes 'claude'"]
 fn checkout_writes_gemini_config_when_declared_as_provider() {
-    let p = TestProject::with_git().unwrap();
-    // TODO: set providers = ["gemini"] in ship.toml when that field exists
-    create_feature(p.ship_dir.clone(), "Auth Flow", "Body", None, None, Some("feature/auth")).unwrap();
+    use runtime::config::{ProjectConfig, save_config};
 
+    let p = TestProject::with_git().unwrap();
+    let mut config = ProjectConfig::default();
+    config.providers = vec!["gemini".to_string()];
+    save_config(&config, Some(p.ship_dir.clone())).unwrap();
+
+    create_feature(p.ship_dir.clone(), "Auth Flow", "Body", None, None, Some("feature/auth")).unwrap();
     on_post_checkout(&p.ship_dir, "feature/auth").unwrap();
 
     assert!(p.root().join(".gemini").join("settings.json").exists(),
