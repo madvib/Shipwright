@@ -119,6 +119,55 @@ pub fn get_provider(id: &str) -> Option<&'static ProviderDescriptor> {
     PROVIDERS.iter().find(|p| p.id == id)
 }
 
+/// Serializable projection of `ProviderDescriptor` for MCP tools and Tauri commands.
+#[derive(Serialize, Clone, specta::Type)]
+pub struct ProviderInfo {
+    pub id: String,
+    pub name: String,
+    pub binary: String,
+    pub project_config: String,
+    pub config_format: String,
+    pub prompt_output: String,
+    pub skills_output: String,
+    /// True when this provider is listed in the project's `providers` field.
+    pub enabled: bool,
+}
+
+fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
+    ProviderInfo {
+        id: d.id.to_string(),
+        name: d.name.to_string(),
+        binary: d.binary.to_string(),
+        project_config: d.project_config.to_string(),
+        config_format: match d.config_format {
+            ConfigFormat::Json => "json".to_string(),
+            ConfigFormat::Toml => "toml".to_string(),
+        },
+        prompt_output: match d.prompt_output {
+            PromptOutput::ClaudeMd => "claude-md".to_string(),
+            PromptOutput::GeminiMd => "gemini-md".to_string(),
+            PromptOutput::InstructionsKey => "instructions-key".to_string(),
+            PromptOutput::None => "none".to_string(),
+        },
+        skills_output: match d.skills_output {
+            SkillsOutput::ClaudeCommands => "claude-commands".to_string(),
+            SkillsOutput::None => "none".to_string(),
+        },
+        enabled,
+    }
+}
+
+/// Return all registered providers, each annotated with whether it's enabled in this project.
+pub fn list_providers(project_dir: &std::path::Path) -> anyhow::Result<Vec<ProviderInfo>> {
+    let config = get_config(Some(project_dir.to_path_buf()))?;
+    let enabled: std::collections::HashSet<&str> =
+        config.providers.iter().map(|s| s.as_str()).collect();
+    Ok(PROVIDERS
+        .iter()
+        .map(|d| provider_info(d, enabled.contains(d.id)))
+        .collect())
+}
+
 fn require_provider(id: &str) -> Result<&'static ProviderDescriptor> {
     get_provider(id).ok_or_else(|| {
         let known: Vec<&str> = PROVIDERS.iter().map(|p| p.id).collect();

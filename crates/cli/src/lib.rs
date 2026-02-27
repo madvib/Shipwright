@@ -1,17 +1,19 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::{
-    NoteScope, add_mode, add_status, backfill_issue_ids, create_adr, create_feature, create_issue,
-    create_note, create_release, create_skill, create_spec, create_user_skill, delete_skill,
-    delete_user_skill, find_release_path, get_active_mode, get_config, get_effective_skill,
-    get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw, get_project_dir,
+    McpServerConfig, McpServerType, NoteScope, add_mcp_server, add_mode, add_status,
+    backfill_issue_ids, create_adr, create_feature, create_issue, create_note, create_release,
+    create_skill, create_spec, create_user_skill, delete_skill, delete_user_skill,
+    find_release_path, get_active_mode, get_config, get_effective_skill, get_feature_raw,
+    get_git_config, get_global_dir, get_issue, get_note_raw, get_project_dir,
     get_project_statuses, get_release_raw, get_skill, get_spec_raw, get_user_skill,
     ingest_external_events, init_demo_project, init_project, is_category_committed,
-    list_effective_skills, list_events_since, list_features, list_issues, list_notes,
-    list_releases, list_skills, list_specs, list_user_skills, log_action, migrate_global_state,
-    migrate_json_config_file, migrate_project_state, migrate_yaml_issues, move_issue,
-    note_path_for_scope, remove_mode, remove_status, set_active_mode, set_category_committed,
-    update_feature, update_note, update_release, update_skill, update_user_skill,
+    list_effective_skills, list_events_since, list_features, list_issues, list_mcp_servers,
+    list_notes, list_releases, list_skills, list_specs, list_user_skills, log_action,
+    migrate_global_state, migrate_json_config_file, migrate_project_state, migrate_yaml_issues,
+    move_issue, note_path_for_scope, remove_mcp_server, remove_mode, remove_status,
+    set_active_mode, set_category_committed, update_feature, update_note, update_release,
+    update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout};
 use std::env;
@@ -112,8 +114,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: ModeCommands,
     },
-    /// Start the MCP server on stdio
-    Mcp,
+    /// Manage MCP servers registered in ship.toml
+    Mcp {
+        #[command(subcommand)]
+        action: McpCommands,
+    },
     /// Migrate legacy YAML issues and JSON config to TOML
     #[command(hide = true)]
     Migrate,
@@ -203,6 +208,41 @@ pub enum ModeCommands {
     Clear,
     /// Show the currently active mode
     Get,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum McpCommands {
+    /// List MCP servers registered in ship.toml
+    List,
+    /// Add an HTTP/SSE MCP server
+    Add {
+        /// Stable server ID (used in feature frontmatter)
+        id: String,
+        /// Human-readable name
+        name: String,
+        /// Server URL (for SSE or HTTP transport)
+        url: String,
+        /// Register but do not start
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// Add a stdio MCP server
+    AddStdio {
+        /// Stable server ID
+        id: String,
+        /// Human-readable name
+        name: String,
+        /// Binary to run
+        command: String,
+        /// Arguments to pass to the binary
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Remove an MCP server by ID
+    Remove { id: String },
+    /// Start the MCP stdio server (internal)
+    #[command(hide = true)]
+    Serve,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1191,8 +1231,82 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             ensure_builtin_plugin_namespaces(&project_dir)?;
             handle_time_command(action, &project_dir)?;
         }
-        Some(Commands::Mcp) => {
-            // Handled by the main unitary binary as it requires async
+        Some(Commands::Mcp { action }) => {
+            match action {
+                McpCommands::Serve => {
+                    // Handled by the main unitary binary as it requires async
+                }
+                McpCommands::List => {
+                    let project_dir = get_project_dir(None)?;
+                    let servers = list_mcp_servers(Some(project_dir))?;
+                    if servers.is_empty() {
+                        println!("No MCP servers configured. Add one with `ship mcp add`.");
+                    } else {
+                        for s in &servers {
+                            let transport = match &s.server_type {
+                                McpServerType::Stdio => format!("stdio:{}", s.command),
+                                McpServerType::Sse => {
+                                    format!("sse:{}", s.url.as_deref().unwrap_or("?"))
+                                }
+                                McpServerType::Http => {
+                                    format!("http:{}", s.url.as_deref().unwrap_or("?"))
+                                }
+                            };
+                            let status = if s.disabled { " [disabled]" } else { "" };
+                            println!("{} — {} ({}){}", s.id, s.name, transport, status);
+                        }
+                    }
+                }
+                McpCommands::Add {
+                    id,
+                    name,
+                    url,
+                    disabled,
+                } => {
+                    let project_dir = get_project_dir(None)?;
+                    let server = McpServerConfig {
+                        id: id.clone(),
+                        name,
+                        command: String::new(),
+                        args: vec![],
+                        env: Default::default(),
+                        scope: "project".to_string(),
+                        server_type: McpServerType::Http,
+                        url: Some(url),
+                        disabled,
+                        timeout_secs: None,
+                    };
+                    add_mcp_server(Some(project_dir), server)?;
+                    println!("Added MCP server '{}'.", id);
+                }
+                McpCommands::AddStdio {
+                    id,
+                    name,
+                    command,
+                    args,
+                } => {
+                    let project_dir = get_project_dir(None)?;
+                    let server = McpServerConfig {
+                        id: id.clone(),
+                        name,
+                        command,
+                        args,
+                        env: Default::default(),
+                        scope: "project".to_string(),
+                        server_type: McpServerType::Stdio,
+                        url: None,
+                        disabled: false,
+                        timeout_secs: None,
+                    };
+                    add_mcp_server(Some(project_dir), server)?;
+                    println!("Added stdio MCP server '{}'.", id);
+                }
+                McpCommands::Remove { id } => {
+                    let project_dir = get_project_dir(None)?;
+                    remove_mcp_server(Some(project_dir), &id)?;
+                    println!("Removed MCP server '{}'.", id);
+                }
+            }
         }
         Some(Commands::Migrate) => {
             let project_dir = get_project_dir(None)?;

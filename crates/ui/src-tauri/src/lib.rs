@@ -8,14 +8,17 @@ use runtime::project::{
     set_active_project_global, specs_dir,
 };
 use runtime::{
-    create_adr, create_feature, create_issue, create_release, create_spec, delete_adr,
-    delete_issue, delete_spec, get_feature, get_feature_raw as get_feature_content, get_issue,
-    get_project_dir, get_project_name, get_release, get_release_raw as get_release_content,
-    get_spec_raw as get_spec_content, ingest_external_events, init_project, list_adrs,
-    list_events_since, list_features, list_issues_full, list_registered_projects, list_releases,
-    list_specs, log_action, move_issue, read_log_entries, read_template, register_project,
-    update_adr, update_feature, update_issue, update_release, update_spec, AdrEntry, EventRecord,
-    Issue, IssueEntry, LogEntry, ADR, SHIP_DIR_NAME,
+    ProviderInfo, create_adr, create_feature, create_issue, create_release, create_spec,
+    create_skill, create_user_skill, delete_adr, delete_issue, delete_skill, delete_user_skill,
+    delete_spec, get_feature, get_feature_raw as get_feature_content, get_issue, get_project_dir,
+    get_project_name, get_release, get_release_raw as get_release_content,
+    get_spec_raw as get_spec_content, get_skill, get_effective_skill, get_user_skill,
+    ingest_external_events, init_project, list_adrs, list_events_since, list_features,
+    list_issues_full, list_providers, list_registered_projects, list_releases, list_skills,
+    list_effective_skills, list_specs, list_user_skills, log_action, move_issue, read_log_entries,
+    read_template, register_project, update_adr, update_feature, update_issue, update_release,
+    update_skill, update_user_skill, update_spec, AdrEntry, EventRecord, Issue, IssueEntry,
+    LogEntry, Skill, ADR, SHIP_DIR_NAME,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -1268,6 +1271,85 @@ fn remove_mcp_server_cmd(id: String, state: State<AppState>) -> Result<(), Strin
     remove_mcp_server(Some(dir), &id).map_err(|e| e.to_string())
 }
 
+// ─── Commands: Skills ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+fn list_skills_cmd(scope: Option<String>, state: State<AppState>) -> Result<Vec<Skill>, String> {
+    let dir = get_active_dir(&state)?;
+    match scope.as_deref() {
+        Some("user") => list_user_skills().map_err(|e| e.to_string()),
+        Some("project") => list_skills(&dir).map_err(|e| e.to_string()),
+        _ => list_effective_skills(&dir).map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_skill_cmd(id: String, scope: Option<String>, state: State<AppState>) -> Result<Skill, String> {
+    let dir = get_active_dir(&state)?;
+    match scope.as_deref() {
+        Some("user") => get_user_skill(&id).map_err(|e| e.to_string()),
+        Some("project") => get_skill(&dir, &id).map_err(|e| e.to_string()),
+        _ => get_effective_skill(&dir, &id).map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn create_skill_cmd(
+    id: String,
+    name: String,
+    content: String,
+    scope: Option<String>,
+    state: State<AppState>,
+) -> Result<Skill, String> {
+    let dir = get_active_dir(&state)?;
+    match scope.as_deref() {
+        Some("user") => create_user_skill(&id, &name, &content).map_err(|e| e.to_string()),
+        _ => create_skill(&dir, &id, &name, &content).map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn update_skill_cmd(
+    id: String,
+    name: Option<String>,
+    content: Option<String>,
+    scope: Option<String>,
+    state: State<AppState>,
+) -> Result<Skill, String> {
+    let dir = get_active_dir(&state)?;
+    match scope.as_deref() {
+        Some("user") => {
+            update_user_skill(&id, name.as_deref(), content.as_deref())
+                .map_err(|e| e.to_string())
+        }
+        _ => update_skill(&dir, &id, name.as_deref(), content.as_deref())
+            .map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn delete_skill_cmd(id: String, scope: Option<String>, state: State<AppState>) -> Result<(), String> {
+    let dir = get_active_dir(&state)?;
+    match scope.as_deref() {
+        Some("user") => delete_user_skill(&id).map_err(|e| e.to_string()),
+        _ => delete_skill(&dir, &id).map_err(|e| e.to_string()),
+    }
+}
+
+// ─── Commands: Providers ──────────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+fn list_providers_cmd(state: State<AppState>) -> Result<Vec<ProviderInfo>, String> {
+    let dir = get_active_dir(&state)?;
+    list_providers(&dir).map_err(|e| e.to_string())
+}
+
 // ─── Commands: Agent Export ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1416,6 +1498,14 @@ pub fn run() {
             list_mcp_servers_cmd,
             add_mcp_server_cmd,
             remove_mcp_server_cmd,
+            // Skills
+            list_skills_cmd,
+            get_skill_cmd,
+            create_skill_cmd,
+            update_skill_cmd,
+            delete_skill_cmd,
+            // Providers
+            list_providers_cmd,
             // Agent export
             export_agent_config_cmd,
             // AI

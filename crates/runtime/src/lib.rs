@@ -18,7 +18,7 @@ pub mod spec;
 pub mod state_db;
 
 pub use adr::{ADR, AdrEntry, AdrMetadata, create_adr, delete_adr, get_adr, list_adrs, update_adr};
-pub use agent_export::{export_to, import_from_claude, sync_active_mode};
+pub use agent_export::{ProviderInfo, export_to, import_from_claude, list_providers, sync_active_mode};
 pub use config::{
     AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType,
     ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_hook,
