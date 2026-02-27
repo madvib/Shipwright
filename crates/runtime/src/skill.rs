@@ -1,7 +1,9 @@
 use crate::fs_util::write_atomic;
+use crate::project::get_global_dir;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -39,8 +41,16 @@ fn skills_dir(project_dir: &Path) -> PathBuf {
     project_dir.join("agents").join("skills")
 }
 
+fn user_skills_dir() -> Result<PathBuf> {
+    Ok(get_global_dir()?.join("agents").join("skills"))
+}
+
 fn skill_path(project_dir: &Path, id: &str) -> PathBuf {
     skills_dir(project_dir).join(format!("{}.md", id))
+}
+
+fn user_skill_path(id: &str) -> Result<PathBuf> {
+    Ok(user_skills_dir()?.join(format!("{}.md", id)))
 }
 
 fn parse_skill(path: &Path) -> Result<Skill> {
@@ -78,13 +88,12 @@ fn write_skill(path: &Path, skill: &Skill) -> Result<()> {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-pub fn list_skills(project_dir: &Path) -> Result<Vec<Skill>> {
-    let dir = skills_dir(project_dir);
+fn list_skills_from_dir(dir: &Path) -> Result<Vec<Skill>> {
     if !dir.exists() {
         return Ok(vec![]);
     }
     let mut skills = Vec::new();
-    for entry in fs::read_dir(&dir)? {
+    for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         if path.extension().and_then(|e| e.to_str()) == Some("md") {
             match parse_skill(&path) {
@@ -97,12 +106,59 @@ pub fn list_skills(project_dir: &Path) -> Result<Vec<Skill>> {
     Ok(skills)
 }
 
+pub fn list_skills(project_dir: &Path) -> Result<Vec<Skill>> {
+    list_skills_from_dir(&skills_dir(project_dir))
+}
+
+pub fn list_user_skills() -> Result<Vec<Skill>> {
+    let dir = user_skills_dir()?;
+    list_skills_from_dir(&dir)
+}
+
+/// Returns merged user + project skills keyed by id.
+/// Project-scoped skills override user-scoped skills with the same id.
+pub fn list_effective_skills(project_dir: &Path) -> Result<Vec<Skill>> {
+    let mut by_id: HashMap<String, Skill> = HashMap::new();
+    for skill in list_user_skills()? {
+        by_id.insert(skill.id.clone(), skill);
+    }
+    for skill in list_skills(project_dir)? {
+        by_id.insert(skill.id.clone(), skill);
+    }
+    let mut merged = by_id.into_values().collect::<Vec<_>>();
+    merged.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(merged)
+}
+
 pub fn get_skill(project_dir: &Path, id: &str) -> Result<Skill> {
     let path = skill_path(project_dir, id);
     if !path.exists() {
         return Err(anyhow!("Skill '{}' not found", id));
     }
     parse_skill(&path)
+}
+
+pub fn get_user_skill(id: &str) -> Result<Skill> {
+    let path = user_skill_path(id)?;
+    if !path.exists() {
+        return Err(anyhow!("Skill '{}' not found", id));
+    }
+    parse_skill(&path)
+}
+
+/// Resolve a skill by checking project scope first, then user scope.
+pub fn get_effective_skill(project_dir: &Path, id: &str) -> Result<Skill> {
+    let local_path = skill_path(project_dir, id);
+    if local_path.exists() {
+        return parse_skill(&local_path);
+    }
+
+    let global_path = user_skill_path(id)?;
+    if global_path.exists() {
+        return parse_skill(&global_path);
+    }
+
+    Err(anyhow!("Skill '{}' not found in project or user scope", id))
 }
 
 pub fn create_skill(project_dir: &Path, id: &str, name: &str, content: &str) -> Result<Skill> {
@@ -122,17 +178,69 @@ pub fn create_skill(project_dir: &Path, id: &str, name: &str, content: &str) -> 
     Ok(skill)
 }
 
-pub fn update_skill(project_dir: &Path, id: &str, name: Option<&str>, content: Option<&str>) -> Result<Skill> {
+pub fn create_user_skill(id: &str, name: &str, content: &str) -> Result<Skill> {
+    let dir = user_skills_dir()?;
+    fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.md", id));
+    if path.exists() {
+        return Err(anyhow!("Skill '{}' already exists", id));
+    }
+    let skill = Skill {
+        id: id.to_string(),
+        name: name.to_string(),
+        description: None,
+        content: content.to_string(),
+        source: "custom".to_string(),
+    };
+    write_skill(&path, &skill)?;
+    Ok(skill)
+}
+
+pub fn update_skill(
+    project_dir: &Path,
+    id: &str,
+    name: Option<&str>,
+    content: Option<&str>,
+) -> Result<Skill> {
     let path = skill_path(project_dir, id);
     let mut skill = parse_skill(&path)?;
-    if let Some(n) = name { skill.name = n.to_string(); }
-    if let Some(c) = content { skill.content = c.to_string(); }
+    if let Some(n) = name {
+        skill.name = n.to_string();
+    }
+    if let Some(c) = content {
+        skill.content = c.to_string();
+    }
+    write_skill(&path, &skill)?;
+    Ok(skill)
+}
+
+pub fn update_user_skill(id: &str, name: Option<&str>, content: Option<&str>) -> Result<Skill> {
+    let path = user_skill_path(id)?;
+    if !path.exists() {
+        return Err(anyhow!("Skill '{}' not found", id));
+    }
+    let mut skill = parse_skill(&path)?;
+    if let Some(n) = name {
+        skill.name = n.to_string();
+    }
+    if let Some(c) = content {
+        skill.content = c.to_string();
+    }
     write_skill(&path, &skill)?;
     Ok(skill)
 }
 
 pub fn delete_skill(project_dir: &Path, id: &str) -> Result<()> {
     let path = skill_path(project_dir, id);
+    if !path.exists() {
+        return Err(anyhow!("Skill '{}' not found", id));
+    }
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+pub fn delete_user_skill(id: &str) -> Result<()> {
+    let path = user_skill_path(id)?;
     if !path.exists() {
         return Err(anyhow!("Skill '{}' not found", id));
     }
@@ -148,7 +256,12 @@ mod tests {
     #[test]
     fn create_and_get_round_trip() -> Result<()> {
         let tmp = tempdir()?;
-        let s = create_skill(tmp.path(), "review", "Code Review", "Review this: $ARGUMENTS")?;
+        let s = create_skill(
+            tmp.path(),
+            "review",
+            "Code Review",
+            "Review this: $ARGUMENTS",
+        )?;
         assert_eq!(s.id, "review");
         assert_eq!(s.source, "custom");
         let got = get_skill(tmp.path(), "review")?;

@@ -67,11 +67,18 @@ assert_path_exists "$WORK_DIR/.ship/project/releases"
 assert_path_exists "$WORK_DIR/.ship/project/adrs"
 assert_path_exists "$WORK_DIR/.ship/project/notes"
 assert_path_exists "$WORK_DIR/.ship/project/vision.md"
+assert_path_exists "$WORK_DIR/.ship/project/TEMPLATE.md"
+assert_path_exists "$WORK_DIR/.ship/project/releases/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/agents/modes"
+assert_path_exists "$WORK_DIR/.ship/agents/modes/planning.toml"
+assert_path_exists "$WORK_DIR/.ship/agents/modes/execution.toml"
 assert_path_exists "$WORK_DIR/.ship/agents/skills"
-assert_path_exists "$WORK_DIR/.ship/templates/FEATURE.md"
-assert_path_exists "$WORK_DIR/.ship/templates/RELEASE.md"
+assert_path_exists "$WORK_DIR/.ship/generated"
+assert_path_exists "$WORK_DIR/.ship/workflow/features/TEMPLATE.md"
+assert_path_exists "$WORK_DIR/.ship/workflow/specs/TEMPLATE.md"
+assert_path_exists "$WORK_DIR/.ship/workflow/issues/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/events.ndjson"
+assert_path_exists "$WORK_DIR/.ship/ship.toml"
 
 echo "Validating workflow/status customization..."
 run_ship config status add qa >/dev/null
@@ -100,7 +107,7 @@ echo "Validating release workflow..."
 run_ship release create "v0.1.0-alpha" >/dev/null
 release_list_out="$(run_ship release list)"
 assert_contains "$release_list_out" "[planned] v0.1.0-alpha"
-release_file="$(find "$WORK_DIR/.ship/project/releases" -maxdepth 1 -name 'v0-1-0-alpha*.md' -print | head -n 1)"
+release_file="$(find "$WORK_DIR/.ship/project/releases" -maxdepth 2 -name 'v0-1-0-alpha*.md' -print | head -n 1)"
 if [[ -z "${release_file:-}" ]]; then
   echo "ASSERTION FAILED: expected generated release file in .ship/project/releases" >&2
   exit 1
@@ -128,9 +135,12 @@ HOME="$ORIG_HOME" cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p mcp mcp_r
 echo "Validating git scope controls..."
 # Default: issues local; adrs/features/specs/releases committed
 assert_path_in_gitignore "workflow/issues"
+assert_path_in_gitignore "generated/"
 assert_path_in_gitignore "events.ndjson"
 assert_path_in_gitignore "ship.db"
 assert_path_not_in_gitignore "project/adrs"
+assert_path_not_in_gitignore "project/notes"
+assert_path_not_in_gitignore "agents"
 assert_path_not_in_gitignore "workflow/features"
 assert_path_not_in_gitignore "project/releases"
 

@@ -7,22 +7,25 @@ pub mod feature;
 mod fs_util;
 pub mod issue;
 pub mod log;
+pub mod migration;
+pub mod note;
 pub mod plugin;
 pub mod project;
 pub mod prompt;
 pub mod release;
 pub mod skill;
 pub mod spec;
+pub mod state_db;
 
 pub use adr::{ADR, AdrEntry, AdrMetadata, create_adr, delete_adr, get_adr, list_adrs, update_adr};
 pub use agent_export::{export_to, import_from_claude, sync_active_mode};
 pub use config::{
     AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType,
-    ModeConfig, PermissionConfig, ProjectConfig, StatusConfig, add_hook, add_mcp_server, add_mode,
-    add_status, generate_gitignore, get_active_mode, get_config, get_effective_config,
-    get_git_config, get_project_statuses, is_category_committed, list_hooks, list_mcp_servers,
-    migrate_json_config_file, remove_hook, remove_mcp_server, remove_mode, remove_status,
-    save_config, set_active_mode, set_category_committed, set_git_config,
+    ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_hook,
+    add_mcp_server, add_mode, add_status, generate_gitignore, get_active_mode, get_config,
+    get_effective_config, get_git_config, get_project_statuses, is_category_committed, list_hooks,
+    list_mcp_servers, migrate_json_config_file, remove_hook, remove_mcp_server, remove_mode,
+    remove_status, save_config, set_active_mode, set_category_committed, set_git_config,
 };
 pub use demo::init_demo_project;
 pub use events::{
@@ -40,24 +43,38 @@ pub use issue::{
     move_issue, update_issue,
 };
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
+pub use migration::{
+    GlobalStateMigrationReport, ProjectFileMigrationReport, ProjectStateMigrationReport,
+    migrate_global_state, migrate_project_state,
+};
+pub use note::{
+    Note, NoteEntry, NoteMetadata, NoteScope, create_note, get_note, get_note_raw, list_notes,
+    note_path_for_scope, update_note,
+};
 pub use plugin::{Plugin, PluginRegistry};
 pub use project::{
     AppState as GlobalAppState, DEFAULT_STATUSES, ISSUE_STATUSES, ProjectEntry, ProjectRegistry,
     SHIP_DIR_NAME, get_active_project_global, get_global_dir, get_project_dir, get_project_name,
-    get_recent_projects_global, get_registry_path, init_project, list_registered_projects,
-    load_app_state, load_registry, read_template, register_project, sanitize_file_name,
-    save_app_state, save_registry, set_active_project_global, unregister_project,
+    get_recent_projects_global, get_registry_path, init_project, list_registered_namespaces,
+    list_registered_projects, load_app_state, load_registry, read_template, register_project,
+    register_ship_namespace, sanitize_file_name, save_app_state, save_registry,
+    set_active_project_global, unregister_project,
 };
 pub use prompt::{Prompt, create_prompt, delete_prompt, get_prompt, list_prompts, update_prompt};
 pub use release::{
-    Release, ReleaseEntry, ReleaseMetadata, create_release, get_release, get_release_raw,
-    list_releases, update_release,
+    Release, ReleaseEntry, ReleaseMetadata, create_release, find_release_path, get_release,
+    get_release_raw, list_releases, update_release,
 };
-pub use skill::{Skill, create_skill, delete_skill, get_skill, list_skills, update_skill};
+pub use skill::{
+    Skill, create_skill, create_user_skill, delete_skill, delete_user_skill, get_effective_skill,
+    get_skill, get_user_skill, list_effective_skills, list_skills, list_user_skills, update_skill,
+    update_user_skill,
+};
 pub use spec::{
     Spec, SpecEntry, SpecMetadata, create_spec, delete_spec, get_spec, get_spec_raw, list_specs,
     update_spec,
 };
+pub use state_db::{DatabaseMigrationReport, ensure_global_database, ensure_project_database};
 
 #[cfg(test)]
 mod tests {
@@ -201,6 +218,20 @@ mod tests {
         assert_eq!(new_path.extension().unwrap(), "md");
         let issues = list_issues(project_dir)?;
         assert_eq!(issues[0].1, "in-progress");
+        Ok(())
+    }
+
+    #[test]
+    fn test_issue_note_event_writes_to_root_stream() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let issue_path = create_issue(project_dir.clone(), "Event Note", "Desc", "backlog")?;
+        append_note(issue_path, "Implementation summary")?;
+
+        let root_events = fs::read_to_string(project_dir.join("events.ndjson"))?;
+        assert!(root_events.contains("\"entity\":\"issue\""));
+        assert!(root_events.contains("\"action\":\"note\""));
+        assert!(!project_dir.join("workflow/events.ndjson").exists());
         Ok(())
     }
 
@@ -440,12 +471,14 @@ mod tests {
     fn test_create_release() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_release(project_dir, "v0.1.0-alpha", "")?;
+        let path = create_release(project_dir.clone(), "v0.1.0-alpha", "")?;
         assert!(path.exists());
+        assert!(path.starts_with(project::upcoming_releases_dir(&project_dir)));
         let content = fs::read_to_string(&path)?;
         assert!(content.starts_with("+++\n"));
         assert!(content.contains("version = \"v0.1.0-alpha\""));
         assert!(content.contains("status = \"planned\""));
+        assert!(content.contains("supported = false"));
         Ok(())
     }
 
@@ -484,6 +517,28 @@ mod tests {
         let versions: Vec<&str> = releases.iter().map(|r| r.version.as_str()).collect();
         assert!(versions.contains(&"v0.1.0-alpha"));
         assert!(versions.contains(&"v0.2.0-alpha"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_release_path_supports_upcoming_and_legacy_locations() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+
+        // New layout: upcoming/
+        let upcoming = create_release(project_dir.clone(), "v0.3.0-alpha", "")?;
+        let upcoming_name = upcoming.file_name().unwrap().to_string_lossy().to_string();
+        let resolved_upcoming = find_release_path(&project_dir, &upcoming_name)?;
+        assert_eq!(resolved_upcoming, upcoming);
+
+        // Legacy layout: top-level project/releases/
+        let legacy_path = project::releases_dir(&project_dir).join("v0-0-9-alpha.md");
+        fs::write(
+            &legacy_path,
+            "+++\nid = \"\"\nversion = \"v0.0.9-alpha\"\nstatus = \"shipped\"\ncreated = \"2026-01-01T00:00:00Z\"\nupdated = \"2026-01-01T00:00:00Z\"\nfeatures = []\nadrs = []\ntags = []\n+++\n\nlegacy\n",
+        )?;
+        let resolved_legacy = find_release_path(&project_dir, "v0-0-9-alpha.md")?;
+        assert_eq!(resolved_legacy, legacy_path);
         Ok(())
     }
 
@@ -607,10 +662,10 @@ mod tests {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         set_category_committed(&project_dir, "issues", true)?;
-        set_category_committed(&project_dir, "log.md", false)?;
+        set_category_committed(&project_dir, "events.ndjson", false)?;
         let git = get_git_config(&project_dir)?;
         assert!(is_category_committed(&git, "issues"));
-        assert!(!is_category_committed(&git, "log.md"));
+        assert!(!is_category_committed(&git, "events.ndjson"));
         Ok(())
     }
 
@@ -645,15 +700,18 @@ mod tests {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
-        // Default config: issues/log/events stay local; features/specs/adrs/releases committed.
+        // Default config: issues/events stay local; features/specs/adrs/releases committed.
         assert!(gitignore.contains("workflow/issues"));
-        assert!(gitignore.contains("log.md"));
         assert!(gitignore.contains("events.ndjson"));
+        assert!(gitignore.contains("generated/"));
         assert!(gitignore.contains("ship.db"));
+        assert!(!gitignore.contains("log.md"));
         assert!(!gitignore.contains("project/releases"));
         assert!(!gitignore.contains("workflow/features"));
         assert!(!gitignore.contains("workflow/specs"));
         assert!(!gitignore.contains("project/adrs"));
+        assert!(!gitignore.contains("project/notes"));
+        assert!(!gitignore.contains("agents"));
         Ok(())
     }
 
@@ -664,8 +722,12 @@ mod tests {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action(project_dir.clone(), "test", "details")?;
-        let content = fs::read_to_string(project_dir.join("log.md"))?;
-        assert!(content.contains("[ship] test: details"));
+        let entries = read_log_entries(project_dir.clone())?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].actor, "ship");
+        assert_eq!(entries[0].action, "test");
+        assert_eq!(entries[0].details, "details");
+        assert!(!project_dir.join("log.md").exists());
         Ok(())
     }
 
@@ -709,22 +771,70 @@ mod tests {
         assert!(ship_path.join("workflow/specs").is_dir());
         assert!(ship_path.join("workflow/features").is_dir());
         // project/ namespace
-        assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/releases").is_dir());
+        assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/notes").is_dir());
         assert!(ship_path.join("project/vision.md").is_file());
         // agents/ namespace
         assert!(ship_path.join("agents/modes").is_dir());
         assert!(ship_path.join("agents/skills").is_dir());
         assert!(ship_path.join("agents/prompts").is_dir());
+        assert!(ship_path.join("generated").is_dir());
         // shared
-        assert!(ship_path.join("templates").is_dir());
-        assert!(ship_path.join("templates/RELEASE.md").is_file());
-        assert!(ship_path.join("templates/FEATURE.md").is_file());
-        assert!(ship_path.join("templates/VISION.md").is_file());
-        assert!(ship_path.join("log.md").is_file());
+        assert!(ship_path.join("project/releases/TEMPLATE.md").is_file());
+        assert!(ship_path.join("workflow/features/TEMPLATE.md").is_file());
+        assert!(ship_path.join("project/TEMPLATE.md").is_file());
+        assert!(ship_path.join("project/notes/TEMPLATE.md").is_file());
+        assert!(ship_path.join("README.md").is_file());
+        assert!(ship_path.join("project/README.md").is_file());
+        assert!(ship_path.join("workflow/README.md").is_file());
+        assert!(ship_path.join("agents/modes/planning.toml").is_file());
+        assert!(ship_path.join("agents/modes/execution.toml").is_file());
         assert!(ship_path.join("events.ndjson").is_file());
-        assert!(ship_path.join("config.toml").is_file());
+        assert!(ship_path.join("ship.toml").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn test_project_notes_round_trip() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+
+        let project_note = create_note(
+            NoteScope::Project,
+            Some(project_dir.clone()),
+            "Project Summary",
+            "Project content",
+        )?;
+        assert!(project_note.starts_with(project::notes_dir(&project_dir)));
+
+        let project_notes = list_notes(NoteScope::Project, Some(project_dir.clone()))?;
+        assert!(!project_notes.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_plugin_namespace_registration() -> anyhow::Result<()> {
+        struct DemoPlugin;
+
+        impl Plugin for DemoPlugin {
+            fn name(&self) -> &str {
+                "demo-plugin"
+            }
+
+            fn description(&self) -> &str {
+                "Demo plugin for namespace registration tests"
+            }
+        }
+
+        let tmp = tempdir()?;
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        let mut registry = PluginRegistry::new();
+        registry.register_with_project(&ship_path, Box::new(DemoPlugin))?;
+
+        let namespaces = list_registered_namespaces(&ship_path)?;
+        assert!(namespaces.iter().any(|ns| ns.id == "plugin:demo-plugin"));
+        assert!(ship_path.join("demo-plugin").is_dir());
         Ok(())
     }
 

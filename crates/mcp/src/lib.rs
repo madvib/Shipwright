@@ -13,16 +13,20 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use runtime::{
-    add_status, append_note, create_adr, create_feature, create_issue, create_release, create_spec,
-    delete_issue, get_adr, get_config, get_feature_raw, get_git_config, get_issue, get_project_dir,
-    get_project_name, get_project_statuses, get_release_raw, get_spec_raw, ingest_external_events,
-    is_category_committed, list_adrs, list_events_since, list_features, list_issues,
-    list_issues_full, list_registered_projects, list_releases, list_specs, log_action,
+    NoteScope, add_status, create_adr, create_feature, create_issue, create_release, create_skill,
+    create_spec, create_user_skill, delete_issue, delete_skill, delete_user_skill,
+    find_release_path, get_adr, get_config, get_effective_skill, get_feature_raw, get_git_config,
+    get_issue, get_project_dir, get_project_name, get_project_statuses, get_release_raw, get_skill,
+    get_spec_raw, get_user_skill, ingest_external_events, is_category_committed, list_adrs,
+    list_effective_skills, list_events_since, list_features, list_issues, list_issues_full,
+    list_registered_projects, list_releases, list_skills, list_specs, list_user_skills, log_action,
     log_action_by, move_issue, read_log, register_project, remove_status, set_category_committed,
-    update_feature, update_release, update_spec,
+    update_feature, update_release, update_skill, update_spec, update_user_skill,
 };
 use serde::Deserialize;
+use ship_module_git::{install_hooks, on_post_checkout};
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 
 // ─── Request Types ────────────────────────────────────────────────────────────
 
@@ -142,20 +146,96 @@ pub struct BrainstormRequest {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct GitIncludeRequest {
-    /// Category to change: issues, releases, features, specs, adrs, log.md, events.ndjson, config.toml, templates, plugins
+    /// Category to change: issues, releases, features, specs, adrs, notes, agents, events.ndjson, ship.toml, templates
     pub category: String,
     /// true = commit to git, false = local only (gitignored)
     pub commit: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct AppendNoteRequest {
-    /// Issue filename (e.g. "my-feature.md")
+pub struct GitFeatureSyncRequest {
+    /// Optional branch name. If omitted, resolves from `git branch --show-current`.
+    pub branch: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateNoteRequest {
+    /// Title of the note
+    pub title: String,
+    /// Optional markdown content
+    pub content: Option<String>,
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListNotesRequest {
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetNoteRequest {
+    /// Note filename (e.g. "session-summary.md")
     pub file_name: String,
-    /// Status folder the issue is in. If omitted, all statuses are searched.
-    pub status: Option<String>,
-    /// The note text to append (markdown supported)
-    pub note: String,
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateNoteRequest {
+    /// Note filename (e.g. "session-summary.md")
+    pub file_name: String,
+    /// Full replacement markdown content
+    pub content: String,
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateSkillRequest {
+    /// Stable skill id (e.g. "task-policy")
+    pub id: String,
+    /// Human-readable skill name
+    pub name: String,
+    /// Skill body content; supports $ARGUMENTS placeholder
+    pub content: String,
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListSkillsRequest {
+    /// Scope: effective (default), project, or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetSkillRequest {
+    /// Skill id (without .md)
+    pub id: String,
+    /// Scope: effective (default), project, or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateSkillRequest {
+    /// Skill id (without .md)
+    pub id: String,
+    /// Optional new display name
+    pub name: Option<String>,
+    /// Optional replacement content
+    pub content: Option<String>,
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeleteSkillRequest {
+    /// Skill id (without .md)
+    pub id: String,
+    /// Scope: project (default) or user
+    pub scope: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -655,33 +735,329 @@ impl ShipServer {
         }
     }
 
-    /// Append a note to an issue without rewriting it
+    // ─── Notes Tools ────────────────────────────────────────────────────────
+
+    /// Create a standalone note (project- or user-scoped)
+    #[tool(description = "Create a standalone note. Scope can be 'project' or 'user'.")]
+    async fn create_note(&self, Parameters(req): Parameters<CreateNoteRequest>) -> String {
+        let scope = match parse_note_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+        let project_dir = match scope {
+            NoteScope::Project => match self.get_effective_project_dir().await {
+                Ok(project_dir) => Some(project_dir),
+                Err(err) => return err,
+            },
+            NoteScope::User => None,
+        };
+        let body = req.content.unwrap_or_default();
+        match runtime::create_note(scope, project_dir.clone(), &req.title, &body) {
+            Ok(path) => {
+                if let Some(project_dir) = project_dir {
+                    log_action_by(
+                        project_dir,
+                        "agent",
+                        "note create",
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or(""),
+                    )
+                    .ok();
+                }
+                format!(
+                    "Created note: {}",
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("unknown")
+                )
+            }
+            Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    /// List standalone notes
+    #[tool(description = "List notes in the selected scope ('project' or 'user').")]
+    async fn list_notes(&self, Parameters(req): Parameters<ListNotesRequest>) -> String {
+        let scope = match parse_note_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+        let project_dir = match scope {
+            NoteScope::Project => match self.get_effective_project_dir().await {
+                Ok(project_dir) => Some(project_dir),
+                Err(err) => return err,
+            },
+            NoteScope::User => None,
+        };
+        match runtime::list_notes(scope, project_dir) {
+            Ok(mut notes) => {
+                notes.sort_by(|a, b| b.updated.cmp(&a.updated));
+                if notes.is_empty() {
+                    return "No notes found.".to_string();
+                }
+                let mut out = String::from("Notes:\n");
+                for note in notes {
+                    out.push_str(&format!("- {} ({})\n", note.title, note.file_name));
+                }
+                out
+            }
+            Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    /// Get a standalone note
+    #[tool(description = "Get the full markdown content of a note by filename.")]
+    async fn get_note(&self, Parameters(req): Parameters<GetNoteRequest>) -> String {
+        let scope = match parse_note_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+        let project_dir = match scope {
+            NoteScope::Project => match self.get_effective_project_dir().await {
+                Ok(project_dir) => Some(project_dir),
+                Err(err) => return err,
+            },
+            NoteScope::User => None,
+        };
+        match runtime::note_path_for_scope(scope, project_dir, &req.file_name) {
+            Ok(path) if path.exists() => match runtime::get_note_raw(path) {
+                Ok(raw) => raw,
+                Err(err) => format!("Error: {}", err),
+            },
+            Ok(_) => format!("Note not found: {}", req.file_name),
+            Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    /// Update a standalone note
+    #[tool(description = "Replace a note's markdown content by filename.")]
+    async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
+        let scope = match parse_note_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+        let project_dir = match scope {
+            NoteScope::Project => match self.get_effective_project_dir().await {
+                Ok(project_dir) => Some(project_dir),
+                Err(err) => return err,
+            },
+            NoteScope::User => None,
+        };
+        let path = match runtime::note_path_for_scope(scope, project_dir.clone(), &req.file_name) {
+            Ok(path) => path,
+            Err(err) => return format!("Error: {}", err),
+        };
+        if !path.exists() {
+            return format!("Note not found: {}", req.file_name);
+        }
+        match runtime::update_note(path, &req.content) {
+            Ok(_) => {
+                if let Some(project_dir) = project_dir {
+                    log_action_by(project_dir, "agent", "note update", &req.file_name).ok();
+                }
+                format!("Updated note: {}", req.file_name)
+            }
+            Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    /// Create a skill
     #[tool(
-        description = "Append a note or implementation summary to an issue. Use this when closing work to record what changed."
+        description = "Create a skill. Scope can be 'project' (default) or 'user' for global/core skills."
     )]
-    async fn append_to_issue(&self, Parameters(req): Parameters<AppendNoteRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
+    async fn create_skill(&self, Parameters(req): Parameters<CreateSkillRequest>) -> String {
+        let scope = match parse_skill_write_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
         };
-        let configured = get_project_statuses(Some(project_dir.clone())).unwrap_or_default();
-        let statuses: Vec<String> = if let Some(s) = req.status {
-            vec![s]
-        } else {
-            configured
-        };
-        for status in &statuses {
-            let path = runtime::project::issues_dir(&project_dir)
-                .join(status)
-                .join(&req.file_name);
-            if path.exists() {
-                return match append_note(path, &req.note) {
-                    Ok(_) => format!("Note appended to {}", req.file_name),
-                    Err(e) => format!("Error: {}", e),
+
+        let created = match scope {
+            SkillWriteScope::Project => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
                 };
+                match create_skill(&project_dir, &req.id, &req.name, &req.content) {
+                    Ok(skill) => {
+                        log_action_by(
+                            project_dir,
+                            "agent",
+                            "skill create",
+                            &format!("{} ({})", skill.id, skill.name),
+                        )
+                        .ok();
+                        skill
+                    }
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+            SkillWriteScope::User => match create_user_skill(&req.id, &req.name, &req.content) {
+                Ok(skill) => skill,
+                Err(err) => return format!("Error: {}", err),
+            },
+        };
+
+        format!("Created skill: {} ({})", created.id, created.name)
+    }
+
+    /// List skills
+    #[tool(description = "List skills in scope: effective (default), project, or user.")]
+    async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
+        let scope = match parse_skill_read_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+
+        let skills = match scope {
+            SkillReadScope::Project => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
+                };
+                match list_skills(&project_dir) {
+                    Ok(skills) => skills,
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+            SkillReadScope::User => match list_user_skills() {
+                Ok(skills) => skills,
+                Err(err) => return format!("Error: {}", err),
+            },
+            SkillReadScope::Effective => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
+                };
+                match list_effective_skills(&project_dir) {
+                    Ok(skills) => skills,
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+        };
+
+        if skills.is_empty() {
+            return "No skills found.".to_string();
+        }
+
+        let mut out = String::from("Skills:\n");
+        for skill in skills {
+            out.push_str(&format!("- {} ({})\n", skill.id, skill.name));
+        }
+        out
+    }
+
+    /// Get a skill by id
+    #[tool(description = "Get a skill body by id. Scope: effective (default), project, or user.")]
+    async fn get_skill(&self, Parameters(req): Parameters<GetSkillRequest>) -> String {
+        let scope = match parse_skill_read_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+
+        let skill = match scope {
+            SkillReadScope::Project => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
+                };
+                match get_skill(&project_dir, &req.id) {
+                    Ok(skill) => skill,
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+            SkillReadScope::User => match get_user_skill(&req.id) {
+                Ok(skill) => skill,
+                Err(err) => return format!("Error: {}", err),
+            },
+            SkillReadScope::Effective => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
+                };
+                match get_effective_skill(&project_dir, &req.id) {
+                    Ok(skill) => skill,
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+        };
+
+        skill.content
+    }
+
+    /// Update an existing skill
+    #[tool(description = "Update a skill name/content in 'project' (default) or 'user' scope.")]
+    async fn update_skill(&self, Parameters(req): Parameters<UpdateSkillRequest>) -> String {
+        let scope = match parse_skill_write_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+
+        let updated = match scope {
+            SkillWriteScope::Project => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
+                };
+                match update_skill(
+                    &project_dir,
+                    &req.id,
+                    req.name.as_deref(),
+                    req.content.as_deref(),
+                ) {
+                    Ok(skill) => {
+                        log_action_by(
+                            project_dir,
+                            "agent",
+                            "skill update",
+                            &format!("{} ({})", skill.id, skill.name),
+                        )
+                        .ok();
+                        skill
+                    }
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+            SkillWriteScope::User => {
+                match update_user_skill(&req.id, req.name.as_deref(), req.content.as_deref()) {
+                    Ok(skill) => skill,
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+        };
+
+        format!("Updated skill: {} ({})", updated.id, updated.name)
+    }
+
+    /// Delete a skill
+    #[tool(description = "Delete a skill in 'project' (default) or 'user' scope.")]
+    async fn delete_skill(&self, Parameters(req): Parameters<DeleteSkillRequest>) -> String {
+        let scope = match parse_skill_write_scope(req.scope.as_deref()) {
+            Ok(scope) => scope,
+            Err(err) => return format!("Error: {}", err),
+        };
+
+        match scope {
+            SkillWriteScope::Project => {
+                let project_dir = match self.get_effective_project_dir().await {
+                    Ok(project_dir) => project_dir,
+                    Err(err) => return err,
+                };
+                match delete_skill(&project_dir, &req.id) {
+                    Ok(()) => {
+                        log_action_by(project_dir, "agent", "skill delete", &req.id).ok();
+                    }
+                    Err(err) => return format!("Error: {}", err),
+                }
+            }
+            SkillWriteScope::User => {
+                if let Err(err) = delete_user_skill(&req.id) {
+                    return format!("Error: {}", err);
+                }
             }
         }
-        format!("Issue not found: {}", req.file_name)
+
+        format!("Deleted skill: {}", req.id)
     }
 
     /// Move an issue to a different status
@@ -908,7 +1284,10 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = runtime::project::releases_dir(&project_dir).join(&req.file_name);
+        let path = match find_release_path(&project_dir, &req.file_name) {
+            Ok(path) => path,
+            Err(err) => return format!("Error: {}", err),
+        };
         match get_release_raw(path) {
             Ok(content) => content,
             Err(e) => format!("Error: {}", e),
@@ -943,7 +1322,10 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = runtime::project::releases_dir(&project_dir).join(&req.file_name);
+        let path = match find_release_path(&project_dir, &req.file_name) {
+            Ok(path) => path,
+            Err(err) => return format!("Error: {}", err),
+        };
         match update_release(path, &req.content) {
             Ok(_) => {
                 log_action_by(project_dir, "agent", "release update", &req.file_name).ok();
@@ -1150,6 +1532,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         let root = req
             .dir
             .map(std::path::PathBuf::from)
@@ -1182,6 +1567,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         match ghost_issues::generate_report(&project_dir) {
             Ok(r) => r,
             Err(e) => format!("Error: {}", e),
@@ -1197,6 +1585,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         match ghost_issues::mark_promoted(&project_dir, &req.file, req.line) {
             Ok(true) => {
                 if let Ok(Some(scan)) = ghost_issues::load_last_scan(&project_dir) {
@@ -1369,11 +1760,11 @@ impl ShipServer {
                     "features",
                     "adrs",
                     "specs",
-                    "log.md",
+                    "notes",
+                    "agents",
                     "events.ndjson",
-                    "config.toml",
+                    "ship.toml",
                     "templates",
-                    "plugins",
                 ];
                 let mut out = String::from("Git commit settings:\n");
                 for cat in cats {
@@ -1392,7 +1783,7 @@ impl ShipServer {
 
     /// Update git commit settings for the active project
     #[tool(
-        description = "Set whether a category (issues/releases/features/specs/adrs/log.md/events.ndjson/config.toml/templates/plugins) is committed to git or kept local. Updates .ship/.gitignore automatically."
+        description = "Set whether a category (issues/releases/features/specs/adrs/notes/agents/events.ndjson/ship.toml/templates) is committed to git or kept local. Updates .ship/.gitignore automatically."
     )]
     async fn git_config_set(&self, Parameters(req): Parameters<GitIncludeRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
@@ -1405,11 +1796,11 @@ impl ShipServer {
             "features",
             "adrs",
             "specs",
-            "log.md",
+            "notes",
+            "agents",
             "events.ndjson",
-            "config.toml",
+            "ship.toml",
             "templates",
-            "plugins",
         ];
         if !known.contains(&req.category.as_str()) {
             return format!(
@@ -1432,6 +1823,51 @@ impl ShipServer {
         }
     }
 
+    /// Install Ship git hooks in this repository
+    #[tool(
+        description = "Install Ship's git hooks (including post-checkout) in the active project's repository"
+    )]
+    async fn git_hooks_install(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let Some(project_root) = project_dir.parent() else {
+            return "Error: Could not resolve project root".to_string();
+        };
+        let git_dir = project_root.join(".git");
+        if !git_dir.exists() {
+            return format!("Error: No git repository found at {}", git_dir.display());
+        }
+        match install_hooks(&git_dir) {
+            Ok(_) => format!("Installed git hooks in {}", git_dir.join("hooks").display()),
+            Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    /// Regenerate feature-aware context files for a branch
+    #[tool(description = "Regenerate branch-scoped CLAUDE.md and .mcp.json for a feature branch")]
+    async fn git_feature_sync(&self, Parameters(req): Parameters<GitFeatureSyncRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let Some(project_root) = project_dir.parent() else {
+            return "Error: Could not resolve project root".to_string();
+        };
+        let branch = match req.branch {
+            Some(branch) if !branch.trim().is_empty() => branch,
+            _ => match current_branch(project_root) {
+                Ok(branch) => branch,
+                Err(err) => return format!("Error: {}", err),
+            },
+        };
+        match on_post_checkout(&project_dir, &branch) {
+            Ok(_) => format!("Synced feature context for branch {}", branch),
+            Err(err) => format!("Error: {}", err),
+        }
+    }
+
     // ─── Time Tracking Tools ─────────────────────────────────────────────────
 
     /// Start a timer for an issue
@@ -1441,6 +1877,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         // Try to resolve title from issue file
         let issue_title = {
             let mut title = req.issue_file.clone();
@@ -1475,6 +1914,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         match time_tracker::stop_timer(&project_dir, req.note) {
             Ok(e) => format!(
                 "Timer stopped: {} — {}",
@@ -1492,6 +1934,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         match time_tracker::get_active_timer(&project_dir) {
             Ok(Some(t)) => {
                 let elapsed = (chrono::Utc::now() - t.started_at).num_minutes().max(0) as u64;
@@ -1514,6 +1959,9 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
+            return format!("Error: {}", e);
+        }
         match time_tracker::generate_report(&project_dir) {
             Ok(report) => report,
             Err(e) => format!("Error: {}", e),
@@ -1567,6 +2015,76 @@ impl ShipServer {
     }
 }
 
+fn current_branch(project_root: &std::path::Path) -> Result<String> {
+    let output = ProcessCommand::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(project_root)
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("Failed to determine current git branch");
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
+    }
+    Ok(branch)
+}
+
+fn parse_note_scope(raw: Option<&str>) -> Result<NoteScope> {
+    raw.unwrap_or("project").parse::<NoteScope>()
+}
+
+enum SkillReadScope {
+    Project,
+    User,
+    Effective,
+}
+
+enum SkillWriteScope {
+    Project,
+    User,
+}
+
+fn parse_skill_read_scope(raw: Option<&str>) -> Result<SkillReadScope> {
+    match raw
+        .unwrap_or("effective")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "project" => Ok(SkillReadScope::Project),
+        "user" | "global" => Ok(SkillReadScope::User),
+        "effective" => Ok(SkillReadScope::Effective),
+        other => Err(anyhow!(
+            "Invalid skill scope '{}'. Expected one of: project, user, effective",
+            other
+        )),
+    }
+}
+
+fn parse_skill_write_scope(raw: Option<&str>) -> Result<SkillWriteScope> {
+    match raw
+        .unwrap_or("project")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "project" => Ok(SkillWriteScope::Project),
+        "user" | "global" => Ok(SkillWriteScope::User),
+        other => Err(anyhow!(
+            "Invalid skill scope '{}'. Expected one of: project, user",
+            other
+        )),
+    }
+}
+
+fn ensure_builtin_plugin_namespaces(project_dir: &PathBuf) -> Result<()> {
+    let mut registry = runtime::PluginRegistry::new();
+    registry.register_with_project(project_dir, Box::new(ghost_issues::GhostIssues))?;
+    registry.register_with_project(project_dir, Box::new(time_tracker::TimeTracker))?;
+    Ok(())
+}
+
 #[tool_handler]
 impl ServerHandler for ShipServer {
     fn get_info(&self) -> ServerInfo {
@@ -1608,7 +2126,8 @@ pub async fn run_server() -> Result<()> {
 mod tests {
     use super::*;
     use runtime::{
-        EventAction, EventEntity, init_project, list_events_since, list_features, list_releases,
+        EventAction, EventEntity, get_feature, init_project, list_events_since, list_features,
+        list_releases,
     };
     use tempfile::tempdir;
 
@@ -1642,7 +2161,7 @@ mod tests {
                 content: None,
                 release: Some(release_file),
                 spec: None,
-                branch: None,
+                branch: Some("feature/fs-routing".to_string()),
             }))
             .await;
         assert!(
@@ -1653,6 +2172,12 @@ mod tests {
 
         let features = list_features(project_dir.clone()).expect("list features");
         assert_eq!(features.len(), 1);
+        let feature =
+            get_feature(std::path::PathBuf::from(&features[0].path)).expect("get feature");
+        assert_eq!(
+            feature.metadata.branch.as_deref(),
+            Some("feature/fs-routing")
+        );
 
         let events = list_events_since(&project_dir, 0, Some(200)).expect("list events");
         assert!(
@@ -1669,5 +2194,45 @@ mod tests {
                     && event.action == EventAction::Create),
             "missing Feature.Create event"
         );
+    }
+
+    #[tokio::test]
+    async fn mcp_git_feature_sync_writes_context_files() {
+        let tmp = tempdir().expect("tempdir");
+        let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
+
+        let server = ShipServer::new();
+        *server.active_project.lock().await = Some(project_dir.clone());
+
+        let feature_result = server
+            .create_feature(Parameters(CreateFeatureRequest {
+                title: "Auth flow".to_string(),
+                content: Some("Ship auth.".to_string()),
+                release: None,
+                spec: None,
+                branch: Some("feature/auth".to_string()),
+            }))
+            .await;
+        assert!(
+            feature_result.contains("Created feature:"),
+            "unexpected feature response: {}",
+            feature_result
+        );
+
+        let sync_result = server
+            .git_feature_sync(Parameters(GitFeatureSyncRequest {
+                branch: Some("feature/auth".to_string()),
+            }))
+            .await;
+        assert!(
+            sync_result.contains("Synced feature context"),
+            "unexpected sync response: {}",
+            sync_result
+        );
+
+        let claude_md = tmp.path().join("CLAUDE.md");
+        let mcp_json = tmp.path().join(".mcp.json");
+        assert!(claude_md.exists(), "CLAUDE.md should be written");
+        assert!(mcp_json.exists(), ".mcp.json should be written");
     }
 }

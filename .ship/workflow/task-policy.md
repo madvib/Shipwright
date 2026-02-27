@@ -39,5 +39,6 @@ This policy defines how humans and agents execute work in alpha.
 
 ## Logging and Events
 
-- Project actions append to `.ship/log.md`.
+- Project actions append to `.ship/events.ndjson`.
+- Human-readable logs are derived from the event stream.
 - Event model should stay compatible with future global aggregation.

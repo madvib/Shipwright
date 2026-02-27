@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::{
     Feature, FeatureAgentConfig, IssueEntry, ProjectConfig, Skill, agent_export,
-    get_effective_config, get_feature, get_skill, list_issues_full,
+    get_effective_config, get_effective_skill, get_feature, list_issues_full,
 };
 use std::collections::HashSet;
 use std::fs;
@@ -72,6 +72,13 @@ pub fn find_feature_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<P
     {
         let path = entry?.path();
         if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if file_name == "TEMPLATE.md" || file_name == "README.md" {
+                continue;
+            }
             candidates.push(path);
         }
     }
@@ -244,7 +251,7 @@ fn resolve_agent_config(
         if !seen.insert(skill_id.clone()) {
             continue;
         }
-        let skill = get_skill(ship_dir, &skill_id)
+        let skill = get_effective_skill(ship_dir, &skill_id)
             .with_context(|| format!("Feature references unknown skill id '{}'", skill_id))?;
         skills.push(skill);
     }

@@ -14,7 +14,7 @@ pub const ISSUE_STATUSES: &[&str] = DEFAULT_STATUSES;
 // All document paths are derived from these. Never construct paths with raw
 // string joins outside of these helpers.
 
-/// `.ship/project/` — vision, notes, ADRs, releases
+/// `.ship/project/` — vision, notes, ADRs
 pub fn project_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("project")
 }
@@ -29,12 +29,22 @@ pub fn agents_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("agents")
 }
 
+/// `.ship/generated/` — runtime-generated/transient artifacts
+pub fn generated_ns(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("generated")
+}
+
 pub fn adrs_dir(ship_dir: &Path) -> PathBuf {
     project_ns(ship_dir).join("adrs")
 }
 
 pub fn releases_dir(ship_dir: &Path) -> PathBuf {
     project_ns(ship_dir).join("releases")
+}
+
+/// `.ship/project/releases/upcoming/` — planned/active release plans.
+pub fn upcoming_releases_dir(ship_dir: &Path) -> PathBuf {
+    releases_dir(ship_dir).join("upcoming")
 }
 
 pub fn notes_dir(ship_dir: &Path) -> PathBuf {
@@ -63,6 +73,18 @@ pub fn skills_dir(ship_dir: &Path) -> PathBuf {
 
 pub fn prompts_dir(ship_dir: &Path) -> PathBuf {
     agents_ns(ship_dir).join("prompts")
+}
+
+/// Resolve the enclosing `.ship` directory from any descendant path.
+pub fn ship_dir_from_path(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .find(|ancestor| {
+            ancestor
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == SHIP_DIR_NAME)
+        })
+        .map(Path::to_path_buf)
 }
 
 /// Resolves the .ship directory by searching upwards from the given directory.
@@ -143,12 +165,12 @@ pub fn save_registry(registry: &ProjectRegistry) -> Result<()> {
 
 pub fn register_project(name: String, path: PathBuf) -> Result<()> {
     let mut registry = load_registry()?;
-    let canonical_path = fs::canonicalize(path)?;
+    let canonical_path = normalize_registry_project_path(&path);
 
     // De-duplicate entries by canonical path and keep first occurrence.
     let mut seen_target = false;
     registry.projects.retain(|project| {
-        let project_path = fs::canonicalize(&project.path).unwrap_or_else(|_| project.path.clone());
+        let project_path = normalize_registry_project_path(&project.path);
         if project_path == canonical_path {
             if seen_target {
                 false
@@ -161,9 +183,11 @@ pub fn register_project(name: String, path: PathBuf) -> Result<()> {
         }
     });
 
-    if let Some(existing) = registry.projects.iter_mut().find(|project| {
-        fs::canonicalize(&project.path).unwrap_or_else(|_| project.path.clone()) == canonical_path
-    }) {
+    if let Some(existing) = registry
+        .projects
+        .iter_mut()
+        .find(|project| normalize_registry_project_path(&project.path) == canonical_path)
+    {
         existing.name = name;
         existing.path = canonical_path;
     } else {
@@ -179,8 +203,10 @@ pub fn register_project(name: String, path: PathBuf) -> Result<()> {
 
 pub fn unregister_project(path: PathBuf) -> Result<()> {
     let mut registry = load_registry()?;
-    let path = fs::canonicalize(path)?;
-    registry.projects.retain(|p| p.path != path);
+    let path = normalize_registry_project_path(&path);
+    registry
+        .projects
+        .retain(|p| normalize_registry_project_path(&p.path) != path);
     save_registry(&registry)?;
     Ok(())
 }
@@ -200,10 +226,35 @@ pub fn get_global_dir() -> Result<PathBuf> {
 /// Initializes the .ship directory structure in the given directory.
 pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     let ship_path = base_dir.join(SHIP_DIR_NAME);
+    fs::create_dir_all(&ship_path)?;
+
+    // Ensure config exists and is normalized with any newly added default fields.
+    let config_exists = [
+        ship_path.join(crate::config::PRIMARY_CONFIG_FILE),
+        ship_path.join(crate::config::SECONDARY_CONFIG_FILE),
+        ship_path.join(crate::config::LEGACY_CONFIG_FILE),
+    ]
+    .iter()
+    .any(|path| path.exists());
+
+    let mut config = if config_exists {
+        crate::config::get_config(Some(ship_path.clone()))?
+    } else {
+        crate::config::ProjectConfig::default()
+    };
+    ensure_first_party_namespaces(&mut config.namespaces);
+    if config_exists {
+        crate::config::save_config(&config, Some(ship_path.clone()))?;
+        cleanup_legacy_config_files(&ship_path)?;
+    } else {
+        write_initial_config_with_comments(&ship_path, &config)?;
+    }
+    ensure_registered_namespaces(&ship_path, &config.namespaces)?;
 
     // project/ namespace
-    fs::create_dir_all(adrs_dir(&ship_path))?;
     fs::create_dir_all(releases_dir(&ship_path))?;
+    fs::create_dir_all(upcoming_releases_dir(&ship_path))?;
+    fs::create_dir_all(adrs_dir(&ship_path))?;
     fs::create_dir_all(notes_dir(&ship_path))?;
 
     // workflow/ namespace
@@ -220,24 +271,12 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     fs::create_dir_all(skills_dir(&ship_path))?;
     fs::create_dir_all(prompts_dir(&ship_path))?;
 
-    // templates colocated per namespace (legacy top-level kept for compat)
-    fs::create_dir_all(ship_path.join("templates"))?;
-
-    let log_path = ship_path.join("log.md");
-    if !log_path.exists() {
-        fs::write(log_path, "# Project Log\n\n")?;
-    }
     crate::events::ensure_event_log(&ship_path)?;
 
-    // Write default config if not present
-    let config_path = ship_path.join("config.toml");
-    if !config_path.exists() {
-        let config = crate::config::ProjectConfig::default();
-        crate::config::save_config(&config, Some(ship_path.clone()))?;
-    }
-
-    // Write default templates
+    // Write default templates and docs.
     write_default_templates(&ship_path)?;
+    write_directory_readmes(&ship_path)?;
+    write_default_agent_mode_files(&ship_path)?;
 
     // Write default .gitignore (opinionated alpha defaults)
     let gitignore_path = ship_path.join(".gitignore");
@@ -260,72 +299,329 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
 }
 
 fn write_default_templates(ship_path: &std::path::Path) -> Result<()> {
-    let issue_tmpl = ship_path.join("templates/ISSUE.md");
-    if !issue_tmpl.exists() {
-        fs::write(issue_tmpl, include_str!("templates/ISSUE.md"))?;
-    }
-    let spec_tmpl = ship_path.join("templates/SPEC.md");
-    if !spec_tmpl.exists() {
-        fs::write(spec_tmpl, include_str!("templates/SPEC.md"))?;
-    }
-    let release_tmpl = ship_path.join("templates/RELEASE.md");
-    if !release_tmpl.exists() {
-        fs::write(release_tmpl, include_str!("templates/RELEASE.md"))?;
-    }
-    let vision_tmpl = ship_path.join("templates/VISION.md");
-    if !vision_tmpl.exists() {
-        fs::write(vision_tmpl, include_str!("templates/VISION.md"))?;
-    }
-    let feature_tmpl = ship_path.join("templates/FEATURE.md");
-    if !feature_tmpl.exists() {
-        fs::write(feature_tmpl, include_str!("templates/FEATURE.md"))?;
-    }
-    let adr_tmpl = ship_path.join("templates/ADR.md");
-    if !adr_tmpl.exists() {
-        fs::write(adr_tmpl, include_str!("templates/ADR.md"))?;
-    }
+    write_if_missing(
+        &issues_dir(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/ISSUE.md"),
+    )?;
+    write_if_missing(
+        &specs_dir(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/SPEC.md"),
+    )?;
+    write_if_missing(
+        &features_dir(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/FEATURE.md"),
+    )?;
+    write_if_missing(
+        &releases_dir(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/RELEASE.md"),
+    )?;
+    write_if_missing(
+        &adrs_dir(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/ADR.md"),
+    )?;
+    write_if_missing(
+        &notes_dir(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/NOTE.md"),
+    )?;
+    write_if_missing(
+        &project_ns(ship_path).join("TEMPLATE.md"),
+        include_str!("templates/VISION.md"),
+    )?;
 
     // Seed vision.md under project/ namespace.
     let vision_doc = project_ns(ship_path).join("vision.md");
-    if !vision_doc.exists() {
-        fs::write(vision_doc, include_str!("templates/VISION.md"))?;
+    write_if_missing(&vision_doc, include_str!("templates/VISION.md"))?;
+    Ok(())
+}
+
+fn write_directory_readmes(ship_path: &Path) -> Result<()> {
+    let readmes = [
+        (
+            ship_path,
+            "# .ship\n\nShip runtime data for this project. Files here are created and updated by Ship tools.\n",
+        ),
+        (
+            &project_ns(ship_path),
+            "# project/\n\nProject-level docs and long-lived context.\n- `vision.md`\n- `releases/`\n- `adrs/`\n- `notes/`\n",
+        ),
+        (
+            &releases_dir(ship_path),
+            "# project/releases/\n\nRelease plans and release state. Workflow items can reference these files.\n",
+        ),
+        (
+            &upcoming_releases_dir(ship_path),
+            "# project/releases/upcoming/\n\nPlanned or active releases that have not shipped yet.\n",
+        ),
+        (
+            &adrs_dir(ship_path),
+            "# project/adrs/\n\nArchitecture Decision Records.\n",
+        ),
+        (
+            &notes_dir(ship_path),
+            "# project/notes/\n\nProject-scoped notes.\n",
+        ),
+        (
+            &workflow_ns(ship_path),
+            "# workflow/\n\nExecution artifacts for ongoing work.\n- `issues/`\n- `specs/`\n- `features/`\n",
+        ),
+        (
+            &issues_dir(ship_path),
+            "# workflow/issues/\n\nIssues grouped by status folder.\n",
+        ),
+        (
+            &specs_dir(ship_path),
+            "# workflow/specs/\n\nProduct/technical specs that feed implementation.\n",
+        ),
+        (
+            &features_dir(ship_path),
+            "# workflow/features/\n\nFeature execution plans. These can reference releases/specs.\n",
+        ),
+        (
+            &agents_ns(ship_path),
+            "# agents/\n\nAgent runtime config: prompts, skills, and modes.\n",
+        ),
+        (
+            &generated_ns(ship_path),
+            "# generated/\n\nRuntime-generated transient artifacts.\n",
+        ),
+    ];
+
+    for (dir, content) in readmes {
+        write_if_missing(&dir.join("README.md"), content)?;
+    }
+
+    Ok(())
+}
+
+fn write_initial_config_with_comments(
+    ship_path: &Path,
+    config: &crate::config::ProjectConfig,
+) -> Result<()> {
+    let config_path = ship_path.join(crate::config::PRIMARY_CONFIG_FILE);
+    let mut content = String::from(
+        "# Ship project configuration\n\
+         # - Edit with care; prefer `ship config`, `ship mode`, and `ship git` commands where possible.\n\
+         # - `namespaces` controls top-level directories under `.ship/`.\n\
+         # - Plugin namespaces are dynamically registered when plugins are used.\n\n",
+    );
+    content.push_str(&toml::to_string_pretty(config)?);
+    crate::fs_util::write_atomic(&config_path, content)?;
+    Ok(())
+}
+
+fn write_if_missing(path: &Path, content: &str) -> Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, content)?;
+    Ok(())
+}
+
+fn cleanup_legacy_config_files(ship_path: &Path) -> Result<()> {
+    let primary = ship_path.join(crate::config::PRIMARY_CONFIG_FILE);
+    if !primary.exists() {
+        return Ok(());
+    }
+
+    for legacy_name in [
+        crate::config::SECONDARY_CONFIG_FILE,
+        crate::config::LEGACY_CONFIG_FILE,
+    ] {
+        let legacy = ship_path.join(legacy_name);
+        if legacy.exists() {
+            fs::remove_file(legacy)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn write_default_agent_mode_files(ship_path: &Path) -> Result<()> {
+    let planning = modes_dir(ship_path).join("planning.toml");
+    if !planning.exists() {
+        fs::write(
+            planning,
+            "id = \"planning\"\nname = \"Planning\"\nactive_tools = [\"ship_list_notes\", \"ship_create_note\", \"ship_list_specs\", \"ship_get_spec\", \"ship_create_spec\", \"ship_update_spec\", \"ship_list_issues\", \"ship_create_issue\", \"ship_draft_adr\", \"ship_get_project_info\"]\n",
+        )?;
+    }
+    let execution = modes_dir(ship_path).join("execution.toml");
+    if !execution.exists() {
+        fs::write(
+            execution,
+            "id = \"execution\"\nname = \"Execution\"\nactive_tools = [\"ship_list_issues\", \"ship_get_issue\", \"ship_update_issue\", \"ship_move_issue\", \"ship_list_notes\", \"ship_create_note\"]\n",
+        )?;
     }
     Ok(())
 }
 
-fn template_file_name(kind: &str) -> Result<&'static str> {
-    match kind.trim().to_ascii_lowercase().as_str() {
-        "issue" | "issues" => Ok("ISSUE.md"),
-        "adr" | "adrs" => Ok("ADR.md"),
-        "spec" | "specs" => Ok("SPEC.md"),
-        "release" | "releases" => Ok("RELEASE.md"),
-        "feature" | "features" => Ok("FEATURE.md"),
-        "vision" => Ok("VISION.md"),
+fn ensure_first_party_namespaces(namespaces: &mut Vec<crate::config::NamespaceConfig>) {
+    // Legacy compatibility: drop old catch-all plugins/ namespace.
+    namespaces.retain(|ns| !(ns.id == "plugins" && ns.path == "plugins"));
+
+    let required = [
+        ("project", "project", "project"),
+        ("workflow", "workflow", "workflow"),
+        ("agents", "agents", "agents"),
+        ("generated", "generated", "runtime"),
+    ];
+    for (id, path, owner) in required {
+        let exists = namespaces.iter().any(|ns| ns.id == id);
+        if !exists {
+            namespaces.push(crate::config::NamespaceConfig {
+                id: id.to_string(),
+                path: path.to_string(),
+                owner: owner.to_string(),
+            });
+        }
+    }
+}
+
+fn ensure_registered_namespaces(
+    ship_path: &Path,
+    namespaces: &[crate::config::NamespaceConfig],
+) -> Result<()> {
+    const RESERVED_TOP_LEVEL: &[&str] = &[
+        "project",
+        "workflow",
+        "agents",
+        "generated",
+        "ship.toml",
+        "shipwright.toml",
+        "config.toml",
+        "events.ndjson",
+        "log.md",
+        "templates",
+        "plugins",
+    ];
+
+    for ns in namespaces {
+        let rel = ns.path.trim();
+        if rel.is_empty() {
+            continue;
+        }
+        let rel_path = Path::new(rel);
+        if rel_path.is_absolute()
+            || rel_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(anyhow!(
+                "Invalid namespace path '{}' for namespace '{}'",
+                ns.path,
+                ns.id
+            ));
+        }
+        if ns.id.starts_with("plugin:") {
+            let mut components = rel_path.components();
+            let first = components
+                .next()
+                .and_then(|c| c.as_os_str().to_str())
+                .ok_or_else(|| anyhow!("Plugin namespace '{}' has an invalid path", ns.id))?;
+            if components.next().is_some() {
+                return Err(anyhow!(
+                    "Plugin namespace '{}' must claim a top-level directory only",
+                    ns.id
+                ));
+            }
+            if RESERVED_TOP_LEVEL.contains(&first) {
+                return Err(anyhow!(
+                    "Plugin namespace '{}' cannot claim reserved path '{}'",
+                    ns.id,
+                    first
+                ));
+            }
+        }
+        fs::create_dir_all(ship_path.join(rel_path))?;
+    }
+    Ok(())
+}
+
+fn template_rel_path(kind: &str) -> Result<&'static str> {
+    match kind {
+        "issue" | "issues" => Ok("workflow/issues/TEMPLATE.md"),
+        "adr" | "adrs" => Ok("project/adrs/TEMPLATE.md"),
+        "note" | "notes" => Ok("project/notes/TEMPLATE.md"),
+        "spec" | "specs" => Ok("workflow/specs/TEMPLATE.md"),
+        "release" | "releases" => Ok("project/releases/TEMPLATE.md"),
+        "feature" | "features" => Ok("workflow/features/TEMPLATE.md"),
+        "vision" => Ok("project/TEMPLATE.md"),
         _ => Err(anyhow!("Unknown template kind: {}", kind)),
     }
 }
 
-fn template_fallback(file_name: &str) -> Result<&'static str> {
-    match file_name {
-        "ISSUE.md" => Ok(include_str!("templates/ISSUE.md")),
-        "ADR.md" => Ok(include_str!("templates/ADR.md")),
-        "SPEC.md" => Ok(include_str!("templates/SPEC.md")),
-        "RELEASE.md" => Ok(include_str!("templates/RELEASE.md")),
-        "FEATURE.md" => Ok(include_str!("templates/FEATURE.md")),
-        "VISION.md" => Ok(include_str!("templates/VISION.md")),
-        _ => Err(anyhow!("No fallback for template: {}", file_name)),
+fn legacy_template_file_name(kind: &str) -> Option<&'static str> {
+    match kind {
+        "issue" | "issues" => Some("ISSUE.md"),
+        "adr" | "adrs" => Some("ADR.md"),
+        "note" | "notes" => Some("NOTE.md"),
+        "spec" | "specs" => Some("SPEC.md"),
+        "release" | "releases" => Some("RELEASE.md"),
+        "feature" | "features" => Some("FEATURE.md"),
+        "vision" => Some("VISION.md"),
+        _ => None,
     }
 }
 
-/// Reads a project template from `.ship/templates`, with built-in fallback if missing.
-pub fn read_template(ship_path: &Path, kind: &str) -> Result<String> {
-    let file_name = template_file_name(kind)?;
-    let template_path = ship_path.join("templates").join(file_name);
-    if template_path.exists() {
-        return fs::read_to_string(template_path)
-            .with_context(|| format!("Failed to read template: {}", file_name));
+fn template_fallback(kind: &str) -> Result<&'static str> {
+    match kind {
+        "issue" | "issues" => Ok(include_str!("templates/ISSUE.md")),
+        "adr" | "adrs" => Ok(include_str!("templates/ADR.md")),
+        "note" | "notes" => Ok(include_str!("templates/NOTE.md")),
+        "spec" | "specs" => Ok(include_str!("templates/SPEC.md")),
+        "release" | "releases" => Ok(include_str!("templates/RELEASE.md")),
+        "feature" | "features" => Ok(include_str!("templates/FEATURE.md")),
+        "vision" => Ok(include_str!("templates/VISION.md")),
+        _ => Err(anyhow!("No fallback for template kind: {}", kind)),
     }
-    Ok(template_fallback(file_name)?.to_string())
+}
+
+/// Reads a project template from namespace directories, with legacy and built-in fallback.
+pub fn read_template(ship_path: &Path, kind: &str) -> Result<String> {
+    let normalized = kind.trim().to_ascii_lowercase();
+    let template_path = ship_path.join(template_rel_path(&normalized)?);
+    if template_path.exists() {
+        return fs::read_to_string(&template_path)
+            .with_context(|| format!("Failed to read template: {}", template_path.display()));
+    }
+
+    if let Some(file_name) = legacy_template_file_name(&normalized) {
+        let legacy_path = ship_path.join("templates").join(file_name);
+        if legacy_path.exists() {
+            return fs::read_to_string(&legacy_path)
+                .with_context(|| format!("Failed to read template: {}", legacy_path.display()));
+        }
+    }
+
+    Ok(template_fallback(&normalized)?.to_string())
+}
+
+/// List registered `.ship` namespaces from project config.
+pub fn list_registered_namespaces(ship_path: &Path) -> Result<Vec<crate::config::NamespaceConfig>> {
+    let config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
+    Ok(config.namespaces)
+}
+
+/// Register a new namespace and ensure its directory exists.
+pub fn register_ship_namespace(
+    ship_path: &Path,
+    namespace: crate::config::NamespaceConfig,
+) -> Result<()> {
+    let mut config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
+    if let Some(existing) = config
+        .namespaces
+        .iter_mut()
+        .find(|entry| entry.id == namespace.id)
+    {
+        *existing = namespace;
+    } else {
+        config.namespaces.push(namespace);
+    }
+    ensure_first_party_namespaces(&mut config.namespaces);
+    crate::config::save_config(&config, Some(ship_path.to_path_buf()))?;
+    ensure_registered_namespaces(ship_path, &config.namespaces)
 }
 
 pub fn sanitize_file_name(name: &str) -> String {
@@ -399,4 +695,22 @@ pub fn get_active_project_global() -> Result<Option<PathBuf>> {
 pub fn get_recent_projects_global() -> Result<Vec<PathBuf>> {
     let state = load_app_state()?;
     Ok(state.recent_projects)
+}
+
+fn normalize_registry_project_path(path: &Path) -> PathBuf {
+    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if canonical
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == SHIP_DIR_NAME)
+        .unwrap_or(false)
+    {
+        return canonical;
+    }
+    let ship_candidate = canonical.join(SHIP_DIR_NAME);
+    if ship_candidate.exists() && ship_candidate.is_dir() {
+        fs::canonicalize(&ship_candidate).unwrap_or(ship_candidate)
+    } else {
+        canonical
+    }
 }

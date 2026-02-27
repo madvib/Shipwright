@@ -9,10 +9,8 @@ echo "Resetting example workspace at $WORK_DIR"
 rm -rf "$WORK_DIR/.ship" "$WORK_DIR/.tmp"
 mkdir -p "$WORK_DIR/.tmp"
 
-if [[ ! -x "$SHIP_BIN" ]]; then
-  echo "Building CLI binary..."
-  cargo build --manifest-path "$ROOT_DIR/Cargo.toml" -p cli >/dev/null
-fi
+echo "Building latest CLI binary..."
+cargo build --manifest-path "$ROOT_DIR/Cargo.toml" -p cli >/dev/null
 
 echo "Seeding fresh .ship data..."
 (cd "$WORK_DIR" && "$SHIP_BIN" demo . >/dev/null)

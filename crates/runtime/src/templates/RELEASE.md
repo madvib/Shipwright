@@ -2,6 +2,7 @@
 id = ""
 version = "v0.1.0-alpha"
 status = "planned"
+supported = false
 created = ""
 updated = ""
 target_date = ""
@@ -22,4 +23,3 @@ tags = []
 - [ ]
 
 ## Notes
-

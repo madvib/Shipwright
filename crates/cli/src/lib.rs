@@ -1,13 +1,17 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::{
-    add_mode, add_status, append_note, backfill_issue_ids, create_adr, create_feature,
-    create_issue, create_release, create_spec, get_active_mode, get_config, get_feature_raw,
-    get_git_config, get_issue, get_project_dir, get_project_statuses, get_release_raw,
-    get_spec_raw, ingest_external_events, init_demo_project, init_project, is_category_committed,
-    list_events_since, list_features, list_issues, list_releases, list_specs, log_action,
-    migrate_json_config_file, migrate_yaml_issues, move_issue, remove_mode, remove_status,
-    set_active_mode, set_category_committed, update_feature, update_release,
+    NoteScope, add_mode, add_status, backfill_issue_ids, create_adr, create_feature, create_issue,
+    create_note, create_release, create_skill, create_spec, create_user_skill, delete_skill,
+    delete_user_skill, find_release_path, get_active_mode, get_config, get_effective_skill,
+    get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw, get_project_dir,
+    get_project_statuses, get_release_raw, get_skill, get_spec_raw, get_user_skill,
+    ingest_external_events, init_demo_project, init_project, is_category_committed,
+    list_effective_skills, list_events_since, list_features, list_issues, list_notes,
+    list_releases, list_skills, list_specs, list_user_skills, log_action, migrate_global_state,
+    migrate_json_config_file, migrate_project_state, migrate_yaml_issues, move_issue,
+    note_path_for_scope, remove_mode, remove_status, set_active_mode, set_category_committed,
+    update_feature, update_note, update_release, update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout};
 use std::env;
@@ -38,6 +42,16 @@ pub enum Commands {
     Adr {
         #[command(subcommand)]
         action: AdrCommands,
+    },
+    /// Manage notes
+    Note {
+        #[command(subcommand)]
+        action: NoteCommands,
+    },
+    /// Manage agent skills
+    Skill {
+        #[command(subcommand)]
+        action: SkillCommands,
     },
     /// Manage specs
     Spec {
@@ -107,12 +121,12 @@ pub enum GitCommands {
     Status,
     /// Include a category in git commits
     Include {
-        /// One of: issues, releases, features, specs, adrs, log.md, events.ndjson, config.toml, templates, plugins
+        /// One of: issues, releases, features, specs, adrs, notes, agents, events.ndjson, ship.toml, templates
         category: String,
     },
     /// Exclude a category from git commits (adds to .ship/.gitignore)
     Exclude {
-        /// One of: issues, releases, features, specs, adrs, log.md, events.ndjson, config.toml, templates, plugins
+        /// One of: issues, releases, features, specs, adrs, notes, agents, events.ndjson, ship.toml, templates
         category: String,
     },
     /// Install git hooks for feature-aware checkout
@@ -240,16 +254,6 @@ pub enum IssueCommands {
     Create { title: String, description: String },
     /// List all issues
     List,
-    /// Append a note to an issue (useful for implementation summaries)
-    Note {
-        /// Issue filename (e.g. my-feature.md)
-        file_name: String,
-        /// Status folder the issue is in (default: searches all)
-        #[arg(short, long)]
-        status: Option<String>,
-        /// The note text to append
-        note: String,
-    },
     /// Move an issue to a new status
     Move {
         file_name: String,
@@ -262,6 +266,91 @@ pub enum IssueCommands {
 pub enum AdrCommands {
     /// Create a new ADR
     Create { title: String, decision: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum NoteCommands {
+    /// Create a new note
+    Create {
+        title: String,
+        /// Optional initial markdown content
+        #[arg(short, long)]
+        content: Option<String>,
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
+    /// List notes
+    List {
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
+    /// Print a note document's markdown content
+    Get {
+        file_name: String,
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
+    /// Replace note markdown content
+    Update {
+        file_name: String,
+        /// Full replacement content
+        #[arg(short, long)]
+        content: String,
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SkillCommands {
+    /// Create a new skill
+    Create {
+        id: String,
+        name: String,
+        /// Skill body. Use $ARGUMENTS placeholder for slash command args.
+        #[arg(short, long)]
+        content: String,
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
+    /// List skills
+    List {
+        /// Scope: effective (default), project, or user
+        #[arg(long, default_value = "effective")]
+        scope: String,
+    },
+    /// Print a skill's markdown content
+    Get {
+        id: String,
+        /// Scope: effective (default), project, or user
+        #[arg(long, default_value = "effective")]
+        scope: String,
+    },
+    /// Update an existing skill
+    Update {
+        id: String,
+        /// Optional new display name
+        #[arg(long)]
+        name: Option<String>,
+        /// Optional replacement content
+        #[arg(short, long)]
+        content: Option<String>,
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
+    /// Delete a skill
+    Delete {
+        id: String,
+        /// Scope: project (default) or user
+        #[arg(long, default_value = "project")]
+        scope: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -377,12 +466,32 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     err
                 );
             }
-            runtime::register_project(project_name, target)?;
-            println!(
-                "Initialized and tracked Ship project in {}",
-                ship_path.display()
-            );
-            log_action(ship_path, "init", "Project initialized")?;
+            let tracked = match runtime::register_project(project_name, target.clone()) {
+                Ok(()) => true,
+                Err(err) => {
+                    eprintln!(
+                        "[ship] warning: initialized project but failed to register globally: {}",
+                        err
+                    );
+                    eprintln!(
+                        "[ship] run `ship projects track {} {}` later to add it to the global registry",
+                        target
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "project".to_string()),
+                        target.display()
+                    );
+                    false
+                }
+            };
+            if tracked {
+                println!(
+                    "Initialized and tracked Ship project in {}",
+                    ship_path.display()
+                );
+            } else {
+                println!("Initialized Ship project in {}", ship_path.display());
+            }
         }
         Some(Commands::Issue { action }) => {
             let project_dir = get_project_dir(None)?;
@@ -402,31 +511,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         println!("[{}] {}", status, file);
                     }
                 }
-                IssueCommands::Note {
-                    file_name,
-                    status,
-                    note,
-                } => {
-                    let statuses = get_project_statuses(Some(project_dir.clone()))?;
-                    let search: Vec<String> = status.map(|s| vec![s]).unwrap_or(statuses);
-                    let path = search.iter().find_map(|s| {
-                        let p = project_dir.join("issues").join(s).join(&file_name);
-                        p.exists().then_some(p)
-                    });
-                    match path {
-                        Some(p) => {
-                            append_note(p, &note)?;
-                            println!("Note appended to {}", file_name);
-                        }
-                        None => eprintln!("Issue not found: {}", file_name),
-                    }
-                }
                 IssueCommands::Move {
                     file_name,
                     from,
                     to,
                 } => {
-                    let issue_path = project_dir.join("issues").join(&from).join(&file_name);
+                    let issue_path = runtime::project::issues_dir(&project_dir)
+                        .join(&from)
+                        .join(&file_name);
                     move_issue(project_dir.clone(), issue_path, &from, &to)?;
                     println!("Moved {} from {} to {}", file_name, from, to);
                     log_action(
@@ -451,6 +543,185 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Some(Commands::Note { action }) => match action {
+            NoteCommands::Create {
+                title,
+                content,
+                scope,
+            } => {
+                let scope = parse_note_scope(&scope)?;
+                let project_dir = match scope {
+                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::User => None,
+                };
+                let body = content.unwrap_or_default();
+                let path = create_note(scope, project_dir.clone(), &title, &body)?;
+                println!("Note created: {}", path.display());
+                if let Some(project_dir) = project_dir {
+                    log_action(
+                        project_dir,
+                        "note create",
+                        &format!("Created note: {}", title),
+                    )?;
+                }
+            }
+            NoteCommands::List { scope } => {
+                let scope = parse_note_scope(&scope)?;
+                let project_dir = match scope {
+                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::User => None,
+                };
+                let mut notes = list_notes(scope, project_dir)?;
+                notes.sort_by(|a, b| b.updated.cmp(&a.updated));
+                if notes.is_empty() {
+                    println!("No notes found.");
+                } else {
+                    for note in notes {
+                        println!("{} ({})", note.title, note.file_name);
+                    }
+                }
+            }
+            NoteCommands::Get { file_name, scope } => {
+                let scope = parse_note_scope(&scope)?;
+                let project_dir = match scope {
+                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::User => None,
+                };
+                let path = note_path_for_scope(scope, project_dir, &file_name)?;
+                if !path.exists() {
+                    anyhow::bail!("Note not found: {}", file_name);
+                }
+                println!("{}", get_note_raw(path)?);
+            }
+            NoteCommands::Update {
+                file_name,
+                content,
+                scope,
+            } => {
+                let scope = parse_note_scope(&scope)?;
+                let project_dir = match scope {
+                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::User => None,
+                };
+                let path = note_path_for_scope(scope, project_dir.clone(), &file_name)?;
+                if !path.exists() {
+                    anyhow::bail!("Note not found: {}", file_name);
+                }
+                update_note(path, &content)?;
+                println!("Updated note: {}", file_name);
+                if let Some(project_dir) = project_dir {
+                    log_action(
+                        project_dir,
+                        "note update",
+                        &format!("Updated note: {}", file_name),
+                    )?;
+                }
+            }
+        },
+        Some(Commands::Skill { action }) => match action {
+            SkillCommands::Create {
+                id,
+                name,
+                content,
+                scope,
+            } => {
+                let scope = parse_skill_write_scope(&scope)?;
+                let skill = match scope {
+                    SkillWriteScope::Project => {
+                        let project_dir = get_project_dir(None)?;
+                        let skill = create_skill(&project_dir, &id, &name, &content)?;
+                        log_action(
+                            project_dir,
+                            "skill create",
+                            &format!("Created skill: {}", id),
+                        )
+                        .ok();
+                        skill
+                    }
+                    SkillWriteScope::User => create_user_skill(&id, &name, &content)?,
+                };
+                println!("Skill created: {} ({})", skill.id, skill.name);
+            }
+            SkillCommands::List { scope } => {
+                let scope = parse_skill_read_scope(&scope)?;
+                let skills = match scope {
+                    SkillReadScope::Project => {
+                        let project_dir = get_project_dir(None)?;
+                        list_skills(&project_dir)?
+                    }
+                    SkillReadScope::User => list_user_skills()?,
+                    SkillReadScope::Effective => {
+                        let project_dir = get_project_dir(None)?;
+                        list_effective_skills(&project_dir)?
+                    }
+                };
+                if skills.is_empty() {
+                    println!("No skills found.");
+                } else {
+                    for skill in skills {
+                        println!("{} ({})", skill.id, skill.name);
+                    }
+                }
+            }
+            SkillCommands::Get { id, scope } => {
+                let scope = parse_skill_read_scope(&scope)?;
+                let skill = match scope {
+                    SkillReadScope::Project => {
+                        let project_dir = get_project_dir(None)?;
+                        get_skill(&project_dir, &id)?
+                    }
+                    SkillReadScope::User => get_user_skill(&id)?,
+                    SkillReadScope::Effective => {
+                        let project_dir = get_project_dir(None)?;
+                        get_effective_skill(&project_dir, &id)?
+                    }
+                };
+                println!("{}", skill.content);
+            }
+            SkillCommands::Update {
+                id,
+                name,
+                content,
+                scope,
+            } => {
+                let scope = parse_skill_write_scope(&scope)?;
+                let updated = match scope {
+                    SkillWriteScope::Project => {
+                        let project_dir = get_project_dir(None)?;
+                        let updated =
+                            update_skill(&project_dir, &id, name.as_deref(), content.as_deref())?;
+                        log_action(
+                            project_dir,
+                            "skill update",
+                            &format!("Updated skill: {}", id),
+                        )
+                        .ok();
+                        updated
+                    }
+                    SkillWriteScope::User => {
+                        update_user_skill(&id, name.as_deref(), content.as_deref())?
+                    }
+                };
+                println!("Updated skill: {} ({})", updated.id, updated.name);
+            }
+            SkillCommands::Delete { id, scope } => {
+                let scope = parse_skill_write_scope(&scope)?;
+                match scope {
+                    SkillWriteScope::Project => {
+                        let project_dir = get_project_dir(None)?;
+                        delete_skill(&project_dir, &id)?;
+                        log_action(
+                            project_dir,
+                            "skill delete",
+                            &format!("Deleted skill: {}", id),
+                        )
+                        .ok();
+                    }
+                    SkillWriteScope::User => delete_user_skill(&id)?,
+                }
+                println!("Deleted skill: {}", id);
+            }
+        },
         Some(Commands::Spec { action }) => {
             let project_dir = get_project_dir(None)?;
             match action {
@@ -476,7 +747,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 SpecCommands::Get { file_name } => {
-                    let path = project_dir.join("specs").join(&file_name);
+                    let path = runtime::project::specs_dir(&project_dir).join(&file_name);
                     if !path.exists() {
                         anyhow::bail!("Spec not found: {}", file_name);
                     }
@@ -513,18 +784,12 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 ReleaseCommands::Get { file_name } => {
-                    let path = project_dir.join("releases").join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Release not found: {}", file_name);
-                    }
+                    let path = find_release_path(&project_dir, &file_name)?;
                     let content = get_release_raw(path)?;
                     println!("{}", content);
                 }
                 ReleaseCommands::Update { file_name, content } => {
-                    let path = project_dir.join("releases").join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Release not found: {}", file_name);
-                    }
+                    let path = find_release_path(&project_dir, &file_name)?;
                     update_release(path, &content)?;
                     println!("Updated release: {}", file_name);
                     log_action(
@@ -577,7 +842,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 FeatureCommands::Get { file_name } => {
-                    let path = project_dir.join("features").join(&file_name);
+                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
                     if !path.exists() {
                         anyhow::bail!("Feature not found: {}", file_name);
                     }
@@ -585,7 +850,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     println!("{}", content);
                 }
                 FeatureCommands::Update { file_name, content } => {
-                    let path = project_dir.join("features").join(&file_name);
+                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
                     if !path.exists() {
                         anyhow::bail!("Feature not found: {}", file_name);
                     }
@@ -690,11 +955,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         "features",
                         "adrs",
                         "specs",
-                        "log.md",
+                        "notes",
+                        "agents",
                         "events.ndjson",
-                        "config.toml",
+                        "ship.toml",
                         "templates",
-                        "plugins",
                     ];
                     println!("Ship git commit settings:");
                     for cat in cats {
@@ -762,6 +1027,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Ghost { action }) => {
             let project_dir = get_project_dir(None)?;
+            ensure_builtin_plugin_namespaces(&project_dir)?;
             match action {
                 GhostCommands::Scan { dir } => {
                     let root = dir.unwrap_or_else(|| {
@@ -918,6 +1184,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Time { action }) => {
             let project_dir = get_project_dir(None)?;
+            ensure_builtin_plugin_namespaces(&project_dir)?;
             handle_time_command(action, &project_dir)?;
         }
         Some(Commands::Mcp) => {
@@ -925,17 +1192,31 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Migrate) => {
             let project_dir = get_project_dir(None)?;
+            let global_dir = get_global_dir()?;
+            let global = migrate_global_state(&global_dir)?;
+            let project = migrate_project_state(&project_dir)?;
             let issues = migrate_yaml_issues(&project_dir)?;
             let config = migrate_json_config_file(&project_dir)?;
             let ids = backfill_issue_ids(&project_dir)?;
             println!(
-                "Migration complete: {} issue{} converted to TOML, {} ID{} backfilled{}.",
+                "Migration complete:\n- file namespace copies: copied={} skipped={} conflicts={}\n- project DB: {} (applied {})\n- global DB: {} (applied {})\n- registry: {} -> {} entries (normalized {})\n- app_state paths normalized: {}\n- issue format: {} issue{} converted to TOML, {} ID{} backfilled{}.",
+                project.files.copied_files,
+                project.files.skipped_identical_files,
+                project.files.conflict_files,
+                project.db.db_path.display(),
+                project.db.applied_migrations,
+                global.db.db_path.display(),
+                global.db.applied_migrations,
+                global.registry_entries_before,
+                global.registry_entries_after,
+                global.normalized_paths,
+                global.app_state_paths_normalized,
                 issues,
                 if issues == 1 { "" } else { "s" },
                 ids,
                 if ids == 1 { "" } else { "s" },
                 if config {
-                    ", config.json → config.toml"
+                    ", config.json → ship.toml"
                 } else {
                     ""
                 },
@@ -964,6 +1245,51 @@ fn current_branch(project_root: &std::path::Path) -> Result<String> {
     Ok(branch)
 }
 
+fn parse_note_scope(raw: &str) -> Result<NoteScope> {
+    raw.parse::<NoteScope>()
+}
+
+enum SkillReadScope {
+    Project,
+    User,
+    Effective,
+}
+
+enum SkillWriteScope {
+    Project,
+    User,
+}
+
+fn parse_skill_read_scope(raw: &str) -> Result<SkillReadScope> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "project" => Ok(SkillReadScope::Project),
+        "user" | "global" => Ok(SkillReadScope::User),
+        "effective" => Ok(SkillReadScope::Effective),
+        other => anyhow::bail!(
+            "Invalid skill scope '{}'. Expected one of: project, user, effective",
+            other
+        ),
+    }
+}
+
+fn parse_skill_write_scope(raw: &str) -> Result<SkillWriteScope> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "project" => Ok(SkillWriteScope::Project),
+        "user" | "global" => Ok(SkillWriteScope::User),
+        other => anyhow::bail!(
+            "Invalid skill scope '{}'. Expected one of: project, user",
+            other
+        ),
+    }
+}
+
+fn ensure_builtin_plugin_namespaces(project_dir: &PathBuf) -> Result<()> {
+    let mut registry = runtime::PluginRegistry::new();
+    registry.register_with_project(project_dir, Box::new(ghost_issues::GhostIssues))?;
+    registry.register_with_project(project_dir, Box::new(time_tracker::TimeTracker))?;
+    Ok(())
+}
+
 fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()> {
     use time_tracker::{
         format_duration, generate_report, get_active_timer, list_entries, log_time, start_timer,
@@ -987,7 +1313,9 @@ fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()
                     // Search through statuses
                     let mut found = None;
                     for status in runtime::ISSUE_STATUSES {
-                        let p = project_dir.join("issues").join(status).join(&issue_file);
+                        let p = runtime::project::issues_dir(project_dir)
+                            .join(status)
+                            .join(&issue_file);
                         if p.exists() {
                             found = Some(p);
                             break;

@@ -4,7 +4,7 @@ use crate::config::{
 };
 use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
-use crate::skill::list_skills;
+use crate::skill::list_effective_skills;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -369,7 +369,7 @@ fn export_claude(project_dir: &Path, payload: &SyncPayload) -> Result<()> {
 
 /// Write each skill to `.claude/commands/<id>.md` for use as slash commands.
 fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()> {
-    let skills = list_skills(project_dir)?;
+    let skills = list_effective_skills(project_dir)?;
     if skills.is_empty() {
         return Ok(());
     }
@@ -377,7 +377,10 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
     fs::create_dir_all(&commands_dir)?;
     for skill in &skills {
         let path = commands_dir.join(format!("{}.md", skill.id));
-        let content = format!("<!-- managed by ship — skill: {} -->\n\n{}\n", skill.id, skill.content);
+        let content = format!(
+            "<!-- managed by ship — skill: {} -->\n\n{}\n",
+            skill.id, skill.content
+        );
         crate::fs_util::write_atomic(&path, content)?;
     }
     Ok(())
@@ -796,7 +799,7 @@ fn write_string_list_section(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{McpServerConfig, McpServerType, save_config, ProjectConfig};
+    use crate::config::{McpServerConfig, McpServerType, ProjectConfig, save_config};
     use crate::project::init_project;
     use std::collections::HashMap;
     use tempfile::tempdir;
@@ -831,7 +834,9 @@ mod tests {
         }
     }
 
-    fn project_with_servers(servers: Vec<McpServerConfig>) -> (tempfile::TempDir, std::path::PathBuf) {
+    fn project_with_servers(
+        servers: Vec<McpServerConfig>,
+    ) -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let project_dir = init_project(tmp.path().to_path_buf()).unwrap();
         let mut config = ProjectConfig::default();
@@ -866,9 +871,10 @@ mod tests {
 
     #[test]
     fn claude_round_trip_http_server() {
-        let (tmp, project_dir) = project_with_servers(vec![
-            make_http_server("postgres", "http://localhost:5433/mcp")
-        ]);
+        let (tmp, project_dir) = project_with_servers(vec![make_http_server(
+            "postgres",
+            "http://localhost:5433/mcp",
+        )]);
         export_to(project_dir, "claude").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap();
         let val: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -883,7 +889,10 @@ mod tests {
         export_to(project_dir, "claude").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap();
         let val: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(val["mcpServers"]["ship"].is_object(), "ship server not injected");
+        assert!(
+            val["mcpServers"]["ship"].is_object(),
+            "ship server not injected"
+        );
     }
 
     #[test]
@@ -905,9 +914,8 @@ mod tests {
 
         // Manually add a user server (no _ship marker)
         let mcp_json = tmp.path().join(".mcp.json");
-        let mut val: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&mcp_json).unwrap()
-        ).unwrap();
+        let mut val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&mcp_json).unwrap()).unwrap();
         val["mcpServers"]["user-server"] = serde_json::json!({
             "command": "user-tool",
             "args": []
@@ -918,7 +926,10 @@ mod tests {
         export_to(project_dir, "claude").unwrap();
         let content = std::fs::read_to_string(&mcp_json).unwrap();
         let val2: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(val2["mcpServers"]["user-server"].is_object(), "user server was clobbered");
+        assert!(
+            val2["mcpServers"]["user-server"].is_object(),
+            "user server was clobbered"
+        );
     }
 
     #[test]
@@ -929,7 +940,10 @@ mod tests {
         export_to(project_dir, "claude").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap();
         let val: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(val["mcpServers"]["disabled-one"].is_null(), "disabled server was exported");
+        assert!(
+            val["mcpServers"]["disabled-one"].is_null(),
+            "disabled server was exported"
+        );
     }
 
     #[test]
@@ -939,7 +953,10 @@ mod tests {
         let state_path = project_dir.join("mcp_managed_state.toml");
         assert!(state_path.exists(), "managed state file not written");
         let content = std::fs::read_to_string(&state_path).unwrap();
-        assert!(content.contains("gh"), "managed server not recorded in state");
+        assert!(
+            content.contains("gh"),
+            "managed server not recorded in state"
+        );
     }
 
     // ── Gemini ─────────────────────────────────────────────────────────────────
@@ -953,16 +970,21 @@ mod tests {
 
     #[test]
     fn gemini_http_uses_httpurl_not_url() {
-        let (tmp, project_dir) = project_with_servers(vec![
-            make_http_server("figma", "https://mcp.figma.com/mcp")
-        ]);
+        let (tmp, project_dir) =
+            project_with_servers(vec![make_http_server("figma", "https://mcp.figma.com/mcp")]);
         export_to(project_dir, "gemini").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap();
         let val: serde_json::Value = serde_json::from_str(&content).unwrap();
         let server = &val["mcpServers"]["figma"];
         // Must use httpUrl, NOT url
-        assert!(server["httpUrl"].is_string(), "Gemini HTTP server must use httpUrl");
-        assert!(server["url"].is_null(), "Gemini must not use 'url' field for HTTP");
+        assert!(
+            server["httpUrl"].is_string(),
+            "Gemini HTTP server must use httpUrl"
+        );
+        assert!(
+            server["url"].is_null(),
+            "Gemini must not use 'url' field for HTTP"
+        );
     }
 
     #[test]
@@ -974,14 +996,23 @@ mod tests {
         std::fs::create_dir_all(&settings_dir).unwrap();
         std::fs::write(
             settings_dir.join("settings.json"),
-            r#"{"theme": "Dracula", "selectedAuthType": "gemini-api-key", "mcpServers": {}}"#
-        ).unwrap();
+            r#"{"theme": "Dracula", "selectedAuthType": "gemini-api-key", "mcpServers": {}}"#,
+        )
+        .unwrap();
 
         export_to(project_dir, "gemini").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap();
         let val: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert_eq!(val["theme"].as_str().unwrap(), "Dracula", "theme was clobbered");
-        assert_eq!(val["selectedAuthType"].as_str().unwrap(), "gemini-api-key", "auth type was clobbered");
+        assert_eq!(
+            val["theme"].as_str().unwrap(),
+            "Dracula",
+            "theme was clobbered"
+        );
+        assert_eq!(
+            val["selectedAuthType"].as_str().unwrap(),
+            "gemini-api-key",
+            "auth type was clobbered"
+        );
     }
 
     #[test]
@@ -1008,8 +1039,14 @@ mod tests {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("gh")]);
         export_to(project_dir, "codex").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap();
-        assert!(content.contains("[mcp_servers."), "must use mcp_servers (underscore)");
-        assert!(!content.contains("[mcp-servers."), "must NOT use mcp-servers (hyphen)");
+        assert!(
+            content.contains("[mcp_servers."),
+            "must use mcp_servers (underscore)"
+        );
+        assert!(
+            !content.contains("[mcp-servers."),
+            "must NOT use mcp-servers (hyphen)"
+        );
     }
 
     #[test]
@@ -1037,7 +1074,10 @@ mod tests {
         export_to(project_dir, "codex").unwrap();
         let content2 = std::fs::read_to_string(&config_path).unwrap();
         let val: toml::Value = toml::from_str(&content2).unwrap();
-        assert!(val["mcp_servers"]["user-tool"].is_table(), "user server was clobbered");
+        assert!(
+            val["mcp_servers"]["user-tool"].is_table(),
+            "user server was clobbered"
+        );
     }
 
     #[test]
@@ -1075,14 +1115,27 @@ mod tests {
             config.mcp_servers.push(McpServerConfig {
                 id: id.clone(),
                 name: id.clone(),
-                command: entry.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                args: entry.get("args").and_then(|v| v.as_array())
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                command: entry
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                args: entry
+                    .get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
                     .unwrap_or_default(),
                 env: HashMap::new(),
                 scope: "global".to_string(),
                 server_type,
-                url: entry.get("url").and_then(|v| v.as_str()).map(str::to_string),
+                url: entry
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
                 disabled: false,
                 timeout_secs: None,
             });

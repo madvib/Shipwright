@@ -20,6 +20,9 @@ pub struct ReleaseMetadata {
     pub status: String, // planned | active | shipped | archived
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
+    /// Whether this release line is still supported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supported: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_date: Option<String>,
     #[serde(default)]
@@ -50,10 +53,7 @@ pub struct ReleaseEntry {
 }
 
 fn ship_dir_from_release_path(path: &Path) -> Option<PathBuf> {
-    // .ship/releases/<file>.md -> go up two levels
-    path.parent()
-        .and_then(|p| p.parent())
-        .map(Path::to_path_buf)
+    crate::project::ship_dir_from_path(path)
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -91,6 +91,7 @@ impl Release {
                     status: default_status(),
                     created: now,
                     updated: now,
+                    supported: None,
                     target_date: None,
                     features: Vec::new(),
                     adrs: Vec::new(),
@@ -133,11 +134,11 @@ fn unique_path(dir: &Path, base: &str) -> PathBuf {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-/// Create a new release file in `.ship/releases/`.
+/// Create a new release file in `.ship/project/releases/`.
 pub fn create_release(project_dir: PathBuf, version: &str, body: &str) -> Result<PathBuf> {
     validate_version(version)?;
 
-    let releases_dir = crate::project::releases_dir(&project_dir);
+    let releases_dir = crate::project::upcoming_releases_dir(&project_dir);
     fs::create_dir_all(&releases_dir)?;
 
     let now = Utc::now();
@@ -148,6 +149,7 @@ pub fn create_release(project_dir: PathBuf, version: &str, body: &str) -> Result
             status: default_status(),
             created: now,
             updated: now,
+            supported: Some(false),
             target_date: None,
             features: Vec::new(),
             adrs: Vec::new(),
@@ -178,6 +180,24 @@ pub fn create_release(project_dir: PathBuf, version: &str, body: &str) -> Result
         Some(format!("version={}", version)),
     )?;
     Ok(file_path)
+}
+
+/// Resolve a release filename against known release locations.
+/// Supports:
+/// - `v0-1-0-alpha.md` (top-level historical or upcoming fallback)
+/// - `upcoming/v0-1-0-alpha.md` (explicit upcoming path)
+pub fn find_release_path(project_dir: &Path, file_name: &str) -> Result<PathBuf> {
+    let direct = crate::project::releases_dir(project_dir).join(file_name);
+    if direct.exists() {
+        return Ok(direct);
+    }
+
+    let fallback_upcoming = crate::project::upcoming_releases_dir(project_dir).join(file_name);
+    if fallback_upcoming.exists() {
+        return Ok(fallback_upcoming);
+    }
+
+    Err(anyhow!("Release not found: {}", file_name))
 }
 
 /// Read and parse a release file.
@@ -218,7 +238,7 @@ pub fn update_release(path: PathBuf, body: &str) -> Result<()> {
     Ok(())
 }
 
-/// List all release files in `.ship/releases/`.
+/// List all release files in `.ship/project/releases/`.
 pub fn list_releases(project_dir: PathBuf) -> Result<Vec<ReleaseEntry>> {
     let releases_dir = crate::project::releases_dir(&project_dir);
     if !releases_dir.exists() {
@@ -226,15 +246,32 @@ pub fn list_releases(project_dir: PathBuf) -> Result<Vec<ReleaseEntry>> {
     }
 
     let mut entries = Vec::new();
-    for entry in fs::read_dir(&releases_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |e| e == "md") {
+    let scan_dirs = vec![
+        releases_dir.clone(),
+        crate::project::upcoming_releases_dir(&project_dir),
+    ];
+    for scan_dir in scan_dirs {
+        if !scan_dir.exists() {
+            continue;
+        }
+        for entry in fs::read_dir(&scan_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !(path.is_file() && path.extension().map_or(false, |e| e == "md")) {
+                continue;
+            }
             let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
+                .strip_prefix(&releases_dir)
+                .ok()
+                .and_then(|p| p.to_str())
                 .unwrap_or("")
                 .to_string();
+            if file_name.is_empty()
+                || file_name.ends_with("TEMPLATE.md")
+                || file_name.ends_with("README.md")
+            {
+                continue;
+            }
             if let Ok(release) = get_release(path.clone()) {
                 entries.push(ReleaseEntry {
                     file_name,
