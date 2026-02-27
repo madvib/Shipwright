@@ -7,6 +7,7 @@ import {
   Folders,
   Package,
   ScrollText,
+  Sparkles,
 } from 'lucide-react';
 import {
   AdrEntry,
@@ -32,6 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface ProjectOverviewProps {
   project: Project;
@@ -56,98 +58,185 @@ export default function ProjectOverview({
   statuses,
   onNavigate,
 }: ProjectOverviewProps) {
+  const accentStyles = {
+    sky: {
+      card: 'border-l-sky-400/55',
+      action: 'border-l-sky-400/55 hover:bg-sky-500/10 hover:border-sky-400/75',
+    },
+    blue: {
+      card: 'border-l-blue-400/55',
+      action: 'border-l-blue-400/55 hover:bg-blue-500/10 hover:border-blue-400/75',
+    },
+    amber: {
+      card: 'border-l-amber-400/55',
+      action: 'border-l-amber-400/55 hover:bg-amber-500/10 hover:border-amber-400/75',
+    },
+    emerald: {
+      card: 'border-l-emerald-400/55',
+      action: 'border-l-emerald-400/55 hover:bg-emerald-500/10 hover:border-emerald-400/75',
+    },
+    cyan: {
+      card: 'border-l-cyan-400/55',
+      action: 'border-l-cyan-400/55 hover:bg-cyan-500/10 hover:border-cyan-400/75',
+    },
+    zinc: {
+      card: 'border-l-zinc-400/55',
+      action: 'border-l-zinc-400/55 hover:bg-zinc-500/10 hover:border-zinc-400/75',
+    },
+  } as const;
+
+  type AccentKey = keyof typeof accentStyles;
+
   const doneStatusIds = statuses
     .filter((status) => /done|closed|complete/i.test(status.id))
     .map((status) => status.id);
   const openIssues = issues.filter((entry) => !doneStatusIds.includes(entry.status));
+  const completedIssues = issues.filter((entry) => doneStatusIds.includes(entry.status));
+  const completionPct = issues.length === 0 ? 0 : Math.round((completedIssues.length / issues.length) * 100);
+  const summaryCards: {
+    title: string;
+    value: number | string;
+    subtitle: string;
+    route: AppRoutePath;
+    cta: string;
+    icon: typeof FolderGit2;
+    accent: AccentKey;
+  }[] = [
+    {
+      title: 'Open Issues',
+      value: openIssues.length,
+      subtitle: 'In non-done statuses',
+      route: ISSUES_ROUTE,
+      cta: 'Open Board',
+      icon: FolderGit2,
+      accent: 'sky',
+    },
+    {
+      title: 'Specs',
+      value: specs.length,
+      subtitle: 'Planning documents',
+      route: SPECS_ROUTE,
+      cta: 'Open Specs',
+      icon: FileCode2,
+      accent: 'blue',
+    },
+    {
+      title: 'ADRs',
+      value: adrs.length,
+      subtitle: 'Decision records',
+      route: ADRS_ROUTE,
+      cta: 'Open ADRs',
+      icon: FileStack,
+      accent: 'amber',
+    },
+    {
+      title: 'Releases',
+      value: releases.length,
+      subtitle: 'Milestones tracked',
+      route: RELEASES_ROUTE,
+      cta: 'Open Releases',
+      icon: Package,
+      accent: 'emerald',
+    },
+    {
+      title: 'Features',
+      value: features.length,
+      subtitle: 'Work slices planned',
+      route: FEATURES_ROUTE,
+      cta: 'Open Features',
+      icon: Flag,
+      accent: 'cyan',
+    },
+    {
+      title: 'Recent Activity',
+      value: events.length,
+      subtitle: 'Recent events captured',
+      route: ACTIVITY_ROUTE,
+      cta: 'View Activity',
+      icon: ScrollText,
+      accent: 'zinc',
+    },
+    {
+      title: 'Completion',
+      value: `${completionPct}%`,
+      subtitle: `${completedIssues.length} / ${issues.length} issues done`,
+      route: ISSUES_ROUTE,
+      cta: 'Review Issues',
+      icon: FolderGit2,
+      accent: 'emerald',
+    },
+  ];
+  const quickActions: {
+    label: string;
+    route: AppRoutePath;
+    icon: typeof FolderGit2;
+    accent: AccentKey;
+  }[] = [
+    {
+      label: 'Manage Issues',
+      route: ISSUES_ROUTE,
+      icon: FolderGit2,
+      accent: 'sky',
+    },
+    {
+      label: 'Edit Specs',
+      route: SPECS_ROUTE,
+      icon: FileCode2,
+      accent: 'blue',
+    },
+    {
+      label: 'Review ADRs',
+      route: ADRS_ROUTE,
+      icon: FileStack,
+      accent: 'amber',
+    },
+    {
+      label: 'Track Releases',
+      route: RELEASES_ROUTE,
+      icon: Package,
+      accent: 'emerald',
+    },
+    {
+      label: 'Plan Features',
+      route: FEATURES_ROUTE,
+      icon: Flag,
+      accent: 'cyan',
+    },
+    {
+      label: 'View Activity',
+      route: ACTIVITY_ROUTE,
+      icon: ScrollText,
+      accent: 'zinc',
+    },
+  ];
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-5 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
-          <p className="text-muted-foreground text-sm">{project.path}</p>
-        </div>
-        <Button variant="outline" onClick={() => onNavigate(PROJECTS_ROUTE)}>
-          <Folders className="size-4" />
-          Switch Project
-        </Button>
-      </header>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Open Issues</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-2xl font-semibold">{openIssues.length}</p>
-            <Button size="sm" variant="outline" onClick={() => onNavigate(ISSUES_ROUTE)}>
-              Open Board
-              <ArrowRight className="size-3.5" />
+    <PageFrame>
+      <PageHeader
+        title={<span title={project.path}>{project.name}</span>}
+        description="Project overview and workflow status."
+        actions={
+          <Button variant="outline" title={project.path} onClick={() => onNavigate(PROJECTS_ROUTE)}>
+            <Folders className="size-4" />
+            Switch Project
+          </Button>
+        }
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/35 bg-amber-500/[0.08] px-3 py-2">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <Sparkles className="size-3.5 text-amber-500" />
+                Vision
+              </p>
+              <p className="text-muted-foreground text-xs">Project direction and intent.</p>
+            </div>
+            <Button size="xs" variant="outline" onClick={() => onNavigate(SPECS_ROUTE)}>
+              <FileCode2 className="size-3.5" />
+              Open
             </Button>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Specs</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-2xl font-semibold">{specs.length}</p>
-            <Button size="sm" variant="outline" onClick={() => onNavigate(SPECS_ROUTE)}>
-              <FileCode2 className="size-4" />
-              Open Specs
-            </Button>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">ADRs</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-2xl font-semibold">{adrs.length}</p>
-            <Button size="sm" variant="outline" onClick={() => onNavigate(ADRS_ROUTE)}>
-              <FileStack className="size-4" />
-              Open ADRs
-            </Button>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Releases</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-2xl font-semibold">{releases.length}</p>
-            <Button size="sm" variant="outline" onClick={() => onNavigate(RELEASES_ROUTE)}>
-              <Package className="size-4" />
-              Open Releases
-            </Button>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Features</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-2xl font-semibold">{features.length}</p>
-            <Button size="sm" variant="outline" onClick={() => onNavigate(FEATURES_ROUTE)}>
-              <Flag className="size-4" />
-              Open Features
-            </Button>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-2xl font-semibold">{events.length}</p>
-            <Button size="sm" variant="outline" onClick={() => onNavigate(ACTIVITY_ROUTE)}>
-              <ScrollText className="size-4" />
-              View Activity
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        }
+      />
 
       <Card size="sm">
         <CardHeader className="pb-2">
@@ -176,28 +265,46 @@ export default function ProjectOverview({
           <CardTitle className="text-sm">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button onClick={() => onNavigate(ISSUES_ROUTE)}>
-            <FolderGit2 className="size-4" />
-            Manage Issues
-          </Button>
-          <Button variant="outline" onClick={() => onNavigate(SPECS_ROUTE)}>
-            <FileCode2 className="size-4" />
-            Edit Specs
-          </Button>
-          <Button variant="outline" onClick={() => onNavigate(ADRS_ROUTE)}>
-            <FileStack className="size-4" />
-            Review ADRs
-          </Button>
-          <Button variant="outline" onClick={() => onNavigate(RELEASES_ROUTE)}>
-            <Package className="size-4" />
-            Track Releases
-          </Button>
-          <Button variant="outline" onClick={() => onNavigate(FEATURES_ROUTE)}>
-            <Flag className="size-4" />
-            Plan Features
-          </Button>
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <Button
+                key={action.label}
+                size="xs"
+                variant="outline"
+                className={`bg-muted/30 border-l-4 transition-colors ${accentStyles[action.accent].action}`}
+                onClick={() => onNavigate(action.route)}
+              >
+                <Icon className="size-3.5" />
+                {action.label}
+                <ArrowRight className="size-3.5" />
+              </Button>
+            );
+          })}
         </CardContent>
       </Card>
-    </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {summaryCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Card key={card.title} size="sm" className={`border-l-4 ${accentStyles[card.accent].card}`}>
+              <CardHeader className="py-1.5">
+                <CardTitle className="text-sm">{card.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 pt-0 pb-2.5">
+                <p className="text-lg font-semibold">{card.value}</p>
+                <p className="text-muted-foreground text-xs">{card.subtitle}</p>
+                <Button size="xs" variant="outline" onClick={() => onNavigate(card.route)}>
+                  <Icon className="size-3.5" />
+                  {card.cta}
+                  <ArrowRight className="size-3.5" />
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </PageFrame>
   );
 }

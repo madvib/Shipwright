@@ -537,7 +537,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             let project_dir = get_project_dir(None)?;
             match action {
                 AdrCommands::Create { title, decision } => {
-                    let path = create_adr(project_dir.clone(), &title, &decision, "accepted")?;
+                    let path = create_adr(project_dir.clone(), &title, &decision, "proposed")?;
                     println!("ADR created: {}", path.display());
                     log_action(
                         project_dir,

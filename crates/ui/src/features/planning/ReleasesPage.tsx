@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import MarkdownEditor from '@/components/editor';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface ReleasesPageProps {
   releases: ReleaseEntry[];
@@ -77,19 +78,17 @@ export default function ReleasesPage({
   }, [createOpen, creating]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-5 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Releases</h2>
-          <p className="text-muted-foreground text-sm">
-            Anchor feature delivery in named milestones.
-          </p>
-        </div>
-        <Button className="gap-2" onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" />
-          New Release
-        </Button>
-      </header>
+    <PageFrame>
+      <PageHeader
+        title="Releases"
+        description="Anchor feature delivery in named milestones."
+        actions={
+          <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New Release
+          </Button>
+        }
+      />
 
       {releases.length === 0 ? (
         <Card size="sm">
@@ -197,6 +196,6 @@ export default function ReleasesPage({
           </form>
         </DetailSheet>
       )}
-    </div>
+    </PageFrame>
   );
 }

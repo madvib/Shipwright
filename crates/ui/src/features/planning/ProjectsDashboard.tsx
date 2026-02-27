@@ -3,6 +3,7 @@ import { ProjectDiscovery as Project } from '@/bindings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface ProjectsDashboardProps {
   projects: Project[];
@@ -20,23 +21,24 @@ export default function ProjectsDashboard({
   onNewProject,
 }: ProjectsDashboardProps) {
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-5 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-muted-foreground text-sm">Switch context across tracked workspaces.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onOpenProject}>
-            <FolderOpen className="size-4" />
-            Open Existing
-          </Button>
-          <Button onClick={onNewProject}>
-            <FolderPlus className="size-4" />
-            New Project
-          </Button>
-        </div>
-      </header>
+    <PageFrame>
+      <PageHeader
+        title="Projects"
+        eyebrow="Workspace"
+        description="Switch context across tracked workspaces."
+        actions={
+          <>
+            <Button variant="outline" onClick={onOpenProject}>
+              <FolderOpen className="size-4" />
+              Open Existing
+            </Button>
+            <Button onClick={onNewProject}>
+              <FolderPlus className="size-4" />
+              New Project
+            </Button>
+          </>
+        }
+      />
 
       {projects.length === 0 ? (
         <Card size="sm">
@@ -89,6 +91,6 @@ export default function ProjectsDashboard({
           })}
         </div>
       )}
-    </div>
+    </PageFrame>
   );
 }

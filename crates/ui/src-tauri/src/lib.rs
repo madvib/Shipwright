@@ -827,7 +827,7 @@ fn create_new_adr(
 ) -> Result<AdrEntry, String> {
     let project_dir = get_active_dir(&state)?;
 
-    let path = create_adr(project_dir.clone(), &title, &decision, "accepted")
+    let path = create_adr(project_dir.clone(), &title, &decision, "proposed")
         .map_err(|e| e.to_string())?;
     log_action(
         project_dir,
@@ -1354,91 +1354,107 @@ async fn brainstorm_issues_cmd(
 
 // ─── App Entry ────────────────────────────────────────────────────────────────
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let builder =
-        tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
-            // Project
-            list_projects,
-            get_active_project,
-            set_active_project,
-            pick_and_open_project,
-            create_new_project,
-            pick_project_directory,
-            create_project_with_options,
-            detect_current_project,
-            // Issues
-            list_items,
-            get_issue_by_path,
-            create_new_issue,
-            update_issue_by_path,
-            move_issue_status,
-            delete_issue_by_path,
-            // ADRs
-            list_adrs_cmd,
-            create_new_adr,
-            get_adr_cmd,
-            update_adr_cmd,
-            delete_adr_cmd,
-            // Specs
-            list_specs_cmd,
-            get_spec_cmd,
-            create_spec_cmd,
-            update_spec_cmd,
-            delete_spec_cmd,
-            // Releases
-            list_releases_cmd,
-            get_release_cmd,
-            create_release_cmd,
-            update_release_cmd,
-            // Features
-            list_features_cmd,
-            get_feature_cmd,
-            create_feature_cmd,
-            update_feature_cmd,
-            get_template_cmd,
-            // Log
-            list_events_cmd,
-            ingest_events_cmd,
-            get_log,
-            // Settings
-            get_app_settings,
-            get_project_config,
-            save_project_config,
-            save_app_settings,
-            // Modes
-            list_modes_cmd,
-            add_mode_cmd,
-            remove_mode_cmd,
-            set_active_mode_cmd,
-            get_active_mode_cmd,
-            // MCP servers
-            list_mcp_servers_cmd,
-            add_mcp_server_cmd,
-            remove_mcp_server_cmd,
-            // Agent export
-            export_agent_config_cmd,
-            // AI
-            generate_issue_description_cmd,
-            generate_adr_cmd,
-            brainstorm_issues_cmd,
-        ]);
+fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
+        // Project
+        list_projects,
+        get_active_project,
+        set_active_project,
+        pick_and_open_project,
+        create_new_project,
+        pick_project_directory,
+        create_project_with_options,
+        detect_current_project,
+        // Issues
+        list_items,
+        get_issue_by_path,
+        create_new_issue,
+        update_issue_by_path,
+        move_issue_status,
+        delete_issue_by_path,
+        // ADRs
+        list_adrs_cmd,
+        create_new_adr,
+        get_adr_cmd,
+        update_adr_cmd,
+        delete_adr_cmd,
+        // Specs
+        list_specs_cmd,
+        get_spec_cmd,
+        create_spec_cmd,
+        update_spec_cmd,
+        delete_spec_cmd,
+        // Releases
+        list_releases_cmd,
+        get_release_cmd,
+        create_release_cmd,
+        update_release_cmd,
+        // Features
+        list_features_cmd,
+        get_feature_cmd,
+        create_feature_cmd,
+        update_feature_cmd,
+        get_template_cmd,
+        // Log
+        list_events_cmd,
+        ingest_events_cmd,
+        get_log,
+        // Settings
+        get_app_settings,
+        get_project_config,
+        save_project_config,
+        save_app_settings,
+        // Modes
+        list_modes_cmd,
+        add_mode_cmd,
+        remove_mode_cmd,
+        set_active_mode_cmd,
+        get_active_mode_cmd,
+        // MCP servers
+        list_mcp_servers_cmd,
+        add_mcp_server_cmd,
+        remove_mcp_server_cmd,
+        // Agent export
+        export_agent_config_cmd,
+        // AI
+        generate_issue_description_cmd,
+        generate_adr_cmd,
+        brainstorm_issues_cmd,
+    ])
+}
 
-    // In debug builds, regenerate src/bindings.ts automatically.
-    #[cfg(debug_assertions)]
-    let bindings_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
+fn default_bindings_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")
+}
 
-    #[cfg(debug_assertions)]
-    builder
+fn export_bindings_to(path: &Path) -> Result<(), String> {
+    specta_builder()
         .export(
             specta_typescript::Typescript::default()
                 .bigint(specta_typescript::BigIntExportBehavior::Number)
                 .header(
-                    "// @ts-nocheck\n// This file is auto-generated by tauri-specta. Do not edit manually."
+                    "// @ts-nocheck\n// This file is auto-generated by tauri-specta. Do not edit manually.",
                 ),
-            &bindings_path,
+            path,
         )
-        .expect("Failed to export TypeScript bindings");
+        .map_err(|err| format!("Failed to export TypeScript bindings: {}", err))
+}
+
+pub fn export_bindings() -> Result<PathBuf, String> {
+    let path = default_bindings_path();
+    export_bindings_to(&path)?;
+    Ok(path)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let builder = specta_builder();
+
+    // In debug builds, regenerate src/bindings.ts automatically.
+    #[cfg(debug_assertions)]
+    if let Err(err) = export_bindings_to(&default_bindings_path()) {
+        panic!("{}", err);
+    }
 
     tauri::Builder::default()
         .manage(AppState::default())

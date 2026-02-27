@@ -281,6 +281,19 @@ mod tests {
         assert!(adr_path.exists());
         let content = fs::read_to_string(adr_path)?;
         assert!(content.contains("title = \"Use PostgreSQL\""));
+        assert!(content.contains("# Use PostgreSQL"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_adr_preserves_markdown_body() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let markdown = "# Keep This Title\n\n## Context\n\nBody";
+        let path = create_adr(project_dir, "Ignored Metadata Title", markdown, "proposed")?;
+        let adr = get_adr(path)?;
+        assert!(adr.body.starts_with("# Keep This Title"));
+        assert!(adr.body.contains("## Context"));
         Ok(())
     }
 

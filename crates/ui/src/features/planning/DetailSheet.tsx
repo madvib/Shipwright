@@ -5,13 +5,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 interface DetailSheetProps {
-  label: string;
+  label?: ReactNode;
   title: ReactNode;
   meta?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
+  headerClassName?: string;
+  footerClassName?: string;
+  bodyClassName?: string;
+  bodyScrollable?: boolean;
+  showHeader?: boolean;
 }
 
 export default function DetailSheet({
@@ -22,6 +27,11 @@ export default function DetailSheet({
   children,
   footer,
   className,
+  headerClassName,
+  footerClassName,
+  bodyClassName,
+  bodyScrollable = true,
+  showHeader = true,
 }: DetailSheetProps) {
   return (
     <div
@@ -35,24 +45,42 @@ export default function DetailSheet({
         )}
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="border-b px-4 py-3 md:px-5 md:py-4">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-              {label}
-            </Badge>
-            <Button variant="ghost" size="icon-sm" onClick={onClose} title="Close panel">
-              <X className="size-4" />
-            </Button>
-          </div>
-          <div className="space-y-1">
-            {title}
-            {meta}
-          </div>
-        </header>
+        {showHeader && (
+          <header className={cn('border-b px-4 py-3 md:px-5 md:py-4', headerClassName)}>
+            <div
+              className={cn(
+                'flex items-start gap-3',
+                title || meta ? 'mb-2' : 'mb-0',
+                label ? 'justify-between' : 'justify-end'
+              )}
+            >
+              {label && (
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                  {label}
+                </Badge>
+              )}
+              <Button variant="ghost" size="icon-sm" onClick={onClose} title="Close panel">
+                <X className="size-4" />
+              </Button>
+            </div>
+            <div className="space-y-1">
+              {title}
+              {meta}
+            </div>
+          </header>
+        )}
 
-        <div className="flex-1 overflow-auto px-4 py-4 md:px-5 md:py-5">{children}</div>
+        <div
+          className={cn(
+            'flex-1 px-4 py-4 md:px-5 md:py-5',
+            bodyScrollable ? 'overflow-auto' : 'overflow-hidden',
+            bodyClassName
+          )}
+        >
+          {children}
+        </div>
 
-        {footer && <footer className="border-t px-4 py-3 md:px-5 md:py-4">{footer}</footer>}
+        {footer && <footer className={cn('border-t px-4 py-3 md:px-5 md:py-4', footerClassName)}>{footer}</footer>}
       </section>
     </div>
   );

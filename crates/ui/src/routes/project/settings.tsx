@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import SettingsPanel from '@/features/agents/SettingsPanel';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
-import { AGENTS_ROUTE, ISSUES_ROUTE, OVERVIEW_ROUTE } from '@/lib/constants/routes';
+import { AGENTS_PROVIDERS_ROUTE, ISSUES_ROUTE, OVERVIEW_ROUTE } from '@/lib/constants/routes';
 
 function SettingsRouteComponent() {
   const workspace = useWorkspace();
@@ -27,7 +27,7 @@ function SettingsRouteComponent() {
         void navigate({ to: ISSUES_ROUTE });
       }}
       onOpenAgentsModule={() => {
-        void navigate({ to: AGENTS_ROUTE });
+        void navigate({ to: AGENTS_PROVIDERS_ROUTE });
       }}
       onBack={() => {
         void navigate({ to: OVERVIEW_ROUTE });

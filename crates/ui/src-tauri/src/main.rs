@@ -9,6 +9,20 @@ use std::env;
 async fn main() {
     let args: Vec<String> = env::args().collect();
 
+    // Internal utility: generate tauri-specta bindings and exit.
+    if args.len() > 1 && (args[1] == "--gen-bindings" || args[1] == "gen-bindings") {
+        match gui::export_bindings() {
+            Ok(path) => {
+                println!("Generated bindings at {}", path.display());
+                return;
+            }
+            Err(error) => {
+                eprintln!("Error generating bindings: {}", error);
+                std::process::exit(1);
+            }
+        }
+    }
+
     // If no arguments beyond the program name, run the GUI
     if args.len() <= 1 {
         gui::run();

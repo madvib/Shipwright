@@ -65,6 +65,10 @@ export default function ReleaseDetail({
         </p>
       }
       onClose={onClose}
+      className="max-w-[1800px]"
+      bodyScrollable={false}
+      bodyClassName="overflow-hidden p-0"
+      footerClassName="px-3 py-2 md:px-4 md:py-2.5"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
@@ -76,26 +80,31 @@ export default function ReleaseDetail({
         </div>
       }
     >
-      <MarkdownEditor
-        label="Release Content"
-        value={content}
-        onChange={(next) => {
-          setContent(next);
-          setDirty(true);
-        }}
-        mcpEnabled={mcpEnabled}
-        onMcpSample={() =>
-          loadProjectTemplate('release', {
-            tomlValues: {
-              version: release.version,
-            },
-          })
-        }
-        sampleLabel="Insert Template"
-        sampleRequiresMcp={false}
-        rows={18}
-        defaultMode="doc"
-      />
+      <div className="h-full min-h-0 p-2">
+        <MarkdownEditor
+          label={undefined}
+          value={content}
+          onChange={(next) => {
+            setContent(next);
+            setDirty(true);
+          }}
+          mcpEnabled={mcpEnabled}
+          onMcpSample={() =>
+            loadProjectTemplate('release', {
+              tomlValues: {
+                version: release.version,
+              },
+            })
+          }
+          sampleLabel="Insert Template"
+          sampleRequiresMcp={false}
+          sampleInline
+          showStats={false}
+          fillHeight
+          rows={18}
+          defaultMode="doc"
+        />
+      </div>
     </DetailSheet>
   );
 }

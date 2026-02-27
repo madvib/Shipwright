@@ -1,6 +1,7 @@
 version = "1"
+name = "Shipwright"
+description = "AI native project managment "
 modes = []
-mcp_servers = []
 hooks = []
 
 [[statuses]]
@@ -37,8 +38,28 @@ commit = [
     "ship.toml",
 ]
 
+[ai]
+provider = "claude"
+
+[[mcp_servers]]
+id = "shadcn"
+name = "shadcn/ui"
+command = "npx"
+args = [
+    "shadcn@latest",
+    "mcp",
+]
+scope = "project"
+server_type = "stdio"
+disabled = false
+
+[mcp_servers.env]
+
 [agent]
-skills = []
+skills = [
+    "clean-code",
+    "solid",
+]
 prompts = []
 context = []
 rules = []

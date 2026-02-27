@@ -20,6 +20,10 @@ import { Route as ProjectFeaturesRouteImport } from './routes/project/features'
 import { Route as ProjectAgentsRouteImport } from './routes/project/agents'
 import { Route as ProjectAdrsRouteImport } from './routes/project/adrs'
 import { Route as ProjectActivityRouteImport } from './routes/project/activity'
+import { Route as ProjectAgentsSkillsRouteImport } from './routes/project/agents.skills'
+import { Route as ProjectAgentsProvidersRouteImport } from './routes/project/agents.providers'
+import { Route as ProjectAgentsPromptsRouteImport } from './routes/project/agents.prompts'
+import { Route as ProjectAgentsMcpRouteImport } from './routes/project/agents.mcp'
 
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
@@ -76,32 +80,60 @@ const ProjectActivityRoute = ProjectActivityRouteImport.update({
   path: '/project/activity',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectAgentsSkillsRoute = ProjectAgentsSkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => ProjectAgentsRoute,
+} as any)
+const ProjectAgentsProvidersRoute = ProjectAgentsProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
+  getParentRoute: () => ProjectAgentsRoute,
+} as any)
+const ProjectAgentsPromptsRoute = ProjectAgentsPromptsRouteImport.update({
+  id: '/prompts',
+  path: '/prompts',
+  getParentRoute: () => ProjectAgentsRoute,
+} as any)
+const ProjectAgentsMcpRoute = ProjectAgentsMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => ProjectAgentsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRoute
   '/project/activity': typeof ProjectActivityRoute
   '/project/adrs': typeof ProjectAdrsRoute
-  '/project/agents': typeof ProjectAgentsRoute
+  '/project/agents': typeof ProjectAgentsRouteWithChildren
   '/project/features': typeof ProjectFeaturesRoute
   '/project/issues': typeof ProjectIssuesRoute
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
   '/project/specs': typeof ProjectSpecsRoute
+  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
+  '/project/agents/prompts': typeof ProjectAgentsPromptsRoute
+  '/project/agents/providers': typeof ProjectAgentsProvidersRoute
+  '/project/agents/skills': typeof ProjectAgentsSkillsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRoute
   '/project/activity': typeof ProjectActivityRoute
   '/project/adrs': typeof ProjectAdrsRoute
-  '/project/agents': typeof ProjectAgentsRoute
+  '/project/agents': typeof ProjectAgentsRouteWithChildren
   '/project/features': typeof ProjectFeaturesRoute
   '/project/issues': typeof ProjectIssuesRoute
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
   '/project/specs': typeof ProjectSpecsRoute
+  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
+  '/project/agents/prompts': typeof ProjectAgentsPromptsRoute
+  '/project/agents/providers': typeof ProjectAgentsProvidersRoute
+  '/project/agents/skills': typeof ProjectAgentsSkillsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -109,13 +141,17 @@ export interface FileRoutesById {
   '/projects': typeof ProjectsRoute
   '/project/activity': typeof ProjectActivityRoute
   '/project/adrs': typeof ProjectAdrsRoute
-  '/project/agents': typeof ProjectAgentsRoute
+  '/project/agents': typeof ProjectAgentsRouteWithChildren
   '/project/features': typeof ProjectFeaturesRoute
   '/project/issues': typeof ProjectIssuesRoute
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
   '/project/specs': typeof ProjectSpecsRoute
+  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
+  '/project/agents/prompts': typeof ProjectAgentsPromptsRoute
+  '/project/agents/providers': typeof ProjectAgentsProvidersRoute
+  '/project/agents/skills': typeof ProjectAgentsSkillsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +167,10 @@ export interface FileRouteTypes {
     | '/project/releases'
     | '/project/settings'
     | '/project/specs'
+    | '/project/agents/mcp'
+    | '/project/agents/prompts'
+    | '/project/agents/providers'
+    | '/project/agents/skills'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +184,10 @@ export interface FileRouteTypes {
     | '/project/releases'
     | '/project/settings'
     | '/project/specs'
+    | '/project/agents/mcp'
+    | '/project/agents/prompts'
+    | '/project/agents/providers'
+    | '/project/agents/skills'
   id:
     | '__root__'
     | '/'
@@ -157,6 +201,10 @@ export interface FileRouteTypes {
     | '/project/releases'
     | '/project/settings'
     | '/project/specs'
+    | '/project/agents/mcp'
+    | '/project/agents/prompts'
+    | '/project/agents/providers'
+    | '/project/agents/skills'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,7 +212,7 @@ export interface RootRouteChildren {
   ProjectsRoute: typeof ProjectsRoute
   ProjectActivityRoute: typeof ProjectActivityRoute
   ProjectAdrsRoute: typeof ProjectAdrsRoute
-  ProjectAgentsRoute: typeof ProjectAgentsRoute
+  ProjectAgentsRoute: typeof ProjectAgentsRouteWithChildren
   ProjectFeaturesRoute: typeof ProjectFeaturesRoute
   ProjectIssuesRoute: typeof ProjectIssuesRoute
   ProjectOverviewRoute: typeof ProjectOverviewRoute
@@ -252,15 +300,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/project/agents/skills': {
+      id: '/project/agents/skills'
+      path: '/skills'
+      fullPath: '/project/agents/skills'
+      preLoaderRoute: typeof ProjectAgentsSkillsRouteImport
+      parentRoute: typeof ProjectAgentsRoute
+    }
+    '/project/agents/providers': {
+      id: '/project/agents/providers'
+      path: '/providers'
+      fullPath: '/project/agents/providers'
+      preLoaderRoute: typeof ProjectAgentsProvidersRouteImport
+      parentRoute: typeof ProjectAgentsRoute
+    }
+    '/project/agents/prompts': {
+      id: '/project/agents/prompts'
+      path: '/prompts'
+      fullPath: '/project/agents/prompts'
+      preLoaderRoute: typeof ProjectAgentsPromptsRouteImport
+      parentRoute: typeof ProjectAgentsRoute
+    }
+    '/project/agents/mcp': {
+      id: '/project/agents/mcp'
+      path: '/mcp'
+      fullPath: '/project/agents/mcp'
+      preLoaderRoute: typeof ProjectAgentsMcpRouteImport
+      parentRoute: typeof ProjectAgentsRoute
+    }
   }
 }
+
+interface ProjectAgentsRouteChildren {
+  ProjectAgentsMcpRoute: typeof ProjectAgentsMcpRoute
+  ProjectAgentsPromptsRoute: typeof ProjectAgentsPromptsRoute
+  ProjectAgentsProvidersRoute: typeof ProjectAgentsProvidersRoute
+  ProjectAgentsSkillsRoute: typeof ProjectAgentsSkillsRoute
+}
+
+const ProjectAgentsRouteChildren: ProjectAgentsRouteChildren = {
+  ProjectAgentsMcpRoute: ProjectAgentsMcpRoute,
+  ProjectAgentsPromptsRoute: ProjectAgentsPromptsRoute,
+  ProjectAgentsProvidersRoute: ProjectAgentsProvidersRoute,
+  ProjectAgentsSkillsRoute: ProjectAgentsSkillsRoute,
+}
+
+const ProjectAgentsRouteWithChildren = ProjectAgentsRoute._addFileChildren(
+  ProjectAgentsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProjectsRoute: ProjectsRoute,
   ProjectActivityRoute: ProjectActivityRoute,
   ProjectAdrsRoute: ProjectAdrsRoute,
-  ProjectAgentsRoute: ProjectAgentsRoute,
+  ProjectAgentsRoute: ProjectAgentsRouteWithChildren,
   ProjectFeaturesRoute: ProjectFeaturesRoute,
   ProjectIssuesRoute: ProjectIssuesRoute,
   ProjectOverviewRoute: ProjectOverviewRoute,

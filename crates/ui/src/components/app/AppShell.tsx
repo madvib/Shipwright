@@ -13,7 +13,11 @@ import { Button } from '@/components/ui/button';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import {
   AppRoutePath,
+  AGENTS_MCP_ROUTE,
+  AGENTS_PROMPTS_ROUTE,
+  AGENTS_PROVIDERS_ROUTE,
   AGENTS_ROUTE,
+  AGENTS_SKILLS_ROUTE,
   ROUTE_LABELS,
   SETTINGS_ROUTE,
   OVERVIEW_ROUTE,
@@ -44,7 +48,11 @@ export default function App() {
     workspace.noProject &&
     !workspace.loading &&
     routePath !== SETTINGS_ROUTE &&
-    routePath !== AGENTS_ROUTE;
+    routePath !== AGENTS_ROUTE &&
+    routePath !== AGENTS_PROVIDERS_ROUTE &&
+    routePath !== AGENTS_MCP_ROUTE &&
+    routePath !== AGENTS_SKILLS_ROUTE &&
+    routePath !== AGENTS_PROMPTS_ROUTE;
 
   if (workspace.loading) {
     return (
@@ -114,7 +122,7 @@ export default function App() {
 
         {(!workspace.noProject || routePath === PROJECTS_ROUTE) && (
           <div className="mx-auto mt-4 w-full max-w-6xl px-5 md:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card/35 px-3 py-2">
               <nav className="text-muted-foreground flex items-center gap-1 text-xs">
                 {routePath === PROJECTS_ROUTE ? (
                   <span className="text-foreground">Projects</span>
@@ -155,7 +163,7 @@ export default function App() {
                   aiModel={workspace.aiModel}
                   switchingMode={workspace.switchingMode}
                   onSetMode={workspace.handleSetActiveMode}
-                  onOpenAgents={() => navigateTo(AGENTS_ROUTE)}
+                  onOpenAgents={() => navigateTo(AGENTS_PROVIDERS_ROUTE)}
                 />
               )}
             </div>
@@ -174,6 +182,8 @@ export default function App() {
           onDelete={workspace.handleDeleteIssue}
           onSave={workspace.handleSaveIssue}
           tagSuggestions={workspace.tagSuggestions}
+          specSuggestions={workspace.specSuggestions}
+          issueSuggestions={workspace.issueFileSuggestions}
           mcpEnabled={workspace.mcpEnabled}
         />
       )}
@@ -188,6 +198,8 @@ export default function App() {
       {workspace.showNewAdr && (
         <NewAdrModal
           onClose={() => workspace.setShowNewAdr(false)}
+          specSuggestions={workspace.specSuggestions}
+          tagSuggestions={workspace.tagSuggestions}
           onSubmit={workspace.handleCreateAdr}
         />
       )}
@@ -197,6 +209,8 @@ export default function App() {
           onClose={() => workspace.setSelectedAdr(null)}
           onSave={workspace.handleSaveAdr}
           onDelete={workspace.handleDeleteAdr}
+          specSuggestions={workspace.specSuggestions}
+          tagSuggestions={workspace.tagSuggestions}
           mcpEnabled={workspace.mcpEnabled}
         />
       )}

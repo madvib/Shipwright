@@ -5,9 +5,9 @@ import MarkdownEditor from '@/components/editor';
 import { loadProjectTemplate } from '@/components/editor/templateLoader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import AutocompleteInput from '@/components/ui/autocomplete-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getStatusStyles } from '@/lib/workspace-ui';
 
@@ -15,6 +15,8 @@ interface IssueDetailProps {
   entry: IssueEntry;
   statuses: StatusConfig[];
   tagSuggestions: string[];
+  specSuggestions: string[];
+  issueSuggestions: string[];
   mcpEnabled?: boolean;
   onClose: () => void;
   onStatusChange: (file_name: string, from: string, to: string) => void;
@@ -86,6 +88,8 @@ export default function IssueDetail({
   entry,
   statuses,
   tagSuggestions,
+  specSuggestions,
+  issueSuggestions,
   mcpEnabled = false,
   onClose,
   onStatusChange,
@@ -96,7 +100,6 @@ export default function IssueDetail({
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tagInput, setTagInput] = useState('');
-  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [showAddLink, setShowAddLink] = useState(false);
   const [newLinkType, setNewLinkType] = useState<LinkType>('relates-to');
   const [newLinkTarget, setNewLinkTarget] = useState('');
@@ -105,7 +108,6 @@ export default function IssueDetail({
     setDraft(normalizeIssue(entry.issue));
     setDirty(false);
     setTagInput('');
-    setShowTagSuggestions(false);
     setShowAddLink(false);
     setNewLinkType('relates-to');
     setNewLinkTarget('');
@@ -138,11 +140,6 @@ export default function IssueDetail({
     type: LINK_TYPES.includes(link.type as LinkType) ? (link.type as LinkType) : 'relates-to',
     target: link.target,
   }));
-
-  const filteredSuggestions = tagSuggestions
-    .filter((tag) => !(draft.tags ?? []).includes(tag))
-    .filter((tag) => !tagInput.trim() || tag.toLowerCase().includes(tagInput.trim().toLowerCase()))
-    .slice(0, 6);
 
   const markDirty = () => setDirty(true);
 
@@ -194,8 +191,8 @@ export default function IssueDetail({
     markDirty();
   };
 
-  const addLink = () => {
-    const target = newLinkTarget.trim();
+  const addLink = (targetOverride?: string) => {
+    const target = (targetOverride ?? newLinkTarget).trim();
     if (!target) return;
     setDraft((current) => ({
       ...current,
@@ -225,6 +222,10 @@ export default function IssueDetail({
         </p>
       }
       onClose={onClose}
+      className="max-w-[1800px]"
+      bodyScrollable={false}
+      bodyClassName="overflow-hidden p-0"
+      footerClassName="px-3 py-2 md:px-4 md:py-2.5"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
@@ -251,219 +252,193 @@ export default function IssueDetail({
         </div>
       }
     >
-      <div className="grid gap-3 md:grid-cols-2">
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Issue Metadata</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="issue-title">Title</Label>
-              <Input
-                id="issue-title"
-                value={draft.title}
-                placeholder={deriveTitleFromFileName(entry.file_name)}
-                onChange={(event) => {
-                  const title = event.target.value;
-                  setDraft((current) => ({
-                    ...current,
-                    title,
-                  }));
-                  markDirty();
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="issue-assignee">Assignee</Label>
-              <div className="flex items-center gap-2">
-                {assigneeInitials && (
-                  <Badge variant="secondary" className="h-8 min-w-8 justify-center rounded-full px-2">
-                    {assigneeInitials}
-                  </Badge>
-                )}
-                <Input
-                  id="issue-assignee"
-                  value={draft.assignee ?? ''}
-                  placeholder="Assign to..."
-                  onChange={(event) => {
-                    const assignee = event.target.value;
-                    setDraft((current) => ({
-                      ...current,
-                      assignee: assignee.trim() ? assignee : null,
-                    }));
-                    markDirty();
-                  }}
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="issue-spec">Spec Reference</Label>
-              <Input
-                id="issue-spec"
-                value={draft.spec ?? ''}
-                placeholder="alpha-spec.md"
-                onChange={(event) => {
-                  const spec = event.target.value;
-                  setDraft((current) => ({
-                    ...current,
-                    spec: spec.trim() ? spec : null,
-                  }));
-                  markDirty();
-                }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Status</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {statuses.map((status) => {
-              const statusStyles = getStatusStyles(status);
-              const active = entry.status === status.id;
-              return (
-                <Button
-                  key={status.id}
-                  variant={active ? 'secondary' : 'outline'}
-                  size="sm"
-                  className={active ? `${statusStyles.bg} ${statusStyles.color} ${statusStyles.border}` : ''}
-                  onClick={() => {
-                    if (status.id !== entry.status) {
-                      onStatusChange(entry.file_name, entry.status, status.id);
-                    }
-                  }}
-                >
-                  {statusStyles.label}
-                </Button>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card size="sm" className="mt-3">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Tags</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {(draft.tags ?? []).length === 0 ? (
-              <span className="text-muted-foreground text-xs">No tags yet.</span>
-            ) : (
-              (draft.tags ?? []).map((tag) => (
-                <Badge key={tag} variant="secondary" className="gap-1">
-                  {tag}
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => removeTag(tag)}
-                  >
-                    ✕
-                  </button>
-                </Badge>
-              ))
+      <div className="flex h-full min-h-0 flex-col gap-2 p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id="issue-title"
+            value={draft.title}
+            className="h-8 min-w-[260px] flex-1"
+            placeholder={deriveTitleFromFileName(entry.file_name)}
+            onChange={(event) => {
+              const title = event.target.value;
+              setDraft((current) => ({
+                ...current,
+                title,
+              }));
+              markDirty();
+            }}
+          />
+          <div className="flex items-center gap-1.5">
+            {assigneeInitials && (
+              <Badge variant="secondary" className="h-7 min-w-7 justify-center rounded-full px-2 text-xs">
+                {assigneeInitials}
+              </Badge>
             )}
-          </div>
-          <div className="relative">
             <Input
-              value={tagInput}
-              placeholder="Add tag and press Enter"
-              onFocus={() => setShowTagSuggestions(true)}
-              onBlur={() => window.setTimeout(() => setShowTagSuggestions(false), 100)}
-              onChange={(event) => setTagInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ',') {
-                  event.preventDefault();
-                  addTag(tagInput);
-                }
+              id="issue-assignee"
+              value={draft.assignee ?? ''}
+              className="h-8 w-[160px]"
+              placeholder="Assignee"
+              onChange={(event) => {
+                const assignee = event.target.value;
+                setDraft((current) => ({
+                  ...current,
+                  assignee: assignee.trim() ? assignee : null,
+                }));
+                markDirty();
               }}
             />
-            {showTagSuggestions && filteredSuggestions.length > 0 && (
-              <div className="bg-popover absolute left-0 right-0 top-[calc(100%+0.35rem)] z-10 flex flex-wrap gap-1 rounded-md border p-2">
-                {filteredSuggestions.map((tag) => (
-                  <Button key={tag} variant="ghost" size="xs" onClick={() => addTag(tag)}>
-                    {tag}
-                  </Button>
+          </div>
+          <AutocompleteInput
+            id="issue-spec"
+            value={draft.spec ?? ''}
+            options={specSuggestions.map((spec) => ({ value: spec }))}
+            className="h-8 w-[180px] text-xs"
+            placeholder="Spec"
+            onValueChange={(spec) => {
+              setDraft((current) => ({
+                ...current,
+                spec: spec.trim() ? spec : null,
+              }));
+              markDirty();
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {statuses.map((status) => {
+            const statusStyles = getStatusStyles(status);
+            const active = entry.status === status.id;
+            return (
+              <Button
+                key={status.id}
+                variant={active ? 'secondary' : 'outline'}
+                size="xs"
+                className={active ? `${statusStyles.bg} ${statusStyles.color} ${statusStyles.border}` : ''}
+                onClick={() => {
+                  if (status.id !== entry.status) {
+                    onStatusChange(entry.file_name, entry.status, status.id);
+                  }
+                }}
+              >
+                {statusStyles.label}
+              </Button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(draft.tags ?? []).length === 0 ? (
+            <span className="text-muted-foreground text-xs">No tags yet.</span>
+          ) : (
+            (draft.tags ?? []).map((tag) => (
+              <Badge key={tag} variant="secondary" className="gap-1">
+                {tag}
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => removeTag(tag)}
+                >
+                  ✕
+                </button>
+              </Badge>
+            ))
+          )}
+          <AutocompleteInput
+            value={tagInput}
+            options={tagSuggestions
+              .filter((tag) => !(draft.tags ?? []).includes(tag))
+              .map((tag) => ({ value: tag }))}
+            className="h-8 w-[220px] text-xs"
+            placeholder="Add tag"
+            noResultsText="No tag suggestions."
+            onCommit={(value) => addTag(value)}
+            onValueChange={(value) => setTagInput(value)}
+          />
+        </div>
+
+        <details className="rounded-md border bg-card/35 px-2 py-1">
+          <summary className="text-muted-foreground cursor-pointer select-none text-xs font-medium">
+            Links ({linkRows.length})
+          </summary>
+          <div className="mt-2 space-y-2">
+            {linkRows.length === 0 ? (
+              <p className="text-muted-foreground text-xs">No linked issues yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {linkRows.map((link, index) => (
+                  <div
+                    key={`${link.type}-${link.target}-${index}`}
+                    className="bg-muted/40 flex items-center gap-2 rounded-md border p-2"
+                  >
+                    <Badge variant="outline">{link.type}</Badge>
+                    <span className="text-xs">{link.target}</span>
+                    <Button className="ml-auto" size="xs" variant="ghost" onClick={() => removeLink(index)}>
+                      Remove
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card size="sm" className="mt-3">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Links</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {linkRows.length === 0 ? (
-            <p className="text-muted-foreground text-xs">No linked issues yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {linkRows.map((link, index) => (
-                <div
-                  key={`${link.type}-${link.target}-${index}`}
-                  className="bg-muted/40 flex items-center gap-2 rounded-md border p-2"
-                >
-                  <Badge variant="outline">{link.type}</Badge>
-                  <span className="text-sm">{link.target}</span>
-                  <Button className="ml-auto" size="xs" variant="ghost" onClick={() => removeLink(index)}>
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-          {!showAddLink ? (
-            <Button variant="outline" size="sm" onClick={() => setShowAddLink(true)}>
-              Add Link
-            </Button>
-          ) : (
-            <div className="grid gap-2 md:grid-cols-[12rem_1fr_auto_auto]">
-              <Select value={newLinkType} onValueChange={(value) => setNewLinkType(value as LinkType)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LINK_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                value={newLinkTarget}
-                placeholder="target issue filename"
-                onChange={(event) => setNewLinkTarget(event.target.value)}
-              />
-              <Button onClick={addLink}>Add</Button>
-              <Button variant="ghost" onClick={() => setShowAddLink(false)}>
-                Cancel
+            {!showAddLink ? (
+              <Button variant="outline" size="xs" onClick={() => setShowAddLink(true)}>
+                Add Link
               </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <div className="grid gap-2 md:grid-cols-[10rem_1fr_auto_auto]">
+                <Select value={newLinkType} onValueChange={(value) => setNewLinkType(value as LinkType)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LINK_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <AutocompleteInput
+                  value={newLinkTarget}
+                  options={issueSuggestions
+                    .filter((issue) => issue !== entry.file_name)
+                    .map((issue) => ({ value: issue }))}
+                  placeholder="target issue filename"
+                  noResultsText="No issue matches."
+                  onCommit={(value) => addLink(value)}
+                  onValueChange={(value) => setNewLinkTarget(value)}
+                />
+                <Button size="xs" onClick={() => addLink()}>
+                  Add
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => setShowAddLink(false)}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        </details>
 
-      <div className="mt-3">
+        <div className="min-h-0 flex-1">
         <MarkdownEditor
-          label="Description"
+          label={undefined}
           value={draft.description}
           onChange={(description) => {
             setDraft((current) => ({ ...current, description }));
             markDirty();
           }}
           placeholder="Describe this issue..."
-          rows={12}
+          rows={16}
           defaultMode="doc"
+          fillHeight
+          showStats={false}
           mcpEnabled={mcpEnabled}
+          sampleInline
           sampleLabel="Insert Template"
           sampleRequiresMcp={false}
           onMcpSample={() => loadProjectTemplate('issue', { bodyOnly: true })}
         />
+        </div>
       </div>
     </DetailSheet>
   );

@@ -1,0 +1,11 @@
+[claude]
+managed_servers = []
+
+[gemini]
+managed_servers = []
+
+[codex]
+managed_servers = [
+    "ship",
+    "shadcn",
+]

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import MarkdownEditor from '@/components/editor';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface SpecsPageProps {
   specs: SpecEntry[];
@@ -61,19 +62,17 @@ export default function SpecsPage({ specs, onSelectSpec, onCreateSpec }: SpecsPa
   }, [createOpen, creating]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-5 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Specs</h2>
-          <p className="text-muted-foreground text-sm">
-            Refine intent, then turn specs into actionable issues.
-          </p>
-        </div>
-        <Button className="gap-2" onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" />
-          New Spec
-        </Button>
-      </header>
+    <PageFrame>
+      <PageHeader
+        title="Specs"
+        description="Refine intent, then turn specs into actionable issues."
+        actions={
+          <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New Spec
+          </Button>
+        }
+      />
 
       {specs.length === 0 ? (
         <Card size="sm">
@@ -180,6 +179,6 @@ export default function SpecsPage({ specs, onSelectSpec, onCreateSpec }: SpecsPa
           </form>
         </DetailSheet>
       )}
-    </div>
+    </PageFrame>
   );
 }

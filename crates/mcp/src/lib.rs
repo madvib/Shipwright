@@ -1168,7 +1168,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        match create_adr(project_dir, &req.title, &req.decision, "accepted") {
+        match create_adr(project_dir, &req.title, &req.decision, "proposed") {
             Ok(file) => format!(
                 "Created ADR: {}",
                 file.file_name()

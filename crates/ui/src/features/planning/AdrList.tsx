@@ -3,6 +3,7 @@ import { AdrEntry } from '@/bindings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface AdrListProps {
   adrs: AdrEntry[];
@@ -24,20 +25,28 @@ export default function AdrList({ adrs, onNewAdr, onSelectAdr }: AdrListProps) {
     return bTime - aTime;
   });
 
+  const formatDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-5 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Architecture Decisions</h2>
-          <p className="text-muted-foreground text-sm">
-            {adrs.length} recorded decision{adrs.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <Button onClick={onNewAdr}>
-          <Plus className="size-4" />
-          New Decision
-        </Button>
-      </header>
+    <PageFrame>
+      <PageHeader
+        title="Architecture Decisions"
+        description={`${adrs.length} recorded decision${adrs.length !== 1 ? 's' : ''}`}
+        actions={
+          <Button onClick={onNewAdr}>
+            <Plus className="size-4" />
+            New Decision
+          </Button>
+        }
+      />
 
       {adrs.length === 0 ? (
         <Card size="sm">
@@ -61,46 +70,37 @@ export default function AdrList({ adrs, onNewAdr, onSelectAdr }: AdrListProps) {
         <Card size="sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Decision Register</CardTitle>
-            <CardDescription>Status, date, and rationale in one place.</CardDescription>
+            <CardDescription>Title first, with date and status at a glance.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="text-muted-foreground hidden grid-cols-[9rem_9rem_1fr_auto] gap-3 px-2 text-xs md:grid">
-              <span>Status</span>
-              <span>Date</span>
-              <span>Title</span>
-              <span />
-            </div>
             {sortedAdrs.map((entry) => (
               <div
                 key={entry.path}
-                className="hover:bg-muted/40 grid gap-2 rounded-md border p-3 transition-colors md:grid-cols-[9rem_9rem_1fr_auto] md:items-center md:gap-3"
+                className="hover:bg-muted/40 rounded-md border p-2.5 transition-colors"
                 title={entry.path}
               >
-                <Badge
-                  variant="outline"
-                  className={`w-fit ${STATUS_COLORS[entry.adr.metadata.status] ?? 'text-muted-foreground'}`}
-                >
-                  {entry.adr.metadata.status}
-                </Badge>
-                <span className="text-muted-foreground text-xs">
-                  {new Date(entry.adr.metadata.date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{entry.adr.metadata.title}</p>
-                  <p className="text-muted-foreground line-clamp-2 text-xs">{entry.adr.body}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{entry.adr.metadata.title}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-muted-foreground text-xs">{formatDate(entry.adr.metadata.date)}</span>
+                      <Badge
+                        variant="outline"
+                        className={`w-fit ${STATUS_COLORS[entry.adr.metadata.status] ?? 'text-muted-foreground'}`}
+                      >
+                        {entry.adr.metadata.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => onSelectAdr(entry)}>
+                    Open
+                  </Button>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => onSelectAdr(entry)}>
-                  Open
-                </Button>
               </div>
             ))}
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageFrame>
   );
 }

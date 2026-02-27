@@ -60,6 +60,10 @@ export default function SpecDetail({ spec, mcpEnabled = false, onClose, onSave, 
       title={<h2 className="text-xl font-semibold tracking-tight">{spec.title}</h2>}
       meta={<p className="text-muted-foreground text-xs">{spec.file_name}</p>}
       onClose={onClose}
+      className="max-w-[1800px]"
+      bodyScrollable={false}
+      bodyClassName="overflow-hidden p-0"
+      footerClassName="px-3 py-2 md:px-4 md:py-2.5"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
@@ -88,26 +92,31 @@ export default function SpecDetail({ spec, mcpEnabled = false, onClose, onSave, 
         </div>
       }
     >
-      <MarkdownEditor
-        label="Spec Content"
-        value={content}
-        onChange={(next) => {
-          setContent(next);
-          setDirty(true);
-        }}
-        mcpEnabled={mcpEnabled}
-        sampleLabel="Insert Template"
-        sampleRequiresMcp={false}
-        onMcpSample={() =>
-          loadProjectTemplate('spec', {
-            tomlValues: {
-              title: spec.title,
-            },
-          })
-        }
-        rows={18}
-        defaultMode="doc"
-      />
+      <div className="h-full min-h-0 p-2">
+        <MarkdownEditor
+          label={undefined}
+          value={content}
+          onChange={(next) => {
+            setContent(next);
+            setDirty(true);
+          }}
+          mcpEnabled={mcpEnabled}
+          sampleLabel="Insert Template"
+          sampleRequiresMcp={false}
+          sampleInline
+          showStats={false}
+          fillHeight
+          onMcpSample={() =>
+            loadProjectTemplate('spec', {
+              tomlValues: {
+                title: spec.title,
+              },
+            })
+          }
+          rows={18}
+          defaultMode="doc"
+        />
+      </div>
     </DetailSheet>
   );
 }

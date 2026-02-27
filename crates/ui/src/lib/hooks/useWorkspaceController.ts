@@ -244,12 +244,23 @@ export function useWorkspaceController() {
 
   const noProject = !activeProject;
   const tagSuggestions = Array.from(
-    new Set(
-      issues
+    new Set([
+      ...issues
         .flatMap((entry) => entry.issue?.tags ?? [])
-        .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
-    )
+        .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0),
+      ...adrs
+        .flatMap((entry) => entry.adr.metadata.tags ?? [])
+        .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0),
+    ])
   ).sort((a, b) => a.localeCompare(b));
+  const specSuggestions = specs
+    .map((entry) => entry.file_name)
+    .filter((value) => value.trim().length > 0)
+    .sort((a, b) => a.localeCompare(b));
+  const issueFileSuggestions = issues
+    .map((entry) => entry.file_name)
+    .filter((value) => value.trim().length > 0)
+    .sort((a, b) => a.localeCompare(b));
   const mcpEnabled = config.mcp_enabled !== false;
 
   return {
@@ -286,6 +297,8 @@ export function useWorkspaceController() {
     switchingMode,
     noProject,
     tagSuggestions,
+    specSuggestions,
+    issueFileSuggestions,
     mcpEnabled,
     setSelectedIssue,
     setSelectedAdr,

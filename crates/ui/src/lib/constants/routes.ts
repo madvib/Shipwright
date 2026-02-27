@@ -7,6 +7,10 @@ export const SPECS_ROUTE = '/project/specs' as const;
 export const ADRS_ROUTE = '/project/adrs' as const;
 export const ACTIVITY_ROUTE = '/project/activity' as const;
 export const AGENTS_ROUTE = '/project/agents' as const;
+export const AGENTS_PROVIDERS_ROUTE = '/project/agents/providers' as const;
+export const AGENTS_MCP_ROUTE = '/project/agents/mcp' as const;
+export const AGENTS_SKILLS_ROUTE = '/project/agents/skills' as const;
+export const AGENTS_PROMPTS_ROUTE = '/project/agents/prompts' as const;
 export const SETTINGS_ROUTE = '/project/settings' as const;
 
 export type AppRoutePath =
@@ -19,6 +23,10 @@ export type AppRoutePath =
   | typeof ADRS_ROUTE
   | typeof ACTIVITY_ROUTE
   | typeof AGENTS_ROUTE
+  | typeof AGENTS_PROVIDERS_ROUTE
+  | typeof AGENTS_MCP_ROUTE
+  | typeof AGENTS_SKILLS_ROUTE
+  | typeof AGENTS_PROMPTS_ROUTE
   | typeof SETTINGS_ROUTE;
 
 export const ROUTE_LABELS: Record<AppRoutePath, string> = {
@@ -31,6 +39,10 @@ export const ROUTE_LABELS: Record<AppRoutePath, string> = {
   [ADRS_ROUTE]: 'Decisions',
   [ACTIVITY_ROUTE]: 'Activity',
   [AGENTS_ROUTE]: 'Agents',
+  [AGENTS_PROVIDERS_ROUTE]: 'Agents / Providers',
+  [AGENTS_MCP_ROUTE]: 'Agents / MCP',
+  [AGENTS_SKILLS_ROUTE]: 'Agents / Skills',
+  [AGENTS_PROMPTS_ROUTE]: 'Agents / Prompts',
   [SETTINGS_ROUTE]: 'Settings',
 };
 

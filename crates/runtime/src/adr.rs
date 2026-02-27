@@ -114,7 +114,14 @@ pub fn create_adr(
         spec: None,
     };
 
-    let body = format!("## Decision\n\n{}\n", decision);
+    let decision_text = decision.trim();
+    let body = if decision_text.is_empty() {
+        format!("# {}\n", title.trim())
+    } else if decision_text.starts_with('#') {
+        format!("{}\n", decision_text.trim_end())
+    } else {
+        format!("# {}\n\n{}\n", title.trim(), decision_text)
+    };
     let adr = ADR { metadata, body };
 
     let base = sanitize_file_name(title);

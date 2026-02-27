@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import MarkdownEditor from '@/components/editor';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface FeaturesPageProps {
   features: FeatureEntry[];
@@ -22,8 +23,6 @@ interface FeaturesPageProps {
   ) => Promise<void>;
 }
 
-const NONE_VALUE = '__none__';
-
 export default function FeaturesPage({
   features,
   releases,
@@ -34,8 +33,8 @@ export default function FeaturesPage({
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [release, setRelease] = useState<string>(NONE_VALUE);
-  const [spec, setSpec] = useState<string>(NONE_VALUE);
+  const [release, setRelease] = useState('');
+  const [spec, setSpec] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,14 +50,14 @@ export default function FeaturesPage({
       await onCreateFeature(
         cleanTitle,
         content,
-        release === NONE_VALUE ? null : release,
-        spec === NONE_VALUE ? null : spec
+        release.trim() ? release.trim() : null,
+        spec.trim() ? spec.trim() : null
       );
       setCreateOpen(false);
       setTitle('');
       setContent('');
-      setRelease(NONE_VALUE);
-      setSpec(NONE_VALUE);
+      setRelease('');
+      setSpec('');
       setError(null);
     } catch (createError) {
       setError(String(createError));
@@ -87,19 +86,17 @@ export default function FeaturesPage({
   }, [createOpen, creating]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-5 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Features</h2>
-          <p className="text-muted-foreground text-sm">
-            Plan customer-visible slices and bind them to releases/specs.
-          </p>
-        </div>
-        <Button className="gap-2" onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" />
-          New Feature
-        </Button>
-      </header>
+    <PageFrame>
+      <PageHeader
+        title="Features"
+        description="Plan customer-visible slices and bind them to releases/specs."
+        actions={
+          <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New Feature
+          </Button>
+        }
+      />
 
       {features.length === 0 ? (
         <Card size="sm">
@@ -197,35 +194,29 @@ export default function FeaturesPage({
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Release</label>
-                <Select value={release} onValueChange={(value) => setRelease(value ?? NONE_VALUE)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>Unassigned</SelectItem>
-                    {releases.map((entry) => (
-                      <SelectItem key={entry.file_name} value={entry.file_name}>
-                        {entry.version}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AutocompleteInput
+                  value={release}
+                  options={releases.map((entry) => ({
+                    value: entry.file_name,
+                    label: entry.version,
+                  }))}
+                  placeholder="Unassigned"
+                  noResultsText="No releases found."
+                  onValueChange={(value) => setRelease(value)}
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Spec</label>
-                <Select value={spec} onValueChange={(value) => setSpec(value ?? NONE_VALUE)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>None</SelectItem>
-                    {specs.map((entry) => (
-                      <SelectItem key={entry.file_name} value={entry.file_name}>
-                        {entry.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AutocompleteInput
+                  value={spec}
+                  options={specs.map((entry) => ({
+                    value: entry.file_name,
+                    label: entry.title,
+                  }))}
+                  placeholder="None"
+                  noResultsText="No specs found."
+                  onValueChange={(value) => setSpec(value)}
+                />
               </div>
             </div>
 
@@ -240,6 +231,6 @@ export default function FeaturesPage({
           </form>
         </DetailSheet>
       )}
-    </div>
+    </PageFrame>
   );
 }

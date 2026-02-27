@@ -1,20 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router';
-import AgentsPanel from '@/features/agents/AgentsPanel';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
-
-function AgentsRouteComponent() {
-  const workspace = useWorkspace();
-
-  return (
-    <AgentsPanel
-      projectConfig={workspace.projectConfig}
-      globalAgentConfig={workspace.globalAgentConfig}
-      onSaveProject={workspace.handleSaveProjectSettings}
-      onSaveGlobalAgentConfig={workspace.handleSaveGlobalAgentSettings}
-    />
-  );
-}
+import { Outlet, createFileRoute, redirect } from '@tanstack/react-router';
+import { AGENTS_PROVIDERS_ROUTE, AGENTS_ROUTE } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/project/agents')({
-  component: AgentsRouteComponent,
+  beforeLoad: ({ location }) => {
+    if (location.pathname === AGENTS_ROUTE) {
+      throw redirect({ to: AGENTS_PROVIDERS_ROUTE });
+    }
+  },
+  component: Outlet,
 });

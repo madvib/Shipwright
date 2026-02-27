@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import AgentScopeCard from '@/features/agents/AgentScopeCard';
 
 type SettingsTab = 'global' | 'project' | 'agents' | 'modules';
 type SettingsPanelMode = 'full' | 'settings-only' | 'agents-only';
@@ -356,24 +358,20 @@ export default function SettingsPanel({
   const settingsOnly = panelMode === 'settings-only';
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-5 md:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="size-4" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
-              {agentsOnly ? 'Agents' : 'Settings'}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {agentsOnly ? 'Agent config, modes, MCP, and client sync' : 'Global and project configuration'}
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline">Alpha</Badge>
-      </header>
+    <PageFrame width="narrow" className="md:p-8">
+      <PageHeader
+        title={agentsOnly ? 'Agents' : 'Settings'}
+        description={agentsOnly ? 'Agent config, modes, MCP, and client sync' : 'Global and project configuration'}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={handleBack}>
+              <ArrowLeft className="size-4" />
+              Back
+            </Button>
+            <Badge variant="outline">Alpha</Badge>
+          </>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
         {!agentsOnly && (
@@ -661,34 +659,11 @@ export default function SettingsPanel({
         {!settingsOnly && (
         <TabsContent value="agents">
           <div className="grid gap-4">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Scope</CardTitle>
-                <CardDescription>
-                  Configure agent defaults globally, or override per project.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Label>Agent Config Scope</Label>
-                <Select
-                  value={agentScope}
-                  onValueChange={(value) => setAgentScope((value as 'project' | 'global') ?? 'global')}
-                >
-                  <SelectTrigger className="w-full sm:w-72">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="global">Global (~/.ship/ship.toml)</SelectItem>
-                    <SelectItem value="project" disabled={!projectConfig}>
-                      Project (.ship/ship.toml)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                {agentScope === 'project' && !projectConfig && (
-                  <p className="text-xs text-destructive">Open a project to edit project-scoped agent config.</p>
-                )}
-              </CardContent>
-            </Card>
+            <AgentScopeCard
+              scope={agentScope}
+              hasProject={hasActiveProject}
+              onScopeChange={(next) => setAgentScope(next)}
+            />
 
             <Card size="sm">
               <CardHeader>
@@ -1088,6 +1063,6 @@ export default function SettingsPanel({
           </Button>
         )}
       </footer>
-    </div>
+    </PageFrame>
   );
 }

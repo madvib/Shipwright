@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { replaceAll } from '@milkdown/kit/utils';
@@ -15,6 +15,7 @@ type LegacyEditorMode = 'edit' | 'preview' | 'split';
 
 export interface MarkdownEditorProps {
   label?: string;
+  toolbarStart?: ReactNode;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -24,6 +25,8 @@ export interface MarkdownEditorProps {
   onMcpSample?: () => Promise<string | null | undefined> | string | null | undefined;
   sampleLabel?: string;
   sampleRequiresMcp?: boolean;
+  sampleInline?: boolean;
+  showStats?: boolean;
   fillHeight?: boolean;
 }
 
@@ -65,6 +68,7 @@ function normalizeMode(defaultMode?: EditorMode | LegacyEditorMode): EditorMode 
 
 export default function MarkdownEditor({
   label,
+  toolbarStart,
   value,
   onChange,
   placeholder,
@@ -74,6 +78,8 @@ export default function MarkdownEditor({
   onMcpSample,
   sampleLabel,
   sampleRequiresMcp = true,
+  sampleInline = false,
+  showStats = true,
   fillHeight = false,
 }: MarkdownEditorProps) {
   const editorRootRef = useRef<HTMLDivElement | null>(null);
@@ -225,15 +231,42 @@ export default function MarkdownEditor({
       className={cn(
         fillHeight ? 'flex h-full min-h-0 flex-col gap-2' : 'space-y-2',
         expanded &&
-          'fixed inset-3 z-50 rounded-xl border bg-background p-3 shadow-2xl md:inset-6 md:p-4'
+          'fixed inset-0 z-[120] bg-background p-2 shadow-2xl md:p-3'
       )}
     >
-      <div className={cn('flex flex-wrap items-center gap-2', label ? 'justify-between' : 'justify-end')}>
-        {label && <Label>{label}</Label>}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {wordCount} words · {internalMarkdown.length} chars
-          </span>
+      <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+        {(label || toolbarStart) && (
+          <div className="flex shrink-0 items-center gap-2">
+            {label && <Label>{label}</Label>}
+            {toolbarStart}
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {onMcpSample && sampleInline && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                disabled={sampleDisabled}
+                onClick={triggerSample}
+                title={sampleRequiresMcp ? 'Use AI to generate draft content' : 'Insert a starter template'}
+              >
+                <Sparkles className="size-3.5" />
+                {sampling ? 'Working…' : resolvedSampleLabel}
+              </Button>
+              {sampleUndoState && internalMarkdown === sampleUndoState.after && (
+                <Button type="button" variant="outline" size="xs" onClick={undoSample}>
+                  Undo
+                </Button>
+              )}
+            </>
+          )}
+          {showStats && (
+            <span className="text-xs text-muted-foreground">
+              {wordCount} words · {internalMarkdown.length} chars
+            </span>
+          )}
           <Tabs value={mode} onValueChange={(next) => next && setMode(next as EditorMode)} className="gap-0">
             <TabsList>
               <TabsTrigger value="doc">Doc</TabsTrigger>
@@ -246,7 +279,7 @@ export default function MarkdownEditor({
         </div>
       </div>
 
-      {onMcpSample && (
+      {onMcpSample && !sampleInline && (
         <div className="flex items-center justify-end gap-1 rounded-md border bg-muted/30 px-2 py-1.5">
           <Button
             type="button"
