@@ -1,14 +1,19 @@
 +++
 id = ""
 title = ""
-status = "planned"
 created = ""
 updated = ""
 branch = ""
 release_id = ""
 spec_id = ""
-supersedes_id = ""
+adr_ids = []
 tags = []
+
+[agent]
+model = "claude"
+max_cost_per_session = 10.0
+mcp_servers = []
+skills = []
 +++
 
 ## Description

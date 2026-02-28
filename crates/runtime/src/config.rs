@@ -235,6 +235,18 @@ fn default_scope() -> String {
     "global".to_string()
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub mcp: McpSection,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct McpSection {
+    #[serde(default)]
+    pub servers: HashMap<String, McpServerConfig>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct ProjectConfig {
     #[serde(default = "default_version")]
@@ -396,6 +408,24 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     }
 
     Ok(project)
+}
+
+pub fn get_mcp_config(ship_dir: &Path) -> Result<Vec<McpServerConfig>> {
+    let path = crate::project::mcp_config_path(ship_dir);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&path)?;
+    let raw: McpConfig = toml::from_str(&content)?;
+
+    let mut servers = Vec::new();
+    for (id, mut server) in raw.mcp.servers {
+        server.id = id;
+        servers.push(server);
+    }
+
+    Ok(servers)
 }
 
 fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {

@@ -2,13 +2,12 @@ use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
 use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -37,8 +36,8 @@ pub struct NoteMetadata {
     #[serde(default)]
     pub id: String,
     pub title: String,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
+    pub created: String,
+    pub updated: String,
     #[serde(default)]
     pub tags: Vec<String>,
 }
@@ -54,7 +53,7 @@ pub struct NoteEntry {
     pub file_name: String,
     pub path: String,
     pub title: String,
-    pub updated: DateTime<Utc>,
+    pub updated: String,
 }
 
 fn unique_path(dir: &Path, base: &str) -> PathBuf {
@@ -113,7 +112,7 @@ impl Note {
                 toml::from_str(toml_str).context("Failed to parse note TOML frontmatter")?;
             Ok(Note { metadata, body })
         } else {
-            let now = Utc::now();
+            let now = Utc::now().to_rfc3339();
             let title = content
                 .lines()
                 .find(|line| line.starts_with("# "))
@@ -121,9 +120,9 @@ impl Note {
                 .unwrap_or_default();
             Ok(Note {
                 metadata: NoteMetadata {
-                    id: String::new(),
+                    id: crate::gen_nanoid(),
                     title,
-                    created: now,
+                    created: now.clone(),
                     updated: now,
                     tags: Vec::new(),
                 },
@@ -143,21 +142,21 @@ pub fn create_note(
     let dir = note_dir(scope, project_dir.as_deref())?;
     fs::create_dir_all(&dir)?;
 
-    let now = Utc::now();
-    let note = Note {
-        metadata: NoteMetadata {
-            id: Uuid::new_v4().to_string(),
-            title: title.to_string(),
-            created: now,
-            updated: now,
-            tags: Vec::new(),
-        },
-        body: if body.is_empty() {
-            "## Context\n\n\n## Notes\n\n".to_string()
-        } else {
-            body.to_string()
-        },
-    };
+    let ship_path = project_dir
+        .clone()
+        .unwrap_or_else(|| crate::project::get_global_dir().unwrap_or_default());
+    let template = crate::project::read_template(&ship_path, "note")?;
+    let mut note = Note::from_markdown(&template)?;
+    let now = Utc::now().to_rfc3339();
+
+    note.metadata.id = crate::gen_nanoid();
+    note.metadata.title = title.to_string();
+    note.metadata.created = now.clone();
+    note.metadata.updated = now;
+
+    if !body.is_empty() {
+        note.body = body.to_string();
+    }
 
     let base = sanitize_file_name(title);
     let file_path = unique_path(&dir, &base);
@@ -194,7 +193,7 @@ pub fn get_note_raw(path: PathBuf) -> Result<String> {
 
 pub fn update_note(path: PathBuf, body: &str) -> Result<()> {
     let mut note = get_note(path.clone())?;
-    note.metadata.updated = Utc::now();
+    note.metadata.updated = Utc::now().to_rfc3339();
     note.body = body.to_string();
     write_atomic(&path, note.to_markdown()?)
         .with_context(|| format!("Failed to write note: {}", path.display()))?;
@@ -241,7 +240,7 @@ pub fn list_notes(scope: NoteScope, project_dir: Option<PathBuf>) -> Result<Vec<
                     file_name,
                     path: path.to_string_lossy().to_string(),
                     title: note.metadata.title,
-                    updated: note.metadata.updated,
+                    updated: note.metadata.updated.clone(),
                 });
             }
         }

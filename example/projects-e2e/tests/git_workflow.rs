@@ -10,9 +10,11 @@
 /// Run ignored: cargo test --test git_workflow -p e2e -- --include-ignored
 mod helpers;
 
-use helpers::{TestProject, EXISTING_JS_PROJECT, EXISTING_RUST_PROJECT};
+use helpers::{EXISTING_JS_PROJECT, EXISTING_RUST_PROJECT, TestProject};
 use runtime::{create_feature, create_skill};
-use ship_module_git::{GENERATED_GITIGNORE_ENTRIES, install_hooks, on_post_checkout, write_root_gitignore};
+use ship_module_git::{
+    GENERATED_GITIGNORE_ENTRIES, install_hooks, on_post_checkout, write_root_gitignore,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::process::Command;
@@ -61,10 +63,16 @@ mod new_project {
     #[test]
     fn init_seeds_task_policy_skill() {
         let p = TestProject::with_git().unwrap();
-        p.assert_ship_file("agents/skills/task-policy.md");
-        let content = p.read_ship_file("agents/skills/task-policy.md");
-        assert!(content.contains("task-policy"), "skill id missing");
-        assert!(content.contains("Shipwright Workflow Policy"), "skill name missing");
+        p.assert_ship_file("agents/skills/task-policy/index.md");
+        p.assert_ship_file("agents/skills/task-policy/skill.toml");
+        let content = p.read_ship_file("agents/skills/task-policy/index.md");
+        assert!(content.contains("task-policy"), "skill content missing");
+        let config = p.read_ship_file("agents/skills/task-policy/skill.toml");
+        assert!(config.contains("task-policy"), "skill id missing from toml");
+        assert!(
+            content.contains("Shipwright Workflow Policy"),
+            "skill name missing"
+        );
         assert!(content.contains("Canonical Flow"), "policy content missing");
     }
 
@@ -75,11 +83,20 @@ mod new_project {
         install_hooks(&p.root().join(".git")).unwrap();
 
         let hooks_dir = p.root().join(".git/hooks");
-        assert!(hooks_dir.join("post-checkout").exists(), "post-checkout hook missing");
-        assert!(hooks_dir.join("pre-commit").exists(), "pre-commit hook missing");
+        assert!(
+            hooks_dir.join("post-checkout").exists(),
+            "post-checkout hook missing"
+        );
+        assert!(
+            hooks_dir.join("pre-commit").exists(),
+            "pre-commit hook missing"
+        );
 
         let pre_commit = fs::read_to_string(hooks_dir.join("pre-commit")).unwrap();
-        assert!(pre_commit.starts_with("#!/usr/bin/env sh"), "hook must be executable sh");
+        assert!(
+            pre_commit.starts_with("#!/usr/bin/env sh"),
+            "hook must be executable sh"
+        );
         assert!(pre_commit.contains("CLAUDE.md"), "must block CLAUDE.md");
         assert!(pre_commit.contains(".mcp.json"), "must block .mcp.json");
     }
@@ -106,20 +123,26 @@ mod new_project {
         let p = TestProject::with_git().unwrap();
 
         // Write a custom skill
-        let custom = p.ship_dir.join("agents/skills/my-skill.md");
-        fs::write(&custom, "+++\nid = \"my-skill\"\nname = \"Mine\"\n+++\ncontent").unwrap();
+        let custom_dir = p.ship_dir.join("agents/skills/my-skill");
+        fs::create_dir_all(&custom_dir).unwrap();
+        fs::write(
+            custom_dir.join("skill.toml"),
+            "id = \"my-skill\"\nname = \"Mine\"\n",
+        )
+        .unwrap();
+        fs::write(custom_dir.join("index.md"), "content").unwrap();
 
         // Re-init
         runtime::init_project(p.root().to_path_buf()).unwrap();
 
         // Custom skill must be intact
-        assert!(custom.exists());
+        assert!(custom_dir.join("index.md").exists());
         assert_eq!(
-            fs::read_to_string(&custom).unwrap(),
-            "+++\nid = \"my-skill\"\nname = \"Mine\"\n+++\ncontent"
+            fs::read_to_string(custom_dir.join("index.md")).unwrap(),
+            "content"
         );
         // Default skill still present
-        p.assert_ship_file("agents/skills/task-policy.md");
+        p.assert_ship_file("agents/skills/task-policy/index.md");
     }
 
     /// Feature template has the richer lifecycle fields (planned, version, Description section).
@@ -127,7 +150,6 @@ mod new_project {
     fn init_feature_template_has_lifecycle_fields() {
         let p = TestProject::with_git().unwrap();
         let template = p.read_ship_file("project/features/TEMPLATE.md");
-        assert!(template.contains("status = \"planned\""));
         assert!(template.contains("release_id"));
         assert!(template.contains("## Description"));
         assert!(template.contains("## Implementation Notes"));
@@ -153,7 +175,7 @@ mod existing_project {
 
         // .ship/ also created
         p.assert_ship_file("ship.toml");
-        p.assert_ship_file("agents/skills/task-policy.md");
+        p.assert_ship_file("agents/skills/task-policy/index.md");
     }
 
     /// Existing .gitignore entries are preserved; Ship's entries are appended.
@@ -165,7 +187,10 @@ mod existing_project {
         let gitignore = fs::read_to_string(p.root().join(".gitignore")).unwrap();
 
         // Existing entries preserved
-        assert!(gitignore.contains("node_modules/"), "node_modules/ stripped");
+        assert!(
+            gitignore.contains("node_modules/"),
+            "node_modules/ stripped"
+        );
         assert!(gitignore.contains(".env"), ".env stripped");
         assert!(gitignore.contains(".next/"), ".next/ stripped");
 
@@ -183,8 +208,16 @@ mod existing_project {
         write_root_gitignore(p.root()).unwrap();
 
         let gitignore = fs::read_to_string(p.root().join(".gitignore")).unwrap();
-        assert_eq!(gitignore.matches("CLAUDE.md").count(), 1, "CLAUDE.md duplicated");
-        assert_eq!(gitignore.matches(".mcp.json").count(), 1, ".mcp.json duplicated");
+        assert_eq!(
+            gitignore.matches("CLAUDE.md").count(),
+            1,
+            "CLAUDE.md duplicated"
+        );
+        assert_eq!(
+            gitignore.matches(".mcp.json").count(),
+            1,
+            ".mcp.json duplicated"
+        );
     }
 
     /// `ship init` on a Rust project works identically.
@@ -194,7 +227,7 @@ mod existing_project {
         assert!(p.root().join("Cargo.toml").exists());
         assert!(p.root().join("src/main.rs").exists());
         p.assert_ship_file("ship.toml");
-        p.assert_ship_file("agents/skills/task-policy.md");
+        p.assert_ship_file("agents/skills/task-policy/index.md");
     }
 
     /// Existing user-managed .mcp.json is preserved on init (Ship doesn't touch it until checkout).
@@ -241,9 +274,11 @@ mod branch_hierarchy {
             p.ship_dir.clone(),
             "Auth System",
             "OAuth2 login flow.",
-            None, None,
+            None,
+            None,
             Some("feature/auth"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Simulate post-checkout on feature branch
         on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
@@ -261,9 +296,11 @@ mod branch_hierarchy {
             p.ship_dir.clone(),
             "Auth System",
             "Body",
-            None, None,
+            None,
+            None,
             Some("feature/auth"),
-        ).unwrap();
+        )
+        .unwrap();
         p.create_feature_branch("feature/auth").unwrap();
 
         // Simulate checkout of feature branch
@@ -272,7 +309,10 @@ mod branch_hierarchy {
 
         // Simulate checkout back to main
         on_post_checkout(&p.ship_dir, "main", &p.root()).unwrap();
-        assert!(!p.root().join("CLAUDE.md").exists(), "CLAUDE.md should be removed on main");
+        assert!(
+            !p.root().join("CLAUDE.md").exists(),
+            "CLAUDE.md should be removed on main"
+        );
     }
 
     /// Multiple features each generate correct isolated context.
@@ -280,8 +320,24 @@ mod branch_hierarchy {
     fn multiple_features_generate_independent_context() {
         let p = setup();
 
-        create_feature(p.ship_dir.clone(), "Auth System", "OAuth2 flow.", None, None, Some("feature/auth")).unwrap();
-        create_feature(p.ship_dir.clone(), "Billing Module", "Stripe integration.", None, None, Some("feature/billing")).unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Auth System",
+            "OAuth2 flow.",
+            None,
+            None,
+            Some("feature/auth"),
+        )
+        .unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Billing Module",
+            "Stripe integration.",
+            None,
+            None,
+            Some("feature/billing"),
+        )
+        .unwrap();
 
         on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
         p.assert_root_file_contains("CLAUDE.md", "Auth System");
@@ -296,7 +352,15 @@ mod branch_hierarchy {
     #[test]
     fn default_skill_appears_in_claude_md() {
         let p = setup();
-        create_feature(p.ship_dir.clone(), "Feature A", "Body", None, None, Some("feature/a")).unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Feature A",
+            "Body",
+            None,
+            None,
+            Some("feature/a"),
+        )
+        .unwrap();
 
         on_post_checkout(&p.ship_dir, "feature/a", &p.root()).unwrap();
 
@@ -307,8 +371,22 @@ mod branch_hierarchy {
     #[test]
     fn custom_skill_inlined_in_claude_md() {
         let p = setup();
-        create_skill(&p.ship_dir, "stack", "Stack Conventions", "Always use TypeScript. Prefer functional components.").unwrap();
-        create_feature(p.ship_dir.clone(), "Feature A", "Body", None, None, Some("feature/a")).unwrap();
+        create_skill(
+            &p.ship_dir,
+            "stack",
+            "Stack Conventions",
+            "Always use TypeScript. Prefer functional components.",
+        )
+        .unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Feature A",
+            "Body",
+            None,
+            None,
+            Some("feature/a"),
+        )
+        .unwrap();
 
         on_post_checkout(&p.ship_dir, "feature/a", &p.root()).unwrap();
 
@@ -349,8 +427,10 @@ mod pre_commit_hook {
         if staged.contains(&"CLAUDE.md".to_string()) {
             let (ok, stderr) = p.git_commit("should fail");
             assert!(!ok, "commit with CLAUDE.md should be rejected");
-            assert!(stderr.contains("CLAUDE.md") || stderr.contains("ship"),
-                "hook error message should mention CLAUDE.md or ship");
+            assert!(
+                stderr.contains("CLAUDE.md") || stderr.contains("ship"),
+                "hook error message should mention CLAUDE.md or ship"
+            );
         }
         // If git itself respects .gitignore and won't stage it, that's also acceptable
     }
@@ -373,7 +453,10 @@ mod pre_commit_hook {
         let staged = p.git_staged_files();
         if staged.contains(&".mcp.json".to_string()) {
             let (ok, stderr) = p.git_commit("should fail");
-            assert!(!ok, "commit with .mcp.json should be rejected by pre-commit hook");
+            assert!(
+                !ok,
+                "commit with .mcp.json should be rejected by pre-commit hook"
+            );
             assert!(stderr.contains(".mcp.json") || stderr.contains("ship"));
         }
     }
@@ -410,7 +493,15 @@ mod worktrees {
         let p = TestProject::with_git().unwrap();
         install_hooks(&p.root().join(".git")).unwrap();
         p.initial_commit().unwrap();
-        create_feature(p.ship_dir.clone(), title, "Feature body.", None, None, Some(branch)).unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            title,
+            "Feature body.",
+            None,
+            None,
+            Some(branch),
+        )
+        .unwrap();
         // Create branch WITHOUT checking it out — a worktree must exclusively own its branch.
         // `git branch <name>` creates at HEAD without switching.
         Command::new("git")
@@ -446,8 +537,24 @@ mod worktrees {
         install_hooks(&p.root().join(".git")).unwrap();
         p.initial_commit().unwrap();
 
-        create_feature(p.ship_dir.clone(), "Auth System", "Auth body.", None, None, Some("feature/auth")).unwrap();
-        create_feature(p.ship_dir.clone(), "Billing Module", "Billing body.", None, None, Some("feature/billing")).unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Auth System",
+            "Auth body.",
+            None,
+            None,
+            Some("feature/auth"),
+        )
+        .unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Billing Module",
+            "Billing body.",
+            None,
+            None,
+            Some("feature/billing"),
+        )
+        .unwrap();
 
         // Create both branches from main
         p.checkout_new("feature/auth").unwrap();
@@ -524,14 +631,28 @@ mod existing_agent_configs {
         });
         save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-        create_feature(p.ship_dir.clone(), "Auth", "Body", None, None, Some("feature/auth")).unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Auth",
+            "Body",
+            None,
+            None,
+            Some("feature/auth"),
+        )
+        .unwrap();
         on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
 
         let mcp_content = fs::read_to_string(p.root().join(".mcp.json")).unwrap();
         // Ship's server was added
-        assert!(mcp_content.contains("ship"), "Ship's server not in .mcp.json");
+        assert!(
+            mcp_content.contains("ship"),
+            "Ship's server not in .mcp.json"
+        );
         // User's server preserved
-        assert!(mcp_content.contains("github"), "User's github server was removed");
+        assert!(
+            mcp_content.contains("github"),
+            "User's github server was removed"
+        );
     }
 
     /// Teardown (checkout main) removes only Ship-managed servers, not user servers.
@@ -564,7 +685,15 @@ mod existing_agent_configs {
         config.providers = vec!["claude".to_string()];
         save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-        create_feature(p.ship_dir.clone(), "Auth", "Body", None, None, Some("feature/auth")).unwrap();
+        create_feature(
+            p.ship_dir.clone(),
+            "Auth",
+            "Body",
+            None,
+            None,
+            Some("feature/auth"),
+        )
+        .unwrap();
 
         // Checkout feature — Ship adds its server
         on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
@@ -580,8 +709,14 @@ mod existing_agent_configs {
         //  as long as github isn't lost if it was user-managed before Ship touched it)
         if p.root().join(".mcp.json").exists() {
             let after_teardown = fs::read_to_string(p.root().join(".mcp.json")).unwrap();
-            assert!(!after_teardown.contains("\"ship\""), "Ship's server should be removed on teardown");
-            assert!(after_teardown.contains("github"), "User's github server was incorrectly removed");
+            assert!(
+                !after_teardown.contains("\"ship\""),
+                "Ship's server should be removed on teardown"
+            );
+            assert!(
+                after_teardown.contains("github"),
+                "User's github server was incorrectly removed"
+            );
         }
     }
 }
@@ -602,7 +737,7 @@ mod core_loop {
         p.initial_commit().unwrap();
 
         // 2. Verify init state
-        p.assert_ship_file("agents/skills/task-policy.md");
+        p.assert_ship_file("agents/skills/task-policy/index.md");
         p.assert_ship_file("ship.toml");
         let gitignore = fs::read_to_string(p.root().join(".gitignore")).unwrap();
         assert!(gitignore.contains("CLAUDE.md"));
@@ -612,9 +747,11 @@ mod core_loop {
             p.ship_dir.clone(),
             "Payment Processing",
             "Stripe checkout integration.",
-            None, None,
+            None,
+            None,
             Some("feature/payments"),
-        ).unwrap();
+        )
+        .unwrap();
         p.checkout_new("feature/payments").unwrap();
 
         // 4. Simulate post-checkout hook
@@ -652,16 +789,18 @@ mod core_loop {
         assert!(p.root().join("src/index.js").exists());
 
         // Ship structure present
-        p.assert_ship_file("agents/skills/task-policy.md");
+        p.assert_ship_file("agents/skills/task-policy/index.md");
 
         // Feature branch workflow works identically
         create_feature(
             p.ship_dir.clone(),
             "User Dashboard",
             "React dashboard with auth.",
-            None, None,
+            None,
+            None,
             Some("feature/dashboard"),
-        ).unwrap();
+        )
+        .unwrap();
         p.create_feature_branch("feature/dashboard").unwrap();
         on_post_checkout(&p.ship_dir, "feature/dashboard", &p.root()).unwrap();
 

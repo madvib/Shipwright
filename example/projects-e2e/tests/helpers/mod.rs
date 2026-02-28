@@ -6,17 +6,35 @@ use tempfile::TempDir;
 /// Simulated existing-project file trees for testing `ship init` on non-empty directories.
 /// Each entry is (relative path, content).
 pub const EXISTING_JS_PROJECT: &[(&str, &str)] = &[
-    ("package.json", r#"{"name":"my-app","version":"0.1.0","scripts":{"dev":"next dev","build":"next build"}}"#),
-    ("src/index.js", "import React from 'react';\nexport default function App() { return <div>Hello</div>; }\n"),
-    ("src/components/Button.js", "export const Button = ({children}) => <button>{children}</button>;\n"),
-    ("public/index.html", "<!DOCTYPE html><html><body><div id=\"root\"></div></body></html>\n"),
+    (
+        "package.json",
+        r#"{"name":"my-app","version":"0.1.0","scripts":{"dev":"next dev","build":"next build"}}"#,
+    ),
+    (
+        "src/index.js",
+        "import React from 'react';\nexport default function App() { return <div>Hello</div>; }\n",
+    ),
+    (
+        "src/components/Button.js",
+        "export const Button = ({children}) => <button>{children}</button>;\n",
+    ),
+    (
+        "public/index.html",
+        "<!DOCTYPE html><html><body><div id=\"root\"></div></body></html>\n",
+    ),
     (".gitignore", "node_modules/\n.env\n.next/\nbuild/\n"),
     ("README.md", "# My App\n\nA sample project.\n"),
 ];
 
 pub const EXISTING_RUST_PROJECT: &[(&str, &str)] = &[
-    ("Cargo.toml", "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
-    ("src/main.rs", "fn main() { println!(\"Hello, world!\"); }\n"),
+    (
+        "Cargo.toml",
+        "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    ),
+    (
+        "src/main.rs",
+        "fn main() { println!(\"Hello, world!\"); }\n",
+    ),
     (".gitignore", "target/\n"),
     ("README.md", "# My App\n"),
 ];
@@ -82,9 +100,18 @@ impl TestProject {
     }
 
     fn init_git(root: &Path) -> Result<()> {
-        Command::new("git").args(["init", "-b", "main"]).current_dir(root).output()?;
-        Command::new("git").args(["config", "user.email", "test@ship.dev"]).current_dir(root).output()?;
-        Command::new("git").args(["config", "user.name", "Ship Test"]).current_dir(root).output()?;
+        Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(root)
+            .output()?;
+        Command::new("git")
+            .args(["config", "user.email", "test@ship.dev"])
+            .current_dir(root)
+            .output()?;
+        Command::new("git")
+            .args(["config", "user.name", "Ship Test"])
+            .current_dir(root)
+            .output()?;
         Ok(())
     }
 
@@ -140,16 +167,29 @@ impl TestProject {
 
     /// Git checkout — fires hooks if installed.
     pub fn checkout(&self, branch: &str) -> Result<Output> {
+        let bin = std::env::var("SHIP_BIN").unwrap_or_else(|_| ship_bin_path());
+        let mut path_env = std::env::var("PATH").unwrap_or_default();
+        if let Some(target_dir) = std::path::Path::new(&bin).parent() {
+            path_env = format!("{}:{}", target_dir.display(), path_env);
+        }
         Ok(Command::new("git")
             .args(["checkout", branch])
+            .env("PATH", path_env)
             .current_dir(self.dir.path())
             .output()?)
     }
 
     /// Git create and checkout new branch.
     pub fn checkout_new(&self, branch: &str) -> Result<Output> {
+        let bin = std::env::var("SHIP_BIN").unwrap_or_else(|_| ship_bin_path());
+        let mut path_env = std::env::var("PATH").unwrap_or_default();
+        if let Some(target_dir) = std::path::Path::new(&bin).parent() {
+            path_env = format!("{}:{}", target_dir.display(), path_env);
+        }
+
         Ok(Command::new("git")
             .args(["checkout", "-b", branch])
+            .env("PATH", path_env)
             .current_dir(self.dir.path())
             .output()?)
     }
@@ -176,7 +216,8 @@ impl TestProject {
     pub fn add_worktree(&self, branch: &str) -> Result<TestWorktree> {
         // Place worktrees inside the project's unique temp dir to avoid cross-test conflicts
         // when tests run in parallel (multiple tests may use the same branch name).
-        let worktree_path = self.root()
+        let worktree_path = self
+            .root()
             .join(".worktrees")
             .join(branch.replace('/', "-"));
         // Note: git worktree add creates the directory itself — do not pre-create it.
@@ -212,24 +253,28 @@ impl TestProject {
     /// Assert a file at project root contains a substring.
     pub fn assert_root_file_contains(&self, name: &str, needle: &str) {
         let path = self.root().join(name);
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("{} not readable", name));
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{} not readable", name));
         assert!(
             content.contains(needle),
             "{} should contain {:?}\n--- content ---\n{}",
-            name, needle, content
+            name,
+            needle,
+            content
         );
     }
 
     /// Assert a file at project root does NOT contain a substring.
     pub fn assert_root_file_not_contains(&self, name: &str, needle: &str) {
         let path = self.root().join(name);
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("{} not readable", name));
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{} not readable", name));
         assert!(
             !content.contains(needle),
             "{} should NOT contain {:?}\n--- content ---\n{}",
-            name, needle, content
+            name,
+            needle,
+            content
         );
     }
 
@@ -306,8 +351,11 @@ impl TestProject {
             .current_dir(self.root())
             .output()?;
         if !out.status.success() {
-            anyhow::bail!("git checkout -b {} failed: {}", name,
-                String::from_utf8_lossy(&out.stderr));
+            anyhow::bail!(
+                "git checkout -b {} failed: {}",
+                name,
+                String::from_utf8_lossy(&out.stderr)
+            );
         }
         Ok(())
     }
@@ -329,8 +377,7 @@ impl TestWorktree {
     pub fn cli(&self, args: &[&str]) -> Command {
         let bin = std::env::var("SHIP_BIN").unwrap_or_else(|_| ship_bin_path());
         let mut cmd = Command::new(bin);
-        cmd.current_dir(&self.path)
-            .env("SHIP_DIR", &self.ship_dir);
+        cmd.current_dir(&self.path).env("SHIP_DIR", &self.ship_dir);
         cmd.args(args);
         cmd
     }
@@ -346,7 +393,11 @@ impl TestWorktree {
 
     pub fn assert_no_file(&self, name: &str) {
         let path = self.path.join(name);
-        assert!(!path.exists(), "worktree/{} should not exist but does", name);
+        assert!(
+            !path.exists(),
+            "worktree/{} should not exist but does",
+            name
+        );
     }
 
     pub fn assert_file_contains(&self, name: &str, needle: &str) {
@@ -356,7 +407,9 @@ impl TestWorktree {
         assert!(
             content.contains(needle),
             "worktree/{} should contain {:?}\n--- content ---\n{}",
-            name, needle, content
+            name,
+            needle,
+            content
         );
     }
 

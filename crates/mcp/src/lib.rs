@@ -6,8 +6,8 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        AnnotateAble, CreateMessageRequestParams, Implementation, ListResourcesResult,
-        ListResourceTemplatesResult, ProtocolVersion, RawResource, RawResourceTemplate,
+        AnnotateAble, CreateMessageRequestParams, Implementation, ListResourceTemplatesResult,
+        ListResourcesResult, ProtocolVersion, RawResource, RawResourceTemplate,
         ReadResourceRequestParams, ReadResourceResult, ResourceContents, SamplingMessage,
         ServerCapabilities, ServerInfo,
     },
@@ -15,16 +15,14 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use runtime::{
-    NoteScope, add_status, create_adr, create_feature, create_issue,
-    create_release, create_skill, create_spec, create_user_skill, delete_issue,
-    delete_skill, delete_user_skill, find_release_path, get_adr, get_config,
-    get_effective_skill, get_feature_raw, get_issue, get_project_dir,
-    get_project_name, get_project_statuses, get_release_raw, get_spec_raw,
-    list_adrs, list_effective_skills,
-    list_events_since, list_features, list_issues_full,
-    list_releases, list_specs, log_action,
-    log_action_by, move_issue, read_log, remove_status, set_category_committed,
-    update_feature, update_release, update_skill, update_spec, update_user_skill,
+    NoteScope, add_status, create_adr, create_feature, create_issue, create_release, create_skill,
+    create_spec, create_user_skill, delete_issue, delete_skill, delete_user_skill,
+    find_release_path, get_adr, get_config, get_effective_skill, get_feature_raw, get_issue,
+    get_project_dir, get_project_name, get_project_statuses, get_release_raw, get_spec_raw,
+    list_adrs, list_effective_skills, list_events_since, list_features, list_issues_full,
+    list_releases, list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
+    set_category_committed, update_feature, update_release, update_skill, update_spec,
+    update_user_skill,
 };
 use serde::Deserialize;
 use ship_module_git::{install_hooks, on_post_checkout};
@@ -508,7 +506,7 @@ impl ShipServer {
             for a in &adrs {
                 out.push_str(&format!(
                     "- [{}] {} ({})\n",
-                    a.adr.metadata.status, a.adr.metadata.title, a.file_name
+                    a.status, a.adr.metadata.title, a.file_name
                 ));
             }
         }
@@ -905,7 +903,7 @@ impl ShipServer {
             Err(e) => return e,
         };
         let content = req.content.as_deref().unwrap_or("");
-        match create_spec(project_dir, &req.title, content) {
+        match create_spec(project_dir, &req.title, content, "draft") {
             Ok(file) => format!(
                 "Created spec: {}",
                 file.file_name()
@@ -1183,12 +1181,17 @@ impl ShipServer {
     // ─── Status / Category Tools ─────────────────────────────────────────────
 
     /// Add or remove an issue status/category
-    #[tool(description = "Add or remove an issue status/category. action: 'add' or 'remove'. Existing issues are not affected when removing.")]
+    #[tool(
+        description = "Add or remove an issue status/category. action: 'add' or 'remove'. Existing issues are not affected when removing."
+    )]
     async fn manage_status(&self, Parameters(req): Parameters<ManageStatusRequest>) -> String {
         let project_dir = self.get_effective_project_dir().await.ok();
         match req.action.as_str() {
             "add" => match add_status(project_dir, &req.name) {
-                Ok(_) => format!("Added status: {}", req.name.to_lowercase().replace(' ', "-")),
+                Ok(_) => format!(
+                    "Added status: {}",
+                    req.name.to_lowercase().replace(' ', "-")
+                ),
                 Err(e) => format!("Error: {}", e),
             },
             "remove" => match remove_status(project_dir, &req.name) {
@@ -1407,9 +1410,7 @@ impl ShipServer {
             Err(err) => format!("Error: {}", err),
         }
     }
-
 }
-
 
 impl ShipServer {
     /// Generate text via MCP sampling (peer.create_message).
@@ -1466,7 +1467,10 @@ impl ShipServer {
             }
             let mut out = String::from("Issues:\n");
             for e in &entries {
-                out.push_str(&format!("- [{}] {} ({})\n", e.status, e.issue.metadata.title, e.file_name));
+                out.push_str(&format!(
+                    "- [{}] {} ({})\n",
+                    e.status, e.issue.metadata.title, e.file_name
+                ));
             }
             return Some(out);
         }
@@ -1479,9 +1483,10 @@ impl ShipServer {
                 return get_issue(path).ok().map(|issue| {
                     format!(
                         "Title: {}\nStatus: {}\nCreated: {}\nUpdated: {}\n\n{}",
-                        issue.metadata.title, status,
-                        issue.metadata.created.format("%Y-%m-%d %H:%M"),
-                        issue.metadata.updated.format("%Y-%m-%d %H:%M"),
+                        issue.metadata.title,
+                        status,
+                        issue.metadata.created,
+                        issue.metadata.updated,
                         issue.description
                     )
                 });
@@ -1512,7 +1517,10 @@ impl ShipServer {
             }
             let mut out = String::from("Releases:\n");
             for r in &entries {
-                out.push_str(&format!("- [{}] {} ({})\n", r.status, r.version, r.file_name));
+                out.push_str(&format!(
+                    "- [{}] {} ({})\n",
+                    r.status, r.version, r.file_name
+                ));
             }
             return Some(out);
         }
@@ -1546,15 +1554,27 @@ impl ShipServer {
             }
             let mut out = String::from("ADRs:\n");
             for a in &entries {
-                out.push_str(&format!("- [{}] {} ({})\n", a.adr.metadata.status, a.adr.metadata.title, a.file_name));
+                out.push_str(&format!(
+                    "- [{}] {} ({})\n",
+                    a.status, a.adr.metadata.title, a.file_name
+                ));
             }
             return Some(out);
         }
         // ship://adrs/{file}
         if let Some(file) = uri.strip_prefix("ship://adrs/") {
             let path = runtime::project::adrs_dir(dir).join(file);
+            let status = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
             return get_adr(path).ok().map(|adr| {
-                format!("Title: {}\nStatus: {}\nDate: {}\n\n{}", adr.metadata.title, adr.metadata.status, adr.metadata.date, adr.body)
+                format!(
+                    "Title: {}\nStatus: {}\nDate: {}\n\n{}",
+                    adr.metadata.title, status, adr.metadata.date, adr.body
+                )
             });
         }
         // ship://notes
@@ -1571,7 +1591,8 @@ impl ShipServer {
         }
         // ship://notes/{file}
         if let Some(file) = uri.strip_prefix("ship://notes/") {
-            let path = runtime::note_path_for_scope(NoteScope::Project, Some(dir.clone()), file).ok()?;
+            let path =
+                runtime::note_path_for_scope(NoteScope::Project, Some(dir.clone()), file).ok()?;
             return runtime::get_note_raw(path).ok();
         }
         // ship://skills

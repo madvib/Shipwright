@@ -132,34 +132,10 @@ pub fn find_feature_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<P
         return Ok(None);
     }
 
-    let features_dir = runtime::project::features_dir(ship_dir);
-    if !features_dir.exists() {
-        return Ok(None);
-    }
-
-    let mut candidates = Vec::new();
-    for entry in fs::read_dir(&features_dir)
-        .with_context(|| format!("Failed to list features: {}", features_dir.display()))?
-    {
-        let path = entry?.path();
-        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let file_name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("");
-            if file_name == "TEMPLATE.md" || file_name == "README.md" {
-                continue;
-            }
-            candidates.push(path);
-        }
-    }
-    candidates.sort();
-
-    for path in candidates {
-        let feature = get_feature(path.clone())
-            .with_context(|| format!("Invalid feature: {}", path.display()))?;
-        if feature.metadata.branch.as_deref() == Some(branch) {
-            return Ok(Some(path));
+    let features = runtime::list_features(ship_dir.to_path_buf(), None)?;
+    for feat in features {
+        if feat.branch.as_deref() == Some(branch) {
+            return Ok(Some(PathBuf::from(feat.path)));
         }
     }
 
@@ -194,8 +170,8 @@ fn find_spec_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<PathBuf>
     candidates.sort();
 
     for path in candidates {
-        let spec = get_spec(path.clone())
-            .with_context(|| format!("Invalid spec: {}", path.display()))?;
+        let spec =
+            get_spec(path.clone()).with_context(|| format!("Invalid spec: {}", path.display()))?;
         if spec.metadata.branch.as_deref() == Some(branch) {
             return Ok(Some(path));
         }
@@ -205,19 +181,16 @@ fn find_spec_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<PathBuf>
 }
 
 fn find_feature_by_uuid(ship_dir: &Path, uuid: &str) -> Option<PathBuf> {
-    let dir = runtime::project::features_dir(ship_dir);
-    fs::read_dir(&dir).ok()?.flatten().find_map(|e| {
-        let path = e.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("md") {
-            return None;
+    if let Ok(features) = runtime::list_features(ship_dir.to_path_buf(), None) {
+        for feat in features {
+            if let Ok(f) = get_feature(PathBuf::from(&feat.path)) {
+                if f.metadata.id == uuid {
+                    return Some(PathBuf::from(feat.path));
+                }
+            }
         }
-        let feature = get_feature(path.clone()).ok()?;
-        if feature.metadata.id == uuid {
-            Some(path)
-        } else {
-            None
-        }
-    })
+    }
+    None
 }
 
 fn find_spec_by_uuid(ship_dir: &Path, uuid: &str) -> Option<PathBuf> {
@@ -326,10 +299,7 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
                             "claude",
                             feature_server_filter,
                         )?;
-                        ensure_required_mcp_servers(
-                            project_root,
-                            &resolved_agent.mcp_server_ids,
-                        )?;
+                        ensure_required_mcp_servers(project_root, &resolved_agent.mcp_server_ids)?;
                     }
                     other => {
                         agent_export::export_to_filtered(
@@ -493,7 +463,11 @@ pub fn generate_claude_md_for_spec(
     }
 
     let branch = spec.metadata.branch.as_deref().unwrap_or("unassigned");
-    let spec_id = if spec.metadata.id.is_empty() { "unknown" } else { spec.metadata.id.as_str() };
+    let spec_id = if spec.metadata.id.is_empty() {
+        "unknown"
+    } else {
+        spec.metadata.id.as_str()
+    };
     content.push_str("---\n");
     content.push_str(&format!("_Branch: {} | Spec: {}_\n", branch, spec_id));
 
@@ -508,7 +482,22 @@ fn resolve_agent_config(
     project_config: &ProjectConfig,
     feature_agent: Option<&FeatureAgentConfig>,
 ) -> Result<ResolvedFeatureAgent> {
-    let configured_servers = &project_config.mcp_servers;
+    let mut configured_servers = project_config.mcp_servers.clone();
+
+    // Prioritize mcp.toml if it exists
+    if let Ok(toml_servers) = runtime::config::get_mcp_config(ship_dir) {
+        for s in toml_servers {
+            if let Some(existing) = configured_servers
+                .iter_mut()
+                .find(|matching| matching.id == s.id)
+            {
+                *existing = s;
+            } else {
+                configured_servers.push(s);
+            }
+        }
+    }
+
     let configured_server_ids: HashSet<&str> = configured_servers
         .iter()
         .map(|server| server.id.as_str())

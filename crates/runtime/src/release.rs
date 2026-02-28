@@ -1,13 +1,11 @@
 use crate::fs_util::write_atomic;
-use crate::project::sanitize_file_name;
 use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
@@ -44,8 +42,8 @@ pub struct ReleaseMetadata {
     pub version: String,
     #[serde(default)]
     pub status: ReleaseStatus,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
+    pub created: String,
+    pub updated: String,
     /// Whether this release line is still supported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supported: Option<bool>,
@@ -73,7 +71,7 @@ pub struct ReleaseEntry {
     pub path: String,
     pub version: String,
     pub status: ReleaseStatus,
-    pub updated: DateTime<Utc>,
+    pub updated: String,
 }
 
 fn ship_dir_from_release_path(path: &Path) -> Option<PathBuf> {
@@ -83,8 +81,13 @@ fn ship_dir_from_release_path(path: &Path) -> Option<PathBuf> {
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 fn validate_version(version: &str) -> Result<()> {
-    if version.trim().is_empty() {
-        return Err(anyhow!("Release version cannot be empty"));
+    let re = regex::Regex::new(r"^v\d+\.\d+\.\d+(-[a-z0-9]+(\.[0-9]+)?)?$")
+        .expect("Invalid semver regex");
+    if !re.is_match(version) {
+        return Err(anyhow!(
+            "Invalid release version: '{}'. Must follow vMAJOR.MINOR.PATCH[-PRE] pattern.",
+            version
+        ));
     }
     Ok(())
 }
@@ -107,13 +110,13 @@ impl Release {
                 .find(|l| l.starts_with("# "))
                 .map(|l| l.trim_start_matches("# ").trim().to_string())
                 .unwrap_or_default();
-            let now = Utc::now();
+            let now = Utc::now().to_rfc3339();
             Ok(Release {
                 metadata: ReleaseMetadata {
-                    id: String::new(),
+                    id: version.clone(),
                     version,
                     status: ReleaseStatus::default(),
-                    created: now,
+                    created: now.clone(),
                     updated: now,
                     supported: None,
                     target_date: None,
@@ -166,30 +169,20 @@ pub fn create_release(project_dir: PathBuf, version: &str, body: &str) -> Result
     let releases_dir = crate::project::upcoming_releases_dir(&project_dir);
     fs::create_dir_all(&releases_dir)?;
 
-    let now = Utc::now();
-    let release = Release {
-        metadata: ReleaseMetadata {
-            id: Uuid::new_v4().to_string(),
-            version: version.to_string(),
-            status: ReleaseStatus::default(),
-            created: now,
-            updated: now,
-            supported: Some(false),
-            target_date: None,
-            feature_ids: Vec::new(),
-            adr_ids: Vec::new(),
-            breaking_changes: Vec::new(),
-            tags: Vec::new(),
-        },
-        body: if body.is_empty() {
-            "## Goal\n\n\n## Scope\n\n- [ ]\n\n## Included Features\n\n- [ ]\n\n## Notes\n\n"
-                .to_string()
-        } else {
-            body.to_string()
-        },
-    };
+    let template = crate::project::read_template(&project_dir, "release")?;
+    let mut release = Release::from_markdown(&template)?;
+    let now = Utc::now().to_rfc3339();
 
-    let base = sanitize_file_name(version);
+    release.metadata.id = version.to_string();
+    release.metadata.version = version.to_string();
+    release.metadata.created = now.clone();
+    release.metadata.updated = now;
+
+    if !body.is_empty() {
+        release.body = body.to_string();
+    }
+
+    let base = version.to_string();
     let file_path = unique_path(&releases_dir, &base);
     write_atomic(&file_path, release.to_markdown()?)?;
     let file_name = file_path
@@ -241,7 +234,7 @@ pub fn get_release_raw(path: PathBuf) -> Result<String> {
 /// Overwrite a release's body content, updating the `updated` timestamp.
 pub fn update_release(path: PathBuf, body: &str) -> Result<()> {
     let mut release = get_release(path.clone())?;
-    release.metadata.updated = Utc::now();
+    release.metadata.updated = Utc::now().to_rfc3339();
     let version = release.metadata.version.clone();
     release.body = body.to_string();
     write_atomic(&path, release.to_markdown()?)

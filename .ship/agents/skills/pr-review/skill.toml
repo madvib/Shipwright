@@ -1,0 +1,6 @@
++++
+id = "pr-review"
+name = "PR Review Checklist"
+description = "Standards for reviewing PRs on the Shipwright codebase"
+source = "custom"
++++

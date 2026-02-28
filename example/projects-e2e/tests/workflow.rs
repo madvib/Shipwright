@@ -70,7 +70,7 @@ fn core_loop_paths_resolve_correctly() {
     .unwrap();
     assert!(feature.starts_with(features_dir(&p.ship_dir)));
 
-    let spec = runtime::create_spec(p.ship_dir.clone(), "Auth Spec", "").unwrap();
+    let spec = runtime::create_spec(p.ship_dir.clone(), "Auth Spec", "", "draft").unwrap();
     assert!(spec.starts_with(specs_dir(&p.ship_dir)));
 
     let issue =

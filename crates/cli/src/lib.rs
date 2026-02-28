@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::{
-    McpServerConfig, McpServerType, NoteScope, add_mcp_server, add_mode, add_status,
-    FeatureStatus, backfill_issue_ids, create_adr, create_feature, create_issue, create_note,
-    create_release, create_skill, create_spec, create_user_skill, delete_skill, delete_user_skill,
-    feature_done, feature_start, find_release_path, get_active_mode, get_config,
-    get_effective_skill, get_feature, get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw,
-    get_project_dir, get_project_statuses, get_release_raw, get_skill, get_spec_raw, get_user_skill,
-    ingest_external_events, init_demo_project, init_project, is_category_committed,
+    FeatureStatus, McpServerConfig, McpServerType, NoteScope, add_mcp_server, add_mode, add_status,
+    backfill_issue_ids, create_adr, create_feature, create_issue, create_note, create_release,
+    create_skill, create_spec, create_user_skill, delete_skill, delete_user_skill, feature_done,
+    feature_start, find_release_path, get_active_mode, get_config, get_effective_skill,
+    get_feature, get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw,
+    get_project_dir, get_project_statuses, get_release_raw, get_skill, get_spec_raw,
+    get_user_skill, ingest_external_events, init_demo_project, init_project, is_category_committed,
     list_effective_skills, list_events_since, list_features, list_issues, list_mcp_servers,
     list_notes, list_releases, list_skills, list_specs, list_user_skills, log_action,
     migrate_global_state, migrate_json_config_file, migrate_project_state, migrate_yaml_issues,
@@ -310,6 +310,12 @@ pub enum IssueCommands {
 pub enum AdrCommands {
     /// Create a new ADR
     Create { title: String, decision: String },
+    /// List ADRs
+    List,
+    /// Print an ADR's markdown content
+    Get { file_name: String },
+    /// Move an ADR to a new status
+    Move { file_name: String, status: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -476,13 +482,9 @@ pub enum FeatureCommands {
         branch: Option<String>,
     },
     /// Check out the branch linked to a feature and regenerate agent config
-    Switch {
-        file_name: String,
-    },
+    Switch { file_name: String },
     /// Mark a feature as implemented (done)
-    Done {
-        file_name: String,
-    },
+    Done { file_name: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -531,10 +533,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 );
             }
             if let Err(err) = write_root_gitignore(&target) {
-                eprintln!(
-                    "[ship] warning: failed to update root .gitignore: {}",
-                    err
-                );
+                eprintln!("[ship] warning: failed to update root .gitignore: {}", err);
             }
             let tracked = match runtime::register_project(project_name, target.clone()) {
                 Ok(()) => true,
@@ -603,12 +602,49 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             let project_dir = get_project_dir(None)?;
             match action {
                 AdrCommands::Create { title, decision } => {
-                    let path = create_adr(project_dir.clone(), &title, &decision, "accepted")?;
+                    let path = create_adr(project_dir.clone(), &title, &decision, "proposed")?;
                     println!("ADR created: {}", path.display());
                     log_action(
                         project_dir,
                         "adr create",
                         &format!("Created ADR: {}", title),
+                    )?;
+                }
+                AdrCommands::List => {
+                    let mut adrs = runtime::list_adrs(project_dir)?;
+                    adrs.sort_by(|a, b| b.file_name.cmp(&a.file_name));
+                    if adrs.is_empty() {
+                        println!("No ADRs found.");
+                    } else {
+                        for adr in adrs {
+                            println!(
+                                "[{}] {} ({})",
+                                adr.status, adr.adr.metadata.title, adr.file_name
+                            );
+                        }
+                    }
+                }
+                AdrCommands::Get { file_name } => {
+                    let path = runtime::find_adr_path(&project_dir, &file_name)?;
+                    let content = std::fs::read_to_string(path)?;
+                    println!("{}", content);
+                }
+                AdrCommands::Move { file_name, status } => {
+                    let new_status = status
+                        .parse::<runtime::AdrStatus>()
+                        .map_err(|_| anyhow::anyhow!("Invalid ADR status"))?;
+                    let new_path =
+                        runtime::move_adr(project_dir.clone(), &file_name, new_status.clone())?;
+                    println!(
+                        "Moved {} to {} ({})",
+                        file_name,
+                        new_status,
+                        new_path.display()
+                    );
+                    log_action(
+                        project_dir,
+                        "adr move",
+                        &format!("Moved {} to {}", file_name, new_status),
                     )?;
                 }
             }
@@ -797,7 +833,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             match action {
                 SpecCommands::Create { title, content } => {
                     let body = content.unwrap_or_default();
-                    let path = create_spec(project_dir.clone(), &title, &body)?;
+                    let path = create_spec(project_dir.clone(), &title, &body, "draft")?;
                     println!("Spec created: {}", path.display());
                     log_action(
                         project_dir,
@@ -902,7 +938,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         Some("in-progress") => Some(FeatureStatus::InProgress),
                         Some("implemented") => Some(FeatureStatus::Implemented),
                         Some("deprecated") => Some(FeatureStatus::Deprecated),
-                        Some(other) => anyhow::bail!("Unknown status: {}. Use: planned, in-progress, implemented, deprecated", other),
+                        Some(other) => anyhow::bail!(
+                            "Unknown status: {}. Use: planned, in-progress, implemented, deprecated",
+                            other
+                        ),
                         None => None,
                     };
                     let mut features = list_features(project_dir, status_filter)?;
@@ -920,18 +959,12 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 FeatureCommands::Get { file_name } => {
-                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Feature not found: {}", file_name);
-                    }
+                    let path = runtime::find_feature_path(&project_dir, &file_name)?;
                     let content = get_feature_raw(path)?;
                     println!("{}", content);
                 }
                 FeatureCommands::Update { file_name, content } => {
-                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Feature not found: {}", file_name);
-                    }
+                    let path = runtime::find_feature_path(&project_dir, &file_name)?;
                     update_feature(path, &content)?;
                     println!("Updated feature: {}", file_name);
                     log_action(
@@ -975,10 +1008,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     )?;
                 }
                 FeatureCommands::Switch { file_name } => {
-                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Feature not found: {}", file_name);
-                    }
+                    let path = runtime::find_feature_path(&project_dir, &file_name)?;
                     let feature = get_feature(path)?;
                     let branch = feature.metadata.branch.ok_or_else(|| {
                         anyhow::anyhow!(

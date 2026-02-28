@@ -2,12 +2,11 @@ use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
 use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
@@ -27,7 +26,10 @@ impl<'de> serde::Deserialize<'de> for FeatureMcpRef {
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
                 Ok(FeatureMcpRef { id: v.to_string() })
             }
-            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
                 let mut id = None;
                 while let Some(key) = map.next_key::<String>()? {
                     if key == "id" {
@@ -36,7 +38,9 @@ impl<'de> serde::Deserialize<'de> for FeatureMcpRef {
                         map.next_value::<serde::de::IgnoredAny>()?;
                     }
                 }
-                Ok(FeatureMcpRef { id: id.ok_or_else(|| serde::de::Error::missing_field("id"))? })
+                Ok(FeatureMcpRef {
+                    id: id.ok_or_else(|| serde::de::Error::missing_field("id"))?,
+                })
             }
         }
         d.deserialize_any(Visitor)
@@ -59,7 +63,10 @@ impl<'de> serde::Deserialize<'de> for FeatureSkillRef {
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
                 Ok(FeatureSkillRef { id: v.to_string() })
             }
-            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
                 let mut id = None;
                 while let Some(key) = map.next_key::<String>()? {
                     if key == "id" {
@@ -68,7 +75,9 @@ impl<'de> serde::Deserialize<'de> for FeatureSkillRef {
                         map.next_value::<serde::de::IgnoredAny>()?;
                     }
                 }
-                Ok(FeatureSkillRef { id: id.ok_or_else(|| serde::de::Error::missing_field("id"))? })
+                Ok(FeatureSkillRef {
+                    id: id.ok_or_else(|| serde::de::Error::missing_field("id"))?,
+                })
             }
         }
         d.deserialize_any(Visitor)
@@ -117,15 +126,38 @@ impl std::fmt::Display for FeatureStatus {
     }
 }
 
+impl std::str::FromStr for FeatureStatus {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "planned" => Ok(FeatureStatus::Planned),
+            "in-progress" => Ok(FeatureStatus::InProgress),
+            "implemented" => Ok(FeatureStatus::Implemented),
+            "deprecated" => Ok(FeatureStatus::Deprecated),
+            _ => Err(anyhow::anyhow!("Invalid feature status: {}", s)),
+        }
+    }
+}
+
+impl FeatureStatus {
+    pub fn from_path(path: &std::path::Path) -> Self {
+        path.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .and_then(|s| s.parse::<Self>().ok())
+            .unwrap_or(FeatureStatus::Planned)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct FeatureMetadata {
     #[serde(default)]
     pub id: String,
     pub title: String,
-    #[serde(default)]
-    pub status: FeatureStatus,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub created: String,
+    pub updated: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -136,10 +168,6 @@ pub struct FeatureMetadata {
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<FeatureAgentConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub supersedes_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
     #[serde(default)]
     pub adr_ids: Vec<String>,
     #[serde(default)]
@@ -161,8 +189,8 @@ pub struct FeatureEntry {
     pub release_id: Option<String>,
     pub spec_id: Option<String>,
     pub branch: Option<String>,
+    pub updated: String,
     pub description: Option<String>,
-    pub updated: DateTime<Utc>,
 }
 
 fn ship_dir_from_feature_path(path: &Path) -> Option<PathBuf> {
@@ -196,21 +224,19 @@ impl Feature {
                 .find(|l| l.starts_with("# "))
                 .map(|l| l.trim_start_matches("# ").trim().to_string())
                 .unwrap_or_default();
-            let now = Utc::now();
+            let now = Utc::now().to_rfc3339();
             Ok(Feature {
                 metadata: FeatureMetadata {
                     id: String::new(),
                     title,
-                    status: FeatureStatus::default(),
-                    created: now,
+                    created: now.clone(),
                     updated: now,
                     owner: None,
                     release_id: None,
                     spec_id: None,
                     branch: None,
-                    agent: None,
-                    supersedes_id: None,
                     description: None,
+                    agent: None,
                     adr_ids: Vec::new(),
                     tags: Vec::new(),
                 },
@@ -254,28 +280,16 @@ fn unique_path(dir: &Path, base: &str) -> PathBuf {
 /// Strip TOML frontmatter (`+++ ... +++`) if present and return only the body.
 /// Guards against callers (e.g. MCP tools) passing fully-formed markdown that
 /// would otherwise produce double frontmatter when wrapped by `to_markdown()`.
-fn extract_body(content: &str) -> String {
-    let body = if content.starts_with("+++\n") {
-        // Skip over the opening +++ and find the closing +++
+pub fn extract_body(content: &str) -> String {
+    if content.starts_with("+++\n") {
         let rest = &content[4..];
         if let Some(end) = rest.find("\n+++") {
-            rest[end + 4..].trim_start_matches('\n').to_string()
-        } else {
-            content.to_string()
+            return rest[end + 4..].trim_start_matches('\n').to_string();
         }
-    } else {
-        content.to_string()
-    };
-
-    if body.trim().is_empty() {
-        "## Why\n\n\n## Acceptance Criteria\n\n- [ ]\n\n## Delivery Todos\n\n- [ ]\n\n## Notes\n\n"
-            .to_string()
-    } else {
-        body
     }
+    content.to_string()
 }
-
-/// Create a new feature file in `.ship/features/`.
+/// Create a new feature file in `.ship/project/features/`.
 pub fn create_feature(
     project_dir: PathBuf,
     title: &str,
@@ -286,38 +300,49 @@ pub fn create_feature(
 ) -> Result<PathBuf> {
     validate_title(title)?;
 
+    let ship_path = crate::project::get_project_dir(Some(project_dir.clone()))?;
+    let template_str = crate::project::read_template(&ship_path, "feature")?;
+    let mut feature =
+        Feature::from_markdown(&template_str).context("Failed to parse feature template")?;
+
+    let now = Utc::now().to_rfc3339();
+    feature.metadata.id = crate::gen_nanoid();
+    feature.metadata.title = title.to_string();
+    feature.metadata.created = now.clone();
+    feature.metadata.updated = now;
+
+    feature.metadata.release_id = release_id
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+    feature.metadata.spec_id = spec_id
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+    feature.metadata.branch = branch
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+
+    feature.metadata.description = None;
+
+    if !body.trim().is_empty() {
+        feature.body = body.to_string();
+    }
+
     let features_dir = crate::project::features_dir(&project_dir);
     fs::create_dir_all(&features_dir)?;
 
-    let now = Utc::now();
-    let feature = Feature {
-        metadata: FeatureMetadata {
-            id: Uuid::new_v4().to_string(),
-            title: title.to_string(),
-            status: FeatureStatus::Planned,
-            created: now,
-            updated: now,
-            owner: None,
-            release_id: release_id.filter(|s| !s.trim().is_empty()).map(str::to_string),
-            spec_id: spec_id.filter(|s| !s.trim().is_empty()).map(str::to_string),
-            branch: branch.filter(|s| !s.trim().is_empty()).map(str::to_string),
-            agent: None,
-            supersedes_id: None,
-            description: None,
-            adr_ids: Vec::new(),
-            tags: Vec::new(),
-        },
-        body: extract_body(body),
-    };
-
     let base = sanitize_file_name(title);
-    let file_path = unique_path(&features_dir, &base);
+    let status_dir = features_dir.join(FeatureStatus::Planned.to_string());
+    fs::create_dir_all(&status_dir)?;
+
+    let file_path = unique_path(&status_dir, &base);
     write_atomic(&file_path, feature.to_markdown()?)?;
+
     let file_name = file_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_string();
+
     append_event(
         &project_dir,
         "logic",
@@ -344,7 +369,7 @@ pub fn get_feature_raw(path: PathBuf) -> Result<String> {
 /// Overwrite a feature's body content, updating the `updated` timestamp.
 pub fn update_feature(path: PathBuf, body: &str) -> Result<()> {
     let mut feature = get_feature(path.clone())?;
-    feature.metadata.updated = Utc::now();
+    feature.metadata.updated = Utc::now().to_rfc3339();
     let title = feature.metadata.title.clone();
     feature.body = body.to_string();
     write_atomic(&path, feature.to_markdown()?)
@@ -379,7 +404,27 @@ pub fn list_features(
     }
 
     let mut entries = Vec::new();
-    for entry in fs::read_dir(&features_dir)? {
+
+    // Check flat directory (legacy)
+    search_feature_dir(&features_dir, &status_filter, &mut entries)?;
+
+    // Check subdirectories
+    for status in &["planned", "in-progress", "implemented", "deprecated"] {
+        let status_dir = features_dir.join(status);
+        if status_dir.exists() {
+            search_feature_dir(&status_dir, &status_filter, &mut entries)?;
+        }
+    }
+
+    Ok(entries)
+}
+
+fn search_feature_dir(
+    dir: &Path,
+    status_filter: &Option<FeatureStatus>,
+    entries: &mut Vec<FeatureEntry>,
+) -> Result<()> {
+    for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() && path.extension().map_or(false, |e| e == "md") {
@@ -392,8 +437,14 @@ pub fn list_features(
                 continue;
             }
             if let Ok(feature) = get_feature(path.clone()) {
-                if let Some(ref f) = status_filter {
-                    if &feature.metadata.status != f {
+                let status_str = dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("planned");
+                let status = status_str.parse::<FeatureStatus>().unwrap_or_default();
+
+                if let Some(f) = status_filter {
+                    if &status != f {
                         continue;
                     }
                 }
@@ -401,27 +452,48 @@ pub fn list_features(
                     file_name,
                     path: path.to_string_lossy().to_string(),
                     title: feature.metadata.title,
-                    status: feature.metadata.status,
+                    status,
                     release_id: feature.metadata.release_id,
                     spec_id: feature.metadata.spec_id,
                     branch: feature.metadata.branch,
-                    description: feature.metadata.description,
-                    updated: feature.metadata.updated,
+                    updated: feature.metadata.updated.clone(),
+                    description: feature.metadata.description.clone(),
                 });
             }
         }
     }
-    Ok(entries)
+    Ok(())
+}
+
+pub fn find_feature_path(project_dir: &Path, file_name: &str) -> Result<PathBuf> {
+    let features_dir = crate::project::features_dir(project_dir);
+    for status in &["planned", "in-progress", "implemented", "deprecated"] {
+        let candidate = features_dir.join(status).join(file_name);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    let candidate = features_dir.join(file_name);
+    if candidate.exists() {
+        return Ok(candidate);
+    }
+    Err(anyhow!("Feature not found: {}", file_name))
 }
 
 /// Set a feature's status to `InProgress` and record its branch.
 pub fn feature_start(project_dir: PathBuf, file_name: &str, branch: &str) -> Result<()> {
-    let path = crate::project::features_dir(&project_dir).join(file_name);
+    let path = find_feature_path(&project_dir, file_name)?;
     let mut feature = get_feature(path.clone())?;
-    feature.metadata.status = FeatureStatus::InProgress;
     feature.metadata.branch = Some(branch.to_string());
-    feature.metadata.updated = Utc::now();
-    write_atomic(&path, feature.to_markdown()?)?;
+    feature.metadata.updated = Utc::now().to_rfc3339();
+    let target_dir =
+        crate::project::features_dir(&project_dir).join(FeatureStatus::InProgress.to_string());
+    fs::create_dir_all(&target_dir)?;
+    let target_path = target_dir.join(file_name);
+    if path != target_path {
+        fs::rename(&path, &target_path).context("Failed to move feature to in-progress")?;
+    }
+    write_atomic(&target_path, feature.to_markdown()?)?;
     // Index branch → feature UUID in DB for fast checkout lookup (non-fatal if DB unavailable)
     let _ = crate::state_db::set_branch_doc(&project_dir, branch, "feature", &feature.metadata.id);
     append_event(
@@ -437,11 +509,17 @@ pub fn feature_start(project_dir: PathBuf, file_name: &str, branch: &str) -> Res
 
 /// Set a feature's status to `Implemented`.
 pub fn feature_done(project_dir: PathBuf, file_name: &str) -> Result<()> {
-    let path = crate::project::features_dir(&project_dir).join(file_name);
+    let path = find_feature_path(&project_dir, file_name)?;
     let mut feature = get_feature(path.clone())?;
-    feature.metadata.status = FeatureStatus::Implemented;
-    feature.metadata.updated = Utc::now();
-    write_atomic(&path, feature.to_markdown()?)?;
+    feature.metadata.updated = Utc::now().to_rfc3339();
+    let target_dir =
+        crate::project::features_dir(&project_dir).join(FeatureStatus::Implemented.to_string());
+    fs::create_dir_all(&target_dir)?;
+    let target_path = target_dir.join(file_name);
+    if path != target_path {
+        fs::rename(&path, &target_path).context("Failed to move feature to implemented")?;
+    }
+    write_atomic(&target_path, feature.to_markdown()?)?;
     append_event(
         &project_dir,
         "logic",

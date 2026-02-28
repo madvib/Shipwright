@@ -9,6 +9,15 @@ pub const SHIP_DIR_NAME: &str = ".ship";
 pub const DEFAULT_STATUSES: &[&str] = &["backlog", "in-progress", "blocked", "done"];
 /// Kept for backwards compatibility — prefer DEFAULT_STATUSES or get_project_statuses().
 pub const ISSUE_STATUSES: &[&str] = DEFAULT_STATUSES;
+pub const ADR_STATUSES: &[&str] = &[
+    "proposed",
+    "accepted",
+    "rejected",
+    "superseded",
+    "deprecated",
+];
+pub const FEATURE_STATUSES: &[&str] = &["planned", "in-progress", "implemented", "deprecated"];
+pub const SPEC_STATUSES: &[&str] = &["draft", "active", "archived"];
 
 // ── Namespace path helpers ────────────────────────────────────────────────────
 // All document paths are derived from these. Never construct paths with raw
@@ -73,6 +82,18 @@ pub fn skills_dir(ship_dir: &Path) -> PathBuf {
 
 pub fn prompts_dir(ship_dir: &Path) -> PathBuf {
     agents_ns(ship_dir).join("prompts")
+}
+
+pub fn rules_dir(ship_dir: &Path) -> PathBuf {
+    agents_ns(ship_dir).join("rules")
+}
+
+pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
+    agents_ns(ship_dir).join("mcp.toml")
+}
+
+pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
+    agents_ns(ship_dir).join("permissions.toml")
 }
 
 /// Resolve the enclosing `.ship` directory from any descendant path.
@@ -254,22 +275,35 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     // project/ namespace
     fs::create_dir_all(releases_dir(&ship_path))?;
     fs::create_dir_all(upcoming_releases_dir(&ship_path))?;
-    fs::create_dir_all(adrs_dir(&ship_path))?;
+
+    let adrs = adrs_dir(&ship_path);
+    for status in ADR_STATUSES {
+        fs::create_dir_all(adrs.join(status))?;
+    }
+
     fs::create_dir_all(notes_dir(&ship_path))?;
-    fs::create_dir_all(features_dir(&ship_path))?;
+
+    let features = features_dir(&ship_path);
+    for status in FEATURE_STATUSES {
+        fs::create_dir_all(features.join(status))?;
+    }
 
     // workflow/ namespace
     let issues = issues_dir(&ship_path);
     for status in DEFAULT_STATUSES {
         fs::create_dir_all(issues.join(status))?;
     }
-    fs::create_dir_all(issues.join("done"))?;
-    fs::create_dir_all(specs_dir(&ship_path))?;
+
+    let specs = specs_dir(&ship_path);
+    for status in SPEC_STATUSES {
+        fs::create_dir_all(specs.join(status))?;
+    }
 
     // agents/ namespace
     fs::create_dir_all(modes_dir(&ship_path))?;
     fs::create_dir_all(skills_dir(&ship_path))?;
     fs::create_dir_all(prompts_dir(&ship_path))?;
+    fs::create_dir_all(rules_dir(&ship_path))?;
 
     crate::events::ensure_event_log(&ship_path)?;
 
@@ -278,6 +312,19 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     write_directory_readmes(&ship_path)?;
     write_default_agent_mode_files(&ship_path)?;
     write_default_skills(&ship_path)?;
+    // Write default agent configurations.
+    write_if_missing(
+        &mcp_config_path(&ship_path),
+        include_str!("templates/MCP.toml"),
+    )?;
+    write_if_missing(
+        &permissions_config_path(&ship_path),
+        include_str!("templates/PERMISSIONS.toml"),
+    )?;
+
+    // Seed core principles in rules
+    let principles_path = rules_dir(&ship_path).join("001-core-principles.md");
+    write_if_missing(&principles_path, include_str!("templates/RULE.md"))?;
 
     // Write default .gitignore (opinionated alpha defaults)
     let gitignore_path = ship_path.join(".gitignore");
@@ -338,57 +385,61 @@ fn write_default_templates(ship_path: &std::path::Path) -> Result<()> {
 fn write_directory_readmes(ship_path: &Path) -> Result<()> {
     let readmes = [
         (
-            ship_path,
-            "# .ship\n\nShip runtime data for this project. Files here are created and updated by Ship tools.\n",
+            ship_path.to_path_buf(),
+            "# .ship\n\nShip runtime data for this project. Files here are created and updated by Ship tools.\n".to_string(),
         ),
         (
-            &project_ns(ship_path),
-            "# project/\n\nProject-level docs and long-lived context.\n- `vision.md`\n- `releases/`\n- `adrs/`\n- `notes/`\n",
+            project_ns(ship_path),
+            "# project/\n\nProject-level docs and long-lived context.\n- `vision.md`\n- `releases/`\n- `adrs/`\n- `notes/`\n".to_string(),
         ),
         (
-            &releases_dir(ship_path),
-            "# project/releases/\n\nRelease plans and release state. Workflow items can reference these files.\n",
+            releases_dir(ship_path),
+            "# project/releases/\n\nRelease plans and release state. Workflow items can reference these files.\n".to_string(),
         ),
         (
-            &upcoming_releases_dir(ship_path),
-            "# project/releases/upcoming/\n\nPlanned or active releases that have not shipped yet.\n",
+            upcoming_releases_dir(ship_path),
+            "# project/releases/upcoming/\n\nPlanned or active releases that have not shipped yet.\n".to_string(),
         ),
         (
-            &adrs_dir(ship_path),
-            "# project/adrs/\n\nArchitecture Decision Records.\n",
+            adrs_dir(ship_path),
+            format!("# project/adrs/\n\nArchitecture Decision Records, organized by status:\n- {}\n", ADR_STATUSES.join("\n- ")),
         ),
         (
-            &notes_dir(ship_path),
-            "# project/notes/\n\nProject-scoped notes.\n",
+            notes_dir(ship_path),
+            "# project/notes/\n\nProject-scoped notes.\n".to_string(),
         ),
         (
-            &workflow_ns(ship_path),
-            "# workflow/\n\nExecution artifacts for ongoing work.\n- `issues/`\n- `specs/`\n- `features/`\n",
+            workflow_ns(ship_path),
+            "# workflow/\n\nExecution artifacts for ongoing work.\n- `issues/`\n- `specs/`\n- `features/`\n".to_string(),
         ),
         (
-            &issues_dir(ship_path),
-            "# workflow/issues/\n\nIssues grouped by status folder.\n",
+            issues_dir(ship_path),
+            format!("# workflow/issues/\n\nGranular implementation tasks, organized by status:\n- {}\n", DEFAULT_STATUSES.join("\n- ")),
         ),
         (
-            &specs_dir(ship_path),
-            "# workflow/specs/\n\nProduct/technical specs that feed implementation.\n",
+            specs_dir(ship_path),
+            format!("# workflow/specs/\n\nProduct/technical specifications, organized by status:\n- {}\n", SPEC_STATUSES.join("\n- ")),
         ),
         (
-            &features_dir(ship_path),
-            "# project/features/\n\nLong-lived feature records. Can reference releases and specs.\n",
+            features_dir(ship_path),
+            format!("# project/features/\n\nHigh-level project features, organized by status:\n- {}\n", FEATURE_STATUSES.join("\n- ")),
         ),
         (
-            &agents_ns(ship_path),
-            "# agents/\n\nAgent runtime config: prompts, skills, and modes.\n",
+            agents_ns(ship_path),
+            "# agents/\n\nAgent runtime config: prompts, skills, rules, and modes.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- `skills/`: Reusable agent capabilities (folder-based).\n- `prompts/`: Global and project system instructions.\n- `modes/`: High-level agent behavior presets.\n".to_string(),
         ),
         (
-            &generated_ns(ship_path),
-            "# generated/\n\nRuntime-generated transient artifacts.\n",
+            rules_dir(ship_path),
+            "# agents/rules/\n\nProject-scoped development rules and principles. Agents should consult these for every task.\n".to_string(),
+        ),
+        (
+            generated_ns(ship_path),
+            "# generated/\n\nRuntime-generated transient artifacts.\n".to_string(),
         ),
     ];
 
     for (dir, content) in readmes {
-        write_if_missing(&dir.join("README.md"), content)?;
+        write_if_missing(&dir.join("README.md"), &content)?;
     }
 
     Ok(())
@@ -461,8 +512,18 @@ fn write_default_agent_mode_files(ship_path: &Path) -> Result<()> {
 }
 
 fn write_default_skills(ship_path: &Path) -> Result<()> {
-    let skill_path = crate::project::skills_dir(ship_path).join("task-policy.md");
-    if write_if_missing(&skill_path, include_str!("skills/task-policy.md"))? {
+    let skill_root = crate::project::skills_dir(ship_path).join("task-policy");
+    fs::create_dir_all(&skill_root)?;
+
+    let config_path = skill_root.join("skill.toml");
+    let content_path = skill_root.join("index.md");
+
+    if write_if_missing(
+        &config_path,
+        "id = \"task-policy\"\nname = \"Task Policy\"\nversion = \"0.1.0\"\n",
+    )? {
+        write_if_missing(&content_path, include_str!("skills/task-policy.md"))?;
+
         // Newly written — also register in project config's agent.skills so the
         // post-checkout hook includes it automatically without requiring explicit feature config.
         let mut config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
@@ -615,6 +676,19 @@ pub fn read_template(ship_path: &Path, kind: &str) -> Result<String> {
     Ok(template_fallback(&normalized)?.to_string())
 }
 
+pub fn validate_status(status: &str) -> Result<()> {
+    if status.trim().is_empty() {
+        return Err(anyhow!("Status cannot be empty"));
+    }
+    if status.contains('/') || status.contains('\\') || status.contains("..") {
+        return Err(anyhow!(
+            "Invalid status '{}': must not contain path separators",
+            status
+        ));
+    }
+    Ok(())
+}
+
 /// List registered `.ship` namespaces from project config.
 pub fn list_registered_namespaces(ship_path: &Path) -> Result<Vec<crate::config::NamespaceConfig>> {
     let config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
@@ -642,16 +716,33 @@ pub fn register_ship_namespace(
 }
 
 pub fn sanitize_file_name(name: &str) -> String {
-    name.chars()
+    let mut sanitized = name
+        .chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c.to_ascii_lowercase()
             } else {
                 '-'
             }
         })
-        .collect::<String>()
-        .to_lowercase()
+        .collect::<String>();
+
+    // Collapse consecutive dashes
+    while sanitized.contains("--") {
+        sanitized = sanitized.replace("--", "-");
+    }
+
+    // Trim leading/trailing dashes
+    sanitized = sanitized.trim_matches('-').to_string();
+
+    // Limit length to 100 characters to be generous but prevent filesystem errors
+    if sanitized.len() > 100 {
+        sanitized.truncate(100);
+        // Clean up trailing dash in case we truncated at one
+        sanitized = sanitized.trim_end_matches('-').to_string();
+    }
+
+    sanitized
 }
 
 /// Returns the human-readable project name from the parent directory of a .ship path.
