@@ -5,9 +5,9 @@ status = "in-progress"
 created = "2026-02-25T00:00:00Z"
 updated = "2026-02-25T00:00:00Z"
 owner = "ship"
-release = "v0.1.0-alpha"
-spec = "alpha-feature-delivery-workflow.md"
-adrs = []
+release_id = "v0.1.0-alpha"
+spec_id = "alpha-feature-delivery-workflow.md"
+adr_ids = []
 tags = ["alpha", "workflow", "primitives"]
 +++
 

@@ -4,7 +4,7 @@ created = ""
 updated = ""
 assignee = ""
 tags = []
-spec = ""
+spec_id = ""
 links = []
 +++
 

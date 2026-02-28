@@ -7,6 +7,23 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Origin of a skill document.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkillSource {
+    Custom,
+    Builtin,
+    AiGenerated,
+    Community,
+    Imported,
+}
+
+impl Default for SkillSource {
+    fn default() -> Self {
+        SkillSource::Custom
+    }
+}
+
 /// A callable slash command / skill (→ `.claude/commands/<id>.md`).
 /// Different from a Prompt (system instructions): skills are invoked
 /// explicitly by the user with `/skill-name [args]` and can use `$ARGUMENTS`.
@@ -17,24 +34,28 @@ pub struct Skill {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
     /// The command template. Use `$ARGUMENTS` as a placeholder for user input.
     pub content: String,
-    /// Origin: "custom", "ai-generated", "community", "imported"
-    #[serde(default = "default_source")]
-    pub source: String,
-}
-
-fn default_source() -> String {
-    "custom".to_string()
+    #[serde(default)]
+    pub source: SkillSource,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct SkillFrontmatter {
     id: String,
     name: String,
+    #[serde(default)]
     description: Option<String>,
-    #[serde(default = "default_source")]
-    source: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    author: Option<String>,
+    #[serde(default)]
+    source: SkillSource,
 }
 
 fn skills_dir(project_dir: &Path) -> PathBuf {
@@ -63,6 +84,8 @@ fn parse_skill(path: &Path) -> Result<Skill> {
                 id: fm.id,
                 name: fm.name,
                 description: fm.description,
+                version: fm.version,
+                author: fm.author,
                 content: parts[1].trim().to_string(),
                 source: fm.source,
             });
@@ -76,6 +99,8 @@ fn write_skill(path: &Path, skill: &Skill) -> Result<()> {
         id: skill.id.clone(),
         name: skill.name.clone(),
         description: skill.description.clone(),
+        version: skill.version.clone(),
+        author: skill.author.clone(),
         source: skill.source.clone(),
     };
     let content = format!(
@@ -171,8 +196,10 @@ pub fn create_skill(project_dir: &Path, id: &str, name: &str, content: &str) -> 
         id: id.to_string(),
         name: name.to_string(),
         description: None,
+        version: None,
+        author: None,
         content: content.to_string(),
-        source: "custom".to_string(),
+        source: SkillSource::Custom,
     };
     write_skill(&path, &skill)?;
     // Register in project config so checkout hook includes this skill automatically.
@@ -195,8 +222,10 @@ pub fn create_user_skill(id: &str, name: &str, content: &str) -> Result<Skill> {
         id: id.to_string(),
         name: name.to_string(),
         description: None,
+        version: None,
+        author: None,
         content: content.to_string(),
-        source: "custom".to_string(),
+        source: SkillSource::Custom,
     };
     write_skill(&path, &skill)?;
     Ok(skill)
@@ -269,7 +298,7 @@ mod tests {
             "Review this: $ARGUMENTS",
         )?;
         assert_eq!(s.id, "review");
-        assert_eq!(s.source, "custom");
+        assert_eq!(s.source, SkillSource::Custom);
         let got = get_skill(tmp.path(), "review")?;
         assert_eq!(got.content, "Review this: $ARGUMENTS");
         Ok(())

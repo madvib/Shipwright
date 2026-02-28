@@ -11,13 +11,39 @@ use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum ReleaseStatus {
+    Planned,
+    Active,
+    Shipped,
+    Archived,
+}
+
+impl Default for ReleaseStatus {
+    fn default() -> Self {
+        ReleaseStatus::Planned
+    }
+}
+
+impl std::fmt::Display for ReleaseStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReleaseStatus::Planned => write!(f, "planned"),
+            ReleaseStatus::Active => write!(f, "active"),
+            ReleaseStatus::Shipped => write!(f, "shipped"),
+            ReleaseStatus::Archived => write!(f, "archived"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct ReleaseMetadata {
     #[serde(default)]
     pub id: String,
     pub version: String,
-    #[serde(default = "default_status")]
-    pub status: String, // planned | active | shipped | archived
+    #[serde(default)]
+    pub status: ReleaseStatus,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
     /// Whether this release line is still supported.
@@ -26,15 +52,13 @@ pub struct ReleaseMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_date: Option<String>,
     #[serde(default)]
-    pub features: Vec<String>,
+    pub feature_ids: Vec<String>,
     #[serde(default)]
-    pub adrs: Vec<String>,
+    pub adr_ids: Vec<String>,
+    #[serde(default)]
+    pub breaking_changes: Vec<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-}
-
-fn default_status() -> String {
-    "planned".to_string()
 }
 
 #[derive(Debug, Clone, Type)]
@@ -48,7 +72,7 @@ pub struct ReleaseEntry {
     pub file_name: String,
     pub path: String,
     pub version: String,
-    pub status: String,
+    pub status: ReleaseStatus,
     pub updated: DateTime<Utc>,
 }
 
@@ -88,13 +112,14 @@ impl Release {
                 metadata: ReleaseMetadata {
                     id: String::new(),
                     version,
-                    status: default_status(),
+                    status: ReleaseStatus::default(),
                     created: now,
                     updated: now,
                     supported: None,
                     target_date: None,
-                    features: Vec::new(),
-                    adrs: Vec::new(),
+                    feature_ids: Vec::new(),
+                    adr_ids: Vec::new(),
+                    breaking_changes: Vec::new(),
                     tags: Vec::new(),
                 },
                 body: content.to_string(),
@@ -146,13 +171,14 @@ pub fn create_release(project_dir: PathBuf, version: &str, body: &str) -> Result
         metadata: ReleaseMetadata {
             id: Uuid::new_v4().to_string(),
             version: version.to_string(),
-            status: default_status(),
+            status: ReleaseStatus::default(),
             created: now,
             updated: now,
             supported: Some(false),
             target_date: None,
-            features: Vec::new(),
-            adrs: Vec::new(),
+            feature_ids: Vec::new(),
+            adr_ids: Vec::new(),
+            breaking_changes: Vec::new(),
             tags: Vec::new(),
         },
         body: if body.is_empty() {

@@ -3,7 +3,7 @@ title = ""
 status = "proposed"
 date = ""
 tags = []
-spec = ""
+spec_id = ""
 +++
 
 ## Context

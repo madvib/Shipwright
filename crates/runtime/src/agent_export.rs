@@ -6,10 +6,43 @@ use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
 use crate::skill::list_effective_skills;
 use anyhow::{Context, Result, anyhow};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+// ─── Model registry ───────────────────────────────────────────────────────────
+
+/// Static model entry — all `&'static str` so it can live in a `const` array.
+#[derive(Debug, Clone, Copy)]
+pub struct StaticModelInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub context_window: u32,
+    pub recommended: bool,
+}
+
+/// Serializable model info for Tauri/MCP.
+#[derive(Serialize, Deserialize, Debug, Clone, specta::Type)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub provider_id: String,
+    pub context_window: u32,
+    pub recommended: bool,
+}
+
+impl ModelInfo {
+    fn from_static(m: &StaticModelInfo, provider_id: &str) -> Self {
+        ModelInfo {
+            id: m.id.to_string(),
+            name: m.name.to_string(),
+            provider_id: provider_id.to_string(),
+            context_window: m.context_window,
+            recommended: m.recommended,
+        }
+    }
+}
 
 // ─── Provider registry ────────────────────────────────────────────────────────
 
@@ -68,7 +101,27 @@ pub struct ProviderDescriptor {
     pub managed_marker: ManagedMarker,
     pub prompt_output: PromptOutput,
     pub skills_output: SkillsOutput,
+    /// Known models for this provider (static list; first `recommended` is the default).
+    pub models: &'static [StaticModelInfo],
 }
+
+const CLAUDE_MODELS: &[StaticModelInfo] = &[
+    StaticModelInfo { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", context_window: 200_000, recommended: true },
+    StaticModelInfo { id: "claude-opus-4-6", name: "Claude Opus 4.6", context_window: 200_000, recommended: false },
+    StaticModelInfo { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", context_window: 200_000, recommended: false },
+];
+
+const GEMINI_MODELS: &[StaticModelInfo] = &[
+    StaticModelInfo { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", context_window: 1_000_000, recommended: true },
+    StaticModelInfo { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", context_window: 1_000_000, recommended: false },
+    StaticModelInfo { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite", context_window: 1_000_000, recommended: false },
+];
+
+const CODEX_MODELS: &[StaticModelInfo] = &[
+    StaticModelInfo { id: "gpt-4o", name: "GPT-4o", context_window: 128_000, recommended: true },
+    StaticModelInfo { id: "gpt-4o-mini", name: "GPT-4o Mini", context_window: 128_000, recommended: false },
+    StaticModelInfo { id: "o1", name: "o1", context_window: 200_000, recommended: false },
+];
 
 pub const PROVIDERS: &[ProviderDescriptor] = &[
     ProviderDescriptor {
@@ -84,6 +137,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         managed_marker: ManagedMarker::Inline,
         prompt_output: PromptOutput::ClaudeMd,
         skills_output: SkillsOutput::ClaudeCommands,
+        models: CLAUDE_MODELS,
     },
     ProviderDescriptor {
         id: "gemini",
@@ -98,6 +152,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         managed_marker: ManagedMarker::Inline,
         prompt_output: PromptOutput::GeminiMd,
         skills_output: SkillsOutput::None,
+        models: GEMINI_MODELS,
     },
     ProviderDescriptor {
         id: "codex",
@@ -112,6 +167,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         managed_marker: ManagedMarker::StateFileOnly,
         prompt_output: PromptOutput::InstructionsKey,
         skills_output: SkillsOutput::None,
+        models: CODEX_MODELS,
     },
 ];
 
@@ -120,7 +176,7 @@ pub fn get_provider(id: &str) -> Option<&'static ProviderDescriptor> {
 }
 
 /// Serializable projection of `ProviderDescriptor` for MCP tools and Tauri commands.
-#[derive(Serialize, Clone, specta::Type)]
+#[derive(Serialize, Deserialize, Clone, specta::Type)]
 pub struct ProviderInfo {
     pub id: String,
     pub name: String,
@@ -131,9 +187,47 @@ pub struct ProviderInfo {
     pub skills_output: String,
     /// True when this provider is listed in the project's `providers` field.
     pub enabled: bool,
+    /// True when the provider's binary is found in PATH.
+    pub installed: bool,
+    /// Version string from `<binary> --version`, if the binary is installed.
+    pub version: Option<String>,
+    /// Known models for this provider.
+    pub models: Vec<ModelInfo>,
+}
+
+/// Returns true if `binary` is found in the system PATH.
+pub fn detect_binary(binary: &str) -> bool {
+    // Use `which` on Unix; fall back to manual PATH scan.
+    std::process::Command::new("which")
+        .arg(binary)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or_else(|_| {
+            std::env::var_os("PATH")
+                .into_iter()
+                .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+                .any(|dir| dir.join(binary).is_file())
+        })
+}
+
+/// Returns the version string from `<binary> --version` (first line), or None.
+pub fn detect_version(binary: &str) -> Option<String> {
+    let out = std::process::Command::new(binary)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !out.status.success() && out.stdout.is_empty() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(if out.stdout.is_empty() { &out.stderr } else { &out.stdout });
+    text.lines().next().map(|l| l.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
+    let installed = detect_binary(d.binary);
+    let version = if installed { detect_version(d.binary) } else { None };
     ProviderInfo {
         id: d.id.to_string(),
         name: d.name.to_string(),
@@ -154,10 +248,13 @@ fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
             SkillsOutput::None => "none".to_string(),
         },
         enabled,
+        installed,
+        version,
+        models: d.models.iter().map(|m| ModelInfo::from_static(m, d.id)).collect(),
     }
 }
 
-/// Return all registered providers, each annotated with whether it's enabled in this project.
+/// Return all registered providers, each annotated with enabled + installed status.
 pub fn list_providers(project_dir: &std::path::Path) -> anyhow::Result<Vec<ProviderInfo>> {
     let config = get_config(Some(project_dir.to_path_buf()))?;
     let enabled: std::collections::HashSet<&str> =
@@ -166,6 +263,12 @@ pub fn list_providers(project_dir: &std::path::Path) -> anyhow::Result<Vec<Provi
         .iter()
         .map(|d| provider_info(d, enabled.contains(d.id)))
         .collect())
+}
+
+/// Return models for a specific provider by ID.
+pub fn list_models(provider_id: &str) -> Result<Vec<ModelInfo>> {
+    let d = require_provider(provider_id)?;
+    Ok(d.models.iter().map(|m| ModelInfo::from_static(m, d.id)).collect())
 }
 
 fn require_provider(id: &str) -> Result<&'static ProviderDescriptor> {

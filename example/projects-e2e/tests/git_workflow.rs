@@ -128,7 +128,7 @@ mod new_project {
         let p = TestProject::with_git().unwrap();
         let template = p.read_ship_file("project/features/TEMPLATE.md");
         assert!(template.contains("status = \"planned\""));
-        assert!(template.contains("version"));
+        assert!(template.contains("release_id"));
         assert!(template.contains("## Description"));
         assert!(template.contains("## Implementation Notes"));
     }

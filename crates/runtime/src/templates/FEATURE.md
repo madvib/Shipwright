@@ -4,11 +4,10 @@ title = ""
 status = "planned"
 created = ""
 updated = ""
-version = ""
 branch = ""
-release = ""
-spec = ""
-supersedes = ""
+release_id = ""
+spec_id = ""
+supersedes_id = ""
 tags = []
 +++
 

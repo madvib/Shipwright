@@ -129,19 +129,19 @@ pub struct FeatureMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub release: Option<String>,
+    pub release_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec: Option<String>,
+    pub spec_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<FeatureAgentConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub supersedes: Option<String>,
+    pub supersedes_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default)]
-    pub adrs: Vec<String>,
+    pub adr_ids: Vec<String>,
     #[serde(default)]
     pub tags: Vec<String>,
 }
@@ -158,8 +158,8 @@ pub struct FeatureEntry {
     pub path: String,
     pub title: String,
     pub status: FeatureStatus,
-    pub release: Option<String>,
-    pub spec: Option<String>,
+    pub release_id: Option<String>,
+    pub spec_id: Option<String>,
     pub branch: Option<String>,
     pub description: Option<String>,
     pub updated: DateTime<Utc>,
@@ -205,13 +205,13 @@ impl Feature {
                     created: now,
                     updated: now,
                     owner: None,
-                    release: None,
-                    spec: None,
+                    release_id: None,
+                    spec_id: None,
                     branch: None,
                     agent: None,
-                    supersedes: None,
+                    supersedes_id: None,
                     description: None,
-                    adrs: Vec::new(),
+                    adr_ids: Vec::new(),
                     tags: Vec::new(),
                 },
                 body: content.to_string(),
@@ -280,8 +280,8 @@ pub fn create_feature(
     project_dir: PathBuf,
     title: &str,
     body: &str,
-    release: Option<&str>,
-    spec: Option<&str>,
+    release_id: Option<&str>,
+    spec_id: Option<&str>,
     branch: Option<&str>,
 ) -> Result<PathBuf> {
     validate_title(title)?;
@@ -298,13 +298,13 @@ pub fn create_feature(
             created: now,
             updated: now,
             owner: None,
-            release: release.filter(|s| !s.trim().is_empty()).map(str::to_string),
-            spec: spec.filter(|s| !s.trim().is_empty()).map(str::to_string),
+            release_id: release_id.filter(|s| !s.trim().is_empty()).map(str::to_string),
+            spec_id: spec_id.filter(|s| !s.trim().is_empty()).map(str::to_string),
             branch: branch.filter(|s| !s.trim().is_empty()).map(str::to_string),
             agent: None,
-            supersedes: None,
+            supersedes_id: None,
             description: None,
-            adrs: Vec::new(),
+            adr_ids: Vec::new(),
             tags: Vec::new(),
         },
         body: extract_body(body),
@@ -402,8 +402,8 @@ pub fn list_features(
                     path: path.to_string_lossy().to_string(),
                     title: feature.metadata.title,
                     status: feature.metadata.status,
-                    release: feature.metadata.release,
-                    spec: feature.metadata.spec,
+                    release_id: feature.metadata.release_id,
+                    spec_id: feature.metadata.spec_id,
                     branch: feature.metadata.branch,
                     description: feature.metadata.description,
                     updated: feature.metadata.updated,

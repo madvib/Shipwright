@@ -4,7 +4,7 @@ title = "Ship Init — Project Scaffolding Templates"
 status = "in-progress"
 created = "2026-02-27T15:03:26.611690765Z"
 updated = "2026-02-27T15:03:26.611690765Z"
-adrs = []
+adr_ids = []
 tags = []
 +++
 
@@ -13,7 +13,7 @@ title = "Ship Init — Project Scaffolding Templates"
 status = "in-progress"
 created = "2026-02-27T00:00:00Z"
 updated = "2026-02-27T00:00:00Z"
-release = "v0.1.0-alpha.md"
+release_id = "v0.1.0-alpha.md"
 +++
 
 ## Why

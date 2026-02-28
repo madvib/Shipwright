@@ -11,17 +11,62 @@ use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum AdrStatus {
+    Proposed,
+    Accepted,
+    Rejected,
+    Superseded,
+    Deprecated,
+}
+
+impl Default for AdrStatus {
+    fn default() -> Self {
+        AdrStatus::Proposed
+    }
+}
+
+impl std::fmt::Display for AdrStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AdrStatus::Proposed => write!(f, "proposed"),
+            AdrStatus::Accepted => write!(f, "accepted"),
+            AdrStatus::Rejected => write!(f, "rejected"),
+            AdrStatus::Superseded => write!(f, "superseded"),
+            AdrStatus::Deprecated => write!(f, "deprecated"),
+        }
+    }
+}
+
+impl std::str::FromStr for AdrStatus {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "proposed" => Ok(AdrStatus::Proposed),
+            "accepted" => Ok(AdrStatus::Accepted),
+            "rejected" => Ok(AdrStatus::Rejected),
+            "superseded" => Ok(AdrStatus::Superseded),
+            "deprecated" => Ok(AdrStatus::Deprecated),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct AdrMetadata {
     #[serde(default)]
     pub id: String,
     pub title: String,
-    pub status: String,
+    #[serde(default)]
+    pub status: AdrStatus,
     pub date: String,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec: Option<String>,
+    pub spec_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supersedes_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -105,13 +150,15 @@ pub fn create_adr(
     let adrs_dir = crate::project::adrs_dir(&project_dir);
     fs::create_dir_all(&adrs_dir)?;
 
+    let adr_status = status.parse::<AdrStatus>().unwrap_or_default();
     let metadata = AdrMetadata {
         id: Uuid::new_v4().to_string(),
         title: title.to_string(),
-        status: status.to_string(),
+        status: adr_status,
         date: Utc::now().format("%Y-%m-%d").to_string(),
         tags: Vec::new(),
-        spec: None,
+        spec_id: None,
+        supersedes_id: None,
     };
 
     let body = format!("## Decision\n\n{}\n", decision);

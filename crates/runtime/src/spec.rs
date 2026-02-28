@@ -11,25 +11,49 @@ use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum SpecStatus {
+    Draft,
+    Active,
+    Archived,
+}
+
+impl Default for SpecStatus {
+    fn default() -> Self {
+        SpecStatus::Draft
+    }
+}
+
+impl std::fmt::Display for SpecStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpecStatus::Draft => write!(f, "draft"),
+            SpecStatus::Active => write!(f, "active"),
+            SpecStatus::Archived => write!(f, "archived"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct SpecMetadata {
     #[serde(default)]
     pub id: String,
     pub title: String,
-    #[serde(default = "default_status")]
-    pub status: String, // draft | active | archived
+    #[serde(default)]
+    pub status: SpecStatus,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-}
-
-fn default_status() -> String {
-    "draft".to_string()
 }
 
 impl Default for SpecMetadata {
@@ -38,11 +62,13 @@ impl Default for SpecMetadata {
         Self {
             id: Uuid::new_v4().to_string(),
             title: String::new(),
-            status: default_status(),
+            status: SpecStatus::default(),
             created: now,
             updated: now,
             author: None,
             branch: None,
+            feature_id: None,
+            release_id: None,
             tags: Vec::new(),
         }
     }
@@ -59,7 +85,7 @@ pub struct SpecEntry {
     pub file_name: String,
     pub path: String,
     pub title: String,
-    pub status: String,
+    pub status: SpecStatus,
     pub updated: DateTime<Utc>,
 }
 
@@ -100,11 +126,13 @@ impl Spec {
                 metadata: SpecMetadata {
                     id: String::new(), // will be backfilled
                     title,
-                    status: default_status(),
+                    status: SpecStatus::default(),
                     created: now,
                     updated: now,
                     author: None,
                     branch: None,
+                    feature_id: None,
+                    release_id: None,
                     tags: Vec::new(),
                 },
                 body: content.to_string(),
@@ -156,11 +184,13 @@ pub fn create_spec(project_dir: PathBuf, title: &str, body: &str) -> Result<Path
         metadata: SpecMetadata {
             id: Uuid::new_v4().to_string(),
             title: title.to_string(),
-            status: default_status(),
+            status: SpecStatus::default(),
             created: now,
             updated: now,
             author: None,
             branch: None,
+            feature_id: None,
+            release_id: None,
             tags: Vec::new(),
         },
         body: if body.is_empty() {

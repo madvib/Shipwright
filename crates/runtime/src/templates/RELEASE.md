@@ -6,8 +6,8 @@ supported = false
 created = ""
 updated = ""
 target_date = ""
-features = []
-adrs = []
+feature_ids = []
+adr_ids = []
 tags = []
 +++
 

@@ -911,7 +911,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         println!("No features found.");
                     } else {
                         for feature in features {
-                            let release = feature.release.unwrap_or_else(|| "unassigned".into());
+                            let release = feature.release_id.unwrap_or_else(|| "unassigned".into());
                             println!(
                                 "[{}] {} ({}) release={}",
                                 feature.status, feature.title, feature.file_name, release

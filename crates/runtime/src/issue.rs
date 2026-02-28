@@ -11,6 +11,26 @@ use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum IssuePriority {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+impl std::fmt::Display for IssuePriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IssuePriority::Critical => write!(f, "critical"),
+            IssuePriority::High => write!(f, "high"),
+            IssuePriority::Medium => write!(f, "medium"),
+            IssuePriority::Low => write!(f, "low"),
+        }
+    }
+}
+
 /// A typed link between issues or to external resources.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Type)]
 pub struct IssueLink {
@@ -28,10 +48,14 @@ pub struct IssueMetadata {
     pub updated: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignee: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<IssuePriority>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec: Option<String>,
+    pub spec_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature_id: Option<String>,
     #[serde(default)]
     pub links: Vec<IssueLink>,
 }

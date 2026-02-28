@@ -2,11 +2,11 @@
 id = "708bc1e7-301b-45c0-b12d-e1a2e19d7a6b"
 title = "Alpha Dogfood — End-to-End Workflow Validation"
 status = "in-progress"
-release = "v0.1.0-alpha.md"
+release_id = "v0.1.0-alpha.md"
 branch = "feature/alpha-dogfood"
 created = "2026-02-27T01:07:43.559571144Z"
 updated = "2026-02-27T01:07:43.559571144Z"
-adrs = []
+adr_ids = []
 tags = ["alpha", "dogfood", "workflow"]
 
 [agent]

@@ -59,9 +59,23 @@ CREATE TABLE IF NOT EXISTS branch_context (
 );
 "#;
 
+const PROJECT_SCHEMA_WORKSPACE: &str = r#"
+CREATE TABLE IF NOT EXISTS workspace (
+  branch         TEXT PRIMARY KEY,
+  feature_id     TEXT,
+  spec_id        TEXT,
+  active_mode    TEXT,
+  providers_json TEXT NOT NULL DEFAULT '[]',
+  resolved_at    TEXT NOT NULL,
+  is_worktree    INTEGER NOT NULL DEFAULT 0,
+  worktree_path  TEXT
+);
+"#;
+
 const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_project_schema", PROJECT_SCHEMA_V1),
     ("0002_operational_state", PROJECT_SCHEMA_OPERATIONAL),
+    ("0003_workspace", PROJECT_SCHEMA_WORKSPACE),
 ];
 const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[("0001_global_schema", GLOBAL_SCHEMA_V1)];
 
@@ -238,6 +252,81 @@ fn project_slug(ship_dir: &Path) -> Result<String> {
         return Err(anyhow!("Could not derive a project slug from path: {}", canonical.display()));
     }
     Ok(slug)
+}
+
+// ─── Workspace ────────────────────────────────────────────────────────────────
+
+/// Retrieve the workspace record for the given branch, or None if none exists.
+pub fn get_workspace_db(
+    ship_dir: &Path,
+    branch: &str,
+) -> Result<Option<(Option<String>, Option<String>, Option<String>, Vec<String>, String, bool, Option<String>)>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let row_opt = block_on(async {
+        sqlx::query(
+            "SELECT feature_id, spec_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path
+             FROM workspace WHERE branch = ?",
+        )
+        .bind(branch)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+    if let Some(row) = row_opt {
+        use sqlx::Row;
+        let feature_id: Option<String> = row.get(0);
+        let spec_id: Option<String> = row.get(1);
+        let active_mode: Option<String> = row.get(2);
+        let providers_json: String = row.get(3);
+        let resolved_at: String = row.get(4);
+        let is_worktree: i64 = row.get(5);
+        let worktree_path: Option<String> = row.get(6);
+        let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
+        Ok(Some((feature_id, spec_id, active_mode, providers, resolved_at, is_worktree != 0, worktree_path)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Upsert the workspace record for the given branch.
+pub fn upsert_workspace_db(
+    ship_dir: &Path,
+    branch: &str,
+    feature_id: Option<&str>,
+    spec_id: Option<&str>,
+    active_mode: Option<&str>,
+    providers: &[String],
+    resolved_at: &str,
+    is_worktree: bool,
+    worktree_path: Option<&str>,
+) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
+    let providers_json = serde_json::to_string(providers)
+        .with_context(|| "Failed to serialize workspace providers")?;
+    block_on(async {
+        sqlx::query(
+            "INSERT INTO workspace (branch, feature_id, spec_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(branch) DO UPDATE SET
+               feature_id    = excluded.feature_id,
+               spec_id       = excluded.spec_id,
+               active_mode   = excluded.active_mode,
+               providers_json = excluded.providers_json,
+               resolved_at   = excluded.resolved_at,
+               is_worktree   = excluded.is_worktree,
+               worktree_path = excluded.worktree_path",
+        )
+        .bind(branch)
+        .bind(feature_id)
+        .bind(spec_id)
+        .bind(active_mode)
+        .bind(&providers_json)
+        .bind(resolved_at)
+        .bind(if is_worktree { 1i64 } else { 0i64 })
+        .bind(worktree_path)
+        .execute(&mut conn)
+        .await
+    })?;
+    Ok(())
 }
 
 // ─── Core ─────────────────────────────────────────────────────────────────────

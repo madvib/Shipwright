@@ -4,7 +4,7 @@ title = "Test"
 status = "planned"
 created = "2026-02-28T06:14:02.872676959Z"
 updated = "2026-02-28T06:14:02.872676959Z"
-adrs = []
+adr_ids = []
 tags = []
 +++
 
