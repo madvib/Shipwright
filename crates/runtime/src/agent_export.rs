@@ -76,8 +76,8 @@ pub enum PromptOutput {
 /// Where to write skill content for native agent skill directories.
 #[derive(Debug, Clone, Copy)]
 pub enum SkillsOutput {
-    /// `.claude/commands/<id>.md` — Claude Code slash commands
-    ClaudeCommands,
+    /// `.claude/skills/<id>/SKILL.md` — Claude Code native skills (.claude/commands/ is deprecated)
+    ClaudeSkills,
     /// `.agent/skills/<id>/SKILL.md` — Gemini CLI, Google Antigravity
     AgentSkills,
     /// `.agents/skills/<id>/SKILL.md` — OpenAI Codex
@@ -140,7 +140,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         emit_type_field: true,
         managed_marker: ManagedMarker::Inline,
         prompt_output: PromptOutput::ClaudeMd,
-        skills_output: SkillsOutput::ClaudeCommands,
+        skills_output: SkillsOutput::ClaudeSkills,
         models: CLAUDE_MODELS,
     },
     ProviderDescriptor {
@@ -248,7 +248,7 @@ fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
             PromptOutput::None => "none".to_string(),
         },
         skills_output: match d.skills_output {
-            SkillsOutput::ClaudeCommands => "claude-commands".to_string(),
+            SkillsOutput::ClaudeSkills => "claude-skills".to_string(),
             SkillsOutput::AgentSkills => "agent-skills".to_string(),
             SkillsOutput::CodexSkills => "codex-skills".to_string(),
             SkillsOutput::None => "none".to_string(),
@@ -448,7 +448,7 @@ fn export_to_inner(
 
     // Skills output (provider-specific)
     match desc.skills_output {
-        SkillsOutput::ClaudeCommands => export_skills_to_claude(&project_dir, project_root)?,
+        SkillsOutput::ClaudeSkills => export_skills_to_claude(&project_dir, project_root)?,
         SkillsOutput::AgentSkills => export_skills_to_dir(&project_dir, &project_root.join(".agent").join("skills"))?,
         SkillsOutput::CodexSkills => export_skills_to_dir(&project_dir, &project_root.join(".agents").join("skills"))?,
         SkillsOutput::None => {}
@@ -508,22 +508,8 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
 
     // Remove skill files written by Ship
     match desc.skills_output {
-        SkillsOutput::ClaudeCommands => {
-            let commands_dir = project_root.join(".claude").join("commands");
-            if commands_dir.exists() {
-                if let Ok(entries) = fs::read_dir(&commands_dir) {
-                    for entry in entries.flatten() {
-                        let p = entry.path();
-                        if p.is_file() {
-                            if let Ok(c) = fs::read_to_string(&p) {
-                                if c.starts_with("<!-- managed by ship") {
-                                    fs::remove_file(&p).ok();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        SkillsOutput::ClaudeSkills => {
+            remove_ship_managed_skill_dirs(&project_root.join(".claude").join("skills"));
         }
         SkillsOutput::AgentSkills => {
             remove_ship_managed_skill_dirs(&project_root.join(".agent").join("skills"));
@@ -949,25 +935,13 @@ fn toml_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> toml::Value
     toml::Value::Table(entry)
 }
 
-// ─── Skills (Claude-specific) ─────────────────────────────────────────────────
+// ─── Skills ───────────────────────────────────────────────────────────────────
 
 fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()> {
-    let skills = list_effective_skills(project_dir)?;
-    if skills.is_empty() { return Ok(()); }
-    let commands_dir = project_root.join(".claude").join("commands");
-    fs::create_dir_all(&commands_dir)?;
-    for skill in &skills {
-        let path = commands_dir.join(format!("{}.md", skill.id));
-        let content = format!("<!-- managed by ship — skill: {} -->\n\n{}\n", skill.id, skill.content);
-        crate::fs_util::write_atomic(&path, content)?;
-    }
-    Ok(())
+    export_skills_to_dir(project_dir, &project_root.join(".claude").join("skills"))
 }
 
-/// Write skills to a native skill directory using the agentskills.io layout:
-/// `<skills_dir>/<skill-id>/SKILL.md`
-///
-/// Used for Gemini (`.agent/skills/`) and Codex (`.agents/skills/`).
+/// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`
 fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
     let skills = list_effective_skills(project_dir)?;
     if skills.is_empty() { return Ok(()); }
