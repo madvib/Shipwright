@@ -73,11 +73,15 @@ pub enum PromptOutput {
     None,
 }
 
-/// Where to write skill content for slash-command access.
+/// Where to write skill content for native agent skill directories.
 #[derive(Debug, Clone, Copy)]
 pub enum SkillsOutput {
-    /// `.claude/commands/<id>.md`
+    /// `.claude/commands/<id>.md` — Claude Code slash commands
     ClaudeCommands,
+    /// `.agent/skills/<id>/SKILL.md` — Gemini CLI, Google Antigravity
+    AgentSkills,
+    /// `.agents/skills/<id>/SKILL.md` — OpenAI Codex
+    CodexSkills,
     None,
 }
 
@@ -151,7 +155,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         emit_type_field: false,
         managed_marker: ManagedMarker::Inline,
         prompt_output: PromptOutput::GeminiMd,
-        skills_output: SkillsOutput::None,
+        skills_output: SkillsOutput::AgentSkills,
         models: GEMINI_MODELS,
     },
     ProviderDescriptor {
@@ -166,7 +170,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         emit_type_field: false,
         managed_marker: ManagedMarker::StateFileOnly,
         prompt_output: PromptOutput::AgentsMd,
-        skills_output: SkillsOutput::None,
+        skills_output: SkillsOutput::CodexSkills,
         models: CODEX_MODELS,
     },
 ];
@@ -245,6 +249,8 @@ fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
         },
         skills_output: match d.skills_output {
             SkillsOutput::ClaudeCommands => "claude-commands".to_string(),
+            SkillsOutput::AgentSkills => "agent-skills".to_string(),
+            SkillsOutput::CodexSkills => "codex-skills".to_string(),
             SkillsOutput::None => "none".to_string(),
         },
         enabled,
@@ -443,6 +449,8 @@ fn export_to_inner(
     // Skills output (provider-specific)
     match desc.skills_output {
         SkillsOutput::ClaudeCommands => export_skills_to_claude(&project_dir, project_root)?,
+        SkillsOutput::AgentSkills => export_skills_to_dir(&project_dir, &project_root.join(".agent").join("skills"))?,
+        SkillsOutput::CodexSkills => export_skills_to_dir(&project_dir, &project_root.join(".agents").join("skills"))?,
         SkillsOutput::None => {}
     }
 
@@ -496,6 +504,34 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
             if f.exists() { fs::remove_file(&f).ok(); }
         }
         PromptOutput::None => {}
+    }
+
+    // Remove skill files written by Ship
+    match desc.skills_output {
+        SkillsOutput::ClaudeCommands => {
+            let commands_dir = project_root.join(".claude").join("commands");
+            if commands_dir.exists() {
+                if let Ok(entries) = fs::read_dir(&commands_dir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.is_file() {
+                            if let Ok(c) = fs::read_to_string(&p) {
+                                if c.starts_with("<!-- managed by ship") {
+                                    fs::remove_file(&p).ok();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        SkillsOutput::AgentSkills => {
+            remove_ship_managed_skill_dirs(&project_root.join(".agent").join("skills"));
+        }
+        SkillsOutput::CodexSkills => {
+            remove_ship_managed_skill_dirs(&project_root.join(".agents").join("skills"));
+        }
+        SkillsOutput::None => {}
     }
 
     // Clear managed state for this provider
@@ -926,6 +962,44 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
         crate::fs_util::write_atomic(&path, content)?;
     }
     Ok(())
+}
+
+/// Write skills to a native skill directory using the agentskills.io layout:
+/// `<skills_dir>/<skill-id>/SKILL.md`
+///
+/// Used for Gemini (`.agent/skills/`) and Codex (`.agents/skills/`).
+fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
+    let skills = list_effective_skills(project_dir)?;
+    if skills.is_empty() { return Ok(()); }
+    fs::create_dir_all(skills_dir)?;
+    for skill in &skills {
+        let skill_dir = skills_dir.join(&skill.id);
+        fs::create_dir_all(&skill_dir)?;
+        let path = skill_dir.join("SKILL.md");
+        let content = format!("<!-- managed by ship — skill: {} -->\n\n{}\n", skill.id, skill.content);
+        crate::fs_util::write_atomic(&path, content)?;
+    }
+    Ok(())
+}
+
+/// Remove skill subdirectories that were written by Ship (identified by the
+/// `<!-- managed by ship` header in their SKILL.md).
+fn remove_ship_managed_skill_dirs(skills_dir: &Path) {
+    if !skills_dir.exists() { return; }
+    if let Ok(entries) = fs::read_dir(skills_dir) {
+        for entry in entries.flatten() {
+            let skill_dir = entry.path();
+            if !skill_dir.is_dir() { continue; }
+            let skill_md = skill_dir.join("SKILL.md");
+            if skill_md.exists() {
+                if let Ok(c) = fs::read_to_string(&skill_md) {
+                    if c.starts_with("<!-- managed by ship") {
+                        fs::remove_dir_all(&skill_dir).ok();
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ─── Hooks + permissions (Claude settings.json) ───────────────────────────────
