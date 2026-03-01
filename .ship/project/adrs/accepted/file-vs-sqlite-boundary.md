@@ -7,7 +7,11 @@ supersedes_id = ""
 tags = []
 +++
 
-## File vs SQLite boundary
+## Context
+
+Shipwright produces two kinds of data: documents that humans author (specs, features, ADRs, notes) and runtime state that the system manages (workspace sessions, branch cache, UI preferences). Early implementations mixed these — some runtime state lived in files, some documents were stored with metadata in SQLite. This created confusion about where the truth lived and made the data model hard to reason about.
+
+## Decision
 
 Clear rule for what lives in git-tracked files vs local SQLite.
 
@@ -40,3 +44,16 @@ Clear rule for what lives in git-tracked files vs local SQLite.
 - Do not store document content or metadata in SQLite (files are the truth)
 - Do not store user-facing config in SQLite (it must be hand-editable)
 - Do not store UI preferences in files (they are personal, not team-shared)
+
+## Consequences
+
+### Positive
+- Clear single source of truth for every piece of data
+- Documents are grep-able, diffable, committable without special tooling
+- SQLite runtime state can be safely deleted and rebuilt from files
+- No sync conflicts between file and DB representations
+
+### Negative
+- Two storage layers to maintain and reason about
+- Workspace and session state is lost if ship.db is deleted (acceptable — it's derived)
+- Agents reading files directly bypass any validation Shipwright would apply at write time

@@ -23,7 +23,7 @@ The target is reliable end-to-end delivery with strong agent context and low git
 
 ## Opinionated Workflow
 
-`Vision -> Release -> Feature -> Spec -> Issues -> ADRs -> Close Feature -> Ship Release`
+`Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release`
 
 ### Step Rules
 

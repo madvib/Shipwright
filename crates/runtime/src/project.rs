@@ -748,10 +748,9 @@ pub fn sanitize_file_name(name: &str) -> String {
     // Trim leading/trailing dashes
     sanitized = sanitized.trim_matches('-').to_string();
 
-    // Limit length to 100 characters to be generous but prevent filesystem errors
-    if sanitized.len() > 100 {
-        sanitized.truncate(100);
-        // Clean up trailing dash in case we truncated at one
+    // Limit length to 60 characters for readable filenames
+    if sanitized.len() > 60 {
+        sanitized.truncate(60);
         sanitized = sanitized.trim_end_matches('-').to_string();
     }
 

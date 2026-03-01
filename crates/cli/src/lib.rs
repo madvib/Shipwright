@@ -2,18 +2,19 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::{
     FeatureStatus, McpServerConfig, McpServerType, NoteScope, add_mcp_server, add_mode, add_status,
-    backfill_issue_ids, create_adr, create_feature, create_issue, create_note, create_release,
-    create_skill, create_spec, create_user_skill, delete_skill, delete_user_skill, feature_done,
-    feature_start, find_release_path, get_active_mode, get_config, get_effective_skill,
-    get_feature, get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw,
-    get_project_dir, get_project_statuses, get_release_raw, get_skill, get_spec_raw,
-    get_user_skill, ingest_external_events, init_demo_project, init_project, is_category_committed,
+    autodetect_providers, backfill_issue_ids, create_adr, create_feature, create_issue,
+    create_note, create_release, create_skill, create_spec, create_user_skill, delete_skill,
+    delete_user_skill, disable_provider, enable_provider, feature_done, feature_start,
+    find_release_path, get_active_mode, get_config, get_effective_skill, get_feature,
+    get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw, get_project_dir,
+    get_project_statuses, get_release_raw, get_skill, get_spec_raw, get_user_skill,
+    ingest_external_events, init_demo_project, init_project, is_category_committed,
     list_effective_skills, list_events_since, list_features, list_issues, list_mcp_servers,
-    list_notes, list_releases, list_skills, list_specs, list_user_skills, log_action,
-    migrate_global_state, migrate_json_config_file, migrate_project_state, migrate_yaml_issues,
-    move_issue, note_path_for_scope, remove_mcp_server, remove_mode, remove_status,
-    set_active_mode, set_category_committed, update_feature, update_note, update_release,
-    update_skill, update_user_skill,
+    list_models, list_notes, list_providers, list_releases, list_skills, list_specs,
+    list_user_skills, log_action, migrate_global_state, migrate_json_config_file,
+    migrate_project_state, migrate_yaml_issues, move_issue, note_path_for_scope,
+    remove_mcp_server, remove_mode, remove_status, set_active_mode, set_category_committed,
+    update_feature, update_note, update_release, update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use std::env;
@@ -118,6 +119,11 @@ pub enum Commands {
     Mcp {
         #[command(subcommand)]
         action: McpCommands,
+    },
+    /// Manage AI agent providers (detect, connect, disconnect)
+    Providers {
+        #[command(subcommand)]
+        action: ProviderCommands,
     },
     /// Migrate legacy YAML issues and JSON config to TOML
     #[command(hide = true)]
@@ -243,6 +249,29 @@ pub enum McpCommands {
     /// Start the MCP stdio server (internal)
     #[command(hide = true)]
     Serve,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ProviderCommands {
+    /// List all known providers and their status
+    List,
+    /// Connect (enable) a provider for this project
+    Connect {
+        /// Provider ID (claude, gemini, codex)
+        id: String,
+    },
+    /// Disconnect (disable) a provider from this project
+    Disconnect {
+        /// Provider ID (claude, gemini, codex)
+        id: String,
+    },
+    /// Detect installed providers in PATH and auto-connect them
+    Detect,
+    /// List available models for a provider
+    Models {
+        /// Provider ID (claude, gemini, codex)
+        id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -560,6 +589,16 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 );
             } else {
                 println!("Initialized Ship project in {}", ship_path.display());
+            }
+            // Auto-detect installed providers and enable them
+            match autodetect_providers(&target) {
+                Ok(found) if !found.is_empty() => {
+                    println!("Detected and connected providers: {}", found.join(", "));
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    eprintln!("[ship] warning: provider detection failed: {}", err);
+                }
             }
         }
         Some(Commands::Issue { action }) => {
@@ -1434,6 +1473,61 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let project_dir = get_project_dir(None)?;
                     remove_mcp_server(Some(project_dir), &id)?;
                     println!("Removed MCP server '{}'.", id);
+                }
+            }
+        }
+        Some(Commands::Providers { action }) => {
+            let project_dir = get_project_dir(None)?;
+            match action {
+                ProviderCommands::List => {
+                    let providers = list_providers(&project_dir)?;
+                    println!("{:<12} {:<20} {:<10} {:<10} {}", "ID", "NAME", "INSTALLED", "CONNECTED", "VERSION");
+                    println!("{}", "-".repeat(70));
+                    for p in providers {
+                        println!(
+                            "{:<12} {:<20} {:<10} {:<10} {}",
+                            p.id,
+                            p.name,
+                            if p.installed { "yes" } else { "no" },
+                            if p.enabled { "yes" } else { "no" },
+                            p.version.as_deref().unwrap_or("-"),
+                        );
+                    }
+                }
+                ProviderCommands::Connect { id } => {
+                    if enable_provider(&project_dir, &id)? {
+                        println!("Connected provider: {}", id);
+                    } else {
+                        println!("Provider '{}' is already connected.", id);
+                    }
+                }
+                ProviderCommands::Disconnect { id } => {
+                    if disable_provider(&project_dir, &id)? {
+                        println!("Disconnected provider: {}", id);
+                    } else {
+                        println!("Provider '{}' was not connected.", id);
+                    }
+                }
+                ProviderCommands::Detect => {
+                    let found = autodetect_providers(&project_dir)?;
+                    if found.is_empty() {
+                        println!("No new providers detected.");
+                    } else {
+                        println!("Detected and connected: {}", found.join(", "));
+                    }
+                }
+                ProviderCommands::Models { id } => {
+                    let models = list_models(&id)?;
+                    println!("{:<30} {:<14} {}", "MODEL", "CONTEXT", "");
+                    println!("{}", "-".repeat(60));
+                    for m in models {
+                        println!(
+                            "{:<30} {:<14} {}",
+                            m.id,
+                            format!("{}k", m.context_window / 1000),
+                            if m.recommended { "(recommended)" } else { "" },
+                        );
+                    }
                 }
             }
         }

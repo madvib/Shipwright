@@ -1,9 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::{
-    Feature, FeatureAgentConfig, IssueEntry, ProjectConfig, Skill, agent_export,
-    get_effective_config, get_effective_skill, get_feature, get_spec, list_issues_full,
+    Feature, IssueEntry, Rule, Skill, agent_config::resolve_agent_config, agent_export,
+    get_effective_config, get_feature, get_spec, list_issues_full,
 };
-use std::collections::HashSet;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -15,7 +14,7 @@ const PRE_COMMIT_HOOK_CONTENT: &str = "\
 #!/usr/bin/env sh
 # ship pre-commit: block staging of generated agent config files.
 # These are written by `ship git sync` / post-checkout and must never be committed.
-BLOCKED=\"CLAUDE.md GEMINI.md SHIPWRIGHT.md .mcp.json\"
+BLOCKED=\"CLAUDE.md GEMINI.md .mcp.json\"
 for f in $BLOCKED; do
     if git diff --cached --name-only | grep -qx \"$f\"; then
         echo \"[ship] ERROR: '$f' is a generated file managed by Ship and must not be committed.\"
@@ -38,17 +37,12 @@ exit 0
 pub const GENERATED_GITIGNORE_ENTRIES: &[&str] = &[
     "CLAUDE.md",
     "GEMINI.md",
-    "SHIPWRIGHT.md",
     ".mcp.json",
     ".claude/",
     ".gemini/",
     ".codex/",
 ];
 
-struct ResolvedFeatureAgent {
-    mcp_server_ids: Vec<String>,
-    skills: Vec<Skill>,
-}
 
 pub fn install_hooks(git_dir: &Path) -> Result<()> {
     if !git_dir.exists() {
@@ -262,84 +256,64 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
     match doc {
         BranchDocument::Feature(feature_path) => {
             let feature = get_feature(feature_path)?;
-            let resolved_agent =
-                resolve_agent_config(ship_dir, &config, feature.metadata.agent.as_ref())?;
+            let agent_cfg =
+                resolve_agent_config(ship_dir, feature.metadata.agent.as_ref())?;
 
-            // Effective providers: feature override wins, else project default.
-            let providers = if let Some(agent) = &feature.metadata.agent {
-                if !agent.providers.is_empty() {
-                    agent.providers.clone()
-                } else {
-                    config.providers.clone()
-                }
-            } else {
-                config.providers.clone()
-            };
+            let mcp_server_ids: Vec<String> =
+                agent_cfg.mcp_servers.iter().map(|s| s.id.clone()).collect();
 
-            // When the feature explicitly declares a subset of MCP servers, filter the
-            // export to only those; otherwise write all project servers.
             let feature_server_filter = feature
                 .metadata
                 .agent
                 .as_ref()
                 .filter(|a| !a.mcp_servers.is_empty())
-                .map(|_| resolved_agent.mcp_server_ids.as_slice());
+                .map(|_| mcp_server_ids.as_slice());
 
-            for provider in &providers {
-                match provider.as_str() {
-                    "claude" => {
-                        generate_claude_md(
-                            project_root,
-                            &feature,
-                            &open_issues,
-                            &resolved_agent.skills,
-                        )?;
-                        agent_export::export_to_filtered(
-                            ship_dir.to_path_buf(),
-                            "claude",
-                            feature_server_filter,
-                        )?;
-                        ensure_required_mcp_servers(project_root, &resolved_agent.mcp_server_ids)?;
-                    }
-                    other => {
-                        agent_export::export_to_filtered(
-                            ship_dir.to_path_buf(),
-                            other,
-                            feature_server_filter,
-                        )?;
-                    }
+            let context = build_feature_context(
+                &feature,
+                &open_issues,
+                &agent_cfg.skills,
+                &agent_cfg.rules,
+            );
+
+            for provider in &agent_cfg.providers {
+                agent_export::write_context(project_root, provider, &context)?;
+                agent_export::export_to_filtered(
+                    ship_dir.to_path_buf(),
+                    provider,
+                    feature_server_filter,
+                )?;
+                if provider == "claude" {
+                    ensure_required_mcp_servers(project_root, &mcp_server_ids)?;
                 }
             }
 
             println!(
                 "[ship] loaded feature '{}' for: {}",
                 feature.metadata.title,
-                providers.join(", ")
+                agent_cfg.providers.join(", ")
             );
         }
         BranchDocument::Spec(spec_path) => {
             let spec = get_spec(spec_path)?;
-            let skill_ids = config.agent.skills.clone();
-            let mut skills = Vec::new();
-            for skill_id in skill_ids {
-                if let Ok(skill) = get_effective_skill(ship_dir, &skill_id) {
-                    skills.push(skill);
-                }
-            }
+            let agent_cfg = resolve_agent_config(ship_dir, None)?;
 
-            for provider in &config.providers {
-                if provider == "claude" {
-                    generate_claude_md_for_spec(project_root, &spec, &open_issues, &skills)?;
-                    agent_export::export_to(ship_dir.to_path_buf(), "claude")?;
-                } else {
-                    agent_export::export_to(ship_dir.to_path_buf(), provider)?;
-                }
+            let context = build_spec_context(
+                &spec,
+                &open_issues,
+                &agent_cfg.skills,
+                &agent_cfg.rules,
+            );
+
+            for provider in &agent_cfg.providers {
+                agent_export::write_context(project_root, provider, &context)?;
+                agent_export::export_to(ship_dir.to_path_buf(), provider)?;
             }
 
             println!(
                 "[ship] loaded spec '{}' for: {}",
                 spec.metadata.title,
-                config.providers.join(", ")
+                agent_cfg.providers.join(", ")
             );
         }
     }
@@ -347,228 +321,124 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
     Ok(())
 }
 
+// ─── Context content builders ─────────────────────────────────────────────────
+
+/// Build provider-agnostic Markdown context for a feature branch.
+pub fn build_feature_context(
+    feature: &Feature,
+    open_issues: &[IssueEntry],
+    skills: &[Skill],
+    rules: &[Rule],
+) -> String {
+    let mut c = String::new();
+    c.push_str(&format!("# [ship] {}\n\n", feature.metadata.title));
+    c.push_str("> Auto-generated by ship on branch checkout. Do not edit manually - re-run `ship git sync` to regenerate.\n\n");
+
+    c.push_str("## Feature Spec\n\n");
+    if feature.body.trim().is_empty() {
+        c.push_str("_No feature body provided._\n\n");
+    } else {
+        c.push_str(feature.body.trim());
+        c.push_str("\n\n");
+    }
+
+    append_issues_section(&mut c, open_issues);
+    append_skills_section(&mut c, skills);
+    append_rules_section(&mut c, rules);
+
+    let branch = feature.metadata.branch.as_deref().unwrap_or("unassigned");
+    let fid = if feature.metadata.id.is_empty() { "unknown" } else { &feature.metadata.id };
+    c.push_str(&format!("---\n_Branch: {} | Feature: {}_\n", branch, fid));
+    c
+}
+
+/// Build provider-agnostic Markdown context for a spec branch.
+pub fn build_spec_context(
+    spec: &runtime::Spec,
+    open_issues: &[IssueEntry],
+    skills: &[Skill],
+    rules: &[Rule],
+) -> String {
+    let mut c = String::new();
+    c.push_str(&format!("# [ship] {}\n\n", spec.metadata.title));
+    c.push_str("> Auto-generated by ship on branch checkout. Do not edit manually - re-run `ship git sync` to regenerate.\n\n");
+
+    c.push_str("## Spec\n\n");
+    if spec.body.trim().is_empty() {
+        c.push_str("_No spec body provided._\n\n");
+    } else {
+        c.push_str(spec.body.trim());
+        c.push_str("\n\n");
+    }
+
+    append_issues_section(&mut c, open_issues);
+    append_skills_section(&mut c, skills);
+    append_rules_section(&mut c, rules);
+
+    let branch = spec.metadata.branch.as_deref().unwrap_or("unassigned");
+    let sid = if spec.metadata.id.is_empty() { "unknown" } else { &spec.metadata.id };
+    c.push_str(&format!("---\n_Branch: {} | Spec: {}_\n", branch, sid));
+    c
+}
+
+fn append_issues_section(c: &mut String, open_issues: &[IssueEntry]) {
+    c.push_str("## Open Issues\n\n");
+    if open_issues.is_empty() {
+        c.push_str("_No open issues._\n\n");
+    } else {
+        let mut ordered: Vec<&IssueEntry> = open_issues.iter().collect();
+        ordered.sort_by(|a, b| a.status.cmp(&b.status).then_with(|| a.file_name.cmp(&b.file_name)));
+        for issue in ordered {
+            c.push_str(&format!(
+                "- [ ] {} (`{}/{}`)\n",
+                issue.issue.metadata.title, issue.status, issue.file_name
+            ));
+        }
+        c.push('\n');
+    }
+}
+
+fn append_skills_section(c: &mut String, skills: &[Skill]) {
+    c.push_str("## Skills\n\n");
+    if skills.is_empty() {
+        c.push_str("_No skills configured._\n\n");
+    } else {
+        for skill in skills {
+            c.push_str(&format!("### {} (`{}`)\n\n", skill.name, skill.id));
+            c.push_str(skill.content.trim());
+            c.push_str("\n\n");
+        }
+    }
+}
+
+fn append_rules_section(c: &mut String, rules: &[Rule]) {
+    if rules.is_empty() {
+        return;
+    }
+    c.push_str("## Rules\n\n");
+    for rule in rules {
+        // Derive a display name from the filename (strip .md, replace dashes with spaces)
+        let name = rule.file_name
+            .trim_end_matches(".md")
+            .replace('-', " ");
+        c.push_str(&format!("### {}\n\n", name));
+        c.push_str(rule.content.trim());
+        c.push_str("\n\n");
+    }
+}
+
+// Kept for test compatibility — writes Claude.md only.
 pub fn generate_claude_md(
     project_root: &Path,
     feature: &Feature,
     open_issues: &[IssueEntry],
     skills: &[Skill],
+    rules: &[Rule],
 ) -> Result<()> {
-    let mut content = String::new();
-    content.push_str(&format!("# [ship] {}\n\n", feature.metadata.title));
-    content.push_str(
-        "> Auto-generated by ship on branch checkout. Do not edit manually - re-run `ship git sync` to regenerate.\n\n",
-    );
-
-    content.push_str("## Feature Spec\n\n");
-    if feature.body.trim().is_empty() {
-        content.push_str("_No feature body provided._\n\n");
-    } else {
-        content.push_str(feature.body.trim());
-        content.push_str("\n\n");
-    }
-
-    content.push_str("## Open Issues\n\n");
-    if open_issues.is_empty() {
-        content.push_str("_No open issues._\n\n");
-    } else {
-        let mut ordered: Vec<&IssueEntry> = open_issues.iter().collect();
-        ordered.sort_by(|a, b| {
-            a.status
-                .cmp(&b.status)
-                .then_with(|| a.file_name.cmp(&b.file_name))
-        });
-        for issue in ordered {
-            content.push_str(&format!(
-                "- [ ] {} (`{}/{}`)\n",
-                issue.issue.metadata.title, issue.status, issue.file_name
-            ));
-        }
-        content.push('\n');
-    }
-
-    content.push_str("## Skills\n\n");
-    if skills.is_empty() {
-        content.push_str("_No skills configured._\n\n");
-    } else {
-        for skill in skills {
-            content.push_str(&format!("### {} (`{}`)\n\n", skill.name, skill.id));
-            content.push_str(skill.content.trim());
-            content.push_str("\n\n");
-        }
-    }
-
-    let branch = feature.metadata.branch.as_deref().unwrap_or("unassigned");
-    let feature_id = if feature.metadata.id.is_empty() {
-        "unknown"
-    } else {
-        feature.metadata.id.as_str()
-    };
-    content.push_str("---\n");
-    content.push_str(&format!("_Branch: {} | Feature: {}_\n", branch, feature_id));
-
-    let claude_md = project_root.join("CLAUDE.md");
-    fs::write(&claude_md, content)
-        .with_context(|| format!("Failed to write {}", claude_md.display()))?;
-    Ok(())
+    let content = build_feature_context(feature, open_issues, skills, rules);
+    agent_export::write_context(project_root, "claude", &content)
 }
 
-pub fn generate_claude_md_for_spec(
-    project_root: &Path,
-    spec: &runtime::Spec,
-    open_issues: &[IssueEntry],
-    skills: &[Skill],
-) -> Result<()> {
-    let mut content = String::new();
-    content.push_str(&format!("# [ship] {}\n\n", spec.metadata.title));
-    content.push_str(
-        "> Auto-generated by ship on branch checkout. Do not edit manually - re-run `ship git sync` to regenerate.\n\n",
-    );
-
-    content.push_str("## Spec\n\n");
-    if spec.body.trim().is_empty() {
-        content.push_str("_No spec body provided._\n\n");
-    } else {
-        content.push_str(spec.body.trim());
-        content.push_str("\n\n");
-    }
-
-    content.push_str("## Open Issues\n\n");
-    if open_issues.is_empty() {
-        content.push_str("_No open issues._\n\n");
-    } else {
-        let mut ordered: Vec<&IssueEntry> = open_issues.iter().collect();
-        ordered.sort_by(|a, b| {
-            a.status
-                .cmp(&b.status)
-                .then_with(|| a.file_name.cmp(&b.file_name))
-        });
-        for issue in ordered {
-            content.push_str(&format!(
-                "- [ ] {} (`{}/{}`)\n",
-                issue.issue.metadata.title, issue.status, issue.file_name
-            ));
-        }
-        content.push('\n');
-    }
-
-    content.push_str("## Skills\n\n");
-    if skills.is_empty() {
-        content.push_str("_No skills configured._\n\n");
-    } else {
-        for skill in skills {
-            content.push_str(&format!("### {} (`{}`)\n\n", skill.name, skill.id));
-            content.push_str(skill.content.trim());
-            content.push_str("\n\n");
-        }
-    }
-
-    let branch = spec.metadata.branch.as_deref().unwrap_or("unassigned");
-    let spec_id = if spec.metadata.id.is_empty() {
-        "unknown"
-    } else {
-        spec.metadata.id.as_str()
-    };
-    content.push_str("---\n");
-    content.push_str(&format!("_Branch: {} | Spec: {}_\n", branch, spec_id));
-
-    let claude_md = project_root.join("CLAUDE.md");
-    fs::write(&claude_md, content)
-        .with_context(|| format!("Failed to write {}", claude_md.display()))?;
-    Ok(())
-}
-
-fn resolve_agent_config(
-    ship_dir: &Path,
-    project_config: &ProjectConfig,
-    feature_agent: Option<&FeatureAgentConfig>,
-) -> Result<ResolvedFeatureAgent> {
-    let mut configured_servers = project_config.mcp_servers.clone();
-
-    // Prioritize mcp.toml if it exists
-    if let Ok(toml_servers) = runtime::config::get_mcp_config(ship_dir) {
-        for s in toml_servers {
-            if let Some(existing) = configured_servers
-                .iter_mut()
-                .find(|matching| matching.id == s.id)
-            {
-                *existing = s;
-            } else {
-                configured_servers.push(s);
-            }
-        }
-    }
-
-    let configured_server_ids: HashSet<&str> = configured_servers
-        .iter()
-        .map(|server| server.id.as_str())
-        .collect();
-
-    let mcp_server_ids = if let Some(agent) = feature_agent {
-        if !agent.mcp_servers.is_empty() {
-            agent
-                .mcp_servers
-                .iter()
-                .map(|server| server.id.clone())
-                .collect::<Vec<_>>()
-        } else {
-            configured_servers
-                .iter()
-                .filter(|server| !server.disabled)
-                .map(|server| server.id.clone())
-                .collect::<Vec<_>>()
-        }
-    } else {
-        configured_servers
-            .iter()
-            .filter(|server| !server.disabled)
-            .map(|server| server.id.clone())
-            .collect::<Vec<_>>()
-    };
-
-    for id in &mcp_server_ids {
-        if !configured_server_ids.contains(id.as_str()) {
-            return Err(anyhow!("Feature references unknown MCP server id '{}'", id));
-        }
-        if let Some(server) = configured_servers.iter().find(|server| server.id == *id) {
-            if server.disabled {
-                return Err(anyhow!(
-                    "Feature references disabled MCP server id '{}'",
-                    id
-                ));
-            }
-        }
-    }
-
-    let skill_ids = if let Some(agent) = feature_agent {
-        if !agent.skills.is_empty() {
-            agent
-                .skills
-                .iter()
-                .map(|skill| skill.id.clone())
-                .collect::<Vec<_>>()
-        } else {
-            project_config.agent.skills.clone()
-        }
-    } else {
-        project_config.agent.skills.clone()
-    };
-
-    let mut seen = HashSet::new();
-    let mut skills = Vec::new();
-    for skill_id in skill_ids {
-        if !seen.insert(skill_id.clone()) {
-            continue;
-        }
-        let skill = get_effective_skill(ship_dir, &skill_id)
-            .with_context(|| format!("Feature references unknown skill id '{}'", skill_id))?;
-        skills.push(skill);
-    }
-
-    Ok(ResolvedFeatureAgent {
-        mcp_server_ids,
-        skills,
-    })
-}
 
 fn ensure_required_mcp_servers(project_root: &Path, required_ids: &[String]) -> Result<()> {
     if required_ids.is_empty() {
@@ -717,7 +587,7 @@ mod tests {
         )?;
         let feature = get_feature(feature_path)?;
 
-        generate_claude_md(tmp.path(), &feature, &[], &[])?;
+        generate_claude_md(tmp.path(), &feature, &[], &[], &[])?;
         let content = fs::read_to_string(tmp.path().join("CLAUDE.md"))?;
         assert!(content.contains("# [ship] Feature Title"));
         assert!(content.contains("## Feature Spec"));

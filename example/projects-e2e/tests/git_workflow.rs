@@ -145,14 +145,14 @@ mod new_project {
         p.assert_ship_file("agents/skills/task-policy/index.md");
     }
 
-    /// Feature template has the richer lifecycle fields (planned, version, Description section).
+    /// Feature template has the richer lifecycle fields (planned, version, Why/Delivery sections).
     #[test]
     fn init_feature_template_has_lifecycle_fields() {
         let p = TestProject::with_git().unwrap();
         let template = p.read_ship_file("project/features/TEMPLATE.md");
         assert!(template.contains("release_id"));
-        assert!(template.contains("## Description"));
-        assert!(template.contains("## Implementation Notes"));
+        assert!(template.contains("## Why"));
+        assert!(template.contains("## Delivery Todos"));
     }
 }
 

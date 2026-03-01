@@ -15,12 +15,13 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use runtime::{
-    NoteScope, add_status, create_adr, create_feature, create_issue, create_release, create_skill,
-    create_spec, create_user_skill, delete_issue, delete_skill, delete_user_skill,
-    find_release_path, get_adr, get_config, get_effective_skill, get_feature_raw, get_issue,
-    get_project_dir, get_project_name, get_project_statuses, get_release_raw, get_spec_raw,
-    list_adrs, list_effective_skills, list_events_since, list_features, list_issues_full,
-    list_releases, list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
+    NoteScope, add_status, autodetect_providers, create_adr, create_feature, create_issue,
+    create_release, create_skill, create_spec, create_user_skill, delete_issue, delete_skill,
+    delete_user_skill, disable_provider, enable_provider, find_release_path, get_adr, get_config,
+    get_effective_skill, get_feature_raw, get_issue, get_project_dir, get_project_name,
+    get_project_statuses, get_release_raw, get_spec_raw, list_adrs, list_effective_skills,
+    list_events_since, list_features, list_issues_full, list_models, list_providers, list_releases,
+    list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
     set_category_committed, update_feature, update_release, update_skill, update_spec,
     update_user_skill,
 };
@@ -361,6 +362,24 @@ pub struct ListEventsRequest {
     pub since: Option<u64>,
     /// Maximum number of events to return (default 100)
     pub limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ConnectProviderRequest {
+    /// Provider ID to enable (claude, gemini, codex)
+    pub provider_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DisconnectProviderRequest {
+    /// Provider ID to disable (claude, gemini, codex)
+    pub provider_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListModelsRequest {
+    /// Provider ID (claude, gemini, codex)
+    pub provider_id: String,
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -1349,6 +1368,80 @@ impl ShipServer {
         match on_post_checkout(&project_dir, &branch, project_root) {
             Ok(_) => format!("Synced feature context for branch {}", branch),
             Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    // ─── Provider Tools ───────────────────────────────────────────────────────
+
+    /// List all known AI providers and their installed/connected status
+    #[tool(description = "List all known AI agent providers with installed (in PATH) and connected (enabled in project) status, version, and available models")]
+    async fn list_providers_tool(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match list_providers(&project_dir) {
+            Ok(providers) => {
+                match serde_json::to_string_pretty(&providers) {
+                    Ok(json) => json,
+                    Err(e) => format!("Error serialising providers: {}", e),
+                }
+            }
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// Connect (enable) an AI provider for this project
+    #[tool(description = "Connect (enable) an AI provider for this project by adding it to ship.toml providers list. Provider ID must be one of: claude, gemini, codex")]
+    async fn connect_provider(&self, Parameters(req): Parameters<ConnectProviderRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match enable_provider(&project_dir, &req.provider_id) {
+            Ok(true) => format!("Connected provider: {}", req.provider_id),
+            Ok(false) => format!("Provider '{}' is already connected.", req.provider_id),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// Disconnect (disable) an AI provider from this project
+    #[tool(description = "Disconnect (disable) an AI provider from this project by removing it from ship.toml providers list")]
+    async fn disconnect_provider(&self, Parameters(req): Parameters<DisconnectProviderRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match disable_provider(&project_dir, &req.provider_id) {
+            Ok(true) => format!("Disconnected provider: {}", req.provider_id),
+            Ok(false) => format!("Provider '{}' was not connected.", req.provider_id),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// Detect installed providers in PATH and auto-connect them
+    #[tool(description = "Detect which AI providers are installed in PATH and automatically connect them to this project")]
+    async fn detect_providers(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match autodetect_providers(&project_dir) {
+            Ok(found) if found.is_empty() => "No new providers detected.".to_string(),
+            Ok(found) => format!("Detected and connected: {}", found.join(", ")),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// List available models for a provider
+    #[tool(description = "List available models for a provider with context window sizes and recommended model. Use for UI autocomplete and model selection.")]
+    async fn list_models_tool(&self, Parameters(req): Parameters<ListModelsRequest>) -> String {
+        match list_models(&req.provider_id) {
+            Ok(models) => match serde_json::to_string_pretty(&models) {
+                Ok(json) => json,
+                Err(e) => format!("Error serialising models: {}", e),
+            },
+            Err(e) => format!("Error: {}", e),
         }
     }
 

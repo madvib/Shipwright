@@ -6,6 +6,8 @@ This policy defines how humans and agents execute work in alpha.
 
 `Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release`
 
+ADRs and notes are ambient records — create them when a decision or insight surfaces, not as a workflow step.
+
 ## Execution Rules
 
 1. **Release Then Feature**

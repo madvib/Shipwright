@@ -532,7 +532,7 @@ fn feature_switch_checks_out_branch_and_syncs_config() {
 
 // ─── Generated file gitignore ─────────────────────────────────────────────────
 
-/// CLAUDE.md, .mcp.json, and SHIPWRIGHT.md are gitignored so they are never committed.
+/// CLAUDE.md, GEMINI.md, and .mcp.json are gitignored so they are never committed.
 #[test]
 fn generated_agent_files_are_gitignored() {
     let p = TestProject::with_git().unwrap();
@@ -566,8 +566,8 @@ fn generated_agent_files_are_gitignored() {
         status
     );
     assert!(
-        !status.contains("SHIPWRIGHT.md"),
-        "SHIPWRIGHT.md should be gitignored, got: {}",
+        !status.contains("GEMINI.md"),
+        "GEMINI.md should be gitignored, got: {}",
         status
     );
 }

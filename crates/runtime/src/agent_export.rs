@@ -64,20 +64,24 @@ pub enum ManagedMarker {
 /// Where to write the active prompt / system instructions.
 #[derive(Debug, Clone, Copy)]
 pub enum PromptOutput {
-    /// `CLAUDE.md` at project root — written by the git module, not here.
+    /// `CLAUDE.md` at project root.
     ClaudeMd,
     /// `GEMINI.md` at project root.
     GeminiMd,
-    /// `instructions` key in the TOML config file.
-    InstructionsKey,
+    /// `AGENTS.md` at project root — Codex, Roo Code, Amp, Goose all read this.
+    AgentsMd,
     None,
 }
 
-/// Where to write skill content for slash-command access.
+/// Where to write skill content for native agent skill directories.
 #[derive(Debug, Clone, Copy)]
 pub enum SkillsOutput {
-    /// `.claude/commands/<id>.md`
-    ClaudeCommands,
+    /// `.claude/skills/<id>/SKILL.md` — Claude Code native skills (.claude/commands/ is deprecated)
+    ClaudeSkills,
+    /// `.gemini/skills/<id>/SKILL.md` — Gemini CLI
+    AgentSkills,
+    /// `.agents/skills/<id>/SKILL.md` — OpenAI Codex
+    CodexSkills,
     None,
 }
 
@@ -136,7 +140,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         emit_type_field: true,
         managed_marker: ManagedMarker::Inline,
         prompt_output: PromptOutput::ClaudeMd,
-        skills_output: SkillsOutput::ClaudeCommands,
+        skills_output: SkillsOutput::ClaudeSkills,
         models: CLAUDE_MODELS,
     },
     ProviderDescriptor {
@@ -151,7 +155,7 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         emit_type_field: false,
         managed_marker: ManagedMarker::Inline,
         prompt_output: PromptOutput::GeminiMd,
-        skills_output: SkillsOutput::None,
+        skills_output: SkillsOutput::AgentSkills,
         models: GEMINI_MODELS,
     },
     ProviderDescriptor {
@@ -165,8 +169,8 @@ pub const PROVIDERS: &[ProviderDescriptor] = &[
         http_url_field: "url",
         emit_type_field: false,
         managed_marker: ManagedMarker::StateFileOnly,
-        prompt_output: PromptOutput::InstructionsKey,
-        skills_output: SkillsOutput::None,
+        prompt_output: PromptOutput::AgentsMd,
+        skills_output: SkillsOutput::CodexSkills,
         models: CODEX_MODELS,
     },
 ];
@@ -240,11 +244,13 @@ fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
         prompt_output: match d.prompt_output {
             PromptOutput::ClaudeMd => "claude-md".to_string(),
             PromptOutput::GeminiMd => "gemini-md".to_string(),
-            PromptOutput::InstructionsKey => "instructions-key".to_string(),
+            PromptOutput::AgentsMd => "agents-md".to_string(),
             PromptOutput::None => "none".to_string(),
         },
         skills_output: match d.skills_output {
-            SkillsOutput::ClaudeCommands => "claude-commands".to_string(),
+            SkillsOutput::ClaudeSkills => "claude-skills".to_string(),
+            SkillsOutput::AgentSkills => "agent-skills".to_string(),
+            SkillsOutput::CodexSkills => "codex-skills".to_string(),
             SkillsOutput::None => "none".to_string(),
         },
         enabled,
@@ -263,6 +269,48 @@ pub fn list_providers(project_dir: &std::path::Path) -> anyhow::Result<Vec<Provi
         .iter()
         .map(|d| provider_info(d, enabled.contains(d.id)))
         .collect())
+}
+
+/// Add a provider to the project's enabled list (idempotent).
+/// Returns `true` if the list was changed.
+pub fn enable_provider(project_dir: &std::path::Path, provider_id: &str) -> Result<bool> {
+    require_provider(provider_id)?;
+    let mut config = get_config(Some(project_dir.to_path_buf()))?;
+    if config.providers.iter().any(|p| p == provider_id) {
+        return Ok(false);
+    }
+    config.providers.push(provider_id.to_string());
+    crate::config::save_config(&config, Some(project_dir.to_path_buf()))?;
+    Ok(true)
+}
+
+/// Remove a provider from the project's enabled list.
+/// Returns `true` if the list was changed.
+pub fn disable_provider(project_dir: &std::path::Path, provider_id: &str) -> Result<bool> {
+    require_provider(provider_id)?;
+    let mut config = get_config(Some(project_dir.to_path_buf()))?;
+    let before = config.providers.len();
+    config.providers.retain(|p| p != provider_id);
+    if config.providers.len() == before {
+        return Ok(false);
+    }
+    crate::config::save_config(&config, Some(project_dir.to_path_buf()))?;
+    Ok(true)
+}
+
+/// Detect which known providers are installed in PATH and enable them.
+/// Intended for use in `ship init`. Skips already-enabled providers.
+/// Returns the list of provider IDs that were newly enabled.
+pub fn autodetect_providers(project_dir: &std::path::Path) -> Result<Vec<String>> {
+    let mut newly_enabled = Vec::new();
+    for d in PROVIDERS {
+        if detect_binary(d.binary) {
+            if enable_provider(project_dir, d.id)? {
+                newly_enabled.push(d.id.to_string());
+            }
+        }
+    }
+    Ok(newly_enabled)
 }
 
 /// Return models for a specific provider by ID.
@@ -332,6 +380,37 @@ pub struct SyncPayload {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/// Write a context file (CLAUDE.md, GEMINI.md, Codex instructions, etc.) for the given provider.
+///
+/// Called by the git module after building provider-agnostic Markdown content.
+/// Each provider has a specific destination:
+/// - Claude  → `CLAUDE.md` at project root
+/// - Gemini  → `GEMINI.md` at project root
+/// - Codex / Roo / Amp / Goose → `AGENTS.md` at project root
+/// - Unknown provider / `PromptOutput::None` → no-op
+pub fn write_context(project_root: &Path, provider_id: &str, content: &str) -> Result<()> {
+    let desc = match get_provider(provider_id) {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+    match desc.prompt_output {
+        PromptOutput::ClaudeMd => {
+            let path = project_root.join("CLAUDE.md");
+            crate::fs_util::write_atomic(&path, content)?;
+        }
+        PromptOutput::GeminiMd => {
+            let path = project_root.join("GEMINI.md");
+            crate::fs_util::write_atomic(&path, content)?;
+        }
+        PromptOutput::AgentsMd => {
+            let path = project_root.join("AGENTS.md");
+            crate::fs_util::write_atomic(&path, content)?;
+        }
+        PromptOutput::None => {}
+    }
+    Ok(())
+}
+
 /// Export the active mode (or global config) to the specified provider.
 pub fn export_to(project_dir: PathBuf, target: &str) -> Result<()> {
     export_to_inner(project_dir, target, None)
@@ -369,7 +448,9 @@ fn export_to_inner(
 
     // Skills output (provider-specific)
     match desc.skills_output {
-        SkillsOutput::ClaudeCommands => export_skills_to_claude(&project_dir, project_root)?,
+        SkillsOutput::ClaudeSkills => export_skills_to_claude(&project_dir, project_root)?,
+        SkillsOutput::AgentSkills => export_skills_to_dir(&project_dir, &project_root.join(".gemini").join("skills"))?,
+        SkillsOutput::CodexSkills => export_skills_to_dir(&project_dir, &project_root.join(".agents").join("skills"))?,
         SkillsOutput::None => {}
     }
 
@@ -418,7 +499,25 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
             let f = project_root.join("GEMINI.md");
             if f.exists() { fs::remove_file(&f).ok(); }
         }
-        PromptOutput::InstructionsKey | PromptOutput::None => {}
+        PromptOutput::AgentsMd => {
+            let f = project_root.join("AGENTS.md");
+            if f.exists() { fs::remove_file(&f).ok(); }
+        }
+        PromptOutput::None => {}
+    }
+
+    // Remove skill files written by Ship
+    match desc.skills_output {
+        SkillsOutput::ClaudeSkills => {
+            remove_ship_managed_skill_dirs(&project_root.join(".claude").join("skills"));
+        }
+        SkillsOutput::AgentSkills => {
+            remove_ship_managed_skill_dirs(&project_root.join(".gemini").join("skills"));
+        }
+        SkillsOutput::CodexSkills => {
+            remove_ship_managed_skill_dirs(&project_root.join(".agents").join("skills"));
+        }
+        SkillsOutput::None => {}
     }
 
     // Clear managed state for this provider
@@ -629,7 +728,7 @@ fn export_json(
                 let content = format!("<!-- managed by ship — prompt: {} -->\n\n{}\n", prompt.id, prompt.content);
                 crate::fs_util::write_atomic(&md, content)?;
             }
-            PromptOutput::ClaudeMd | PromptOutput::InstructionsKey | PromptOutput::None => {}
+            PromptOutput::ClaudeMd | PromptOutput::AgentsMd | PromptOutput::None => {}
         }
     }
 
@@ -690,11 +789,6 @@ fn export_toml(
     }
 
     root.insert(desc.mcp_key.to_string(), toml::Value::Table(new_mcp));
-
-    // Prompt → instructions field
-    if let (PromptOutput::InstructionsKey, Some(prompt)) = (desc.prompt_output, &payload.prompt) {
-        root.insert("instructions".into(), toml::Value::String(prompt.content.clone()));
-    }
 
     crate::fs_util::write_atomic(&config_path, toml::to_string_pretty(&doc)?)?;
 
@@ -841,19 +935,45 @@ fn toml_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> toml::Value
     toml::Value::Table(entry)
 }
 
-// ─── Skills (Claude-specific) ─────────────────────────────────────────────────
+// ─── Skills ───────────────────────────────────────────────────────────────────
 
 fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()> {
+    export_skills_to_dir(project_dir, &project_root.join(".claude").join("skills"))
+}
+
+/// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`
+fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
     let skills = list_effective_skills(project_dir)?;
     if skills.is_empty() { return Ok(()); }
-    let commands_dir = project_root.join(".claude").join("commands");
-    fs::create_dir_all(&commands_dir)?;
+    fs::create_dir_all(skills_dir)?;
     for skill in &skills {
-        let path = commands_dir.join(format!("{}.md", skill.id));
+        let skill_dir = skills_dir.join(&skill.id);
+        fs::create_dir_all(&skill_dir)?;
+        let path = skill_dir.join("SKILL.md");
         let content = format!("<!-- managed by ship — skill: {} -->\n\n{}\n", skill.id, skill.content);
         crate::fs_util::write_atomic(&path, content)?;
     }
     Ok(())
+}
+
+/// Remove skill subdirectories that were written by Ship (identified by the
+/// `<!-- managed by ship` header in their SKILL.md).
+fn remove_ship_managed_skill_dirs(skills_dir: &Path) {
+    if !skills_dir.exists() { return; }
+    if let Ok(entries) = fs::read_dir(skills_dir) {
+        for entry in entries.flatten() {
+            let skill_dir = entry.path();
+            if !skill_dir.is_dir() { continue; }
+            let skill_md = skill_dir.join("SKILL.md");
+            if skill_md.exists() {
+                if let Ok(c) = fs::read_to_string(&skill_md) {
+                    if c.starts_with("<!-- managed by ship") {
+                        fs::remove_dir_all(&skill_dir).ok();
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ─── Hooks + permissions (Claude settings.json) ───────────────────────────────
