@@ -67,11 +67,11 @@ mcp_servers = [{id = "stripe-docs"}]
 
 Ship knows how each agent tool works. It writes config in the format each provider actually reads:
 
-| Provider | Context file | MCP config | Skills |
-|----------|-------------|------------|--------|
-| Claude Code | `CLAUDE.md` | `.mcp.json` (JSON) | `.claude/commands/*.md` |
-| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` | Inlined in context |
-| OpenAI Codex | `AGENTS.md` | `.codex/config.toml` (TOML) | Inlined in context |
+| Provider     | Context file | MCP config                  | Skills                  |
+| ------------ | ------------ | --------------------------- | ----------------------- |
+| Claude Code  | `CLAUDE.md`  | `.mcp.json` (JSON)          | `.claude/commands/*.md` |
+| Gemini CLI   | `GEMINI.md`  | `.gemini/settings.json`     | Inlined in context      |
+| OpenAI Codex | `AGENTS.md`  | `.codex/config.toml` (TOML) | Inlined in context      |
 
 Add a provider in one command. Ship handles the rest:
 
@@ -97,10 +97,14 @@ Reusable agent instructions, scoped to project or user:
 
 ```markdown
 # agents/skills/task-policy.md
+
 ---
+
 id: task-policy
 name: Shipwright Workflow Policy
+
 ---
+
 Always start from a feature document. File issues for every gap found.
 Run tests before closing feature todos.
 ```
@@ -175,14 +179,14 @@ ship git sync
 
 Ship is a Rust monorepo:
 
-| Crate | Role |
-|-------|------|
-| `crates/runtime` | Core data model, CRUD, event stream, agent config resolution |
-| `crates/cli` | `ship` binary — workflow CLI |
-| `crates/mcp` | `ship-mcp` binary — MCP stdio server |
-| `crates/modules/git` | Git hook handler, context file generation |
-| `crates/ui` | Tauri + React desktop app (macOS/Windows) |
-| `crates/plugins/*` | Time tracker, ghost issue scanner |
+| Crate                | Role                                                         |
+| -------------------- | ------------------------------------------------------------ |
+| `crates/runtime`     | Core data model, CRUD, event stream, agent config resolution |
+| `crates/cli`         | `ship` binary — workflow CLI                                 |
+| `crates/mcp`         | `ship-mcp` binary — MCP stdio server                         |
+| `crates/modules/git` | Git hook handler, context file generation                    |
+| `crates/ui`          | Tauri + React desktop app (macOS/Windows)                    |
+| `crates/plugins/*`   | Time tracker, ghost issue scanner                            |
 
 - **Storage:** Structured markdown with TOML frontmatter (git-native) + SQLite for workspace state and managed MCP ledger
 - **Events:** Append-only event stream — the replication unit for future cloud sync
@@ -196,6 +200,7 @@ Ship is a Rust monorepo:
 Ship is in **alpha**. It is used to build itself — this repo runs Ship on every branch. The core loop is functional end-to-end.
 
 **Working now:**
+
 - Full CRUD for features, specs, issues, releases, ADRs, notes, skills, rules
 - Git hook → context injection for Claude, Gemini, Codex
 - MCP server with 40+ tools
@@ -204,6 +209,7 @@ Ship is in **alpha**. It is used to build itself — this repo runs Ship on ever
 - 180+ passing tests including end-to-end branch lifecycle tests
 
 **Coming next:**
+
 - Desktop UI (macOS/Windows) — Tauri + React, designs in progress
 - `ship providers` HTTP/SSE transport for editor integrations (Cursor, Windsurf)
 - Cloud sync via event log replication
@@ -215,7 +221,7 @@ Ship is in **alpha**. It is used to build itself — this repo runs Ship on ever
 
 The MCP protocol standardized how agents consume external context. Every major AI coding tool — Claude Code, Gemini CLI, Codex, Cursor, Windsurf, Zed — now supports it. The tooling layer has arrived. What's missing is the project memory layer that sits above it: structured, versioned, agent-readable, and wired into the developer's actual workflow.
 
-Ship is that layer.
+Shipwright is that layer.
 
 ---
 
@@ -227,4 +233,4 @@ Open issues, file bugs, and follow development here. The `.ship/` directory in t
 
 ---
 
-*Built with Ship · Rust · MCP · Local-first*
+_Built with Shipwright · Rust · MCP · Local-first_
