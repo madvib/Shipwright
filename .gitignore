@@ -73,9 +73,16 @@ GEMINI.md
 
 .devcontainer
 
+# Ship runtime DB artifacts
+**/.ship/ship.db
+**/.ship/ship.db-shm
+**/.ship/ship.db-wal
 
 # Ship — generated agent config (never commit these)
+CLAUDE.md
+GEMINI.md
 AGENTS.md
+.mcp.json
 .claude/
 .gemini/
 .codex/

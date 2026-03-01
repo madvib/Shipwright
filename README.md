@@ -71,7 +71,7 @@ Ship knows how each agent tool works. It writes config in the format each provid
 
 | Provider     | Context file | MCP config                  | Skills                           |
 | ------------ | ------------ | --------------------------- | -------------------------------- |
-| Claude Code  | `CLAUDE.md`  | `.mcp.json` (JSON)          | `.claude/commands/*.md`          |
+| Claude Code  | `CLAUDE.md`  | `.mcp.json` (JSON)          | `.claude/skills/<id>/SKILL.md`   |
 | Gemini CLI   | `GEMINI.md`  | `.gemini/settings.json`     | `.agent/skills/<id>/SKILL.md`    |
 | OpenAI Codex | `AGENTS.md`  | `.codex/config.toml` (TOML) | `.agents/skills/<id>/SKILL.md`   |
 
