@@ -1,6 +1,15 @@
++++
+title = "Vision"
+updated = ""
++++
+
 # Vision
 
-## Problem
+[One-line tagline]
+
+---
+
+## The Problem
 
 What long-term problem is this project solving?
 

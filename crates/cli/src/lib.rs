@@ -1,19 +1,22 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::{
-    NoteScope, add_mode, add_status, backfill_issue_ids, create_adr, create_feature, create_issue,
+    FeatureStatus, McpServerConfig, McpServerType, NoteScope, add_mcp_server, add_mode, add_status,
+    autodetect_providers, backfill_issue_ids, create_adr, create_feature, create_issue,
     create_note, create_release, create_skill, create_spec, create_user_skill, delete_skill,
-    delete_user_skill, find_release_path, get_active_mode, get_config, get_effective_skill,
+    delete_user_skill, disable_provider, enable_provider, feature_done, feature_start,
+    find_release_path, get_active_mode, get_config, get_effective_skill, get_feature,
     get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw, get_project_dir,
     get_project_statuses, get_release_raw, get_skill, get_spec_raw, get_user_skill,
     ingest_external_events, init_demo_project, init_project, is_category_committed,
-    list_effective_skills, list_events_since, list_features, list_issues, list_notes,
-    list_releases, list_skills, list_specs, list_user_skills, log_action, migrate_global_state,
-    migrate_json_config_file, migrate_project_state, migrate_yaml_issues, move_issue,
-    note_path_for_scope, remove_mode, remove_status, set_active_mode, set_category_committed,
+    list_effective_skills, list_events_since, list_features, list_issues, list_mcp_servers,
+    list_models, list_notes, list_providers, list_releases, list_skills, list_specs,
+    list_user_skills, log_action, migrate_global_state, migrate_json_config_file,
+    migrate_project_state, migrate_yaml_issues, move_issue, note_path_for_scope,
+    remove_mcp_server, remove_mode, remove_status, set_active_mode, set_category_committed,
     update_feature, update_note, update_release, update_skill, update_user_skill,
 };
-use ship_module_git::{install_hooks, on_post_checkout};
+use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use std::env;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
@@ -112,8 +115,16 @@ pub enum Commands {
         #[command(subcommand)]
         action: ModeCommands,
     },
-    /// Start the MCP server on stdio
-    Mcp,
+    /// Manage MCP servers registered in ship.toml
+    Mcp {
+        #[command(subcommand)]
+        action: McpCommands,
+    },
+    /// Manage AI agent providers (detect, connect, disconnect)
+    Providers {
+        #[command(subcommand)]
+        action: ProviderCommands,
+    },
     /// Migrate legacy YAML issues and JSON config to TOML
     #[command(hide = true)]
     Migrate,
@@ -206,6 +217,64 @@ pub enum ModeCommands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum McpCommands {
+    /// List MCP servers registered in ship.toml
+    List,
+    /// Add an HTTP/SSE MCP server
+    Add {
+        /// Stable server ID (used in feature frontmatter)
+        id: String,
+        /// Human-readable name
+        name: String,
+        /// Server URL (for SSE or HTTP transport)
+        url: String,
+        /// Register but do not start
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// Add a stdio MCP server
+    AddStdio {
+        /// Stable server ID
+        id: String,
+        /// Human-readable name
+        name: String,
+        /// Binary to run
+        command: String,
+        /// Arguments to pass to the binary
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Remove an MCP server by ID
+    Remove { id: String },
+    /// Start the MCP stdio server (internal)
+    #[command(hide = true)]
+    Serve,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ProviderCommands {
+    /// List all known providers and their status
+    List,
+    /// Connect (enable) a provider for this project
+    Connect {
+        /// Provider ID (claude, gemini, codex)
+        id: String,
+    },
+    /// Disconnect (disable) a provider from this project
+    Disconnect {
+        /// Provider ID (claude, gemini, codex)
+        id: String,
+    },
+    /// Detect installed providers in PATH and auto-connect them
+    Detect,
+    /// List available models for a provider
+    Models {
+        /// Provider ID (claude, gemini, codex)
+        id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum StatusCommands {
     /// List configured issue statuses
     List,
@@ -270,6 +339,12 @@ pub enum IssueCommands {
 pub enum AdrCommands {
     /// Create a new ADR
     Create { title: String, decision: String },
+    /// List ADRs
+    List,
+    /// Print an ADR's markdown content
+    Get { file_name: String },
+    /// Move an ADR to a new status
+    Move { file_name: String, status: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -413,7 +488,11 @@ pub enum FeatureCommands {
         branch: Option<String>,
     },
     /// List feature documents
-    List,
+    List {
+        /// Filter by status: planned, in-progress, implemented, deprecated
+        #[arg(long)]
+        status: Option<String>,
+    },
     /// Print a feature document's markdown content
     Get { file_name: String },
     /// Replace feature markdown content
@@ -423,6 +502,18 @@ pub enum FeatureCommands {
         #[arg(short, long)]
         content: String,
     },
+    /// Mark a feature as in-progress and link it to a branch
+    Start {
+        file_name: String,
+        /// Git branch name to link (creates the branch if absent).
+        /// Defaults to `feature/<file-name-without-.md>` when omitted.
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// Check out the branch linked to a feature and regenerate agent config
+    Switch { file_name: String },
+    /// Mark a feature as implemented (done)
+    Done { file_name: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -470,6 +561,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     err
                 );
             }
+            if let Err(err) = write_root_gitignore(&target) {
+                eprintln!("[ship] warning: failed to update root .gitignore: {}", err);
+            }
             let tracked = match runtime::register_project(project_name, target.clone()) {
                 Ok(()) => true,
                 Err(err) => {
@@ -495,6 +589,16 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 );
             } else {
                 println!("Initialized Ship project in {}", ship_path.display());
+            }
+            // Auto-detect installed providers and enable them
+            match autodetect_providers(&target) {
+                Ok(found) if !found.is_empty() => {
+                    println!("Detected and connected providers: {}", found.join(", "));
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    eprintln!("[ship] warning: provider detection failed: {}", err);
+                }
             }
         }
         Some(Commands::Issue { action }) => {
@@ -537,12 +641,49 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             let project_dir = get_project_dir(None)?;
             match action {
                 AdrCommands::Create { title, decision } => {
-                    let path = create_adr(project_dir.clone(), &title, &decision, "accepted")?;
+                    let path = create_adr(project_dir.clone(), &title, &decision, "proposed")?;
                     println!("ADR created: {}", path.display());
                     log_action(
                         project_dir,
                         "adr create",
                         &format!("Created ADR: {}", title),
+                    )?;
+                }
+                AdrCommands::List => {
+                    let mut adrs = runtime::list_adrs(project_dir)?;
+                    adrs.sort_by(|a, b| b.file_name.cmp(&a.file_name));
+                    if adrs.is_empty() {
+                        println!("No ADRs found.");
+                    } else {
+                        for adr in adrs {
+                            println!(
+                                "[{}] {} ({})",
+                                adr.status, adr.adr.metadata.title, adr.file_name
+                            );
+                        }
+                    }
+                }
+                AdrCommands::Get { file_name } => {
+                    let path = runtime::find_adr_path(&project_dir, &file_name)?;
+                    let content = std::fs::read_to_string(path)?;
+                    println!("{}", content);
+                }
+                AdrCommands::Move { file_name, status } => {
+                    let new_status = status
+                        .parse::<runtime::AdrStatus>()
+                        .map_err(|_| anyhow::anyhow!("Invalid ADR status"))?;
+                    let new_path =
+                        runtime::move_adr(project_dir.clone(), &file_name, new_status.clone())?;
+                    println!(
+                        "Moved {} to {} ({})",
+                        file_name,
+                        new_status,
+                        new_path.display()
+                    );
+                    log_action(
+                        project_dir,
+                        "adr move",
+                        &format!("Moved {} to {}", file_name, new_status),
                     )?;
                 }
             }
@@ -731,7 +872,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             match action {
                 SpecCommands::Create { title, content } => {
                     let body = content.unwrap_or_default();
-                    let path = create_spec(project_dir.clone(), &title, &body)?;
+                    let path = create_spec(project_dir.clone(), &title, &body, "draft")?;
                     println!("Spec created: {}", path.display());
                     log_action(
                         project_dir,
@@ -830,14 +971,25 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         &format!("Created feature: {}", title),
                     )?;
                 }
-                FeatureCommands::List => {
-                    let mut features = list_features(project_dir)?;
+                FeatureCommands::List { status } => {
+                    let status_filter = match status.as_deref() {
+                        Some("planned") => Some(FeatureStatus::Planned),
+                        Some("in-progress") => Some(FeatureStatus::InProgress),
+                        Some("implemented") => Some(FeatureStatus::Implemented),
+                        Some("deprecated") => Some(FeatureStatus::Deprecated),
+                        Some(other) => anyhow::bail!(
+                            "Unknown status: {}. Use: planned, in-progress, implemented, deprecated",
+                            other
+                        ),
+                        None => None,
+                    };
+                    let mut features = list_features(project_dir, status_filter)?;
                     features.sort_by(|a, b| b.updated.cmp(&a.updated));
                     if features.is_empty() {
                         println!("No features found.");
                     } else {
                         for feature in features {
-                            let release = feature.release.unwrap_or_else(|| "unassigned".into());
+                            let release = feature.release_id.unwrap_or_else(|| "unassigned".into());
                             println!(
                                 "[{}] {} ({}) release={}",
                                 feature.status, feature.title, feature.file_name, release
@@ -846,24 +998,82 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 FeatureCommands::Get { file_name } => {
-                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Feature not found: {}", file_name);
-                    }
+                    let path = runtime::find_feature_path(&project_dir, &file_name)?;
                     let content = get_feature_raw(path)?;
                     println!("{}", content);
                 }
                 FeatureCommands::Update { file_name, content } => {
-                    let path = runtime::project::features_dir(&project_dir).join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Feature not found: {}", file_name);
-                    }
+                    let path = runtime::find_feature_path(&project_dir, &file_name)?;
                     update_feature(path, &content)?;
                     println!("Updated feature: {}", file_name);
                     log_action(
                         project_dir,
                         "feature update",
                         &format!("Updated feature: {}", file_name),
+                    )?;
+                }
+                FeatureCommands::Start { file_name, branch } => {
+                    // Derive branch name from file name when not explicitly provided.
+                    let branch = branch.unwrap_or_else(|| {
+                        let base = file_name.trim_end_matches(".md");
+                        format!("feature/{}", base)
+                    });
+                    // Create the branch if it doesn't exist
+                    let branch_exists = ProcessCommand::new("git")
+                        .args(["rev-parse", "--verify", &branch])
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false);
+                    if !branch_exists {
+                        let result = ProcessCommand::new("git")
+                            .args(["checkout", "-b", &branch])
+                            .status()?;
+                        if !result.success() {
+                            anyhow::bail!("Failed to create branch: {}", branch);
+                        }
+                    }
+                    feature_start(project_dir.clone(), &file_name, &branch)?;
+                    // Generate agent config for the new branch
+                    let project_root = project_dir
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| project_dir.clone());
+                    let _ = on_post_checkout(&project_dir, &branch, &project_root);
+                    println!("Feature started: {} on branch {}", file_name, branch);
+                    log_action(
+                        project_dir,
+                        "feature start",
+                        &format!("Started feature: {} branch={}", file_name, branch),
+                    )?;
+                }
+                FeatureCommands::Switch { file_name } => {
+                    let path = runtime::find_feature_path(&project_dir, &file_name)?;
+                    let feature = get_feature(path)?;
+                    let branch = feature.metadata.branch.ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Feature has no linked branch — run 'ship feature start' first"
+                        )
+                    })?;
+                    let result = ProcessCommand::new("git")
+                        .args(["checkout", &branch])
+                        .status()?;
+                    if !result.success() {
+                        anyhow::bail!("Failed to checkout branch: {}", branch);
+                    }
+                    let project_root = project_dir
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| project_dir.clone());
+                    let _ = on_post_checkout(&project_dir, &branch, &project_root);
+                    println!("Switched to feature: {} on branch {}", file_name, branch);
+                }
+                FeatureCommands::Done { file_name } => {
+                    feature_done(project_dir.clone(), &file_name)?;
+                    println!("Feature done: {}", file_name);
+                    log_action(
+                        project_dir,
+                        "feature done",
+                        &format!("Marked feature implemented: {}", file_name),
                     )?;
                 }
             }
@@ -997,9 +1207,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     );
                 }
                 GitCommands::PostCheckout { old, new, flag } => {
-                    let project_root = project_dir
-                        .parent()
-                        .ok_or_else(|| anyhow::anyhow!("Could not resolve project root"))?;
+                    // Use CWD as project_root so worktrees write CLAUDE.md to the
+                    // worktree directory, not the main repo root.
+                    let cwd = env::current_dir()?;
                     let old_ref = old
                         .or_else(|| env::var("SHIP_GIT_OLD_REF").ok())
                         .or_else(|| env::var("GIT_OLD_REF").ok());
@@ -1016,16 +1226,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         None
                     }
                     .or_else(|| env::var("SHIP_GIT_BRANCH").ok())
-                    .unwrap_or(current_branch(project_root)?);
+                    .unwrap_or(current_branch(&cwd)?);
 
-                    on_post_checkout(&project_dir, &branch)?;
+                    on_post_checkout(&project_dir, &branch, &cwd)?;
                 }
                 GitCommands::Sync => {
-                    let project_root = project_dir
-                        .parent()
-                        .ok_or_else(|| anyhow::anyhow!("Could not resolve project root"))?;
-                    let branch = current_branch(project_root)?;
-                    on_post_checkout(&project_dir, &branch)?;
+                    let cwd = env::current_dir()?;
+                    let branch = current_branch(&cwd)?;
+                    on_post_checkout(&project_dir, &branch, &cwd)?;
                 }
             }
         }
@@ -1191,8 +1399,137 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             ensure_builtin_plugin_namespaces(&project_dir)?;
             handle_time_command(action, &project_dir)?;
         }
-        Some(Commands::Mcp) => {
-            // Handled by the main unitary binary as it requires async
+        Some(Commands::Mcp { action }) => {
+            match action {
+                McpCommands::Serve => {
+                    // Handled by the main unitary binary as it requires async
+                }
+                McpCommands::List => {
+                    let project_dir = get_project_dir(None)?;
+                    let servers = list_mcp_servers(Some(project_dir))?;
+                    if servers.is_empty() {
+                        println!("No MCP servers configured. Add one with `ship mcp add`.");
+                    } else {
+                        for s in &servers {
+                            let transport = match &s.server_type {
+                                McpServerType::Stdio => format!("stdio:{}", s.command),
+                                McpServerType::Sse => {
+                                    format!("sse:{}", s.url.as_deref().unwrap_or("?"))
+                                }
+                                McpServerType::Http => {
+                                    format!("http:{}", s.url.as_deref().unwrap_or("?"))
+                                }
+                            };
+                            let status = if s.disabled { " [disabled]" } else { "" };
+                            println!("{} — {} ({}){}", s.id, s.name, transport, status);
+                        }
+                    }
+                }
+                McpCommands::Add {
+                    id,
+                    name,
+                    url,
+                    disabled,
+                } => {
+                    let project_dir = get_project_dir(None)?;
+                    let server = McpServerConfig {
+                        id: id.clone(),
+                        name,
+                        command: String::new(),
+                        args: vec![],
+                        env: Default::default(),
+                        scope: "project".to_string(),
+                        server_type: McpServerType::Http,
+                        url: Some(url),
+                        disabled,
+                        timeout_secs: None,
+                    };
+                    add_mcp_server(Some(project_dir), server)?;
+                    println!("Added MCP server '{}'.", id);
+                }
+                McpCommands::AddStdio {
+                    id,
+                    name,
+                    command,
+                    args,
+                } => {
+                    let project_dir = get_project_dir(None)?;
+                    let server = McpServerConfig {
+                        id: id.clone(),
+                        name,
+                        command,
+                        args,
+                        env: Default::default(),
+                        scope: "project".to_string(),
+                        server_type: McpServerType::Stdio,
+                        url: None,
+                        disabled: false,
+                        timeout_secs: None,
+                    };
+                    add_mcp_server(Some(project_dir), server)?;
+                    println!("Added stdio MCP server '{}'.", id);
+                }
+                McpCommands::Remove { id } => {
+                    let project_dir = get_project_dir(None)?;
+                    remove_mcp_server(Some(project_dir), &id)?;
+                    println!("Removed MCP server '{}'.", id);
+                }
+            }
+        }
+        Some(Commands::Providers { action }) => {
+            let project_dir = get_project_dir(None)?;
+            match action {
+                ProviderCommands::List => {
+                    let providers = list_providers(&project_dir)?;
+                    println!("{:<12} {:<20} {:<10} {:<10} {}", "ID", "NAME", "INSTALLED", "CONNECTED", "VERSION");
+                    println!("{}", "-".repeat(70));
+                    for p in providers {
+                        println!(
+                            "{:<12} {:<20} {:<10} {:<10} {}",
+                            p.id,
+                            p.name,
+                            if p.installed { "yes" } else { "no" },
+                            if p.enabled { "yes" } else { "no" },
+                            p.version.as_deref().unwrap_or("-"),
+                        );
+                    }
+                }
+                ProviderCommands::Connect { id } => {
+                    if enable_provider(&project_dir, &id)? {
+                        println!("Connected provider: {}", id);
+                    } else {
+                        println!("Provider '{}' is already connected.", id);
+                    }
+                }
+                ProviderCommands::Disconnect { id } => {
+                    if disable_provider(&project_dir, &id)? {
+                        println!("Disconnected provider: {}", id);
+                    } else {
+                        println!("Provider '{}' was not connected.", id);
+                    }
+                }
+                ProviderCommands::Detect => {
+                    let found = autodetect_providers(&project_dir)?;
+                    if found.is_empty() {
+                        println!("No new providers detected.");
+                    } else {
+                        println!("Detected and connected: {}", found.join(", "));
+                    }
+                }
+                ProviderCommands::Models { id } => {
+                    let models = list_models(&id)?;
+                    println!("{:<30} {:<14} {}", "MODEL", "CONTEXT", "");
+                    println!("{}", "-".repeat(60));
+                    for m in models {
+                        println!(
+                            "{:<30} {:<14} {}",
+                            m.id,
+                            format!("{}k", m.context_window / 1000),
+                            if m.recommended { "(recommended)" } else { "" },
+                        );
+                    }
+                }
+            }
         }
         Some(Commands::Migrate) => {
             let project_dir = get_project_dir(None)?;

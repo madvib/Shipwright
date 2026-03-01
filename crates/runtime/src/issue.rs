@@ -2,14 +2,33 @@ use crate::fs_util::write_atomic;
 use crate::project::sanitize_file_name;
 use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum IssuePriority {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+impl std::fmt::Display for IssuePriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IssuePriority::Critical => write!(f, "critical"),
+            IssuePriority::High => write!(f, "high"),
+            IssuePriority::Medium => write!(f, "medium"),
+            IssuePriority::Low => write!(f, "low"),
+        }
+    }
+}
 
 /// A typed link between issues or to external resources.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Type)]
@@ -24,14 +43,18 @@ pub struct IssueMetadata {
     #[serde(default)]
     pub id: String,
     pub title: String,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
+    pub created: String,
+    pub updated: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignee: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<IssuePriority>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec: Option<String>,
+    pub spec_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature_id: Option<String>,
     #[serde(default)]
     pub links: Vec<IssueLink>,
 }
@@ -70,17 +93,8 @@ fn validate_title(title: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_status(status: &str) -> Result<()> {
-    if status.trim().is_empty() {
-        return Err(anyhow!("Status cannot be empty"));
-    }
-    if status.contains('/') || status.contains('\\') || status.contains("..") {
-        return Err(anyhow!(
-            "Invalid status '{}': must not contain path separators",
-            status
-        ));
-    }
-    Ok(())
+pub fn validate_status(status: &str) -> Result<()> {
+    crate::project::validate_status(status)
 }
 
 // ─── Serialisation ────────────────────────────────────────────────────────────
@@ -130,20 +144,16 @@ impl Issue {
         let description = parts[2].trim_start_matches('\n').to_string();
 
         let mut title = String::new();
-        let mut created = Utc::now();
-        let mut updated = Utc::now();
+        let mut created = Utc::now().to_rfc3339();
+        let mut updated = Utc::now().to_rfc3339();
 
         for line in yaml.lines() {
             if let Some(v) = line.strip_prefix("title: ") {
                 title = v.trim().to_string();
             } else if let Some(v) = line.strip_prefix("created_at: ") {
-                if let Ok(dt) = v.trim().parse::<DateTime<Utc>>() {
-                    created = dt;
-                }
+                created = v.trim().to_string();
             } else if let Some(v) = line.strip_prefix("updated_at: ") {
-                if let Ok(dt) = v.trim().parse::<DateTime<Utc>>() {
-                    updated = dt;
-                }
+                updated = v.trim().to_string();
             }
         }
 
@@ -187,18 +197,21 @@ pub fn create_issue(
     status: &str,
 ) -> Result<PathBuf> {
     validate_title(title)?;
-    validate_status(status)?;
+    if status.contains("..") || status.starts_with('/') {
+        return Err(anyhow!("Invalid status: {}", status));
+    }
+    let template = crate::project::read_template(&project_dir, "issue")?;
+    let mut issue = Issue::from_markdown(&template)?;
+    let now = Utc::now().to_rfc3339();
 
-    let issue = Issue {
-        metadata: IssueMetadata {
-            id: Uuid::new_v4().to_string(),
-            title: title.to_string(),
-            created: Utc::now(),
-            updated: Utc::now(),
-            ..Default::default()
-        },
-        description: description.to_string(),
-    };
+    issue.metadata.id = crate::gen_nanoid();
+    issue.metadata.title = title.to_string();
+    issue.metadata.created = now.clone();
+    issue.metadata.updated = now;
+
+    if !description.is_empty() {
+        issue.description = description.to_string();
+    }
 
     let base = sanitize_file_name(title);
     let status_dir = crate::project::issues_dir(&project_dir).join(status);
@@ -229,7 +242,7 @@ pub fn get_issue(path: PathBuf) -> Result<Issue> {
 }
 
 pub fn update_issue(path: PathBuf, mut issue: Issue) -> Result<()> {
-    issue.metadata.updated = Utc::now();
+    issue.metadata.updated = Utc::now().to_rfc3339();
     persist_issue(&path, &issue)?;
     if let Some(project_dir) = ship_dir_from_issue_path(&path) {
         let file_name = path
@@ -385,7 +398,7 @@ pub fn delete_issue(path: PathBuf) -> Result<()> {
 pub fn append_note(path: PathBuf, note: &str) -> Result<()> {
     let mut issue = get_issue(path.clone())?;
     let title = issue.metadata.title.clone();
-    issue.metadata.updated = Utc::now();
+    issue.metadata.updated = Utc::now().to_rfc3339();
     if !issue.description.is_empty() && !issue.description.ends_with('\n') {
         issue.description.push('\n');
     }
@@ -414,7 +427,7 @@ pub fn append_note(path: PathBuf, note: &str) -> Result<()> {
 pub fn add_link(file_path: PathBuf, link_type: &str, target: &str) -> Result<()> {
     let mut issue = get_issue(file_path.clone())?;
     let title = issue.metadata.title.clone();
-    issue.metadata.updated = Utc::now();
+    issue.metadata.updated = Utc::now().to_rfc3339();
     issue.metadata.links.push(IssueLink {
         type_: link_type.to_string(),
         target: target.to_string(),
@@ -460,7 +473,7 @@ pub fn backfill_issue_ids(project_dir: &PathBuf) -> Result<usize> {
             if path.is_file() && path.extension().map_or(false, |e| e == "md") {
                 if let Ok(mut issue) = get_issue(path.clone()) {
                     if issue.metadata.id.is_empty() {
-                        issue.metadata.id = Uuid::new_v4().to_string();
+                        issue.metadata.id = crate::gen_nanoid();
                         let content = issue.to_markdown()?;
                         write_atomic(&path, content)?;
                         count += 1;

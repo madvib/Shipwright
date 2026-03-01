@@ -1,7 +1,7 @@
 version = "1"
 modes = []
-mcp_servers = []
 hooks = []
+providers = ["claude"]
 
 [[statuses]]
 id = "backlog"
@@ -37,11 +37,21 @@ commit = [
     "ship.toml",
 ]
 
+[[mcp_servers]]
+id = "ship"
+name = "Shipwright"
+command = "/home/madvib/.cargo/bin/ship-mcp"
+args = []
+scope = "project"
+server_type = "stdio"
+disabled = false
+
+[mcp_servers.env]
+
 [agent]
-skills = []
+skills = ["task-policy"]
 prompts = []
 context = []
-rules = []
 
 [[namespaces]]
 id = "project"

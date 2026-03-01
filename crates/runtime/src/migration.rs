@@ -322,8 +322,25 @@ fn migrate_directory_tree(
         return Ok(());
     }
 
+    let conflicts_before = report.conflict_files;
     report.copied_directories += copy_markdown_tree(source, target, report)?;
+    // Remove the legacy source directory if every file transferred cleanly
+    // (no new conflicts and no archive subdirs we're intentionally keeping).
+    if report.conflict_files == conflicts_before && !has_archive_subdir(source) {
+        let _ = fs::remove_dir_all(source);
+    }
     Ok(())
+}
+
+fn has_archive_subdir(dir: &Path) -> bool {
+    fs::read_dir(dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.file_name() == "archive" && e.path().is_dir())
+        })
+        .unwrap_or(false)
 }
 
 fn move_dir(source: &Path, target: &Path) -> Result<()> {
@@ -514,7 +531,7 @@ mod tests {
             "expected documents/directories to be migrated"
         );
         assert!(ship.join("workflow/issues/backlog/legacy.md").exists());
-        assert!(ship.join("workflow/features/auth.md").exists());
+        assert!(ship.join("project/features/auth.md").exists());
         assert!(ship.join("project/releases/v1.md").exists());
         assert!(ship.join("project/vision.md").exists());
         Ok(())

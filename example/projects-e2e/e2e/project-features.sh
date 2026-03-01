@@ -60,7 +60,7 @@ out="$(run_ship init .)"
 assert_contains "$out" "Initialized and tracked Ship project"
 
 # Namespace structure
-assert_path_exists "$WORK_DIR/.ship/workflow/features"
+assert_path_exists "$WORK_DIR/.ship/project/features"
 assert_path_exists "$WORK_DIR/.ship/workflow/specs"
 assert_path_exists "$WORK_DIR/.ship/workflow/issues/backlog"
 assert_path_exists "$WORK_DIR/.ship/project/releases"
@@ -74,7 +74,7 @@ assert_path_exists "$WORK_DIR/.ship/agents/modes/planning.toml"
 assert_path_exists "$WORK_DIR/.ship/agents/modes/execution.toml"
 assert_path_exists "$WORK_DIR/.ship/agents/skills"
 assert_path_exists "$WORK_DIR/.ship/generated"
-assert_path_exists "$WORK_DIR/.ship/workflow/features/TEMPLATE.md"
+assert_path_exists "$WORK_DIR/.ship/project/features/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/workflow/specs/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/workflow/issues/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/events.ndjson"
@@ -118,10 +118,10 @@ assert_contains "$release_get_out" "version = \"v0.1.0-alpha\""
 echo "Validating feature workflow..."
 run_ship feature create "Agent Config UI" --release "$(basename "$release_file")" --spec "$(basename "$spec_file")" >/dev/null
 feature_list_out="$(run_ship feature list)"
-assert_contains "$feature_list_out" "[active] Agent Config UI"
-feature_file="$(find "$WORK_DIR/.ship/workflow/features" -maxdepth 1 -name 'agent-config-ui*.md' -print | head -n 1)"
+assert_contains "$feature_list_out" "[planned] Agent Config UI"
+feature_file="$(find "$WORK_DIR/.ship/project/features" -maxdepth 1 -name 'agent-config-ui*.md' -print | head -n 1)"
 if [[ -z "${feature_file:-}" ]]; then
-  echo "ASSERTION FAILED: expected generated feature file in .ship/workflow/features" >&2
+  echo "ASSERTION FAILED: expected generated feature file in .ship/project/features" >&2
   exit 1
 fi
 feature_get_out="$(run_ship feature get "$(basename "$feature_file")")"
@@ -141,7 +141,7 @@ assert_path_in_gitignore "ship.db"
 assert_path_not_in_gitignore "project/adrs"
 assert_path_not_in_gitignore "project/notes"
 assert_path_not_in_gitignore "agents"
-assert_path_not_in_gitignore "workflow/features"
+assert_path_not_in_gitignore "project/features"
 assert_path_not_in_gitignore "project/releases"
 
 run_ship git exclude adrs >/dev/null

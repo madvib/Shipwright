@@ -23,8 +23,10 @@ Ship sits in your repository as a `.ship/` directory. It stores your project's w
 **The workflow loop:**
 
 ```
-Vision → Release → Feature → Spec → Issues → ADRs → Close Feature → Ship Release
+Vision → Release → Feature → Spec → Issues → Close Feature → Ship Release
 ```
+
+ADRs and notes are ambient — created whenever a decision or insight surfaces, not as a workflow step. They're the project's long-term memory, always available to agents, never blocking progress.
 
 At each transition, Ship knows where you are and what your agents need to know.
 
@@ -67,11 +69,11 @@ mcp_servers = [{id = "stripe-docs"}]
 
 Ship knows how each agent tool works. It writes config in the format each provider actually reads:
 
-| Provider     | Context file | MCP config                  | Skills                  |
-| ------------ | ------------ | --------------------------- | ----------------------- |
-| Claude Code  | `CLAUDE.md`  | `.mcp.json` (JSON)          | `.claude/commands/*.md` |
-| Gemini CLI   | `GEMINI.md`  | `.gemini/settings.json`     | Inlined in context      |
-| OpenAI Codex | `AGENTS.md`  | `.codex/config.toml` (TOML) | Inlined in context      |
+| Provider     | Context file | MCP config                  | Skills                           |
+| ------------ | ------------ | --------------------------- | -------------------------------- |
+| Claude Code  | `CLAUDE.md`  | `.mcp.json` (JSON)          | `.claude/skills/<id>/SKILL.md`   |
+| Gemini CLI   | `GEMINI.md`  | `.gemini/settings.json`     | `.agent/skills/<id>/SKILL.md`    |
+| OpenAI Codex | `AGENTS.md`  | `.codex/config.toml` (TOML) | `.agents/skills/<id>/SKILL.md`   |
 
 Add a provider in one command. Ship handles the rest:
 

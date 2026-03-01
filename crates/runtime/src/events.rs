@@ -13,7 +13,7 @@ const EVENT_INDEX_FILE: &str = "generated/event_index.json";
 const TRACKED_DIRS: &[&str] = &[
     "workflow/issues",
     "workflow/specs",
-    "workflow/features",
+    "project/features",
     "project/releases",
     "project/notes",
     "project/adrs",
@@ -349,7 +349,7 @@ fn classify_path(rel_path: &str) -> Option<(EventEntity, String, Option<String>)
             Some(format!("path={}", rel_path)),
         ));
     }
-    if let Some(file) = rel_path.strip_prefix("workflow/features/") {
+    if let Some(file) = rel_path.strip_prefix("project/features/") {
         return Some((
             EventEntity::Feature,
             file.to_string(),

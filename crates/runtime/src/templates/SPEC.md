@@ -1,6 +1,6 @@
 +++
+id = ""
 title = ""
-status = "draft"
 created = ""
 updated = ""
 author = ""

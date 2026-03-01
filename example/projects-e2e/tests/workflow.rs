@@ -13,7 +13,7 @@ fn init_creates_namespace_structure() {
     p.assert_ship_file("workflow/issues/blocked");
     p.assert_ship_file("workflow/issues/done");
     p.assert_ship_file("workflow/specs");
-    p.assert_ship_file("workflow/features");
+    p.assert_ship_file("project/features");
 
     // project/
     p.assert_ship_file("project/releases");
@@ -40,7 +40,7 @@ fn init_creates_namespace_structure() {
     p.assert_ship_file("workflow/README.md");
     p.assert_ship_file("workflow/issues/TEMPLATE.md");
     p.assert_ship_file("workflow/specs/TEMPLATE.md");
-    p.assert_ship_file("workflow/features/TEMPLATE.md");
+    p.assert_ship_file("project/features/TEMPLATE.md");
 }
 
 /// Vision document is seeded in project/ not workflow/specs/.
@@ -70,7 +70,7 @@ fn core_loop_paths_resolve_correctly() {
     .unwrap();
     assert!(feature.starts_with(features_dir(&p.ship_dir)));
 
-    let spec = runtime::create_spec(p.ship_dir.clone(), "Auth Spec", "").unwrap();
+    let spec = runtime::create_spec(p.ship_dir.clone(), "Auth Spec", "", "draft").unwrap();
     assert!(spec.starts_with(specs_dir(&p.ship_dir)));
 
     let issue =
@@ -123,13 +123,13 @@ fn gitignore_uses_namespace_paths() {
     );
     assert!(gitignore.contains("generated/"));
     assert!(gitignore.contains("events.ndjson"));
-    assert!(gitignore.contains("ship.db"));
+    // ship.db lives at ~/.ship/state/<slug>/ship.db — outside the project, not gitignored here
 
     // These are committed by default — must NOT appear in gitignore
     assert!(!gitignore.contains("project/adrs"));
     assert!(!gitignore.contains("project/notes"));
     assert!(!gitignore.contains("agents"));
-    assert!(!gitignore.contains("workflow/features"));
+    assert!(!gitignore.contains("project/features"));
     assert!(!gitignore.contains("project/releases"));
     assert!(!gitignore.contains("workflow/specs"));
 }

@@ -11,6 +11,8 @@ home = "0.5"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
+nanoid = "0.4"
+regex = "1"
 walkdir = "2.3"
 specta = { version = "=2.0.0-rc.22", features = ["derive", "chrono"] }
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio-rustls"] }

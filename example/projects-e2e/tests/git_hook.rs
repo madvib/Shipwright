@@ -44,7 +44,7 @@ fn checkout_feature_branch_writes_claude_md() {
     .unwrap();
     assert!(p.checkout_new("feature/auth").unwrap().status.success());
 
-    on_post_checkout(&p.ship_dir, "feature/auth").unwrap();
+    on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
 
     let claude_md = p.root().join("CLAUDE.md");
     assert!(claude_md.exists(), "CLAUDE.md should be generated");
@@ -65,7 +65,7 @@ fn checkout_non_feature_branch_is_noop() {
     )
     .unwrap();
 
-    on_post_checkout(&p.ship_dir, "main").unwrap();
+    on_post_checkout(&p.ship_dir, "main", &p.root()).unwrap();
     assert!(
         !p.root().join("CLAUDE.md").exists(),
         "CLAUDE.md should not be generated on non-feature branches"
@@ -99,7 +99,7 @@ fn claude_md_includes_open_issues() {
     )
     .unwrap();
 
-    on_post_checkout(&p.ship_dir, "feature/auth").unwrap();
+    on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
     let content = std::fs::read_to_string(p.root().join("CLAUDE.md")).unwrap();
     assert!(content.contains("Handle login timeout"));
     assert!(!content.contains("Already shipped"));
@@ -133,10 +133,11 @@ fn claude_md_includes_skill_body() {
             skills: vec![FeatureSkillRef {
                 id: "nextjs-conventions".to_string(),
             }],
+            providers: vec![],
         },
     );
 
-    on_post_checkout(&p.ship_dir, "feature/auth").unwrap();
+    on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
 
     let content = std::fs::read_to_string(p.root().join("CLAUDE.md")).unwrap();
     assert!(content.contains("Prefer route groups for auth pages."));
@@ -167,10 +168,11 @@ fn mcp_json_written_on_checkout() {
                 id: "github".to_string(),
             }],
             skills: vec![],
+            providers: vec![],
         },
     );
 
-    on_post_checkout(&p.ship_dir, "feature/auth").unwrap();
+    on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
 
     let mcp_json = p.root().join(".mcp.json");
     assert!(mcp_json.exists(), ".mcp.json should be generated");

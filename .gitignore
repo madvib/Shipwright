@@ -67,6 +67,9 @@ dist/
 .claude
 .gemini
 .codex
+CLAUDE.md
+GEMINI.md
+.mcp.json
 
 .devcontainer
 
@@ -78,6 +81,7 @@ dist/
 # Ship — generated agent config (never commit these)
 CLAUDE.md
 GEMINI.md
+AGENTS.md
 .mcp.json
 .claude/
 .gemini/

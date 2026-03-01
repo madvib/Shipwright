@@ -1,5 +1,7 @@
 pub mod adr;
+pub mod agent_config;
 pub mod agent_export;
+pub mod catalog;
 pub mod config;
 pub mod demo;
 pub mod events;
@@ -9,16 +11,29 @@ pub mod issue;
 pub mod log;
 pub mod migration;
 pub mod note;
+pub mod permissions;
 pub mod plugin;
 pub mod project;
 pub mod prompt;
 pub mod release;
+pub mod rule;
 pub mod skill;
 pub mod spec;
 pub mod state_db;
+pub mod vision;
+pub mod workspace;
 
-pub use adr::{ADR, AdrEntry, AdrMetadata, create_adr, delete_adr, get_adr, list_adrs, update_adr};
-pub use agent_export::{export_to, import_from_claude, sync_active_mode};
+pub use adr::{
+    ADR, AdrEntry, AdrMetadata, AdrStatus, create_adr, delete_adr, find_adr_path, get_adr,
+    list_adrs, move_adr, update_adr,
+};
+pub use agent_config::{AgentConfig, resolve_agent_config};
+pub use agent_export::{
+    ModelInfo, ProviderInfo, autodetect_providers, detect_binary, detect_version,
+    disable_provider, enable_provider, export_to, import_from_claude, list_models, list_providers,
+    sync_active_mode,
+};
+pub use catalog::{CatalogEntry, CatalogKind, list_catalog, list_catalog_by_kind, search_catalog};
 pub use config::{
     AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType,
     ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_hook,
@@ -35,12 +50,13 @@ pub use events::{
 };
 pub use feature::{
     Feature, FeatureAgentConfig, FeatureEntry, FeatureMcpRef, FeatureMetadata, FeatureSkillRef,
-    create_feature, get_feature, get_feature_raw, list_features, update_feature,
+    FeatureStatus, create_feature, feature_done, feature_start, find_feature_path, get_feature,
+    get_feature_raw, list_features, update_feature,
 };
 pub use issue::{
-    Issue, IssueEntry, IssueLink, IssueMetadata, add_link, append_note, backfill_issue_ids,
-    create_issue, delete_issue, get_issue, list_issues, list_issues_full, migrate_yaml_issues,
-    move_issue, update_issue,
+    Issue, IssueEntry, IssueLink, IssueMetadata, IssuePriority, add_link, append_note,
+    backfill_issue_ids, create_issue, delete_issue, get_issue, list_issues, list_issues_full,
+    migrate_yaml_issues, move_issue, update_issue,
 };
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use migration::{
@@ -50,6 +66,10 @@ pub use migration::{
 pub use note::{
     Note, NoteEntry, NoteMetadata, NoteScope, create_note, get_note, get_note_raw, list_notes,
     note_path_for_scope, update_note,
+};
+pub use permissions::{
+    AgentLimits, CommandPermissions, FsPermissions, NetworkPermissions, NetworkPolicy, Permissions,
+    ToolPermissions, get_permissions, save_permissions,
 };
 pub use plugin::{Plugin, PluginRegistry};
 pub use project::{
@@ -62,19 +82,35 @@ pub use project::{
 };
 pub use prompt::{Prompt, create_prompt, delete_prompt, get_prompt, list_prompts, update_prompt};
 pub use release::{
-    Release, ReleaseEntry, ReleaseMetadata, create_release, find_release_path, get_release,
-    get_release_raw, list_releases, update_release,
+    Release, ReleaseEntry, ReleaseMetadata, ReleaseStatus, create_release, find_release_path,
+    get_release, get_release_raw, list_releases, update_release,
 };
+pub use rule::{Rule, create_rule, delete_rule, get_rule, list_rules, update_rule};
 pub use skill::{
-    Skill, create_skill, create_user_skill, delete_skill, delete_user_skill, get_effective_skill,
-    get_skill, get_user_skill, list_effective_skills, list_skills, list_user_skills, update_skill,
-    update_user_skill,
+    Skill, SkillSource, create_skill, create_user_skill, delete_skill, delete_user_skill,
+    get_effective_skill, get_skill, get_user_skill, list_effective_skills, list_skills,
+    list_user_skills, update_skill, update_user_skill,
 };
 pub use spec::{
-    Spec, SpecEntry, SpecMetadata, create_spec, delete_spec, get_spec, get_spec_raw, list_specs,
-    update_spec,
+    Spec, SpecEntry, SpecMetadata, SpecStatus, create_spec, delete_spec, get_spec, get_spec_raw,
+    list_specs, update_spec,
 };
-pub use state_db::{DatabaseMigrationReport, ensure_global_database, ensure_project_database};
+pub use state_db::{
+    DatabaseMigrationReport, ensure_global_database, ensure_project_database, get_branch_doc,
+    get_managed_state_db, set_branch_doc, set_managed_state_db, upsert_workspace_db,
+};
+pub use vision::{Vision, get_vision, update_vision};
+pub use workspace::{Workspace, get_workspace, upsert_workspace};
+
+pub fn gen_nanoid() -> String {
+    let alphabet: [char; 56] = [
+        '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+        'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
+        'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
+        'y', 'z',
+    ];
+    nanoid::format(nanoid::rngs::default, &alphabet, 8)
+}
 
 #[cfg(test)]
 mod tests {
@@ -103,7 +139,13 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let result = create_issue(project_dir, "", "Desc", "backlog");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .to_lowercase()
+                .contains("empty")
+        );
         Ok(())
     }
 
@@ -138,7 +180,7 @@ mod tests {
         let path = create_issue(project_dir, "UUID Test", "", "backlog")?;
         let issue = get_issue(path)?;
         assert!(!issue.metadata.id.is_empty(), "id should be populated");
-        assert_eq!(issue.metadata.id.len(), 36, "UUID should be 36 chars");
+        assert_eq!(issue.metadata.id.len(), 8, "ID should be 8 chars (nanoid)");
         Ok(())
     }
 
@@ -300,7 +342,7 @@ mod tests {
         let path = create_adr(project_dir, "Use Redis", "Fast in-memory store", "accepted")?;
         let adr = get_adr(path)?;
         assert!(!adr.metadata.id.is_empty());
-        assert_eq!(adr.metadata.id.len(), 36);
+        assert_eq!(adr.metadata.id.len(), 8);
         Ok(())
     }
 
@@ -309,9 +351,9 @@ mod tests {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let path = create_adr(project_dir, "Use SQLite", "Embedded", "proposed")?;
-        let adr = get_adr(path)?;
+        let adr = get_adr(path.clone())?;
         assert_eq!(adr.metadata.title, "Use SQLite");
-        assert_eq!(adr.metadata.status, "proposed");
+        assert!(path.to_string_lossy().contains("/proposed/"));
         assert!(adr.body.contains("Embedded"));
         Ok(())
     }
@@ -320,13 +362,14 @@ mod tests {
     fn test_update_adr() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_adr(project_dir, "Update ADR", "original", "proposed")?;
+        let path = create_adr(project_dir.clone(), "Update ADR", "original", "proposed")?;
         let mut adr = get_adr(path.clone())?;
-        adr.metadata.status = "accepted".to_string();
         adr.body = "## Decision\n\nupdated body\n".to_string();
         update_adr(path.clone(), adr)?;
-        let reloaded = get_adr(path)?;
-        assert_eq!(reloaded.metadata.status, "accepted");
+        let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
+        let path = move_adr(project_dir, &file_name, AdrStatus::Accepted)?;
+        let reloaded = get_adr(path.clone())?;
+        assert!(path.to_string_lossy().contains("/accepted/"));
         assert!(reloaded.body.contains("updated body"));
         Ok(())
     }
@@ -374,12 +417,12 @@ mod tests {
     fn test_create_spec() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_spec(project_dir, "Auth Flow", "")?;
+        let path = create_spec(project_dir, "Auth Flow", "", "draft")?;
         assert!(path.exists());
         let content = fs::read_to_string(&path)?;
         assert!(content.starts_with("+++\n"));
         assert!(content.contains("title = \"Auth Flow\""));
-        assert!(content.contains("status = \"draft\""));
+        assert!(path.to_string_lossy().contains("/draft/"));
         Ok(())
     }
 
@@ -387,7 +430,7 @@ mod tests {
     fn test_create_spec_empty_title_rejected() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let result = create_spec(project_dir, "", "");
+        let result = create_spec(project_dir, "", "", "draft");
         assert!(result.is_err());
         Ok(())
     }
@@ -396,10 +439,10 @@ mod tests {
     fn test_create_spec_has_uuid() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_spec(project_dir, "My Spec", "")?;
+        let path = create_spec(project_dir, "My Spec", "", "draft")?;
         let spec = get_spec(path)?;
         assert!(!spec.metadata.id.is_empty());
-        assert_eq!(spec.metadata.id.len(), 36);
+        assert_eq!(spec.metadata.id.len(), 8);
         Ok(())
     }
 
@@ -407,10 +450,14 @@ mod tests {
     fn test_get_spec() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_spec(project_dir, "Feature Spec", "## Overview\n\nCustom body.")?;
+        let path = create_spec(
+            project_dir,
+            "Feature Spec",
+            "## Overview\n\nCustom body.",
+            "draft",
+        )?;
         let spec = get_spec(path)?;
         assert_eq!(spec.metadata.title, "Feature Spec");
-        assert_eq!(spec.metadata.status, "draft");
         assert!(spec.body.contains("Custom body."));
         Ok(())
     }
@@ -419,7 +466,7 @@ mod tests {
     fn test_update_spec() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_spec(project_dir, "Spec Update", "original body")?;
+        let path = create_spec(project_dir, "Spec Update", "original body", "draft")?;
         let original = get_spec(path.clone())?;
         update_spec(path.clone(), "updated body")?;
         let updated = get_spec(path)?;
@@ -432,7 +479,7 @@ mod tests {
     fn test_delete_spec() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_spec(project_dir, "Delete Spec", "content")?;
+        let path = create_spec(project_dir, "Delete Spec", "content", "draft")?;
         assert!(path.exists());
         delete_spec(path.clone())?;
         assert!(!path.exists());
@@ -443,8 +490,8 @@ mod tests {
     fn test_list_specs() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        create_spec(project_dir.clone(), "Spec Alpha", "")?;
-        create_spec(project_dir.clone(), "Spec Beta", "")?;
+        create_spec(project_dir.clone(), "Spec Alpha", "", "draft")?;
+        create_spec(project_dir.clone(), "Spec Beta", "", "active")?;
         let specs = list_specs(project_dir)?;
         assert!(specs.len() >= 2); // vision.md moved to project/ namespace, no longer a spec
         let titles: Vec<&str> = specs.iter().map(|s| s.title.as_str()).collect();
@@ -457,8 +504,8 @@ mod tests {
     fn test_spec_collision_gets_suffix() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let p1 = create_spec(project_dir.clone(), "Auth Flow", "")?;
-        let p2 = create_spec(project_dir.clone(), "Auth Flow!", "")?;
+        let p1 = create_spec(project_dir.clone(), "Auth Flow", "", "draft")?;
+        let p2 = create_spec(project_dir.clone(), "Auth Flow!", "", "draft")?;
         assert_ne!(p1, p2);
         assert!(p1.exists());
         assert!(p2.exists());
@@ -535,7 +582,7 @@ mod tests {
         let legacy_path = project::releases_dir(&project_dir).join("v0-0-9-alpha.md");
         fs::write(
             &legacy_path,
-            "+++\nid = \"\"\nversion = \"v0.0.9-alpha\"\nstatus = \"shipped\"\ncreated = \"2026-01-01T00:00:00Z\"\nupdated = \"2026-01-01T00:00:00Z\"\nfeatures = []\nadrs = []\ntags = []\n+++\n\nlegacy\n",
+            "+++\nid = \"\"\nversion = \"v0.0.9-alpha\"\nstatus = \"shipped\"\ncreated = \"2026-01-01T00:00:00Z\"\nupdated = \"2026-01-01T00:00:00Z\"\nfeature_ids = []\nadr_ids = []\ntags = []\n+++\n\nlegacy\n",
         )?;
         let resolved_legacy = find_release_path(&project_dir, "v0-0-9-alpha.md")?;
         assert_eq!(resolved_legacy, legacy_path);
@@ -569,14 +616,17 @@ mod tests {
             None,
         )?;
         assert!(path.exists());
-        let feature = get_feature(path)?;
+        let feature = get_feature(path.clone())?;
         assert_eq!(feature.metadata.title, "Agent Config");
-        assert_eq!(feature.metadata.status, "active");
+        assert!(path.to_string_lossy().contains("/planned/"));
         assert_eq!(
-            feature.metadata.release,
+            feature.metadata.release_id,
             Some("v0.1.0-alpha.md".to_string())
         );
-        assert_eq!(feature.metadata.spec, Some("agent-config.md".to_string()));
+        assert_eq!(
+            feature.metadata.spec_id,
+            Some("agent-config.md".to_string())
+        );
         Ok(())
     }
 
@@ -609,7 +659,7 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         create_feature(project_dir.clone(), "Feature One", "", None, None, None)?;
         create_feature(project_dir.clone(), "Feature Two", "", None, None, None)?;
-        let features = list_features(project_dir)?;
+        let features = list_features(project_dir, None)?;
         assert_eq!(features.len(), 2);
         let titles: Vec<&str> = features.iter().map(|f| f.title.as_str()).collect();
         assert!(titles.contains(&"Feature One"));
@@ -683,7 +733,6 @@ mod tests {
         config.agent.skills = vec!["backend-rust".into(), "frontend-react".into()];
         config.agent.prompts = vec!["Summarize risks first".into()];
         config.agent.context = vec!["AGENTS.md".into(), "specs/".into()];
-        config.agent.rules = vec!["Never force-push shared branches".into()];
         save_config(&config, Some(project_dir.clone()))?;
 
         let loaded = get_config(Some(project_dir))?;
@@ -691,7 +740,6 @@ mod tests {
         assert_eq!(loaded.agent.skills.len(), 2);
         assert_eq!(loaded.agent.prompts.len(), 1);
         assert_eq!(loaded.agent.context.len(), 2);
-        assert_eq!(loaded.agent.rules.len(), 1);
         Ok(())
     }
 
@@ -704,10 +752,11 @@ mod tests {
         assert!(gitignore.contains("workflow/issues"));
         assert!(gitignore.contains("events.ndjson"));
         assert!(gitignore.contains("generated/"));
-        assert!(gitignore.contains("ship.db"));
+        // DB is now at ~/.ship/state/<slug>/ship.db — not inside .ship/
+        assert!(!gitignore.contains("ship.db"));
         assert!(!gitignore.contains("log.md"));
         assert!(!gitignore.contains("project/releases"));
-        assert!(!gitignore.contains("workflow/features"));
+        assert!(!gitignore.contains("project/features"));
         assert!(!gitignore.contains("workflow/specs"));
         assert!(!gitignore.contains("project/adrs"));
         assert!(!gitignore.contains("project/notes"));
@@ -769,7 +818,7 @@ mod tests {
         assert!(ship_path.join("workflow/issues/backlog").is_dir());
         assert!(ship_path.join("workflow/issues/in-progress").is_dir());
         assert!(ship_path.join("workflow/specs").is_dir());
-        assert!(ship_path.join("workflow/features").is_dir());
+        assert!(ship_path.join("project/features").is_dir());
         // project/ namespace
         assert!(ship_path.join("project/releases").is_dir());
         assert!(ship_path.join("project/adrs").is_dir());
@@ -782,7 +831,7 @@ mod tests {
         assert!(ship_path.join("generated").is_dir());
         // shared
         assert!(ship_path.join("project/releases/TEMPLATE.md").is_file());
-        assert!(ship_path.join("workflow/features/TEMPLATE.md").is_file());
+        assert!(ship_path.join("project/features/TEMPLATE.md").is_file());
         assert!(ship_path.join("project/TEMPLATE.md").is_file());
         assert!(ship_path.join("project/notes/TEMPLATE.md").is_file());
         assert!(ship_path.join("README.md").is_file());
@@ -792,6 +841,63 @@ mod tests {
         assert!(ship_path.join("agents/modes/execution.toml").is_file());
         assert!(ship_path.join("events.ndjson").is_file());
         assert!(ship_path.join("ship.toml").is_file());
+        // default skill seeded
+        assert!(
+            ship_path
+                .join("agents/skills/task-policy/index.md")
+                .is_file()
+        );
+        assert!(
+            ship_path
+                .join("agents/skills/task-policy/skill.toml")
+                .is_file()
+        );
+        let skill_content =
+            fs::read_to_string(ship_path.join("agents/skills/task-policy/index.md"))?;
+        assert!(skill_content.contains("task-policy"));
+        assert!(skill_content.contains("Shipwright Workflow Policy"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_init_project_idempotent() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        // First init
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        // Write a custom skill so we can verify it isn't clobbered
+        let custom_skill = ship_path.join("agents/skills/custom.md");
+        fs::write(
+            &custom_skill,
+            "+++\nid = \"custom\"\nname = \"Custom\"\n+++\nmy content",
+        )?;
+        // Second init on the same directory
+        let ship_path2 = init_project(tmp.path().to_path_buf())?;
+        assert_eq!(ship_path, ship_path2);
+        // Custom skill must still be present and unchanged
+        assert!(custom_skill.exists());
+        assert_eq!(
+            fs::read_to_string(&custom_skill)?,
+            "+++\nid = \"custom\"\nname = \"Custom\"\n+++\nmy content"
+        );
+        // Default skill still present
+        assert!(
+            ship_path
+                .join("agents/skills/task-policy/index.md")
+                .is_file()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_init_project_feature_template_has_rich_fields() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        let template = fs::read_to_string(ship_path.join("project/features/TEMPLATE.md"))?;
+        // New lifecycle fields
+        // Status is directory-based, not in frontmatter
+        assert!(template.contains("release_id"));
+        assert!(template.contains("## Why"));
+        assert!(template.contains("## Delivery Todos"));
         Ok(())
     }
 
@@ -897,7 +1003,7 @@ mod tests {
         let tmp = tempdir()?;
         let ship_path = init_demo_project(tmp.path().to_path_buf())?;
         let releases = list_releases(ship_path.clone())?;
-        let features = list_features(ship_path.clone())?;
+        let features = list_features(ship_path.clone(), None)?;
         let specs = list_specs(ship_path)?;
         assert!(!releases.is_empty());
         assert!(!features.is_empty());
@@ -934,7 +1040,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_file_name() {
-        assert_eq!(sanitize_file_name("My Issue Title!"), "my-issue-title-");
+        assert_eq!(sanitize_file_name("My Issue Title!"), "my-issue-title");
         assert_eq!(
             sanitize_file_name("Already_Sanitized-123"),
             "already_sanitized-123"

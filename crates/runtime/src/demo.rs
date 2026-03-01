@@ -111,6 +111,7 @@ pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
             project_dir.clone(),
             spec_title,
             "## Overview\n\nDefine a unified agent config layer for provider/model, prompts, context, rules, skills, MCP servers, and modes.\n\n## Goals\n\n- One global and project-scoped config model\n- Pass-through generation via claude/codex/gemini CLIs\n- Clear mode semantics tied to workflow policy\n\n## Non-Goals\n\n- Full workflow customization engine in alpha\n\n## Approach\n\nBuild release/feature/spec primitives and wire them through CLI, MCP, and UI.\n\n## Open Questions\n\n- How to best express mode overrides per checked-out feature?\n",
+            "active",
         )?;
     }
 

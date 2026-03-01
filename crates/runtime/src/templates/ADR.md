@@ -1,9 +1,10 @@
 +++
+id = ""
 title = ""
-status = "proposed"
 date = ""
+spec_id = ""
+supersedes_id = ""
 tags = []
-spec = ""
 +++
 
 ## Context

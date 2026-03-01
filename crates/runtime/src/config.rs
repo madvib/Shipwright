@@ -120,18 +120,15 @@ pub struct PermissionConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct AgentLayerConfig {
-    /// Skill packs/instructions to load for the current project.
+    /// Skill IDs to load for all sessions in this project.
     #[serde(default)]
     pub skills: Vec<String>,
-    /// Reusable prompt snippets for common tasks.
+    /// Prompt IDs to activate for all sessions in this project.
     #[serde(default)]
     pub prompts: Vec<String>,
     /// Context files/folders to preload for agents.
     #[serde(default)]
     pub context: Vec<String>,
-    /// High-level project rules for humans and agents.
-    #[serde(default)]
-    pub rules: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
@@ -238,6 +235,18 @@ fn default_scope() -> String {
     "global".to_string()
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub mcp: McpSection,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
+pub struct McpSection {
+    #[serde(default)]
+    pub servers: HashMap<String, McpServerConfig>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct ProjectConfig {
     #[serde(default = "default_version")]
@@ -260,6 +269,10 @@ pub struct ProjectConfig {
     pub hooks: Vec<HookConfig>,
     #[serde(default)]
     pub agent: AgentLayerConfig,
+    /// Which agent providers to generate config for on branch checkout.
+    /// Alpha: "claude" | "gemini" | "codex". Defaults to ["claude"].
+    #[serde(default = "default_providers")]
+    pub providers: Vec<String>,
     /// Claimed `.ship` namespaces. First-party modules are always present.
     #[serde(default = "default_namespaces")]
     pub namespaces: Vec<NamespaceConfig>,
@@ -267,6 +280,10 @@ pub struct ProjectConfig {
 
 fn default_version() -> String {
     "1".to_string()
+}
+
+fn default_providers() -> Vec<String> {
+    vec!["claude".to_string()]
 }
 
 fn default_statuses() -> Vec<StatusConfig> {
@@ -314,6 +331,7 @@ impl Default for ProjectConfig {
             hooks: Vec::new(),
             agent: AgentLayerConfig::default(),
             namespaces: default_namespaces(),
+            providers: default_providers(),
         }
     }
 }
@@ -375,7 +393,11 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     project.agent.skills = merge_string_lists(&global.agent.skills, &project.agent.skills);
     project.agent.prompts = merge_string_lists(&global.agent.prompts, &project.agent.prompts);
     project.agent.context = merge_string_lists(&global.agent.context, &project.agent.context);
-    project.agent.rules = merge_string_lists(&global.agent.rules, &project.agent.rules);
+
+    // Project providers win; fall back to global if project is still the default ["claude"].
+    if project.providers == default_providers() && global.providers != default_providers() {
+        project.providers = global.providers;
+    }
 
     project.modes = merge_modes(&global.modes, &project.modes);
     project.mcp_servers = merge_mcp_servers(&global.mcp_servers, &project.mcp_servers);
@@ -386,6 +408,24 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     }
 
     Ok(project)
+}
+
+pub fn get_mcp_config(ship_dir: &Path) -> Result<Vec<McpServerConfig>> {
+    let path = crate::project::mcp_config_path(ship_dir);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&path)?;
+    let raw: McpConfig = toml::from_str(&content)?;
+
+    let mut servers = Vec::new();
+    for (id, mut server) in raw.mcp.servers {
+        server.id = id;
+        servers.push(server);
+    }
+
+    Ok(servers)
 }
 
 fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
@@ -652,7 +692,7 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     let known: &[(&str, &str)] = &[
         ("issues", "workflow/issues"),
         ("specs", "workflow/specs"),
-        ("features", "workflow/features"),
+        ("features", "project/features"),
         ("releases", "project/releases"),
         ("adrs", "project/adrs"),
         ("notes", "project/notes"),
@@ -674,12 +714,6 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     if !lines.iter().any(|line| line == "generated/") {
         lines.push("generated/".to_string());
     }
-    // Always ignore SQLite runtime files
-    lines.push(String::new());
-    lines.push("# Runtime — never commit".to_string());
-    lines.push("ship.db".to_string());
-    lines.push("ship.db-shm".to_string());
-    lines.push("ship.db-wal".to_string());
     let content = lines.join("\n") + "\n";
     write_atomic(&ship_dir.join(".gitignore"), content)?;
     Ok(())

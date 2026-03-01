@@ -1,0 +1,3 @@
+id = "execution"
+name = "Execution"
+active_tools = ["ship_list_issues", "ship_get_issue", "ship_update_issue", "ship_move_issue", "ship_list_notes", "ship_create_note"]

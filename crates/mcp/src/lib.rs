@@ -3,25 +3,27 @@ use ghost_issues;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::transport::stdio;
 use rmcp::{
-    RoleServer, ServerHandler, ServiceExt,
+    ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CreateMessageRequestParams, Implementation, ProtocolVersion, SamplingMessage,
+        AnnotateAble, CreateMessageRequestParams, Implementation, ListResourceTemplatesResult,
+        ListResourcesResult, ProtocolVersion, RawResource, RawResourceTemplate,
+        ReadResourceRequestParams, ReadResourceResult, ResourceContents, SamplingMessage,
         ServerCapabilities, ServerInfo,
     },
     service::Peer,
     tool, tool_handler, tool_router,
 };
 use runtime::{
-    NoteScope, add_status, create_adr, create_feature, create_issue, create_release, create_skill,
-    create_spec, create_user_skill, delete_issue, delete_skill, delete_user_skill,
-    find_release_path, get_adr, get_config, get_effective_skill, get_feature_raw, get_git_config,
-    get_issue, get_project_dir, get_project_name, get_project_statuses, get_release_raw, get_skill,
-    get_spec_raw, get_user_skill, ingest_external_events, is_category_committed, list_adrs,
-    list_effective_skills, list_events_since, list_features, list_issues, list_issues_full,
-    list_registered_projects, list_releases, list_skills, list_specs, list_user_skills, log_action,
-    log_action_by, move_issue, read_log, register_project, remove_status, set_category_committed,
-    update_feature, update_release, update_skill, update_spec, update_user_skill,
+    NoteScope, add_status, autodetect_providers, create_adr, create_feature, create_issue,
+    create_release, create_skill, create_spec, create_user_skill, delete_issue, delete_skill,
+    delete_user_skill, disable_provider, enable_provider, find_release_path, get_adr, get_config,
+    get_effective_skill, get_feature_raw, get_issue, get_project_dir, get_project_name,
+    get_project_statuses, get_release_raw, get_spec_raw, list_adrs, list_effective_skills,
+    list_events_since, list_features, list_issues_full, list_models, list_providers, list_releases,
+    list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
+    set_category_committed, update_feature, update_release, update_skill, update_spec,
+    update_user_skill,
 };
 use serde::Deserialize;
 use ship_module_git::{install_hooks, on_post_checkout};
@@ -239,6 +241,14 @@ pub struct DeleteSkillRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct ManageStatusRequest {
+    /// Action: "add" or "remove"
+    pub action: String,
+    /// Status name (e.g. "review", "testing")
+    pub name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct GhostScanRequest {
     /// Directory to scan. Defaults to the project root (parent of .ship).
     pub dir: Option<String>,
@@ -354,6 +364,24 @@ pub struct ListEventsRequest {
     pub limit: Option<usize>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+pub struct ConnectProviderRequest {
+    /// Provider ID to enable (claude, gemini, codex)
+    pub provider_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DisconnectProviderRequest {
+    /// Provider ID to disable (claude, gemini, codex)
+    pub provider_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListModelsRequest {
+    /// Provider ID (claude, gemini, codex)
+    pub provider_id: String,
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -382,33 +410,6 @@ impl ShipServer {
 
     // ─── Project Tools ────────────────────────────────────────────────────────
 
-    /// List all registered projects
-    #[tool(description = "List all registered projects tracked by Ship")]
-    fn list_projects(&self) -> String {
-        match list_registered_projects() {
-            Ok(projects) => {
-                if projects.is_empty() {
-                    return "No projects registered. Use track_project to add one.".to_string();
-                }
-                let mut out = String::from("Registered Projects:\n");
-                for p in projects {
-                    out.push_str(&format!("- {} ({})\n", p.name, p.path.display()));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Track a new project
-    #[tool(description = "Start tracking a new project with Ship")]
-    fn track_project(&self, Parameters(req): Parameters<TrackProjectRequest>) -> String {
-        match register_project(req.name.clone(), PathBuf::from(req.path)) {
-            Ok(_) => format!("Now tracking project: {}", req.name),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     /// Set the active project for subsequent commands
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
@@ -418,49 +419,6 @@ impl ShipServer {
                 let mut active = self.active_project.lock().await;
                 *active = Some(ship_dir.clone());
                 format!("Opened project at {}", ship_dir.display())
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Get stats for the active project
-    #[tool(
-        description = "Get an overview of the active project: issue counts by status, ADR count, project name"
-    )]
-    async fn get_project_stats(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let name = get_project_name(&project_dir);
-        match list_issues(project_dir.clone()) {
-            Ok(issues) => {
-                let mut counts: std::collections::HashMap<String, u32> =
-                    std::collections::HashMap::new();
-                for (_, status) in &issues {
-                    *counts.entry(status.clone()).or_insert(0) += 1;
-                }
-                let statuses = get_project_statuses(Some(project_dir.clone())).unwrap_or_default();
-                let adrs = list_adrs(project_dir.clone()).map(|a| a.len()).unwrap_or(0);
-                let features = list_features(project_dir.clone())
-                    .map(|f| f.len())
-                    .unwrap_or(0);
-                let releases = list_releases(project_dir.clone())
-                    .map(|r| r.len())
-                    .unwrap_or(0);
-                let mut out = format!("Project: {}\n", name);
-                out.push_str(&format!("Total issues: {}\n", issues.len()));
-                for status in &statuses {
-                    out.push_str(&format!(
-                        "  {}: {}\n",
-                        status,
-                        counts.get(status).unwrap_or(&0)
-                    ));
-                }
-                out.push_str(&format!("ADRs: {}\n", adrs));
-                out.push_str(&format!("Features: {}\n", features));
-                out.push_str(&format!("Releases: {}\n", releases));
-                out
             }
             Err(e) => format!("Error: {}", e),
         }
@@ -482,7 +440,7 @@ impl ShipServer {
 
         let issues = list_issues_full(project_dir.clone()).unwrap_or_default();
         let releases = list_releases(project_dir.clone()).unwrap_or_default();
-        let features = list_features(project_dir.clone()).unwrap_or_default();
+        let features = list_features(project_dir.clone(), None).unwrap_or_default();
         let specs = list_specs(project_dir.clone()).unwrap_or_default();
         let adrs = list_adrs(project_dir.clone()).unwrap_or_default();
 
@@ -567,7 +525,7 @@ impl ShipServer {
             for a in &adrs {
                 out.push_str(&format!(
                     "- [{}] {} ({})\n",
-                    a.adr.metadata.status, a.adr.metadata.title, a.file_name
+                    a.status, a.adr.metadata.title, a.file_name
                 ));
             }
         }
@@ -618,68 +576,6 @@ impl ShipServer {
     }
 
     // ─── Issue Tools ──────────────────────────────────────────────────────────
-
-    /// List all issues in the project
-    #[tool(description = "List all issues in the active project with their statuses")]
-    async fn list_issues(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match list_issues_full(project_dir) {
-            Ok(entries) => {
-                if entries.is_empty() {
-                    return "No issues found.".to_string();
-                }
-                let mut out = String::from("Issues:\n");
-                for e in entries {
-                    out.push_str(&format!(
-                        "- [{}] {} ({})\n",
-                        e.status, e.issue.metadata.title, e.file_name
-                    ));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Get a specific issue by filename
-    #[tool(description = "Get the full content of a specific issue by filename")]
-    async fn get_issue(&self, Parameters(req): Parameters<GetIssueRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-
-        // Search through provided status or all configured statuses
-        let configured = get_project_statuses(Some(project_dir.clone())).unwrap_or_default();
-        let statuses: Vec<String> = if let Some(s) = req.status {
-            vec![s]
-        } else {
-            configured
-        };
-
-        for status in &statuses {
-            let path = runtime::project::issues_dir(&project_dir)
-                .join(status)
-                .join(&req.file_name);
-            if path.exists() {
-                return match get_issue(path) {
-                    Ok(issue) => format!(
-                        "Title: {}\nStatus: {}\nCreated: {}\nUpdated: {}\n\n{}",
-                        issue.metadata.title,
-                        status,
-                        issue.metadata.created.format("%Y-%m-%d %H:%M"),
-                        issue.metadata.updated.format("%Y-%m-%d %H:%M"),
-                        issue.description
-                    ),
-                    Err(e) => format!("Error reading issue: {}", e),
-                };
-            }
-        }
-        format!("Issue not found: {}", req.file_name)
-    }
 
     /// Create a new issue
     #[tool(description = "Create a new issue in the active project")]
@@ -776,60 +672,6 @@ impl ShipServer {
         }
     }
 
-    /// List standalone notes
-    #[tool(description = "List notes in the selected scope ('project' or 'user').")]
-    async fn list_notes(&self, Parameters(req): Parameters<ListNotesRequest>) -> String {
-        let scope = match parse_note_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-        let project_dir = match scope {
-            NoteScope::Project => match self.get_effective_project_dir().await {
-                Ok(project_dir) => Some(project_dir),
-                Err(err) => return err,
-            },
-            NoteScope::User => None,
-        };
-        match runtime::list_notes(scope, project_dir) {
-            Ok(mut notes) => {
-                notes.sort_by(|a, b| b.updated.cmp(&a.updated));
-                if notes.is_empty() {
-                    return "No notes found.".to_string();
-                }
-                let mut out = String::from("Notes:\n");
-                for note in notes {
-                    out.push_str(&format!("- {} ({})\n", note.title, note.file_name));
-                }
-                out
-            }
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    /// Get a standalone note
-    #[tool(description = "Get the full markdown content of a note by filename.")]
-    async fn get_note(&self, Parameters(req): Parameters<GetNoteRequest>) -> String {
-        let scope = match parse_note_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-        let project_dir = match scope {
-            NoteScope::Project => match self.get_effective_project_dir().await {
-                Ok(project_dir) => Some(project_dir),
-                Err(err) => return err,
-            },
-            NoteScope::User => None,
-        };
-        match runtime::note_path_for_scope(scope, project_dir, &req.file_name) {
-            Ok(path) if path.exists() => match runtime::get_note_raw(path) {
-                Ok(raw) => raw,
-                Err(err) => format!("Error: {}", err),
-            },
-            Ok(_) => format!("Note not found: {}", req.file_name),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
     /// Update a standalone note
     #[tool(description = "Replace a note's markdown content by filename.")]
     async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
@@ -899,90 +741,6 @@ impl ShipServer {
         };
 
         format!("Created skill: {} ({})", created.id, created.name)
-    }
-
-    /// List skills
-    #[tool(description = "List skills in scope: effective (default), project, or user.")]
-    async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
-        let scope = match parse_skill_read_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        let skills = match scope {
-            SkillReadScope::Project => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match list_skills(&project_dir) {
-                    Ok(skills) => skills,
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-            SkillReadScope::User => match list_user_skills() {
-                Ok(skills) => skills,
-                Err(err) => return format!("Error: {}", err),
-            },
-            SkillReadScope::Effective => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match list_effective_skills(&project_dir) {
-                    Ok(skills) => skills,
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-        };
-
-        if skills.is_empty() {
-            return "No skills found.".to_string();
-        }
-
-        let mut out = String::from("Skills:\n");
-        for skill in skills {
-            out.push_str(&format!("- {} ({})\n", skill.id, skill.name));
-        }
-        out
-    }
-
-    /// Get a skill by id
-    #[tool(description = "Get a skill body by id. Scope: effective (default), project, or user.")]
-    async fn get_skill(&self, Parameters(req): Parameters<GetSkillRequest>) -> String {
-        let scope = match parse_skill_read_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        let skill = match scope {
-            SkillReadScope::Project => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match get_skill(&project_dir, &req.id) {
-                    Ok(skill) => skill,
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-            SkillReadScope::User => match get_user_skill(&req.id) {
-                Ok(skill) => skill,
-                Err(err) => return format!("Error: {}", err),
-            },
-            SkillReadScope::Effective => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match get_effective_skill(&project_dir, &req.id) {
-                    Ok(skill) => skill,
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-        };
-
-        skill.content
     }
 
     /// Update an existing skill
@@ -1136,31 +894,6 @@ impl ShipServer {
 
     // ─── ADR Tools ────────────────────────────────────────────────────────────
 
-    /// List all ADRs
-    #[tool(description = "List all Architecture Decision Records in the active project")]
-    async fn list_adrs(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match list_adrs(project_dir) {
-            Ok(adrs) => {
-                if adrs.is_empty() {
-                    return "No ADRs found.".to_string();
-                }
-                let mut out = String::from("ADRs:\n");
-                for a in adrs {
-                    out.push_str(&format!(
-                        "- [{}] {} ({})\n",
-                        a.adr.metadata.status, a.adr.metadata.title, a.file_name
-                    ));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     /// Create a new ADR
     #[tool(description = "Create a new Architecture Decision Record")]
     async fn create_adr(&self, Parameters(req): Parameters<CreateAdrRequest>) -> String {
@@ -1181,42 +914,6 @@ impl ShipServer {
 
     // ─── Spec Tools ───────────────────────────────────────────────────────────
 
-    /// List all specs
-    #[tool(description = "List all specs in the active project")]
-    async fn list_specs(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match list_specs(project_dir) {
-            Ok(specs) => {
-                if specs.is_empty() {
-                    return "No specs found.".to_string();
-                }
-                let mut out = String::from("Specs:\n");
-                for s in specs {
-                    out.push_str(&format!("- {} ({})\n", s.title, s.file_name));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Get the full content of a spec
-    #[tool(description = "Get the full markdown content of a spec by filename")]
-    async fn get_spec(&self, Parameters(req): Parameters<GetSpecRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let path = runtime::project::specs_dir(&project_dir).join(&req.file_name);
-        match get_spec_raw(path) {
-            Ok(content) => content,
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     /// Create a new spec
     #[tool(description = "Create a new spec document in the active project")]
     async fn create_spec(&self, Parameters(req): Parameters<CreateSpecRequest>) -> String {
@@ -1225,7 +922,7 @@ impl ShipServer {
             Err(e) => return e,
         };
         let content = req.content.as_deref().unwrap_or("");
-        match create_spec(project_dir, &req.title, content) {
+        match create_spec(project_dir, &req.title, content, "draft") {
             Ok(file) => format!(
                 "Created spec: {}",
                 file.file_name()
@@ -1251,48 +948,6 @@ impl ShipServer {
     }
 
     // ─── Release Tools ────────────────────────────────────────────────────────
-
-    /// List all releases
-    #[tool(description = "List all releases in the active project")]
-    async fn list_releases(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match list_releases(project_dir) {
-            Ok(releases) => {
-                if releases.is_empty() {
-                    return "No releases found.".to_string();
-                }
-                let mut out = String::from("Releases:\n");
-                for r in releases {
-                    out.push_str(&format!(
-                        "- [{}] {} ({})\n",
-                        r.status, r.version, r.file_name
-                    ));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Get the full content of a release
-    #[tool(description = "Get the full markdown content of a release by filename")]
-    async fn get_release(&self, Parameters(req): Parameters<GetReleaseRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let path = match find_release_path(&project_dir, &req.file_name) {
-            Ok(path) => path,
-            Err(err) => return format!("Error: {}", err),
-        };
-        match get_release_raw(path) {
-            Ok(content) => content,
-            Err(e) => format!("Error: {}", e),
-        }
-    }
 
     /// Create a new release
     #[tool(description = "Create a new release document in the active project")]
@@ -1336,46 +991,6 @@ impl ShipServer {
     }
 
     // ─── Feature Tools ────────────────────────────────────────────────────────
-
-    /// List all features
-    #[tool(description = "List all features in the active project")]
-    async fn list_features(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match list_features(project_dir) {
-            Ok(features) => {
-                if features.is_empty() {
-                    return "No features found.".to_string();
-                }
-                let mut out = String::from("Features:\n");
-                for f in features {
-                    let release = f.release.unwrap_or_else(|| "unassigned".to_string());
-                    out.push_str(&format!(
-                        "- [{}] {} ({}) release={}\n",
-                        f.status, f.title, f.file_name, release
-                    ));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Get the full content of a feature
-    #[tool(description = "Get the full markdown content of a feature by filename")]
-    async fn get_feature(&self, Parameters(req): Parameters<GetFeatureRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let path = runtime::project::features_dir(&project_dir).join(&req.file_name);
-        match get_feature_raw(path) {
-            Ok(content) => content,
-            Err(e) => format!("Error: {}", e),
-        }
-    }
 
     /// Create a new feature
     #[tool(description = "Create a new feature document in the active project")]
@@ -1423,23 +1038,6 @@ impl ShipServer {
     }
 
     // ─── ADR / Log Tools ──────────────────────────────────────────────────────
-
-    /// Get the full content of an ADR
-    #[tool(description = "Get the full content of a specific ADR by filename")]
-    async fn get_adr(&self, Parameters(req): Parameters<GetAdrRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let path = runtime::project::adrs_dir(&project_dir).join(&req.file_name);
-        match get_adr(path) {
-            Ok(adr) => format!(
-                "Title: {}\nStatus: {}\nDate: {}\n\n{}",
-                adr.metadata.title, adr.metadata.status, adr.metadata.date, adr.body,
-            ),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
 
     /// Get recent project log entries
     #[tool(description = "Get the recent action log for the active project")]
@@ -1500,27 +1098,6 @@ impl ShipServer {
         }
     }
 
-    /// Ingest external filesystem changes into the event stream
-    #[tool(
-        description = "Scan tracked project files and emit events for changes made outside Ship commands (direct filesystem edits)."
-    )]
-    async fn ingest_events(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match ingest_external_events(&project_dir) {
-            Ok(events) => {
-                if events.is_empty() {
-                    "No external filesystem changes detected.".to_string()
-                } else {
-                    format!("Ingested {} filesystem event(s).", events.len())
-                }
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     // ─── Ghost Issues Tools ───────────────────────────────────────────────────
 
     /// Scan the codebase for TODO/FIXME/HACK/BUG comments
@@ -1556,22 +1133,6 @@ impl ShipServer {
                 }
                 out
             }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Get the ghost issues report from the last scan
-    #[tool(description = "Get the Markdown ghost issues report from the last scan")]
-    async fn ghost_report(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        match ghost_issues::generate_report(&project_dir) {
-            Ok(r) => r,
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1638,47 +1199,25 @@ impl ShipServer {
 
     // ─── Status / Category Tools ─────────────────────────────────────────────
 
-    /// List configured issue statuses/categories for the active project
-    #[tool(description = "List the configured issue statuses (categories) for the active project")]
-    async fn list_statuses(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match get_project_statuses(Some(project_dir)) {
-            Ok(statuses) => {
-                let mut out = String::from("Issue statuses:\n");
-                for s in statuses {
-                    out.push_str(&format!("- {}\n", s));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Add a new issue status/category
-    #[tool(description = "Add a new issue status/category to the project")]
-    async fn add_status(&self, Parameters(req): Parameters<StatusNameRequest>) -> String {
-        let project_dir = self.get_effective_project_dir().await.ok();
-        match add_status(project_dir, &req.name) {
-            Ok(_) => format!(
-                "Added status: {}",
-                req.name.to_lowercase().replace(' ', "-")
-            ),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Remove an issue status/category
+    /// Add or remove an issue status/category
     #[tool(
-        description = "Remove an issue status/category from the project (existing issues are not deleted)"
+        description = "Add or remove an issue status/category. action: 'add' or 'remove'. Existing issues are not affected when removing."
     )]
-    async fn remove_status(&self, Parameters(req): Parameters<StatusNameRequest>) -> String {
+    async fn manage_status(&self, Parameters(req): Parameters<ManageStatusRequest>) -> String {
         let project_dir = self.get_effective_project_dir().await.ok();
-        match remove_status(project_dir, &req.name) {
-            Ok(_) => format!("Removed status: {}", req.name),
-            Err(e) => format!("Error: {}", e),
+        match req.action.as_str() {
+            "add" => match add_status(project_dir, &req.name) {
+                Ok(_) => format!(
+                    "Added status: {}",
+                    req.name.to_lowercase().replace(' ', "-")
+                ),
+                Err(e) => format!("Error: {}", e),
+            },
+            "remove" => match remove_status(project_dir, &req.name) {
+                Ok(_) => format!("Removed status: {}", req.name),
+                Err(e) => format!("Error: {}", e),
+            },
+            _ => "Error: action must be 'add' or 'remove'".to_string(),
         }
     }
 
@@ -1744,42 +1283,6 @@ impl ShipServer {
     }
 
     // ─── Git Config Tools ─────────────────────────────────────────────────────
-
-    /// Get the current git commit settings for the active project
-    #[tool(description = "Get which Ship data categories are committed to git vs kept local")]
-    async fn git_config_get(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match get_git_config(&project_dir) {
-            Ok(git) => {
-                let cats = [
-                    "issues",
-                    "releases",
-                    "features",
-                    "adrs",
-                    "specs",
-                    "notes",
-                    "agents",
-                    "events.ndjson",
-                    "ship.toml",
-                    "templates",
-                ];
-                let mut out = String::from("Git commit settings:\n");
-                for cat in cats {
-                    let state = if is_category_committed(&git, cat) {
-                        "committed"
-                    } else {
-                        "local only"
-                    };
-                    out.push_str(&format!("  {:<12} {}\n", cat, state));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
 
     /// Update git commit settings for the active project
     #[tool(
@@ -1862,9 +1365,83 @@ impl ShipServer {
                 Err(err) => return format!("Error: {}", err),
             },
         };
-        match on_post_checkout(&project_dir, &branch) {
+        match on_post_checkout(&project_dir, &branch, project_root) {
             Ok(_) => format!("Synced feature context for branch {}", branch),
             Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    // ─── Provider Tools ───────────────────────────────────────────────────────
+
+    /// List all known AI providers and their installed/connected status
+    #[tool(description = "List all known AI agent providers with installed (in PATH) and connected (enabled in project) status, version, and available models")]
+    async fn list_providers_tool(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match list_providers(&project_dir) {
+            Ok(providers) => {
+                match serde_json::to_string_pretty(&providers) {
+                    Ok(json) => json,
+                    Err(e) => format!("Error serialising providers: {}", e),
+                }
+            }
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// Connect (enable) an AI provider for this project
+    #[tool(description = "Connect (enable) an AI provider for this project by adding it to ship.toml providers list. Provider ID must be one of: claude, gemini, codex")]
+    async fn connect_provider(&self, Parameters(req): Parameters<ConnectProviderRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match enable_provider(&project_dir, &req.provider_id) {
+            Ok(true) => format!("Connected provider: {}", req.provider_id),
+            Ok(false) => format!("Provider '{}' is already connected.", req.provider_id),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// Disconnect (disable) an AI provider from this project
+    #[tool(description = "Disconnect (disable) an AI provider from this project by removing it from ship.toml providers list")]
+    async fn disconnect_provider(&self, Parameters(req): Parameters<DisconnectProviderRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match disable_provider(&project_dir, &req.provider_id) {
+            Ok(true) => format!("Disconnected provider: {}", req.provider_id),
+            Ok(false) => format!("Provider '{}' was not connected.", req.provider_id),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// Detect installed providers in PATH and auto-connect them
+    #[tool(description = "Detect which AI providers are installed in PATH and automatically connect them to this project")]
+    async fn detect_providers(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match autodetect_providers(&project_dir) {
+            Ok(found) if found.is_empty() => "No new providers detected.".to_string(),
+            Ok(found) => format!("Detected and connected: {}", found.join(", ")),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// List available models for a provider
+    #[tool(description = "List available models for a provider with context window sizes and recommended model. Use for UI autocomplete and model selection.")]
+    async fn list_models_tool(&self, Parameters(req): Parameters<ListModelsRequest>) -> String {
+        match list_models(&req.provider_id) {
+            Ok(models) => match serde_json::to_string_pretty(&models) {
+                Ok(json) => json,
+                Err(e) => format!("Error serialising models: {}", e),
+            },
+            Err(e) => format!("Error: {}", e),
         }
     }
 
@@ -1926,47 +1503,6 @@ impl ShipServer {
             Err(err) => format!("Error: {}", err),
         }
     }
-
-    /// Get the active timer status
-    #[tool(description = "Check if a time tracking timer is currently running")]
-    async fn time_status(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        match time_tracker::get_active_timer(&project_dir) {
-            Ok(Some(t)) => {
-                let elapsed = (chrono::Utc::now() - t.started_at).num_minutes().max(0) as u64;
-                format!(
-                    "Running: {} (started {}, elapsed {})",
-                    t.issue_title,
-                    t.started_at.format("%H:%M"),
-                    time_tracker::format_duration(elapsed)
-                )
-            }
-            Ok(None) => "No timer running.".to_string(),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Generate a time report
-    #[tool(description = "Generate a Markdown time report for the active project")]
-    async fn time_report(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        match time_tracker::generate_report(&project_dir) {
-            Ok(report) => report,
-            Err(e) => format!("Error: {}", e),
-        }
-    }
 }
 
 impl ShipServer {
@@ -2013,6 +1549,163 @@ impl ShipServer {
         }
         "AI generation unavailable: the connected MCP client does not support sampling. Use Claude Code or another sampling-capable client.".to_string()
     }
+
+    /// Resolve a `ship://` URI to its text content, or `None` if not found.
+    async fn resolve_resource_uri(&self, uri: &str, dir: &PathBuf) -> Option<String> {
+        // ship://issues
+        if uri == "ship://issues" {
+            let entries = list_issues_full(dir.clone()).ok()?;
+            if entries.is_empty() {
+                return Some("No issues found.".to_string());
+            }
+            let mut out = String::from("Issues:\n");
+            for e in &entries {
+                out.push_str(&format!(
+                    "- [{}] {} ({})\n",
+                    e.status, e.issue.metadata.title, e.file_name
+                ));
+            }
+            return Some(out);
+        }
+        // ship://issues/{status}/{file}
+        if let Some(rest) = uri.strip_prefix("ship://issues/") {
+            let parts: Vec<&str> = rest.splitn(2, '/').collect();
+            if parts.len() == 2 {
+                let (status, file) = (parts[0], parts[1]);
+                let path = runtime::project::issues_dir(dir).join(status).join(file);
+                return get_issue(path).ok().map(|issue| {
+                    format!(
+                        "Title: {}\nStatus: {}\nCreated: {}\nUpdated: {}\n\n{}",
+                        issue.metadata.title,
+                        status,
+                        issue.metadata.created,
+                        issue.metadata.updated,
+                        issue.description
+                    )
+                });
+            }
+        }
+        // ship://features
+        if uri == "ship://features" {
+            let entries = list_features(dir.clone(), None).ok()?;
+            if entries.is_empty() {
+                return Some("No features found.".to_string());
+            }
+            let mut out = String::from("Features:\n");
+            for f in &entries {
+                out.push_str(&format!("- [{}] {} ({})\n", f.status, f.title, f.file_name));
+            }
+            return Some(out);
+        }
+        // ship://features/{file}
+        if let Some(file) = uri.strip_prefix("ship://features/") {
+            let path = runtime::project::features_dir(dir).join(file);
+            return get_feature_raw(path).ok();
+        }
+        // ship://releases
+        if uri == "ship://releases" {
+            let entries = list_releases(dir.clone()).ok()?;
+            if entries.is_empty() {
+                return Some("No releases found.".to_string());
+            }
+            let mut out = String::from("Releases:\n");
+            for r in &entries {
+                out.push_str(&format!(
+                    "- [{}] {} ({})\n",
+                    r.status, r.version, r.file_name
+                ));
+            }
+            return Some(out);
+        }
+        // ship://releases/{file}
+        if let Some(file) = uri.strip_prefix("ship://releases/") {
+            let path = find_release_path(dir, file).ok()?;
+            return get_release_raw(path).ok();
+        }
+        // ship://specs
+        if uri == "ship://specs" {
+            let entries = list_specs(dir.clone()).ok()?;
+            if entries.is_empty() {
+                return Some("No specs found.".to_string());
+            }
+            let mut out = String::from("Specs:\n");
+            for s in &entries {
+                out.push_str(&format!("- {} ({})\n", s.title, s.file_name));
+            }
+            return Some(out);
+        }
+        // ship://specs/{file}
+        if let Some(file) = uri.strip_prefix("ship://specs/") {
+            let path = runtime::project::specs_dir(dir).join(file);
+            return get_spec_raw(path).ok();
+        }
+        // ship://adrs
+        if uri == "ship://adrs" {
+            let entries = list_adrs(dir.clone()).ok()?;
+            if entries.is_empty() {
+                return Some("No ADRs found.".to_string());
+            }
+            let mut out = String::from("ADRs:\n");
+            for a in &entries {
+                out.push_str(&format!(
+                    "- [{}] {} ({})\n",
+                    a.status, a.adr.metadata.title, a.file_name
+                ));
+            }
+            return Some(out);
+        }
+        // ship://adrs/{file}
+        if let Some(file) = uri.strip_prefix("ship://adrs/") {
+            let path = runtime::project::adrs_dir(dir).join(file);
+            let status = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            return get_adr(path).ok().map(|adr| {
+                format!(
+                    "Title: {}\nStatus: {}\nDate: {}\n\n{}",
+                    adr.metadata.title, status, adr.metadata.date, adr.body
+                )
+            });
+        }
+        // ship://notes
+        if uri == "ship://notes" {
+            let entries = runtime::list_notes(NoteScope::Project, Some(dir.clone())).ok()?;
+            if entries.is_empty() {
+                return Some("No notes found.".to_string());
+            }
+            let mut out = String::from("Notes:\n");
+            for n in &entries {
+                out.push_str(&format!("- {} ({})\n", n.title, n.file_name));
+            }
+            return Some(out);
+        }
+        // ship://notes/{file}
+        if let Some(file) = uri.strip_prefix("ship://notes/") {
+            let path =
+                runtime::note_path_for_scope(NoteScope::Project, Some(dir.clone()), file).ok()?;
+            return runtime::get_note_raw(path).ok();
+        }
+        // ship://skills
+        if uri == "ship://skills" {
+            let entries = list_effective_skills(dir).ok()?;
+            if entries.is_empty() {
+                return Some("No skills found.".to_string());
+            }
+            let mut out = String::from("Skills:\n");
+            for s in &entries {
+                out.push_str(&format!("- {} ({})\n", s.id, s.name));
+            }
+            return Some(out);
+        }
+        // ship://skills/{id}
+        if let Some(id) = uri.strip_prefix("ship://skills/") {
+            return get_effective_skill(dir, id).ok().map(|s| s.content);
+        }
+        None
+    }
 }
 
 fn current_branch(project_root: &std::path::Path) -> Result<String> {
@@ -2034,32 +1727,9 @@ fn parse_note_scope(raw: Option<&str>) -> Result<NoteScope> {
     raw.unwrap_or("project").parse::<NoteScope>()
 }
 
-enum SkillReadScope {
-    Project,
-    User,
-    Effective,
-}
-
 enum SkillWriteScope {
     Project,
     User,
-}
-
-fn parse_skill_read_scope(raw: Option<&str>) -> Result<SkillReadScope> {
-    match raw
-        .unwrap_or("effective")
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "project" => Ok(SkillReadScope::Project),
-        "user" | "global" => Ok(SkillReadScope::User),
-        "effective" => Ok(SkillReadScope::Effective),
-        other => Err(anyhow!(
-            "Invalid skill scope '{}'. Expected one of: project, user, effective",
-            other
-        )),
-    }
 }
 
 fn parse_skill_write_scope(raw: Option<&str>) -> Result<SkillWriteScope> {
@@ -2090,17 +1760,128 @@ impl ServerHandler for ShipServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
             server_info: Implementation {
                 name: "Ship Project Tracker".into(),
                 version: "0.2.0".into(),
                 ..Default::default()
             },
             instructions: Some(
-                "Tools for managing Ship project issues, releases, features, specs, ADRs, event stream, and time tracking. \
-                 Call open_project first if the project is not auto-detected."
+                "Tools for managing Ship project issues, releases, features, specs, ADRs, \
+                 event stream, and time tracking. Call open_project first if the project is \
+                 not auto-detected. Use resources (ship://) to read documents without consuming tool calls."
                     .into(),
             ),
+        }
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        Ok(ListResourcesResult::with_all_items(vec![
+            RawResource::new("ship://issues", "Issues").no_annotation(),
+            RawResource::new("ship://features", "Features").no_annotation(),
+            RawResource::new("ship://releases", "Releases").no_annotation(),
+            RawResource::new("ship://specs", "Specs").no_annotation(),
+            RawResource::new("ship://adrs", "ADRs").no_annotation(),
+            RawResource::new("ship://notes", "Project Notes").no_annotation(),
+            RawResource::new("ship://skills", "Skills").no_annotation(),
+        ]))
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, ErrorData> {
+        Ok(ListResourceTemplatesResult::with_all_items(vec![
+            RawResourceTemplate {
+                uri_template: "ship://issues/{status}/{file}".to_string(),
+                name: "Issue".to_string(),
+                title: Some("Issue by status and filename".to_string()),
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://features/{file}".to_string(),
+                name: "Feature".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://releases/{file}".to_string(),
+                name: "Release".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://specs/{file}".to_string(),
+                name: "Spec".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://adrs/{file}".to_string(),
+                name: "ADR".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://notes/{file}".to_string(),
+                name: "Note".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://skills/{id}".to_string(),
+                name: "Skill".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+        ]))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        let Ok(dir) = self.get_effective_project_dir().await else {
+            return Err(ErrorData::internal_error("No active project", None));
+        };
+        match self.resolve_resource_uri(&request.uri, &dir).await {
+            Some(text) => Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(text, &request.uri)],
+            }),
+            None => Err(ErrorData::resource_not_found(
+                format!("Resource not found: {}", request.uri),
+                None,
+            )),
         }
     }
 }
@@ -2170,7 +1951,7 @@ mod tests {
             feature_result
         );
 
-        let features = list_features(project_dir.clone()).expect("list features");
+        let features = list_features(project_dir.clone(), None).expect("list features");
         assert_eq!(features.len(), 1);
         let feature =
             get_feature(std::path::PathBuf::from(&features[0].path)).expect("get feature");

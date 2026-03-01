@@ -1,0 +1,8 @@
+# Agent Permissions Configuration
+# - Control what your agents are allowed to do.
+
+[permissions]
+# List allowed directories, tools, or network domains.
+# Example:
+# allow_filesystem = ["./src", "./docs"]
+# allow_tools = ["*"]

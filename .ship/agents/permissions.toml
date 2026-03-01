@@ -1,0 +1,7 @@
+# Agent Permissions
+# - Control what your agents can do.
+
+[permissions]
+# Example:
+# [permissions.filesystem]
+# allow = ["/Users/micahcotton/dev/worktrees/ship-backend"]

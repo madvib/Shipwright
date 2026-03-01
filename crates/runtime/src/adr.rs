@@ -7,21 +7,62 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum AdrStatus {
+    Proposed,
+    Accepted,
+    Rejected,
+    Superseded,
+    Deprecated,
+}
+
+impl Default for AdrStatus {
+    fn default() -> Self {
+        AdrStatus::Proposed
+    }
+}
+
+impl std::fmt::Display for AdrStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AdrStatus::Proposed => write!(f, "proposed"),
+            AdrStatus::Accepted => write!(f, "accepted"),
+            AdrStatus::Rejected => write!(f, "rejected"),
+            AdrStatus::Superseded => write!(f, "superseded"),
+            AdrStatus::Deprecated => write!(f, "deprecated"),
+        }
+    }
+}
+
+impl std::str::FromStr for AdrStatus {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "proposed" => Ok(AdrStatus::Proposed),
+            "accepted" => Ok(AdrStatus::Accepted),
+            "rejected" => Ok(AdrStatus::Rejected),
+            "superseded" => Ok(AdrStatus::Superseded),
+            "deprecated" => Ok(AdrStatus::Deprecated),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct AdrMetadata {
-    #[serde(default)]
     pub id: String,
     pub title: String,
-    pub status: String,
     pub date: String,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec: Option<String>,
+    pub spec_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supersedes_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -34,6 +75,7 @@ pub struct ADR {
 pub struct AdrEntry {
     pub file_name: String,
     pub path: String,
+    pub status: AdrStatus,
     pub adr: ADR,
 }
 
@@ -94,6 +136,7 @@ fn unique_path(dir: &Path, base: &str) -> PathBuf {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
+/// Create a new ADR file in `.ship/project/adrs/`.
 pub fn create_adr(
     project_dir: PathBuf,
     title: &str,
@@ -102,23 +145,25 @@ pub fn create_adr(
 ) -> Result<PathBuf> {
     validate_title(title)?;
 
+    let ship_path = crate::project::get_project_dir(Some(project_dir.clone()))?;
+    let template_str = crate::project::read_template(&ship_path, "adr")?;
+    let mut adr = ADR::from_markdown(&template_str).context("Failed to parse ADR template")?;
+
+    let adr_status = status.parse::<AdrStatus>().unwrap_or_default();
+    adr.metadata.id = crate::gen_nanoid();
+    adr.metadata.title = title.to_string();
+    adr.metadata.date = Utc::now().to_rfc3339();
+
+    if !decision.trim().is_empty() {
+        adr.body = format!("## Decision\n\n{}\n", decision);
+    }
+
     let adrs_dir = crate::project::adrs_dir(&project_dir);
-    fs::create_dir_all(&adrs_dir)?;
-
-    let metadata = AdrMetadata {
-        id: Uuid::new_v4().to_string(),
-        title: title.to_string(),
-        status: status.to_string(),
-        date: Utc::now().format("%Y-%m-%d").to_string(),
-        tags: Vec::new(),
-        spec: None,
-    };
-
-    let body = format!("## Decision\n\n{}\n", decision);
-    let adr = ADR { metadata, body };
+    let status_dir = adrs_dir.join(adr_status.to_string());
+    fs::create_dir_all(&status_dir)?;
 
     let base = sanitize_file_name(title);
-    let file_path = unique_path(&adrs_dir, &base);
+    let file_path = unique_path(&status_dir, &base);
 
     write_atomic(&file_path, adr.to_markdown()?)?;
     let file_name = file_path
@@ -186,6 +231,50 @@ pub fn delete_adr(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+pub fn find_adr_path(project_dir: &Path, file_name: &str) -> Result<PathBuf> {
+    let adrs_dir = crate::project::adrs_dir(project_dir);
+    for status in &[
+        "proposed",
+        "accepted",
+        "rejected",
+        "superseded",
+        "deprecated",
+    ] {
+        let candidate = adrs_dir.join(status).join(file_name);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    let candidate = adrs_dir.join(file_name);
+    if candidate.exists() {
+        return Ok(candidate);
+    }
+    Err(anyhow!("ADR not found: {}", file_name))
+}
+
+pub fn move_adr(project_dir: PathBuf, file_name: &str, new_status: AdrStatus) -> Result<PathBuf> {
+    let path = find_adr_path(&project_dir, file_name)?;
+
+    let target_dir = crate::project::adrs_dir(&project_dir).join(new_status.to_string());
+    fs::create_dir_all(&target_dir)?;
+
+    let target_path = target_dir.join(file_name);
+    if path != target_path {
+        fs::rename(&path, &target_path)
+            .with_context(|| format!("Failed to move ADR to {}", new_status))?;
+    }
+
+    append_event(
+        &project_dir,
+        "logic",
+        EventEntity::Adr,
+        EventAction::Update,
+        file_name.to_string(),
+        Some(format!("status changed to {}", new_status)),
+    )?;
+    Ok(target_path)
+}
+
 pub fn list_adrs(project_dir: PathBuf) -> Result<Vec<AdrEntry>> {
     let mut entries = Vec::new();
     let adrs_dir = crate::project::adrs_dir(&project_dir);
@@ -193,7 +282,26 @@ pub fn list_adrs(project_dir: PathBuf) -> Result<Vec<AdrEntry>> {
         return Ok(entries);
     }
 
-    for entry in fs::read_dir(&adrs_dir)? {
+    // Check subdirectories
+    for status_name in &[
+        "proposed",
+        "accepted",
+        "rejected",
+        "superseded",
+        "deprecated",
+    ] {
+        let status_dir = adrs_dir.join(status_name);
+        if status_dir.exists() {
+            let status = status_name.parse::<AdrStatus>().unwrap_or_default();
+            search_adr_dir(&status_dir, status, &mut entries)?;
+        }
+    }
+
+    Ok(entries)
+}
+
+fn search_adr_dir(dir: &Path, status: AdrStatus, entries: &mut Vec<AdrEntry>) -> Result<()> {
+    for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() && path.extension().map_or(false, |e| e == "md") {
@@ -209,10 +317,11 @@ pub fn list_adrs(project_dir: PathBuf) -> Result<Vec<AdrEntry>> {
                 entries.push(AdrEntry {
                     file_name,
                     path: path.to_string_lossy().to_string(),
+                    status: status.clone(),
                     adr,
                 });
             }
         }
     }
-    Ok(entries)
+    Ok(())
 }
