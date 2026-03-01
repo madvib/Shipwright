@@ -29,8 +29,8 @@ interface AutocompleteInputProps {
   onCommit?: (value: string) => void;
 }
 
-function normalize(text: string): string {
-  return text.trim().toLowerCase();
+function normalize(text: string | null | undefined): string {
+  return (text || '').trim().toLowerCase();
 }
 
 export default function AutocompleteInput({

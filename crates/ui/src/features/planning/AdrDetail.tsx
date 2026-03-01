@@ -21,6 +21,7 @@ interface AdrDetailProps {
   entry: AdrEntry;
   specSuggestions: string[];
   tagSuggestions: string[];
+  adrSuggestions?: string[];
   mcpEnabled?: boolean;
   onClose: () => void;
   onSave: (fileName: string, adr: ADR) => void;
@@ -43,6 +44,7 @@ export default function AdrDetail({
   entry,
   specSuggestions,
   tagSuggestions,
+  adrSuggestions = [],
   mcpEnabled = false,
   onClose,
   onSave,
@@ -134,6 +136,7 @@ export default function AdrDetail({
           specSuggestions={specSuggestions}
           tagSuggestions={tagSuggestions}
           extraActions={actionButtons}
+          adrSuggestions={adrSuggestions}
           mcpEnabled={mcpEnabled}
         />
       </div>

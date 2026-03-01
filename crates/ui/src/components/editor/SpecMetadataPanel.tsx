@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { FacetedFilter } from '@/components/ui/faceted-filter';
-import { FieldLabel } from '@/components/ui/field-label';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
   FrontmatterDelimiter,
@@ -66,9 +65,15 @@ export default function SpecMetadataPanel({
   };
 
   return (
-    <section className="rounded-md border bg-card px-2.5 py-2">
-      <div className="grid gap-x-2 gap-y-1.5 md:grid-cols-2">
-        <div className="space-y-0.5">
+    <aside className="flex h-full min-h-0 flex-col overflow-y-auto border-l bg-muted/20">
+      {/* Properties header */}
+      <div className="flex items-center gap-2 border-b bg-card/50 px-4 py-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Properties</p>
+      </div>
+
+      <div className="flex flex-col gap-4 p-4">
+        {/* Title */}
+        <div className="space-y-1.5">
           <FieldLabel>Title</FieldLabel>
           <Input
             value={title}
@@ -78,19 +83,28 @@ export default function SpecMetadataPanel({
           />
         </div>
 
-        <div className="space-y-0.5">
+        {/* Status */}
+        <div className="space-y-1.5">
           <FieldLabel>Status</FieldLabel>
-          <AutocompleteInput
-            value={status}
-            options={statusOptions.map((value) => ({ value }))}
-            placeholder="Status"
-            className="h-8"
-            noResultsText="No status matches."
-            onValueChange={(value) => updateField('status', value)}
-          />
+          <div className="flex flex-wrap gap-1.5">
+            {statusOptions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => updateField('status', s)}
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-all ${status === s
+                  ? 'border-primary/40 bg-primary/10 text-primary shadow-sm'
+                  : 'border-border/50 text-muted-foreground hover:bg-muted/80'
+                  }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="space-y-0.5 md:col-span-2">
+        {/* Author */}
+        <div className="space-y-1.5">
           <FieldLabel>Author</FieldLabel>
           <Input
             value={author}
@@ -100,10 +114,9 @@ export default function SpecMetadataPanel({
           />
         </div>
 
-        <div className="space-y-0.5 md:col-span-2">
-          <FieldLabel>
-            Tags {tags.length ? `(${tags.length})` : ''}
-          </FieldLabel>
+        {/* Tags */}
+        <div className="space-y-1.5">
+          <FieldLabel>Tags {tags.length ? `(${tags.length})` : ''}</FieldLabel>
           <FacetedFilter
             title="Add tag"
             options={tagSuggestions?.map((tag) => ({ label: tag, value: tag })) ?? []}
@@ -113,7 +126,7 @@ export default function SpecMetadataPanel({
             onAddNew={(tag) => updateTags([...tags, tag])}
           />
         </div>
-        </div>
-    </section>
+      </div>
+    </aside>
   );
 }

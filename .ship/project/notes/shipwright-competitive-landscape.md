@@ -2,7 +2,7 @@
 id = "eWm4eVZV"
 title = "Shipwright — Competitive Landscape"
 created = "2026-02-28T21:10:00Z"
-updated = "2026-02-28T21:10:00Z"
+updated = "2026-03-01T05:05:14.100712+00:00"
 tags = []
 +++
 
@@ -10,14 +10,14 @@ tags = []
 
 **Last Updated:** 2026-02-26
 
----
+***
 
 ## Vibe Kanban
 
-**Repo:** github.com/BloopAI/vibe-kanban  
-**Stars:** 21k  
-**Stack:** Rust + TypeScript  
-**Model:** Open source + cloud SaaS  
+**Repo:** github.com/BloopAI/vibe-kanban\
+**Stars:** 21k\
+**Stack:** Rust + TypeScript\
+**Model:** Open source + cloud SaaS\
 **Status:** Funded, 60 contributors, actively hiring, shipping fast
 
 ### What They Do Well
@@ -62,14 +62,14 @@ tags = []
 
 Vibe Kanban is a better agent task runner today. Shipwright is building the layer underneath that makes any agent — including ones running inside Vibe Kanban — dramatically more effective. They are not mutually exclusive. The pitch to a Vibe Kanban user: "Your agents are executing better. They're still starting every task cold. Shipwright fixes that."
 
----
+***
 
 ## Taskmaster (claude-task-master)
 
-**Repo:** github.com/eyaltoledano/claude-task-master  
-**Distribution:** npm (`npx task-master-ai`) + MCP server  
-**Stack:** Node.js / TypeScript  
-**Model:** MIT with Commons Clause (no commercial use without license)  
+**Repo:** github.com/eyaltoledano/claude-task-master\
+**Distribution:** npm (`npx task-master-ai`) + MCP server\
+**Stack:** Node.js / TypeScript\
+**Model:** MIT with Commons Clause (no commercial use without license)\
 **Status:** Active, community-driven, recently integrating a cloud product called Hamster
 
 ### What They Do
@@ -100,14 +100,14 @@ The PRD → tasks pipeline is their strongest feature — it handles complexity 
 
 Taskmaster is a workflow scaffold for a single AI chat session. Shipwright is persistent infrastructure. A developer who outgrows Taskmaster — wants context to survive between sessions, wants visual workflow management, wants agent config to follow branches automatically — is exactly the Shipwright customer.
 
----
+***
 
 ## Continue
 
-**Site:** continue.dev  
-**Distribution:** VS Code / JetBrains extension + CLI  
-**Stack:** TypeScript  
-**Model:** Open source + Hub (cloud config management)  
+**Site:** continue.dev\
+**Distribution:** VS Code / JetBrains extension + CLI\
+**Stack:** TypeScript\
+**Model:** Open source + Hub (cloud config management)\
 **Status:** Funded, recently pivoted toward AI-powered PR review
 
 ### What They Do
@@ -130,7 +130,7 @@ An editor assistant with good context management. Not a project management tool.
 
 Not a direct competitor — different primary surface (editor vs. standalone), different primary value (autocomplete vs. project memory). A developer could use Continue in their editor and Shipwright for project management simultaneously. The Shipwright MCP server feeds Continue the same structured context it feeds Claude Code.
 
----
+***
 
 ## Emerging Threats
 
@@ -152,21 +152,22 @@ A natural extension of where editors are heading. If Cursor ships a native kanba
 
 **Defense:** The MCP interface works with Cursor as well as Claude Code. Shipwright doesn't care what editor you use. The structured document layer is editor-agnostic by design.
 
----
+***
 
 ## Summary
 
-| | Shipwright | Vibe Kanban | Taskmaster | Continue |
-|---|---|---|---|---|
-| Local-first | ✓ | Partial | ✓ | ✓ |
-| Git-native documents | ✓ | ✗ | Partial | Partial |
-| Persistent project memory | ✓ | ✗ | Partial | ✗ |
-| Visual workflow (kanban) | ✓ | ✓ | ✗ | ✗ |
-| Spec → issue workflow | ✓ | ✗ | Partial | ✗ |
-| ADRs / decisions | ✓ | ✗ | ✗ | ✗ |
-| Parallel agent execution | V2 | ✓ | ✗ | ✗ |
-| Branch-scoped agent config | ✓ | ✗ | ✗ | ✗ |
-| MCP server management | ✓ | Partial | ✗ | ✗ |
-| Multi-provider agents | ✓ | ✓ | ✓ | ✓ |
-| No API key required | ✓ | ✓ | ✗ | Partial |
-| No account required | ✓ | ✓ | ✓ | ✓ |
+| <br />                     | Shipwright | Vibe Kanban | Taskmaster | Continue |
+| -------------------------- | ---------- | ----------- | ---------- | -------- |
+| Local-first                | ✓          | Partial     | ✓          | ✓        |
+| Git-native documents       | ✓          | ✗           | Partial    | Partial  |
+| Persistent project memory  | ✓          | ✗           | Partial    | ✗        |
+| Visual workflow (kanban)   | ✓          | ✓           | ✗          | ✗        |
+| Spec → issue workflow      | ✓          | ✗           | Partial    | ✗        |
+| ADRs / decisions           | ✓          | ✗           | ✗          | ✗        |
+| Parallel agent execution   | V2         | ✓           | ✗          | ✗        |
+| Branch-scoped agent config | ✓          | ✗           | ✗          | ✗        |
+| MCP server management      | ✓          | Partial     | ✗          | ✗        |
+| Multi-provider agents      | ✓          | ✓           | ✓          | ✓        |
+| No API key required        | ✓          | ✓           | ✗          | Partial  |
+| No account required        | ✓          | ✓           | ✓          | ✓        |
+

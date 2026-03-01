@@ -1,16 +1,26 @@
++++
+id = "8zx5kaUw"
+title = "Shipwright — Vision & Architecture"
+created = "2026-03-01T04:45:04.815755+00:00"
+updated = "2026-03-01T04:45:04.815865+00:00"
+tags = []
++++
+
 # Shipwright — Vision & Architecture
 
 > Status update (2026-02-24): this is a historical reference document.
 > Canonical active docs are:
-> - `.ship/specs/vision.md`
-> - `.ship/specs/alpha-ai-config-and-modes.md`
+>
+> * `.ship/specs/vision.md`
+>
+> * `.ship/specs/alpha-ai-config-and-modes.md`
 
-**Version:** 0.2  
-**Status:** Reference (Superseded by canonical specs)  
-**Last Updated:** 2026-02-24  
+**Version:** 0.2\
+**Status:** Reference (Superseded by canonical specs)\
+**Last Updated:** 2026-02-24\
 **Replaces:** ship-vision-v2.md, shipwright-architecture.md, ship-plugin-monetization.md
 
----
+***
 
 ## North Star
 
@@ -26,7 +36,7 @@ The core loop that everything serves:
 Chat → Refine Spec → Extract Issues → Work Issues (human or agent) → Update Issues → Repeat
 ```
 
----
+***
 
 ## The Problem Worth Solving
 
@@ -38,7 +48,7 @@ The deeper problem: **AI agents have no persistent memory.** They're extraordina
 
 Shipwright is that infrastructure layer.
 
----
+***
 
 ## The Insight: Files Are the Universal Interface
 
@@ -48,20 +58,20 @@ Shipwright's core data model is a folder of markdown files with TOML frontmatter
 
 This isn't a constraint — it's the architectural decision that makes everything else possible.
 
----
+***
 
 ## Format Standard
 
 One rule, zero exceptions:
 
-| File type | Format |
-|-----------|--------|
+| File type                           | Format                                            |
+| ----------------------------------- | ------------------------------------------------- |
 | All documents (Issues, Specs, ADRs) | Markdown with TOML frontmatter (`+++` delimiters) |
-| All config | TOML (`.toml`) |
+| All config                          | TOML (`.toml`)                                    |
 
 No YAML. No JSON. No exceptions. TOML is unambiguous, comment-supporting, and already familiar to Rust developers via Cargo.
 
----
+***
 
 ## The Three-Layer Architecture
 
@@ -72,24 +82,40 @@ Shipwright has three distinct layers. Understanding the boundary between them is
 The runtime has no opinions about what a project looks like. It provides the substrate and enforces the conventions. It is the OS.
 
 **What the runtime owns:**
-- File system conventions (`.ship/` directory structure, TOML frontmatter parsing)
-- Document store (read, write, index, query any registered document type)
-- Relationship graph (cross-document links, parent/child, blocks/blocked-by)
-- Mode manager (active mode, MCP tool filtering)
-- MCP server (dynamic tool registration, mode-aware capability surface)
-- MCP App descriptors/resources for tool-driven UI surfaces
-- Event bus (async, cross-module communication)
-- Auth + entitlements (JWT, cloud entitlement cache, offline grace period)
-- Config export (generates `.claude`, `.gemini`, `.cursor` configs from modes)
-- Action log (append-only `log.md`, human + agent readable)
-- Per-module store (scoped key-value, backed by files)
-- V8 isolate host — **V2, not now** (deno_core, for third-party TypeScript extensions)
+
+* File system conventions (`.ship/` directory structure, TOML frontmatter parsing)
+
+* Document store (read, write, index, query any registered document type)
+
+* Relationship graph (cross-document links, parent/child, blocks/blocked-by)
+
+* Mode manager (active mode, MCP tool filtering)
+
+* MCP server (dynamic tool registration, mode-aware capability surface)
+
+* MCP App descriptors/resources for tool-driven UI surfaces
+
+* Event bus (async, cross-module communication)
+
+* Auth + entitlements (JWT, cloud entitlement cache, offline grace period)
+
+* Config export (generates `.claude`, `.gemini`, `.cursor` configs from modes)
+
+* Action log (append-only `log.md`, human + agent readable)
+
+* Per-module store (scoped key-value, backed by files)
+
+* V8 isolate host — **V2, not now** (deno\_core, for third-party TypeScript extensions)
 
 **What the runtime does NOT own:**
-- What an issue looks like
-- What a spec looks like
-- What valid statuses are
-- Any UI
+
+* What an issue looks like
+
+* What a spec looks like
+
+* What valid statuses are
+
+* Any UI
 
 The test: remove every module. Shipwright should still boot, present an empty canvas, and be fully functional — just with nothing registered.
 
@@ -98,22 +124,30 @@ The test: remove every module. Shipwright should still boot, present an empty ca
 Modules are first-party Shipwright code. They implement an internal Rust trait, are compiled directly into the binary, and have full access to runtime internals. They are not sandboxed. The distinction between "core" and "module" is intentionally blurry — Issues is a module the same way the document store is a module.
 
 **Default module bundle (OSS):**
-- Issues module (Kanban UI, issue document type, MCP tools)
-- Specs module (split editor, AI conversation, MCP tools)
-- ADRs module (list view, immutable record UI, MCP tools)
+
+* Issues module (Kanban UI, issue document type, MCP tools)
+
+* Specs module (split editor, AI conversation, MCP tools)
+
+* ADRs module (list view, immutable record UI, MCP tools)
 
 **Premium modules (compiled in, entitlement gated):**
-- GitHub Sync
-- Agent Runner
-- Team Sync
-- Docs Generator
-- TBD (5th premium module)
+
+* GitHub Sync
+
+* Agent Runner
+
+* Team Sync
+
+* Docs Generator
+
+* TBD (5th premium module)
 
 Modules are not called "plugins." They are not installed. They are not loaded at runtime from external files. They are Rust code in `crates/modules/`.
 
 ### Layer 3 — Extensions (TypeScript, sandboxed V8, V2+)
 
-Third-party code written by the community. Runs in a sandboxed V8 isolate (deno_core). Communicates with the runtime exclusively via declared host functions. Cannot access Tauri IPC directly. Cannot exceed declared permissions.
+Third-party code written by the community. Runs in a sandboxed V8 isolate (deno\_core). Communicates with the runtime exclusively via declared host functions. Cannot access Tauri IPC directly. Cannot exceed declared permissions.
 
 **Not built until V2.** The architecture is designed to accommodate extensions without requiring them. The host function surface that extensions will eventually use is the same surface the runtime exposes today — it just isn't accessible from outside the binary yet.
 
@@ -122,13 +156,16 @@ Third-party code written by the community. Runs in a sandboxed V8 isolate (deno_
 MCP Apps are not a replacement for Shipwright modules or the desktop shell. They are an additional distribution surface: a way for the same runtime capabilities to render task-oriented UI inside MCP-capable clients.
 
 **Positioning:**
-- Modules remain the source of truth for business logic and document behavior.
-- Tauri remains the first-party desktop shell.
-- MCP Apps expose selected module experiences through MCP tool + resource contracts.
+
+* Modules remain the source of truth for business logic and document behavior.
+
+* Tauri remains the first-party desktop shell.
+
+* MCP Apps expose selected module experiences through MCP tool + resource contracts.
 
 **Design rule:** if a feature cannot be expressed as a typed command + structured result, it is not MCP Apps-ready.
 
----
+***
 
 ## Crate & Package Structure
 
@@ -230,11 +267,14 @@ shipwright/
 ```
 
 **Key structural decisions:**
-- `packages/ui` is extracted as its own package. Both the app shell (`crates/ui`) and all module UI components import from `@shipwright/ui`. This is the design system boundary. It is extracted now, while cheap, not later when it's painful.
-- `specta` generates TypeScript types from Tauri commands automatically. Every Tauri command is the typed bridge between Rust and TypeScript. This is Tauri doing what Tauri was designed for — no custom IPC layer needed.
-- Module UI components live inside their module crate (`crates/modules/issues/ui/`). They're co-located with the Rust logic they display. The app shell mounts them via the slot system.
 
----
+* `packages/ui` is extracted as its own package. Both the app shell (`crates/ui`) and all module UI components import from `@shipwright/ui`. This is the design system boundary. It is extracted now, while cheap, not later when it's painful.
+
+* `specta` generates TypeScript types from Tauri commands automatically. Every Tauri command is the typed bridge between Rust and TypeScript. This is Tauri doing what Tauri was designed for — no custom IPC layer needed.
+
+* Module UI components live inside their module crate (`crates/modules/issues/ui/`). They're co-located with the Rust logic they display. The app shell mounts them via the slot system.
+
+***
 
 ## The Module Trait
 
@@ -273,7 +313,7 @@ pub struct ModuleManifest {
 }
 ```
 
----
+***
 
 ## ModuleContext — The Runtime API
 
@@ -331,6 +371,7 @@ impl EventBusApi {
 ```
 
 **Well-known events (stable contract):**
+
 ```
 document.created          { type_id, id, doc }
 document.updated          { type_id, id, doc, patch }
@@ -358,7 +399,7 @@ impl SamplingApi {
 }
 ```
 
----
+***
 
 ## Document Type Registration
 
@@ -401,9 +442,9 @@ pub enum GitStrategy {
 }
 ```
 
-**The `hidden_in_kanban` flag** solves clutter directly. Archived issues exist, are searchable, and are referenced — they just don't appear as a Kanban column. "Closed" is the terminal working state. "Archived" is long-term storage.
+**The** **`hidden_in_kanban`** **flag** solves clutter directly. Archived issues exist, are searchable, and are referenced — they just don't appear as a Kanban column. "Closed" is the terminal working state. "Archived" is long-term storage.
 
----
+***
 
 ## Cross-Module Communication
 
@@ -441,15 +482,19 @@ Issue created. Relationship recorded. Kanban updates.
 
 Neither module knows the other exists. The runtime routes the event.
 
----
+***
 
 ## Modes
 
 Modes are a first-class concept in Shipwright. A mode defines:
-- Which MCP tools are active (capability surface for AI agents)
-- Which AI context files are pre-loaded
-- Which UI layout is default
-- How the AI conversation panel is scoped
+
+* Which MCP tools are active (capability surface for AI agents)
+
+* Which AI context files are pre-loaded
+
+* Which UI layout is default
+
+* How the AI conversation panel is scoped
 
 Switching modes changes what AI agents can do — immediately, without reconnecting. The MCP server broadcasts `tools/list_changed` on mode switch.
 
@@ -506,7 +551,7 @@ The mode switcher is prominent in the UI — top bar, always visible. It is not 
 
 **Capability-based security via modes:** An agent connected in execution mode literally cannot create ADRs — the tool doesn't exist in its tool list. An agent in planning mode cannot move issues. Modes express workflow intent and enforce it at the protocol level.
 
----
+***
 
 ## External MCP Management
 
@@ -558,10 +603,13 @@ Switching modes reconfigures the MCP environment for all connected AI tools auto
 
 Shipwright sits in front of all external MCP servers as a local gateway. Every external MCP call routes through Shipwright, which adds:
 
-- **Auth management** — credentials stored once, injected per-server. No tokens scattered across config files.
-- **Permission enforcement** — per-mode server allowlists enforced at the gateway level.
-- **Observability** — all MCP tool calls logged to the action log. Full audit trail of what agents did and through which servers.
-- **Rate limiting** — protect external API quotas across all AI tools simultaneously.
+* **Auth management** — credentials stored once, injected per-server. No tokens scattered across config files.
+
+* **Permission enforcement** — per-mode server allowlists enforced at the gateway level.
+
+* **Observability** — all MCP tool calls logged to the action log. Full audit trail of what agents did and through which servers.
+
+* **Rate limiting** — protect external API quotas across all AI tools simultaneously.
 
 ### MCP Apps (SEP-1865)
 
@@ -571,7 +619,7 @@ Shipwright's module UI panels conform to SEP-1865. The Kanban board, spec editor
 
 This solves the distribution problem directly. Shipwright is not a separate application the developer has to remember to open. It is ambient — present as a UI layer inside every tool they already use. The desktop app is the power user experience. MCP Apps is the everywhere experience.
 
----
+***
 
 ## MCP Marketplace
 
@@ -593,15 +641,19 @@ With 5,800+ MCP servers already available and growing rapidly, discovery is a ge
 
 The marketplace is a standalone revenue stream independent of Shipwright's project management features:
 
-- **Free listing** — any server can be listed
-- **Featured placement** — paid promotion for server authors
-- **Verified badge** — paid review + certification process
-- **Enterprise registry** — private internal marketplace for organizations ($)
-- **Usage analytics** — server authors pay for install and usage data
+* **Free listing** — any server can be listed
+
+* **Featured placement** — paid promotion for server authors
+
+* **Verified badge** — paid review + certification process
+
+* **Enterprise registry** — private internal marketplace for organizations (\$)
+
+* **Usage analytics** — server authors pay for install and usage data
 
 This is a business that grows with the MCP ecosystem regardless of whether Shipwright's project management features win. Every developer who manages MCP configs is a potential user — not just developers who want issue tracking.
 
----
+***
 
 ## Config Export
 
@@ -618,7 +670,7 @@ This positions Shipwright as the **unified AI config layer** — not competing w
 
 Generated configs reference the Shipwright MCP server so agents always have access to project state regardless of which tool they're running in.
 
----
+***
 
 ## AI Integration in the UI
 
@@ -646,14 +698,17 @@ The AI panel is powered by MCP sampling — the user's connected AI client (Clau
 
 **Generative editing** — "Apply suggestion" directly patches the markdown document, not just the chat. The AI and the document are in dialogue, not parallel.
 
----
+***
 
 ## Dynamic MCP
 
 The MCP server is a live capability surface that changes based on:
-- Which modules are loaded (and their entitlements)
-- Which mode is active
-- Which tools modules have dynamically registered via `ctx.mcp.register()`
+
+* Which modules are loaded (and their entitlements)
+
+* Which mode is active
+
+* Which tools modules have dynamically registered via `ctx.mcp.register()`
 
 ```rust
 // crates/runtime/src/mcp/registry.rs
@@ -691,7 +746,7 @@ impl McpRegistry {
 }
 ```
 
----
+***
 
 ## UI Architecture
 
@@ -762,14 +817,14 @@ export function KanbanView() {
 
 **UI trust boundary:**
 
-| | First-party modules | Third-party extensions (V2+) | MCP Apps |
-|---|---|---|---|
-| UI host | Direct mount in app shell | Sandboxed iframe | MCP client webview/app surface |
-| Design system | `@shipwright/ui` direct import | `@shipwright/ui` via bundle | Client-defined (Shipwright tokens optional) |
-| Data access | `useDocuments()` Tauri hook | postMessage API only | MCP tools + resources only |
-| IPC/runtime access | Direct `invoke()` | No Tauri access | No Tauri access |
+| <br />             | First-party modules            | Third-party extensions (V2+) | MCP Apps                                    |
+| ------------------ | ------------------------------ | ---------------------------- | ------------------------------------------- |
+| UI host            | Direct mount in app shell      | Sandboxed iframe             | MCP client webview/app surface              |
+| Design system      | `@shipwright/ui` direct import | `@shipwright/ui` via bundle  | Client-defined (Shipwright tokens optional) |
+| Data access        | `useDocuments()` Tauri hook    | postMessage API only         | MCP tools + resources only                  |
+| IPC/runtime access | Direct `invoke()`              | No Tauri access              | No Tauri access                             |
 
----
+***
 
 ## Directory Structure
 
@@ -801,7 +856,7 @@ export function KanbanView() {
     └── log.md            # Append-only action log
 ```
 
----
+***
 
 ## Project Config
 
@@ -851,7 +906,7 @@ ai_context = ["AGENTS.md", "issues/in-progress/"]
 ui_layout = "kanban"
 ```
 
----
+***
 
 ## Monetization
 
@@ -874,12 +929,12 @@ Fetched from `https://api.shipwright.dev/v1/entitlements` on startup. Cached in 
 
 ### Plans (Illustrative)
 
-| Plan | Price | Modules |
-|------|-------|---------|
-| Free | $0 | Issues, Specs, ADRs — no account needed |
-| Pro | ~$9/mo | + GitHub Sync, Agent Runner |
-| Team | ~$19/seat/mo | + Team Sync, Docs Generator |
-| Enterprise | Custom | + SSO, audit logs, custom modules |
+| Plan       | Price          | Modules                                 |
+| ---------- | -------------- | --------------------------------------- |
+| Free       | \$0            | Issues, Specs, ADRs — no account needed |
+| Pro        | \~\$9/mo       | + GitHub Sync, Agent Runner             |
+| Team       | \~\$19/seat/mo | + Team Sync, Docs Generator             |
+| Enterprise | Custom         | + SSO, audit logs, custom modules       |
 
 ### OSS Strategy
 
@@ -897,7 +952,7 @@ shipwright auth status   # Shows plan, active modules, expiry
 shipwright auth logout   # Clears JWT and cache → premium modules deactivate
 ```
 
----
+***
 
 ## Action Log
 
@@ -913,70 +968,103 @@ Every mutation — from CLI, desktop app, or MCP server — appends to `.ship/lo
 
 Append-only. Human-readable. Gitignored by default (configurable per project). Gives agents project history without diffing files. Powers the "recent activity" view in the UI without a database.
 
----
+***
 
 ## Roadmap
 
 ### Alpha — Core Loop (Now)
+
 *Markdown todos in a git repo with a clean UI and an MCP server that doesn't forget.*
 
-- `shipwright init` → spec → issues → Kanban → MCP
-- Three modules: Issues, Specs, ADRs
-- One binary, no account, no internet required
-- Specta-generated types for all Tauri commands
-- `@shipwright/ui` extracted as standalone package
-- AI conversation panel (BYOM via MCP sampling)
-- Modes defined in config, basic mode switching
-- External MCP server config per project and per mode
-- Config export (`shipwright modes export --target claude/cursor/all`)
+* `shipwright init` → spec → issues → Kanban → MCP
+
+* Three modules: Issues, Specs, ADRs
+
+* One binary, no account, no internet required
+
+* Specta-generated types for all Tauri commands
+
+* `@shipwright/ui` extracted as standalone package
+
+* AI conversation panel (BYOM via MCP sampling)
+
+* Modes defined in config, basic mode switching
+
+* External MCP server config per project and per mode
+
+* Config export (`shipwright modes export --target claude/cursor/all`)
 
 ### V1 — MCP Platform + Premium Modules
+
 *The MCP config layer every AI developer needs.*
 
-- MCP gateway (local proxy, auth management, observability)
-- MCP Apps (SEP-1865) conformance — Shipwright UI inside Claude Desktop + Cursor
-- MCP Marketplace (beta) — discovery, one-click install, quality signals
-- Auth flow + entitlement system
-- Five premium modules compiled in + gated
-- Skills and prompt library
+* MCP gateway (local proxy, auth management, observability)
+
+* MCP Apps (SEP-1865) conformance — Shipwright UI inside Claude Desktop + Cursor
+
+* MCP Marketplace (beta) — discovery, one-click install, quality signals
+
+* Auth flow + entitlement system
+
+* Five premium modules compiled in + gated
+
+* Skills and prompt library
 
 ### V2 — Extension Runtime + Agent Sessions
+
 *The platform opens up.*
 
-- TypeScript extension runtime (deno_core embedded)
-- Extension SDK (`@shipwright/extension-sdk`)
-- Native agent runner (local worktrees)
-- Session orchestration + summaries
-- Private enterprise marketplace registry
-- Cloud agent execution (optional, paid)
+* TypeScript extension runtime (deno\_core embedded)
+
+* Extension SDK (`@shipwright/extension-sdk`)
+
+* Native agent runner (local worktrees)
+
+* Session orchestration + summaries
+
+* Private enterprise marketplace registry
+
+* Cloud agent execution (optional, paid)
 
 ### V3 — Stakeholder Expansion
+
 *The whole team lives here.*
 
-- First-party integrations: Figma, CI/CD, customer feedback
-- Cloud sync + real-time collaboration
-- Mobile companion app (monitor agent sessions)
-- Plugin creator module (vibe-code extensions against the SDK)
+* First-party integrations: Figma, CI/CD, customer feedback
+
+* Cloud sync + real-time collaboration
+
+* Mobile companion app (monitor agent sessions)
+
+* Plugin creator module (vibe-code extensions against the SDK)
 
 ### V4 — Enterprise
+
 *The module bundle for organizations.*
 
-- SSO, audit logs, approval workflows
-- Admin controls + access management
-- Compliance document types
-- Dedicated support
+* SSO, audit logs, approval workflows
 
----
+* Admin controls + access management
+
+* Compliance document types
+
+* Dedicated support
+
+***
 
 ## What Shipwright Is Not
 
-- **Not a code editor.** Shipwright gives agents context. Editors and agents do the coding.
-- **Not a Notion replacement.** General wikis and docs are not Shipwright's domain.
-- **Not an AI model.** Shipwright provides memory and structure. Models are brought by the user.
-- **Not SaaS-first.** Local-first is permanent, not a temporary constraint.
-- **Not enterprise-first.** The free tier must be genuinely great. Enterprise is growth, not the foundation.
+* **Not a code editor.** Shipwright gives agents context. Editors and agents do the coding.
 
----
+* **Not a Notion replacement.** General wikis and docs are not Shipwright's domain.
+
+* **Not an AI model.** Shipwright provides memory and structure. Models are brought by the user.
+
+* **Not SaaS-first.** Local-first is permanent, not a temporary constraint.
+
+* **Not enterprise-first.** The free tier must be genuinely great. Enterprise is growth, not the foundation.
+
+***
 
 ## The North Star Question
 
@@ -990,12 +1078,13 @@ The secondary test for MCP platform features specifically:
 
 If yes to either, it belongs in Shipwright. If no to both, it probably doesn't.
 
----
+***
 
 ## Document History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 0.1 | 2026-02-22 | Initial consolidated doc |
-| 0.2 | 2026-02-22 | Added modes, AI integration, config export, dynamic MCP, UI architecture, extracted @shipwright/ui |
-| 0.3 | 2026-02-22 | Added external MCP management, MCP gateway, MCP Apps (SEP-1865), MCP marketplace, updated roadmap |
+| Version | Date       | Changes                                                                                            |
+| ------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| 0.1     | 2026-02-22 | Initial consolidated doc                                                                           |
+| 0.2     | 2026-02-22 | Added modes, AI integration, config export, dynamic MCP, UI architecture, extracted @shipwright/ui |
+| 0.3     | 2026-02-22 | Added external MCP management, MCP gateway, MCP Apps (SEP-1865), MCP marketplace, updated roadmap  |
+

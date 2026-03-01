@@ -31,8 +31,12 @@ export function useSpecActions({
     }
 
     try {
-      const latest = await getSpecCmd(entry.file_name);
-      setSelectedSpec(latest);
+      const result = await getSpecCmd(entry.file_name);
+      if (result.status === 'ok') {
+        setSelectedSpec(result.data);
+      } else {
+        setError(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
     }
@@ -45,13 +49,23 @@ export function useSpecActions({
     }
 
     try {
-      const created = await createSpecCmd(title, content);
-      setSpecs((prev) => [
-        ...prev,
-        { file_name: created.file_name, title: created.title, path: created.path },
-      ]);
-      setSelectedSpec(created);
-      await refreshActivity();
+      const result = await createSpecCmd(title, content);
+      if (result.status === 'ok') {
+        const created = result.data;
+        setSpecs((prev) => [
+          ...prev,
+          {
+            file_name: created.file_name,
+            title: created.title,
+            path: created.path,
+          },
+        ]);
+        setSelectedSpec(created);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+        throw new Error(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
       throw error;
@@ -65,16 +79,25 @@ export function useSpecActions({
     }
 
     try {
-      const updated = await updateSpecCmd(fileName, content);
-      setSpecs((prev) =>
-        prev.map((entry) =>
-          entry.file_name === updated.file_name
-            ? { file_name: updated.file_name, title: updated.title, path: updated.path }
-            : entry
-        )
-      );
-      setSelectedSpec(updated);
-      await refreshActivity();
+      const result = await updateSpecCmd(fileName, content);
+      if (result.status === 'ok') {
+        const updated = result.data;
+        setSpecs((prev) =>
+          prev.map((entry) =>
+            entry.file_name === updated.file_name
+              ? {
+                file_name: updated.file_name,
+                title: updated.title,
+                path: updated.path,
+              }
+              : entry
+          )
+        );
+        setSelectedSpec(updated);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
     }
@@ -87,12 +110,18 @@ export function useSpecActions({
     }
 
     try {
-      await deleteSpecCmd(fileName);
-      setSpecs((prev) => prev.filter((entry) => entry.file_name !== fileName));
-      setSelectedSpec(null);
-      await refreshActivity();
+      const result = await deleteSpecCmd(fileName);
+      if (result.status === 'ok') {
+        setSpecs((prev) => prev.filter((entry) => entry.file_name !== fileName));
+        setSelectedSpec(null);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+        throw new Error(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
+      throw error;
     }
   };
 

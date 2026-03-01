@@ -12,6 +12,7 @@ interface AdrFrontmatterPanelProps {
   adr: ADR;
   specSuggestions: string[];
   tagSuggestions: string[];
+  adrSuggestions: string[];
   onChange: (next: ADR) => void;
 }
 
@@ -19,16 +20,15 @@ export default function AdrFrontmatterPanel({
   adr,
   specSuggestions,
   tagSuggestions,
+  adrSuggestions,
   onChange,
 }: AdrFrontmatterPanelProps) {
   const [tagInput, setTagInput] = useState('');
   const [tagInputOpen, setTagInputOpen] = useState(false);
 
-  const statusOptions = useMemo(() => {
-    const current = adr.metadata.status;
-    if (!current || ADR_STATUSES.includes(current)) return ADR_STATUSES;
-    return [current, ...ADR_STATUSES];
-  }, [adr.metadata.status]);
+  const statusOptions = useMemo(() => ADR_STATUSES, []);
+
+  const meta = adr.metadata as any;
 
   const updateMetadata = (patch: Partial<ADR['metadata']>) => {
     onChange({
@@ -56,117 +56,117 @@ export default function AdrFrontmatterPanel({
     .map((tag) => ({ value: tag }));
 
   return (
-    <section className="rounded-md border bg-card px-2.5 py-2">
-      <div className="grid gap-x-2 gap-y-1.5 md:grid-cols-2">
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Status</label>
-          <AutocompleteInput
-            value={adr.metadata.status}
-            options={statusOptions.map((value) => ({ value }))}
-            placeholder="Status"
-            className="h-8"
-            noResultsText="No status matches."
-            onValueChange={(status) => updateMetadata({ status: status.trim() || 'proposed' })}
-          />
+    <section className="rounded-lg border border-border/40 bg-muted/20 px-4 py-3 shadow-none">
+      <div className="mb-3 flex items-center justify-between border-b border-border/30 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="size-1.5 rounded-full bg-primary/60" />
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Properties</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="h-5 bg-background/50 px-1.5 font-mono text-[9px] font-medium text-muted-foreground/70">
+            {meta.id}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-x-8 gap-y-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Status & Date */}
+        <div className="space-y-3.5">
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Status</label>
+            <AutocompleteInput
+              value={meta.status || 'proposed'}
+              options={statusOptions.map((value) => ({ value }))}
+              placeholder="Select status"
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50 focus:bg-background"
+              noResultsText="No matching status."
+              onValueChange={(status) => {
+                updateMetadata({ status: (status || '').trim() || 'proposed' } as any);
+              }}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Date</label>
+            <DatePicker
+              value={meta.date}
+              className="h-8 w-full border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
+              onValueChange={(date) => updateMetadata({ date })}
+            />
+          </div>
         </div>
 
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Date</label>
-          <DatePicker
-            value={adr.metadata.date}
-            className="w-full"
-            onValueChange={(date) => updateMetadata({ date })}
-          />
+        {/* Relationships */}
+        <div className="space-y-3.5">
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Reference Spec</label>
+            <AutocompleteInput
+              value={meta.spec_id || ''}
+              options={specSuggestions.map((spec) => ({ value: spec }))}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
+              placeholder="None"
+              noResultsText="No specs found."
+              onValueChange={(spec) => updateMetadata({ spec_id: (spec || '').trim() || null })}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Supersedes</label>
+            <AutocompleteInput
+              value={meta.supersedes_id || ''}
+              options={adrSuggestions.map((id) => ({ value: id }))}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
+              placeholder="None"
+              noResultsText="No ADRs found."
+              onValueChange={(sid) => updateMetadata({ supersedes_id: (sid || '').trim() || null })}
+            />
+          </div>
         </div>
 
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Reference</label>
-          <AutocompleteInput
-            value={adr.metadata.spec ?? ''}
-            options={specSuggestions.map((spec) => ({ value: spec }))}
-            className="h-8"
-            placeholder="Link related doc"
-            noResultsText="No references found."
-            onValueChange={(spec) => updateMetadata({ spec: spec.trim() ? spec.trim() : null })}
-          />
-        </div>
-
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground mb-0.5 block text-xs font-medium uppercase tracking-wide">
-            Tags {(adr.metadata.tags ?? []).length ? `(${(adr.metadata.tags ?? []).length})` : ''}
-          </label>
-          <div className="border-input bg-background/50 flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border px-1.5 py-1">
-            {(adr.metadata.tags ?? []).map((tag) => (
-              <Badge key={tag} variant="outline" className="h-6 gap-1 text-[11px]">
+        {/* Tags Section */}
+        <div className="space-y-1 md:col-span-2 lg:col-span-1">
+          <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Tags</label>
+          <div className="flex min-h-[72px] flex-wrap content-start gap-1.5 rounded-md border border-border/30 bg-background/20 p-2 shadow-inner transition-colors focus-within:bg-background/40">
+            {(meta.tags ?? []).map((tag: string) => (
+              <Badge key={tag} variant="secondary" className="h-5 gap-1 rounded-sm bg-primary/10 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20">
                 {tag}
                 <button
                   type="button"
-                  className="rounded-full p-0.5 hover:bg-muted"
-                  aria-label={`Remove tag ${tag}`}
+                  className="text-primary/40 hover:text-primary"
                   onClick={() => removeTag(tag)}
                 >
-                  <X className="size-3" />
+                  <X className="size-2.5" />
                 </button>
               </Badge>
             ))}
 
             {tagInputOpen ? (
-              <div className="flex min-w-[200px] flex-1 items-center gap-1">
+              <div className="flex w-full items-center gap-1">
                 <AutocompleteInput
                   value={tagInput}
                   options={availableTagOptions}
-                  className="h-6 w-full"
+                  className="h-6 min-w-[80px] flex-1 border-none bg-transparent text-[11px] shadow-none focus-visible:ring-0"
                   autoFocus
-                  placeholder="Add tag"
-                  noResultsText="No tag suggestions."
+                  placeholder="..."
                   onCommit={(value) => {
                     addTag(value);
                     setTagInputOpen(false);
                   }}
                   onValueChange={setTagInput}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-xs"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Confirm add tag"
-                  disabled={!tagInput.trim()}
-                  onClick={() => {
-                    addTag(tagInput);
-                    setTagInputOpen(false);
-                  }}
-                >
+                <Button variant="ghost" size="icon-xs" className="size-5 shrink-0" onClick={() => { addTag(); setTagInputOpen(false); }}>
                   <Check className="size-3" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Cancel add tag"
-                  onClick={() => {
-                    setTagInput('');
-                    setTagInputOpen(false);
-                  }}
-                >
-                  <X className="size-3" />
                 </Button>
               </div>
             ) : (
               <Button
-                type="button"
-                variant="outline"
-                size="icon-xs"
-                className="h-6 w-6 shrink-0"
-                title="Add tag"
-                aria-label="Add tag"
-                onClick={() => {
-                  setTagInput('');
-                  setTagInputOpen(true);
-                }}
+                variant="ghost"
+                size="xs"
+                className="h-5 px-1.5 text-[10px] text-muted-foreground hover:bg-background/50"
+                onClick={() => setTagInputOpen(true)}
               >
-                <Plus className="size-3" />
+                <Plus className="mr-1 size-2.5" />
+                Add
               </Button>
             )}
           </div>

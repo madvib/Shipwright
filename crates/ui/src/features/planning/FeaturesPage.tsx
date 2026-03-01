@@ -1,19 +1,27 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Flag, Plus } from 'lucide-react';
+import { ArrowRight, Flag, Plus, Search } from 'lucide-react';
 import { AdrEntry, FeatureInfo as FeatureEntry, ReleaseInfo as ReleaseEntry, SpecInfo as SpecEntry } from '@/bindings';
 import DetailSheet from './DetailSheet';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
-import MarkdownEditor from '@/components/editor';
-import { PageFrame, PageHeader } from '@/components/app/PageFrame';
-import FeatureMetadataPanel from '@/components/editor/FeatureMetadataPanel';
-import { readFrontmatterStringField, splitFrontmatterDocument } from '@/components/editor/frontmatter';
+import { Badge } from '@/components/ui/badge';
 import TemplateEditorButton from './TemplateEditorButton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { StatusFilter } from '@/components/app/StatusFilter';
+import MarkdownEditor from '@/components/editor';
+import FeatureMetadataPanel from '@/components/editor/FeatureMetadataPanel';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
+import { readFrontmatterStringField, splitFrontmatterDocument } from '@/components/editor/frontmatter';
+import { FrontmatterDelimiter } from '@/components/editor/frontmatter';
 
 interface FeaturesPageProps {
   features: FeatureEntry[];
@@ -49,20 +57,22 @@ export default function FeaturesPage({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<FeatureSort>('newest');
-  const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set());
 
   const sortedFeatures = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const next = features.filter((feature) => {
-      if (!needle) return true;
-      return (
+    const needle = searchQuery.trim().toLowerCase();
+    const filtered = features.filter((feature) => {
+      const matchesSearch =
         feature.title.toLowerCase().includes(needle) ||
-        feature.status.toLowerCase().includes(needle) ||
-        (feature.release ?? '').toLowerCase().includes(needle) ||
-        feature.file_name.toLowerCase().includes(needle)
-      );
+        feature.file_name.toLowerCase().includes(needle);
+
+      const matchesStatus = selectedStatuses.size === 0 || selectedStatuses.has(feature.status);
+
+      return matchesSearch && matchesStatus;
     });
-    next.sort((a, b) => {
+
+    filtered.sort((a, b) => {
       switch (sortBy) {
         case 'oldest':
           return new Date(a.updated).getTime() - new Date(b.updated).getTime();
@@ -73,14 +83,14 @@ export default function FeaturesPage({
           return new Date(b.updated).getTime() - new Date(a.updated).getTime();
       }
     });
-    return next;
-  }, [features, search, sortBy]);
+    return filtered;
+  }, [features, searchQuery, selectedStatuses, sortBy]);
 
   const createInitialFeatureDocument = () => {
     return `+++
 title = ""
 status = "active"
-release = ""
+release_id = ""
 spec = ""
 adrs = []
 tags = []
@@ -109,7 +119,7 @@ tags = []
       setError('Title is required.');
       return;
     }
-    const release = readFrontmatterStringField(parsed.frontmatter, 'release').trim();
+    const release = readFrontmatterStringField(parsed.frontmatter, 'release_id').trim();
     const spec = readFrontmatterStringField(parsed.frontmatter, 'spec').trim();
     try {
       setCreating(true);
@@ -184,22 +194,36 @@ tags = []
       ) : (
         <Card size="sm">
           <CardHeader className="pb-2">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-sm">Feature Inventory</CardTitle>
                 <CardDescription>
                   {features.length} feature{features.length !== 1 ? 's' : ''} in this project
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search features"
-                  className="h-8 w-[220px]"
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+                <div className="relative min-w-[180px] flex-1 max-w-[280px]">
+                  <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                  <Input
+                    placeholder="Search features..."
+                    className="pl-9 h-8"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <StatusFilter
+                  label="Status"
+                  options={[
+                    { value: 'active', label: 'Active' },
+                    { value: 'paused', label: 'Paused' },
+                    { value: 'complete', label: 'Complete' },
+                    { value: 'archived', label: 'Archived' },
+                  ]}
+                  selectedValues={selectedStatuses}
+                  onSelect={setSelectedStatuses}
                 />
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as FeatureSort)}>
-                  <SelectTrigger size="sm" className="w-[180px]">
+                  <SelectTrigger size="sm" className="w-[150px]">
                     <SelectValue>
                       {FEATURE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label}
                     </SelectValue>
@@ -215,25 +239,27 @@ tags = []
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-1.5">
+            {sortedFeatures.length === 0 && (
+              <div className="py-8 text-center text-sm text-muted-foreground italic">No features match the current filter.</div>
+            )}
             {sortedFeatures.map((feature) => (
-              <div
+              <button
                 key={feature.path}
-                className="hover:bg-muted/40 grid gap-2 rounded-md border p-3 transition-colors md:grid-cols-[1fr_auto] md:items-center"
+                type="button"
+                className="hover:bg-muted/40 grid w-full gap-2 rounded-md border p-3 text-left transition-colors md:grid-cols-[1fr_auto] md:items-center"
                 title={feature.path}
+                onClick={() => onSelectFeature(feature)}
               >
                 <div className="min-w-0 space-y-1">
                   <p className="truncate text-sm font-medium">{feature.title}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{feature.status}</Badge>
-                    {feature.release && <Badge variant="secondary">{feature.release}</Badge>}
+                    {feature.release_id && <Badge variant="secondary">{feature.release_id}</Badge>}
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => onSelectFeature(feature)}>
-                  Open
-                  <ArrowRight className="size-3.5" />
-                </Button>
-              </div>
+                <ArrowRight className="size-4 text-muted-foreground/50 hidden md:block" />
+              </button>
             ))}
           </CardContent>
         </Card>
@@ -273,19 +299,19 @@ tags = []
             <MarkdownEditor
               label="Feature Plan"
               value={content}
-              onChange={(next) => {
+              onChange={(next: string) => {
                 setContent(next);
                 setError(null);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
+              frontmatterPanel={({ frontmatter, delimiter, onChange }: { frontmatter: string | null; delimiter: FrontmatterDelimiter | null; onChange: (fm: string | null, d: FrontmatterDelimiter) => void }) => (
                 <FeatureMetadataPanel
                   frontmatter={frontmatter}
                   delimiter={delimiter}
                   defaultTitle=""
                   defaultStatus="active"
-                  releaseSuggestions={releases.map((entry) => entry.file_name)}
-                  specSuggestions={specs.map((entry) => entry.file_name)}
-                  adrSuggestions={adrs.map((entry) => entry.file_name)}
+                  releaseSuggestions={releases.map((entry: ReleaseEntry) => entry.file_name)}
+                  specSuggestions={specs.map((entry: SpecEntry) => entry.file_name)}
+                  adrSuggestions={adrs.map((entry: AdrEntry) => entry.file_name)}
                   tagSuggestions={[]}
                   onChange={onChange}
                 />

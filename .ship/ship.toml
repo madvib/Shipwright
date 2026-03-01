@@ -47,6 +47,12 @@ args = [
     "shadcn@latest",
     "mcp",
 ]
+scope = "global"
+server_type = "stdio"
+disabled = false
+
+[mcp_servers.env]
+
 [[mcp_servers]]
 id = "ship"
 name = "Shipwright"
@@ -61,7 +67,9 @@ disabled = false
 [agent]
 skills = [
     "clean-code",
-    "solid","task-policy"
+    "solid",
+    "task-policy",
+    "skill-1772336621485",
 ]
 prompts = []
 context = []

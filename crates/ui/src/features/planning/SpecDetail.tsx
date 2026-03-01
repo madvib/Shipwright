@@ -1,38 +1,52 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SpecDocument } from '@/bindings';
+import { FeatureInfo, SpecDocument } from '@/bindings';
+import { Target, ExternalLink, Trash2 } from 'lucide-react';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';
 import SpecMetadataPanel from '@/components/editor/SpecMetadataPanel';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 
 interface SpecDetailProps {
   spec: SpecDocument;
+  features: FeatureInfo[];
   tagSuggestions?: string[];
   mcpEnabled?: boolean;
   onClose: () => void;
+  onSelectFeature: (feature: FeatureInfo) => void;
   onSave: (fileName: string, content: string) => Promise<void> | void;
   onDelete: (fileName: string) => Promise<void> | void;
 }
 
 export default function SpecDetail({
   spec,
+  features,
   tagSuggestions = [],
   mcpEnabled = false,
   onClose,
+  onSelectFeature,
   onSave,
   onDelete,
 }: SpecDetailProps) {
   const [content, setContent] = useState(spec.content);
   const [dirty, setDirty] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setContent(spec.content);
     setDirty(false);
-    setConfirmDelete(false);
     setSaving(false);
   }, [spec]);
 
@@ -53,69 +67,112 @@ export default function SpecDetail({
     disabled: !dirty,
   });
 
+  const linkedFeatures = features.filter((f) => f.spec_id === spec.file_name);
+
+  const actionButtons = (
+    <>
+      <Button size="xs" className="h-7 px-2 text-xs" onClick={() => void saveSpec()} disabled={!dirty || saving}>
+        {saving ? 'Saving…' : 'Save Spec'}
+      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger
+          render={
+            <Button
+              size="xs"
+              variant="outline"
+              className="h-7 border-destructive/40 px-2 text-destructive hover:bg-destructive/10"
+              title="Delete Spec"
+            />
+          }
+        >
+          <Trash2 className="size-3.5" />
+        </AlertDialogTrigger>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this spec?</AlertDialogTitle>
+            <AlertDialogDescription>This will permanently remove the specification document.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+            <AlertDialogAction size="sm" variant="destructive" onClick={() => void onDelete(spec.file_name)}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
   return (
     <DetailSheet
       label="Spec"
-      title={<h2 className="text-xl font-semibold tracking-tight">{spec.title}</h2>}
+      title={<h2 className="truncate text-lg font-semibold tracking-tight">{spec.title}</h2>}
       meta={<p className="text-muted-foreground text-xs">{spec.file_name}</p>}
       onClose={onClose}
       className="max-w-[1800px]"
       bodyScrollable={false}
       bodyClassName="overflow-hidden p-0"
-      footerClassName="px-3 py-2 md:px-4 md:py-2.5"
-      footer={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-          {!confirmDelete ? (
-            <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
-              Delete
-            </Button>
-          ) : (
-            <Card size="sm" className="w-full border-destructive/30 md:w-auto">
-              <CardContent className="flex items-center gap-2 py-2">
-                <span className="text-sm">Delete this spec?</span>
-                <Button variant="destructive" size="xs" onClick={() => void onDelete(spec.file_name)}>
-                  Yes
-                </Button>
-                <Button variant="outline" size="xs" onClick={() => setConfirmDelete(false)}>
-                  Cancel
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      }
+      inlineHeader
     >
-      <div className="h-full min-h-0 p-2">
-        <MarkdownEditor
-          label={undefined}
-          toolbarStart={
-            <Button size="xs" className="h-7 px-2 text-xs" onClick={() => void saveSpec()} disabled={!dirty || saving}>
-              {saving ? 'Saving…' : 'Save Spec'}
-            </Button>
-          }
-          value={content}
-          onChange={(next) => {
-            setContent(next);
-            setDirty(true);
-          }}
-          frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-            <SpecMetadataPanel
-              frontmatter={frontmatter}
-              delimiter={delimiter}
-              defaultTitle={spec.title}
-              tagSuggestions={tagSuggestions}
-              onChange={onChange}
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-0 flex-1">
+          {/* Editor — left */}
+          <div className="min-w-0 flex-1 p-1.5">
+            <MarkdownEditor
+              label={undefined}
+              toolbarStart={actionButtons}
+              value={content}
+              onChange={(next) => {
+                setContent(next);
+                setDirty(true);
+              }}
+              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
+                <SpecMetadataPanel
+                  frontmatter={frontmatter}
+                  delimiter={delimiter}
+                  defaultTitle={spec.title}
+                  tagSuggestions={tagSuggestions}
+                  onChange={onChange}
+                />
+              )}
+              showStats={false}
+              fillHeight
+              rows={18}
+              defaultMode="doc"
+              mcpEnabled={mcpEnabled}
             />
-          )}
-          mcpEnabled={mcpEnabled}
-          showStats={false}
-          fillHeight
-          rows={18}
-          defaultMode="doc"
-        />
+          </div>
+
+          {/* Features sidebar — right */}
+          <aside className="flex w-[260px] shrink-0 flex-col overflow-y-auto border-l bg-muted/20">
+            <div className="flex items-center gap-2 border-b bg-card/50 px-4 py-3">
+              <Target className="size-3.5 text-primary" />
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+                Implemented By
+              </p>
+              <Badge variant="outline" className="ml-auto text-[10px]">{linkedFeatures.length}</Badge>
+            </div>
+            <div className="flex flex-col gap-1.5 p-3">
+              {linkedFeatures.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground italic">No features linked yet.</p>
+              ) : (
+                linkedFeatures.map((feature) => (
+                  <button
+                    key={feature.file_name}
+                    onClick={() => onSelectFeature(feature)}
+                    className="group flex flex-col items-start gap-1 rounded-md border bg-card p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent/50"
+                  >
+                    <div className="flex w-full items-start justify-between gap-2">
+                      <span className="truncate text-xs font-medium">{feature.title}</span>
+                      <ExternalLink className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                    </div>
+                    <span className="text-[10px] capitalize text-muted-foreground">{feature.status}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+        </div>
       </div>
     </DetailSheet>
   );

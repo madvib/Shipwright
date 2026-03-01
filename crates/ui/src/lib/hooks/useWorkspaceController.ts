@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { relativeDate, formatShortDate } from '@/lib/date';
 import {
   AdrEntry,
   EventRecord,
@@ -6,6 +7,8 @@ import {
   FeatureInfo as FeatureEntry,
   IssueEntry,
   ModeConfig,
+  NoteDocument,
+  NoteInfo as NoteEntry,
   ProjectDiscovery as Project,
   ProjectConfig,
   ReleaseDocument,
@@ -30,6 +33,7 @@ import { useSpecActions } from './workspace/useSpecActions';
 import { useSettingsActions } from './workspace/useSettingsActions';
 import { useReleaseActions } from './workspace/useReleaseActions';
 import { useFeatureActions } from './workspace/useFeatureActions';
+import { useNoteActions } from './workspace/useNoteActions';
 
 function mergeModes(base: ModeConfig[] = [], overlay: ModeConfig[] = []): ModeConfig[] {
   const merged = [...base];
@@ -55,6 +59,7 @@ export function useWorkspaceController() {
   const [specs, setSpecs] = useState<SpecEntry[]>([]);
   const [releases, setReleases] = useState<ReleaseEntry[]>([]);
   const [features, setFeatures] = useState<FeatureEntry[]>([]);
+  const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [eventEntries, setEventEntries] = useState<EventRecord[]>([]);
   const [config, setConfig] = useState<Config>({});
   const [projectConfig, setProjectConfig] = useState<ProjectConfig | null>(null);
@@ -64,6 +69,7 @@ export function useWorkspaceController() {
   const [selectedSpec, setSelectedSpec] = useState<SpecDocument | null>(null);
   const [selectedRelease, setSelectedRelease] = useState<ReleaseDocument | null>(null);
   const [selectedFeature, setSelectedFeature] = useState<FeatureDocument | null>(null);
+  const [selectedNote, setSelectedNote] = useState<NoteDocument | null>(null);
   const [showNewIssue, setShowNewIssue] = useState(false);
   const [showNewAdr, setShowNewAdr] = useState(false);
   const [switchingMode, setSwitchingMode] = useState(false);
@@ -95,6 +101,7 @@ export function useWorkspaceController() {
     setSpecs,
     setReleases,
     setFeatures,
+    setNotes,
     setEventEntries,
     setProjectConfig,
     setGlobalAgentConfig,
@@ -213,6 +220,17 @@ export function useWorkspaceController() {
     refreshActivity,
   });
 
+  const {
+    handleSelectNote,
+    handleCreateNote,
+    handleSaveNote,
+  } = useNoteActions({
+    setNotes,
+    setSelectedNote,
+    setError,
+    refreshActivity,
+  });
+
   const { handleSaveSettings, handleSaveProjectSettings, handleSaveGlobalAgentSettings } = useSettingsActions({
     setConfig,
     setProjectConfig,
@@ -243,24 +261,41 @@ export function useWorkspaceController() {
   };
 
   const noProject = !activeProject;
-  const tagSuggestions = Array.from(
-    new Set([
-      ...issues
-        .flatMap((entry) => entry.issue?.tags ?? [])
-        .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0),
-      ...adrs
-        .flatMap((entry) => entry.adr.metadata.tags ?? [])
-        .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0),
-    ])
-  ).sort((a, b) => a.localeCompare(b));
-  const specSuggestions = specs
-    .map((entry) => entry.file_name)
-    .filter((value) => value.trim().length > 0)
-    .sort((a, b) => a.localeCompare(b));
-  const issueFileSuggestions = issues
-    .map((entry) => entry.file_name)
-    .filter((value) => value.trim().length > 0)
-    .sort((a, b) => a.localeCompare(b));
+
+  const tagSuggestions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...issues
+          .flatMap((entry) => entry.issue?.tags ?? [])
+          .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0),
+        ...adrs
+          .flatMap((entry) => entry.adr.metadata.tags ?? [])
+          .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0),
+      ])
+    ).sort((a, b) => a.localeCompare(b));
+  }, [issues, adrs]);
+
+  const specSuggestions = useMemo(() => {
+    return specs
+      .map((entry) => entry.file_name)
+      .filter((value) => value.trim().length > 0)
+      .sort((a, b) => a.localeCompare(b));
+  }, [specs]);
+
+  const issueFileSuggestions = useMemo(() => {
+    return issues
+      .map((entry) => entry.file_name)
+      .filter((value) => value.trim().length > 0)
+      .sort((a, b) => a.localeCompare(b));
+  }, [issues]);
+
+  const adrSuggestions = useMemo(() => {
+    return adrs
+      .map((entry) => entry.adr.metadata.id)
+      .filter((value) => value.trim().length > 0)
+      .sort((a, b) => a.localeCompare(b));
+  }, [adrs]);
+
   const mcpEnabled = config.mcp_enabled !== false;
 
   return {
@@ -274,6 +309,7 @@ export function useWorkspaceController() {
     specs,
     releases,
     features,
+    notes,
     eventEntries,
     config,
     projectConfig,
@@ -283,6 +319,7 @@ export function useWorkspaceController() {
     selectedSpec,
     selectedRelease,
     selectedFeature,
+    selectedNote,
     showNewIssue,
     showNewAdr,
     sidebarCollapsed,
@@ -298,6 +335,7 @@ export function useWorkspaceController() {
     noProject,
     tagSuggestions,
     specSuggestions,
+    adrSuggestions,
     issueFileSuggestions,
     mcpEnabled,
     setSelectedIssue,
@@ -305,6 +343,7 @@ export function useWorkspaceController() {
     setSelectedSpec,
     setSelectedRelease,
     setSelectedFeature,
+    setSelectedNote,
     setShowNewIssue,
     setShowNewAdr,
     setSidebarCollapsed,
@@ -333,6 +372,9 @@ export function useWorkspaceController() {
     handleSelectFeature,
     handleCreateFeature,
     handleSaveFeature,
+    handleSelectNote,
+    handleCreateNote,
+    handleSaveNote,
     refreshActivity,
     refreshEvents,
     ingestEvents,

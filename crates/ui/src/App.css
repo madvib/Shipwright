@@ -244,16 +244,26 @@
     --crepe-font-code: var(--font-mono);
   }
 
+  /* Remove default Crepe top padding that creates massive gaps */
+  .ship-milkdown-shell .milkdown>div {
+    max-width: none !important;
+    padding-top: 0 !important;
+  }
+
   .ship-milkdown-shell .milkdown .ProseMirror {
     min-height: 100%;
-    padding: 0.85rem;
+    padding: 0 1.25rem 2rem;
     line-height: 1.6;
     caret-color: var(--crepe-color-on-background);
   }
 
+  .ship-milkdown-shell .milkdown .ProseMirror>*:first-child {
+    margin-top: 0 !important;
+  }
+
   .ship-milkdown-shell .milkdown .ProseMirror ::selection {
-    background: color-mix(in oklch, var(--primary) 28%, var(--background));
-    color: var(--foreground);
+    background: oklch(var(--primary) / 0.15);
+    color: inherit;
   }
 
   .ship-milkdown-shell .milkdown .ProseMirror-focused {
@@ -280,7 +290,7 @@
     background: color-mix(in oklch, var(--primary) 18%, var(--muted));
   }
 
-  .ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span {
+  .ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups .menu-group li>span {
     font-size: 13px;
     color: var(--foreground);
   }
@@ -295,11 +305,24 @@
     fill: var(--foreground);
   }
 
+  .ship-milkdown-shell .milkdown .crepe-line-number {
+    color: var(--muted-foreground);
+    opacity: 0.5;
+  }
+
+  .ship-milkdown-shell .milkdown .crepe-line-number.crepe-line-number-active {
+    color: var(--primary);
+    background: oklch(var(--primary) / 0.1);
+    opacity: 1;
+    font-weight: 700;
+  }
+
   @keyframes ship-slash-fade {
     from {
       opacity: 0;
       transform: translateY(-2px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -346,11 +369,11 @@
     font-size: inherit;
   }
 
-  .ship-markdown-preview > *:first-child {
+  .ship-markdown-preview>*:first-child {
     margin-top: 0;
   }
 
-  .ship-markdown-preview > *:last-child {
+  .ship-markdown-preview>*:last-child {
     margin-bottom: 0;
   }
 

@@ -1,7 +1,18 @@
-# Agent Permissions
-# - Control what your agents can do.
+[tools]
+allow = []
+deny = [""]
 
-[permissions]
-# Example:
-# [permissions.filesystem]
-# allow = ["/Users/micahcotton/dev/worktrees/ship-backend"]
+[filesystem]
+allow = []
+deny = []
+
+[commands]
+allow = []
+deny = []
+
+[network]
+policy = "none"
+allow_hosts = []
+
+[agent]
+require_confirmation = []

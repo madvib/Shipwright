@@ -27,8 +27,12 @@ export function useFeatureActions({
     }
 
     try {
-      const latest = await getFeatureCmd(entry.file_name);
-      setSelectedFeature(latest);
+      const result = await getFeatureCmd(entry.file_name);
+      if (result.status === 'ok') {
+        setSelectedFeature(result.data);
+      } else {
+        setError(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
     }
@@ -46,20 +50,29 @@ export function useFeatureActions({
     }
 
     try {
-      const created = await createFeatureCmd(title, content, release, spec);
-      setFeatures((prev) => [
-        ...prev,
-        {
-          file_name: created.file_name,
-          title: created.title,
-          status: created.status,
-          release: created.release,
-          path: created.path,
-          updated: created.updated,
-        },
-      ]);
-      setSelectedFeature(created);
-      await refreshActivity();
+      const result = await createFeatureCmd(title, content, release, spec);
+      if (result.status === 'ok') {
+        const created = result.data;
+        setFeatures((prev) => [
+          ...prev,
+          {
+            file_name: created.file_name,
+            title: created.title,
+            status: created.status,
+            release_id: created.release_id,
+            spec_id: created.spec_id,
+            branch: created.branch,
+            description: created.description,
+            path: created.path,
+            updated: created.updated,
+          },
+        ]);
+        setSelectedFeature(created);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+        throw new Error(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
       throw error;
@@ -73,23 +86,31 @@ export function useFeatureActions({
     }
 
     try {
-      const updated = await updateFeatureCmd(fileName, content);
-      setFeatures((prev) =>
-        prev.map((entry) =>
-          entry.file_name === updated.file_name
-            ? {
+      const result = await updateFeatureCmd(fileName, content);
+      if (result.status === 'ok') {
+        const updated = result.data;
+        setFeatures((prev) =>
+          prev.map((entry) =>
+            entry.file_name === updated.file_name
+              ? {
                 file_name: updated.file_name,
                 title: updated.title,
                 status: updated.status,
-                release: updated.release,
+                release_id: updated.release_id,
+                spec_id: updated.spec_id,
+                branch: updated.branch,
+                description: updated.description,
                 path: updated.path,
                 updated: updated.updated,
               }
-            : entry
-        )
-      );
-      setSelectedFeature(updated);
-      await refreshActivity();
+              : entry
+          )
+        );
+        setSelectedFeature(updated);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
     }

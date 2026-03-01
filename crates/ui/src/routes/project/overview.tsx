@@ -23,6 +23,7 @@ function OverviewRouteComponent() {
       adrs={workspace.adrs}
       releases={workspace.releases}
       features={workspace.features}
+      notes={workspace.notes}
       events={workspace.eventEntries}
       statuses={workspace.statuses}
       onNavigate={handleNavigate}

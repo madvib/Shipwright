@@ -4,6 +4,7 @@ import {
   EventRecord,
   FeatureInfo as FeatureEntry,
   IssueEntry,
+  NoteInfo as NoteEntry,
   ProjectDiscovery as Project,
   ProjectConfig,
   ReleaseInfo as ReleaseEntry,
@@ -19,6 +20,7 @@ import {
   listEventEntries,
   listFeatures,
   listIssues,
+  listNotes,
   listProjects,
   listReleases,
   listSpecs,
@@ -41,6 +43,7 @@ interface UseWorkspaceLifecycleParams {
   setSpecs: Dispatch<SetStateAction<SpecEntry[]>>;
   setReleases: Dispatch<SetStateAction<ReleaseEntry[]>>;
   setFeatures: Dispatch<SetStateAction<FeatureEntry[]>>;
+  setNotes: Dispatch<SetStateAction<NoteEntry[]>>;
   setEventEntries: Dispatch<SetStateAction<EventRecord[]>>;
   setProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setGlobalAgentConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
@@ -60,6 +63,7 @@ export function useWorkspaceLifecycle({
   setSpecs,
   setReleases,
   setFeatures,
+  setNotes,
   setEventEntries,
   setProjectConfig,
   setGlobalAgentConfig,
@@ -77,16 +81,18 @@ export function useWorkspaceLifecycle({
       setSpecs([]);
       setReleases([]);
       setFeatures([]);
+      setNotes([]);
       return;
     }
 
     try {
-      const [issueList, adrList, specList, releaseList, featureList, eventList] = await Promise.all([
+      const [issueList, adrList, specList, releaseList, featureList, noteList, eventList] = await Promise.all([
         listIssues().catch(() => []),
         listAdrs().catch(() => []),
         listSpecs().catch(() => []),
         listReleases().catch(() => []),
         listFeatures().catch(() => []),
+        listNotes().catch(() => []),
         listEventEntries(0, 200).catch(() => []),
       ]);
       setIssues(issueList);
@@ -94,11 +100,12 @@ export function useWorkspaceLifecycle({
       setSpecs(specList);
       setReleases(releaseList);
       setFeatures(featureList);
+      setNotes(noteList);
       setEventEntries(eventList);
     } catch (error) {
       console.error('Failed to load project data', error);
     }
-  }, [setAdrs, setEventEntries, setFeatures, setIssues, setReleases, setSpecs]);
+  }, [setAdrs, setEventEntries, setFeatures, setIssues, setReleases, setSpecs, setNotes]);
 
   const loadProjectConfig = useCallback(async () => {
     if (!isTauriRuntime()) {

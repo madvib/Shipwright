@@ -59,8 +59,8 @@ export default function FeatureMetadataPanel({
   const status = readFrontmatterStringField(effectiveFrontmatter, 'status') || defaultStatus;
   const owner = readFrontmatterStringField(effectiveFrontmatter, 'owner');
   const branch = readFrontmatterStringField(effectiveFrontmatter, 'branch');
-  const release = readFrontmatterStringField(effectiveFrontmatter, 'release');
-  const spec = readFrontmatterStringField(effectiveFrontmatter, 'spec');
+  const releaseId = readFrontmatterStringField(effectiveFrontmatter, 'release_id') || readFrontmatterStringField(effectiveFrontmatter, 'release');
+  const specId = readFrontmatterStringField(effectiveFrontmatter, 'spec_id') || readFrontmatterStringField(effectiveFrontmatter, 'spec');
   const adrs = readFrontmatterStringListField(effectiveFrontmatter, 'adrs');
   const tags = readFrontmatterStringListField(effectiveFrontmatter, 'tags');
 
@@ -105,212 +105,183 @@ export default function FeatureMetadataPanel({
   };
 
   return (
-    <section className="rounded-md border bg-card px-2.5 py-2">
-      <div className="grid gap-x-2 gap-y-1.5 md:grid-cols-2">
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Title</label>
-          <Input value={title} className="h-8" placeholder="Feature title" onChange={(event) => updateField('title', event.target.value)} />
+    <section className="rounded-lg border border-border/40 bg-muted/20 px-4 py-3 shadow-none">
+      <div className="mb-3 flex items-center justify-between border-b border-border/30 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="size-1.5 rounded-full bg-primary/60" />
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Properties</h3>
+        </div>
+      </div>
+
+      <div className="grid gap-x-8 gap-y-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Basic Info */}
+        <div className="space-y-3.5">
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Title</label>
+            <Input
+              value={title}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50 focus:bg-background"
+              placeholder="Feature title"
+              onChange={(event) => updateField('title', event.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Status</label>
+            <AutocompleteInput
+              value={status}
+              options={statusOptions.map((value) => ({ value }))}
+              placeholder="Select status"
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50 focus:bg-background"
+              noResultsText="No matching status."
+              onValueChange={(value) => updateField('status', value)}
+            />
+          </div>
         </div>
 
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Status</label>
-          <AutocompleteInput
-            value={status}
-            options={statusOptions.map((value) => ({ value }))}
-            placeholder="Status"
-            className="h-8"
-            noResultsText="No status matches."
-            onValueChange={(value) => updateField('status', value)}
-          />
+        {/* Relationships */}
+        <div className="space-y-3.5">
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Release</label>
+            <AutocompleteInput
+              value={releaseId || ''}
+              options={releaseSuggestions.map((value) => ({ value }))}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
+              placeholder="Unassigned"
+              noResultsText="No releases found."
+              onValueChange={(value) => updateField('release_id', value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Spec</label>
+            <AutocompleteInput
+              value={specId || ''}
+              options={specSuggestions.map((value) => ({ value }))}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
+              placeholder="None"
+              noResultsText="No specs found."
+              onValueChange={(value) => updateField('spec_id', value)}
+            />
+          </div>
         </div>
 
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Release</label>
-          <AutocompleteInput
-            value={release}
-            options={releaseSuggestions.map((value) => ({ value }))}
-            className="h-8"
-            placeholder="Unassigned"
-            noResultsText="No releases found."
-            onValueChange={(value) => updateField('release', value)}
-          />
+        {/* Ownership & Branch */}
+        <div className="space-y-3.5">
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Owner</label>
+            <Input
+              value={owner}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50 focus:bg-background"
+              placeholder="e.g. @username"
+              onChange={(event) => updateField('owner', event.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Branch</label>
+            <Input
+              value={branch}
+              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50 focus:bg-background"
+              placeholder="feature/..."
+              onChange={(event) => updateField('branch', event.target.value)}
+            />
+          </div>
         </div>
 
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Spec</label>
-          <AutocompleteInput
-            value={spec}
-            options={specSuggestions.map((value) => ({ value }))}
-            className="h-8"
-            placeholder="None"
-            noResultsText="No specs found."
-            onValueChange={(value) => updateField('spec', value)}
-          />
-        </div>
-
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Owner</label>
-          <Input value={owner} className="h-8" placeholder="Owner" onChange={(event) => updateField('owner', event.target.value)} />
-        </div>
-
-        <div className="space-y-0.5">
-          <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Branch</label>
-          <Input value={branch} className="h-8" placeholder="feature/..." onChange={(event) => updateField('branch', event.target.value)} />
-        </div>
-
-        <div className="space-y-0.5 md:col-span-2">
-          <label className="text-muted-foreground mb-0.5 block text-xs font-medium uppercase tracking-wide">
-            ADRs {adrs.length ? `(${adrs.length})` : ''}
-          </label>
-          <div className="border-input bg-background/50 flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border px-1.5 py-1">
+        {/* ADRs Section */}
+        <div className="space-y-1 md:col-span-2 lg:col-span-1">
+          <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">ADRs</label>
+          <div className="flex min-h-[72px] flex-wrap content-start gap-1.5 rounded-md border border-border/30 bg-background/20 p-2 shadow-inner transition-colors focus-within:bg-background/40">
             {adrs.map((adr) => (
-              <Badge key={adr} variant="outline" className="h-6 gap-1 text-[11px]">
+              <Badge key={adr} variant="secondary" className="h-5 gap-1 rounded-sm bg-primary/10 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20">
                 {adr}
                 <button
                   type="button"
-                  className="rounded-full p-0.5 hover:bg-muted"
-                  aria-label={`Remove ADR ${adr}`}
+                  className="text-primary/40 hover:text-primary"
                   onClick={() => updateAdrs(adrs.filter((value) => value !== adr))}
                 >
-                  <X className="size-3" />
+                  <X className="size-2.5" />
                 </button>
               </Badge>
             ))}
+
             {adrInputOpen ? (
-              <div className="flex min-w-[220px] flex-1 items-center gap-1">
+              <div className="flex w-full items-center gap-1">
                 <AutocompleteInput
                   value={adrInput}
                   options={availableAdrOptions}
-                  className="h-6 w-full"
+                  className="h-6 min-w-[80px] flex-1 border-none bg-transparent text-[11px] shadow-none focus-visible:ring-0"
                   autoFocus
-                  placeholder="Add ADR"
-                  noResultsText="No ADR suggestions."
+                  placeholder="..."
                   onCommit={(value) => {
                     addAdr(value);
                     setAdrInputOpen(false);
                   }}
                   onValueChange={setAdrInput}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-xs"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Confirm add ADR"
-                  disabled={!adrInput.trim()}
-                  onClick={() => {
-                    addAdr(adrInput);
-                    setAdrInputOpen(false);
-                  }}
-                >
+                <Button variant="ghost" size="icon-xs" className="size-5 shrink-0" onClick={() => { addAdr(); setAdrInputOpen(false); }}>
                   <Check className="size-3" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Cancel add ADR"
-                  onClick={() => {
-                    setAdrInput('');
-                    setAdrInputOpen(false);
-                  }}
-                >
-                  <X className="size-3" />
                 </Button>
               </div>
             ) : (
               <Button
-                type="button"
-                variant="outline"
-                size="icon-xs"
-                className="h-6 w-6 shrink-0"
-                aria-label="Add ADR"
-                onClick={() => {
-                  setAdrInput('');
-                  setAdrInputOpen(true);
-                }}
+                variant="ghost"
+                size="xs"
+                className="h-5 px-1.5 text-[10px] text-muted-foreground hover:bg-background/50"
+                onClick={() => setAdrInputOpen(true)}
               >
-                <Plus className="size-3" />
+                <Plus className="mr-1 size-2.5" />
+                Add
               </Button>
             )}
           </div>
         </div>
 
-        <div className="space-y-0.5 md:col-span-2">
-          <label className="text-muted-foreground mb-0.5 block text-xs font-medium uppercase tracking-wide">
-            Tags {tags.length ? `(${tags.length})` : ''}
-          </label>
-          <div className="border-input bg-background/50 flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border px-1.5 py-1">
+        {/* Tags Section */}
+        <div className="space-y-1 md:col-span-2 lg:col-span-1">
+          <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Tags</label>
+          <div className="flex min-h-[72px] flex-wrap content-start gap-1.5 rounded-md border border-border/30 bg-background/20 p-2 shadow-inner transition-colors focus-within:bg-background/40">
             {tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="h-6 gap-1 text-[11px]">
+              <Badge key={tag} variant="secondary" className="h-5 gap-1 rounded-sm bg-primary/10 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20">
                 {tag}
                 <button
                   type="button"
-                  className="rounded-full p-0.5 hover:bg-muted"
-                  aria-label={`Remove tag ${tag}`}
+                  className="text-primary/40 hover:text-primary"
                   onClick={() => updateTags(tags.filter((value) => value !== tag))}
                 >
-                  <X className="size-3" />
+                  <X className="size-2.5" />
                 </button>
               </Badge>
             ))}
+
             {tagInputOpen ? (
-              <div className="flex min-w-[220px] flex-1 items-center gap-1">
+              <div className="flex w-full items-center gap-1">
                 <AutocompleteInput
                   value={tagInput}
                   options={availableTagOptions}
-                  className="h-6 w-full"
+                  className="h-6 min-w-[80px] flex-1 border-none bg-transparent text-[11px] shadow-none focus-visible:ring-0"
                   autoFocus
-                  placeholder="Add tag"
-                  noResultsText="No tag suggestions."
+                  placeholder="..."
                   onCommit={(value) => {
                     addTag(value);
                     setTagInputOpen(false);
                   }}
                   onValueChange={setTagInput}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-xs"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Confirm add tag"
-                  disabled={!tagInput.trim()}
-                  onClick={() => {
-                    addTag(tagInput);
-                    setTagInputOpen(false);
-                  }}
-                >
+                <Button variant="ghost" size="icon-xs" className="size-5 shrink-0" onClick={() => { addTag(); setTagInputOpen(false); }}>
                   <Check className="size-3" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Cancel add tag"
-                  onClick={() => {
-                    setTagInput('');
-                    setTagInputOpen(false);
-                  }}
-                >
-                  <X className="size-3" />
                 </Button>
               </div>
             ) : (
               <Button
-                type="button"
-                variant="outline"
-                size="icon-xs"
-                className="h-6 w-6 shrink-0"
-                aria-label="Add tag"
-                onClick={() => {
-                  setTagInput('');
-                  setTagInputOpen(true);
-                }}
+                variant="ghost"
+                size="xs"
+                className="h-5 px-1.5 text-[10px] text-muted-foreground hover:bg-background/50"
+                onClick={() => setTagInputOpen(true)}
               >
-                <Plus className="size-3" />
+                <Plus className="mr-1 size-2.5" />
+                Add
               </Button>
             )}
           </div>

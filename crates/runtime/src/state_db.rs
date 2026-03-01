@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
-use serde_json;
 use chrono::Utc;
+use serde_json;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Connection, SqliteConnection};
 use std::path::{Path, PathBuf};
@@ -122,12 +122,10 @@ pub fn get_managed_state_db(
 ) -> Result<(Vec<String>, Option<String>)> {
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
-        sqlx::query(
-            "SELECT server_ids_json, last_mode FROM managed_mcp_state WHERE provider = ?",
-        )
-        .bind(provider)
-        .fetch_optional(&mut conn)
-        .await
+        sqlx::query("SELECT server_ids_json, last_mode FROM managed_mcp_state WHERE provider = ?")
+            .bind(provider)
+            .fetch_optional(&mut conn)
+            .await
     })?;
     if let Some(row) = row_opt {
         use sqlx::Row;
@@ -188,12 +186,7 @@ pub fn get_branch_doc(ship_dir: &Path, branch: &str) -> Result<Option<(String, S
 }
 
 /// Record that `branch` is associated with `doc_type` and the document's UUID.
-pub fn set_branch_doc(
-    ship_dir: &Path,
-    branch: &str,
-    doc_type: &str,
-    doc_uuid: &str,
-) -> Result<()> {
+pub fn set_branch_doc(ship_dir: &Path, branch: &str, doc_type: &str, doc_uuid: &str) -> Result<()> {
     let mut conn = open_project_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
@@ -231,8 +224,8 @@ fn project_slug(ship_dir: &Path) -> Result<String> {
         .ok_or_else(|| anyhow!("Cannot determine project root from {}", ship_dir.display()))?;
 
     // Canonicalize if possible (resolves symlinks), fall back to raw path.
-    let canonical = std::fs::canonicalize(project_root)
-        .unwrap_or_else(|_| project_root.to_path_buf());
+    let canonical =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
 
     let raw = canonical.to_string_lossy();
     // Strip leading slash, map non-alphanumeric/hyphen/underscore to hyphens,
@@ -240,7 +233,13 @@ fn project_slug(ship_dir: &Path) -> Result<String> {
     let slug: String = raw
         .trim_start_matches('/')
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let slug = slug
         .split('-')
@@ -249,7 +248,10 @@ fn project_slug(ship_dir: &Path) -> Result<String> {
         .join("-");
 
     if slug.is_empty() {
-        return Err(anyhow!("Could not derive a project slug from path: {}", canonical.display()));
+        return Err(anyhow!(
+            "Could not derive a project slug from path: {}",
+            canonical.display()
+        ));
     }
     Ok(slug)
 }
@@ -260,7 +262,17 @@ fn project_slug(ship_dir: &Path) -> Result<String> {
 pub fn get_workspace_db(
     ship_dir: &Path,
     branch: &str,
-) -> Result<Option<(Option<String>, Option<String>, Option<String>, Vec<String>, String, bool, Option<String>)>> {
+) -> Result<
+    Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Vec<String>,
+        String,
+        bool,
+        Option<String>,
+    )>,
+> {
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
@@ -281,7 +293,15 @@ pub fn get_workspace_db(
         let is_worktree: i64 = row.get(5);
         let worktree_path: Option<String> = row.get(6);
         let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
-        Ok(Some((feature_id, spec_id, active_mode, providers, resolved_at, is_worktree != 0, worktree_path)))
+        Ok(Some((
+            feature_id,
+            spec_id,
+            active_mode,
+            providers,
+            resolved_at,
+            is_worktree != 0,
+            worktree_path,
+        )))
     } else {
         Ok(None)
     }
@@ -413,12 +433,18 @@ fn block_on<F, T>(future: F) -> Result<T>
 where
     F: std::future::Future<Output = std::result::Result<T, sqlx::Error>>,
 {
-    // When called from within an existing tokio runtime (e.g. MCP async handlers),
-    // we can't start a second runtime on the same thread. Return an error so callers
-    // can fall back to non-DB paths.
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return Err(anyhow!("SQLite block_on called from within async context"));
+    // If we are inside a Tokio runtime (e.g. spawn_blocking thread or MCP
+    // async handler), use block_in_place to run the future without blocking
+    // the scheduler thread. block_in_place is safe to call from any thread
+    // that is within the Tokio threadpool, including blocking threads.
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(|| {
+            handle
+                .block_on(future)
+                .map_err(|err| anyhow!("SQLite operation failed: {}", err))
+        });
     }
+    // No runtime active — create a lightweight single-threaded one.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()
@@ -463,7 +489,10 @@ mod tests {
         std::fs::create_dir_all(&ship_dir)?;
         let slug = project_slug(&ship_dir)?;
         assert!(!slug.starts_with('-'), "slug should not start with a dash");
-        assert!(!slug.contains("--"), "slug should not contain consecutive dashes");
+        assert!(
+            !slug.contains("--"),
+            "slug should not contain consecutive dashes"
+        );
         assert!(!slug.is_empty());
         Ok(())
     }

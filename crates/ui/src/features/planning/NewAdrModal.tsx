@@ -12,6 +12,7 @@ interface NewAdrModalProps {
   onClose: () => void;
   tagSuggestions: string[];
   specSuggestions: string[];
+  adrSuggestions?: string[];
   onSubmit: (
     title: string,
     details: string,
@@ -27,17 +28,18 @@ interface NewAdrModalProps {
 function createInitialAdr(): ADR {
   return {
     metadata: {
+      id: '',
       title: '',
-      status: 'proposed',
       date: new Date().toISOString().slice(0, 10),
       tags: [],
-      spec: null,
-    },
+      spec_id: null,
+      status: 'proposed',
+    } as any,
     body: '',
   };
 }
 
-export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSuggestions }: NewAdrModalProps) {
+export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSuggestions, adrSuggestions }: NewAdrModalProps) {
   const [draft, setDraft] = useState<ADR>(() => createInitialAdr());
   const [error, setError] = useState<string | null>(null);
   const headerTitle = deriveAdrHeaderTitle(draft, 'New ADR');
@@ -52,10 +54,11 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
       setError('Details are required.');
       return;
     }
+    const meta = draft.metadata as any;
     await onSubmit(title, draft.body.trim(), {
-      status: draft.metadata.status,
+      status: meta.status,
       date: draft.metadata.date,
-      spec: draft.metadata.spec?.trim() ? draft.metadata.spec.trim() : null,
+      spec: meta.spec_id?.trim() ? meta.spec_id.trim() : null,
       tags: Array.from(new Set((draft.metadata.tags ?? []).map((tag) => tag.trim()).filter(Boolean))),
     });
   }, [draft, onSubmit]);
@@ -133,6 +136,7 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
             }}
             specSuggestions={specSuggestions}
             tagSuggestions={tagSuggestions}
+            adrSuggestions={adrSuggestions}
             onInsertTemplate={insertTemplate}
             mcpEnabled={false}
             sampleLabel="Generate Draft"

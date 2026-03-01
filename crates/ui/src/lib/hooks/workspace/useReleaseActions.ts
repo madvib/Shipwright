@@ -27,8 +27,12 @@ export function useReleaseActions({
     }
 
     try {
-      const latest = await getReleaseCmd(entry.file_name);
-      setSelectedRelease(latest);
+      const result = await getReleaseCmd(entry.file_name);
+      if (result.status === 'ok') {
+        setSelectedRelease(result.data);
+      } else {
+        setError(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
     }
@@ -41,19 +45,25 @@ export function useReleaseActions({
     }
 
     try {
-      const created = await createReleaseCmd(version, content);
-      setReleases((prev) => [
-        ...prev,
-        {
-          file_name: created.file_name,
-          version: created.version,
-          status: created.status,
-          path: created.path,
-          updated: created.updated,
-        },
-      ]);
-      setSelectedRelease(created);
-      await refreshActivity();
+      const result = await createReleaseCmd(version, content);
+      if (result.status === 'ok') {
+        const created = result.data;
+        setReleases((prev) => [
+          ...prev,
+          {
+            file_name: created.file_name,
+            version: created.version,
+            status: created.status,
+            path: created.path,
+            updated: created.updated,
+          },
+        ]);
+        setSelectedRelease(created);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+        throw new Error(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
       throw error;
@@ -67,22 +77,27 @@ export function useReleaseActions({
     }
 
     try {
-      const updated = await updateReleaseCmd(fileName, content);
-      setReleases((prev) =>
-        prev.map((entry) =>
-          entry.file_name === updated.file_name
-            ? {
+      const result = await updateReleaseCmd(fileName, content);
+      if (result.status === 'ok') {
+        const updated = result.data;
+        setReleases((prev) =>
+          prev.map((entry) =>
+            entry.file_name === updated.file_name
+              ? {
                 file_name: updated.file_name,
                 version: updated.version,
                 status: updated.status,
                 path: updated.path,
                 updated: updated.updated,
               }
-            : entry
-        )
-      );
-      setSelectedRelease(updated);
-      await refreshActivity();
+              : entry
+          )
+        );
+        setSelectedRelease(updated);
+        await refreshActivity();
+      } else {
+        setError(String(result.error));
+      }
     } catch (error) {
       setError(String(error));
     }

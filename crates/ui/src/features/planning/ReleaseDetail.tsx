@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ReleaseDocument } from '@/bindings';
+import { FeatureInfo, ReleaseDocument } from '@/bindings';
+import { Target, ExternalLink } from 'lucide-react';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';
 import ReleaseMetadataPanel from '@/components/editor/ReleaseMetadataPanel';
@@ -7,15 +8,19 @@ import { Button } from '@/components/ui/button';
 
 interface ReleaseDetailProps {
   release: ReleaseDocument;
+  features: FeatureInfo[];
   mcpEnabled?: boolean;
   onClose: () => void;
+  onSelectFeature: (feature: FeatureInfo) => void;
   onSave: (fileName: string, content: string) => Promise<void> | void;
 }
 
 export default function ReleaseDetail({
   release,
+  features,
   mcpEnabled = false,
   onClose,
+  onSelectFeature,
   onSave,
 }: ReleaseDetailProps) {
   const [content, setContent] = useState(release.content);
@@ -105,6 +110,46 @@ export default function ReleaseDetail({
           rows={18}
           defaultMode="doc"
         />
+      </div>
+
+      {/* Associated Features Section */}
+      <div className="border-t bg-muted/20 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            <Target className="size-4 text-primary" />
+            Planned Features
+          </h3>
+          <span className="text-muted-foreground text-xs uppercase tracking-wider">
+            {features.filter(f => f.release_id === release.file_name).length} Features
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {features
+            .filter((f) => f.release_id === release.file_name)
+            .map((feature) => (
+              <button
+                key={feature.file_name}
+                onClick={() => onSelectFeature(feature)}
+                className="group flex flex-col items-start gap-1 rounded-md border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-accent/50"
+              >
+                <div className="flex w-full items-start justify-between gap-2">
+                  <span className="truncate text-sm font-medium">{feature.title}</span>
+                  <ExternalLink className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="capitalize">{feature.status}</span>
+                </div>
+              </button>
+            ))}
+          {features.filter((f) => f.release_id === release.file_name).length === 0 && (
+            <div className="col-span-full py-6 text-center">
+              <p className="text-muted-foreground text-sm">No features linked to this release yet.</p>
+              <p className="text-muted-foreground text-xs mt-1">
+                Edit a feature to associate it with {release.version}.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </DetailSheet>
   );

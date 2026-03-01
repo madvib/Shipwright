@@ -3,7 +3,6 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
-  ChevronsUpDown,
   FileCode2,
   FileCog,
   FileStack,
@@ -12,11 +11,14 @@ import {
   FolderOpen,
   FolderPlus,
   LayoutDashboard,
-  Menu,
+  NotebookPen,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
+  History,
+  Target,
+  Workflow,
 } from 'lucide-react';
 import { ProjectDiscovery as Project } from '@/bindings';
 import { Button } from '@/components/ui/button';
@@ -42,11 +44,12 @@ import {
   AGENTS_SKILLS_ROUTE as AGENTS_SKILLS_PATH,
   FEATURES_ROUTE as FEATURES_PATH,
   ISSUES_ROUTE as ISSUES_PATH,
+  NOTES_ROUTE as NOTES_PATH,
   OVERVIEW_ROUTE as OVERVIEW_PATH,
-  PROJECTS_ROUTE as PROJECTS_PATH,
   RELEASES_ROUTE as RELEASES_PATH,
   SETTINGS_ROUTE as SETTINGS_PATH,
   SPECS_ROUTE as SPECS_PATH,
+  WORKFLOW_WORKSPACE_ROUTE as WORKFLOW_WORKSPACE_PATH,
 } from '@/lib/constants/routes';
 
 interface SidebarProps {
@@ -69,12 +72,14 @@ type NavItem = {
 
 const PROJECT_ITEMS: NavItem[] = [
   { path: OVERVIEW_PATH, label: 'Overview', icon: LayoutDashboard },
+  { path: NOTES_PATH, label: 'Notes', icon: NotebookPen },
   { path: ADRS_PATH, label: 'Decisions', icon: FileStack },
   { path: RELEASES_PATH, label: 'Releases', icon: Package },
   { path: FEATURES_PATH, label: 'Features', icon: Flag },
 ];
 
 const WORKFLOW_ITEMS: NavItem[] = [
+  { path: WORKFLOW_WORKSPACE_PATH, label: 'Workspace', icon: Workflow },
   { path: ISSUES_PATH, label: 'Issues', icon: FolderSearch },
   { path: SPECS_PATH, label: 'Specs', icon: FileCode2 },
 ];
@@ -119,22 +124,34 @@ export default function Sidebar({
     .slice(0, 3);
   const avatarLabel = initialsFromProjectName(activeProject?.name ?? 'Shipwright');
 
-  const renderNavButton = (item: NavItem) => {
+  const renderNavButton = (item: NavItem, isCompact = false) => {
     const Icon = item.icon;
     const active = activePath === item.path;
     return (
       <Button
         key={item.path}
         variant={active ? 'secondary' : 'ghost'}
-        size={collapsed ? 'icon-sm' : 'default'}
-        className={cn('w-full rounded-md', !collapsed && 'justify-start', active && 'font-medium')}
+        size={isCompact ? 'icon-sm' : 'default'}
+        className={cn(
+          'relative w-full rounded-md transition-all duration-200',
+          !isCompact && 'justify-start hover:pl-3',
+          active ? 'font-medium shadow-sm ring-1 ring-primary/20 bg-primary/10' : 'hover:bg-muted/50'
+        )}
         onClick={() => onNavigate(item.path)}
         title={item.label}
         aria-label={item.label}
       >
-        <Icon className="size-4" />
-        {!collapsed && item.label}
-        {!collapsed && active && <ChevronRight className="ml-auto size-3.5" />}
+        <Icon className={cn("size-4", active ? "text-primary" : "text-muted-foreground")} />
+        {!isCompact && <span className="ml-2 text-sm">{item.label}</span>}
+        {!isCompact && active && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <div className="size-1 rounded-full bg-primary" />
+            <ChevronRight className="size-3 opacity-40" />
+          </div>
+        )}
+        {isCompact && active && (
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 size-1 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]" />
+        )}
       </Button>
     );
   };
@@ -143,98 +160,109 @@ export default function Sidebar({
     <aside className={cn('sidebar flex h-full min-h-0 flex-col gap-4 p-3', collapsed && 'items-center px-2')}>
       <header
         className={cn(
-          'flex w-full items-center gap-2 rounded-lg border bg-card/60 px-2 py-2',
-          collapsed && 'w-auto flex-col gap-1 px-1.5 py-1.5'
+          'flex w-full items-center gap-2 rounded-xl border border-primary/10 bg-gradient-to-br from-card to-card/50 p-2 shadow-sm',
+          collapsed && 'flex-col gap-3 pb-3'
         )}
       >
-        <div className="border-amber-400/45 bg-amber-500/12 text-amber-800 dark:text-amber-200 flex size-10 items-center justify-center rounded-md border text-xs font-semibold">
-          {avatarLabel}
-        </div>
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <p
-              className="truncate text-sm font-semibold tracking-tight"
-              title={activeProject ? activeProject.path : 'No active project path'}
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <button
+              className={cn(
+                "group relative overflow-hidden flex size-10 items-center justify-center rounded-xl border transition-all duration-300",
+                "bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 shadow-[0_2px_10px_rgba(245,158,11,0.3)]",
+                "hover:shadow-[0_4px_20px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95",
+                "border-amber-400/50 dark:border-amber-400/20",
+                collapsed && "size-9 rounded-lg"
+              )}
+              title="Project Switcher"
             >
-              {activeProject?.name?.trim() || 'No Project Selected'}
-            </p>
-          </div>
-        )}
-        <div className={cn('ml-auto flex items-center gap-1', collapsed && 'ml-0 flex-row')}>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="ghost" size="icon-sm" title="Project switcher" aria-label="Project switcher" />
-              }
-            >
-              {collapsed ? <Menu className="size-4" /> : <ChevronsUpDown className="size-4" />}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align={collapsed ? 'end' : 'start'}
-              side="bottom"
-              sideOffset={6}
-              className="!w-72 p-2"
-            >
-              <DropdownMenuGroup>
-                <DropdownMenuLabel className="px-1 pb-1">Project Switcher</DropdownMenuLabel>
-                {activeProject ? (
-                  <div className="border-amber-400/40 bg-amber-500/6 mb-1 rounded-md border px-2.5 py-2">
-                    <p className="truncate text-sm font-medium">{activeProject.name}</p>
-                    <p className="text-muted-foreground truncate text-xs">{activeProject.path}</p>
-                  </div>
-                ) : (
-                  <div className="text-muted-foreground mb-1 rounded-md border border-dashed px-2.5 py-2 text-xs">
-                    No active project selected.
-                  </div>
-                )}
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel className="px-1 pb-1">Recent Projects</DropdownMenuLabel>
-                {otherProjects.length === 0 ? (
-                  <div className="text-muted-foreground rounded-md px-2.5 py-1.5 text-xs">No recent projects yet.</div>
-                ) : (
-                  otherProjects.map((project) => (
+              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="relative z-10 text-xs font-black tracking-tighter text-white drop-shadow-sm font-mono">
+                {avatarLabel}
+              </span>
+              <div className="absolute -bottom-1 -right-1 size-3.5 rounded-full border-2 border-background bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align={collapsed ? 'start' : 'start'}
+            side={collapsed ? 'right' : 'bottom'}
+            sideOffset={12}
+            className="w-72 p-1.5 shadow-2xl border-border/50 bg-popover/95 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200"
+          >
+            <DropdownMenuGroup className="p-1">
+              <DropdownMenuLabel className="flex items-center gap-2 px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
+                <Target className="size-3" />
+                Current Project
+              </DropdownMenuLabel>
+              {activeProject ? (
+                <div className="bg-gradient-to-br from-amber-500/15 to-amber-600/5 mb-1.5 rounded-lg border border-amber-500/30 px-3.5 py-3 shadow-inner">
+                  <p className="truncate text-sm font-bold text-foreground leading-tight">{activeProject.name}</p>
+                  <p className="text-muted-foreground truncate text-[10px] opacity-60 font-mono mt-1 flex items-center gap-1">
+                    <span className="opacity-40">path:</span> {activeProject.path}
+                  </p>
+                </div>
+              ) : (
+                <div className="text-muted-foreground mb-1.5 rounded-lg border border-dashed border-border/60 bg-muted/20 px-3.5 py-3 text-xs italic">
+                  No active project selected.
+                </div>
+              )}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator className="mx-1 my-1 opacity-50" />
+            <DropdownMenuGroup className="p-1">
+              <DropdownMenuLabel className="flex items-center gap-2 px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
+                <History className="size-3" />
+                Recent Projects
+              </DropdownMenuLabel>
+              {otherProjects.length === 0 ? (
+                <div className="text-muted-foreground rounded-lg px-2.5 py-3 text-xs italic opacity-60">No recent projects.</div>
+              ) : (
+                <div className="space-y-1">
+                  {otherProjects.map((project) => (
                     <DropdownMenuItem
                       key={project.path}
-                      className="border-amber-400/35 bg-amber-500/5 mb-1 h-auto rounded-md border px-2.5 py-2"
-                      title={project.path}
+                      className="cursor-pointer rounded-md px-3 py-2.5 transition-all active:scale-[0.98]"
                       onClick={() => onSelectProject(project)}
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{project.name}</p>
-                        <p className="text-muted-foreground truncate text-xs">{project.path}</p>
+                        <p className="truncate text-sm font-semibold leading-tight">{project.name}</p>
+                        <p className="text-muted-foreground truncate text-[9px] opacity-50 font-mono mt-0.5">{project.path}</p>
                       </div>
                     </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={onOpenProject}>
-                  <FolderOpen className="size-4" />
-                  Open
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onNewProject}>
-                  <FolderPlus className="size-4" />
-                  New
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onNavigate(PROJECTS_PATH)}>
-                  <FolderSearch className="size-4" />
-                  Projects
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  ))}
+                </div>
+              )}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator className="mx-1 my-1 opacity-50" />
+            <DropdownMenuGroup className="p-1 space-y-0.5">
+              <DropdownMenuItem onClick={onOpenProject} className="cursor-pointer gap-2 py-2 rounded-md">
+                <FolderOpen className="size-4 opacity-60" />
+                <span className="text-sm font-medium">Open Folder...</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onNewProject} className="cursor-pointer gap-2 py-2 rounded-md">
+                <FolderPlus className="size-4 opacity-60" />
+                <span className="text-sm font-medium">New Project...</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
+        {!collapsed && (
+          <div className="min-w-0 flex-1 ml-1">
+            <p className="truncate text-[13px] font-bold tracking-tight text-foreground/90">
+              {activeProject?.name?.trim() || 'Shipwright'}
+            </p>
+          </div>
+        )}
+
+        <div className={cn('ml-auto flex items-center', collapsed && 'ml-0')}>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
+            className="size-7 hover:bg-muted/80"
             onClick={onToggleCollapse}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand bar' : 'Collapse bar'}
           >
-            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+            {collapsed ? <PanelLeftOpen className="size-4 opacity-60" /> : <PanelLeftClose className="size-4 opacity-60" />}
           </Button>
         </div>
       </header>
@@ -261,7 +289,7 @@ export default function Sidebar({
                 </span>
                 <ChevronDown className={cn('ml-auto size-3.5 transition-transform', projectOpen && 'rotate-180')} />
               </Button>
-              {projectOpen && <div className="space-y-1">{PROJECT_ITEMS.map(renderNavButton)}</div>}
+              {projectOpen && <div className="space-y-1">{PROJECT_ITEMS.map((item) => renderNavButton(item))}</div>}
             </div>
 
             <Separator className="my-1" />
@@ -278,7 +306,7 @@ export default function Sidebar({
                 </span>
                 <ChevronDown className={cn('ml-auto size-3.5 transition-transform', workflowOpen && 'rotate-180')} />
               </Button>
-              {workflowOpen && <div className="space-y-1">{WORKFLOW_ITEMS.map(renderNavButton)}</div>}
+              {workflowOpen && <div className="space-y-1">{WORKFLOW_ITEMS.map((item) => renderNavButton(item))}</div>}
             </div>
 
             <Separator className="my-1" />
@@ -295,12 +323,35 @@ export default function Sidebar({
                 </span>
                 <ChevronDown className={cn('ml-auto size-3.5 transition-transform', agentsOpen && 'rotate-180')} />
               </Button>
-              {agentsOpen && <div className="space-y-1">{AGENT_ITEMS.map(renderNavButton)}</div>}
+              {agentsOpen && <div className="space-y-1">{AGENT_ITEMS.map((item) => renderNavButton(item))}</div>}
             </div>
           </>
         ) : (
-          <div className="space-y-1">
-            {[...PROJECT_ITEMS, ...WORKFLOW_ITEMS, ...AGENT_ITEMS].map(renderNavButton)}
+          <div className="flex flex-col items-center gap-6 py-4">
+            <div className="group flex flex-col items-center gap-1.5">
+              <span className="text-[7px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] transition-colors group-hover:text-primary/70">PRJ</span>
+              <div className="flex flex-col gap-1 w-full">
+                {PROJECT_ITEMS.map(item => renderNavButton(item, true))}
+              </div>
+            </div>
+
+            <Separator className="w-8 opacity-20" />
+
+            <div className="group flex flex-col items-center gap-1.5">
+              <span className="text-[7px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] transition-colors group-hover:text-primary/70">WKF</span>
+              <div className="flex flex-col gap-1 w-full">
+                {WORKFLOW_ITEMS.map(item => renderNavButton(item, true))}
+              </div>
+            </div>
+
+            <Separator className="w-8 opacity-20" />
+
+            <div className="group flex flex-col items-center gap-1.5">
+              <span className="text-[7px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] transition-colors group-hover:text-primary/70">AGT</span>
+              <div className="flex flex-col gap-1 w-full">
+                {AGENT_ITEMS.map(item => renderNavButton(item, true))}
+              </div>
+            </div>
           </div>
         )}
       </nav>

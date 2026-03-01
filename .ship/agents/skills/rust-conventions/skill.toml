@@ -1,6 +1,4 @@
-+++
 id = "rust-conventions"
 name = "Rust Conventions"
 description = "Shipwright codebase conventions, crate structure, and development patterns"
 source = "custom"
-+++

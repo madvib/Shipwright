@@ -4,7 +4,9 @@ export const ISSUES_ROUTE = '/project/issues' as const;
 export const RELEASES_ROUTE = '/project/releases' as const;
 export const FEATURES_ROUTE = '/project/features' as const;
 export const SPECS_ROUTE = '/project/specs' as const;
+export const WORKFLOW_WORKSPACE_ROUTE = '/project/workflow/workspace' as const;
 export const ADRS_ROUTE = '/project/adrs' as const;
+export const NOTES_ROUTE = '/project/notes' as const;
 export const ACTIVITY_ROUTE = '/project/activity' as const;
 export const AGENTS_ROUTE = '/project/agents' as const;
 export const AGENTS_PROVIDERS_ROUTE = '/project/agents/providers' as const;
@@ -22,7 +24,9 @@ export type AppRoutePath =
   | typeof RELEASES_ROUTE
   | typeof FEATURES_ROUTE
   | typeof SPECS_ROUTE
+  | typeof WORKFLOW_WORKSPACE_ROUTE
   | typeof ADRS_ROUTE
+  | typeof NOTES_ROUTE
   | typeof ACTIVITY_ROUTE
   | typeof AGENTS_ROUTE
   | typeof AGENTS_PROVIDERS_ROUTE
@@ -39,7 +43,9 @@ export const ROUTE_LABELS: Record<AppRoutePath, string> = {
   [RELEASES_ROUTE]: 'Releases',
   [FEATURES_ROUTE]: 'Features',
   [SPECS_ROUTE]: 'Specs',
+  [WORKFLOW_WORKSPACE_ROUTE]: 'Workspace',
   [ADRS_ROUTE]: 'Decisions',
+  [NOTES_ROUTE]: 'Notes',
   [ACTIVITY_ROUTE]: 'Activity',
   [AGENTS_ROUTE]: 'Agents',
   [AGENTS_PROVIDERS_ROUTE]: 'Agents / Providers',

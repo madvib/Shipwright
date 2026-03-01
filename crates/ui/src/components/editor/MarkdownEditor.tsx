@@ -5,7 +5,6 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import CustomMilkdownEditor from './CustomMilkdownEditor';
 import FrontmatterPanel from './FrontmatterPanel';
@@ -15,15 +14,28 @@ import {
   parseFrontmatterEntries,
   splitFrontmatterDocument,
 } from './frontmatter';
+import { transformTextCmd } from '@/lib/platform/tauri/commands';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Wand2, Type, AlignLeft, CheckCircle } from 'lucide-react';
 
-type EditorMode = 'doc' | 'raw';
-type LegacyEditorMode = 'edit' | 'preview' | 'split';
+type EditorMode = 'edit' | 'read';
+// Legacy mode aliases accepted via defaultMode prop
+type LegacyEditorMode = 'doc' | 'raw' | 'preview' | 'split' | 'edit' | 'read';
 
 export interface MarkdownEditorProps {
   label?: string;
   toolbarStart?: ReactNode;
   value: string;
   onChange: (value: string) => void;
+  className?: string;
   placeholder?: string;
   rows?: number;
   defaultMode?: EditorMode | LegacyEditorMode;
@@ -34,42 +46,45 @@ export interface MarkdownEditorProps {
   sampleInline?: boolean;
   showStats?: boolean;
   fillHeight?: boolean;
+  fullWidth?: boolean;
   showFrontmatter?: boolean;
   frontmatterPanel?:
-    | ReactNode
-    | ((args: {
-        frontmatter: string | null;
-        delimiter: FrontmatterDelimiter | null;
-        onChange: (frontmatter: string | null, delimiter: FrontmatterDelimiter) => void;
-      }) => ReactNode);
+  | ReactNode
+  | ((args: {
+    frontmatter: string | null;
+    delimiter: FrontmatterDelimiter | null;
+    onChange: (frontmatter: string | null, delimiter: FrontmatterDelimiter) => void;
+  }) => ReactNode);
+  showAiActions?: boolean;
 }
 
 function normalizeMode(defaultMode?: EditorMode | LegacyEditorMode): EditorMode {
-  if (defaultMode === 'raw' || defaultMode === 'preview') return 'raw';
-  return 'doc';
+  if (defaultMode === 'raw' || defaultMode === 'preview' || defaultMode === 'split' || defaultMode === 'read') {
+    return 'read';
+  }
+  return 'edit';
 }
 
-function normalizeFrontmatterInput(frontmatter: string): string | null {
-  const trimmed = frontmatter.trim();
-  return trimmed ? frontmatter.trimEnd() : null;
-}
 
 export default function MarkdownEditor({
   label,
   toolbarStart,
   value,
   onChange,
+  className,
   placeholder,
   rows = 12,
-  defaultMode = 'doc',
+  defaultMode = 'edit',
   mcpEnabled = false,
   onMcpSample,
   sampleLabel,
   sampleRequiresMcp = true,
   showStats = true,
   fillHeight = false,
+  fullWidth = true,
   showFrontmatter = true,
   frontmatterPanel,
+  showAiActions = true,
 }: MarkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   const internalMarkdownRef = useRef(value);
@@ -99,12 +114,11 @@ export default function MarkdownEditor({
     return trimmed ? trimmed.split(/\s+/).length : 0;
   }, [model.body]);
 
-  const frontmatterRows = Math.min(Math.max((model.frontmatter?.split(/\r?\n/).length ?? 3) + 1, 4), 12);
   const activeDelimiter: FrontmatterDelimiter = model.delimiter ?? '+++';
 
   const resolvedSampleLabel = sampleLabel ?? (sampleRequiresMcp ? 'Generate Draft' : 'Insert Template');
   const sampleDisabled = sampling || !onMcpSample || (sampleRequiresMcp && !mcpEnabled);
-  const frontmatterAvailable = !!frontmatterPanel || showFrontmatter;
+  const frontmatterAvailable = (!!frontmatterPanel || showFrontmatter) && mode === 'edit';
   const metadataManagedExternally = !!frontmatterPanel;
 
   const handleEditorChange = (next: string) => {
@@ -164,41 +178,45 @@ export default function MarkdownEditor({
     setSampleUndoState(null);
   };
 
-  const handleRawFrontmatterChange = (frontmatter: string) => {
-    handleFrontmatterChange(normalizeFrontmatterInput(frontmatter));
+  const handleAiAction = async (action: 'polish' | 'shorten' | 'expand' | 'fix_grammar') => {
+    if (!model.body.trim()) return;
+    setSampling(true);
+    try {
+      const instructionMap = {
+        polish: 'Polish the writing to be more professional and clear',
+        shorten: 'Make the text more concise and remove jargon',
+        expand: 'Add more relevant details and context',
+        fix_grammar: 'Fix any grammar or spelling issues'
+      };
+      const res = await transformTextCmd(instructionMap[action], model.body);
+      handleBodyChange(res);
+    } catch (err) {
+      console.error(`AI Action failed: ${err}`);
+    } finally {
+      setSampling(false);
+    }
   };
 
-  const handleRawBodyChange = (body: string) => {
-    handleBodyChange(body);
-  };
 
-  const addFrontmatter = () => {
-    if (model.frontmatter) return;
-    handleFrontmatterChange('status = "draft"\ntags = ["editor"]', '+++');
-  };
-
-  const removeFrontmatter = () => {
-    if (!model.frontmatter) return;
-    handleFrontmatterChange(null);
-  };
-
-  const panelStyle = fillHeight ? undefined : { height: `${minHeightPx}px` };
   const renderedFrontmatterPanel =
     typeof frontmatterPanel === 'function'
       ? frontmatterPanel({
-          frontmatter: model.frontmatter,
-          delimiter: model.delimiter,
-          onChange: handleFrontmatterChange,
-        })
+        frontmatter: model.frontmatter,
+        delimiter: model.delimiter,
+        onChange: handleFrontmatterChange,
+      })
       : frontmatterPanel;
 
   return (
     <div
       className={cn(
         fillHeight ? 'flex h-full min-h-0 flex-col gap-1' : 'space-y-1',
-        expanded && 'fixed inset-0 z-[120] bg-background p-1 shadow-2xl md:p-2'
+        fullWidth && 'w-full',
+        expanded && 'fixed inset-0 z-[120] bg-background p-1 shadow-2xl md:p-2',
+        className
       )}
     >
+      {/* Toolbar */}
       <div className="flex items-center gap-1 overflow-x-auto">
         {(label || toolbarStart) && (
           <div className="flex shrink-0 items-center gap-1">
@@ -216,7 +234,7 @@ export default function MarkdownEditor({
             </Button>
           )}
 
-          {onMcpSample && (
+          {onMcpSample && mode === 'edit' && (
             <>
               <Button
                 type="button"
@@ -237,7 +255,43 @@ export default function MarkdownEditor({
             </>
           )}
 
-          {showStats && (
+          {showAiActions && mode === 'edit' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger>
+                <Button variant="outline" size="xs" disabled={sampling}>
+                  <Wand2 className="size-3.5" />
+                  AI Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
+                <DropdownMenuLabel className="px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
+                  Transform Text
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="opacity-50" />
+                <div className="space-y-0.5">
+                  <DropdownMenuItem onClick={() => handleAiAction('polish')} className="flex items-center gap-2 rounded-md">
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span className="text-sm">Polish Writing</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAiAction('shorten')} className="flex items-center gap-2 rounded-md">
+                    <AlignLeft className="size-3.5 text-blue-500" />
+                    <span className="text-sm">Make Concise</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAiAction('expand')} className="flex items-center gap-2 rounded-md">
+                    <Type className="size-3.5 text-indigo-500" />
+                    <span className="text-sm">Expand Details</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="opacity-50" />
+                  <DropdownMenuItem onClick={() => handleAiAction('fix_grammar')} className="flex items-center gap-2 rounded-md">
+                    <CheckCircle className="size-3.5 text-emerald-500" />
+                    <span className="text-sm">Fix Grammar</span>
+                  </DropdownMenuItem>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {showStats && mode === 'edit' && (
             <span className="text-xs text-muted-foreground">
               {wordCount} words · {internalMarkdown.length} chars
             </span>
@@ -245,8 +299,8 @@ export default function MarkdownEditor({
 
           <Tabs value={mode} onValueChange={(next) => next && setMode(next as EditorMode)} className="gap-0">
             <TabsList>
-              <TabsTrigger value="doc">Doc</TabsTrigger>
-              <TabsTrigger value="raw">Raw</TabsTrigger>
+              <TabsTrigger value="edit">Edit</TabsTrigger>
+              <TabsTrigger value="read">Read</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -256,6 +310,7 @@ export default function MarkdownEditor({
         </div>
       </div>
 
+      {/* Frontmatter panel (edit mode only) */}
       {frontmatterAvailable && frontmatterOpen && (
         renderedFrontmatterPanel ?? (
           <FrontmatterPanel
@@ -266,10 +321,11 @@ export default function MarkdownEditor({
         )
       )}
 
-      <div className={cn(fillHeight && 'min-h-0 flex-1', mode === 'raw' && 'grid gap-1 lg:grid-cols-2')}>
-        {mode === 'doc' && (
-          <div className={cn(fillHeight ? 'flex h-full min-h-0 flex-col gap-1' : 'space-y-1')}>
-            <div className={cn(fillHeight && 'min-h-0 flex-1')}>
+      {/* Editor / Reader */}
+      <div className={cn(fillHeight && 'min-h-0 flex-1')}>
+        {mode === 'edit' && (
+          <div className={cn(fillHeight ? 'flex h-full min-h-0 flex-col' : 'space-y-1')}>
+            <div className={cn(fillHeight ? 'min-h-0 flex-1' : 'h-full')}>
               <CustomMilkdownEditor
                 value={model.body}
                 onChange={handleBodyChange}
@@ -281,58 +337,22 @@ export default function MarkdownEditor({
           </div>
         )}
 
-        {mode === 'raw' && (
-          <div className={cn('rounded-md border bg-card', fillHeight && 'h-full min-h-0')} style={panelStyle}>
-            <div className="flex h-full min-h-0 flex-col overflow-hidden">
-              {!metadataManagedExternally && (
-                <div className="border-b px-2 py-1">
-                  {model.frontmatter ? (
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                          Metadata ({activeDelimiter})
-                        </span>
-                        <Button type="button" variant="ghost" size="xs" onClick={removeFrontmatter}>
-                          Remove
-                        </Button>
-                      </div>
-                      <Textarea
-                        rows={frontmatterRows}
-                        value={model.frontmatter}
-                        onChange={(event) => handleRawFrontmatterChange(event.target.value)}
-                        className="font-mono text-xs leading-5"
-                      />
-                    </div>
-                  ) : (
-                    <Button type="button" variant="outline" size="xs" onClick={addFrontmatter}>
-                      Add Metadata
-                    </Button>
-                  )}
-                </div>
-              )}
-              <div className="min-h-0 flex-1 p-1.5">
-                <Textarea
-                  value={model.body}
-                  onChange={(event) => handleRawBodyChange(event.target.value)}
-                  className="h-full min-h-0 resize-none font-mono text-sm leading-6"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {mode === 'raw' && (
+        {mode === 'read' && (
           <div
-            className={cn('ship-markdown-preview rounded-md border bg-background', fillHeight && 'h-full min-h-0')}
-            style={panelStyle}
+            className={cn(
+              'ship-markdown-preview rounded-md border bg-background px-4 py-3',
+              fillHeight ? 'h-full min-h-0 overflow-y-auto' : 'overflow-y-auto'
+            )}
+            style={fillHeight ? undefined : { minHeight: `${minHeightPx}px`, maxHeight: '600px' }}
           >
+            {/* Frontmatter summary in read mode */}
             {model.frontmatter && !metadataManagedExternally && (
-              <section className="ship-markdown-frontmatter">
-                <div className="text-muted-foreground border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wide">
+              <section className="ship-markdown-frontmatter mb-4 rounded-md border bg-muted/30 px-3 py-2">
+                <p className="text-muted-foreground mb-1 text-[11px] font-medium uppercase tracking-wide">
                   Metadata
-                </div>
+                </p>
                 {frontmatterEntries.length > 0 ? (
-                  <dl className="grid gap-x-3 gap-y-1 px-3 py-2 text-xs md:grid-cols-[9rem_1fr]">
+                  <dl className="grid gap-x-3 gap-y-0.5 text-xs md:grid-cols-[9rem_1fr]">
                     {frontmatterEntries.map((entry) => (
                       <div key={`${entry.key}-${entry.value}`} className="contents">
                         <dt className="text-muted-foreground font-medium">{entry.key}</dt>
@@ -341,23 +361,15 @@ export default function MarkdownEditor({
                     ))}
                   </dl>
                 ) : (
-                  <pre className="whitespace-pre-wrap break-words px-3 py-2 text-xs">
+                  <pre className="whitespace-pre-wrap break-words text-xs">
                     <code>{model.frontmatter}</code>
                   </pre>
                 )}
-                <details>
-                  <summary>Raw Metadata</summary>
-                  <pre>
-                    <code>{model.frontmatter}</code>
-                  </pre>
-                </details>
               </section>
             )}
 
             {model.body.trim() ? (
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{model.body}</ReactMarkdown>
-            ) : model.frontmatter ? (
-              <p className="text-muted-foreground text-sm">No body content yet.</p>
             ) : (
               <p className="text-muted-foreground text-sm">Nothing to preview yet.</p>
             )}

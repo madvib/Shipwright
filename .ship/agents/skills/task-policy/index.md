@@ -4,41 +4,60 @@ This policy defines how humans and agents execute work in alpha.
 
 ## Canonical Flow
 
-`Vision -> Release -> Feature -> Spec -> Issues -> ADRs -> Close Feature -> Ship Release`
+`Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release`
 
 ## Execution Rules
 
 1. **Release Then Feature**
-- Associate work to a canonical release document (e.g. `v0.1.0-alpha.md`).
-- Start feature work within that release context.
 
-2. **Feature First**
-- Start work from a feature markdown document with delivery todos.
-- Keep acceptance criteria at feature level.
+* Associate work to a canonical release document (e.g. `v0.1.0-alpha.md`).
 
-3. **Spec As Contract**
-- Every non-trivial feature should have a spec.
-- Update spec when scope or implementation constraints change.
+* Start feature work within that release context.
 
-4. **Issues Are Execution Scratch**
-- Issues track day-to-day execution.
-- Issues are local-only by default to avoid polluting git history.
-- Promote issue artifacts to git only when needed for durable records.
+1. **Feature First**
 
-5. **ADRs Capture Lasting Decisions**
-- Architecture-impacting decisions must be recorded in ADRs.
-- ADRs are committed by default.
-- MCP integration decisions should be recorded in ADR notes (without storing secrets).
+* Start work from a feature markdown document with delivery todos.
 
-6. **Mode Is Agent Runtime, Not PM State**
-- Mode changes are explicit in alpha.
-- Workflow policy and current phase should be included in agent context.
+* Keep acceptance criteria at feature level.
 
-7. **Verification**
-- Run relevant tests before closing feature todos.
+1. **Spec As Contract**
+
+* Every non-trivial feature should have a spec.
+
+* Update spec when scope or implementation constraints change.
+
+1. **Issues Are Execution Scratch**
+
+* Issues track day-to-day execution.
+
+* Issues are local-only by default to avoid polluting git history.
+
+* Promote issue artifacts to git only when needed for durable records.
+
+1. **ADRs Capture Lasting Decisions**
+
+* Architecture-impacting decisions must be recorded in ADRs.
+
+* ADRs are committed by default.
+
+* MCP integration decisions should be recorded in ADR notes (without storing secrets).
+
+1. **Mode Is Agent Runtime, Not PM State**
+
+* Mode changes are explicit in alpha.
+
+* Workflow policy and current phase should be included in agent context.
+
+1. **Verification**
+
+* Run relevant tests before closing feature todos.
 
 ## Logging and Events
 
-- Project actions append to `.ship/events.ndjson`.
-- Human-readable logs are derived from the event stream.
-- Event model should stay compatible with future global aggregation.
+* Project actions append to `.ship/events.ndjson`.
+
+* Human-readable logs are derived from the event stream.
+
+* Event model should stay compatible with future global aggregation.
+
+<br />

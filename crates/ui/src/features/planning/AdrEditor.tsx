@@ -11,6 +11,7 @@ interface AdrEditorProps {
   onChange: (next: ADR) => void;
   specSuggestions: string[];
   tagSuggestions: string[];
+  adrSuggestions?: string[];
   placeholder?: string;
   onInsertTemplate?: () => void | Promise<void>;
   onMcpSample?: () => Promise<string | null | undefined> | string | null | undefined;
@@ -25,6 +26,7 @@ export default function AdrEditor({
   onChange,
   specSuggestions,
   tagSuggestions,
+  adrSuggestions = [],
   placeholder,
   onInsertTemplate,
   onMcpSample,
@@ -52,12 +54,15 @@ export default function AdrEditor({
       showStats={false}
       showFrontmatter={false}
       frontmatterPanel={
-        <AdrFrontmatterPanel
-          adr={adr}
-          specSuggestions={specSuggestions}
-          tagSuggestions={tagSuggestions}
-          onChange={onChange}
-        />
+        <div className="p-4">
+          <AdrFrontmatterPanel
+            adr={adr}
+            specSuggestions={specSuggestions}
+            tagSuggestions={tagSuggestions}
+            adrSuggestions={adrSuggestions}
+            onChange={onChange}
+          />
+        </div>
       }
       value={adr.body}
       onChange={(body) => {

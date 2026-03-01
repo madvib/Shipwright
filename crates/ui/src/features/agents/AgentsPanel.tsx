@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Upload } from 'lucide-react';
-import { ModeConfig, ProjectConfig } from '@/bindings';
-import { exportAgentConfigCmd, generateIssueDescriptionCmd } from '@/lib/platform/tauri/commands';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Bot, Plus, Shield, ShieldAlert, FileSearch, Trash2, Upload, LockIcon, ScrollText, Zap, Globe, Folder } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { commands, ModeConfig, ProjectConfig, Permissions } from '@/bindings';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,10 @@ import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import MarkdownEditor from '@/components/editor';
+import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { cn } from '@/lib/utils';
 
 interface AgentsPanelProps {
   projectConfig: ProjectConfig | null;
@@ -36,10 +39,36 @@ type AgentDoc = {
 export type AgentSection = 'providers' | 'mcp' | 'skills' | 'rules' | 'permissions';
 
 const AI_PROVIDERS = [
-  { id: 'claude', label: 'Claude' },
-  { id: 'gemini', label: 'Gemini' },
-  { id: 'codex', label: 'Codex' },
+  { id: 'claude', label: 'Claude', icon: '🤖' },
+  { id: 'gemini', label: 'Gemini', icon: '✦' },
+  { id: 'codex', label: 'Codex', icon: '⚡' },
 ];
+
+const MODEL_SUGGESTIONS: Record<string, string[]> = {
+  claude: [
+    'claude-opus-4-5',
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+    'claude-3-5-haiku-latest',
+    'claude-3-5-sonnet-latest',
+    'claude-3-opus-latest',
+  ],
+  gemini: [
+    'gemini-2.5-pro',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-thinking-exp',
+    'gemini-1.5-pro',
+    'gemini-1.5-flash',
+  ],
+  codex: [
+    'gpt-4o',
+    'gpt-4o-mini',
+    'o1',
+    'o1-mini',
+    'o3',
+    'o4-mini',
+  ],
+};
 
 const EMPTY_AGENT_LAYER = {
   skills: [],
@@ -50,17 +79,7 @@ const EMPTY_AGENT_LAYER = {
 
 const DEFAULT_MODE_VALUE = 'default';
 
-const DEFAULT_PERMISSIONS_TOML = `# Draft permissions (UI-only until API lands)
-allow = [
-  "ship_list_issues",
-  "ship_get_issue",
-  "ship_update_issue"
-]
 
-deny = [
-  "ship_delete_issue"
-]
-`;
 
 const SECTION_META: Record<AgentSection, { title: string; description: string }> = {
   providers: {
@@ -127,17 +146,7 @@ function normalizeProjectConfig(config: ProjectConfig | null): ProjectConfig {
   };
 }
 
-function createStubDoc(kind: MarkdownDocKind, title: string): AgentDoc {
-  const isSkill = kind === 'skills';
-  return {
-    id: `${kind}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    title,
-    updated: new Date().toISOString(),
-    content: isSkill
-      ? `# ${title}\n\n## Intent\n\n## Inputs\n\n## Output\n\n## Guardrails\n`
-      : `# ${title}\n\n## Rule\n\n## Rationale\n\n## Examples\n`,
-  };
-}
+
 
 function formatUpdated(value: string): string {
   const date = new Date(value);
@@ -157,6 +166,7 @@ export default function AgentsPanel({
   onSaveGlobalAgentConfig,
   initialSection = 'providers',
 }: AgentsPanelProps) {
+  const queryClient = useQueryClient();
   const [localProject, setLocalProject] = useState<ProjectConfig>(normalizeProjectConfig(projectConfig));
   const [localGlobalAgent, setLocalGlobalAgent] = useState<ProjectConfig>(
     normalizeProjectConfig(globalAgentConfig)
@@ -168,20 +178,7 @@ export default function AgentsPanel({
   const [agentError, setAgentError] = useState<string | null>(null);
   const [mcpSnippet, setMcpSnippet] = useState('[]');
   const [mcpSnippetError, setMcpSnippetError] = useState<string | null>(null);
-  const [permissionDrafts, setPermissionDrafts] = useState<{ global: string; project: string }>({
-    global: DEFAULT_PERMISSIONS_TOML,
-    project: DEFAULT_PERMISSIONS_TOML,
-  });
-  const [docStore, setDocStore] = useState<Record<ScopeKey, Record<MarkdownDocKind, AgentDoc[]>>>(() => ({
-    global: {
-      skills: [createStubDoc('skills', 'Global Coding Skill')],
-      rules: [createStubDoc('rules', 'Global Execution Rules')],
-    },
-    project: {
-      skills: [createStubDoc('skills', 'Project Delivery Skill')],
-      rules: [createStubDoc('rules', 'Project Rules')],
-    },
-  }));
+
   const [selectedDocIds, setSelectedDocIds] = useState<Record<ScopeKey, Record<MarkdownDocKind, string | null>>>(
     () => ({
       global: {
@@ -194,6 +191,120 @@ export default function AgentsPanel({
       },
     })
   );
+
+  const activeDocKind: MarkdownDocKind | null =
+    initialSection === 'skills' || initialSection === 'rules' ? initialSection : null;
+
+  // Skills Query
+  const { data: skills = [] } = useQuery({
+    queryKey: ['skills', agentScope],
+    queryFn: async () => {
+      const res = await commands.listSkillsCmd(agentScope === 'project' ? 'project' : 'global');
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    enabled: initialSection === 'skills',
+  });
+
+  // Rules Query
+  const { data: rules = [] } = useQuery({
+    queryKey: ['rules'],
+    queryFn: async () => {
+      const res = await commands.listRulesCmd();
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    enabled: initialSection === 'rules',
+  });
+
+  const activeDocs =
+    activeDocKind === 'skills'
+      ? skills.map((s) => ({ id: s.id, title: s.name, content: s.content, updated: '' }))
+      : rules.map((r) => ({ id: r.file_name, title: r.file_name, content: r.content, updated: '' }));
+
+  const activeSelectedDocId = activeDocKind ? selectedDocIds[agentScope][activeDocKind] : null;
+  const activeDoc = activeDocs.find((doc) => doc.id === activeSelectedDocId) ?? activeDocs[0] ?? null;
+
+  // Mutations
+  const createSkillMut = useMutation({
+    mutationFn: async (vars: { id: string; name: string; content: string }) => {
+      const res = await commands.createSkillCmd(vars.id, vars.name, vars.content, agentScope);
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (newSkill) => {
+      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+      setSelectedDocIds((curr: Record<ScopeKey, Record<MarkdownDocKind, string | null>>) => ({
+        ...curr,
+        [agentScope]: { ...curr[agentScope], skills: newSkill.id },
+      }));
+    },
+  });
+
+  const updateSkillMut = useMutation({
+    mutationFn: async (vars: { id: string; name?: string; content?: string }) => {
+      const res = await commands.updateSkillCmd(vars.id, vars.name ?? null, vars.content ?? null, agentScope);
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+    },
+  });
+
+  const deleteSkillMut = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await commands.deleteSkillCmd(id, agentScope);
+      if (res.status === 'error') throw new Error(res.error);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+      setSelectedDocIds((curr: Record<ScopeKey, Record<MarkdownDocKind, string | null>>) => ({
+        ...curr,
+        [agentScope]: { ...curr[agentScope], skills: null },
+      }));
+    },
+  });
+
+  const createRuleMut = useMutation({
+    mutationFn: async (vars: { fileName: string; content: string }) => {
+      const res = await commands.createRuleCmd(vars.fileName, vars.content);
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (newRule) => {
+      queryClient.invalidateQueries({ queryKey: ['rules'] });
+      setSelectedDocIds((curr: Record<ScopeKey, Record<MarkdownDocKind, string | null>>) => ({
+        ...curr,
+        [agentScope]: { ...curr[agentScope], rules: newRule.file_name },
+      }));
+    },
+  });
+
+  const updateRuleMut = useMutation({
+    mutationFn: async (vars: { fileName: string; content: string }) => {
+      const res = await commands.updateRuleCmd(vars.fileName, vars.content);
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rules'] });
+    },
+  });
+
+  const deleteRuleMut = useMutation({
+    mutationFn: async (fileName: string) => {
+      const res = await commands.deleteRuleCmd(fileName);
+      if (res.status === 'error') throw new Error(res.error);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rules'] });
+      setSelectedDocIds((curr: Record<ScopeKey, Record<MarkdownDocKind, string | null>>) => ({
+        ...curr,
+        [agentScope]: { ...curr[agentScope], rules: null },
+      }));
+    },
+  });
 
   useEffect(() => {
     setLocalProject(normalizeProjectConfig(projectConfig));
@@ -214,33 +325,32 @@ export default function AgentsPanel({
     () => (agentScope === 'project' ? localProject : localGlobalAgent),
     [agentScope, localGlobalAgent, localProject]
   );
-  const activePermissionDraft = permissionDrafts[agentScope];
 
   useEffect(() => {
     setMcpSnippet(JSON.stringify(activeAgentConfig.mcp_servers ?? [], null, 2));
     setMcpSnippetError(null);
   }, [activeAgentConfig.mcp_servers, agentScope]);
 
-  const activeDocKind: MarkdownDocKind | null =
-    initialSection === 'skills' || initialSection === 'rules' ? initialSection : null;
+  // Permissions Query
+  const { data: permissions } = useQuery({
+    queryKey: ['permissions'],
+    queryFn: async () => {
+      const res = await commands.getPermissionsCmd();
+      if (res.status === 'error') throw new Error(res.error);
+      return res.data;
+    },
+    enabled: initialSection === 'permissions',
+  });
 
-  const activeDocs = activeDocKind ? docStore[agentScope][activeDocKind] : [];
-  const activeSelectedDocId = activeDocKind ? selectedDocIds[agentScope][activeDocKind] : null;
-  const activeDoc = activeDocs.find((doc) => doc.id === activeSelectedDocId) ?? activeDocs[0] ?? null;
-
-  useEffect(() => {
-    if (!activeDocKind) return;
-    const docs = docStore[agentScope][activeDocKind];
-    const selectedId = selectedDocIds[agentScope][activeDocKind];
-    if (docs.length === 0 || docs.some((doc) => doc.id === selectedId)) return;
-    setSelectedDocIds((current) => ({
-      ...current,
-      [agentScope]: {
-        ...current[agentScope],
-        [activeDocKind]: docs[0]?.id ?? null,
-      },
-    }));
-  }, [activeDocKind, agentScope, docStore, selectedDocIds]);
+  const savePermissionsMut = useMutation({
+    mutationFn: async (p: Permissions) => {
+      const res = await commands.savePermissionsCmd(p);
+      if (res.status === 'error') throw new Error(res.error);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['permissions'] });
+    },
+  });
 
   const updateActiveAgentConfig = (next: ProjectConfig) => {
     if (agentScope === 'project') {
@@ -248,10 +358,6 @@ export default function AgentsPanel({
       return;
     }
     setLocalGlobalAgent(next);
-  };
-
-  const updatePermissionDraft = (value: string) => {
-    setPermissionDrafts((current) => ({ ...current, [agentScope]: value }));
   };
 
   const handleMcpSnippetChange = (value: string) => {
@@ -271,35 +377,31 @@ export default function AgentsPanel({
     }
   };
 
-  const upsertDoc = (kind: MarkdownDocKind, docId: string, patch: Partial<AgentDoc>) => {
-    setDocStore((current) => ({
-      ...current,
-      [agentScope]: {
-        ...current[agentScope],
-        [kind]: current[agentScope][kind].map((doc) =>
-          doc.id === docId ? { ...doc, ...patch, updated: new Date().toISOString() } : doc
-        ),
-      },
-    }));
+  const handleUpsertDoc = (kind: MarkdownDocKind, docId: string, patch: Partial<AgentDoc>) => {
+    if (kind === 'skills') {
+      updateSkillMut.mutate({ id: docId, name: patch.title, content: patch.content });
+    } else {
+      updateRuleMut.mutate({ fileName: docId, content: patch.content ?? '' });
+    }
   };
 
-  const createDoc = (kind: MarkdownDocKind) => {
-    const isSkill = kind === 'skills';
-    const doc = createStubDoc(kind, isSkill ? 'Untitled Skill' : 'Untitled Rule');
-    setDocStore((current) => ({
-      ...current,
-      [agentScope]: {
-        ...current[agentScope],
-        [kind]: [doc, ...current[agentScope][kind]],
-      },
-    }));
-    setSelectedDocIds((current) => ({
-      ...current,
-      [agentScope]: {
-        ...current[agentScope],
-        [kind]: doc.id,
-      },
-    }));
+  const handleCreateDoc = (kind: MarkdownDocKind) => {
+    const title = kind === 'skills' ? 'Untitled Skill' : 'Untitled Rule';
+    if (kind === 'skills') {
+      const id = `skill-${Date.now()}`;
+      createSkillMut.mutate({ id, name: title, content: `# ${title}\n` });
+    } else {
+      const fileName = `rule-${Date.now()}.md`;
+      createRuleMut.mutate({ fileName, content: `# ${title}\n` });
+    }
+  };
+
+  const handleDeleteDoc = (kind: MarkdownDocKind, docId: string) => {
+    if (kind === 'skills') {
+      deleteSkillMut.mutate(docId);
+    } else {
+      deleteRuleMut.mutate(docId);
+    }
   };
 
   const handleAddMode = () => {
@@ -316,7 +418,7 @@ export default function AgentsPanel({
   const handleRemoveMode = (id: string) => {
     updateActiveAgentConfig({
       ...activeAgentConfig,
-      modes: (activeAgentConfig.modes ?? []).filter((m) => m.id !== id),
+      modes: (activeAgentConfig.modes ?? []).filter((m: ModeConfig) => m.id !== id),
       active_mode: activeAgentConfig.active_mode === id ? null : activeAgentConfig.active_mode,
     });
   };
@@ -330,7 +432,8 @@ export default function AgentsPanel({
     setTestStatus('loading');
     setAgentError(null);
     try {
-      await generateIssueDescriptionCmd('test task');
+      const res = await commands.generateIssueDescriptionCmd('test task');
+      if (res.status === 'error') throw new Error(res.error);
       setTestStatus('ok');
     } catch (err) {
       setTestStatus('error');
@@ -338,14 +441,15 @@ export default function AgentsPanel({
     }
   };
 
-  const handleExport = async (target: 'claude' | 'codex' | 'gemini') => {
-    setExportStatus((prev) => ({ ...prev, [target]: 'loading' }));
+  const handleExport = async (target: string) => {
+    setExportStatus((prev: Record<string, 'idle' | 'loading' | 'ok' | 'error'>) => ({ ...prev, [target]: 'loading' }));
     setAgentError(null);
     try {
-      await exportAgentConfigCmd(target);
-      setExportStatus((prev) => ({ ...prev, [target]: 'ok' }));
+      const res = await commands.exportAgentConfigCmd(target);
+      if (res.status === 'error') throw new Error(res.error);
+      setExportStatus((prev: Record<string, 'idle' | 'loading' | 'ok' | 'error'>) => ({ ...prev, [target]: 'ok' }));
     } catch (err) {
-      setExportStatus((prev) => ({ ...prev, [target]: 'error' }));
+      setExportStatus((prev: Record<string, 'idle' | 'loading' | 'ok' | 'error'>) => ({ ...prev, [target]: 'error' }));
       setAgentError(String(err));
     }
   };
@@ -359,83 +463,119 @@ export default function AgentsPanel({
 
   const sectionMeta = SECTION_META[initialSection];
 
+  const scopeToggle = (
+    <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
+      <button
+        type="button"
+        onClick={() => setAgentScope('global')}
+        className={cn(
+          'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all',
+          agentScope === 'global'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
+        )}
+      >
+        <Globe className="size-3" />
+        Global
+      </button>
+      <button
+        type="button"
+        disabled={!hasActiveProject}
+        onClick={() => hasActiveProject && setAgentScope('project')}
+        className={cn(
+          'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all',
+          agentScope === 'project'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+          !hasActiveProject && 'cursor-not-allowed opacity-40'
+        )}
+      >
+        <Folder className="size-3" />
+        Project
+      </button>
+    </div>
+  );
+
   return (
     <PageFrame className="md:p-8">
       <PageHeader
         title={sectionMeta.title}
         description={sectionMeta.description}
         badge={<Badge variant="outline">Agents</Badge>}
-        actions={
-          <div className="flex items-center gap-2 rounded-md border bg-card/70 px-2 py-1.5 shadow-sm">
-            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">Scope</span>
-            <Select
-              value={agentScope}
-              onValueChange={(value) => setAgentScope((value as ScopeKey) ?? 'global')}
-            >
-              <SelectTrigger size="sm" className="h-7 w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="global">Global</SelectItem>
-                <SelectItem value="project" disabled={!hasActiveProject}>
-                  Project
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        }
+        actions={scopeToggle}
       />
 
       <div className="grid gap-4">
         {initialSection === 'providers' && (
           <div className="grid gap-4">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Agent Selection</CardTitle>
-                <CardDescription>Choose provider and model used by generation features.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-3 lg:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Provider</Label>
-                    <Select
-                      value={activeAgentConfig.ai?.provider ?? 'claude'}
-                      onValueChange={(value) =>
-                        updateActiveAgentConfig({
-                          ...activeAgentConfig,
-                          ai: { ...normalizeAiConfig(activeAgentConfig.ai), provider: value },
-                        })
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {AI_PROVIDERS.map((provider) => (
-                          <SelectItem key={provider.id} value={provider.id}>
-                            {provider.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+            {/* Agent Selection Card */}
+            <Card size="sm" className="overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-primary/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+                  <Bot className="size-4 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">Agent Selection</h3>
+                  <p className="text-[11px] text-muted-foreground">Choose provider and model for AI generation features.</p>
+                </div>
+              </div>
+              <CardContent className="space-y-4 pt-4">
+                {/* Provider pill selector */}
+                <div className="space-y-2">
+                  <Label>Provider</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {AI_PROVIDERS.map((provider) => {
+                      const active = (activeAgentConfig.ai?.provider ?? 'claude') === provider.id;
+                      return (
+                        <button
+                          key={provider.id}
+                          type="button"
+                          onClick={() =>
+                            updateActiveAgentConfig({
+                              ...activeAgentConfig,
+                              ai: { ...normalizeAiConfig(activeAgentConfig.ai), provider: provider.id },
+                            })
+                          }
+                          className={cn(
+                            'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all',
+                            active
+                              ? 'border-primary/50 bg-primary/10 text-primary shadow-sm'
+                              : 'border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 text-muted-foreground'
+                          )}
+                        >
+                          <span className="text-base leading-none">{provider.icon}</span>
+                          {provider.label}
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {/* Model autocomplete */}
                   <div className="space-y-2">
                     <Label htmlFor="agents-model">Model</Label>
-                    <Input
+                    <AutocompleteInput
                       id="agents-model"
                       value={activeAgentConfig.ai?.model ?? ''}
-                      onChange={(event) =>
+                      options={(
+                        MODEL_SUGGESTIONS[activeAgentConfig.ai?.provider ?? 'claude'] ?? []
+                      ).map((m) => ({ value: m }))}
+                      placeholder="claude-sonnet-4-5 / gemini-2.0-flash / gpt-4o"
+                      noResultsText="Type a custom model name."
+                      onValueChange={(value) =>
                         updateActiveAgentConfig({
                           ...activeAgentConfig,
                           ai: {
                             ...normalizeAiConfig(activeAgentConfig.ai),
-                            model: event.target.value || null,
+                            model: value || null,
                           },
                         })
                       }
-                      placeholder="haiku / sonnet / gpt-5 / gemini-2.0-flash"
                     />
                   </div>
+
+                  {/* CLI path */}
                   <div className="space-y-2">
                     <Label htmlFor="agents-cli-path">CLI Path Override</Label>
                     <Input
@@ -454,6 +594,7 @@ export default function AgentsPanel({
                     />
                   </div>
                 </div>
+
                 <div className="flex items-center gap-3">
                   <Button
                     type="button"
@@ -462,6 +603,7 @@ export default function AgentsPanel({
                     disabled={testStatus === 'loading' || !hasActiveProject}
                     onClick={() => void handleTestProvider()}
                   >
+                    <Zap className="size-3.5" />
                     {testStatus === 'loading' ? 'Testing…' : 'Test Agent'}
                   </Button>
                   {testStatus === 'ok' && (
@@ -469,6 +611,9 @@ export default function AgentsPanel({
                   )}
                   {testStatus === 'error' && (
                     <span className="text-xs text-destructive">Failed — check binary/model/path</span>
+                  )}
+                  {agentError && (
+                    <span className="text-xs text-destructive truncate max-w-[280px]" title={agentError}>{agentError}</span>
                   )}
                 </div>
                 {!hasActiveProject && (
@@ -605,8 +750,8 @@ export default function AgentsPanel({
                       {exportStatus[target] === 'loading'
                         ? 'Syncing…'
                         : exportStatus[target] === 'ok'
-                        ? `Synced to ${target} ✓`
-                        : `Sync to ${target}`}
+                          ? `Synced to ${target} ✓`
+                          : `Sync to ${target}`}
                     </Button>
                   ))}
                 </div>
@@ -626,7 +771,7 @@ export default function AgentsPanel({
                 <CardDescription>Markdown file list (local stub until API integration).</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button variant="outline" size="sm" className="w-full" onClick={() => createDoc(activeDocKind)}>
+                <Button variant="outline" size="sm" className="w-full" onClick={() => handleCreateDoc(activeDocKind)}>
                   <Plus className="size-3.5" />
                   New {initialSection === 'skills' ? 'Skill' : 'Rule'}
                 </Button>
@@ -637,11 +782,10 @@ export default function AgentsPanel({
                       <button
                         key={doc.id}
                         type="button"
-                        className={`w-full rounded-md border px-2.5 py-2 text-left transition-colors ${
-                          selected ? 'border-primary/40 bg-primary/10' : 'hover:bg-muted/50'
-                        }`}
+                        className={`w-full rounded-md border px-2.5 py-2 text-left transition-colors ${selected ? 'border-primary/40 bg-primary/10' : 'hover:bg-muted/50'
+                          }`}
                         onClick={() =>
-                          setSelectedDocIds((current) => ({
+                          setSelectedDocIds((current: Record<ScopeKey, Record<MarkdownDocKind, string | null>>) => ({
                             ...current,
                             [agentScope]: {
                               ...current[agentScope],
@@ -660,29 +804,48 @@ export default function AgentsPanel({
             </Card>
 
             <Card size="sm" className="xl:h-[640px]">
-              <CardHeader>
-                <CardTitle>{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</CardTitle>
-                <CardDescription>Markdown editor for selected doc (stubbed local state).</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle>{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</CardTitle>
+                  <CardDescription>
+                    Markdown editor for selected {initialSection === 'skills' ? 'skill' : 'rule'}.
+                  </CardDescription>
+                </div>
+                {activeDoc && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => handleDeleteDoc(activeDocKind, activeDoc.id)}
+                  >
+                    <Trash2 className="size-3.5 mr-1" />
+                    Delete
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-3">
                 {!activeDoc ? (
-                  <p className="text-muted-foreground text-sm">Create a document to start editing.</p>
+                  <div className="flex h-[400px] flex-col items-center justify-center gap-2 text-center">
+                    <ScrollText className="size-8 text-muted-foreground opacity-30" />
+                    <p className="text-muted-foreground text-sm">Select or create a document to start editing.</p>
+                  </div>
                 ) : (
                   <>
                     <Input
                       value={activeDoc.title}
-                      onChange={(event) => upsertDoc(activeDocKind, activeDoc.id, { title: event.target.value })}
+                      onChange={(event) => handleUpsertDoc(activeDocKind, activeDoc.id, { title: event.target.value })}
                       placeholder="Document title"
                     />
                     <MarkdownEditor
                       label={undefined}
                       value={activeDoc.content}
-                      onChange={(value) => upsertDoc(activeDocKind, activeDoc.id, { content: value })}
+                      onChange={(value) => handleUpsertDoc(activeDocKind, activeDoc.id, { content: value })}
                       placeholder={initialSection === 'skills' ? '# Skill' : '# Rule'}
                       rows={18}
-                      defaultMode="doc"
+                      defaultMode="edit"
                       showFrontmatter={false}
                       showStats={false}
+                      fillHeight
                     />
                   </>
                 )}
@@ -692,30 +855,259 @@ export default function AgentsPanel({
         )}
 
         {initialSection === 'permissions' && (
-          <div className="grid gap-4">
+          <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
             <Card size="sm">
               <CardHeader>
-                <CardTitle>Permissions</CardTitle>
-                <CardDescription>
-                  TOML/JSON snippet editor for permissions drafts (UI-only until API lands).
-                </CardDescription>
+                <CardTitle>Capabilities</CardTitle>
+                <CardDescription>Structured policy for agent tool usage and access.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="rounded-md border bg-card/50">
-                  <div className="text-muted-foreground border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wide">
-                    TOML
-                  </div>
-                  <Textarea
-                    value={activePermissionDraft}
-                    onChange={(event) => updatePermissionDraft(event.target.value)}
-                    rows={16}
-                    className="min-h-[340px] resize-y border-0 font-mono text-xs leading-6 shadow-none focus-visible:ring-0"
-                    placeholder={DEFAULT_PERMISSIONS_TOML}
-                  />
-                </div>
-                <p className="text-muted-foreground text-xs">
-                  Draft content only. Save behavior will connect once permissions API is implemented.
+              <CardContent className="space-y-6">
+                {!permissions ? (
+                  <p className="text-muted-foreground py-10 text-center text-sm">Loading permissions...</p>
+                ) : (
+                  <Tabs defaultValue="tools">
+                    <TabsList className="mb-4">
+                      <TabsTrigger value="tools">Tools</TabsTrigger>
+                      <TabsTrigger value="filesystem">Filesystem</TabsTrigger>
+                      <TabsTrigger value="limits">Limits</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="tools" className="space-y-6">
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Shield className="size-4 text-emerald-500" />
+                            <Label>Allow List</Label>
+                          </div>
+                          <p className="text-muted-foreground text-xs">Explicity permitted community tools.</p>
+                          <div className="space-y-2">
+                            {(permissions.tools?.allow || []).map((p, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <Input
+                                  value={p || ''}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const next = [...(permissions.tools?.allow || [])];
+                                    next[idx] = e.target.value;
+                                    savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, allow: next, deny: permissions.tools?.deny || [] } });
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={() => {
+                                    const next = (permissions.tools?.allow || []).filter((_, i) => i !== idx);
+                                    savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, allow: next, deny: permissions.tools?.deny || [] } });
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="w-full border-dashed"
+                              onClick={() => {
+                                savePermissionsMut.mutate({
+                                  ...permissions,
+                                  tools: { ...permissions.tools, allow: [...(permissions.tools?.allow || []), ''], deny: permissions.tools?.deny || [] },
+                                });
+                              }}
+                            >
+                              <Plus className="size-3.5 mr-1" /> Add Permission
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="size-4 text-destructive" />
+                            <Label>Deny List</Label>
+                          </div>
+                          <p className="text-muted-foreground text-xs">Blocked community tools.</p>
+                          <div className="space-y-2">
+                            {(permissions.tools?.deny || []).map((p, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <Input
+                                  value={p || ''}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const next = [...(permissions.tools?.deny || [])];
+                                    next[idx] = e.target.value;
+                                    savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, deny: next, allow: permissions.tools?.allow || ["*"] } });
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={() => {
+                                    const next = (permissions.tools?.deny || []).filter((_, i) => i !== idx);
+                                    savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, deny: next, allow: permissions.tools?.allow || ["*"] } });
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="w-full border-dashed"
+                              onClick={() => {
+                                savePermissionsMut.mutate({
+                                  ...permissions,
+                                  tools: { ...permissions.tools, deny: [...(permissions.tools?.deny || []), ''], allow: permissions.tools?.allow || ["*"] },
+                                });
+                              }}
+                            >
+                              <Plus className="size-3.5 mr-1" /> Add Restriction
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="filesystem" className="space-y-6">
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <FileSearch className="size-4 text-emerald-500" />
+                            <Label>Read/Write Allow</Label>
+                          </div>
+                          <div className="space-y-2">
+                            {(permissions.filesystem?.allow || []).map((p, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <Input
+                                  value={p || ''}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const next = [...(permissions.filesystem?.allow || [])];
+                                    next[idx] = e.target.value;
+                                    savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, allow: next, deny: permissions.filesystem?.deny || [] } });
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={() => {
+                                    const next = (permissions.filesystem?.allow || []).filter((_, i) => i !== idx);
+                                    savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, allow: next, deny: permissions.filesystem?.deny || [] } });
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="w-full border-dashed"
+                              onClick={() => {
+                                savePermissionsMut.mutate({
+                                  ...permissions,
+                                  filesystem: { ...permissions.filesystem, allow: [...(permissions.filesystem?.allow || []), ''], deny: permissions.filesystem?.deny || [] },
+                                });
+                              }}
+                            >
+                              <Plus className="size-3.5 mr-1" /> Add Path
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <LockIcon className="size-4 text-destructive" />
+                            <Label>Block List</Label>
+                          </div>
+                          <div className="space-y-2">
+                            {(permissions.filesystem?.deny || []).map((p, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <Input
+                                  value={p || ''}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const next = [...(permissions.filesystem?.deny || [])];
+                                    next[idx] = e.target.value;
+                                    savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, deny: next, allow: permissions.filesystem?.allow || [] } });
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={() => {
+                                    const next = (permissions.filesystem?.deny || []).filter((_, i) => i !== idx);
+                                    savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, deny: next, allow: permissions.filesystem?.allow || [] } });
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="w-full border-dashed"
+                              onClick={() => {
+                                savePermissionsMut.mutate({
+                                  ...permissions,
+                                  filesystem: { ...permissions.filesystem, deny: [...(permissions.filesystem?.deny || []), ''], allow: permissions.filesystem?.allow || [] },
+                                });
+                              }}
+                            >
+                              <Plus className="size-3.5 mr-1" /> Add Exclusion
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="limits" className="space-y-6">
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <div className="space-y-3">
+                          <Label>Max Cost per Session (USD)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={permissions.agent?.max_cost_per_session ?? ''}
+                            onChange={(e) => savePermissionsMut.mutate({ ...permissions, agent: { ...permissions.agent, max_cost_per_session: parseFloat(e.target.value) || null } })}
+                            placeholder="Unlimited"
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <Label>Max Turns per Session</Label>
+                          <Input
+                            type="number"
+                            value={permissions.agent?.max_turns ?? ''}
+                            onChange={(e) => savePermissionsMut.mutate({ ...permissions, agent: { ...permissions.agent, max_turns: parseInt(e.target.value, 10) || null } })}
+                            placeholder="Unlimited"
+                          />
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card size="sm" className="bg-muted/10">
+              <CardHeader>
+                <CardTitle className="text-sm">Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs leading-relaxed">
+                <p>
+                  Permissions define the security sandbox for AI agents operating in this project.
                 </p>
+                <p className="text-muted-foreground">
+                  The <span className="text-emerald-500 font-medium">Allow List</span> uses glob patterns to permit
+                  specific tools or file access.
+                </p>
+                <p className="text-muted-foreground">
+                  The <span className="text-destructive font-medium">Deny List</span> takes precedence and blocks
+                  matching operations even if allowed elsewhere.
+                </p>
+                <div className="rounded-md border bg-card p-3">
+                  <p className="font-medium mb-1">Security Guardrails</p>
+                  <p className="text-muted-foreground leading-normal">
+                    These rules are enforced by the core runtime. Even if an AI suggests a change, it will be blocked if it violates these policies.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </div>

@@ -9,6 +9,7 @@ import ProjectOnboarding from '@/features/planning/ProjectOnboarding';
 import SpecDetail from '@/features/planning/SpecDetail';
 import ReleaseDetail from '@/features/planning/ReleaseDetail';
 import FeatureDetail from '@/features/planning/FeatureDetail';
+import { SearchModal } from '@/components/app/SearchModal';
 import { Button } from '@/components/ui/button';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import {
@@ -101,6 +102,7 @@ export default function App() {
           : '16rem minmax(0, 1fr)',
       }}
     >
+      <SearchModal />
       <Sidebar
         collapsed={workspace.sidebarCollapsed}
         onToggleCollapse={() => workspace.setSidebarCollapsed((current) => !current)}
@@ -205,6 +207,7 @@ export default function App() {
           onClose={() => workspace.setShowNewAdr(false)}
           specSuggestions={workspace.specSuggestions}
           tagSuggestions={workspace.tagSuggestions}
+          adrSuggestions={workspace.adrs.map((e) => e.file_name)}
           onSubmit={workspace.handleCreateAdr}
         />
       )}
@@ -218,6 +221,7 @@ export default function App() {
           onSave={workspace.handleSaveAdr}
           onDelete={workspace.handleDeleteAdr}
           specSuggestions={workspace.specSuggestions}
+          adrSuggestions={workspace.adrs.map((e) => e.file_name)}
           tagSuggestions={workspace.tagSuggestions}
           mcpEnabled={workspace.mcpEnabled}
         />
@@ -225,17 +229,27 @@ export default function App() {
       {workspace.selectedSpec && (
         <SpecDetail
           spec={workspace.selectedSpec}
-        tagSuggestions={workspace.tagSuggestions}
-        onClose={() => workspace.setSelectedSpec(null)}
-        onSave={workspace.handleSaveSpec}
-        onDelete={workspace.handleDeleteSpec}
-        mcpEnabled={workspace.mcpEnabled}
-      />
+          features={workspace.features}
+          tagSuggestions={workspace.tagSuggestions}
+          onClose={() => workspace.setSelectedSpec(null)}
+          onSelectFeature={(f) => {
+            workspace.setSelectedSpec(null);
+            workspace.handleSelectFeature(f);
+          }}
+          onSave={workspace.handleSaveSpec}
+          onDelete={workspace.handleDeleteSpec}
+          mcpEnabled={workspace.mcpEnabled}
+        />
       )}
       {workspace.selectedRelease && (
         <ReleaseDetail
           release={workspace.selectedRelease}
+          features={workspace.features}
           onClose={() => workspace.setSelectedRelease(null)}
+          onSelectFeature={(f) => {
+            workspace.setSelectedRelease(null);
+            workspace.handleSelectFeature(f);
+          }}
           onSave={workspace.handleSaveRelease}
           mcpEnabled={workspace.mcpEnabled}
         />
@@ -248,6 +262,20 @@ export default function App() {
           adrSuggestions={workspace.adrs.map((entry) => entry.file_name)}
           tagSuggestions={workspace.tagSuggestions}
           onClose={() => workspace.setSelectedFeature(null)}
+          onSelectRelease={(name) => {
+            const rel = workspace.releases.find((r) => r.file_name === name);
+            if (rel) {
+              workspace.setSelectedFeature(null);
+              workspace.handleSelectRelease(rel);
+            }
+          }}
+          onSelectSpec={(name) => {
+            const spec = workspace.specs.find((s) => s.file_name === name);
+            if (spec) {
+              workspace.setSelectedFeature(null);
+              workspace.handleSelectSpec(spec);
+            }
+          }}
           onSave={workspace.handleSaveFeature}
           mcpEnabled={workspace.mcpEnabled}
         />

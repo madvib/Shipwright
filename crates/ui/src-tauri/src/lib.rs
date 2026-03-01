@@ -10,7 +10,7 @@ use runtime::project::{
 use runtime::{
     create_adr, create_feature, create_issue, create_prompt, create_release, create_skill,
     create_spec, create_user_skill, delete_adr, delete_issue, delete_prompt, delete_skill,
-    delete_spec, delete_user_skill, get_effective_skill, get_feature,
+    delete_spec, delete_user_skill, find_feature_path, get_effective_skill, get_feature,
     get_feature_raw as get_feature_content, get_issue, get_project_dir, get_project_name,
     get_prompt, get_release, get_release_raw as get_release_content, get_skill,
     get_spec_raw as get_spec_content, get_user_skill, get_workspace, ingest_external_events,
@@ -1145,12 +1145,12 @@ fn list_features_cmd(state: State<AppState>) -> Result<Vec<FeatureInfo>, String>
 
 #[tauri::command]
 #[specta::specta]
-fn get_feature_cmd(file_name: String, state: State<AppState>) -> Result<FeatureDocument, String> {
+fn get_feature_cmd(
+    file_name: String,
+    state: State<'_, AppState>,
+) -> Result<FeatureDocument, String> {
     let project_dir = get_active_dir(&state)?;
-    let path = features_dir(&project_dir).join(&file_name);
-    if !path.exists() {
-        return Err(format!("Feature not found: {}", file_name));
-    }
+    let path = find_feature_path(&project_dir, &file_name).map_err(|e| e.to_string())?;
     feature_document_from_path(path)
 }
 
@@ -1398,9 +1398,43 @@ fn save_permissions_cmd(
 
 #[tauri::command]
 #[specta::specta]
-fn get_workspace_cmd(branch: String, state: State<AppState>) -> Result<Option<Workspace>, String> {
+async fn get_workspace_cmd(
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<Option<Workspace>, String> {
     let project_dir = get_active_dir(&state)?;
-    get_workspace(&project_dir, &branch).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        get_workspace(&project_dir, &branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_current_branch_cmd(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        // Walk up from the .ship dir to find the git repo root
+        let git_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&git_root)
+            .output();
+        match output {
+            Ok(out) if out.status.success() => {
+                let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if branch.is_empty() || branch == "HEAD" {
+                    Ok(None)
+                } else {
+                    Ok(Some(branch))
+                }
+            }
+            _ => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ─── Commands: Log ────────────────────────────────────────────────────────────
@@ -1778,12 +1812,35 @@ async fn brainstorm_issues_cmd(
         .filter(|l| !l.is_empty())
         .collect())
 }
+#[tauri::command]
+#[specta::specta]
+async fn transform_text_cmd(
+    instruction: String,
+    text: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let dir = get_active_dir(&state)?;
+    let config = get_effective_config(Some(dir)).map_err(|e| e.to_string())?;
+    let ai = config.ai.unwrap_or_default();
+    let prompt = format!(
+        "Role: Senior Software Engineer & Technical Writer.\n\
+         Task: {}.\n\n\
+         Target Text:\n\
+         ```\n\
+         {}\n\
+         ```\n\n\
+         Constraint: Return ONLY the processed text with preserved or improved markdown structure. No preamble, conversational filler, or triple backticks unless required by the content.",
+        instruction, text
+    );
+    tokio::task::spawn_blocking(move || invoke_ai_cli(&ai, &prompt))
+        .await
+        .map_err(|e| e.to_string())?
+}
 
 // ─── App Entry ────────────────────────────────────────────────────────────────
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let builder = tauri_specta::Builder::<tauri::Wry>::new()
+fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
         .events(tauri_specta::collect_events![ShipEvent])
         .commands(tauri_specta::collect_commands![
             // Project
@@ -1844,6 +1901,7 @@ pub fn run() {
             save_permissions_cmd,
             // Workspace
             get_workspace_cmd,
+            get_current_branch_cmd,
             // Log
             list_events_cmd,
             ingest_events_cmd,
@@ -1889,105 +1947,9 @@ pub fn run() {
             generate_issue_description_cmd,
             generate_adr_cmd,
             brainstorm_issues_cmd,
-        ]);
-
-    // In debug builds, regenerate src/bindings.ts automatically.
-    #[cfg(debug_assertions)]
-    let bindings_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
-
-    #[cfg(debug_assertions)]
-    builder
-        .export(
-            specta_typescript::Typescript::default()
-                .bigint(specta_typescript::BigIntExportBehavior::Number)
-                .header(
-                    "// @ts-nocheck\n// This file is auto-generated by tauri-specta. Do not edit manually."
-                ),
-            &bindings_path,
-        )
-        .expect("Failed to export TypeScript bindings");
-
-    tauri::Builder::default()
-        .manage(AppState::default())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(builder.invoke_handler())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+            transform_text_cmd,
+        ])
 }
-            update_release_cmd,
-            // Features
-            list_features_cmd,
-            get_feature_cmd,
-            create_feature_cmd,
-            update_feature_cmd,
-            get_template_cmd,
-            // Vision
-            get_vision_cmd,
-            update_vision_cmd,
-            // Notes
-            list_notes_cmd,
-            get_note_cmd,
-            create_note_cmd,
-            update_note_cmd,
-            // Rules
-            list_rules_cmd,
-            get_rule_cmd,
-            create_rule_cmd,
-            update_rule_cmd,
-            delete_rule_cmd,
-            // Permissions
-            get_permissions_cmd,
-            save_permissions_cmd,
-            // Workspace
-            get_workspace_cmd,
-            // Log
-            list_events_cmd,
-            ingest_events_cmd,
-            get_log,
-            // Settings
-            get_app_settings,
-            get_project_config,
-            save_project_config,
-            save_app_settings,
-            // Modes
-            list_modes_cmd,
-            add_mode_cmd,
-            remove_mode_cmd,
-            set_active_mode_cmd,
-            get_active_mode_cmd,
-            // MCP servers
-            list_mcp_servers_cmd,
-            add_mcp_server_cmd,
-            remove_mcp_server_cmd,
-            // Skills
-            list_skills_cmd,
-            get_skill_cmd,
-            create_skill_cmd,
-            update_skill_cmd,
-            delete_skill_cmd,
-            // Prompts
-            list_prompts_cmd,
-            get_prompt_cmd,
-            create_prompt_cmd,
-            update_prompt_cmd,
-            delete_prompt_cmd,
-            // Agents / Providers
-            list_providers_cmd,
-            list_models_cmd,
-            get_agent_config_cmd,
-            // Catalog
-            list_catalog_cmd,
-            list_catalog_by_kind_cmd,
-            search_catalog_cmd,
-            // Agent export
-            export_agent_config_cmd,
-            // AI
-            generate_issue_description_cmd,
-            generate_adr_cmd,
-            brainstorm_issues_cmd,
-        ]);
->>>>>>> feature/alpha-dogfood
 
 fn default_bindings_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")

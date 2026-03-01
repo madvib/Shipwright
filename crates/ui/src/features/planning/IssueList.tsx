@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { GripVertical, Plus } from 'lucide-react';
+import { ChevronDown, ChevronUp, GripVertical, Plus } from 'lucide-react';
 import { IssueEntry, StatusConfig } from '@/bindings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -192,6 +192,8 @@ interface IssueColumnProps {
   isDropTarget: boolean;
   isMovingPath: string | null;
   showNewIssueButton: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onSelect: (entry: IssueEntry) => void;
   onNewIssue: () => void;
 }
@@ -202,6 +204,8 @@ function IssueColumn({
   isDropTarget,
   isMovingPath,
   showNewIssueButton,
+  collapsed,
+  onToggleCollapse,
   onSelect,
   onNewIssue,
 }: IssueColumnProps) {
@@ -210,15 +214,50 @@ function IssueColumn({
     id: columnDndId(status.id),
   });
 
-  return (
-    <div ref={setNodeRef}>
-      <Card
-        size="sm"
+  if (collapsed) {
+    return (
+      <div
+        ref={setNodeRef}
         className={cn(
-          'flex h-full min-h-[20rem] max-h-[calc(100vh-14.5rem)] flex-col overflow-visible border transition-colors',
+          'flex w-11 shrink-0 cursor-pointer flex-col items-center rounded-lg border py-3 transition-all hover:w-14',
           style.border,
           style.bg,
           isDropTarget && 'ring-2 ring-accent/60'
+        )}
+        onClick={onToggleCollapse}
+        title={`Expand ${style.label}`}
+      >
+        {/* Count badge */}
+        <span className={cn('mb-3 text-[11px] font-bold', style.color)}>
+          {issues.length}
+        </span>
+        {/* Rotated label */}
+        <span
+          className="flex-1 text-[11px] font-semibold tracking-wider text-muted-foreground"
+          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+        >
+          {style.label}
+        </span>
+        {/* Expand indicator */}
+        <ChevronDown className="mt-3 size-3 text-muted-foreground opacity-60" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex min-w-[200px] flex-1 flex-col',
+        isDropTarget && 'ring-2 ring-inset ring-accent/60 rounded-lg'
+      )}
+    >
+      <Card
+        size="sm"
+        className={cn(
+          'flex h-full flex-col border transition-colors min-h-[8rem] max-h-[calc(100vh-14.5rem)]',
+          style.border,
+          style.bg,
         )}
       >
         <CardHeader className="pb-1.5">
@@ -227,7 +266,19 @@ function IssueColumn({
               <span className={cn('text-xs', style.color)}>●</span>
               {style.label}
             </span>
-            <Badge variant="outline">{issues.length}</Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline">{issues.length}</Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-6 opacity-50 hover:opacity-100"
+                onClick={onToggleCollapse}
+                title="Collapse column"
+              >
+                <ChevronUp className="size-3.5" />
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-visible pr-1">
@@ -284,6 +335,14 @@ export default function IssueList({ issues, statuses, onSelect, onMove, onNewIss
   const [dropTargetStatus, setDropTargetStatus] = useState<string | null>(null);
   const [movingPath, setMovingPath] = useState<string | null>(null);
   const [suppressClickUntil, setSuppressClickUntil] = useState(0);
+
+  // Collapsible state keyed by status id. Default: collapse columns that have 0 issues.
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    // We'll update this after we know issue counts, but default all to false
+    return initial;
+  });
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -312,6 +371,19 @@ export default function IssueList({ issues, statuses, onSelect, onMove, onNewIss
     return map;
   }, [issues]);
   const activeEntry = activePath ? issuesByPath.get(activePath) ?? null : null;
+
+  const isColumnCollapsed = (statusId: string): boolean => {
+    // Explicitly set value wins; otherwise auto-collapse empty columns
+    if (statusId in collapsedColumns) return collapsedColumns[statusId];
+    return (issuesByStatus.get(statusId)?.length ?? 0) === 0;
+  };
+
+  const toggleColumn = (statusId: string) => {
+    setCollapsedColumns((prev) => ({
+      ...prev,
+      [statusId]: !isColumnCollapsed(statusId),
+    }));
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id);
@@ -374,26 +446,27 @@ export default function IssueList({ issues, statuses, onSelect, onMove, onNewIss
         setSuppressClickUntil(Date.now() + 250);
       }}
     >
-      <div className="w-full overflow-x-hidden">
-        <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
-          {statuses.map((status) => (
-            <IssueColumn
-              key={status.id}
-              status={status}
-              issues={issuesByStatus.get(status.id) ?? []}
-              isDropTarget={dropTargetStatus === status.id}
-              isMovingPath={movingPath}
-              showNewIssueButton={status.id === statuses[0]?.id}
-              onSelect={(entry) => {
-                if (Date.now() < suppressClickUntil) {
-                  return;
-                }
-                onSelect(entry);
-              }}
-              onNewIssue={onNewIssue}
-            />
-          ))}
-        </div>
+      {/* Flex row — columns never wrap, collapsed ones shrink to narrow strips */}
+      <div className="flex min-h-[400px] gap-2 overflow-x-auto pb-2" style={{ alignItems: 'stretch' }}>
+        {statuses.map((status) => (
+          <IssueColumn
+            key={status.id}
+            status={status}
+            issues={issuesByStatus.get(status.id) ?? []}
+            isDropTarget={dropTargetStatus === status.id}
+            isMovingPath={movingPath}
+            showNewIssueButton={status.id === statuses[0]?.id}
+            collapsed={isColumnCollapsed(status.id)}
+            onToggleCollapse={() => toggleColumn(status.id)}
+            onSelect={(entry) => {
+              if (Date.now() < suppressClickUntil) {
+                return;
+              }
+              onSelect(entry);
+            }}
+            onNewIssue={onNewIssue}
+          />
+        ))}
       </div>
       <DragOverlay dropAnimation={null} adjustScale={false}>
         {activeEntry ? <IssueDragPreview entry={activeEntry} /> : null}
