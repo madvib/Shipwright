@@ -1,18 +1,20 @@
 +++
 id = ""
 title = ""
-status = "planned"
 created = ""
 updated = ""
-version = ""
 branch = ""
 release_id = ""
 spec_id = ""
-supersedes_id = ""
+adr_ids = []
 tags = []
+
+[agent]
+mcp_servers = []
+skills = []
 +++
 
-## Description
+## Why
 
 One paragraph. What this feature does, for whom, and why it matters.
 Keep this current — it feeds the feature catalog and documentation pipeline.
@@ -25,10 +27,6 @@ Keep this current — it feeds the feature catalog and documentation pipeline.
 
 - [ ]
 
-## Implementation Notes
+## Notes
 
-Key technical decisions or constraints relevant to ongoing work.
-
-## History
-
-- Initial
+Technical decisions, constraints, or open questions relevant to this feature.

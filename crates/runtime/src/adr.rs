@@ -155,7 +155,11 @@ pub fn create_adr(
     adr.metadata.date = Utc::now().to_rfc3339();
 
     if !decision.trim().is_empty() {
-        adr.body = format!("## Decision\n\n{}\n", decision);
+        if decision.trim_start().starts_with('#') {
+            adr.body = decision.to_string();
+        } else {
+            adr.body = format!("# {}\n\n## Decision\n\n{}\n", title, decision);
+        }
     }
 
     let adrs_dir = crate::project::adrs_dir(&project_dir);
