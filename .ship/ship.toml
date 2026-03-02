@@ -57,11 +57,11 @@ disabled = false
 [[mcp_servers]]
 id = "ship"
 name = "Shipwright"
-command = "/home/madvib/.cargo/bin/ship-mcp"
-args = []
-scope = "project"
-server_type = "stdio"
+command = "ship"
+args = ["mcp"]
 disabled = false
+timeout_secs = 30
+server_type = "stdio"
 
 [mcp_servers.env]
 

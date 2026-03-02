@@ -1,6 +1,6 @@
 use crate::config::{
-    HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig,
-    get_config, get_effective_config,
+    HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig, get_config,
+    get_effective_config,
 };
 use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
@@ -110,21 +110,66 @@ pub struct ProviderDescriptor {
 }
 
 const CLAUDE_MODELS: &[StaticModelInfo] = &[
-    StaticModelInfo { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", context_window: 200_000, recommended: true },
-    StaticModelInfo { id: "claude-opus-4-6", name: "Claude Opus 4.6", context_window: 200_000, recommended: false },
-    StaticModelInfo { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", context_window: 200_000, recommended: false },
+    StaticModelInfo {
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        context_window: 200_000,
+        recommended: true,
+    },
+    StaticModelInfo {
+        id: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        context_window: 200_000,
+        recommended: false,
+    },
+    StaticModelInfo {
+        id: "claude-haiku-4-5",
+        name: "Claude Haiku 4.5",
+        context_window: 200_000,
+        recommended: false,
+    },
 ];
 
 const GEMINI_MODELS: &[StaticModelInfo] = &[
-    StaticModelInfo { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", context_window: 1_000_000, recommended: true },
-    StaticModelInfo { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", context_window: 1_000_000, recommended: false },
-    StaticModelInfo { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite", context_window: 1_000_000, recommended: false },
+    StaticModelInfo {
+        id: "gemini-2.5-pro",
+        name: "Gemini 2.5 Pro",
+        context_window: 1_000_000,
+        recommended: true,
+    },
+    StaticModelInfo {
+        id: "gemini-2.0-flash",
+        name: "Gemini 2.0 Flash",
+        context_window: 1_000_000,
+        recommended: false,
+    },
+    StaticModelInfo {
+        id: "gemini-2.0-flash-lite",
+        name: "Gemini 2.0 Flash Lite",
+        context_window: 1_000_000,
+        recommended: false,
+    },
 ];
 
 const CODEX_MODELS: &[StaticModelInfo] = &[
-    StaticModelInfo { id: "gpt-4o", name: "GPT-4o", context_window: 128_000, recommended: true },
-    StaticModelInfo { id: "gpt-4o-mini", name: "GPT-4o Mini", context_window: 128_000, recommended: false },
-    StaticModelInfo { id: "o1", name: "o1", context_window: 200_000, recommended: false },
+    StaticModelInfo {
+        id: "gpt-4o",
+        name: "GPT-4o",
+        context_window: 128_000,
+        recommended: true,
+    },
+    StaticModelInfo {
+        id: "gpt-4o-mini",
+        name: "GPT-4o Mini",
+        context_window: 128_000,
+        recommended: false,
+    },
+    StaticModelInfo {
+        id: "o1",
+        name: "o1",
+        context_window: 200_000,
+        recommended: false,
+    },
 ];
 
 pub const PROVIDERS: &[ProviderDescriptor] = &[
@@ -225,13 +270,24 @@ pub fn detect_version(binary: &str) -> Option<String> {
     if !out.status.success() && out.stdout.is_empty() {
         return None;
     }
-    let text = String::from_utf8_lossy(if out.stdout.is_empty() { &out.stderr } else { &out.stdout });
-    text.lines().next().map(|l| l.trim().to_string()).filter(|s| !s.is_empty())
+    let text = String::from_utf8_lossy(if out.stdout.is_empty() {
+        &out.stderr
+    } else {
+        &out.stdout
+    });
+    text.lines()
+        .next()
+        .map(|l| l.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
     let installed = detect_binary(d.binary);
-    let version = if installed { detect_version(d.binary) } else { None };
+    let version = if installed {
+        detect_version(d.binary)
+    } else {
+        None
+    };
     ProviderInfo {
         id: d.id.to_string(),
         name: d.name.to_string(),
@@ -256,7 +312,11 @@ fn provider_info(d: &ProviderDescriptor, enabled: bool) -> ProviderInfo {
         enabled,
         installed,
         version,
-        models: d.models.iter().map(|m| ModelInfo::from_static(m, d.id)).collect(),
+        models: d
+            .models
+            .iter()
+            .map(|m| ModelInfo::from_static(m, d.id))
+            .collect(),
     }
 }
 
@@ -316,7 +376,10 @@ pub fn autodetect_providers(project_dir: &std::path::Path) -> Result<Vec<String>
 /// Return models for a specific provider by ID.
 pub fn list_models(provider_id: &str) -> Result<Vec<ModelInfo>> {
     let d = require_provider(provider_id)?;
-    Ok(d.models.iter().map(|m| ModelInfo::from_static(m, d.id)).collect())
+    Ok(d.models
+        .iter()
+        .map(|m| ModelInfo::from_static(m, d.id))
+        .collect())
 }
 
 fn require_provider(id: &str) -> Result<&'static ProviderDescriptor> {
@@ -346,9 +409,13 @@ fn load_managed_state(project_dir: &Path) -> ManagedState {
     for p in PROVIDERS {
         if let Ok((ids, last_mode)) = crate::state_db::get_managed_state_db(project_dir, p.id) {
             if !ids.is_empty() || last_mode.is_some() {
-                state
-                    .providers
-                    .insert(p.id.to_string(), ToolState { managed_servers: ids, last_mode });
+                state.providers.insert(
+                    p.id.to_string(),
+                    ToolState {
+                        managed_servers: ids,
+                        last_mode,
+                    },
+                );
             }
         }
     }
@@ -449,8 +516,12 @@ fn export_to_inner(
     // Skills output (provider-specific)
     match desc.skills_output {
         SkillsOutput::ClaudeSkills => export_skills_to_claude(&project_dir, project_root)?,
-        SkillsOutput::AgentSkills => export_skills_to_dir(&project_dir, &project_root.join(".gemini").join("skills"))?,
-        SkillsOutput::CodexSkills => export_skills_to_dir(&project_dir, &project_root.join(".agents").join("skills"))?,
+        SkillsOutput::AgentSkills => {
+            export_skills_to_dir(&project_dir, &project_root.join(".gemini").join("skills"))?
+        }
+        SkillsOutput::CodexSkills => {
+            export_skills_to_dir(&project_dir, &project_root.join(".agents").join("skills"))?
+        }
         SkillsOutput::None => {}
     }
 
@@ -474,12 +545,21 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
         .parent()
         .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     let mut state = load_managed_state(&project_dir);
-    let tool_state = state.providers.entry(target.to_string()).or_default().clone();
+    let tool_state = state
+        .providers
+        .entry(target.to_string())
+        .or_default()
+        .clone();
 
     match desc.config_format {
         ConfigFormat::Json => {
             let config_path = project_root.join(desc.project_config);
-            teardown_json(&config_path, desc.mcp_key, &desc.managed_marker, &tool_state)?;
+            teardown_json(
+                &config_path,
+                desc.mcp_key,
+                &desc.managed_marker,
+                &tool_state,
+            )?;
         }
         ConfigFormat::Toml => {
             let config_path = project_root.join(desc.project_config);
@@ -497,11 +577,15 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
         }
         PromptOutput::GeminiMd => {
             let f = project_root.join("GEMINI.md");
-            if f.exists() { fs::remove_file(&f).ok(); }
+            if f.exists() {
+                fs::remove_file(&f).ok();
+            }
         }
         PromptOutput::AgentsMd => {
             let f = project_root.join("AGENTS.md");
-            if f.exists() { fs::remove_file(&f).ok(); }
+            if f.exists() {
+                fs::remove_file(&f).ok();
+            }
         }
         PromptOutput::None => {}
     }
@@ -581,8 +665,12 @@ pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<u
     let mut added = 0usize;
 
     for (id, entry) in mcp_obj {
-        if managed.contains(id) { continue; }
-        if config.mcp_servers.iter().any(|s| &s.id == id) { continue; }
+        if managed.contains(id) {
+            continue;
+        }
+        if config.mcp_servers.iter().any(|s| &s.id == id) {
+            continue;
+        }
 
         let server_type = match entry.get("type").and_then(|v| v.as_str()) {
             Some("sse") => McpServerType::Sse,
@@ -590,7 +678,8 @@ pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<u
             _ => McpServerType::Stdio,
         };
         // Handle Gemini's httpUrl field
-        let url = entry.get(desc.http_url_field)
+        let url = entry
+            .get(desc.http_url_field)
             .or_else(|| entry.get("url"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
@@ -598,17 +687,36 @@ pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<u
         config.mcp_servers.push(McpServerConfig {
             id: id.clone(),
             name: id.clone(),
-            command: entry.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            args: entry.get("args").and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            command: entry
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            args: entry
+                .get("args")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_default(),
-            env: entry.get("env").and_then(|v| v.as_object())
-                .map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect::<HashMap<_, _>>())
+            env: entry
+                .get("env")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    o.iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect::<HashMap<_, _>>()
+                })
                 .unwrap_or_default(),
             scope: "global".to_string(),
             server_type,
             url,
-            disabled: entry.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false),
+            disabled: entry
+                .get("disabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
             timeout_secs: None,
         });
         added += 1;
@@ -630,12 +738,17 @@ fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
             let servers = if mode.mcp_servers.is_empty() {
                 config.mcp_servers.clone()
             } else {
-                config.mcp_servers.iter()
+                config
+                    .mcp_servers
+                    .iter()
                     .filter(|s| mode.mcp_servers.contains(&s.id))
                     .cloned()
                     .collect()
             };
-            let prompt = mode.prompt_id.as_ref().and_then(|id| get_prompt(project_dir, id).ok());
+            let prompt = mode
+                .prompt_id
+                .as_ref()
+                .and_then(|id| get_prompt(project_dir, id).ok());
             let mut hooks = config.hooks.clone();
             hooks.extend(mode.hooks.clone());
             return Ok(SyncPayload {
@@ -706,7 +819,9 @@ fn export_json(
 
     let mut written_ids = vec![ship_id.to_string()];
     for s in &payload.servers {
-        if s.disabled { continue; }
+        if s.disabled {
+            continue;
+        }
         let mut entry = json_mcp_entry(desc, s);
         if matches!(desc.managed_marker, ManagedMarker::Inline) {
             entry["_ship"] = serde_json::json!({ "managed": true });
@@ -716,7 +831,9 @@ fn export_json(
     }
 
     let mut root = existing.clone();
-    if !root.is_object() { root = serde_json::json!({}); }
+    if !root.is_object() {
+        root = serde_json::json!({});
+    }
     root[desc.mcp_key] = serde_json::Value::Object(mcp_servers);
     crate::fs_util::write_atomic(&config_path, serde_json::to_string_pretty(&root)?)?;
 
@@ -725,7 +842,10 @@ fn export_json(
         match desc.prompt_output {
             PromptOutput::GeminiMd => {
                 let md = project_root.join("GEMINI.md");
-                let content = format!("<!-- managed by ship — prompt: {} -->\n\n{}\n", prompt.id, prompt.content);
+                let content = format!(
+                    "<!-- managed by ship — prompt: {} -->\n\n{}\n",
+                    prompt.id, prompt.content
+                );
                 crate::fs_util::write_atomic(&md, content)?;
             }
             PromptOutput::ClaudeMd | PromptOutput::AgentsMd | PromptOutput::None => {}
@@ -749,12 +869,20 @@ fn export_toml(
         fs::create_dir_all(parent)?;
     }
 
-    let raw_existing = if config_path.exists() { fs::read_to_string(&config_path)? } else { String::new() };
+    let raw_existing = if config_path.exists() {
+        fs::read_to_string(&config_path)?
+    } else {
+        String::new()
+    };
     let mut doc: toml::Value = if raw_existing.is_empty() {
         toml::Value::Table(Default::default())
     } else {
         toml::from_str(&raw_existing).map_err(|e| {
-            anyhow!("Cannot parse {}: {}. Note: Codex uses 'mcp_servers' (underscore).", config_path.display(), e)
+            anyhow!(
+                "Cannot parse {}: {}. Note: Codex uses 'mcp_servers' (underscore).",
+                config_path.display(),
+                e
+            )
         })?
     };
 
@@ -764,8 +892,11 @@ fn export_toml(
     };
 
     let tool_state = state.providers.entry(desc.id.to_string()).or_default();
-    let existing_mcp: toml::value::Table = root.get(desc.mcp_key)
-        .and_then(|v| v.as_table()).cloned().unwrap_or_default();
+    let existing_mcp: toml::value::Table = root
+        .get(desc.mcp_key)
+        .and_then(|v| v.as_table())
+        .cloned()
+        .unwrap_or_default();
 
     let mut new_mcp = toml::value::Table::new();
     // Preserve user servers (not Ship-managed)
@@ -778,12 +909,20 @@ fn export_toml(
     // Ship self-entry
     let mut ship_entry = toml::value::Table::new();
     ship_entry.insert("command".into(), toml::Value::String("ship".into()));
-    ship_entry.insert("args".into(), toml::Value::Array(vec![toml::Value::String("mcp".into())]));
+    ship_entry.insert(
+        "args".into(),
+        toml::Value::Array(vec![
+            toml::Value::String("mcp".into()),
+            toml::Value::String("serve".into()),
+        ]),
+    );
     new_mcp.insert("ship".into(), toml::Value::Table(ship_entry));
     let mut written_ids = vec!["ship".to_string()];
 
     for s in &payload.servers {
-        if s.disabled { continue; }
+        if s.disabled {
+            continue;
+        }
         new_mcp.insert(s.id.clone(), toml_mcp_entry(desc, s));
         written_ids.push(s.id.clone());
     }
@@ -805,7 +944,9 @@ fn teardown_json(
     managed_marker: &ManagedMarker,
     tool_state: &ToolState,
 ) -> Result<()> {
-    if !config_path.exists() { return Ok(()); }
+    if !config_path.exists() {
+        return Ok(());
+    }
 
     let existing: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(config_path)?).unwrap_or(serde_json::json!({}));
@@ -831,7 +972,9 @@ fn teardown_json(
         fs::remove_file(config_path).ok();
     } else {
         let mut root = existing.clone();
-        if !root.is_object() { root = serde_json::json!({}); }
+        if !root.is_object() {
+            root = serde_json::json!({});
+        }
         root[mcp_key] = serde_json::Value::Object(kept);
         crate::fs_util::write_atomic(config_path, serde_json::to_string_pretty(&root)?)?;
     }
@@ -839,14 +982,20 @@ fn teardown_json(
 }
 
 fn teardown_toml(config_path: &Path, mcp_key: &str, tool_state: &ToolState) -> Result<()> {
-    if !config_path.exists() { return Ok(()); }
+    if !config_path.exists() {
+        return Ok(());
+    }
 
     let raw = fs::read_to_string(config_path)?;
-    let mut doc: toml::Value = toml::from_str(&raw).unwrap_or(toml::Value::Table(Default::default()));
+    let mut doc: toml::Value =
+        toml::from_str(&raw).unwrap_or(toml::Value::Table(Default::default()));
 
     if let toml::Value::Table(root) = &mut doc {
-        let existing: toml::value::Table = root.get(mcp_key)
-            .and_then(|v| v.as_table()).cloned().unwrap_or_default();
+        let existing: toml::value::Table = root
+            .get(mcp_key)
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default();
         let mut kept = toml::value::Table::new();
         for (id, entry) in &existing {
             if !tool_state.managed_servers.contains(id) {
@@ -879,20 +1028,36 @@ fn json_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> serde_json:
             if desc.emit_type_field {
                 entry["type"] = serde_json::json!("stdio");
             }
-            if !s.args.is_empty() { entry["args"] = serde_json::json!(s.args); }
-            if !s.env.is_empty() { entry["env"] = serde_json::json!(s.env); }
+            if !s.args.is_empty() {
+                entry["args"] = serde_json::json!(s.args);
+            }
+            if !s.env.is_empty() {
+                entry["env"] = serde_json::json!(s.env);
+            }
             entry
         }
         McpServerType::Http | McpServerType::Sse => {
             let mut entry = serde_json::json!({ desc.http_url_field: s.url });
             if desc.emit_type_field {
-                let type_str = if matches!(s.server_type, McpServerType::Sse) { "sse" } else { "http" };
+                let type_str = if matches!(s.server_type, McpServerType::Sse) {
+                    "sse"
+                } else {
+                    "http"
+                };
                 entry["type"] = serde_json::json!(type_str);
             }
             if let Some(t) = s.timeout_secs {
                 // Gemini timeout is in ms
-                let key = if desc.http_url_field == "httpUrl" { "timeout" } else { "timeout" };
-                entry[key] = serde_json::json!(if desc.http_url_field == "httpUrl" { t * 1000 } else { t });
+                let key = if desc.http_url_field == "httpUrl" {
+                    "timeout"
+                } else {
+                    "timeout"
+                };
+                entry[key] = serde_json::json!(if desc.http_url_field == "httpUrl" {
+                    t * 1000
+                } else {
+                    t
+                });
             }
             entry
         }
@@ -905,12 +1070,20 @@ fn toml_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> toml::Value
         McpServerType::Stdio => {
             entry.insert("command".into(), toml::Value::String(s.command.clone()));
             if !s.args.is_empty() {
-                entry.insert("args".into(), toml::Value::Array(
-                    s.args.iter().map(|a| toml::Value::String(a.clone())).collect()
-                ));
+                entry.insert(
+                    "args".into(),
+                    toml::Value::Array(
+                        s.args
+                            .iter()
+                            .map(|a| toml::Value::String(a.clone()))
+                            .collect(),
+                    ),
+                );
             }
             if !s.env.is_empty() {
-                let env: toml::value::Table = s.env.iter()
+                let env: toml::value::Table = s
+                    .env
+                    .iter()
                     .map(|(k, v)| (k.clone(), toml::Value::String(v.clone())))
                     .collect();
                 entry.insert("env".into(), toml::Value::Table(env));
@@ -923,7 +1096,10 @@ fn toml_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> toml::Value
             // Bearer token: if env has a *_TOKEN or *_KEY, surface it
             for (k, _) in &s.env {
                 if k.ends_with("_TOKEN") || k.ends_with("_KEY") {
-                    entry.insert("bearer_token_env_var".into(), toml::Value::String(k.clone()));
+                    entry.insert(
+                        "bearer_token_env_var".into(),
+                        toml::Value::String(k.clone()),
+                    );
                     break;
                 }
             }
@@ -944,13 +1120,18 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
 /// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`
 fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
     let skills = list_effective_skills(project_dir)?;
-    if skills.is_empty() { return Ok(()); }
+    if skills.is_empty() {
+        return Ok(());
+    }
     fs::create_dir_all(skills_dir)?;
     for skill in &skills {
         let skill_dir = skills_dir.join(&skill.id);
         fs::create_dir_all(&skill_dir)?;
         let path = skill_dir.join("SKILL.md");
-        let content = format!("<!-- managed by ship — skill: {} -->\n\n{}\n", skill.id, skill.content);
+        let content = format!(
+            "<!-- managed by ship — skill: {} -->\n\n{}\n",
+            skill.id, skill.content
+        );
         crate::fs_util::write_atomic(&path, content)?;
     }
     Ok(())
@@ -959,11 +1140,15 @@ fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
 /// Remove skill subdirectories that were written by Ship (identified by the
 /// `<!-- managed by ship` header in their SKILL.md).
 fn remove_ship_managed_skill_dirs(skills_dir: &Path) {
-    if !skills_dir.exists() { return; }
+    if !skills_dir.exists() {
+        return;
+    }
     if let Ok(entries) = fs::read_dir(skills_dir) {
         for entry in entries.flatten() {
             let skill_dir = entry.path();
-            if !skill_dir.is_dir() { continue; }
+            if !skill_dir.is_dir() {
+                continue;
+            }
             let skill_md = skill_dir.join("SKILL.md");
             if skill_md.exists() {
                 if let Ok(c) = fs::read_to_string(&skill_md) {
@@ -980,24 +1165,36 @@ fn remove_ship_managed_skill_dirs(skills_dir: &Path) {
 
 fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) -> Result<()> {
     let path = home()?.join(".claude").join("settings.json");
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut root: serde_json::Value = if path.exists() {
         serde_json::from_str(&fs::read_to_string(&path)?).unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
-    let obj = root.as_object_mut().ok_or_else(|| anyhow!("~/.claude/settings.json is not an object"))?;
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("~/.claude/settings.json is not an object"))?;
 
     if !permissions.allow.is_empty() || !permissions.deny.is_empty() {
         let perms = obj.entry("permissions").or_insert(serde_json::json!({}));
-        let p = perms.as_object_mut().ok_or_else(|| anyhow!("permissions not an object"))?;
-        if !permissions.allow.is_empty() { p.insert("allow".into(), serde_json::json!(permissions.allow)); }
-        if !permissions.deny.is_empty() { p.insert("deny".into(), serde_json::json!(permissions.deny)); }
+        let p = perms
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("permissions not an object"))?;
+        if !permissions.allow.is_empty() {
+            p.insert("allow".into(), serde_json::json!(permissions.allow));
+        }
+        if !permissions.deny.is_empty() {
+            p.insert("deny".into(), serde_json::json!(permissions.deny));
+        }
     }
 
     if !hooks.is_empty() {
         let hooks_val = obj.entry("hooks").or_insert(serde_json::json!({}));
-        let hooks_map = hooks_val.as_object_mut().ok_or_else(|| anyhow!("hooks not an object"))?;
+        let hooks_map = hooks_val
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("hooks not an object"))?;
         let mut by_trigger: HashMap<&str, Vec<serde_json::Value>> = HashMap::new();
         for hook in hooks {
             let key = match hook.trigger {
@@ -1009,7 +1206,9 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) 
                 HookTrigger::PreCompact => "PreCompact",
             };
             let mut entry = serde_json::json!({ "type": "command", "command": hook.command });
-            if let Some(m) = &hook.matcher { entry["matcher"] = serde_json::json!(m); }
+            if let Some(m) = &hook.matcher {
+                entry["matcher"] = serde_json::json!(m);
+            }
             by_trigger.entry(key).or_default().push(entry);
         }
         for (trigger, entries) in by_trigger {
@@ -1038,18 +1237,31 @@ mod tests {
 
     fn make_stdio_server(id: &str) -> McpServerConfig {
         McpServerConfig {
-            id: id.to_string(), name: id.to_string(), command: "npx".to_string(),
+            id: id.to_string(),
+            name: id.to_string(),
+            command: "npx".to_string(),
             args: vec!["-y".to_string(), format!("@mcp/{}", id)],
-            env: HashMap::new(), scope: "project".to_string(),
-            server_type: McpServerType::Stdio, url: None, disabled: false, timeout_secs: None,
+            env: HashMap::new(),
+            scope: "project".to_string(),
+            server_type: McpServerType::Stdio,
+            url: None,
+            disabled: false,
+            timeout_secs: None,
         }
     }
 
     fn make_http_server(id: &str, url: &str) -> McpServerConfig {
         McpServerConfig {
-            id: id.to_string(), name: id.to_string(), command: String::new(),
-            args: vec![], env: HashMap::new(), scope: "project".to_string(),
-            server_type: McpServerType::Http, url: Some(url.to_string()), disabled: false, timeout_secs: None,
+            id: id.to_string(),
+            name: id.to_string(),
+            command: String::new(),
+            args: vec![],
+            env: HashMap::new(),
+            scope: "project".to_string(),
+            server_type: McpServerType::Http,
+            url: Some(url.to_string()),
+            disabled: false,
+            timeout_secs: None,
         }
     }
 
@@ -1068,7 +1280,9 @@ mod tests {
     fn all_provider_ids_are_unique() {
         let ids: Vec<_> = PROVIDERS.iter().map(|p| p.id).collect();
         let mut seen = std::collections::HashSet::new();
-        for id in &ids { assert!(seen.insert(id), "duplicate provider id: {}", id); }
+        for id in &ids {
+            assert!(seen.insert(id), "duplicate provider id: {}", id);
+        }
     }
 
     #[test]
@@ -1091,7 +1305,9 @@ mod tests {
     fn claude_round_trip_stdio_server() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         export_to(project_dir, "claude").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap()).unwrap();
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
+                .unwrap();
         let mcp = val["mcpServers"]["github"].as_object().unwrap();
         assert_eq!(mcp["command"].as_str().unwrap(), "npx");
         assert_eq!(mcp["type"].as_str().unwrap(), "stdio");
@@ -1099,18 +1315,31 @@ mod tests {
 
     #[test]
     fn claude_round_trip_http_server() {
-        let (tmp, project_dir) = project_with_servers(vec![make_http_server("postgres", "http://localhost:5433/mcp")]);
+        let (tmp, project_dir) = project_with_servers(vec![make_http_server(
+            "postgres",
+            "http://localhost:5433/mcp",
+        )]);
         export_to(project_dir, "claude").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap()).unwrap();
-        assert_eq!(val["mcpServers"]["postgres"]["type"].as_str().unwrap(), "http");
-        assert_eq!(val["mcpServers"]["postgres"]["url"].as_str().unwrap(), "http://localhost:5433/mcp");
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            val["mcpServers"]["postgres"]["type"].as_str().unwrap(),
+            "http"
+        );
+        assert_eq!(
+            val["mcpServers"]["postgres"]["url"].as_str().unwrap(),
+            "http://localhost:5433/mcp"
+        );
     }
 
     #[test]
     fn claude_ship_server_always_injected() {
         let (tmp, project_dir) = project_with_servers(vec![]);
         export_to(project_dir, "claude").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap()).unwrap();
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
+                .unwrap();
         assert!(val["mcpServers"]["ship"].is_object());
     }
 
@@ -1118,8 +1347,13 @@ mod tests {
     fn claude_marks_managed_servers() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         export_to(project_dir, "claude").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap()).unwrap();
-        assert_eq!(val["mcpServers"]["github"]["_ship"]["managed"].as_bool(), Some(true));
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            val["mcpServers"]["github"]["_ship"]["managed"].as_bool(),
+            Some(true)
+        );
     }
 
     #[test]
@@ -1127,12 +1361,18 @@ mod tests {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("mine")]);
         export_to(project_dir.clone(), "claude").unwrap();
         let mcp_json = tmp.path().join(".mcp.json");
-        let mut val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&mcp_json).unwrap()).unwrap();
-        val["mcpServers"]["user-server"] = serde_json::json!({ "command": "user-tool", "args": [] });
+        let mut val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&mcp_json).unwrap()).unwrap();
+        val["mcpServers"]["user-server"] =
+            serde_json::json!({ "command": "user-tool", "args": [] });
         std::fs::write(&mcp_json, serde_json::to_string_pretty(&val).unwrap()).unwrap();
         export_to(project_dir, "claude").unwrap();
-        let val2: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&mcp_json).unwrap()).unwrap();
-        assert!(val2["mcpServers"]["user-server"].is_object(), "user server was clobbered");
+        let val2: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&mcp_json).unwrap()).unwrap();
+        assert!(
+            val2["mcpServers"]["user-server"].is_object(),
+            "user server was clobbered"
+        );
     }
 
     #[test]
@@ -1141,7 +1381,9 @@ mod tests {
         s.disabled = true;
         let (tmp, project_dir) = project_with_servers(vec![s]);
         export_to(project_dir, "claude").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap()).unwrap();
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
+                .unwrap();
         assert!(val["mcpServers"]["disabled-one"].is_null());
     }
 
@@ -1149,9 +1391,11 @@ mod tests {
     fn claude_managed_state_written() {
         let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("gh")]);
         export_to(project_dir.clone(), "claude").unwrap();
-        let (ids, _mode) =
-            crate::state_db::get_managed_state_db(&project_dir, "claude").unwrap();
-        assert!(ids.contains(&"gh".to_string()), "managed server not recorded in state");
+        let (ids, _mode) = crate::state_db::get_managed_state_db(&project_dir, "claude").unwrap();
+        assert!(
+            ids.contains(&"gh".to_string()),
+            "managed server not recorded in state"
+        );
         // Clean up DB created in ~/.ship/state/ for this temp project
         std::fs::remove_file(crate::state_db::project_db_path(&project_dir).unwrap()).ok();
     }
@@ -1167,11 +1411,21 @@ mod tests {
 
     #[test]
     fn gemini_http_uses_httpurl_not_url() {
-        let (tmp, project_dir) = project_with_servers(vec![make_http_server("figma", "https://mcp.figma.com/mcp")]);
+        let (tmp, project_dir) =
+            project_with_servers(vec![make_http_server("figma", "https://mcp.figma.com/mcp")]);
         export_to(project_dir, "gemini").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap()).unwrap();
-        assert!(val["mcpServers"]["figma"]["httpUrl"].is_string(), "Gemini must use httpUrl");
-        assert!(val["mcpServers"]["figma"]["url"].is_null(), "Gemini must not use url");
+        let val: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            val["mcpServers"]["figma"]["httpUrl"].is_string(),
+            "Gemini must use httpUrl"
+        );
+        assert!(
+            val["mcpServers"]["figma"]["url"].is_null(),
+            "Gemini must not use url"
+        );
     }
 
     #[test]
@@ -1179,10 +1433,16 @@ mod tests {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("git")]);
         let settings_dir = tmp.path().join(".gemini");
         std::fs::create_dir_all(&settings_dir).unwrap();
-        std::fs::write(settings_dir.join("settings.json"),
-            r#"{"theme": "Dracula", "selectedAuthType": "gemini-api-key", "mcpServers": {}}"#).unwrap();
+        std::fs::write(
+            settings_dir.join("settings.json"),
+            r#"{"theme": "Dracula", "selectedAuthType": "gemini-api-key", "mcpServers": {}}"#,
+        )
+        .unwrap();
         export_to(project_dir, "gemini").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap()).unwrap();
+        let val: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(val["theme"].as_str().unwrap(), "Dracula");
         assert_eq!(val["selectedAuthType"].as_str().unwrap(), "gemini-api-key");
     }
@@ -1191,7 +1451,10 @@ mod tests {
     fn gemini_ship_server_always_injected() {
         let (tmp, project_dir) = project_with_servers(vec![]);
         export_to(project_dir, "gemini").unwrap();
-        let val: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap()).unwrap();
+        let val: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".gemini/settings.json")).unwrap(),
+        )
+        .unwrap();
         assert!(val["mcpServers"]["ship"].is_object());
     }
 
@@ -1209,15 +1472,24 @@ mod tests {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("gh")]);
         export_to(project_dir, "codex").unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap();
-        assert!(content.contains("[mcp_servers."), "must use mcp_servers (underscore)");
-        assert!(!content.contains("[mcp-servers."), "must NOT use mcp-servers (hyphen)");
+        assert!(
+            content.contains("[mcp_servers."),
+            "must use mcp_servers (underscore)"
+        );
+        assert!(
+            !content.contains("[mcp-servers."),
+            "must NOT use mcp-servers (hyphen)"
+        );
     }
 
     #[test]
     fn codex_round_trip_stdio_server() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("gh")]);
         export_to(project_dir, "codex").unwrap();
-        let val: toml::Value = toml::from_str(&std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap()).unwrap();
+        let val: toml::Value = toml::from_str(
+            &std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(val["mcp_servers"]["gh"]["command"].as_str().unwrap(), "npx");
     }
 
@@ -1230,15 +1502,22 @@ mod tests {
         content.push_str("\n[mcp_servers.user-tool]\ncommand = \"user-tool\"\n");
         std::fs::write(&config_path, &content).unwrap();
         export_to(project_dir, "codex").unwrap();
-        let val: toml::Value = toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
-        assert!(val["mcp_servers"]["user-tool"].is_table(), "user server was clobbered");
+        let val: toml::Value =
+            toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+        assert!(
+            val["mcp_servers"]["user-tool"].is_table(),
+            "user server was clobbered"
+        );
     }
 
     #[test]
     fn codex_ship_server_always_injected() {
         let (tmp, project_dir) = project_with_servers(vec![]);
         export_to(project_dir, "codex").unwrap();
-        let val: toml::Value = toml::from_str(&std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap()).unwrap();
+        let val: toml::Value = toml::from_str(
+            &std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap(),
+        )
+        .unwrap();
         assert!(val["mcp_servers"]["ship"].is_table());
     }
 
@@ -1258,14 +1537,31 @@ mod tests {
                 _ => McpServerType::Stdio,
             };
             config.mcp_servers.push(McpServerConfig {
-                id: id.clone(), name: id.clone(),
-                command: entry.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                args: entry.get("args").and_then(|v| v.as_array())
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                id: id.clone(),
+                name: id.clone(),
+                command: entry
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                args: entry
+                    .get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
                     .unwrap_or_default(),
-                env: HashMap::new(), scope: "global".to_string(), server_type,
-                url: entry.get("url").and_then(|v| v.as_str()).map(str::to_string),
-                disabled: false, timeout_secs: None,
+                env: HashMap::new(),
+                scope: "global".to_string(),
+                server_type,
+                url: entry
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                disabled: false,
+                timeout_secs: None,
             });
         }
         save_config(&config, Some(project_dir.clone())).unwrap();

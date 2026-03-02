@@ -264,9 +264,11 @@ export default function MarkdownEditor({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
-                <DropdownMenuLabel className="px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
-                  Transform Text
-                </DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
+                    Transform Text
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator className="opacity-50" />
                 <div className="space-y-0.5">
                   <DropdownMenuItem onClick={() => handleAiAction('polish')} className="flex items-center gap-2 rounded-md">

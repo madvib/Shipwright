@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use clap::Parser;
-use cli::{McpCommands, handle_cli, Cli, Commands};
+use cli::{handle_cli, Cli, Commands, McpCommands};
 use std::env;
 
 #[tokio::main]
@@ -31,10 +31,21 @@ async fn main() {
 
     // Check for special commands that need async (like MCP)
     let cli = Cli::parse();
-    if let Some(Commands::Mcp { action: cli::McpCommands::Serve }) = cli.command {
-        if let Err(e) = mcp::run_server().await {
-            eprintln!("MCP Error: {}", e);
-            std::process::exit(1);
+    if let Some(Commands::Mcp { ref action }) = cli.command {
+        match action {
+            None | Some(McpCommands::Serve) => {
+                if let Err(e) = mcp::run_server().await {
+                    eprintln!("MCP Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                // Handle standard CLI commands synchronously (shared logic)
+                if let Err(e) = handle_cli(cli) {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
     } else {
         // Handle standard CLI commands synchronously (shared logic)

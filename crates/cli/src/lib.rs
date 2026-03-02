@@ -12,9 +12,9 @@ use runtime::{
     list_effective_skills, list_events_since, list_features, list_issues, list_mcp_servers,
     list_models, list_notes, list_providers, list_releases, list_skills, list_specs,
     list_user_skills, log_action, migrate_global_state, migrate_json_config_file,
-    migrate_project_state, migrate_yaml_issues, move_issue, note_path_for_scope,
-    remove_mcp_server, remove_mode, remove_status, set_active_mode, set_category_committed,
-    update_feature, update_note, update_release, update_skill, update_user_skill,
+    migrate_project_state, migrate_yaml_issues, move_issue, note_path_for_scope, remove_mcp_server,
+    remove_mode, remove_status, set_active_mode, set_category_committed, update_feature,
+    update_note, update_release, update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use std::env;
@@ -23,6 +23,7 @@ use std::process::Command as ProcessCommand;
 
 #[derive(Parser, Debug)]
 #[command(name = "ship")]
+#[command(version)]
 #[command(about = "A project-aware task and ADR tracker", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -115,16 +116,20 @@ pub enum Commands {
         #[command(subcommand)]
         action: ModeCommands,
     },
-    /// Manage MCP servers registered in ship.toml
+    /// Manage MCP servers registered in ship.toml. Runs the server if no subcommand is provided.
     Mcp {
         #[command(subcommand)]
-        action: McpCommands,
+        action: Option<McpCommands>,
     },
     /// Manage AI agent providers (detect, connect, disconnect)
     Providers {
         #[command(subcommand)]
         action: ProviderCommands,
     },
+    /// Run diagnostics on the Ship environment
+    Doctor,
+    /// Show version information
+    Version,
     /// Migrate legacy YAML issues and JSON config to TOML
     #[command(hide = true)]
     Migrate,
@@ -218,9 +223,10 @@ pub enum ModeCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum McpCommands {
+    /// Start the MCP stdio server (explicitly)
+    Serve,
     /// List MCP servers registered in ship.toml
     List,
-    /// Add an HTTP/SSE MCP server
     Add {
         /// Stable server ID (used in feature frontmatter)
         id: String,
@@ -246,9 +252,6 @@ pub enum McpCommands {
     },
     /// Remove an MCP server by ID
     Remove { id: String },
-    /// Start the MCP stdio server (internal)
-    #[command(hide = true)]
-    Serve,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1401,10 +1404,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Mcp { action }) => {
             match action {
-                McpCommands::Serve => {
+                None | Some(McpCommands::Serve) => {
                     // Handled by the main unitary binary as it requires async
                 }
-                McpCommands::List => {
+                Some(McpCommands::List) => {
                     let project_dir = get_project_dir(None)?;
                     let servers = list_mcp_servers(Some(project_dir))?;
                     if servers.is_empty() {
@@ -1425,12 +1428,12 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         }
                     }
                 }
-                McpCommands::Add {
+                Some(McpCommands::Add {
                     id,
                     name,
                     url,
                     disabled,
-                } => {
+                }) => {
                     let project_dir = get_project_dir(None)?;
                     let server = McpServerConfig {
                         id: id.clone(),
@@ -1447,12 +1450,12 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     add_mcp_server(Some(project_dir), server)?;
                     println!("Added MCP server '{}'.", id);
                 }
-                McpCommands::AddStdio {
+                Some(McpCommands::AddStdio {
                     id,
                     name,
                     command,
                     args,
-                } => {
+                }) => {
                     let project_dir = get_project_dir(None)?;
                     let server = McpServerConfig {
                         id: id.clone(),
@@ -1469,7 +1472,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     add_mcp_server(Some(project_dir), server)?;
                     println!("Added stdio MCP server '{}'.", id);
                 }
-                McpCommands::Remove { id } => {
+                Some(McpCommands::Remove { id }) => {
                     let project_dir = get_project_dir(None)?;
                     remove_mcp_server(Some(project_dir), &id)?;
                     println!("Removed MCP server '{}'.", id);
@@ -1481,7 +1484,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             match action {
                 ProviderCommands::List => {
                     let providers = list_providers(&project_dir)?;
-                    println!("{:<12} {:<20} {:<10} {:<10} {}", "ID", "NAME", "INSTALLED", "CONNECTED", "VERSION");
+                    println!(
+                        "{:<12} {:<20} {:<10} {:<10} {}",
+                        "ID", "NAME", "INSTALLED", "CONNECTED", "VERSION"
+                    );
                     println!("{}", "-".repeat(70));
                     for p in providers {
                         println!(
@@ -1531,6 +1537,16 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Some(Commands::Doctor) => {
+            handle_doctor_command()?;
+        }
+        Some(Commands::Version) => {
+            let version = env!("CARGO_PKG_VERSION");
+            let git_hash = option_env!("SHIP_GIT_SHA").unwrap_or("unknown");
+            let build_time = option_env!("SHIP_BUILD_TIMESTAMP").unwrap_or("unknown");
+            println!("ship version {} ({})", version, git_hash);
+            println!("built at {}", build_time);
+        }
         Some(Commands::Migrate) => {
             let project_dir = get_project_dir(None)?;
             let global_dir = get_global_dir()?;
@@ -1565,6 +1581,91 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         None => {
             // This case should be handled by the caller to decide whether to show help or launch GUI
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_doctor_command() -> Result<()> {
+    let version = env!("CARGO_PKG_VERSION");
+    let git_hash = option_env!("SHIP_GIT_SHA").unwrap_or("unknown");
+    println!("Checking Ship environment (v{} - {})...", version, git_hash);
+
+    // 1. Check project directory
+    match get_project_dir(None) {
+        Ok(dir) => println!("✓ Project directory found: {}", dir.display()),
+        Err(e) => println!("✗ Project directory not found: {}", e),
+    }
+
+    // 2. Check global directory
+    match get_global_dir() {
+        Ok(dir) => println!("✓ Global directory found: {}", dir.display()),
+        Err(e) => println!("✗ Global directory not found: {}", e),
+    }
+
+    // 3. Check configuration
+    match get_config(None) {
+        Ok(_) => println!("✓ Configuration is valid"),
+        Err(e) => println!("✗ Configuration error: {}", e),
+    }
+
+    // 4. Check for binary in PATH
+    let current_exe = std::env::current_exe().unwrap_or_default();
+    println!("✓ Current executable: {}", current_exe.display());
+
+    // 5. Check AI providers
+    if let Ok(dir) = get_project_dir(None) {
+        if let Ok(providers) = list_providers(&dir) {
+            let connected = providers.iter().filter(|p| p.enabled).count();
+            let installed = providers.iter().filter(|p| p.installed).count();
+            println!(
+                "✓ AI Providers: {} connected, {} installed (out of {} supported)",
+                connected,
+                installed,
+                providers.len()
+            );
+
+            if connected == 0 {
+                println!(
+                    "  ⚠ No AI providers connected. Connect one with `ship providers connect <id>`"
+                );
+            }
+
+            for p in providers.iter().filter(|p| p.enabled) {
+                if p.installed {
+                    let version = p.version.as_deref().unwrap_or("unknown version");
+                    println!(
+                        "✓ Provider '{}' is connected and installed ({})",
+                        p.id, version
+                    );
+                } else {
+                    println!(
+                        "  ⚠ Provider '{}' is connected but binary '{}' was not found in PATH",
+                        p.id, p.binary
+                    );
+                }
+            }
+        }
+    }
+
+    // 6. Check MCP servers
+    if let Ok(dir) = get_project_dir(None) {
+        if let Ok(servers) = list_mcp_servers(Some(dir)) {
+            let ship_mcp = servers.iter().find(|s| s.id == "ship");
+            match ship_mcp {
+                Some(s) => {
+                    if s.command == "ship" && s.args.len() >= 1 && s.args[0] == "mcp" {
+                        println!("✓ Shipwright MCP server is correctly registered");
+                    } else {
+                        println!(
+                            "  ⚠ Shipwright MCP server registration looks outdated or customized: {} {:?}",
+                            s.command, s.args
+                        );
+                    }
+                }
+                None => println!("  ⚠ Shipwright MCP server 'ship' is not registered in ship.toml"),
+            }
         }
     }
 

@@ -86,7 +86,7 @@ ship providers connect gemini
 Shipwright runs as an MCP server, giving agents structured read/write access to the entire project state: issues, specs, features, releases, ADRs, skills, providers, events. Agents don't need file access — they use typed tools.
 
 ```bash
-ship mcp serve   # stdio transport, works with any MCP-compatible agent
+ship mcp # stdio transport, works with any MCP-compatible agent
 ```
 
 Forty-plus tools including `get_project_info` (full context in one call), `create_issue`, `move_issue`, `connect_provider`, `list_providers_tool`, `git_feature_sync`, and more.

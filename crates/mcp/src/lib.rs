@@ -17,13 +17,14 @@ use rmcp::{
 use runtime::{
     NoteScope, add_status, autodetect_providers, create_adr, create_feature, create_issue,
     create_release, create_skill, create_spec, create_user_skill, delete_issue, delete_skill,
-    delete_user_skill, disable_provider, enable_provider, find_release_path, get_adr, get_config,
-    get_effective_skill, get_feature_raw, get_issue, get_project_dir, get_project_name,
-    get_project_statuses, get_release_raw, get_spec_raw, list_adrs, list_effective_skills,
-    list_events_since, list_features, list_issues_full, list_models, list_providers, list_releases,
+    delete_user_skill, disable_provider, enable_provider, find_release_path,
+    get_active_project_global, get_adr, get_config, get_effective_skill, get_feature_raw,
+    get_issue, get_project_dir, get_project_name, get_project_statuses, get_release_raw,
+    get_spec_raw, list_adrs, list_effective_skills, list_events_since, list_features,
+    list_issues_full, list_models, list_providers, list_registered_projects, list_releases,
     list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
-    set_category_committed, update_feature, update_release, update_skill, update_spec,
-    update_user_skill,
+    set_active_project_global, set_category_committed, update_feature, update_release,
+    update_skill, update_spec, update_user_skill,
 };
 use serde::Deserialize;
 use ship_module_git::{install_hooks, on_post_checkout};
@@ -404,8 +405,36 @@ impl ShipServer {
         if let Some(ref path) = *active {
             return Ok(path.clone());
         }
-        get_project_dir(None)
-            .map_err(|e| format!("No active project and auto-detection failed: {}", e))
+        drop(active);
+
+        if let Ok(project_dir) = get_project_dir(None) {
+            return Ok(project_dir);
+        }
+
+        if let Ok(Some(global_active)) = get_active_project_global() {
+            if let Ok(project_dir) = get_project_dir(Some(global_active.clone())) {
+                let mut active = self.active_project.lock().await;
+                *active = Some(project_dir.clone());
+                return Ok(project_dir);
+            }
+        }
+
+        if let Ok(registry) = list_registered_projects() {
+            if registry.len() == 1 {
+                if let Ok(project_dir) = get_project_dir(Some(registry[0].path.clone())) {
+                    let mut active = self.active_project.lock().await;
+                    *active = Some(project_dir.clone());
+                    return Ok(project_dir);
+                }
+            }
+        }
+
+        get_project_dir(None).map_err(|e| {
+            format!(
+                "No active project and auto-detection failed: {}. Checked process cwd, global active project, and registered projects.",
+                e
+            )
+        })
     }
 
     // ─── Project Tools ────────────────────────────────────────────────────────
@@ -418,6 +447,16 @@ impl ShipServer {
             Ok(ship_dir) => {
                 let mut active = self.active_project.lock().await;
                 *active = Some(ship_dir.clone());
+                drop(active);
+
+                if let Err(e) = set_active_project_global(ship_dir.clone()) {
+                    return format!(
+                        "Opened project at {} (warning: failed to persist global active project: {})",
+                        ship_dir.display(),
+                        e
+                    );
+                }
+
                 format!("Opened project at {}", ship_dir.display())
             }
             Err(e) => format!("Error: {}", e),
@@ -1374,26 +1413,31 @@ impl ShipServer {
     // ─── Provider Tools ───────────────────────────────────────────────────────
 
     /// List all known AI providers and their installed/connected status
-    #[tool(description = "List all known AI agent providers with installed (in PATH) and connected (enabled in project) status, version, and available models")]
+    #[tool(
+        description = "List all known AI agent providers with installed (in PATH) and connected (enabled in project) status, version, and available models"
+    )]
     async fn list_providers_tool(&self) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
         };
         match list_providers(&project_dir) {
-            Ok(providers) => {
-                match serde_json::to_string_pretty(&providers) {
-                    Ok(json) => json,
-                    Err(e) => format!("Error serialising providers: {}", e),
-                }
-            }
+            Ok(providers) => match serde_json::to_string_pretty(&providers) {
+                Ok(json) => json,
+                Err(e) => format!("Error serialising providers: {}", e),
+            },
             Err(e) => format!("Error: {}", e),
         }
     }
 
     /// Connect (enable) an AI provider for this project
-    #[tool(description = "Connect (enable) an AI provider for this project by adding it to ship.toml providers list. Provider ID must be one of: claude, gemini, codex")]
-    async fn connect_provider(&self, Parameters(req): Parameters<ConnectProviderRequest>) -> String {
+    #[tool(
+        description = "Connect (enable) an AI provider for this project by adding it to ship.toml providers list. Provider ID must be one of: claude, gemini, codex"
+    )]
+    async fn connect_provider(
+        &self,
+        Parameters(req): Parameters<ConnectProviderRequest>,
+    ) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
@@ -1406,8 +1450,13 @@ impl ShipServer {
     }
 
     /// Disconnect (disable) an AI provider from this project
-    #[tool(description = "Disconnect (disable) an AI provider from this project by removing it from ship.toml providers list")]
-    async fn disconnect_provider(&self, Parameters(req): Parameters<DisconnectProviderRequest>) -> String {
+    #[tool(
+        description = "Disconnect (disable) an AI provider from this project by removing it from ship.toml providers list"
+    )]
+    async fn disconnect_provider(
+        &self,
+        Parameters(req): Parameters<DisconnectProviderRequest>,
+    ) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
@@ -1420,7 +1469,9 @@ impl ShipServer {
     }
 
     /// Detect installed providers in PATH and auto-connect them
-    #[tool(description = "Detect which AI providers are installed in PATH and automatically connect them to this project")]
+    #[tool(
+        description = "Detect which AI providers are installed in PATH and automatically connect them to this project"
+    )]
     async fn detect_providers(&self) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -1434,7 +1485,9 @@ impl ShipServer {
     }
 
     /// List available models for a provider
-    #[tool(description = "List available models for a provider with context window sizes and recommended model. Use for UI autocomplete and model selection.")]
+    #[tool(
+        description = "List available models for a provider with context window sizes and recommended model. Use for UI autocomplete and model selection."
+    )]
     async fn list_models_tool(&self, Parameters(req): Parameters<ListModelsRequest>) -> String {
         match list_models(&req.provider_id) {
             Ok(models) => match serde_json::to_string_pretty(&models) {
