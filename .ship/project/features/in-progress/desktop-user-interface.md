@@ -40,6 +40,20 @@ While CLI and MCP are the primary surfaces for agents and power users, a visual 
 - [ ] Settings panel: providers, config, git policy
 - [ ] Fix type misalignment between Rust enums and TypeScript (use Specta throughout)
 
+## Current State
+
+Backend: ~70 Tauri commands exposed via Specta. ShipEvent typed enum for real-time updates. Vision, Notes, Rules, Workspace, Skills, Permissions, Modes all have backend commands.
+
+UI routes that exist and work: Issues (Kanban), Features list, Specs list, Releases list, ADRs list, Agents panel (partial), Settings, Activity log, Overview.
+
+UI routes missing (alpha blockers): `notes.tsx`, `vision.tsx`, `rules.tsx`.
+
+Agents panel: MCP Servers tab works. Skills tab is read-only — CRUD not wired. Modes tab and Permissions tab not implemented.
+
+Workspace panel: not yet in sidebar.
+
+Build constraint: does not build in WSL. Use Windows host or native Linux for UI work.
+
 ## Notes
 
-The UI is a Tauri + React app. Rust backend exposes ~70 commands via Specta for type-safe bindings. Real-time updates use typed `ShipEvent` enum events emitted from Tauri commands. The UI does not build in WSL — use a Windows host or native Linux machine for UI development.
+Tauri + React + TanStack Router + React Query + shadcn/ui. Specta auto-generates `src/bindings.ts` — never edit manually. Full implementation guide for missing views in `.ship/workflow/specs/draft/ship-ui-alpha-gaps.md`.

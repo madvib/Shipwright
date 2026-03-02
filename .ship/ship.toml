@@ -3,7 +3,6 @@ name = "Shipwright"
 description = "AI native project managment "
 modes = []
 hooks = []
-providers = ["claude"]
 
 [[statuses]]
 id = "backlog"
@@ -29,6 +28,7 @@ color = "green"
 ignore = [
     "events.ndjson",
     "issues",
+    "notes",
 ]
 commit = [
     "releases",
@@ -37,6 +37,7 @@ commit = [
     "adrs",
     "templates",
     "ship.toml",
+    "agents",
 ]
 
 [[mcp_servers]]
@@ -73,6 +74,7 @@ skills = [
 ]
 prompts = []
 context = []
+rules = []
 
 [[namespaces]]
 id = "project"

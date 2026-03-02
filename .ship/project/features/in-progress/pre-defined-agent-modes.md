@@ -50,3 +50,9 @@ Built-in modes (embedded in binary, copy-to-customize):
 - **Planning** — task-policy skill, ship MCP, conservative cost limit. Good for spec/feature drafting.
 - **Execution** — task-policy + git-commit + rust-conventions skills, ship MCP, higher cost limit. Day-to-day implementation.
 - **Review** — pr-review skill, minimal MCP surface, read-heavy prompts.
+
+## Current State
+
+Backend: `AgentConfig` struct and `resolve_agent_config` fully implemented in `agent_config.rs`. Resolution chain (project defaults → mode filter → feature `[agent]` overrides) working and covered by e2e tests. Mode files at `agents/modes/*.toml` are parsed. Active mode stored in Workspace (SQLite). `ship mode` CLI subcommand exists (`list`, `set`).
+
+Not yet done: Built-in mode template files (Planning, Execution, Review) not yet embedded. MCP tools `list_modes`/`set_mode` not yet exposed. UI mode switcher not yet in sidebar — Modes tab in Agents panel not implemented.

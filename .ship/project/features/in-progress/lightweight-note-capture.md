@@ -38,6 +38,12 @@ Not every thought needs a spec or a feature. Developers need a frictionless plac
 - [ ] UI note list and editor
 - [ ] Note search by title and content
 
+## Current State
+
+Backend: `note.rs` CRUD fully implemented. MCP tools working: `list_notes`, `get_note`, `create_note`, `update_note`. CLI `ship note` subcommand exists. Notes route exists in the UI (Notes page in Project module). Notes gitignored by default — local-only.
+
+Not yet done: user-scoped notes at `~/.ship/notes/` (deferred to v0.2.0). Note search by content. Note promotion to spec (CLI).
+
 ## Notes
 
-Notes are the lowest-friction primitive. No ID required in the filename — slug is sufficient. Notes are NOT yet in the UI (alpha blocker filed). The `create_note` MCP tool already exists. Filename: `{slug}.md`, no date prefix.
+Notes are the lowest-friction primitive. No ID required in the filename — slug is sufficient. The `create_note` MCP tool already exists. Filename: `{slug}.md`, no date prefix.

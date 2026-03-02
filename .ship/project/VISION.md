@@ -1,6 +1,6 @@
 +++
 title = "Vision"
-updated = "2026-02-28T21:28:00Z"
+updated = "2026-03-02T00:00:00Z"
 +++
 
 # Shipwright — Vision
@@ -43,9 +43,9 @@ The core workflow hierarchy:
 Vision (1) → Release (N) → Features (N)
 ```
 
-1. **Project State**: Features and Releases define the high-level project state. They live in status-based folders (e.g., `.ship/project/features/<status>/`) and act as persistent documentation of what's planned, in progress, or completed.
-2. **Scopes of Work**: Features are broken down into **Specs**. A Spec defines a specific scope of work, configuring a branch or workspace with explicit agent capabilities (permissions, MCP tools, and context). Specs live in `.ship/workflow/specs/`.
-3. **Execution**: **Issues** represent the granular tasks required to fulfill a Spec. They also flow through status-based folders.
+1. **Project State**: Features and Releases define the high-level project state. Features are rich containers — not single documents. Each feature is a workspace hub with its own metadata, linked spec, issues, ADRs, assets, and documentation. They live in status-based folders and provide persistent context for everything related to a piece of work.
+2. **Scopes of Work**: A **Spec** defines the technical scope for a feature's implementation — configuring a branch or workspace with explicit agent capabilities (permissions, MCP tools, and context). A spec maps to at most one feature. Refactor, experiment, and hotfix workspaces can have a spec without a linked feature.
+3. **Execution**: **Issues** represent the granular tasks required to fulfill a Spec. They flow through status-based folders and are scoped to the workspace they belong to.
 
 ```text
 Vision → Release → Feature → Spec (Branch) → Issues → Agent Session → Merge
@@ -107,19 +107,19 @@ The default workflow is sensible. Teams replace what doesn't fit.
 
 ## Roadmap
 
-**Alpha — The core loop works.**
-Init, Notes, Specs, Issues, Kanban, MCP server, git hooks, branch-scoped CLAUDE.md and MCP config generation, SQLite runtime state. No account. No internet. Good enough to use every day.
+**v0.1.0-alpha — The core loop works.**
+Init, Notes, Specs, Issues, Kanban, desktop UI, MCP server, git hooks, branch-scoped CLAUDE.md and MCP config generation, SQLite runtime state, workspaces. No account. No internet. Good enough to use every day.
 
-**V1 — The agent config layer.**
-External MCP management (Claude Code, Gemini CLI, Codex). Feature-branch config UI — select servers, skills, context, model from a library, no magic strings. Global AI CLI config management. Premium modules + auth. MCP marketplace beta.
+**v0.2.0 — The agent config layer.**
+External MCP management (Claude Code, Gemini CLI, Codex). Feature-branch config UI — select servers, skills, context, model from a library, no magic strings. Global AI CLI config management. Premium modules + auth. MCP marketplace beta. Team sync.
 
-**V2 — Shipwright runs the agents.**
-Native agent runner, worktree orchestration, session summaries, parallel agent coordination, cloud execution (optional).
+**v0.3.0 — Shipwright runs the agents.**
+Native agent runner, worktree orchestration, session summaries, parallel agent coordination, cloud execution (optional). Teams can spin up isolated workspaces without local machine constraints.
 
-**V3 — The whole team.**
-Figma sync, CI/CD integration, customer feedback pipeline, real-time collaboration, mobile session monitor.
+**v0.4.0 — The whole team.**
+Figma sync, CI/CD integration, customer feedback pipeline, team collaboration, mobile session monitor.
 
-**V4 — Enterprise.**
+**v0.5.0 — Enterprise.**
 SSO, audit logs, approval workflows, compliance types, admin controls.
 
 ---
