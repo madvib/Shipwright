@@ -1,7 +1,7 @@
 import { ADR } from '@/bindings';
 
-export function deriveAdrDocTitle(body: string): string {
-  const lines = body.split(/\r?\n/);
+export function deriveAdrDocTitle(content: string): string {
+  const lines = content.split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -15,8 +15,10 @@ export function deriveAdrDocTitle(body: string): string {
 }
 
 export function deriveAdrHeaderTitle(adr: ADR, fallbackFileName: string): string {
-  const docTitle = deriveAdrDocTitle(adr.body);
-  if (docTitle) return docTitle;
   if (adr.metadata.title?.trim()) return adr.metadata.title.trim();
+  const decisionTitle = deriveAdrDocTitle(adr.decision);
+  if (decisionTitle) return decisionTitle;
+  const contextTitle = deriveAdrDocTitle(adr.context);
+  if (contextTitle) return contextTitle;
   return fallbackFileName.replace(/\.md$/i, '');
 }

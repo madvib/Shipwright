@@ -1,4 +1,3 @@
-pub mod adr;
 pub mod agent_config;
 pub mod agent_export;
 pub mod catalog;
@@ -6,11 +5,10 @@ pub mod config;
 pub mod demo;
 pub mod events;
 pub mod feature;
-mod fs_util;
+pub mod fs_util;
 pub mod issue;
 pub mod log;
 pub mod migration;
-pub mod note;
 pub mod permissions;
 pub mod plugin;
 pub mod project;
@@ -23,15 +21,10 @@ pub mod state_db;
 pub mod vision;
 pub mod workspace;
 
-pub use adr::{
-    ADR, AdrEntry, AdrMetadata, AdrStatus, create_adr, delete_adr, find_adr_path, get_adr,
-    list_adrs, move_adr, update_adr,
-};
 pub use agent_config::{AgentConfig, resolve_agent_config};
 pub use agent_export::{
-    ModelInfo, ProviderInfo, autodetect_providers, detect_binary, detect_version,
-    disable_provider, enable_provider, export_to, import_from_claude, list_models, list_providers,
-    sync_active_mode,
+    ModelInfo, ProviderInfo, autodetect_providers, detect_binary, detect_version, disable_provider,
+    enable_provider, export_to, import_from_claude, list_models, list_providers, sync_active_mode,
 };
 pub use catalog::{CatalogEntry, CatalogKind, list_catalog, list_catalog_by_kind, search_catalog};
 pub use config::{
@@ -42,7 +35,7 @@ pub use config::{
     list_mcp_servers, migrate_json_config_file, remove_hook, remove_mcp_server, remove_mode,
     remove_status, save_config, set_active_mode, set_category_committed, set_git_config,
 };
-pub use demo::init_demo_project;
+pub use demo::init_core_demo;
 pub use events::{
     EVENTS_FILE_NAME, EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
     event_log_path, ingest_external_events, latest_event_seq, list_events_since, read_events,
@@ -63,10 +56,6 @@ pub use migration::{
     GlobalStateMigrationReport, ProjectFileMigrationReport, ProjectStateMigrationReport,
     migrate_global_state, migrate_project_state,
 };
-pub use note::{
-    Note, NoteEntry, NoteMetadata, NoteScope, create_note, get_note, get_note_raw, list_notes,
-    note_path_for_scope, update_note,
-};
 pub use permissions::{
     AgentLimits, CommandPermissions, FsPermissions, NetworkPermissions, NetworkPolicy, Permissions,
     ToolPermissions, get_permissions, save_permissions,
@@ -77,8 +66,8 @@ pub use project::{
     SHIP_DIR_NAME, get_active_project_global, get_global_dir, get_project_dir, get_project_name,
     get_recent_projects_global, get_registry_path, init_project, list_registered_namespaces,
     list_registered_projects, load_app_state, load_registry, read_template, register_project,
-    register_ship_namespace, sanitize_file_name, save_app_state, save_registry, write_template,
-    set_active_project_global, unregister_project,
+    register_ship_namespace, sanitize_file_name, save_app_state, save_registry,
+    set_active_project_global, unregister_project, write_template,
 };
 pub use prompt::{Prompt, create_prompt, delete_prompt, get_prompt, list_prompts, update_prompt};
 pub use release::{
@@ -305,122 +294,6 @@ mod tests {
             fs::read_to_string(project_dir.join("workflow/issues/backlog/legacy-issue.md"))?;
         assert!(content.starts_with("+++\n"));
         assert!(content.contains("title = \"Legacy Issue\""));
-        Ok(())
-    }
-
-    // ── ADR tests ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_create_adr() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let adr_path = create_adr(
-            project_dir,
-            "Use PostgreSQL",
-            "Chosen for robustness",
-            "accepted",
-        )?;
-        assert!(adr_path.exists());
-        let content = fs::read_to_string(adr_path)?;
-        assert!(content.contains("title = \"Use PostgreSQL\""));
-        assert!(content.contains("# Use PostgreSQL"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_create_adr_preserves_markdown_body() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let markdown = "# Keep This Title\n\n## Context\n\nBody";
-        let path = create_adr(project_dir, "Ignored Metadata Title", markdown, "proposed")?;
-        let adr = get_adr(path)?;
-        assert!(adr.body.starts_with("# Keep This Title"));
-        assert!(adr.body.contains("## Context"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_create_adr_empty_title_rejected() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let result = create_adr(project_dir, "", "decision", "accepted");
-        assert!(result.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_create_adr_has_uuid() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_adr(project_dir, "Use Redis", "Fast in-memory store", "accepted")?;
-        let adr = get_adr(path)?;
-        assert!(!adr.metadata.id.is_empty());
-        assert_eq!(adr.metadata.id.len(), 8);
-        Ok(())
-    }
-
-    #[test]
-    fn test_get_adr() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_adr(project_dir, "Use SQLite", "Embedded", "proposed")?;
-        let adr = get_adr(path.clone())?;
-        assert_eq!(adr.metadata.title, "Use SQLite");
-        assert!(path.to_string_lossy().contains("/proposed/"));
-        assert!(adr.body.contains("Embedded"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_update_adr() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_adr(project_dir.clone(), "Update ADR", "original", "proposed")?;
-        let mut adr = get_adr(path.clone())?;
-        adr.body = "## Decision\n\nupdated body\n".to_string();
-        update_adr(path.clone(), adr)?;
-        let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
-        let path = move_adr(project_dir, &file_name, AdrStatus::Accepted)?;
-        let reloaded = get_adr(path.clone())?;
-        assert!(path.to_string_lossy().contains("/accepted/"));
-        assert!(reloaded.body.contains("updated body"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_list_adrs() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        create_adr(project_dir.clone(), "ADR One", "decision one", "accepted")?;
-        create_adr(project_dir.clone(), "ADR Two", "decision two", "proposed")?;
-        let adrs = list_adrs(project_dir)?;
-        assert_eq!(adrs.len(), 2);
-        let titles: Vec<&str> = adrs.iter().map(|a| a.adr.metadata.title.as_str()).collect();
-        assert!(titles.contains(&"ADR One"));
-        assert!(titles.contains(&"ADR Two"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_delete_adr() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let path = create_adr(project_dir.clone(), "Delete ADR", "decision", "accepted")?;
-        assert!(path.exists());
-        delete_adr(path.clone())?;
-        assert!(!path.exists());
-        Ok(())
-    }
-
-    #[test]
-    fn test_adr_collision_gets_suffix() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        let p1 = create_adr(project_dir.clone(), "Use Postgres", "reason a", "accepted")?;
-        let p2 = create_adr(project_dir.clone(), "Use Postgres!", "reason b", "proposed")?;
-        assert_ne!(p1, p2);
-        assert!(p1.exists());
-        assert!(p2.exists());
         Ok(())
     }
 
@@ -783,8 +656,8 @@ mod tests {
     fn test_log_action() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        log_action(project_dir.clone(), "test", "details")?;
-        let entries = read_log_entries(project_dir.clone())?;
+        log_action(&project_dir, "test", "details")?;
+        let entries = read_log_entries(&project_dir)?;
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].actor, "ship");
         assert_eq!(entries[0].action, "test");
@@ -797,8 +670,8 @@ mod tests {
     fn test_log_action_by() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        log_action_by(project_dir.clone(), "agent", "create", "issue-abc.md")?;
-        let entries = read_log_entries(project_dir)?;
+        log_action_by(&project_dir, "agent", "create", "issue-abc.md")?;
+        let entries = read_log_entries(&project_dir)?;
         assert_eq!(entries[0].actor, "agent");
         assert_eq!(entries[0].action, "create");
         assert_eq!(entries[0].details, "issue-abc.md");
@@ -809,9 +682,9 @@ mod tests {
     fn test_read_log_entries() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        log_action(project_dir.clone(), "create", "first entry")?;
-        log_action(project_dir.clone(), "update", "second entry")?;
-        let entries = read_log_entries(project_dir)?;
+        log_action(&project_dir, "create", "first entry")?;
+        log_action(&project_dir, "update", "second entry")?;
+        let entries = read_log_entries(&project_dir)?;
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].actor, "ship");
         assert_eq!(entries[0].action, "update");
@@ -915,24 +788,6 @@ mod tests {
     }
 
     #[test]
-    fn test_project_notes_round_trip() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-
-        let project_note = create_note(
-            NoteScope::Project,
-            Some(project_dir.clone()),
-            "Project Summary",
-            "Project content",
-        )?;
-        assert!(project_note.starts_with(project::notes_dir(&project_dir)));
-
-        let project_notes = list_notes(NoteScope::Project, Some(project_dir.clone()))?;
-        assert!(!project_notes.is_empty());
-        Ok(())
-    }
-
-    #[test]
     fn test_plugin_namespace_registration() -> anyhow::Result<()> {
         struct DemoPlugin;
 
@@ -1014,7 +869,7 @@ mod tests {
     #[test]
     fn test_init_demo_project_seeds_alpha_primitives() -> anyhow::Result<()> {
         let tmp = tempdir()?;
-        let ship_path = init_demo_project(tmp.path().to_path_buf())?;
+        let ship_path = init_core_demo(tmp.path().to_path_buf())?;
         let releases = list_releases(ship_path.clone())?;
         let features = list_features(ship_path.clone(), None)?;
         let specs = list_specs(ship_path)?;

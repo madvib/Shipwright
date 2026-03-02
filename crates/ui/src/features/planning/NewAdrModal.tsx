@@ -1,11 +1,12 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { ADR } from '@/bindings';
+import { ADR, AdrStatus } from '@/bindings';
 import { generateAdrCmd } from '@/lib/platform/tauri/commands';
 import AdrEditor from './AdrEditor';
 import DetailSheet from './DetailSheet';
 import { loadProjectTemplate } from '@/components/editor/templateLoader';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { deriveAdrHeaderTitle } from './adrTitle';
 
 interface NewAdrModalProps {
@@ -15,7 +16,8 @@ interface NewAdrModalProps {
   adrSuggestions?: string[];
   onSubmit: (
     title: string,
-    details: string,
+    context: string,
+    decision: string,
     options?: {
       status?: string;
       date?: string;
@@ -33,14 +35,24 @@ function createInitialAdr(): ADR {
       date: new Date().toISOString().slice(0, 10),
       tags: [],
       spec_id: null,
-      status: 'proposed',
-    } as any,
-    body: '',
+      supersedes_id: null,
+    },
+    context: '',
+    decision: '',
   };
 }
 
+const ADR_STATUSES: AdrStatus[] = [
+  'proposed',
+  'accepted',
+  'rejected',
+  'superseded',
+  'deprecated',
+];
+
 export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSuggestions, adrSuggestions }: NewAdrModalProps) {
   const [draft, setDraft] = useState<ADR>(() => createInitialAdr());
+  const [status, setStatus] = useState<AdrStatus>('proposed');
   const [error, setError] = useState<string | null>(null);
   const headerTitle = deriveAdrHeaderTitle(draft, 'New ADR');
 
@@ -50,28 +62,29 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
       setError('Title is required.');
       return;
     }
-    if (!draft.body.trim()) {
-      setError('Details are required.');
+    if (!draft.decision.trim()) {
+      setError('Decision is required.');
       return;
     }
-    const meta = draft.metadata as any;
-    await onSubmit(title, draft.body.trim(), {
-      status: meta.status,
+    await onSubmit(title, draft.context.trim(), draft.decision.trim(), {
+      status,
       date: draft.metadata.date,
-      spec: meta.spec_id?.trim() ? meta.spec_id.trim() : null,
+      spec: draft.metadata.spec_id?.trim() ? draft.metadata.spec_id.trim() : null,
       tags: Array.from(new Set((draft.metadata.tags ?? []).map((tag) => tag.trim()).filter(Boolean))),
     });
-  }, [draft, onSubmit]);
+  }, [draft, onSubmit, status]);
 
   const insertTemplate = useCallback(async () => {
     const template = await loadProjectTemplate('adr', { bodyOnly: true });
     const snippet = template?.trim().replace(/^\s*#\s+Decision\s*\n+/i, '');
     if (!snippet) return;
     setDraft((current) => {
-      const nextBody = current.body.trimEnd() ? `${current.body.trimEnd()}\n\n${snippet}` : snippet;
+      const nextDecision = current.decision.trimEnd()
+        ? `${current.decision.trimEnd()}\n\n${snippet}`
+        : snippet;
       return {
         ...current,
-        body: nextBody,
+        decision: nextDecision,
       };
     });
     setError(null);
@@ -111,6 +124,21 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
       inlineHeader
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="mr-auto flex items-center gap-2">
+            <span className="text-muted-foreground text-xs uppercase tracking-wide">Status</span>
+            <Select value={status} onValueChange={(next) => setStatus(next as AdrStatus)}>
+              <SelectTrigger size="sm" className="h-8 w-36 capitalize">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ADR_STATUSES.map((option) => (
+                  <SelectItem key={option} value={option} className="capitalize">
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -144,7 +172,7 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
             onMcpSample={async () => {
               try {
                 const title = draft.metadata.title.trim() || 'Untitled ADR';
-                return await generateAdrCmd(title, draft.body.trim());
+                return await generateAdrCmd(title, draft.context.trim());
               } catch (err) {
                 setError(String(err));
                 return null;

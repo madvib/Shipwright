@@ -1,9 +1,10 @@
 import { Dispatch, SetStateAction } from 'react';
-import { AdrEntry } from '@/bindings';
+import { ADR, AdrEntry, AdrStatus } from '@/bindings';
 import {
   createNewAdrCmd,
   deleteAdrCmd,
   getAdrCmd,
+  moveAdrCmd,
   updateAdrCmd,
 } from '../../platform/tauri/commands';
 import { isTauriRuntime } from '../../platform/tauri/runtime';
@@ -16,6 +17,20 @@ interface UseAdrActionsParams {
   refreshActivity: () => Promise<void>;
 }
 
+function toAdrStatus(value?: string): AdrStatus | null {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (
+    normalized === 'proposed' ||
+    normalized === 'accepted' ||
+    normalized === 'rejected' ||
+    normalized === 'superseded' ||
+    normalized === 'deprecated'
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
 export function useAdrActions({
   setAdrs,
   setSelectedAdr,
@@ -25,6 +40,7 @@ export function useAdrActions({
 }: UseAdrActionsParams) {
   const handleCreateAdr = async (
     title: string,
+    context: string,
     decision: string,
     options?: {
       status?: string;
@@ -39,37 +55,43 @@ export function useAdrActions({
     }
 
     try {
-      let entry = await createNewAdrCmd(title, decision);
-      const nextStatus = options?.status?.trim() || entry.adr.metadata.status;
+      let entry = await createNewAdrCmd(title, context, decision);
       const nextDate = options?.date?.trim() || entry.adr.metadata.date;
       const nextSpec = options?.spec?.trim() ? options.spec.trim() : null;
-      const nextTags = Array.from(new Set((options?.tags ?? []).map((tag) => tag.trim()).filter(Boolean)));
-      const currentSpec = entry.adr.metadata.spec ?? null;
+      const nextTags = Array.from(
+        new Set((options?.tags ?? []).map((tag) => tag.trim()).filter(Boolean))
+      );
+      const currentSpec = entry.adr.metadata.spec_id ?? null;
       const currentTags = entry.adr.metadata.tags ?? [];
       const metadataChanged =
-        nextStatus !== entry.adr.metadata.status ||
         nextDate !== entry.adr.metadata.date ||
         nextSpec !== currentSpec ||
         nextTags.join('\n') !== currentTags.join('\n');
 
       if (metadataChanged) {
-        entry = await updateAdrCmd(entry.file_name, {
+        entry = await updateAdrCmd(entry.id, {
           ...entry.adr,
           metadata: {
             ...entry.adr.metadata,
-            status: nextStatus,
             date: nextDate,
-            spec: nextSpec,
+            spec_id: nextSpec,
             tags: nextTags,
           },
         });
       }
 
+      const requestedStatus = toAdrStatus(options?.status);
+      if (requestedStatus && requestedStatus !== entry.status) {
+        entry = await moveAdrCmd(entry.id, requestedStatus);
+      }
+
       setAdrs((prev) => [...prev, entry]);
       setShowNewAdr(false);
       await refreshActivity();
+      return entry;
     } catch (error) {
       setError(String(error));
+      return;
     }
   };
 
@@ -80,22 +102,22 @@ export function useAdrActions({
     }
 
     try {
-      const latest = await getAdrCmd(entry.file_name);
+      const latest = await getAdrCmd(entry.id);
       setSelectedAdr(latest);
     } catch {
       setSelectedAdr(entry);
     }
   };
 
-  const handleSaveAdr = async (fileName: string, adr: AdrEntry['adr']) => {
+  const handleSaveAdr = async (id: string, adr: ADR) => {
     if (!isTauriRuntime()) {
       setError('Saving ADRs is only available in Tauri runtime.');
       return;
     }
 
     try {
-      const updated = await updateAdrCmd(fileName, adr);
-      setAdrs((prev) => prev.map((item) => (item.file_name === fileName ? updated : item)));
+      const updated = await updateAdrCmd(id, adr);
+      setAdrs((prev) => prev.map((item) => (item.id === id ? updated : item)));
       setSelectedAdr(updated);
       await refreshActivity();
     } catch (error) {
@@ -103,15 +125,31 @@ export function useAdrActions({
     }
   };
 
-  const handleDeleteAdr = async (fileName: string) => {
+  const handleMoveAdr = async (id: string, newStatus: AdrStatus) => {
+    if (!isTauriRuntime()) {
+      setError('Moving ADRs is only available in Tauri runtime.');
+      return;
+    }
+
+    try {
+      const updated = await moveAdrCmd(id, newStatus);
+      setAdrs((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      setSelectedAdr((current) => (current && current.id === id ? updated : current));
+      await refreshActivity();
+    } catch (error) {
+      setError(String(error));
+    }
+  };
+
+  const handleDeleteAdr = async (id: string) => {
     if (!isTauriRuntime()) {
       setError('Deleting ADRs is only available in Tauri runtime.');
       return;
     }
 
     try {
-      await deleteAdrCmd(fileName);
-      setAdrs((prev) => prev.filter((item) => item.file_name !== fileName));
+      await deleteAdrCmd(id);
+      setAdrs((prev) => prev.filter((item) => item.id !== id));
       setSelectedAdr(null);
       await refreshActivity();
     } catch (error) {
@@ -123,6 +161,7 @@ export function useAdrActions({
     handleCreateAdr,
     handleSelectAdr,
     handleSaveAdr,
+    handleMoveAdr,
     handleDeleteAdr,
   };
 }

@@ -15,20 +15,23 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use runtime::{
-    NoteScope, add_status, autodetect_providers, create_adr, create_feature, create_issue,
-    create_release, create_skill, create_spec, create_user_skill, delete_issue, delete_skill,
-    delete_user_skill, disable_provider, enable_provider, find_release_path,
-    get_active_project_global, get_adr, get_config, get_effective_skill, get_feature_raw,
-    get_issue, get_project_dir, get_project_name, get_project_statuses, get_release_raw,
-    get_spec_raw, list_adrs, list_effective_skills, list_events_since, list_features,
-    list_issues_full, list_models, list_providers, list_registered_projects, list_releases,
-    list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
+    add_status, autodetect_providers, create_feature, create_issue, create_release, create_skill,
+    create_spec, create_user_skill, delete_issue, delete_skill, delete_user_skill,
+    disable_provider, enable_provider, find_release_path, get_active_project_global, get_config,
+    get_effective_skill, get_feature_raw, get_issue, get_project_dir, get_project_name,
+    get_project_statuses, get_release_raw, get_spec_raw, list_effective_skills, list_events_since,
+    list_features, list_issues_full, list_models, list_providers, list_registered_projects,
+    list_releases, list_specs, log_action, log_action_by, move_issue, read_log, remove_status,
     set_active_project_global, set_category_committed, update_feature, update_release,
     update_skill, update_spec, update_user_skill,
 };
 use serde::Deserialize;
 use ship_module_git::{install_hooks, on_post_checkout};
-use std::path::PathBuf;
+use ship_module_project::{
+    NoteScope, create_adr, create_note, get_adr_by_id, get_note_by_id, import_adrs_from_files,
+    import_notes_from_files, list_adrs, list_notes, update_note_content,
+};
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 // ─── Request Types ────────────────────────────────────────────────────────────
@@ -400,14 +403,23 @@ impl ShipServer {
         }
     }
 
+    fn ensure_imported(&self, project_dir: &Path) {
+        let _ = import_adrs_from_files(project_dir);
+        let _ = import_notes_from_files(NoteScope::Project, Some(project_dir));
+        let _ = import_notes_from_files(NoteScope::User, None);
+    }
+
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
         let active = self.active_project.lock().await;
         if let Some(ref path) = *active {
-            return Ok(path.clone());
+            let p = path.clone();
+            self.ensure_imported(&p);
+            return Ok(p);
         }
         drop(active);
 
         if let Ok(project_dir) = get_project_dir(None) {
+            self.ensure_imported(&project_dir);
             return Ok(project_dir);
         }
 
@@ -481,7 +493,7 @@ impl ShipServer {
         let releases = list_releases(project_dir.clone()).unwrap_or_default();
         let features = list_features(project_dir.clone(), None).unwrap_or_default();
         let specs = list_specs(project_dir.clone()).unwrap_or_default();
-        let adrs = list_adrs(project_dir.clone()).unwrap_or_default();
+        let adrs = list_adrs(&project_dir).unwrap_or_default();
 
         let mut out = format!("# Project: {}\n\n", name);
 
@@ -570,7 +582,7 @@ impl ShipServer {
         }
 
         // Recent log (last 10 lines)
-        if let Ok(log) = read_log(project_dir.clone()) {
+        if let Ok(log) = read_log(&project_dir) {
             let recent: Vec<&str> = log
                 .lines()
                 .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
@@ -631,7 +643,7 @@ impl ShipServer {
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown");
                 log_action_by(
-                    project_dir,
+                    &project_dir,
                     "agent",
                     "issue create",
                     &format!("{} ({})", fname, status),
@@ -687,27 +699,14 @@ impl ShipServer {
             NoteScope::User => None,
         };
         let body = req.content.unwrap_or_default();
-        match runtime::create_note(scope, project_dir.clone(), &req.title, &body) {
-            Ok(path) => {
+        match create_note(scope, project_dir.as_deref(), &req.title, &body) {
+            Ok(note) => {
                 if let Some(project_dir) = project_dir {
-                    log_action_by(
-                        project_dir,
-                        "agent",
-                        "note create",
-                        path.file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or(""),
-                    )
-                    .ok();
+                    log_action_by(&project_dir, "agent", "note create", &note.id).ok();
                 }
-                format!(
-                    "Created note: {}",
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or("unknown")
-                )
+                format!("Created note: {} (id: {})", note.title, note.id)
             }
-            Err(err) => format!("Error: {}", err),
+            Err(e) => format!("Error creating note: {}", e),
         }
     }
 
@@ -725,21 +724,14 @@ impl ShipServer {
             },
             NoteScope::User => None,
         };
-        let path = match runtime::note_path_for_scope(scope, project_dir.clone(), &req.file_name) {
-            Ok(path) => path,
-            Err(err) => return format!("Error: {}", err),
-        };
-        if !path.exists() {
-            return format!("Note not found: {}", req.file_name);
-        }
-        match runtime::update_note(path, &req.content) {
-            Ok(_) => {
+        match update_note_content(scope, project_dir.as_deref(), &req.file_name, &req.content) {
+            Ok(note) => {
                 if let Some(project_dir) = project_dir {
-                    log_action_by(project_dir, "agent", "note update", &req.file_name).ok();
+                    log_action_by(&project_dir, "agent", "note update", &req.file_name).ok();
                 }
-                format!("Updated note: {}", req.file_name)
+                format!("Updated note: {}", note.title)
             }
-            Err(err) => format!("Error: {}", err),
+            Err(e) => format!("Error updating note: {}", e),
         }
     }
 
@@ -762,7 +754,7 @@ impl ShipServer {
                 match create_skill(&project_dir, &req.id, &req.name, &req.content) {
                     Ok(skill) => {
                         log_action_by(
-                            project_dir,
+                            &project_dir,
                             "agent",
                             "skill create",
                             &format!("{} ({})", skill.id, skill.name),
@@ -804,7 +796,7 @@ impl ShipServer {
                 ) {
                     Ok(skill) => {
                         log_action_by(
-                            project_dir,
+                            &project_dir,
                             "agent",
                             "skill update",
                             &format!("{} ({})", skill.id, skill.name),
@@ -842,7 +834,7 @@ impl ShipServer {
                 };
                 match delete_skill(&project_dir, &req.id) {
                     Ok(()) => {
-                        log_action_by(project_dir, "agent", "skill delete", &req.id).ok();
+                        log_action_by(&project_dir, "agent", "skill delete", &req.id).ok();
                     }
                     Err(err) => return format!("Error: {}", err),
                 }
@@ -870,7 +862,7 @@ impl ShipServer {
         match move_issue(project_dir.clone(), path, &req.from_status, &req.to_status) {
             Ok(_) => {
                 log_action_by(
-                    project_dir,
+                    &project_dir,
                     "agent",
                     "issue move",
                     &format!("{}: {} → {}", req.file_name, req.from_status, req.to_status),
@@ -940,12 +932,10 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        match create_adr(project_dir, &req.title, &req.decision, "proposed") {
-            Ok(file) => format!(
-                "Created ADR: {}",
-                file.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown")
+        match create_adr(&project_dir, &req.title, "", &req.decision, "proposed") {
+            Ok(entry) => format!(
+                "Created ADR '{}' (id: {})",
+                entry.adr.metadata.title, entry.id
             ),
             Err(e) => format!("Error: {}", e),
         }
@@ -1002,7 +992,7 @@ impl ShipServer {
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown");
-                log_action_by(project_dir, "agent", "release create", fname).ok();
+                log_action_by(&project_dir, "agent", "release create", fname).ok();
                 format!("Created release: {}", fname)
             }
             Err(e) => format!("Error: {}", e),
@@ -1022,7 +1012,7 @@ impl ShipServer {
         };
         match update_release(path, &req.content) {
             Ok(_) => {
-                log_action_by(project_dir, "agent", "release update", &req.file_name).ok();
+                log_action_by(&project_dir, "agent", "release update", &req.file_name).ok();
                 format!("Updated release: {}", req.file_name)
             }
             Err(e) => format!("Error: {}", e),
@@ -1052,7 +1042,7 @@ impl ShipServer {
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown");
-                log_action_by(project_dir, "agent", "feature create", fname).ok();
+                log_action_by(&project_dir, "agent", "feature create", fname).ok();
                 format!("Created feature: {}", fname)
             }
             Err(e) => format!("Error: {}", e),
@@ -1069,7 +1059,7 @@ impl ShipServer {
         let path = runtime::project::features_dir(&project_dir).join(&req.file_name);
         match update_feature(path, &req.content) {
             Ok(_) => {
-                log_action_by(project_dir, "agent", "feature update", &req.file_name).ok();
+                log_action_by(&project_dir, "agent", "feature update", &req.file_name).ok();
                 format!("Updated feature: {}", req.file_name)
             }
             Err(e) => format!("Error: {}", e),
@@ -1085,7 +1075,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        match read_log(project_dir) {
+        match read_log(&project_dir) {
             Ok(content) => {
                 if content.trim().is_empty() || content.trim() == "# Project Log" {
                     "No log entries yet.".to_string()
@@ -1207,7 +1197,7 @@ impl ShipServer {
                         match create_issue(project_dir.clone(), &title, &desc, "backlog") {
                             Ok(path) => {
                                 log_action(
-                                    project_dir,
+                                    &project_dir,
                                     "issue create",
                                     &format!("Ghost promoted: {}", title),
                                 )
@@ -1694,7 +1684,7 @@ impl ShipServer {
         }
         // ship://adrs
         if uri == "ship://adrs" {
-            let entries = list_adrs(dir.clone()).ok()?;
+            let entries = list_adrs(dir).ok()?;
             if entries.is_empty() {
                 return Some("No ADRs found.".to_string());
             }
@@ -1707,39 +1697,36 @@ impl ShipServer {
             }
             return Some(out);
         }
-        // ship://adrs/{file}
-        if let Some(file) = uri.strip_prefix("ship://adrs/") {
-            let path = runtime::project::adrs_dir(dir).join(file);
-            let status = path
-                .parent()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-            return get_adr(path).ok().map(|adr| {
+        // ship://adrs/{id}
+        if let Some(id) = uri.strip_prefix("ship://adrs/") {
+            return get_adr_by_id(dir, id).ok().map(|entry| {
                 format!(
-                    "Title: {}\nStatus: {}\nDate: {}\n\n{}",
-                    adr.metadata.title, status, adr.metadata.date, adr.body
+                    "Title: {}\nStatus: {}\nDate: {}\n\n## Context\n\n{}\n\n## Decision\n\n{}",
+                    entry.adr.metadata.title,
+                    entry.status,
+                    entry.adr.metadata.date,
+                    entry.adr.context,
+                    entry.adr.decision
                 )
             });
         }
         // ship://notes
         if uri == "ship://notes" {
-            let entries = runtime::list_notes(NoteScope::Project, Some(dir.clone())).ok()?;
+            let entries = list_notes(NoteScope::Project, Some(&dir)).ok()?;
             if entries.is_empty() {
                 return Some("No notes found.".to_string());
             }
             let mut out = String::from("Notes:\n");
-            for n in &entries {
-                out.push_str(&format!("- {} ({})\n", n.title, n.file_name));
+            for entry in entries {
+                out.push_str(&format!("- {} ({})\n", entry.title, entry.id));
             }
             return Some(out);
         }
+
         // ship://notes/{file}
-        if let Some(file) = uri.strip_prefix("ship://notes/") {
-            let path =
-                runtime::note_path_for_scope(NoteScope::Project, Some(dir.clone()), file).ok()?;
-            return runtime::get_note_raw(path).ok();
+        if let Some(id) = uri.strip_prefix("ship://notes/") {
+            let note = get_note_by_id(NoteScope::Project, Some(&dir), id).ok()?;
+            return Some(note.content);
         }
         // ship://skills
         if uri == "ship://skills" {

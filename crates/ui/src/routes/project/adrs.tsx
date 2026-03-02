@@ -8,8 +8,16 @@ function AdrsRouteComponent() {
   return (
     <AdrList
       adrs={workspace.adrs}
-      onNewAdr={() => workspace.setShowNewAdr(true)}
+      selectedAdr={workspace.selectedAdr}
+      onCreateAdr={workspace.handleCreateAdr}
       onSelectAdr={workspace.handleSelectAdr}
+      onMoveAdr={workspace.handleMoveAdr}
+      onSaveAdr={workspace.handleSaveAdr}
+      onDeleteAdr={workspace.handleDeleteAdr}
+      specSuggestions={workspace.specSuggestions}
+      tagSuggestions={workspace.tagSuggestions}
+      adrSuggestions={workspace.adrSuggestions}
+      mcpEnabled={workspace.mcpEnabled}
     />
   );
 }

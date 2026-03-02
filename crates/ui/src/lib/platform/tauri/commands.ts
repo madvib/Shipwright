@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
+  ADR,
   AdrEntry,
+  AdrStatus,
   EventRecord,
   FeatureDocument,
   FeatureInfo as FeatureEntry,
@@ -20,6 +22,7 @@ import {
   SpecInfo as SpecEntry,
   Workspace,
   Result,
+  commands as spectaCommands,
 } from '@/bindings';
 
 export interface CreateProjectPayload {
@@ -30,6 +33,14 @@ export interface CreateProjectPayload {
 }
 
 export type TemplateKind = 'issue' | 'adr' | 'spec' | 'release' | 'feature' | 'vision';
+
+const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> => {
+  const result = await promise;
+  if (result.status === 'ok') {
+    return result.data;
+  }
+  throw new Error(String(result.error));
+};
 
 export const listIssues = (): Promise<IssueEntry[]> => invoke('list_items');
 export const listAdrs = (): Promise<AdrEntry[]> => invoke('list_adrs_cmd');
@@ -85,15 +96,23 @@ export const updateIssueByPathCmd = (path: string, issue: Issue): Promise<void> 
 
 export const deleteIssueByPathCmd = (path: string): Promise<void> => invoke('delete_issue_by_path', { path });
 
-export const createNewAdrCmd = (title: string, decision: string): Promise<AdrEntry> =>
-  invoke('create_new_adr', { title, decision });
+export const createNewAdrCmd = (
+  title: string,
+  context: string,
+  decision: string
+): Promise<AdrEntry> => unwrapResult(spectaCommands.createNewAdr(title, context, decision));
 
-export const getAdrCmd = (fileName: string): Promise<AdrEntry> => invoke('get_adr_cmd', { fileName });
+export const getAdrCmd = (id: string): Promise<AdrEntry> =>
+  unwrapResult(spectaCommands.getAdrCmd(id));
 
-export const updateAdrCmd = (fileName: string, adr: AdrEntry['adr']): Promise<AdrEntry> =>
-  invoke('update_adr_cmd', { fileName, adr });
+export const updateAdrCmd = (id: string, adr: ADR): Promise<AdrEntry> =>
+  unwrapResult(spectaCommands.updateAdrCmd(id, adr));
 
-export const deleteAdrCmd = (fileName: string): Promise<void> => invoke('delete_adr_cmd', { fileName });
+export const moveAdrCmd = (id: string, newStatus: AdrStatus): Promise<AdrEntry> =>
+  unwrapResult(spectaCommands.moveAdrCmd(id, newStatus));
+
+export const deleteAdrCmd = (id: string): Promise<void> =>
+  unwrapResult(spectaCommands.deleteAdrCmd(id)).then(() => undefined);
 
 export const getSpecCmd = (fileName: string): Promise<Result<SpecDocument, string>> =>
   invoke('get_spec_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<SpecDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));

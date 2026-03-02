@@ -1,12 +1,10 @@
-use crate::{
-    create_adr, create_feature, create_issue, create_release, create_spec, init_project, log_action,
-};
+use crate::{create_feature, create_issue, create_release, create_spec, init_project, log_action};
 use anyhow::Result;
 use std::path::PathBuf;
 
-/// Initialize a demo project at `base_dir` and seed it with sample data.
+/// Initialize a demo project with core primitives (Issues, Features, Specs, Releases).
 /// Safe to call on an existing project — won't overwrite existing issues.
-pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
+pub fn init_core_demo(base_dir: PathBuf) -> Result<PathBuf> {
     let project_dir = init_project(base_dir)?;
 
     // Sample issues across all statuses
@@ -49,43 +47,6 @@ pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
             .join(format!("{}.md", crate::sanitize_file_name(title)));
         if !path.exists() {
             create_issue(project_dir.clone(), title, desc, status)?;
-        }
-    }
-
-    // Sample ADRs
-    let adrs = vec![
-        (
-            "Use PostgreSQL as primary database",
-            "After evaluating SQLite, MySQL, and PostgreSQL, we chose PostgreSQL for its JSONB support, strong consistency guarantees, and ecosystem maturity.",
-            "accepted",
-        ),
-        (
-            "Adopt trunk-based development",
-            "We will use trunk-based development with short-lived feature branches instead of gitflow. This reduces merge conflicts and speeds up integration.",
-            "accepted",
-        ),
-        (
-            "Evaluate GraphQL for API layer",
-            "Considering GraphQL to replace the REST API for more flexible client queries. Still under evaluation — decision pending performance benchmarks.",
-            "proposed",
-        ),
-    ];
-
-    for (title, decision, status) in adrs {
-        let adr_path = crate::project::adrs_dir(&project_dir);
-        // Check if an ADR with this title already exists (approximate)
-        let slug = crate::sanitize_file_name(title);
-        let exists = std::fs::read_dir(&adr_path)
-            .map(|entries| {
-                entries.flatten().any(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .contains(&slug[..slug.len().min(20)])
-                })
-            })
-            .unwrap_or(false);
-        if !exists {
-            create_adr(project_dir.clone(), title, decision, status)?;
         }
     }
 
@@ -145,20 +106,16 @@ pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
 
     // Seed log with a few entries
     log_action(
-        project_dir.clone(),
+        &project_dir,
         "demo init",
-        "Demo project initialized with sample data",
+        "Initialized core demo project data",
     )?;
     log_action(
-        project_dir.clone(),
+        &project_dir,
         "issue move",
         "Moved update-dependencies to done",
     )?;
-    log_action(
-        project_dir.clone(),
-        "adr create",
-        "Created ADR: Use PostgreSQL as primary database",
-    )?;
+    log_action(&project_dir, "demo init", "Core demo project initialized")?;
 
     Ok(project_dir)
 }

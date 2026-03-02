@@ -1,24 +1,28 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::{
-    FeatureStatus, McpServerConfig, McpServerType, NoteScope, add_mcp_server, add_mode, add_status,
-    autodetect_providers, backfill_issue_ids, create_adr, create_feature, create_issue,
-    create_note, create_release, create_skill, create_spec, create_user_skill, delete_skill,
-    delete_user_skill, disable_provider, enable_provider, feature_done, feature_start,
-    find_release_path, get_active_mode, get_config, get_effective_skill, get_feature,
-    get_feature_raw, get_git_config, get_global_dir, get_issue, get_note_raw, get_project_dir,
-    get_project_statuses, get_release_raw, get_skill, get_spec_raw, get_user_skill,
-    ingest_external_events, init_demo_project, init_project, is_category_committed,
+    FeatureStatus, McpServerConfig, McpServerType, add_mcp_server, add_mode, add_status,
+    autodetect_providers, backfill_issue_ids, create_feature, create_issue, create_release,
+    create_skill, create_spec, create_user_skill, delete_skill, delete_user_skill,
+    disable_provider, enable_provider, feature_done, feature_start, find_release_path,
+    get_active_mode, get_config, get_effective_skill, get_feature, get_feature_raw, get_git_config,
+    get_global_dir, get_issue, get_project_dir, get_project_statuses, get_release_raw, get_skill,
+    get_spec_raw, get_user_skill, ingest_external_events, init_project, is_category_committed,
     list_effective_skills, list_events_since, list_features, list_issues, list_mcp_servers,
-    list_models, list_notes, list_providers, list_releases, list_skills, list_specs,
-    list_user_skills, log_action, migrate_global_state, migrate_json_config_file,
-    migrate_project_state, migrate_yaml_issues, move_issue, note_path_for_scope, remove_mcp_server,
-    remove_mode, remove_status, set_active_mode, set_category_committed, update_feature,
-    update_note, update_release, update_skill, update_user_skill,
+    list_models, list_providers, list_releases, list_skills, list_specs, list_user_skills,
+    log_action, migrate_global_state, migrate_json_config_file, migrate_project_state,
+    migrate_yaml_issues, move_issue, remove_mcp_server, remove_mode, remove_status,
+    set_active_mode, set_category_committed, update_feature, update_release, update_skill,
+    update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
+use ship_module_project::{
+    ADR, AdrStatus, NoteScope, create_adr, create_note, find_adr_path, get_note_by_id,
+    import_adrs_from_files, import_notes_from_files, init_demo_project, list_adrs, list_notes,
+    move_adr, update_note_content,
+};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 #[derive(Parser, Debug)]
@@ -545,6 +549,9 @@ pub enum ProjectCommands {
 }
 
 pub fn handle_cli(cli: Cli) -> Result<()> {
+    // Ensure global notes are imported
+    let _ = import_notes_from_files(NoteScope::User, None);
+
     match cli.command {
         Some(Commands::Init { path: init_path }) => {
             let target = match init_path {
@@ -605,13 +612,13 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Issue { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 IssueCommands::Create { title, description } => {
                     let path = create_issue(project_dir.clone(), &title, &description, "backlog")?;
                     println!("Issue created: {}", path.display());
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "issue create",
                         &format!("Created issue: {}", title),
                     )?;
@@ -633,7 +640,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     move_issue(project_dir.clone(), issue_path, &from, &to)?;
                     println!("Moved {} from {} to {}", file_name, from, to);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "issue move",
                         &format!("Moved {} to {}", file_name, to),
                     )?;
@@ -641,19 +648,19 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Adr { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 AdrCommands::Create { title, decision } => {
-                    let path = create_adr(project_dir.clone(), &title, &decision, "proposed")?;
-                    println!("ADR created: {}", path.display());
+                    let entry = create_adr(&project_dir, &title, "", &decision, "proposed")?;
+                    println!("ADR created: {} (id: {})", title, entry.id);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "adr create",
                         &format!("Created ADR: {}", title),
                     )?;
                 }
                 AdrCommands::List => {
-                    let mut adrs = runtime::list_adrs(project_dir)?;
+                    let mut adrs = list_adrs(&project_dir)?;
                     adrs.sort_by(|a, b| b.file_name.cmp(&a.file_name));
                     if adrs.is_empty() {
                         println!("No ADRs found.");
@@ -667,24 +674,23 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 AdrCommands::Get { file_name } => {
-                    let path = runtime::find_adr_path(&project_dir, &file_name)?;
+                    let path = find_adr_path(&project_dir, &file_name)?;
                     let content = std::fs::read_to_string(path)?;
                     println!("{}", content);
                 }
                 AdrCommands::Move { file_name, status } => {
                     let new_status = status
-                        .parse::<runtime::AdrStatus>()
-                        .map_err(|_| anyhow::anyhow!("Invalid ADR status"))?;
-                    let new_path =
-                        runtime::move_adr(project_dir.clone(), &file_name, new_status.clone())?;
-                    println!(
-                        "Moved {} to {} ({})",
-                        file_name,
-                        new_status,
-                        new_path.display()
-                    );
+                        .parse::<AdrStatus>()
+                        .map_err(|_| anyhow::anyhow!("Invalid ADR status: {}", status))?;
+                    // Find the ADR by reading the file and extracting its id.
+                    let path = find_adr_path(&project_dir, &file_name)?;
+                    let content = std::fs::read_to_string(&path)?;
+                    let adr = ADR::from_markdown(&content)
+                        .map_err(|_| anyhow::anyhow!("Could not parse ADR file: {}", file_name))?;
+                    let entry = move_adr(&project_dir, &adr.metadata.id, new_status.clone())?;
+                    println!("Moved {} to {} (id: {})", file_name, new_status, entry.id);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "adr move",
                         &format!("Moved {} to {}", file_name, new_status),
                     )?;
@@ -699,15 +705,15 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             } => {
                 let scope = parse_note_scope(&scope)?;
                 let project_dir = match scope {
-                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::Project => Some(get_project_dir_cli()?),
                     NoteScope::User => None,
                 };
                 let body = content.unwrap_or_default();
-                let path = create_note(scope, project_dir.clone(), &title, &body)?;
-                println!("Note created: {}", path.display());
+                let note = create_note(scope, project_dir.as_deref(), &title, &body)?;
+                println!("Note created: {} (id: {})", note.title, note.id);
                 if let Some(project_dir) = project_dir {
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "note create",
                         &format!("Created note: {}", title),
                     )?;
@@ -716,30 +722,26 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             NoteCommands::List { scope } => {
                 let scope = parse_note_scope(&scope)?;
                 let project_dir = match scope {
-                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::Project => Some(get_project_dir_cli()?),
                     NoteScope::User => None,
                 };
-                let mut notes = list_notes(scope, project_dir)?;
-                notes.sort_by(|a, b| b.updated.cmp(&a.updated));
+                let notes = list_notes(scope, project_dir.as_deref())?;
                 if notes.is_empty() {
                     println!("No notes found.");
                 } else {
                     for note in notes {
-                        println!("{} ({})", note.title, note.file_name);
+                        println!("{} ({})", note.title, note.id);
                     }
                 }
             }
             NoteCommands::Get { file_name, scope } => {
                 let scope = parse_note_scope(&scope)?;
                 let project_dir = match scope {
-                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::Project => Some(get_project_dir_cli()?),
                     NoteScope::User => None,
                 };
-                let path = note_path_for_scope(scope, project_dir, &file_name)?;
-                if !path.exists() {
-                    anyhow::bail!("Note not found: {}", file_name);
-                }
-                println!("{}", get_note_raw(path)?);
+                let note = get_note_by_id(scope, project_dir.as_deref(), &file_name)?;
+                println!("{}", note.content);
             }
             NoteCommands::Update {
                 file_name,
@@ -748,20 +750,17 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             } => {
                 let scope = parse_note_scope(&scope)?;
                 let project_dir = match scope {
-                    NoteScope::Project => Some(get_project_dir(None)?),
+                    NoteScope::Project => Some(get_project_dir_cli()?),
                     NoteScope::User => None,
                 };
-                let path = note_path_for_scope(scope, project_dir.clone(), &file_name)?;
-                if !path.exists() {
-                    anyhow::bail!("Note not found: {}", file_name);
-                }
-                update_note(path, &content)?;
-                println!("Updated note: {}", file_name);
+                let note =
+                    update_note_content(scope, project_dir.as_deref(), &file_name, &content)?;
+                println!("Updated note: {}", note.title);
                 if let Some(project_dir) = project_dir {
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "note update",
-                        &format!("Updated note: {}", file_name),
+                        &format!("Updated note: {}", note.title),
                     )?;
                 }
             }
@@ -776,10 +775,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let scope = parse_skill_write_scope(&scope)?;
                 let skill = match scope {
                     SkillWriteScope::Project => {
-                        let project_dir = get_project_dir(None)?;
+                        let project_dir = get_project_dir_cli()?;
                         let skill = create_skill(&project_dir, &id, &name, &content)?;
                         log_action(
-                            project_dir,
+                            &project_dir,
                             "skill create",
                             &format!("Created skill: {}", id),
                         )
@@ -794,12 +793,12 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let scope = parse_skill_read_scope(&scope)?;
                 let skills = match scope {
                     SkillReadScope::Project => {
-                        let project_dir = get_project_dir(None)?;
+                        let project_dir = get_project_dir_cli()?;
                         list_skills(&project_dir)?
                     }
                     SkillReadScope::User => list_user_skills()?,
                     SkillReadScope::Effective => {
-                        let project_dir = get_project_dir(None)?;
+                        let project_dir = get_project_dir_cli()?;
                         list_effective_skills(&project_dir)?
                     }
                 };
@@ -815,12 +814,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let scope = parse_skill_read_scope(&scope)?;
                 let skill = match scope {
                     SkillReadScope::Project => {
-                        let project_dir = get_project_dir(None)?;
-                        get_skill(&project_dir, &id)?
+                        let project_dir = get_project_dir_cli()?;
+                        let skill = get_skill(&project_dir, &id)?;
+                        log_action(&project_dir, "skill get", &format!("Got skill: {}", id)).ok();
+                        skill
                     }
                     SkillReadScope::User => get_user_skill(&id)?,
                     SkillReadScope::Effective => {
-                        let project_dir = get_project_dir(None)?;
+                        let project_dir = get_project_dir_cli()?;
                         get_effective_skill(&project_dir, &id)?
                     }
                 };
@@ -835,11 +836,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let scope = parse_skill_write_scope(&scope)?;
                 let updated = match scope {
                     SkillWriteScope::Project => {
-                        let project_dir = get_project_dir(None)?;
+                        let project_dir = get_project_dir_cli()?;
                         let updated =
                             update_skill(&project_dir, &id, name.as_deref(), content.as_deref())?;
                         log_action(
-                            project_dir,
+                            &project_dir,
                             "skill update",
                             &format!("Updated skill: {}", id),
                         )
@@ -856,10 +857,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let scope = parse_skill_write_scope(&scope)?;
                 match scope {
                     SkillWriteScope::Project => {
-                        let project_dir = get_project_dir(None)?;
+                        let project_dir = get_project_dir_cli()?;
                         delete_skill(&project_dir, &id)?;
                         log_action(
-                            project_dir,
+                            &project_dir,
                             "skill delete",
                             &format!("Deleted skill: {}", id),
                         )
@@ -871,14 +872,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         },
         Some(Commands::Spec { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 SpecCommands::Create { title, content } => {
                     let body = content.unwrap_or_default();
                     let path = create_spec(project_dir.clone(), &title, &body, "draft")?;
                     println!("Spec created: {}", path.display());
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "spec create",
                         &format!("Created spec: {}", title),
                     )?;
@@ -905,14 +906,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Release { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 ReleaseCommands::Create { version, content } => {
                     let body = content.unwrap_or_default();
                     let path = create_release(project_dir.clone(), &version, &body)?;
                     println!("Release created: {}", path.display());
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "release create",
                         &format!("Created release: {}", version),
                     )?;
@@ -941,7 +942,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     update_release(path, &content)?;
                     println!("Updated release: {}", file_name);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "release update",
                         &format!("Updated release: {}", file_name),
                     )?;
@@ -949,7 +950,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Feature { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 FeatureCommands::Create {
                     title,
@@ -969,7 +970,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     )?;
                     println!("Feature created: {}", path.display());
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "feature create",
                         &format!("Created feature: {}", title),
                     )?;
@@ -1010,7 +1011,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     update_feature(path, &content)?;
                     println!("Updated feature: {}", file_name);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "feature update",
                         &format!("Updated feature: {}", file_name),
                     )?;
@@ -1044,7 +1045,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let _ = on_post_checkout(&project_dir, &branch, &project_root);
                     println!("Feature started: {} on branch {}", file_name, branch);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "feature start",
                         &format!("Started feature: {} branch={}", file_name, branch),
                     )?;
@@ -1074,7 +1075,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     feature_done(project_dir.clone(), &file_name)?;
                     println!("Feature done: {}", file_name);
                     log_action(
-                        project_dir,
+                        &project_dir,
                         "feature done",
                         &format!("Marked feature implemented: {}", file_name),
                     )?;
@@ -1082,7 +1083,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Event { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 EventCommands::List { since, limit } => {
                     let events = list_events_since(&project_dir, since, Some(limit))?;
@@ -1162,7 +1163,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             );
         }
         Some(Commands::Git { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 GitCommands::Status => {
                     let git = get_git_config(&project_dir)?;
@@ -1241,7 +1242,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Ghost { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             ensure_builtin_plugin_namespaces(&project_dir)?;
             match action {
                 GhostCommands::Scan { dir } => {
@@ -1300,7 +1301,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                                     create_issue(project_dir.clone(), &title, &desc, "backlog")?;
                                 println!("Created issue: {}", path.display());
                                 log_action(
-                                    project_dir,
+                                    &project_dir,
                                     "issue create",
                                     &format!("Ghost promoted: {}", title),
                                 )?;
@@ -1327,6 +1328,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         }
                     }
                     StatusCommands::Add { name } => {
+                        if let Some(p_dir) = project_dir.as_ref() {
+                            log_action(&p_dir, "config status add", &name)?;
+                        }
                         add_status(project_dir, &name)?;
                         println!("Added status: {}", name.to_lowercase().replace(' ', "-"));
                     }
@@ -1398,7 +1402,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Time { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             ensure_builtin_plugin_namespaces(&project_dir)?;
             handle_time_command(action, &project_dir)?;
         }
@@ -1408,7 +1412,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     // Handled by the main unitary binary as it requires async
                 }
                 Some(McpCommands::List) => {
-                    let project_dir = get_project_dir(None)?;
+                    let project_dir = get_project_dir_cli()?;
                     let servers = list_mcp_servers(Some(project_dir))?;
                     if servers.is_empty() {
                         println!("No MCP servers configured. Add one with `ship mcp add`.");
@@ -1434,7 +1438,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     url,
                     disabled,
                 }) => {
-                    let project_dir = get_project_dir(None)?;
+                    let project_dir = get_project_dir_cli()?;
                     let server = McpServerConfig {
                         id: id.clone(),
                         name,
@@ -1456,7 +1460,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     command,
                     args,
                 }) => {
-                    let project_dir = get_project_dir(None)?;
+                    let project_dir = get_project_dir_cli()?;
                     let server = McpServerConfig {
                         id: id.clone(),
                         name,
@@ -1473,14 +1477,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     println!("Added stdio MCP server '{}'.", id);
                 }
                 Some(McpCommands::Remove { id }) => {
-                    let project_dir = get_project_dir(None)?;
+                    let project_dir = get_project_dir_cli()?;
                     remove_mcp_server(Some(project_dir), &id)?;
                     println!("Removed MCP server '{}'.", id);
                 }
             }
         }
         Some(Commands::Providers { action }) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             match action {
                 ProviderCommands::List => {
                     let providers = list_providers(&project_dir)?;
@@ -1548,7 +1552,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             println!("built at {}", build_time);
         }
         Some(Commands::Migrate) => {
-            let project_dir = get_project_dir(None)?;
+            let project_dir = get_project_dir_cli()?;
             let global_dir = get_global_dir()?;
             let global = migrate_global_state(&global_dir)?;
             let project = migrate_project_state(&project_dir)?;
@@ -1685,6 +1689,37 @@ fn current_branch(project_root: &std::path::Path) -> Result<String> {
         anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
     }
     Ok(branch)
+}
+
+fn get_project_dir_cli() -> Result<PathBuf> {
+    let project_dir = get_project_dir(None)?;
+    ensure_imported(&project_dir)?;
+    Ok(project_dir)
+}
+
+fn ensure_imported(project_dir: &Path) -> Result<()> {
+    if let Ok(count) = import_adrs_from_files(project_dir) {
+        if count > 0 {
+            println!("[ship] Imported {} ADRs from files to SQLite", count);
+        }
+    }
+    if let Ok(count) = import_notes_from_files(NoteScope::Project, Some(project_dir)) {
+        if count > 0 {
+            println!(
+                "[ship] Imported {} project notes from files to SQLite",
+                count
+            );
+        }
+    }
+    if let Ok(count) = import_notes_from_files(NoteScope::User, None) {
+        if count > 0 {
+            println!(
+                "[ship] Imported {} global notes from files to SQLite",
+                count
+            );
+        }
+    }
+    Ok(())
 }
 
 fn parse_note_scope(raw: &str) -> Result<NoteScope> {

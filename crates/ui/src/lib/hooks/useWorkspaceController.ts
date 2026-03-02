@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { relativeDate, formatShortDate } from '@/lib/date';
 import {
   AdrEntry,
   EventRecord,
@@ -177,6 +176,7 @@ export function useWorkspaceController() {
     handleCreateAdr,
     handleSelectAdr,
     handleSaveAdr,
+    handleMoveAdr,
     handleDeleteAdr,
   } = useAdrActions({
     setAdrs,
@@ -361,6 +361,7 @@ export function useWorkspaceController() {
     handleCreateAdr,
     handleSelectAdr,
     handleSaveAdr,
+    handleMoveAdr,
     handleDeleteAdr,
     handleSelectSpec,
     handleCreateSpec,

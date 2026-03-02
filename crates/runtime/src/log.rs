@@ -2,7 +2,6 @@ use crate::{EventAction, EventEntity, read_events};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct LogEntry {
@@ -14,13 +13,18 @@ pub struct LogEntry {
 
 pub const MAX_LOG_ENTRIES: usize = 200;
 
-pub fn log_action(project_dir: PathBuf, action: &str, details: &str) -> Result<()> {
+pub fn log_action(project_dir: &std::path::Path, action: &str, details: &str) -> Result<()> {
     log_action_by(project_dir, "ship", action, details)
 }
 
-pub fn log_action_by(project_dir: PathBuf, actor: &str, action: &str, details: &str) -> Result<()> {
+pub fn log_action_by(
+    project_dir: &std::path::Path,
+    actor: &str,
+    action: &str,
+    details: &str,
+) -> Result<()> {
     let _ = crate::append_event(
-        &project_dir,
+        project_dir,
         actor,
         EventEntity::Project,
         EventAction::Log,
@@ -31,7 +35,7 @@ pub fn log_action_by(project_dir: PathBuf, actor: &str, action: &str, details: &
 }
 
 /// Read legacy-compatible log output synthesized from event entries.
-pub fn read_log(project_dir: PathBuf) -> Result<String> {
+pub fn read_log(project_dir: &std::path::Path) -> Result<String> {
     let mut out = String::new();
     for entry in read_log_entries(project_dir)? {
         out.push_str(&format!(
@@ -43,8 +47,8 @@ pub fn read_log(project_dir: PathBuf) -> Result<String> {
 }
 
 /// Parse log entries from the event stream into structured log rows.
-pub fn read_log_entries(project_dir: PathBuf) -> Result<Vec<LogEntry>> {
-    let mut entries: Vec<LogEntry> = read_events(&project_dir)?
+pub fn read_log_entries(project_dir: &std::path::Path) -> Result<Vec<LogEntry>> {
+    let mut entries: Vec<LogEntry> = read_events(project_dir)?
         .into_iter()
         .filter(|event| event.action == EventAction::Log)
         .map(|event| LogEntry {

@@ -24,15 +24,13 @@ interface AdrDetailProps {
   adrSuggestions?: string[];
   mcpEnabled?: boolean;
   onClose: () => void;
-  onSave: (fileName: string, adr: ADR) => void;
-  onDelete: (fileName: string) => void;
+  onSave: (id: string, adr: ADR) => void;
+  onDelete: (id: string) => void;
 }
 
 function normalizeAdr(adr: ADR): ADR {
-  const cleanedBody = adr.body.replace(/^\s*#\s+Decision\s*\n+/i, '');
   return {
     ...adr,
-    body: cleanedBody,
     metadata: {
       ...adr.metadata,
       tags: adr.metadata.tags ?? [],
@@ -59,9 +57,9 @@ export default function AdrDetail({
   }, [entry]);
 
   const saveAdr = useCallback(() => {
-    onSave(entry.file_name, draft);
+    onSave(entry.id, draft);
     setDirty(false);
-  }, [draft, entry.file_name, onSave]);
+  }, [draft, entry.id, onSave]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -103,7 +101,7 @@ export default function AdrDetail({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
-            <AlertDialogAction size="sm" variant="destructive" onClick={() => onDelete(entry.file_name)}>
+            <AlertDialogAction size="sm" variant="destructive" onClick={() => onDelete(entry.id)}>
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

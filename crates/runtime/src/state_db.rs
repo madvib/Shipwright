@@ -72,12 +72,56 @@ CREATE TABLE IF NOT EXISTS workspace (
 );
 "#;
 
+const PROJECT_SCHEMA_ADRS: &str = r#"
+CREATE TABLE IF NOT EXISTS adr (
+  id              TEXT PRIMARY KEY,
+  title           TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'proposed',
+  date            TEXT NOT NULL,
+  context         TEXT NOT NULL DEFAULT '',
+  decision        TEXT NOT NULL DEFAULT '',
+  tags_json       TEXT NOT NULL DEFAULT '[]',
+  spec_id         TEXT,
+  supersedes_id   TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS adr_status_idx ON adr(status);
+
+CREATE TABLE IF NOT EXISTS adr_option (
+  id                TEXT PRIMARY KEY,
+  adr_id            TEXT NOT NULL REFERENCES adr(id) ON DELETE CASCADE,
+  title             TEXT NOT NULL,
+  arguments_for     TEXT NOT NULL DEFAULT '',
+  arguments_against TEXT NOT NULL DEFAULT '',
+  ord               INTEGER NOT NULL DEFAULT 0
+);
+"#;
+
+const PROJECT_SCHEMA_NOTES: &str = r#"
+CREATE TABLE IF NOT EXISTS note (
+  id              TEXT PRIMARY KEY,
+  title           TEXT NOT NULL,
+  content         TEXT NOT NULL DEFAULT '',
+  tags_json       TEXT NOT NULL DEFAULT '[]',
+  scope           TEXT NOT NULL DEFAULT 'project',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS note_scope_idx ON note(scope);
+"#;
+
 const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_project_schema", PROJECT_SCHEMA_V1),
     ("0002_operational_state", PROJECT_SCHEMA_OPERATIONAL),
     ("0003_workspace", PROJECT_SCHEMA_WORKSPACE),
+    ("0004_adrs", PROJECT_SCHEMA_ADRS),
+    ("0005_notes", PROJECT_SCHEMA_NOTES),
 ];
-const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[("0001_global_schema", GLOBAL_SCHEMA_V1)];
+const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_global_schema", GLOBAL_SCHEMA_V1),
+    ("0002_notes", PROJECT_SCHEMA_NOTES),
+];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DatabaseMigrationReport {
@@ -109,6 +153,22 @@ pub fn ensure_global_database(global_dir: &Path) -> Result<DatabaseMigrationRepo
 fn open_project_db(ship_dir: &Path) -> Result<SqliteConnection> {
     ensure_project_database(ship_dir)?;
     let db_path = project_db_path(ship_dir)?;
+    let db_url = sqlite_url(&db_path);
+    let options = SqliteConnectOptions::from_str(&db_url)
+        .with_context(|| format!("Invalid sqlite url {}", db_url))?;
+    block_on(async { SqliteConnection::connect_with(&options).await })
+}
+
+/// Exposed for use by module crates (e.g. `ship-module-project`).
+pub fn open_project_connection(ship_dir: &Path) -> Result<SqliteConnection> {
+    open_project_db(ship_dir)
+}
+
+/// Exposed for use by module crates (e.g. `ship-module-project`).
+pub fn open_global_connection() -> Result<SqliteConnection> {
+    let global_dir = crate::project::get_global_dir()?;
+    ensure_global_database(&global_dir)?;
+    let db_path = global_dir.join("ship.db");
     let db_url = sqlite_url(&db_path);
     let options = SqliteConnectOptions::from_str(&db_url)
         .with_context(|| format!("Invalid sqlite url {}", db_url))?;
@@ -429,7 +489,7 @@ fn sqlite_url(path: &Path) -> String {
     format!("sqlite://{}", raw)
 }
 
-fn block_on<F, T>(future: F) -> Result<T>
+pub fn block_on<F, T>(future: F) -> Result<T>
 where
     F: std::future::Future<Output = std::result::Result<T, sqlx::Error>>,
 {

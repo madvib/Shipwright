@@ -1,6 +1,7 @@
 mod helpers;
 use helpers::TestProject;
 use runtime::project::*;
+use ship_module_project::create_adr;
 
 /// After init, all namespace directories exist in the right places.
 #[test]
@@ -96,16 +97,22 @@ fn issue_move_updates_path() {
 fn adrs_land_in_project_namespace() {
     let p = TestProject::new().unwrap();
 
-    let adr = runtime::create_adr(
-        p.ship_dir.clone(),
+    let adr_entry = create_adr(
+        &p.ship_dir,
         "Use TOML",
+        "Context",
         "Simpler for AI agents",
         "accepted",
     )
     .unwrap();
-    assert!(adr.starts_with(adrs_dir(&p.ship_dir)));
+    let adr_path = std::path::PathBuf::from(adr_entry.path);
+    assert!(adr_path.starts_with(adrs_dir(&p.ship_dir)));
     p.assert_ship_file_contains(
-        adr.strip_prefix(&p.ship_dir).unwrap().to_str().unwrap(),
+        adr_path
+            .strip_prefix(&p.ship_dir)
+            .unwrap()
+            .to_str()
+            .unwrap(),
         "Use TOML",
     );
 }

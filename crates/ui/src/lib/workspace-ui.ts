@@ -49,6 +49,7 @@ const ADR_STATUS_COLORS: Record<string, string> = {
   rejected: 'text-status-red bg-status-red/10',
   superseded: 'text-status-yellow bg-status-yellow/10',
   proposed: 'text-status-blue bg-status-blue/10',
+  deprecated: 'text-muted-foreground bg-muted/60',
 };
 
 export function getAdrStatusClasses(status: string): string {
