@@ -56,6 +56,7 @@ export function useFeatureActions({
         setFeatures((prev) => [
           ...prev,
           {
+            id: created.id,
             file_name: created.file_name,
             title: created.title,
             status: created.status,
@@ -93,6 +94,7 @@ export function useFeatureActions({
           prev.map((entry) =>
             entry.file_name === updated.file_name
               ? {
+                id: updated.id,
                 file_name: updated.file_name,
                 title: updated.title,
                 status: updated.status,

@@ -12,7 +12,7 @@ pub fn import_features_from_files(ship_dir: &Path) -> Result<usize> {
 
     let mut count = 0;
     let mut scan_dirs = vec![features_dir.clone()];
-    
+
     // Also scan status subdirectories
     for status in &["planned", "in-progress", "implemented", "deprecated"] {
         let status_dir = features_dir.join(status);
@@ -33,7 +33,7 @@ pub fn import_features_from_files(ship_dir: &Path) -> Result<usize> {
 
                 let content = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read feature file: {}", path.display()))?;
-                
+
                 if let Ok(feature) = Feature::from_markdown(&content) {
                     // Determine status from directory name
                     let status = if path.parent() == Some(&features_dir) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FeatureInfo, SpecDocument } from '@/bindings';
+import { FeatureInfo } from '@/bindings';
+import { SpecDocument } from '@/lib/types/spec';
 import { Target, ExternalLink, Trash2 } from 'lucide-react';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';

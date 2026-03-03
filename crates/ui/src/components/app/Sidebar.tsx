@@ -71,6 +71,7 @@ type NavItem = {
   path: AppRoutePath;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  priority?: 'primary' | 'secondary';
 };
 
 const PROJECT_ITEMS: NavItem[] = [
@@ -82,9 +83,9 @@ const PROJECT_ITEMS: NavItem[] = [
 ];
 
 const WORKFLOW_ITEMS: NavItem[] = [
-  { path: WORKFLOW_WORKSPACE_PATH, label: 'Workspace', icon: Workflow },
-  { path: ISSUES_PATH, label: 'Issues', icon: FolderSearch },
+  { path: WORKFLOW_WORKSPACE_PATH, label: 'Workspaces', icon: Workflow },
   { path: SPECS_PATH, label: 'Specs', icon: FileCode2 },
+  { path: ISSUES_PATH, label: 'Issues', icon: FolderSearch, priority: 'secondary' },
 ];
 
 const AGENT_ITEMS: NavItem[] = [
@@ -132,6 +133,7 @@ export default function Sidebar({
   const renderNavButton = (item: NavItem, isCompact = false) => {
     const Icon = item.icon;
     const active = activePath === item.path;
+    const secondary = item.priority === 'secondary';
     return (
       <Button
         key={item.path}
@@ -140,13 +142,26 @@ export default function Sidebar({
         className={cn(
           'relative w-full rounded-md transition-all duration-200',
           !isCompact && 'justify-start hover:pl-3',
-          active ? 'font-medium shadow-sm ring-1 ring-primary/20 bg-primary/10' : 'hover:bg-muted/50'
+          active
+            ? 'font-medium shadow-sm ring-1 ring-primary/20 bg-primary/10'
+            : secondary
+              ? 'text-muted-foreground/70 hover:bg-muted/35'
+              : 'hover:bg-muted/50'
         )}
         onClick={() => onNavigate(item.path)}
         title={item.label}
         aria-label={item.label}
       >
-        <Icon className={cn("size-4", active ? "text-primary" : "text-muted-foreground")} />
+        <Icon
+          className={cn(
+            'size-4',
+            active
+              ? 'text-primary'
+              : secondary
+                ? 'text-muted-foreground/60'
+                : 'text-muted-foreground'
+          )}
+        />
         {!isCompact && <span className="ml-2 text-sm">{item.label}</span>}
         {!isCompact && active && (
           <div className="ml-auto flex items-center gap-1.5">

@@ -1,13 +1,16 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::{
-    IssueEntry, Rule, Skill, agent_config::resolve_agent_config, agent_export,
-    get_effective_config, get_spec, list_issues_full,
+    Rule, Skill, agent_config::resolve_agent_config, agent_export, get_effective_config,
+    sync_workspace,
 };
-use ship_module_project::{Feature, FeatureEntry, list_features};
+use ship_module_project::{
+    Feature, FeatureEntry, IssueEntry, IssueStatus, Spec, SpecEntry, list_features, list_issues,
+    list_specs,
+};
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const POST_CHECKOUT_HOOK_CONTENT: &str = "#!/usr/bin/env sh\nship git post-checkout \"$@\"\n";
 
@@ -136,41 +139,33 @@ pub fn find_feature_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<F
     Ok(None)
 }
 
-/// Which document is associated with the checked-out branch.
-pub enum BranchDocument {
+/// Which linked entity is associated with the checked-out branch.
+pub enum BranchLinkedEntity {
     Feature(FeatureEntry),
-    Spec(PathBuf),
+    Spec(SpecEntry),
 }
 
-fn find_spec_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<PathBuf>> {
-    let specs_dir = runtime::project::specs_dir(ship_dir);
-    if !specs_dir.exists() {
-        return Ok(None);
-    }
-
-    let mut candidates = Vec::new();
-    for entry in fs::read_dir(&specs_dir)
-        .with_context(|| format!("Failed to list specs: {}", specs_dir.display()))?
-    {
-        let path = entry?.path();
-        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if file_name == "TEMPLATE.md" || file_name == "README.md" {
-                continue;
-            }
-            candidates.push(path);
+fn persist_branch_link(ship_dir: &Path, branch: &str, linked: &BranchLinkedEntity) -> Result<()> {
+    match linked {
+        BranchLinkedEntity::Feature(entry) => {
+            runtime::set_branch_link(ship_dir, branch, "feature", &entry.id)?;
+        }
+        BranchLinkedEntity::Spec(entry) => {
+            let content = fs::read_to_string(&entry.path)?;
+            let spec = Spec::from_markdown(&content)?;
+            runtime::set_branch_link(ship_dir, branch, "spec", &spec.metadata.id)?;
         }
     }
-    candidates.sort();
+    Ok(())
+}
 
-    for path in candidates {
-        let spec =
-            get_spec(path.clone()).with_context(|| format!("Invalid spec: {}", path.display()))?;
-        if spec.metadata.branch.as_deref() == Some(branch) {
-            return Ok(Some(path));
+fn find_spec_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<SpecEntry>> {
+    let specs = list_specs(ship_dir)?;
+    for entry in specs {
+        if entry.spec.metadata.branch.as_deref() == Some(branch) {
+            return Ok(Some(entry));
         }
     }
-
     Ok(None)
 }
 
@@ -185,40 +180,34 @@ fn find_feature_by_uuid(ship_dir: &Path, uuid: &str) -> Option<FeatureEntry> {
     None
 }
 
-fn find_spec_by_uuid(ship_dir: &Path, uuid: &str) -> Option<PathBuf> {
-    let dir = runtime::project::specs_dir(ship_dir);
-    fs::read_dir(&dir).ok()?.flatten().find_map(|e| {
-        let path = e.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("md") {
-            return None;
-        }
-        let spec = get_spec(path.clone()).ok()?;
-        if spec.metadata.id == uuid {
-            Some(path)
-        } else {
-            None
-        }
-    })
+fn find_spec_by_uuid(ship_dir: &Path, uuid: &str) -> Option<SpecEntry> {
+    list_specs(ship_dir)
+        .ok()?
+        .into_iter()
+        .find(|entry| entry.id == uuid)
 }
 
-/// Find which document (feature or spec) is associated with the given branch.
+/// Find which linked entity (feature or spec) is associated with the given branch.
 /// Checks the DB index first (O(1)), then falls back to a frontmatter file scan.
-pub fn find_document_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<BranchDocument>> {
+pub fn find_linked_entity_for_branch(
+    ship_dir: &Path,
+    branch: &str,
+) -> Result<Option<BranchLinkedEntity>> {
     if branch.trim().is_empty() {
         return Ok(None);
     }
 
-    // Fast path: DB index stores document UUID populated by `feature_start`
-    if let Ok(Some((doc_type, doc_uuid))) = runtime::state_db::get_branch_doc(ship_dir, branch) {
-        match doc_type.as_str() {
+    // Fast path: DB index stores linked entity ids.
+    if let Ok(Some((link_type, link_id))) = runtime::state_db::get_branch_link(ship_dir, branch) {
+        match link_type.as_str() {
             "feature" => {
-                if let Some(path) = find_feature_by_uuid(ship_dir, &doc_uuid) {
-                    return Ok(Some(BranchDocument::Feature(path)));
+                if let Some(path) = find_feature_by_uuid(ship_dir, &link_id) {
+                    return Ok(Some(BranchLinkedEntity::Feature(path)));
                 }
             }
             "spec" => {
-                if let Some(path) = find_spec_by_uuid(ship_dir, &doc_uuid) {
-                    return Ok(Some(BranchDocument::Spec(path)));
+                if let Some(path) = find_spec_by_uuid(ship_dir, &link_id) {
+                    return Ok(Some(BranchLinkedEntity::Spec(path)));
                 }
             }
             _ => {}
@@ -227,32 +216,69 @@ pub fn find_document_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<
 
     // Fallback: scan frontmatter of all features then specs
     if let Some(path) = find_feature_for_branch(ship_dir, branch)? {
-        return Ok(Some(BranchDocument::Feature(path)));
+        return Ok(Some(BranchLinkedEntity::Feature(path)));
     }
     if let Some(path) = find_spec_for_branch(ship_dir, branch)? {
-        return Ok(Some(BranchDocument::Spec(path)));
+        return Ok(Some(BranchLinkedEntity::Spec(path)));
     }
     Ok(None)
+}
+
+/// Legacy alias retained for compatibility.
+pub fn find_document_for_branch(
+    ship_dir: &Path,
+    branch: &str,
+) -> Result<Option<BranchLinkedEntity>> {
+    find_linked_entity_for_branch(ship_dir, branch)
 }
 
 pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) -> Result<()> {
     // Ensure generated agent files are gitignored regardless of branch type.
     let _ = write_root_gitignore(project_root);
 
+    let linked = find_linked_entity_for_branch(ship_dir, new_branch)?;
+    match &linked {
+        Some(doc) => {
+            if let Err(error) = persist_branch_link(ship_dir, new_branch, doc) {
+                eprintln!(
+                    "[ship] branch-context sync warning for branch '{}': {}",
+                    new_branch, error
+                );
+            }
+        }
+        None => {
+            if let Err(error) = runtime::state_db::clear_branch_link(ship_dir, new_branch) {
+                eprintln!(
+                    "[ship] branch-context clear warning for branch '{}': {}",
+                    new_branch, error
+                );
+            }
+        }
+    }
+
+    // Workspace state is owned by runtime. Git hook is the adapter that
+    // reconciles current branch -> active workspace.
+    if let Err(error) = sync_workspace(ship_dir, new_branch) {
+        eprintln!(
+            "[ship] workspace sync warning for branch '{}': {}",
+            new_branch, error
+        );
+    }
+
     let config = get_effective_config(Some(ship_dir.to_path_buf()))?;
 
-    let Some(doc) = find_document_for_branch(ship_dir, new_branch)? else {
+    let Some(doc) = linked else {
         for provider in &config.providers {
             agent_export::teardown(ship_dir.to_path_buf(), provider)?;
         }
         return Ok(());
     };
 
-    let mut open_issues = list_issues_full(ship_dir.to_path_buf())?;
-    open_issues.retain(|issue| issue.status != "done");
+    let mut open_issues = list_issues(ship_dir)?;
+    open_issues.retain(|issue| issue.status != IssueStatus::Done);
 
     match doc {
-        BranchDocument::Feature(entry) => {
+        BranchLinkedEntity::Feature(entry) => {
             let feature = entry.feature;
             let agent_cfg = resolve_agent_config(ship_dir, feature.metadata.agent.as_ref())?;
 
@@ -287,8 +313,8 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
                 agent_cfg.providers.join(", ")
             );
         }
-        BranchDocument::Spec(spec_path) => {
-            let spec = get_spec(spec_path)?;
+        BranchLinkedEntity::Spec(spec_entry) => {
+            let spec = spec_entry.spec;
             let agent_cfg = resolve_agent_config(ship_dir, None)?;
 
             let context =
@@ -347,7 +373,7 @@ pub fn build_feature_context(
 
 /// Build provider-agnostic Markdown context for a spec branch.
 pub fn build_spec_context(
-    spec: &runtime::Spec,
+    spec: &Spec,
     open_issues: &[IssueEntry],
     skills: &[Skill],
     rules: &[Rule],
@@ -386,7 +412,8 @@ fn append_issues_section(c: &mut String, open_issues: &[IssueEntry]) {
         let mut ordered: Vec<&IssueEntry> = open_issues.iter().collect();
         ordered.sort_by(|a, b| {
             a.status
-                .cmp(&b.status)
+                .to_string()
+                .cmp(&b.status.to_string())
                 .then_with(|| a.file_name.cmp(&b.file_name))
         });
         for issue in ordered {
@@ -465,8 +492,8 @@ fn ensure_required_mcp_servers(project_root: &Path, required_ids: &[String]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::init_project;
     use ship_module_project::create_feature;
+    use ship_module_project::init_project;
     use tempfile::tempdir;
 
     #[test]

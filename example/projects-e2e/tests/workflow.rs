@@ -71,11 +71,11 @@ fn core_loop_paths_resolve_correctly() {
     .unwrap();
     assert!(feature.1.starts_with(features_dir(&p.ship_dir)));
 
-    let spec = runtime::create_spec(p.ship_dir.clone(), "Auth Spec", "", "draft").unwrap();
+    let spec = crate::helpers::create_spec(p.ship_dir.clone(), "Auth Spec", "", "draft").unwrap();
     assert!(spec.starts_with(specs_dir(&p.ship_dir)));
 
     let issue =
-        runtime::create_issue(p.ship_dir.clone(), "Implement login", "", "backlog").unwrap();
+        crate::helpers::create_issue(p.ship_dir.clone(), "Implement login", "", "backlog").unwrap();
     assert!(issue.starts_with(issues_dir(&p.ship_dir).join("backlog")));
 }
 
@@ -84,10 +84,11 @@ fn core_loop_paths_resolve_correctly() {
 fn issue_move_updates_path() {
     let p = TestProject::new().unwrap();
 
-    let path = runtime::create_issue(p.ship_dir.clone(), "My Issue", "", "backlog").unwrap();
+    let path = crate::helpers::create_issue(p.ship_dir.clone(), "My Issue", "", "backlog").unwrap();
     assert!(path.to_string_lossy().contains("backlog"));
 
-    let new_path = runtime::move_issue(p.ship_dir.clone(), path, "backlog", "in-progress").unwrap();
+    let new_path =
+        crate::helpers::move_issue(p.ship_dir.clone(), path, "backlog", "in-progress").unwrap();
     assert!(new_path.to_string_lossy().contains("in-progress"));
     assert!(new_path.exists());
 }

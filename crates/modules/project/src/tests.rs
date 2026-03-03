@@ -1,14 +1,19 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use runtime::project::init_project;
+    use crate::{
+        FeatureStatus, IssueStatus, ReleaseStatus, SpecStatus, create_feature, create_issue,
+        create_release, create_spec, delete_issue, delete_spec, get_feature_by_id, get_issue_by_id,
+        get_release_by_id, get_spec_by_id, import_releases_from_files, init_demo_project,
+        init_project, list_adrs, list_features, list_issues, list_releases, list_specs, move_issue,
+        move_spec, update_feature_content, update_issue, update_release_content, update_spec,
+    };
     use tempfile::tempdir;
 
     #[test]
     fn test_create_release_api() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let entry = create_release(&project_dir, "v0.1.0-alpha", "", None)?;
+        let entry = create_release(&project_dir, "v0.1.0-alpha", "")?;
         assert_eq!(entry.release.metadata.version, "v0.1.0-alpha");
         assert_eq!(entry.status, ReleaseStatus::Planned);
 
@@ -23,7 +28,7 @@ mod tests {
     fn test_create_release_empty_version_rejected() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let result = create_release(&project_dir, "", "", None);
+        let result = create_release(&project_dir, "", "");
         assert!(result.is_err());
         Ok(())
     }
@@ -32,7 +37,7 @@ mod tests {
     fn test_get_and_update_release() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let entry = create_release(&project_dir, "v0.2.0-alpha", "initial", None)?;
+        let entry = create_release(&project_dir, "v0.2.0-alpha", "initial")?;
         let initial = get_release_by_id(&project_dir, &entry.id)?;
         assert_eq!(initial.release.metadata.version, "v0.2.0-alpha");
 
@@ -46,8 +51,8 @@ mod tests {
     fn test_list_releases() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        create_release(&project_dir, "v0.1.0-alpha", "", None)?;
-        create_release(&project_dir, "v0.2.0-alpha", "", None)?;
+        create_release(&project_dir, "v0.1.0-alpha", "")?;
+        create_release(&project_dir, "v0.2.0-alpha", "")?;
         let releases = list_releases(&project_dir)?;
         assert_eq!(releases.len(), 2);
         let versions: Vec<&str> = releases
@@ -63,8 +68,8 @@ mod tests {
     fn test_release_collision_gets_suffix() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let p1 = create_release(&project_dir, "v0.1.0-tmp", "", None)?;
-        let p2 = create_release(&project_dir, "v0.1.0-tmp", "", None)?;
+        let p1 = create_release(&project_dir, "v0.1.0-tmp", "")?;
+        let p2 = create_release(&project_dir, "v0.1.0-tmp", "")?;
         assert_ne!(p1.path, p2.path);
         assert!(std::path::PathBuf::from(&p1.path).exists());
         assert!(std::path::PathBuf::from(&p2.path).exists());
@@ -178,6 +183,229 @@ mod tests {
             .collect();
         assert!(versions.contains(&"v0.3.0-alpha"));
         assert!(versions.contains(&"v0.0.9-alpha"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_issue_api() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_issue(
+            &project_dir,
+            "Fix login bug",
+            "Broken for SSO",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        assert_eq!(entry.issue.metadata.title, "Fix login bug");
+        assert_eq!(entry.status, IssueStatus::Backlog);
+
+        let path = std::path::PathBuf::from(&entry.path);
+        assert!(path.exists());
+        let content = std::fs::read_to_string(&path)?;
+        assert!(content.contains("Fix login bug"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_spec_api() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_spec(&project_dir, "Auth Spec", "Spec content", None, None)?;
+        assert_eq!(entry.spec.metadata.title, "Auth Spec");
+        assert_eq!(entry.status, SpecStatus::Draft);
+
+        let path = std::path::PathBuf::from(&entry.path);
+        assert!(path.exists());
+        let content = std::fs::read_to_string(&path)?;
+        assert!(content.contains("Auth Spec"));
+        assert!(content.contains("Spec content"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_issue_collision_gets_suffix() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let p1 = create_issue(
+            &project_dir,
+            "Fix Bug",
+            "a",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        let p2 = create_issue(
+            &project_dir,
+            "Fix Bug!",
+            "b",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        assert_ne!(p1.path, p2.path);
+        assert!(std::path::PathBuf::from(&p1.path).exists());
+        assert!(std::path::PathBuf::from(&p2.path).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_list_issues_full() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        create_issue(
+            &project_dir,
+            "Full Issue",
+            "Detailed desc",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        let entries = list_issues(&project_dir)?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].issue.metadata.title, "Full Issue");
+        assert_eq!(entries[0].issue.description, "Detailed desc");
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_and_update_issue() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_issue(
+            &project_dir,
+            "Update Me",
+            "original",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        let initial = get_issue_by_id(&project_dir, &entry.id)?;
+
+        let mut issue = initial.issue.clone();
+        issue.description = "updated".to_string();
+        let updated = update_issue(&project_dir, &entry.id, issue)?;
+        assert_eq!(updated.issue.description, "updated");
+        assert!(updated.issue.metadata.updated >= initial.issue.metadata.updated);
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_issue_api() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_issue(
+            &project_dir,
+            "Test Issue",
+            "Desc",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        let moved = move_issue(&project_dir, &entry.id, IssueStatus::InProgress)?;
+        assert!(std::path::PathBuf::from(&moved.path).exists());
+        assert!(moved.path.contains("in-progress"));
+        assert_eq!(moved.status, IssueStatus::InProgress);
+        Ok(())
+    }
+
+    #[test]
+    fn test_delete_issue_api() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_issue(
+            &project_dir,
+            "Delete Me",
+            "bye",
+            IssueStatus::Backlog,
+            None,
+            None,
+            None,
+            None,
+        )?;
+        let path = std::path::PathBuf::from(&entry.path);
+        assert!(path.exists());
+        delete_issue(&project_dir, &entry.id)?;
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_and_update_spec() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_spec(&project_dir, "Spec Update", "original body", None, None)?;
+        let initial = get_spec_by_id(&project_dir, &entry.id)?;
+
+        let mut spec = initial.spec.clone();
+        spec.body = "updated body".to_string();
+        let updated = update_spec(&project_dir, &entry.id, spec)?;
+        assert_eq!(updated.spec.body, "updated body");
+        assert!(updated.spec.metadata.updated >= initial.spec.metadata.updated);
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_spec_api() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_spec(&project_dir, "Move Spec", "content", None, None)?;
+        let moved = move_spec(&project_dir, &entry.id, SpecStatus::Active)?;
+        assert!(std::path::PathBuf::from(&moved.path).exists());
+        assert!(moved.path.contains("active"));
+        assert_eq!(moved.status, SpecStatus::Active);
+        Ok(())
+    }
+
+    #[test]
+    fn test_delete_spec_api() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_spec(&project_dir, "Delete Spec", "content", None, None)?;
+        let path = std::path::PathBuf::from(&entry.path);
+        assert!(path.exists());
+        delete_spec(&project_dir, &entry.id)?;
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_init_demo_project_seeds_correctly() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_demo_project(tmp.path().to_path_buf())?;
+
+        // Verify issues
+        let issues = list_issues(&project_dir)?;
+        assert!(issues.len() >= 6);
+
+        // Verify specs
+        let specs = list_specs(&project_dir)?;
+        assert!(
+            specs
+                .iter()
+                .any(|s| s.spec.metadata.title == "Agent Configuration and Modes")
+        );
+
+        // Verify ADRs
+        let adrs = list_adrs(&project_dir)?;
+        assert!(
+            adrs.iter()
+                .any(|a| a.adr.metadata.title == "Use PostgreSQL as primary database")
+        );
+
         Ok(())
     }
 }

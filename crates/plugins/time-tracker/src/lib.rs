@@ -1,7 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
-use runtime::{Issue, Plugin};
+use runtime::Plugin;
 use serde::{Deserialize, Serialize};
+use ship_module_project::{Issue, IssuePlugin};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -36,19 +37,9 @@ impl TimeEntry {
     }
 }
 
-// ─── Plugin Implementation ────────────────────────────────────────────────────
-
 pub struct TimeTracker;
 
-impl Plugin for TimeTracker {
-    fn name(&self) -> &str {
-        "time-tracker"
-    }
-
-    fn description(&self) -> &str {
-        "Track time spent on issues"
-    }
-
+impl IssuePlugin for TimeTracker {
     /// Auto-stop the timer when an issue is moved to done.
     fn on_issue_moved(
         &self,
@@ -65,6 +56,16 @@ impl Plugin for TimeTracker {
             }
         }
         Ok(())
+    }
+}
+
+impl Plugin for TimeTracker {
+    fn name(&self) -> &str {
+        "time-tracker"
+    }
+
+    fn description(&self) -> &str {
+        "Track time spent on issues"
     }
 }
 
@@ -299,7 +300,7 @@ pub fn generate_report(project_dir: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::init_project;
+    use ship_module_project::init_project;
     use tempfile::tempdir;
 
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {

@@ -8,8 +8,8 @@ import {
   ProjectDiscovery as Project,
   ProjectConfig,
   ReleaseInfo as ReleaseEntry,
-  SpecInfo as SpecEntry,
 } from '@/bindings';
+import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import { Config } from '@/lib/workspace-ui';
 import { subscribeProjectEvents } from '../../platform/tauri/events';
 import {

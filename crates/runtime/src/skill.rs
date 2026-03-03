@@ -8,20 +8,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Origin of a skill document.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum SkillSource {
+    #[default]
     Custom,
     Builtin,
     AiGenerated,
     Community,
     Imported,
-}
-
-impl Default for SkillSource {
-    fn default() -> Self {
-        SkillSource::Custom
-    }
 }
 
 /// A callable slash command / skill (→ `.claude/commands/<id>.md`).

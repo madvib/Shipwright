@@ -1,5 +1,6 @@
 import { ArrowRight, Link2 } from 'lucide-react';
-import { FeatureInfo as FeatureEntry, ReleaseInfo as ReleaseEntry, SpecInfo as SpecEntry } from '@/bindings';
+import { FeatureInfo as FeatureEntry, ReleaseInfo as ReleaseEntry } from '@/bindings';
+import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';

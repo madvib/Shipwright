@@ -30,26 +30,29 @@ export default function FeatureHubToolbar({
   onSortByChange,
 }: FeatureHubToolbarProps) {
   return (
-    <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
-      <div className="relative min-w-[180px] flex-1 max-w-[280px]">
+    <div className="flex w-full flex-nowrap items-center justify-end gap-2 overflow-x-auto pb-0.5">
+      <div className="relative h-8 w-[220px] min-w-[180px] shrink-0">
         <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
         <Input
           placeholder="Search features..."
-          className="pl-9 h-8"
+          className="h-8 pl-9"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
         />
       </div>
-      <HubViewToggle
-        value={viewFilter}
-        options={['all', 'blocking', 'ready']}
-        onChange={onViewFilterChange}
-      />
+      <div className="shrink-0">
+        <HubViewToggle
+          value={viewFilter}
+          options={['all', 'blocking', 'ready']}
+          onChange={onViewFilterChange}
+        />
+      </div>
       <StatusFilter
         label="Status"
         options={statusOptions}
         selectedValues={selectedStatuses}
         onSelect={onSelectedStatusesChange}
+        className="shrink-0"
       />
       <Select
         value={sortBy}
@@ -57,7 +60,7 @@ export default function FeatureHubToolbar({
           if (value) onSortByChange(value);
         }}
       >
-        <SelectTrigger size="sm" className="w-[160px]">
+        <SelectTrigger size="sm" className="w-[160px] shrink-0">
           <SelectValue>
             {sortOptions.find((option) => option.value === sortBy)?.label}
           </SelectValue>

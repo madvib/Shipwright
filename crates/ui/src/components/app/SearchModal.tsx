@@ -61,26 +61,6 @@ export function SearchModal() {
             <CommandList>
                 <CommandEmpty>No results found.</CommandEmpty>
 
-                {notes.length > 0 && (
-                    <CommandGroup heading="Notes">
-                        {notes.map((note) => (
-                            <CommandItem
-                                key={`note-${note.id}`}
-                                onSelect={() =>
-                                    runCommand(() => {
-                                        setNotesScope('project');
-                                        void navigate({ to: NOTES_ROUTE });
-                                        void handleSelectNote(note);
-                                    })
-                                }
-                            >
-                                <StickyNote className="mr-2 h-4 w-4" />
-                                <span>{note.title || 'Untitled Note'}</span>
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
-                )}
-
                 {features.length > 0 && (
                     <CommandGroup heading="Features">
                         {features.map((feature) => (
@@ -118,6 +98,45 @@ export function SearchModal() {
                     </CommandGroup>
                 )}
 
+                {releases.length > 0 && (
+                    <CommandGroup heading="Releases">
+                        {releases.map((release) => (
+                            <CommandItem
+                                key={`release-${release.file_name}`}
+                                onSelect={() =>
+                                    runCommand(() => {
+                                        void navigate({ to: RELEASES_ROUTE });
+                                        void handleSelectRelease(release);
+                                    })
+                                }
+                            >
+                                <Package className="mr-2 h-4 w-4" />
+                                <span>{release.version}</span>
+                            </CommandItem>
+                        ))}
+                    </CommandGroup>
+                )}
+
+                {notes.length > 0 && (
+                    <CommandGroup heading="Notes">
+                        {notes.map((note) => (
+                            <CommandItem
+                                key={`note-${note.id}`}
+                                onSelect={() =>
+                                    runCommand(() => {
+                                        setNotesScope('project');
+                                        void navigate({ to: NOTES_ROUTE });
+                                        void handleSelectNote(note);
+                                    })
+                                }
+                            >
+                                <StickyNote className="mr-2 h-4 w-4" />
+                                <span>{note.title || 'Untitled Note'}</span>
+                            </CommandItem>
+                        ))}
+                    </CommandGroup>
+                )}
+
                 {adrs.length > 0 && (
                     <CommandGroup heading="Decisions (ADRs)">
                         {adrs.map((adr) => (
@@ -138,7 +157,7 @@ export function SearchModal() {
                 )}
 
                 {issues.length > 0 && (
-                    <CommandGroup heading="Issues">
+                    <CommandGroup heading="Issues (Secondary)">
                         {issues.map((issue) => (
                             <CommandItem
                                 key={`issue-${issue.file_name}`}
@@ -150,25 +169,6 @@ export function SearchModal() {
                             >
                                 <CheckCircle2 className="mr-2 h-4 w-4" />
                                 <span>{issue.issue.title}</span>
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
-                )}
-
-                {releases.length > 0 && (
-                    <CommandGroup heading="Releases">
-                        {releases.map((release) => (
-                            <CommandItem
-                                key={`release-${release.file_name}`}
-                                onSelect={() =>
-                                    runCommand(() => {
-                                        void navigate({ to: RELEASES_ROUTE });
-                                        void handleSelectRelease(release);
-                                    })
-                                }
-                            >
-                                <Package className="mr-2 h-4 w-4" />
-                                <span>{release.version}</span>
                             </CommandItem>
                         ))}
                     </CommandGroup>

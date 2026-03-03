@@ -3,7 +3,7 @@ use crate::helpers::create_feature;
 use helpers::TestProject;
 use runtime::agent_config::FeatureAgentConfig;
 use runtime::config::{McpServerConfig, McpServerType, ProjectConfig, save_config};
-use runtime::{create_issue, create_skill};
+use runtime::create_skill;
 use ship_module_git::on_post_checkout;
 use std::collections::HashMap;
 use std::path::Path;
@@ -103,18 +103,26 @@ fn claude_md_includes_open_issues() {
         Some("feature/auth"),
     )
     .unwrap();
-    create_issue(
-        p.ship_dir.clone(),
+    ship_module_project::create_issue(
+        &p.ship_dir,
         "Handle login timeout",
         "Need a retry strategy",
-        "backlog",
+        ship_module_project::IssueStatus::Backlog,
+        None,
+        None,
+        None,
+        None,
     )
     .unwrap();
-    create_issue(
-        p.ship_dir.clone(),
+    ship_module_project::create_issue(
+        &p.ship_dir,
         "Already shipped",
         "Closed issue",
-        "done",
+        ship_module_project::IssueStatus::Done,
+        None,
+        None,
+        None,
+        None,
     )
     .unwrap();
 

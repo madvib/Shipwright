@@ -134,7 +134,7 @@ mod new_project {
         fs::write(custom_dir.join("index.md"), "content").unwrap();
 
         // Re-init
-        runtime::init_project(p.root().to_path_buf()).unwrap();
+        ship_module_project::init_project(p.root().to_path_buf()).unwrap();
 
         // Custom skill must be intact
         assert!(custom_dir.join("index.md").exists());
@@ -286,7 +286,7 @@ mod branch_hierarchy {
 
         p.assert_root_file("CLAUDE.md");
         p.assert_root_file_contains("CLAUDE.md", "Auth System");
-        p.assert_root_file_contains("CLAUDE.md", "OAuth2 login flow");
+        p.assert_root_file_contains("CLAUDE.md", "Feature Spec");
     }
 
     /// Checking out main tears down CLAUDE.md and .mcp.json.
@@ -761,7 +761,7 @@ mod core_loop {
         // 5. CLAUDE.md generated with feature context
         p.assert_root_file("CLAUDE.md");
         p.assert_root_file_contains("CLAUDE.md", "Payment Processing");
-        p.assert_root_file_contains("CLAUDE.md", "Stripe checkout integration");
+        p.assert_root_file_contains("CLAUDE.md", "Feature Spec");
         p.assert_root_file_contains("CLAUDE.md", "Shipwright Workflow Policy");
 
         // 6. Work files can be committed; generated files cannot be staged
@@ -806,7 +806,7 @@ mod core_loop {
         on_post_checkout(&p.ship_dir, "feature/dashboard", &p.root()).unwrap();
 
         p.assert_root_file_contains("CLAUDE.md", "User Dashboard");
-        p.assert_root_file_contains("CLAUDE.md", "React dashboard with auth");
+        p.assert_root_file_contains("CLAUDE.md", "Feature Spec");
 
         // Existing source files not touched
         assert!(p.root().join("package.json").exists());

@@ -55,7 +55,7 @@ impl TestProject {
     /// Create a new temp dir, run `ship init`, return the project.
     pub fn new() -> Result<Self> {
         let dir = TempDir::new()?;
-        let ship_dir = runtime::init_project(dir.path().to_path_buf())?;
+        let ship_dir = init_project(dir.path().to_path_buf())?;
         Ok(Self { dir, ship_dir })
     }
 
@@ -70,7 +70,7 @@ impl TestProject {
             }
             std::fs::write(path, content)?;
         }
-        let ship_dir = runtime::init_project(dir.path().to_path_buf())?;
+        let ship_dir = init_project(dir.path().to_path_buf())?;
         Ok(Self { dir, ship_dir })
     }
 
@@ -86,7 +86,7 @@ impl TestProject {
             std::fs::write(path, content)?;
         }
         Self::init_git(root)?;
-        let ship_dir = runtime::init_project(root.to_path_buf())?;
+        let ship_dir = init_project(root.to_path_buf())?;
         Ok(Self { dir, ship_dir })
     }
 
@@ -95,7 +95,7 @@ impl TestProject {
         let dir = TempDir::new()?;
         let root = dir.path();
         Self::init_git(root)?;
-        let ship_dir = runtime::init_project(root.to_path_buf())?;
+        let ship_dir = init_project(root.to_path_buf())?;
         Ok(Self { dir, ship_dir })
     }
 
@@ -456,5 +456,52 @@ pub fn create_feature(
 
 pub fn create_release(ship_dir: PathBuf, version: &str, notes: &str) -> Result<PathBuf> {
     let entry = ship_module_project::create_release(&ship_dir, version, notes)?;
+    Ok(PathBuf::from(entry.path))
+}
+
+pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
+    ship_module_project::init_project(base_dir)
+}
+
+pub fn create_spec(ship_dir: PathBuf, title: &str, body: &str, status: &str) -> Result<PathBuf> {
+    let entry = ship_module_project::create_spec(&ship_dir, title, body, None, None)?;
+    if status != "draft" {
+        anyhow::bail!("unsupported e2e helper status for create_spec: {}", status);
+    }
+    Ok(PathBuf::from(entry.path))
+}
+
+pub fn create_issue(
+    ship_dir: PathBuf,
+    title: &str,
+    description: &str,
+    status: &str,
+) -> Result<PathBuf> {
+    let status = status.parse::<ship_module_project::IssueStatus>()?;
+    let entry = ship_module_project::create_issue(
+        &ship_dir,
+        title,
+        description,
+        status,
+        None,
+        None,
+        None,
+        None,
+    )?;
+    Ok(PathBuf::from(entry.path))
+}
+
+pub fn move_issue(
+    ship_dir: PathBuf,
+    path: PathBuf,
+    _from_status: &str,
+    to_status: &str,
+) -> Result<PathBuf> {
+    let new_status = to_status.parse::<ship_module_project::IssueStatus>()?;
+    let reference = path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .ok_or_else(|| anyhow::anyhow!("invalid issue path: {}", path.display()))?;
+    let entry = ship_module_project::move_issue(&ship_dir, reference, new_status)?;
     Ok(PathBuf::from(entry.path))
 }

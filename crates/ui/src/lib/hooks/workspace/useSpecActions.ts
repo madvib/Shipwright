@@ -1,5 +1,9 @@
 import { Dispatch, SetStateAction } from 'react';
-import { SpecDocument, SpecInfo as SpecEntry } from '@/bindings';
+import {
+  SpecDocument,
+  SpecInfo as SpecEntry,
+  stubSpecDocument,
+} from '@/lib/types/spec';
 import {
   createSpecCmd,
   deleteSpecCmd,
@@ -23,10 +27,7 @@ export function useSpecActions({
 }: UseSpecActionsParams) {
   const handleSelectSpec = async (entry: SpecEntry) => {
     if (!isTauriRuntime()) {
-      setSelectedSpec({
-        ...entry,
-        content: '',
-      });
+      setSelectedSpec(stubSpecDocument(entry, ''));
       return;
     }
 
@@ -55,9 +56,11 @@ export function useSpecActions({
         setSpecs((prev) => [
           ...prev,
           {
+            id: created.id,
             file_name: created.file_name,
             title: created.title,
             path: created.path,
+            status: created.status,
           },
         ]);
         setSelectedSpec(created);
@@ -86,9 +89,11 @@ export function useSpecActions({
           prev.map((entry) =>
             entry.file_name === updated.file_name
               ? {
+                id: updated.id,
                 file_name: updated.file_name,
                 title: updated.title,
                 path: updated.path,
+                status: updated.status,
               }
               : entry
           )

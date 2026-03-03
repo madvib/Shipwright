@@ -29,9 +29,9 @@ import {
   NoteInfo as NoteEntry,
   ProjectDiscovery as Project,
   ReleaseInfo as ReleaseEntry,
-  SpecInfo as SpecEntry,
   StatusConfig,
 } from '@/bindings';
+import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import {
   ADRS_ROUTE,
   AppRoutePath,
@@ -103,7 +103,7 @@ export default function ProjectOverview({
   });
 
   const handleVisionEdit = () => {
-    setVisionDraft(visionData?.body ?? '');
+    setVisionDraft(visionData?.content ?? '');
     setVisionEditing(true);
   };
 
@@ -151,7 +151,7 @@ export default function ProjectOverview({
       .trim();
   };
 
-  const hasVision = !!visionData?.body?.trim();
+  const hasVision = !!visionData?.content?.trim();
 
   const activeRelease = releases.find(r => r.status === 'active') || releases[0];
   const activeFeatures = activeRelease ? features.filter(f =>
@@ -204,7 +204,7 @@ export default function ProjectOverview({
                   <Button size="xs" variant="ghost" className="h-6 px-2 text-[10px]" onClick={handleVisionEdit}>View Vision</Button>
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed italic">
-                  {hasVision ? stripMarkdown(visionData?.body ?? '') : "No vision defined yet. What is your goal?"}
+                  {hasVision ? stripMarkdown(visionData?.content ?? '') : "No vision defined yet. What is your goal?"}
                 </p>
               </div>
 

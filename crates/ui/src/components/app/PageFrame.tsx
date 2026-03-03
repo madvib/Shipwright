@@ -77,19 +77,15 @@ export function PageHeader({
     >
       {renderGlobalChrome ? (
         <div className="space-y-2">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-            <div className="min-w-0 overflow-hidden">{chrome?.breadcrumb}</div>
-            <h1 className="truncate px-2 text-center text-base font-semibold tracking-tight md:text-lg">
-              {title}
-            </h1>
-            <div className="flex min-w-0 justify-end gap-1.5">
-              {(badge || actions) && (
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                  {badge}
-                  {actions}
-                </div>
-              )}
-            </div>
+          <h1 className="sr-only">{title}</h1>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1 overflow-hidden">{chrome?.breadcrumb}</div>
+            {(badge || actions) && (
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                {badge}
+                {actions}
+              </div>
+            )}
           </div>
           {(eyebrow || description) && (
             <div className="space-y-1">

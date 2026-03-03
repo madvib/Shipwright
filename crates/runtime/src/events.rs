@@ -200,10 +200,10 @@ pub fn list_events_since(
         .into_iter()
         .filter(|e| e.seq > since_seq)
         .collect();
-    if let Some(limit) = limit {
-        if events.len() > limit {
-            events = events[events.len() - limit..].to_vec();
-        }
+    if let Some(limit) = limit
+        && events.len() > limit
+    {
+        events = events[events.len() - limit..].to_vec();
     }
     Ok(events)
 }
@@ -253,7 +253,7 @@ fn collect_tracked_files(project_dir: &Path) -> Result<HashMap<String, FileFinge
                 Err(_) => continue,
             };
             let path = entry.path();
-            if !path.is_file() || !path.extension().is_some_and(|ext| ext == "md") {
+            if !path.is_file() || path.extension().is_none_or(|ext| ext != "md") {
                 continue;
             }
             let file_name = path

@@ -1601,6 +1601,7 @@ dependencies = [
  "runtime",
  "serde",
  "serde_json",
+ "ship-module-project",
  "tempfile",
 ]
 
@@ -4166,14 +4167,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ship-module-agents"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "runtime",
-]
-
-[[package]]
 name = "ship-module-git"
 version = "0.1.0"
 dependencies = [
@@ -4197,14 +4190,6 @@ dependencies = [
  "sqlx",
  "tempfile",
  "toml 0.8.2",
-]
-
-[[package]]
-name = "ship-module-workflow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "runtime",
 ]
 
 [[package]]
@@ -5236,6 +5221,7 @@ dependencies = [
  "runtime",
  "serde",
  "serde_json",
+ "ship-module-project",
  "tempfile",
 ]
 

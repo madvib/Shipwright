@@ -5,8 +5,8 @@ import {
   FeatureDocument,
   FeatureInfo as FeatureEntry,
   ReleaseInfo as ReleaseEntry,
-  SpecInfo as SpecEntry,
 } from '@/bindings';
+import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import DetailSheet from './DetailSheet';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -89,6 +89,11 @@ export default function FeaturesPage({
   tagSuggestions = [],
   mcpEnabled = true,
 }: FeaturesPageProps) {
+  const updatedAt = (value?: string) => {
+    const parsed = Date.parse(value ?? '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   const [createOpen, setCreateOpen] = useState(false);
   const [content, setContent] = useState('');
   const [creating, setCreating] = useState(false);
@@ -97,11 +102,18 @@ export default function FeaturesPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set());
   const [viewFilter, setViewFilter] = useState<FeatureView>('all');
-  const { metricsByFile: featureMetricsByFile, loading: metricsLoading } = useFeatureChecklistMetrics(features);
+  const { metricsByFile: featureMetricsByFile } = useFeatureChecklistMetrics(features);
 
   const statusOptions = useMemo(() => {
     const fallback = ['planned', 'in-progress', 'implemented', 'deprecated'];
-    const available = Array.from(new Set([...fallback, ...features.map((feature) => feature.status)]));
+    const available = Array.from(
+      new Set([
+        ...fallback,
+        ...features
+          .map((feature) => feature.status)
+          .filter((status): status is string => typeof status === 'string' && status.length > 0),
+      ])
+    );
     available.sort((a, b) => {
       const rankA = STATUS_ORDER[a] ?? 99;
       const rankB = STATUS_ORDER[b] ?? 99;
@@ -118,18 +130,24 @@ export default function FeaturesPage({
   const sortedFeatures = useMemo(() => {
     const needle = searchQuery.trim().toLowerCase();
     const filtered = features.filter((feature) => {
+      const featureStatus = feature.status ?? 'planned';
       const metric = featureMetricsByFile[feature.file_name];
-      const readiness = metric?.readinessPercent ?? featureStatusFallbackReadiness(feature.status);
+      const readiness = metric?.readinessPercent ?? featureStatusFallbackReadiness(featureStatus);
       const blocking =
-        metric?.blocking ?? (feature.status !== 'implemented' && feature.status !== 'deprecated');
+        metric?.blocking ?? (featureStatus !== 'implemented' && featureStatus !== 'deprecated');
       const ready = !blocking && readiness >= 90;
 
+      const title = (feature.title ?? '').toLowerCase();
+      const fileName = (feature.file_name ?? '').toLowerCase();
+      const releaseId = (feature.release_id ?? '').toLowerCase();
+      const specId = (feature.spec_id ?? '').toLowerCase();
+
       const matchesSearch =
-        feature.title.toLowerCase().includes(needle) ||
-        feature.file_name.toLowerCase().includes(needle) ||
-        (feature.release_id ?? '').toLowerCase().includes(needle) ||
-        (feature.spec_id ?? '').toLowerCase().includes(needle);
-      const matchesStatus = selectedStatuses.size === 0 || selectedStatuses.has(feature.status);
+        title.includes(needle) ||
+        fileName.includes(needle) ||
+        releaseId.includes(needle) ||
+        specId.includes(needle);
+      const matchesStatus = selectedStatuses.size === 0 || selectedStatuses.has(featureStatus);
       const matchesView =
         viewFilter === 'all' ||
         (viewFilter === 'blocking' ? blocking : ready);
@@ -140,17 +158,21 @@ export default function FeaturesPage({
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'oldest':
-          return new Date(a.updated).getTime() - new Date(b.updated).getTime();
+          return updatedAt(a.updated) - updatedAt(b.updated);
         case 'status':
-          return (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
+          return (STATUS_ORDER[a.status ?? 'planned'] ?? 99) - (STATUS_ORDER[b.status ?? 'planned'] ?? 99);
         case 'readiness': {
-          const readinessA = featureMetricsByFile[a.file_name]?.readinessPercent ?? featureStatusFallbackReadiness(a.status);
-          const readinessB = featureMetricsByFile[b.file_name]?.readinessPercent ?? featureStatusFallbackReadiness(b.status);
+          const readinessA =
+            featureMetricsByFile[a.file_name]?.readinessPercent ??
+            featureStatusFallbackReadiness(a.status ?? 'planned');
+          const readinessB =
+            featureMetricsByFile[b.file_name]?.readinessPercent ??
+            featureStatusFallbackReadiness(b.status ?? 'planned');
           return readinessB - readinessA;
         }
         case 'newest':
         default:
-          return new Date(b.updated).getTime() - new Date(a.updated).getTime();
+          return updatedAt(b.updated) - updatedAt(a.updated);
       }
     });
 
@@ -174,7 +196,8 @@ export default function FeaturesPage({
     let readinessTotal = 0;
 
     for (const feature of features) {
-      if (feature.status === 'implemented') {
+      const featureStatus = feature.status ?? 'planned';
+      if (featureStatus === 'implemented') {
         implemented += 1;
       }
       if (!feature.release_id) {
@@ -182,11 +205,11 @@ export default function FeaturesPage({
       }
 
       const metric = featureMetricsByFile[feature.file_name];
-      const readiness = metric?.readinessPercent ?? featureStatusFallbackReadiness(feature.status);
+      const readiness = metric?.readinessPercent ?? featureStatusFallbackReadiness(featureStatus);
       readinessTotal += readiness;
 
       const isBlocking =
-        metric?.blocking ?? (feature.status !== 'implemented' && feature.status !== 'deprecated');
+        metric?.blocking ?? (featureStatus !== 'implemented' && featureStatus !== 'deprecated');
       if (isBlocking) {
         blocking += 1;
       }
@@ -336,28 +359,21 @@ tags = []
         <Card size="sm">
           <CardHeader className="pb-2">
             <HubSectionHeader
-              title="Feature Hub"
-              description={
-                <>
-                  {features.length} feature{features.length !== 1 ? 's' : ''} with live checklist signals
-                  {metricsLoading ? ' · syncing metrics…' : ''}
-                </>
-              }
               controls={
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <FeatureHubToolbar
-                  searchQuery={searchQuery}
-                  onSearchQueryChange={setSearchQuery}
-                  viewFilter={viewFilter}
-                  onViewFilterChange={setViewFilter}
-                  statusOptions={statusOptions}
-                  selectedStatuses={selectedStatuses}
-                  onSelectedStatusesChange={setSelectedStatuses}
-                  sortBy={sortBy}
-                  sortOptions={FEATURE_SORT_OPTIONS}
-                  onSortByChange={(value) => setSortBy(value as FeatureSort)}
-                />
-              </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <FeatureHubToolbar
+                    searchQuery={searchQuery}
+                    onSearchQueryChange={setSearchQuery}
+                    viewFilter={viewFilter}
+                    onViewFilterChange={setViewFilter}
+                    statusOptions={statusOptions}
+                    selectedStatuses={selectedStatuses}
+                    onSelectedStatusesChange={setSelectedStatuses}
+                    sortBy={sortBy}
+                    sortOptions={FEATURE_SORT_OPTIONS}
+                    onSortByChange={(value) => setSortBy(value as FeatureSort)}
+                  />
+                </div>
               }
             />
           </CardHeader>

@@ -85,6 +85,11 @@ export default function ReleasesPage({
   onCreateRelease,
   mcpEnabled = true,
 }: ReleasesPageProps) {
+  const updatedAt = (value?: string) => {
+    const parsed = Date.parse(value ?? '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   const [createOpen, setCreateOpen] = useState(false);
   const [content, setContent] = useState('');
   const [creating, setCreating] = useState(false);
@@ -92,7 +97,7 @@ export default function ReleasesPage({
   const [sortBy, setSortBy] = useState<ReleaseSort>('newest');
   const [search, setSearch] = useState('');
   const [viewFilter, setViewFilter] = useState<ReleaseView>('all');
-  const { metricsByFile: featureMetricsByFile, loading: metricsLoading } = useFeatureChecklistMetrics(features);
+  const { metricsByFile: featureMetricsByFile } = useFeatureChecklistMetrics(features);
 
   const createInitialReleaseDocument = () => {
     return `+++
@@ -144,8 +149,8 @@ tags = []
       const statusWeightedProgress =
         linked.length > 0
           ? Math.round(
-              linked.reduce((sum, entry) => sum + entry.readiness, 0) / linked.length
-            )
+            linked.reduce((sum, entry) => sum + entry.readiness, 0) / linked.length
+          )
           : 0;
       const progressPercent =
         todosTotal > 0 ? Math.round((todosDone / todosTotal) * 100) : statusWeightedProgress;
@@ -193,10 +198,13 @@ tags = []
     const needle = search.trim().toLowerCase();
     const next = releases.filter((release) => {
       if (!needle) return true;
+      const version = (release.version ?? '').toLowerCase();
+      const status = (release.status ?? '').toLowerCase();
+      const fileName = (release.file_name ?? '').toLowerCase();
       return (
-        release.version.toLowerCase().includes(needle) ||
-        release.status.toLowerCase().includes(needle) ||
-        release.file_name.toLowerCase().includes(needle)
+        version.includes(needle) ||
+        status.includes(needle) ||
+        fileName.includes(needle)
       );
     });
 
@@ -211,9 +219,9 @@ tags = []
     viewFiltered.sort((a, b) => {
       switch (sortBy) {
         case 'oldest':
-          return new Date(a.updated).getTime() - new Date(b.updated).getTime();
+          return updatedAt(a.updated) - updatedAt(b.updated);
         case 'status':
-          return (RELEASE_STATUS_ORDER[a.status] ?? 99) - (RELEASE_STATUS_ORDER[b.status] ?? 99);
+          return (RELEASE_STATUS_ORDER[a.status ?? 'planned'] ?? 99) - (RELEASE_STATUS_ORDER[b.status ?? 'planned'] ?? 99);
         case 'progress': {
           const progressA = releaseSummaries.get(a.file_name)?.progressPercent ?? 0;
           const progressB = releaseSummaries.get(b.file_name)?.progressPercent ?? 0;
@@ -221,7 +229,7 @@ tags = []
         }
         case 'newest':
         default:
-          return new Date(b.updated).getTime() - new Date(a.updated).getTime();
+          return updatedAt(b.updated) - updatedAt(a.updated);
       }
     });
     return viewFiltered;
@@ -326,23 +334,16 @@ tags = []
         <Card size="sm">
           <CardHeader className="pb-2">
             <HubSectionHeader
-              title="Release Hub"
-              description={
-                <>
-                  {releases.length} release{releases.length !== 1 ? 's' : ''} with live feature readiness
-                  {metricsLoading ? ' · syncing metrics…' : ''}
-                </>
-              }
               controls={
-              <ReleaseHubToolbar
-                search={search}
-                onSearchChange={setSearch}
-                viewFilter={viewFilter}
-                onViewFilterChange={setViewFilter}
-                sortBy={sortBy}
-                sortOptions={RELEASE_SORT_OPTIONS}
-                onSortByChange={(value) => setSortBy(value as ReleaseSort)}
-              />
+                <ReleaseHubToolbar
+                  search={search}
+                  onSearchChange={setSearch}
+                  viewFilter={viewFilter}
+                  onViewFilterChange={setViewFilter}
+                  sortBy={sortBy}
+                  sortOptions={RELEASE_SORT_OPTIONS}
+                  onSortByChange={(value) => setSortBy(value as ReleaseSort)}
+                />
               }
             />
           </CardHeader>

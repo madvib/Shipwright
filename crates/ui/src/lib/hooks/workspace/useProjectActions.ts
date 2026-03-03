@@ -6,9 +6,9 @@ import {
   ProjectDiscovery as Project,
   ProjectConfig,
   ReleaseDocument,
-  SpecDocument,
   StatusConfig,
 } from '@/bindings';
+import { SpecDocument } from '@/lib/types/spec';
 import { CreateProjectInput } from '@/features/planning/ProjectOnboarding';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import {

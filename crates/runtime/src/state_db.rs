@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde_json;
 use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::{Connection, SqliteConnection};
+use sqlx::{Connection, Row, SqliteConnection};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -51,10 +51,12 @@ CREATE TABLE IF NOT EXISTS managed_mcp_state (
   updated_at TEXT NOT NULL
 );
 
+-- branch_context keeps branch -> linked-entity mappings used by git/workspace sync.
+-- Legacy databases used doc_type/doc_id; compatibility migration backfills link_*.
 CREATE TABLE IF NOT EXISTS branch_context (
   branch TEXT PRIMARY KEY,
-  doc_type TEXT NOT NULL,
-  doc_id TEXT NOT NULL,
+  link_type TEXT NOT NULL,
+  link_id TEXT NOT NULL,
   last_synced TEXT NOT NULL
 );
 "#;
@@ -70,6 +72,23 @@ CREATE TABLE IF NOT EXISTS workspace (
   is_worktree    INTEGER NOT NULL DEFAULT 0,
   worktree_path  TEXT
 );
+"#;
+
+const PROJECT_SCHEMA_WORKSPACE_V2: &str = r#"
+ALTER TABLE workspace ADD COLUMN id TEXT;
+ALTER TABLE workspace ADD COLUMN workspace_type TEXT NOT NULL DEFAULT 'feature';
+ALTER TABLE workspace ADD COLUMN status TEXT NOT NULL DEFAULT 'idle';
+ALTER TABLE workspace ADD COLUMN release_id TEXT;
+ALTER TABLE workspace ADD COLUMN last_activated_at TEXT;
+ALTER TABLE workspace ADD COLUMN context_hash TEXT;
+
+UPDATE workspace
+SET id = branch
+WHERE id IS NULL OR id = '';
+
+UPDATE workspace
+SET status = 'active'
+WHERE status IS NULL OR status = '';
 "#;
 
 const PROJECT_SCHEMA_ADRS: &str = r#"
@@ -163,6 +182,38 @@ CREATE TABLE IF NOT EXISTS release_breaking_change (
 );
 "#;
 
+const PROJECT_SCHEMA_ISSUES_SPECS: &str = r#"
+CREATE TABLE IF NOT EXISTS issue (
+  id              TEXT PRIMARY KEY,
+  title           TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'backlog',
+  assignee        TEXT,
+  priority        TEXT,
+  release_id      TEXT,
+  feature_id      TEXT,
+  spec_id         TEXT,
+  tags_json       TEXT NOT NULL DEFAULT '[]',
+  links_json      TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS issue_status_idx ON issue(status);
+
+CREATE TABLE IF NOT EXISTS spec (
+  id              TEXT PRIMARY KEY,
+  title           TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'draft',
+  author          TEXT,
+  branch          TEXT,
+  feature_id      TEXT,
+  release_id      TEXT,
+  tags_json       TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS spec_status_idx ON spec(status);
+"#;
+
 const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_project_schema", PROJECT_SCHEMA_V1),
     ("0002_operational_state", PROJECT_SCHEMA_OPERATIONAL),
@@ -170,6 +221,8 @@ const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
     ("0004_adrs", PROJECT_SCHEMA_ADRS),
     ("0005_notes", PROJECT_SCHEMA_NOTES),
     ("0006_features_releases", PROJECT_SCHEMA_FEATURES_RELEASES),
+    ("0007_workspace_lifecycle", PROJECT_SCHEMA_WORKSPACE_V2),
+    ("0008_issues_specs", PROJECT_SCHEMA_ISSUES_SPECS),
 ];
 const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_global_schema", GLOBAL_SCHEMA_V1),
@@ -181,6 +234,58 @@ pub struct DatabaseMigrationReport {
     pub db_path: PathBuf,
     pub created: bool,
     pub applied_migrations: usize,
+}
+
+pub type FeatureBranchLinks = (String, Option<String>, Option<String>);
+
+pub type WorkspaceDbRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<String>,
+    String,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+pub type WorkspaceDbListRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<String>,
+    String,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+pub struct WorkspaceUpsert<'a> {
+    pub branch: &'a str,
+    pub workspace_id: &'a str,
+    pub workspace_type: &'a str,
+    pub status: &'a str,
+    pub feature_id: Option<&'a str>,
+    pub spec_id: Option<&'a str>,
+    pub release_id: Option<&'a str>,
+    pub active_mode: Option<&'a str>,
+    pub providers: &'a [String],
+    pub resolved_at: &'a str,
+    pub is_worktree: bool,
+    pub worktree_path: Option<&'a str>,
+    pub last_activated_at: Option<&'a str>,
+    pub context_hash: Option<&'a str>,
 }
 
 /// Returns `~/.ship/state/<project-slug>/ship.db` for the given ship_dir.
@@ -209,7 +314,9 @@ fn open_project_db(ship_dir: &Path) -> Result<SqliteConnection> {
     let db_url = sqlite_url(&db_path);
     let options = SqliteConnectOptions::from_str(&db_url)
         .with_context(|| format!("Invalid sqlite url {}", db_url))?;
-    block_on(async { SqliteConnection::connect_with(&options).await })
+    let mut connection = block_on(async { SqliteConnection::connect_with(&options).await })?;
+    ensure_project_schema_compat(&mut connection)?;
+    Ok(connection)
 }
 
 /// Exposed for use by module crates (e.g. `ship-module-project`).
@@ -281,11 +388,23 @@ pub fn set_managed_state_db(
     Ok(())
 }
 
-/// Look up which document is associated with `branch`. Returns `(doc_type, doc_uuid)` or `None`.
-pub fn get_branch_doc(ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
+/// Look up which linked entity is associated with `branch`.
+/// Returns `(link_type, link_id)` or `None`.
+pub fn get_branch_link(ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
     let mut conn = open_project_db(ship_dir)?;
+    let has_legacy_doc_columns = column_exists(&mut conn, "branch_context", "doc_type")?
+        && column_exists(&mut conn, "branch_context", "doc_id")?;
+    let sql = if has_legacy_doc_columns {
+        "SELECT
+           COALESCE(NULLIF(link_type, ''), doc_type),
+           COALESCE(NULLIF(link_id, ''), doc_id)
+         FROM branch_context
+         WHERE branch = ?"
+    } else {
+        "SELECT link_type, link_id FROM branch_context WHERE branch = ?"
+    };
     let row_opt = block_on(async {
-        sqlx::query("SELECT doc_type, doc_id FROM branch_context WHERE branch = ?")
+        sqlx::query(sql)
             .bind(branch)
             .fetch_optional(&mut conn)
             .await
@@ -298,35 +417,143 @@ pub fn get_branch_doc(ship_dir: &Path, branch: &str) -> Result<Option<(String, S
     }
 }
 
-/// Record that `branch` is associated with `doc_type` and the document's UUID.
-pub fn set_branch_doc(ship_dir: &Path, branch: &str, doc_type: &str, doc_uuid: &str) -> Result<()> {
+/// Record that `branch` is associated with `link_type` and entity id.
+pub fn set_branch_link(
+    ship_dir: &Path,
+    branch: &str,
+    link_type: &str,
+    link_id: &str,
+) -> Result<()> {
     let mut conn = open_project_db(ship_dir)?;
+    let has_legacy_doc_columns = column_exists(&mut conn, "branch_context", "doc_type")?
+        && column_exists(&mut conn, "branch_context", "doc_id")?;
     let now = Utc::now().to_rfc3339();
+    if has_legacy_doc_columns {
+        block_on(async {
+            sqlx::query(
+                "INSERT INTO branch_context
+                   (branch, link_type, link_id, doc_type, doc_id, last_synced)
+                 VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(branch) DO UPDATE SET
+                   link_type = excluded.link_type,
+                   link_id = excluded.link_id,
+                   doc_type = excluded.doc_type,
+                   doc_id = excluded.doc_id,
+                   last_synced = excluded.last_synced",
+            )
+            .bind(branch)
+            .bind(link_type)
+            .bind(link_id)
+            .bind(link_type)
+            .bind(link_id)
+            .bind(&now)
+            .execute(&mut conn)
+            .await
+        })?;
+    } else {
+        block_on(async {
+            sqlx::query(
+                "INSERT INTO branch_context (branch, link_type, link_id, last_synced)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(branch) DO UPDATE SET
+                   link_type = excluded.link_type,
+                   link_id = excluded.link_id,
+                   last_synced = excluded.last_synced",
+            )
+            .bind(branch)
+            .bind(link_type)
+            .bind(link_id)
+            .bind(&now)
+            .execute(&mut conn)
+            .await
+        })?;
+    }
+    Ok(())
+}
+
+/// Remove branch link mapping for `branch` when no entity is associated anymore.
+pub fn clear_branch_link(ship_dir: &Path, branch: &str) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
     block_on(async {
-        sqlx::query(
-            "INSERT INTO branch_context (branch, doc_type, doc_id, last_synced)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(branch) DO UPDATE SET
-               doc_type = excluded.doc_type,
-               doc_id = excluded.doc_id,
-               last_synced = excluded.last_synced",
-        )
-        .bind(branch)
-        .bind(doc_type)
-        .bind(doc_uuid)
-        .bind(&now)
-        .execute(&mut conn)
-        .await
+        sqlx::query("DELETE FROM branch_context WHERE branch = ?")
+            .bind(branch)
+            .execute(&mut conn)
+            .await
     })?;
     Ok(())
+}
+
+/// Legacy alias kept for compatibility with older call sites.
+pub fn get_branch_doc(ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
+    get_branch_link(ship_dir, branch)
+}
+
+/// Legacy alias kept for compatibility with older call sites.
+pub fn set_branch_doc(ship_dir: &Path, branch: &str, doc_type: &str, doc_uuid: &str) -> Result<()> {
+    set_branch_link(ship_dir, branch, doc_type, doc_uuid)
+}
+
+/// Legacy alias kept for compatibility with older call sites.
+pub fn clear_branch_doc(ship_dir: &Path, branch: &str) -> Result<()> {
+    clear_branch_link(ship_dir, branch)
+}
+
+/// Look up feature-linked ids used by workspace hydration.
+/// Returns `(spec_id, release_id)` when the feature exists.
+pub fn get_feature_links(
+    ship_dir: &Path,
+    feature_id: &str,
+) -> Result<Option<(Option<String>, Option<String>)>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let row_opt = block_on(async {
+        sqlx::query("SELECT spec_id, release_id FROM feature WHERE id = ?")
+            .bind(feature_id)
+            .fetch_optional(&mut conn)
+            .await
+    })?;
+    if let Some(row) = row_opt {
+        use sqlx::Row;
+        let spec_id: Option<String> = row.get(0);
+        let release_id: Option<String> = row.get(1);
+        Ok(Some((spec_id, release_id)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Resolve a feature by git branch and return `(feature_id, spec_id, release_id)`.
+/// Uses most recently updated row when multiple features share the same branch.
+pub fn get_feature_by_branch_links(
+    ship_dir: &Path,
+    branch: &str,
+) -> Result<Option<FeatureBranchLinks>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let row_opt = block_on(async {
+        sqlx::query(
+            "SELECT id, spec_id, release_id
+             FROM feature
+             WHERE branch = ?
+             ORDER BY updated_at DESC
+             LIMIT 1",
+        )
+        .bind(branch)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+    if let Some(row) = row_opt {
+        let feature_id: String = row.get(0);
+        let spec_id: Option<String> = row.get(1);
+        let release_id: Option<String> = row.get(2);
+        Ok(Some((feature_id, spec_id, release_id)))
+    } else {
+        Ok(None)
+    }
 }
 
 // ─── Path helpers ─────────────────────────────────────────────────────────────
 
 fn ship_global_dir() -> Result<PathBuf> {
-    home::home_dir()
-        .map(|h| h.join(".ship"))
-        .ok_or_else(|| anyhow!("Could not determine home directory"))
+    crate::project::get_global_dir()
 }
 
 /// Derives a filesystem-safe slug from the project root path.
@@ -372,24 +599,11 @@ fn project_slug(ship_dir: &Path) -> Result<String> {
 // ─── Workspace ────────────────────────────────────────────────────────────────
 
 /// Retrieve the workspace record for the given branch, or None if none exists.
-pub fn get_workspace_db(
-    ship_dir: &Path,
-    branch: &str,
-) -> Result<
-    Option<(
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Vec<String>,
-        String,
-        bool,
-        Option<String>,
-    )>,
-> {
+pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<WorkspaceDbRow>> {
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT feature_id, spec_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path
+            "SELECT COALESCE(id, branch), workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash
              FROM workspace WHERE branch = ?",
         )
         .bind(branch)
@@ -398,64 +612,160 @@ pub fn get_workspace_db(
     })?;
     if let Some(row) = row_opt {
         use sqlx::Row;
-        let feature_id: Option<String> = row.get(0);
-        let spec_id: Option<String> = row.get(1);
-        let active_mode: Option<String> = row.get(2);
-        let providers_json: String = row.get(3);
-        let resolved_at: String = row.get(4);
-        let is_worktree: i64 = row.get(5);
-        let worktree_path: Option<String> = row.get(6);
+        let id: String = row.get(0);
+        let workspace_type: String = row.get(1);
+        let status: String = row.get(2);
+        let feature_id: Option<String> = row.get(3);
+        let spec_id: Option<String> = row.get(4);
+        let release_id: Option<String> = row.get(5);
+        let active_mode: Option<String> = row.get(6);
+        let providers_json: String = row.get(7);
+        let resolved_at: String = row.get(8);
+        let is_worktree: i64 = row.get(9);
+        let worktree_path: Option<String> = row.get(10);
+        let last_activated_at: Option<String> = row.get(11);
+        let context_hash: Option<String> = row.get(12);
         let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
         Ok(Some((
+            id,
+            workspace_type,
+            status,
             feature_id,
             spec_id,
+            release_id,
             active_mode,
             providers,
             resolved_at,
             is_worktree != 0,
             worktree_path,
+            last_activated_at,
+            context_hash,
         )))
     } else {
         Ok(None)
     }
 }
 
-/// Upsert the workspace record for the given branch.
-pub fn upsert_workspace_db(
-    ship_dir: &Path,
-    branch: &str,
-    feature_id: Option<&str>,
-    spec_id: Option<&str>,
-    active_mode: Option<&str>,
-    providers: &[String],
-    resolved_at: &str,
-    is_worktree: bool,
-    worktree_path: Option<&str>,
-) -> Result<()> {
+pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
     let mut conn = open_project_db(ship_dir)?;
-    let providers_json = serde_json::to_string(providers)
+    let rows = block_on(async {
+        sqlx::query(
+            "SELECT branch, COALESCE(id, branch), workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash
+             FROM workspace
+             ORDER BY
+               CASE status
+                 WHEN 'active' THEN 0
+                 WHEN 'idle' THEN 1
+                 WHEN 'planned' THEN 2
+                 WHEN 'review' THEN 3
+                 WHEN 'merged' THEN 4
+                 WHEN 'archived' THEN 5
+                 ELSE 6
+               END,
+               COALESCE(last_activated_at, resolved_at) DESC",
+        )
+        .fetch_all(&mut conn)
+        .await
+    })?;
+
+    use sqlx::Row;
+    let mut result = Vec::with_capacity(rows.len());
+    for row in rows {
+        let branch: String = row.get(0);
+        let id: String = row.get(1);
+        let workspace_type: String = row.get(2);
+        let status: String = row.get(3);
+        let feature_id: Option<String> = row.get(4);
+        let spec_id: Option<String> = row.get(5);
+        let release_id: Option<String> = row.get(6);
+        let active_mode: Option<String> = row.get(7);
+        let providers_json: String = row.get(8);
+        let resolved_at: String = row.get(9);
+        let is_worktree: i64 = row.get(10);
+        let worktree_path: Option<String> = row.get(11);
+        let last_activated_at: Option<String> = row.get(12);
+        let context_hash: Option<String> = row.get(13);
+        let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
+
+        result.push((
+            branch,
+            id,
+            workspace_type,
+            status,
+            feature_id,
+            spec_id,
+            release_id,
+            active_mode,
+            providers,
+            resolved_at,
+            is_worktree != 0,
+            worktree_path,
+            last_activated_at,
+            context_hash,
+        ));
+    }
+    Ok(result)
+}
+
+/// Upsert the workspace record for the given branch.
+pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
+    let providers_json = serde_json::to_string(record.providers)
         .with_context(|| "Failed to serialize workspace providers")?;
     block_on(async {
         sqlx::query(
-            "INSERT INTO workspace (branch, feature_id, spec_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO workspace (branch, id, workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(branch) DO UPDATE SET
+               id            = excluded.id,
+               workspace_type = excluded.workspace_type,
+               status        = excluded.status,
                feature_id    = excluded.feature_id,
                spec_id       = excluded.spec_id,
+               release_id    = excluded.release_id,
                active_mode   = excluded.active_mode,
                providers_json = excluded.providers_json,
                resolved_at   = excluded.resolved_at,
                is_worktree   = excluded.is_worktree,
-               worktree_path = excluded.worktree_path",
+               worktree_path = excluded.worktree_path,
+               last_activated_at = excluded.last_activated_at,
+               context_hash = excluded.context_hash",
         )
-        .bind(branch)
-        .bind(feature_id)
-        .bind(spec_id)
-        .bind(active_mode)
+        .bind(record.branch)
+        .bind(record.workspace_id)
+        .bind(record.workspace_type)
+        .bind(record.status)
+        .bind(record.feature_id)
+        .bind(record.spec_id)
+        .bind(record.release_id)
+        .bind(record.active_mode)
         .bind(&providers_json)
+        .bind(record.resolved_at)
+        .bind(if record.is_worktree { 1i64 } else { 0i64 })
+        .bind(record.worktree_path)
+        .bind(record.last_activated_at)
+        .bind(record.context_hash)
+        .execute(&mut conn)
+        .await
+    })?;
+    Ok(())
+}
+
+/// Mark any currently active workspace as idle except `active_branch`.
+pub fn demote_other_active_workspaces_db(
+    ship_dir: &Path,
+    active_branch: &str,
+    resolved_at: &str,
+) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace
+             SET status = 'idle', resolved_at = ?
+             WHERE status = 'active' AND branch != ?",
+        )
         .bind(resolved_at)
-        .bind(if is_worktree { 1i64 } else { 0i64 })
-        .bind(worktree_path)
+        .bind(active_branch)
         .execute(&mut conn)
         .await
     })?;
@@ -534,6 +844,170 @@ fn ensure_database(db_path: &Path, migrations: &[(&str, &str)]) -> Result<Databa
     })
 }
 
+fn ensure_project_schema_compat(connection: &mut SqliteConnection) -> Result<()> {
+    ensure_column(
+        connection,
+        "feature",
+        "branch",
+        "ALTER TABLE feature ADD COLUMN branch TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "feature",
+        "agent_json",
+        "ALTER TABLE feature ADD COLUMN agent_json TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "feature",
+        "tags_json",
+        "ALTER TABLE feature ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
+    )?;
+    ensure_column(
+        connection,
+        "release",
+        "target_date",
+        "ALTER TABLE release ADD COLUMN target_date TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "release",
+        "supported",
+        "ALTER TABLE release ADD COLUMN supported INTEGER",
+    )?;
+
+    let added_branch_link_type = ensure_column(
+        connection,
+        "branch_context",
+        "link_type",
+        "ALTER TABLE branch_context ADD COLUMN link_type TEXT",
+    )?;
+    let added_branch_link_id = ensure_column(
+        connection,
+        "branch_context",
+        "link_id",
+        "ALTER TABLE branch_context ADD COLUMN link_id TEXT",
+    )?;
+    if table_exists(connection, "branch_context")?
+        && (added_branch_link_type || added_branch_link_id)
+        && column_exists(connection, "branch_context", "doc_type")?
+        && column_exists(connection, "branch_context", "doc_id")?
+    {
+        block_on(async {
+            sqlx::query(
+                "UPDATE branch_context
+                 SET link_type = COALESCE(NULLIF(link_type, ''), doc_type),
+                     link_id = COALESCE(NULLIF(link_id, ''), doc_id)",
+            )
+            .execute(&mut *connection)
+            .await
+        })?;
+    }
+
+    let added_workspace_id = ensure_column(
+        connection,
+        "workspace",
+        "id",
+        "ALTER TABLE workspace ADD COLUMN id TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "workspace_type",
+        "ALTER TABLE workspace ADD COLUMN workspace_type TEXT NOT NULL DEFAULT 'feature'",
+    )?;
+    let added_workspace_status = ensure_column(
+        connection,
+        "workspace",
+        "status",
+        "ALTER TABLE workspace ADD COLUMN status TEXT NOT NULL DEFAULT 'idle'",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "release_id",
+        "ALTER TABLE workspace ADD COLUMN release_id TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "last_activated_at",
+        "ALTER TABLE workspace ADD COLUMN last_activated_at TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "context_hash",
+        "ALTER TABLE workspace ADD COLUMN context_hash TEXT",
+    )?;
+
+    if table_exists(connection, "workspace")? {
+        if added_workspace_id {
+            block_on(async {
+                sqlx::query(
+                    "UPDATE workspace
+                     SET id = branch
+                     WHERE id IS NULL OR id = ''",
+                )
+                .execute(&mut *connection)
+                .await
+            })?;
+        }
+        if added_workspace_status {
+            // Existing pre-lifecycle rows represented currently checked-out work.
+            // Preserve that behavior once when the status column is introduced.
+            block_on(async {
+                sqlx::query(
+                    "UPDATE workspace
+                     SET status = 'active'
+                     WHERE status IS NULL OR status = ''",
+                )
+                .execute(&mut *connection)
+                .await
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_column(
+    connection: &mut SqliteConnection,
+    table: &str,
+    column: &str,
+    alter_sql: &str,
+) -> Result<bool> {
+    if !table_exists(connection, table)? {
+        return Ok(false);
+    }
+
+    if column_exists(connection, table, column)? {
+        return Ok(false);
+    }
+
+    block_on(async { sqlx::query(alter_sql).execute(&mut *connection).await })
+        .with_context(|| format!("Failed applying compatibility column {}.{}", table, column))?;
+    Ok(true)
+}
+
+fn table_exists(connection: &mut SqliteConnection, table: &str) -> Result<bool> {
+    let row = block_on(async {
+        sqlx::query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(table)
+            .fetch_optional(&mut *connection)
+            .await
+    })?;
+    Ok(row.is_some())
+}
+
+fn column_exists(connection: &mut SqliteConnection, table: &str, column: &str) -> Result<bool> {
+    let pragma = format!("PRAGMA table_info({})", table);
+    let rows = block_on(async { sqlx::query(&pragma).fetch_all(&mut *connection).await })?;
+    Ok(rows
+        .iter()
+        .any(|row| row.get::<String, _>(1).eq_ignore_ascii_case(column)))
+}
+
 fn sqlite_url(path: &Path) -> String {
     let mut raw = path.to_string_lossy().replace('\\', "/");
     if !raw.starts_with('/') {
@@ -578,12 +1052,14 @@ mod tests {
         // ship_dir must have a parent (project root) to derive the slug
         let ship_dir = tmp.path().join(".ship");
         std::fs::create_dir_all(&ship_dir)?;
-
-        let report_a = ensure_project_database(&ship_dir)?;
-        let report_b = ensure_project_database(&ship_dir)?;
+        // Resolve once to avoid environment-race induced global-dir drift between calls.
+        let db_path = project_db_path(&ship_dir)?;
+        let report_a = ensure_database(&db_path, PROJECT_MIGRATIONS)?;
+        let report_b = ensure_database(&db_path, PROJECT_MIGRATIONS)?;
 
         assert!(report_a.created);
         assert!(report_a.applied_migrations >= 1);
+        assert_eq!(report_a.db_path, report_b.db_path);
         assert!(!report_b.created);
         assert_eq!(report_b.applied_migrations, 0);
         // DB lives outside the project dir
@@ -607,6 +1083,99 @@ mod tests {
             "slug should not contain consecutive dashes"
         );
         assert!(!slug.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn compat_workspace_backfills_only_when_columns_are_added() -> Result<()> {
+        let tmp = tempdir()?;
+        let db_path = tmp.path().join("compat.db");
+        let db_url = sqlite_url(&db_path);
+        let options = SqliteConnectOptions::from_str(&db_url)?.create_if_missing(true);
+        let mut conn = block_on(async { SqliteConnection::connect_with(&options).await })?;
+
+        block_on(async {
+            sqlx::query(
+                "CREATE TABLE workspace (
+                   branch TEXT PRIMARY KEY,
+                   feature_id TEXT,
+                   spec_id TEXT,
+                   active_mode TEXT,
+                   providers_json TEXT NOT NULL DEFAULT '[]',
+                   resolved_at TEXT NOT NULL,
+                   is_worktree INTEGER NOT NULL DEFAULT 0,
+                   worktree_path TEXT
+                 )",
+            )
+            .execute(&mut conn)
+            .await
+        })?;
+        block_on(async {
+            sqlx::query(
+                "INSERT INTO workspace (branch, resolved_at) VALUES ('feature/demo', '2026-01-01T00:00:00Z')",
+            )
+            .execute(&mut conn)
+            .await
+        })?;
+
+        ensure_project_schema_compat(&mut conn)?;
+
+        let row = block_on(async {
+            sqlx::query("SELECT id, status FROM workspace WHERE branch = 'feature/demo'")
+                .fetch_one(&mut conn)
+                .await
+        })?;
+        let id: Option<String> = row.get(0);
+        let status: Option<String> = row.get(1);
+        assert_eq!(id.as_deref(), Some("feature/demo"));
+        assert_eq!(status.as_deref(), Some("idle"));
+        Ok(())
+    }
+
+    #[test]
+    fn compat_branch_context_backfills_link_columns_from_legacy_doc_columns() -> Result<()> {
+        let tmp = tempdir()?;
+        let db_path = tmp.path().join("branch-context-compat.db");
+        let db_url = sqlite_url(&db_path);
+        let options = SqliteConnectOptions::from_str(&db_url)?.create_if_missing(true);
+        let mut conn = block_on(async { SqliteConnection::connect_with(&options).await })?;
+
+        block_on(async {
+            sqlx::query(
+                "CREATE TABLE branch_context (
+                   branch TEXT PRIMARY KEY,
+                   doc_type TEXT NOT NULL,
+                   doc_id TEXT NOT NULL,
+                   last_synced TEXT NOT NULL
+                 )",
+            )
+            .execute(&mut conn)
+            .await
+        })?;
+        block_on(async {
+            sqlx::query(
+                "INSERT INTO branch_context (branch, doc_type, doc_id, last_synced)
+                 VALUES ('feature/auth', 'feature', 'ABC123', '2026-01-01T00:00:00Z')",
+            )
+            .execute(&mut conn)
+            .await
+        })?;
+
+        ensure_project_schema_compat(&mut conn)?;
+
+        let row = block_on(async {
+            sqlx::query(
+                "SELECT link_type, link_id
+                 FROM branch_context
+                 WHERE branch = 'feature/auth'",
+            )
+            .fetch_one(&mut conn)
+            .await
+        })?;
+        let link_type: Option<String> = row.get(0);
+        let link_id: Option<String> = row.get(1);
+        assert_eq!(link_type.as_deref(), Some("feature"));
+        assert_eq!(link_id.as_deref(), Some("ABC123"));
         Ok(())
     }
 }

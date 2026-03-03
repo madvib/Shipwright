@@ -1,25 +1,30 @@
 #![allow(dead_code)]
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use runtime::project::{get_global_dir, get_project_dir};
 use runtime::{
-    McpServerConfig, McpServerType, add_mcp_server, add_mode, add_status, autodetect_providers,
-    backfill_issue_ids, create_issue, create_skill, create_spec, create_user_skill, delete_skill,
-    delete_user_skill, disable_provider, enable_provider, get_active_mode, get_config,
-    get_effective_skill, get_git_config, get_global_dir, get_issue, get_project_dir,
-    get_project_statuses, get_skill, get_spec_raw, get_user_skill, ingest_external_events,
-    init_project, is_category_committed, list_effective_skills, list_events_since, list_issues,
-    list_mcp_servers, list_models, list_providers, list_skills, list_specs, list_user_skills,
-    log_action, migrate_global_state, migrate_json_config_file, migrate_project_state,
-    migrate_yaml_issues, move_issue, remove_mcp_server, remove_mode, remove_status,
-    set_active_mode, set_category_committed, update_skill, update_user_skill,
+    CreateWorkspaceRequest, McpServerConfig, McpServerType, WorkspaceStatus, WorkspaceType,
+    activate_workspace, add_mcp_server, add_mode, add_status, autodetect_providers, create_skill,
+    create_user_skill, create_workspace, delete_skill, delete_user_skill, disable_provider,
+    enable_provider, get_active_mode, get_config, get_effective_skill, get_git_config,
+    get_project_statuses, get_skill, get_user_skill, ingest_external_events, is_category_committed,
+    list_effective_skills, list_events_since, list_mcp_servers, list_models, list_providers,
+    list_skills, list_user_skills, list_workspaces, log_action, migrate_global_state,
+    migrate_json_config_file, migrate_project_state, remove_mcp_server, remove_mode, remove_status,
+    set_active_mode, set_category_committed, sync_workspace, transition_workspace_status,
+    update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::{
-    ADR, AdrStatus, FeatureStatus, NoteScope, create_adr, create_feature, create_note,
-    create_release, feature_done, feature_start, find_adr_path, get_feature_by_id, get_note_by_id,
-    get_release_by_id, import_adrs_from_files, import_features_from_files, import_notes_from_files,
-    import_releases_from_files, init_demo_project, list_adrs, list_features, list_notes,
-    list_releases, move_adr, update_feature, update_note_content, update_release,
+    ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, create_adr,
+    create_feature, create_issue, create_note, create_release, create_spec, feature_done,
+    feature_start, find_adr_path, get_feature_by_id, get_issue_by_id, get_note_by_id,
+    get_release_by_id, get_spec_by_id, import_adrs_from_files, import_features_from_files,
+    import_issues_from_files, import_notes_from_files, import_releases_from_files,
+    import_specs_from_files, init_demo_project, init_project, list_adrs, list_features,
+    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
+    move_issue, register_project, unregister_project, update_feature, update_note_content,
+    update_release,
 };
 use std::env;
 use std::path::{Path, PathBuf};
@@ -75,6 +80,11 @@ pub enum Commands {
     Feature {
         #[command(subcommand)]
         action: FeatureCommands,
+    },
+    /// Manage workspace lifecycle state
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceCommands,
     },
     /// Inspect the project event stream
     Event {
@@ -533,6 +543,50 @@ pub enum FeatureCommands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum WorkspaceCommands {
+    /// List workspace records and status
+    List,
+    /// Reconcile a branch into active workspace state
+    Sync {
+        /// Branch to sync (defaults to current branch)
+        #[arg(short, long)]
+        branch: Option<String>,
+    },
+    /// Checkout an existing branch and activate it
+    Switch { branch: String },
+    /// Create/update a workspace runtime record (git checkout optional)
+    Create {
+        branch: String,
+        /// Optional workspace type: feature | refactor | experiment | hotfix
+        #[arg(long = "type")]
+        workspace_type: Option<String>,
+        /// Link this workspace to a feature id
+        #[arg(long)]
+        feature: Option<String>,
+        /// Link this workspace to a spec id
+        #[arg(long)]
+        spec: Option<String>,
+        /// Link this workspace to a release id
+        #[arg(long)]
+        release: Option<String>,
+        /// Mark workspace active immediately
+        #[arg(long, default_value_t = false)]
+        activate: bool,
+        /// Also create/switch the git branch and then sync active state
+        #[arg(long, default_value_t = false)]
+        checkout: bool,
+        /// Use a git worktree for this workspace
+        #[arg(long, default_value_t = false)]
+        worktree: bool,
+        /// Path for the worktree (defaults to ../{branch})
+        #[arg(long)]
+        worktree_path: Option<String>,
+    },
+    /// Mark a workspace as archived
+    Archive { branch: String },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum EventCommands {
     /// List events from the append-only event stream
     List {
@@ -583,7 +637,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             if let Err(err) = write_root_gitignore(&target) {
                 eprintln!("[ship] warning: failed to update root .gitignore: {}", err);
             }
-            let tracked = match runtime::register_project(project_name, target.clone()) {
+            let tracked = match register_project(project_name, target.clone()) {
                 Ok(()) => true,
                 Err(err) => {
                     eprintln!(
@@ -624,8 +678,17 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             let project_dir = get_project_dir_cli()?;
             match action {
                 IssueCommands::Create { title, description } => {
-                    let path = create_issue(project_dir.clone(), &title, &description, "backlog")?;
-                    println!("Issue created: {}", path.display());
+                    let issue = create_issue(
+                        &project_dir,
+                        &title,
+                        &description,
+                        IssueStatus::Backlog,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )?;
+                    println!("Issue created: {} ({})", issue.file_name, issue.id);
                     log_action(
                         &project_dir,
                         "issue create",
@@ -633,9 +696,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     )?;
                 }
                 IssueCommands::List => {
-                    let issues = list_issues(project_dir)?;
-                    for (file, status) in issues {
-                        println!("[{}] {}", status, file);
+                    let issues = list_issues(&project_dir)?;
+                    for issue in issues {
+                        println!("[{}] {}", issue.status, issue.file_name);
                     }
                 }
                 IssueCommands::Move {
@@ -643,10 +706,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     from,
                     to,
                 } => {
-                    let issue_path = runtime::project::issues_dir(&project_dir)
-                        .join(&from)
-                        .join(&file_name);
-                    move_issue(project_dir.clone(), issue_path, &from, &to)?;
+                    let to_status = to
+                        .parse::<IssueStatus>()
+                        .map_err(|_| anyhow::anyhow!("Invalid issue status: {}", to))?;
+                    move_issue(&project_dir, &file_name, to_status)?;
                     println!("Moved {} from {} to {}", file_name, from, to);
                     log_action(
                         &project_dir,
@@ -885,8 +948,8 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             match action {
                 SpecCommands::Create { title, content } => {
                     let body = content.unwrap_or_default();
-                    let path = create_spec(project_dir.clone(), &title, &body, "draft")?;
-                    println!("Spec created: {}", path.display());
+                    let spec = create_spec(&project_dir, &title, &body, None, None)?;
+                    println!("Spec created: {} ({})", spec.file_name, spec.id);
                     log_action(
                         &project_dir,
                         "spec create",
@@ -894,23 +957,22 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     )?;
                 }
                 SpecCommands::List => {
-                    let mut specs = list_specs(project_dir)?;
-                    specs.sort_by(|a, b| b.updated.cmp(&a.updated));
+                    let mut specs = list_specs(&project_dir)?;
+                    specs.sort_by(|a, b| b.spec.metadata.updated.cmp(&a.spec.metadata.updated));
                     if specs.is_empty() {
                         println!("No specs found.");
                     } else {
                         for spec in specs {
-                            println!("[{}] {} ({})", spec.status, spec.title, spec.file_name);
+                            println!(
+                                "[{}] {} ({})",
+                                spec.status, spec.spec.metadata.title, spec.file_name
+                            );
                         }
                     }
                 }
                 SpecCommands::Get { file_name } => {
-                    let path = runtime::project::specs_dir(&project_dir).join(&file_name);
-                    if !path.exists() {
-                        anyhow::bail!("Spec not found: {}", file_name);
-                    }
-                    let content = get_spec_raw(path)?;
-                    println!("{}", content);
+                    let spec = get_spec_by_id(&project_dir, &file_name)?;
+                    println!("{}", spec.spec.to_markdown()?);
                 }
             }
         }
@@ -1081,6 +1143,173 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Some(Commands::Workspace { action }) => {
+            let project_dir = get_project_dir_cli()?;
+            let project_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+            match action {
+                WorkspaceCommands::List => {
+                    let workspaces = list_workspaces(&project_dir)?;
+                    if workspaces.is_empty() {
+                        println!("No workspaces found.");
+                    } else {
+                        for workspace in workspaces {
+                            println!(
+                                "[{}] {} ({}){}",
+                                workspace.status,
+                                workspace.branch,
+                                workspace.workspace_type,
+                                workspace
+                                    .feature_id
+                                    .as_ref()
+                                    .map(|id| format!(" feature={}", id))
+                                    .unwrap_or_default()
+                            );
+                        }
+                    }
+                }
+                WorkspaceCommands::Sync { branch } => {
+                    let branch = match branch {
+                        Some(value) => value,
+                        None => current_branch(&project_root)?,
+                    };
+                    let workspace = sync_workspace(&project_dir, &branch)?;
+                    println!(
+                        "Workspace synced: {} [{}]",
+                        workspace.branch, workspace.status
+                    );
+                }
+                WorkspaceCommands::Switch { branch } => {
+                    let result = ProcessCommand::new("git")
+                        .args(["checkout", &branch])
+                        .current_dir(&project_root)
+                        .status()?;
+                    if !result.success() {
+                        anyhow::bail!("Failed to checkout branch: {}", branch);
+                    }
+                    let workspace = activate_workspace(&project_dir, &branch)?;
+                    println!(
+                        "Workspace active: {} [{}]",
+                        workspace.branch, workspace.status
+                    );
+                }
+                WorkspaceCommands::Create {
+                    branch,
+                    workspace_type,
+                    feature,
+                    spec,
+                    release,
+                    activate,
+                    checkout,
+                    worktree,
+                    worktree_path,
+                } => {
+                    let parsed_workspace_type = workspace_type
+                        .as_deref()
+                        .map(str::parse::<WorkspaceType>)
+                        .transpose()?;
+                    let desired_status = if activate || checkout {
+                        Some(WorkspaceStatus::Active)
+                    } else {
+                        None
+                    };
+
+                    let mut workspace = create_workspace(
+                        &project_dir,
+                        CreateWorkspaceRequest {
+                            branch: branch.clone(),
+                            workspace_type: parsed_workspace_type,
+                            status: desired_status,
+                            feature_id: feature,
+                            spec_id: spec,
+                            release_id: release,
+                            is_worktree: Some(worktree),
+                            worktree_path: worktree_path.clone(),
+                            ..CreateWorkspaceRequest::default()
+                        },
+                    )?;
+
+                    if worktree {
+                        let path = worktree_path.unwrap_or_else(|| {
+                            let b = branch
+                                .trim_start_matches("feature/")
+                                .trim_start_matches("hotfix/");
+                            format!("../{}", b)
+                        });
+                        let exists = ProcessCommand::new("git")
+                            .args(["rev-parse", "--verify", &branch])
+                            .current_dir(&project_root)
+                            .output()
+                            .map(|output| output.status.success())
+                            .unwrap_or(false);
+
+                        let mut args = vec!["worktree", "add"];
+                        if !exists {
+                            args.push("-b");
+                            args.push(&branch);
+                            args.push(&path);
+                        } else {
+                            args.push(&path);
+                            args.push(&branch);
+                        }
+
+                        let status = ProcessCommand::new("git")
+                            .args(args)
+                            .current_dir(&project_root)
+                            .status()?;
+                        if !status.success() {
+                            anyhow::bail!("Failed to create git worktree: {}", branch);
+                        }
+                        workspace = sync_workspace(&project_dir, &branch)?;
+                    } else if checkout {
+                        let exists = ProcessCommand::new("git")
+                            .args(["rev-parse", "--verify", &branch])
+                            .current_dir(&project_root)
+                            .output()
+                            .map(|output| output.status.success())
+                            .unwrap_or(false);
+                        let checkout_status = if exists {
+                            ProcessCommand::new("git")
+                                .args(["checkout", &branch])
+                                .current_dir(&project_root)
+                                .status()?
+                        } else {
+                            ProcessCommand::new("git")
+                                .args(["checkout", "-b", &branch])
+                                .current_dir(&project_root)
+                                .status()?
+                        };
+                        if !checkout_status.success() {
+                            anyhow::bail!("Failed to create/switch branch: {}", branch);
+                        }
+                        workspace = sync_workspace(&project_dir, &branch)?;
+                    } else if activate {
+                        workspace = activate_workspace(&project_dir, &branch)?;
+                    }
+
+                    println!(
+                        "Workspace {}: {} [{}]",
+                        if workspace.status == WorkspaceStatus::Active {
+                            "active"
+                        } else {
+                            "created"
+                        },
+                        workspace.branch,
+                        workspace.status
+                    );
+                }
+                WorkspaceCommands::Archive { branch } => {
+                    let workspace = transition_workspace_status(
+                        &project_dir,
+                        &branch,
+                        WorkspaceStatus::Archived,
+                    )?;
+                    println!(
+                        "Workspace archived: {} [{}]",
+                        workspace.branch, workspace.status
+                    );
+                }
+            }
+        }
         Some(Commands::Event { action }) => {
             let project_dir = get_project_dir_cli()?;
             match action {
@@ -1137,17 +1366,17 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         }
         Some(Commands::Projects { action }) => match action {
             ProjectCommands::List => {
-                let projects = runtime::list_registered_projects()?;
+                let projects = list_registered_projects()?;
                 for p in projects {
                     println!("- {} ({})", p.name, p.path.display());
                 }
             }
             ProjectCommands::Track { name, path } => {
-                runtime::register_project(name.clone(), path.clone())?;
+                register_project(name.clone(), path.clone())?;
                 println!("Now tracking project: {} ({})", name, path.display());
             }
             ProjectCommands::Untrack { path } => {
-                runtime::unregister_project(path.clone())?;
+                unregister_project(path.clone())?;
                 println!("Stopped tracking project: {}", path.display());
             }
         },
@@ -1296,9 +1525,17 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                                     g.kind.as_str(),
                                     g.text.trim()
                                 );
-                                let path =
-                                    create_issue(project_dir.clone(), &title, &desc, "backlog")?;
-                                println!("Created issue: {}", path.display());
+                                let path = create_issue(
+                                    &project_dir,
+                                    &title,
+                                    &desc,
+                                    IssueStatus::Backlog,
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                )?;
+                                println!("Created issue: {}", path.file_name);
                                 log_action(
                                     &project_dir,
                                     "issue create",
@@ -1555,11 +1792,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             let global_dir = get_global_dir()?;
             let global = migrate_global_state(&global_dir)?;
             let project = migrate_project_state(&project_dir)?;
-            let issues = migrate_yaml_issues(&project_dir)?;
+            let issues = import_issues_from_files(&project_dir)?;
+            let specs = import_specs_from_files(&project_dir)?;
             let config = migrate_json_config_file(&project_dir)?;
-            let ids = backfill_issue_ids(&project_dir)?;
             println!(
-                "Migration complete:\n- file namespace copies: copied={} skipped={} conflicts={}\n- project DB: {} (applied {})\n- global DB: {} (applied {})\n- registry: {} -> {} entries (normalized {})\n- app_state paths normalized: {}\n- issue format: {} issue{} converted to TOML, {} ID{} backfilled{}.",
+                "Migration complete:\n- file namespace copies: copied={} skipped={} conflicts={}\n- project DB: {} (applied {})\n- global DB: {} (applied {})\n- registry: {} -> {} entries (normalized {})\n- app_state paths normalized: {}\n- imported docs: {} issue{}, {} spec{}{}.",
                 project.files.copied_files,
                 project.files.skipped_identical_files,
                 project.files.conflict_files,
@@ -1573,8 +1810,8 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 global.app_state_paths_normalized,
                 issues,
                 if issues == 1 { "" } else { "s" },
-                ids,
-                if ids == 1 { "" } else { "s" },
+                specs,
+                if specs == 1 { "" } else { "s" },
                 if config {
                     ", config.json → ship.toml"
                 } else {
@@ -1798,7 +2035,7 @@ fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()
                 } else {
                     // Search through statuses
                     let mut found = None;
-                    for status in runtime::ISSUE_STATUSES {
+                    for status in ISSUE_STATUSES {
                         let p = runtime::project::issues_dir(project_dir)
                             .join(status)
                             .join(&issue_file);
@@ -1810,9 +2047,9 @@ fn handle_time_command(action: TimeCommands, project_dir: &PathBuf) -> Result<()
                     found.unwrap_or(issue_path)
                 };
                 if path.exists() {
-                    get_issue(path)
+                    get_issue_by_id(project_dir, &issue_file)
                         .ok()
-                        .map(|i| i.metadata.title)
+                        .map(|i| i.issue.metadata.title)
                         .unwrap_or_else(|| issue_file.clone())
                 } else {
                     issue_file.clone()

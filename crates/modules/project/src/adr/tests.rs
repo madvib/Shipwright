@@ -1,7 +1,7 @@
 use super::crud::{create_adr, delete_adr, get_adr_by_id, list_adrs, move_adr, update_adr};
 use super::migration::import_adrs_from_files;
 use super::types::AdrStatus;
-use runtime::init_project;
+use crate::project::init_project;
 use tempfile::tempdir;
 
 #[test]

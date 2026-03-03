@@ -1,6 +1,6 @@
 use crate::fs_util::write_atomic;
+use crate::project::{SHIP_DIR_NAME, get_global_dir, ship_dir_from_path};
 use crate::{EventAction, EventEntity, append_event};
-use crate::{SHIP_DIR_NAME, get_global_dir};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -192,18 +192,13 @@ pub struct ModeConfig {
     pub target_agents: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Type, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Type, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum McpServerType {
+    #[default]
     Stdio,
     Sse,
     Http,
-}
-
-impl Default for McpServerType {
-    fn default() -> Self {
-        McpServerType::Stdio
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -719,6 +714,70 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn ensure_registered_namespaces(
+    ship_path: &Path,
+    namespaces: &[NamespaceConfig],
+) -> Result<()> {
+    const RESERVED_TOP_LEVEL: &[&str] = &[
+        "project",
+        "workflow",
+        "agents",
+        "generated",
+        "ship.toml",
+        "shipwright.toml",
+        "config.toml",
+        "events.ndjson",
+        "log.md",
+        "templates",
+        "plugins",
+    ];
+
+    for ns in namespaces {
+        let rel = ns.path.trim();
+        if rel.is_empty() {
+            continue;
+        }
+        let rel_path = Path::new(rel);
+        if rel_path.is_absolute()
+            || rel_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(anyhow!(
+                "Invalid namespace path '{}' for namespace '{}'",
+                ns.path,
+                ns.id
+            ));
+        }
+        if ns.id.starts_with("plugin:") {
+            let mut components = rel_path.components();
+            let first = components
+                .next()
+                .and_then(|c| c.as_os_str().to_str())
+                .ok_or_else(|| anyhow!("Plugin namespace '{}' has an invalid path", ns.id))?;
+            if components.next().is_some() {
+                return Err(anyhow!(
+                    "Plugin namespace '{}' must claim a top-level directory only",
+                    ns.id
+                ));
+            }
+            if RESERVED_TOP_LEVEL.contains(&first) {
+                return Err(anyhow!(
+                    "Plugin namespace '{}' cannot claim reserved path '{}'",
+                    ns.id,
+                    first
+                ));
+            }
+        }
+        fs::create_dir_all(
+            ship_dir_from_path(ship_path)
+                .unwrap_or(ship_path.to_path_buf())
+                .join(rel_path),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
     let mut projects = Vec::new();
     if !root.is_dir() {
@@ -876,6 +935,25 @@ pub fn remove_hook(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
 pub fn list_hooks(project_dir: Option<PathBuf>) -> Result<Vec<HookConfig>> {
     let config = get_config(project_dir)?;
     Ok(config.hooks)
+}
+
+/// Migrate `config.json` → `ship.toml` in-place (no-op if already migrated).
+pub fn migrate_json_config_file(project_dir: &Path) -> Result<bool> {
+    let json_path = project_dir.join("config.json");
+    let primary_path = project_dir.join(PRIMARY_CONFIG_FILE);
+    let secondary_path = project_dir.join(SECONDARY_CONFIG_FILE);
+    let legacy_path = project_dir.join(LEGACY_CONFIG_FILE);
+    if !json_path.exists()
+        || primary_path.exists()
+        || secondary_path.exists()
+        || legacy_path.exists()
+    {
+        return Ok(false);
+    }
+    let config = migrate_json_config(&json_path)?;
+    save_config(&config, Some(project_dir.to_path_buf()))?;
+    fs::remove_file(json_path)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -1102,23 +1180,4 @@ mod tests {
         assert_eq!(servers[0].timeout_secs, Some(30));
         Ok(())
     }
-}
-
-/// Migrate `config.json` → `ship.toml` in-place (no-op if already migrated).
-pub fn migrate_json_config_file(project_dir: &Path) -> Result<bool> {
-    let json_path = project_dir.join("config.json");
-    let primary_path = project_dir.join(PRIMARY_CONFIG_FILE);
-    let secondary_path = project_dir.join(SECONDARY_CONFIG_FILE);
-    let legacy_path = project_dir.join(LEGACY_CONFIG_FILE);
-    if !json_path.exists()
-        || primary_path.exists()
-        || secondary_path.exists()
-        || legacy_path.exists()
-    {
-        return Ok(false);
-    }
-    let config = migrate_json_config(&json_path)?;
-    save_config(&config, Some(project_dir.to_path_buf()))?;
-    fs::remove_file(json_path)?;
-    Ok(true)
 }

@@ -191,7 +191,9 @@ static EMBEDDED: &[StaticEntry] = &[
         kind: CatalogKind::McpServer,
         tags: &["filesystem", "files", "local", "official"],
         author: Some("Anthropic"),
-        source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"),
+        source_url: Some(
+            "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+        ),
         install_command: Some("npx -y @modelcontextprotocol/server-filesystem"),
         command: Some("npx"),
         args: &["-y", "@modelcontextprotocol/server-filesystem", "{path}"],
@@ -220,7 +222,11 @@ static EMBEDDED: &[StaticEntry] = &[
         source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/postgres"),
         install_command: Some("npx -y @modelcontextprotocol/server-postgres"),
         command: Some("npx"),
-        args: &["-y", "@modelcontextprotocol/server-postgres", "{connection_string}"],
+        args: &[
+            "-y",
+            "@modelcontextprotocol/server-postgres",
+            "{connection_string}",
+        ],
         skill_template: None,
     },
     StaticEntry {
@@ -233,7 +239,12 @@ static EMBEDDED: &[StaticEntry] = &[
         source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"),
         install_command: Some("npx -y @modelcontextprotocol/server-sqlite"),
         command: Some("npx"),
-        args: &["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "{db_path}"],
+        args: &[
+            "-y",
+            "@modelcontextprotocol/server-sqlite",
+            "--db-path",
+            "{db_path}",
+        ],
         skill_template: None,
     },
     StaticEntry {
@@ -269,7 +280,9 @@ static EMBEDDED: &[StaticEntry] = &[
         kind: CatalogKind::McpServer,
         tags: &["search", "web", "official"],
         author: Some("Anthropic"),
-        source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search"),
+        source_url: Some(
+            "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+        ),
         install_command: Some("npx -y @modelcontextprotocol/server-brave-search"),
         command: Some("npx"),
         args: &["-y", "@modelcontextprotocol/server-brave-search"],
@@ -308,7 +321,9 @@ static EMBEDDED: &[StaticEntry] = &[
         kind: CatalogKind::McpServer,
         tags: &["reasoning", "thinking", "official"],
         author: Some("Anthropic"),
-        source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking"),
+        source_url: Some(
+            "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+        ),
         install_command: Some("npx -y @modelcontextprotocol/server-sequential-thinking"),
         command: Some("npx"),
         args: &["-y", "@modelcontextprotocol/server-sequential-thinking"],
@@ -325,7 +340,11 @@ pub fn list_catalog() -> Vec<CatalogEntry> {
 
 /// Return catalog entries filtered by kind.
 pub fn list_catalog_by_kind(kind: CatalogKind) -> Vec<CatalogEntry> {
-    EMBEDDED.iter().filter(|e| e.kind == kind).map(to_entry).collect()
+    EMBEDDED
+        .iter()
+        .filter(|e| e.kind == kind)
+        .map(to_entry)
+        .collect()
 }
 
 /// Search catalog entries by tag or substring match in name/description.
