@@ -6,7 +6,6 @@ import Footer from "../components/Footer.astro";
 
 interface Agent {
   name: string;
-  flag: string;
   projectPath: string;
   globalPath: string;
   status: "launch" | "coming-soon";
@@ -16,292 +15,251 @@ interface Agent {
 const agents: Agent[] = [
   {
     name: "AdaL",
-    flag: "adal",
-    projectPath: ".adal/skills/",
-    globalPath: "~/.adal/skills/",
+    projectPath: ".adal/",
+    globalPath: "~/.adal/",
     status: "coming-soon",
   },
   {
     name: "Amp",
-    flag: "amp",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.config/agents/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.config/agents/",
     status: "coming-soon",
   },
   {
     name: "Antigravity",
-    flag: "antigravity",
-    projectPath: ".agent/skills/",
-    globalPath: "~/.gemini/antigravity/skills/",
+    projectPath: ".agent/",
+    globalPath: "~/.gemini/antigravity/",
     status: "coming-soon",
   },
   {
     name: "Augment",
-    flag: "augment",
-    projectPath: ".augment/skills/",
-    globalPath: "~/.augment/skills/",
+    projectPath: ".augment/",
+    globalPath: "~/.augment/",
     status: "coming-soon",
   },
   {
     name: "Claude Code",
-    flag: "claude-code",
-    projectPath: ".claude/skills/",
-    globalPath: "~/.claude/skills/",
+    projectPath: ".claude/",
+    globalPath: "~/.claude/",
     status: "launch",
     link: "https://claude.ai/code",
   },
   {
     name: "Cline",
-    flag: "cline",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.agents/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.agents/",
     status: "coming-soon",
   },
   {
     name: "CodeBuddy",
-    flag: "codebuddy",
-    projectPath: ".codebuddy/skills/",
-    globalPath: "~/.codebuddy/skills/",
+    projectPath: ".codebuddy/",
+    globalPath: "~/.codebuddy/",
     status: "coming-soon",
   },
   {
     name: "Codex",
-    flag: "codex",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.codex/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.codex/",
     status: "launch",
     link: "https://github.com/openai/openai-codex",
   },
   {
     name: "Command Code",
-    flag: "command-code",
-    projectPath: ".commandcode/skills/",
-    globalPath: "~/.commandcode/skills/",
+    projectPath: ".commandcode/",
+    globalPath: "~/.commandcode/",
     status: "coming-soon",
   },
   {
     name: "Continue",
-    flag: "continue",
-    projectPath: ".continue/skills/",
-    globalPath: "~/.continue/skills/",
+    projectPath: ".continue/",
+    globalPath: "~/.continue/",
     status: "coming-soon",
   },
   {
     name: "Cortex Code",
-    flag: "cortex",
-    projectPath: ".cortex/skills/",
-    globalPath: "~/.snowflake/cortex/skills/",
+    projectPath: ".cortex/",
+    globalPath: "~/.snowflake/cortex/",
     status: "coming-soon",
   },
   {
     name: "Crush",
-    flag: "crush",
-    projectPath: ".crush/skills/",
-    globalPath: "~/.config/crush/skills/",
+    projectPath: ".crush/",
+    globalPath: "~/.config/crush/",
     status: "coming-soon",
   },
   {
     name: "Cursor",
-    flag: "cursor",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.cursor/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.cursor/",
     status: "coming-soon",
   },
   {
     name: "Droid",
-    flag: "droid",
-    projectPath: ".factory/skills/",
-    globalPath: "~/.factory/skills/",
+    projectPath: ".factory/",
+    globalPath: "~/.factory/",
     status: "coming-soon",
   },
   {
     name: "Gemini CLI",
-    flag: "gemini-cli",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.gemini/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.gemini/",
     status: "launch",
     link: "https://gemini.google.com",
   },
   {
     name: "GitHub Copilot",
-    flag: "github-copilot",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.copilot/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.copilot/",
     status: "coming-soon",
   },
   {
     name: "Goose",
-    flag: "goose",
-    projectPath: ".goose/skills/",
-    globalPath: "~/.config/goose/skills/",
+    projectPath: ".goose/",
+    globalPath: "~/.config/goose/",
     status: "coming-soon",
   },
   {
     name: "iFlow CLI",
-    flag: "iflow-cli",
-    projectPath: ".iflow/skills/",
-    globalPath: "~/.iflow/skills/",
+    projectPath: ".iflow/",
+    globalPath: "~/.iflow/",
     status: "coming-soon",
   },
   {
     name: "Junie",
-    flag: "junie",
-    projectPath: ".junie/skills/",
-    globalPath: "~/.junie/skills/",
+    projectPath: ".junie/",
+    globalPath: "~/.junie/",
     status: "coming-soon",
   },
   {
     name: "Kilo Code",
-    flag: "kilo",
-    projectPath: ".kilocode/skills/",
-    globalPath: "~/.kilocode/skills/",
+    projectPath: ".kilocode/",
+    globalPath: "~/.kilocode/",
     status: "coming-soon",
   },
   {
     name: "Kimi Code CLI",
-    flag: "kimi-cli",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.config/agents/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.config/agents/",
     status: "coming-soon",
   },
   {
     name: "Kiro CLI",
-    flag: "kiro-cli",
-    projectPath: ".kiro/skills/",
-    globalPath: "~/.kiro/skills/",
+    projectPath: ".kiro/",
+    globalPath: "~/.kiro/",
     status: "coming-soon",
   },
   {
     name: "Kode",
-    flag: "kode",
-    projectPath: ".kode/skills/",
-    globalPath: "~/.kode/skills/",
+    projectPath: ".kode/",
+    globalPath: "~/.kode/",
     status: "coming-soon",
   },
   {
     name: "MCPJam",
-    flag: "mcpjam",
-    projectPath: ".mcpjam/skills/",
-    globalPath: "~/.mcpjam/skills/",
+    projectPath: ".mcpjam/",
+    globalPath: "~/.mcpjam/",
     status: "coming-soon",
   },
   {
     name: "Mistral Vibe",
-    flag: "mistral-vibe",
-    projectPath: ".vibe/skills/",
-    globalPath: "~/.vibe/skills/",
+    projectPath: ".vibe/",
+    globalPath: "~/.vibe/",
     status: "coming-soon",
   },
   {
     name: "Mux",
-    flag: "mux",
-    projectPath: ".mux/skills/",
-    globalPath: "~/.mux/skills/",
+    projectPath: ".mux/",
+    globalPath: "~/.mux/",
     status: "coming-soon",
   },
   {
     name: "Neovate",
-    flag: "neovate",
-    projectPath: ".neovate/skills/",
-    globalPath: "~/.neovate/skills/",
+    projectPath: ".neovate/",
+    globalPath: "~/.neovate/",
     status: "coming-soon",
   },
   {
     name: "OpenCode",
-    flag: "opencode",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.config/opencode/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.config/opencode/",
     status: "coming-soon",
   },
   {
     name: "OpenClaw",
-    flag: "openclaw",
     projectPath: "skills/",
-    globalPath: "~/.openclaw/skills/",
+    globalPath: "~/.openclaw/",
     status: "coming-soon",
   },
   {
     name: "OpenHands",
-    flag: "openhands",
-    projectPath: ".openhands/skills/",
-    globalPath: "~/.openhands/skills/",
+    projectPath: ".openhands/",
+    globalPath: "~/.openhands/",
     status: "coming-soon",
   },
   {
     name: "Pi",
-    flag: "pi",
-    projectPath: ".pi/skills/",
-    globalPath: "~/.pi/agent/skills/",
+    projectPath: ".pi/",
+    globalPath: "~/.pi/agent/",
     status: "coming-soon",
   },
   {
     name: "Pochi",
-    flag: "pochi",
-    projectPath: ".pochi/skills/",
-    globalPath: "~/.pochi/skills/",
+    projectPath: ".pochi/",
+    globalPath: "~/.pochi/",
     status: "coming-soon",
   },
   {
     name: "Qoder",
-    flag: "qoder",
-    projectPath: ".qoder/skills/",
-    globalPath: "~/.qoder/skills/",
+    projectPath: ".qoder/",
+    globalPath: "~/.qoder/",
     status: "coming-soon",
   },
   {
     name: "Qwen Code",
-    flag: "qwen-code",
-    projectPath: ".qwen/skills/",
-    globalPath: "~/.qwen/skills/",
+    projectPath: ".qwen/",
+    globalPath: "~/.qwen/",
     status: "coming-soon",
   },
   {
     name: "Replit",
-    flag: "replit",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.config/agents/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.config/agents/",
     status: "coming-soon",
   },
   {
     name: "Roo Code",
-    flag: "roo",
-    projectPath: ".roo/skills/",
-    globalPath: "~/.roo/skills/",
+    projectPath: ".roo/",
+    globalPath: "~/.roo/",
     status: "coming-soon",
   },
   {
     name: "Trae",
-    flag: "trae",
-    projectPath: ".trae/skills/",
-    globalPath: "~/.trae/skills/",
+    projectPath: ".trae/",
+    globalPath: "~/.trae/",
     status: "coming-soon",
   },
   {
     name: "Trae CN",
-    flag: "trae-cn",
-    projectPath: ".trae/skills/",
-    globalPath: "~/.trae-cn/skills/",
+    projectPath: ".trae/",
+    globalPath: "~/.trae-cn/",
     status: "coming-soon",
   },
   {
     name: "Universal",
-    flag: "universal",
-    projectPath: ".agents/skills/",
-    globalPath: "~/.config/agents/skills/",
+    projectPath: ".agents/",
+    globalPath: "~/.config/agents/",
     status: "coming-soon",
   },
   {
     name: "Windsurf",
-    flag: "windsurf",
-    projectPath: ".windsurf/skills/",
-    globalPath: "~/.codeium/windsurf/skills/",
+    projectPath: ".windsurf/",
+    globalPath: "~/.codeium/windsurf/",
     status: "coming-soon",
   },
   {
     name: "Zencoder",
-    flag: "zencoder",
-    projectPath: ".zencoder/skills/",
-    globalPath: "~/.zencoder/skills/",
+    projectPath: ".zencoder/",
+    globalPath: "~/.zencoder/",
     status: "coming-soon",
   },
 ];
@@ -332,15 +290,15 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
         <h1
           class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter font-display uppercase italic mb-6 text-ship-text"
         >
-          Every Agent,<br /><span class="text-ship-accent"
-            >One Skill Format.</span
+          Every Agent,<br /><span class="text-ship-accent">Always Briefed.</span
           >
         </h1>
         <p
           class="text-base sm:text-lg font-light text-ship-dim max-w-2xl mx-auto leading-relaxed"
         >
-          Ship compiles skills into the exact path and format each agent
-          expects. Write once, run anywhere — across {agents.length} agents and counting.
+          Ship manages MCP configuration, rules, context, and permissions for
+          every agent you use — compiling them into each tool's expected
+          location on every branch checkout.
         </p>
 
         <!-- Stats strip -->
@@ -371,7 +329,7 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
       </div>
     </section>
 
-    <!-- Launch Agents (featured) -->
+    <!-- Launch Agents -->
     <section class="px-6 sm:px-10 pb-16 bg-ship-bg">
       <div class="max-w-6xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
@@ -390,7 +348,7 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
                 rel="noopener noreferrer"
                 class="group block p-6 rounded-2xl border border-ship-green/20 bg-ship-green/5 hover:bg-ship-green/10 hover:border-ship-green/40 transition-all duration-300"
               >
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-5">
                   <h3 class="text-base font-bold tracking-tight font-display text-ship-text group-hover:text-ship-green transition-colors">
                     {agent.name}
                   </h3>
@@ -402,21 +360,13 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
                   </div>
                 </div>
                 <div class="space-y-2 font-mono text-[10px]">
-                  <div class="flex items-start gap-2">
-                    <span class="text-ship-dim/40 shrink-0 w-12">FLAG</span>
-                    <span class="text-ship-accent">--{agent.flag}</span>
+                  <div class="flex items-start gap-3">
+                    <span class="text-ship-dim/40 shrink-0 w-14">PROJECT</span>
+                    <span class="text-ship-dim/70">{agent.projectPath}</span>
                   </div>
-                  <div class="flex items-start gap-2">
-                    <span class="text-ship-dim/40 shrink-0 w-12">LOCAL</span>
-                    <span class="text-ship-dim/70 break-all">
-                      {agent.projectPath}
-                    </span>
-                  </div>
-                  <div class="flex items-start gap-2">
-                    <span class="text-ship-dim/40 shrink-0 w-12">GLOBAL</span>
-                    <span class="text-ship-dim/70 break-all">
-                      {agent.globalPath}
-                    </span>
+                  <div class="flex items-start gap-3">
+                    <span class="text-ship-dim/40 shrink-0 w-14">GLOBAL</span>
+                    <span class="text-ship-dim/70">{agent.globalPath}</span>
                   </div>
                 </div>
               </a>
@@ -426,18 +376,17 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
       </div>
     </section>
 
-    <!-- Full directory table -->
+    <!-- Full directory -->
     <section class="px-6 sm:px-10 pb-32 bg-ship-bg">
       <div class="max-w-6xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
           <span
-            class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-ship-dim/60"
+            class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-ship-dim/50"
             >Coming Soon — {comingSoon.length} agents</span
           >
           <div class="flex-1 h-px bg-ship-border/40"></div>
         </div>
 
-        <!-- Table -->
         <div
           class="overflow-x-auto rounded-2xl border border-ship-border/50 shadow-2xl"
         >
@@ -449,16 +398,12 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
                   >Agent</th
                 >
                 <th
-                  class="px-5 py-4 text-[9px] uppercase tracking-widest text-ship-dim/50 font-bold hidden sm:table-cell"
-                  >--flag</th
-                >
-                <th
                   class="px-5 py-4 text-[9px] uppercase tracking-widest text-ship-dim/50 font-bold hidden md:table-cell"
-                  >Project Path</th
+                  >Project Config</th
                 >
                 <th
                   class="px-5 py-4 text-[9px] uppercase tracking-widest text-ship-dim/50 font-bold hidden lg:table-cell"
-                  >Global Path</th
+                  >Global Config</th
                 >
                 <th
                   class="px-5 py-4 text-[9px] uppercase tracking-widest text-ship-dim/50 font-bold"
@@ -474,9 +419,6 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
                   >
                     <td class="px-5 py-3.5 text-ship-text font-bold">
                       {agent.name}
-                    </td>
-                    <td class="px-5 py-3.5 text-ship-accent/70 hidden sm:table-cell">
-                      --{agent.flag}
                     </td>
                     <td class="px-5 py-3.5 text-ship-dim/50 hidden md:table-cell">
                       {agent.projectPath}
@@ -500,13 +442,12 @@ const comingSoon = agents.filter((a) => a.status === "coming-soon");
         <p
           class="mt-6 text-center font-mono text-[10px] text-ship-dim/30 uppercase tracking-widest"
         >
-          All {agents.length} agents share the same skill format — author once, deploy
-          everywhere.
+          Ship keeps these files out of git while keeping every agent briefed.
         </p>
       </div>
     </section>
 
-    <!-- CTA strip -->
+    <!-- CTA -->
     <section
       class="px-10 py-20 border-t border-ship-border/40 bg-ship-bg text-center"
     >
