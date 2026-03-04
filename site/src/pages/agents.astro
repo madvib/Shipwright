@@ -1,0 +1,273 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import Logo from '../components/Logo.astro';
+import Footer from '../components/Footer.astro';
+
+const agents = [
+  {
+    category: "IDE & Coding Agents",
+    color: "ship-accent",
+    items: [
+      {
+        name: "Claude (Anthropic)",
+        file: ".CLAUDE.md",
+        description: "Full support via MCP server and .CLAUDE.md context injection. Branch-scoped skills and permissions are automatically wired.",
+        status: "supported",
+        link: "https://www.anthropic.com/claude",
+      },
+      {
+        name: "Cursor",
+        file: ".cursorrules",
+        description: "Import existing .cursorrules into Ship or export Ship config to Cursor format. Rules are kept in sync on every branch checkout.",
+        status: "supported",
+        link: "https://cursor.so",
+      },
+      {
+        name: "GitHub Copilot",
+        file: ".github/copilot-instructions.md",
+        description: "Ship generates Copilot workspace instructions from your active spec. Per-repo and per-branch instruction files are managed automatically.",
+        status: "supported",
+        link: "https://github.com/features/copilot",
+      },
+      {
+        name: "Windsurf (Codeium)",
+        file: ".windsurfrules",
+        description: "Windsurf rules files are generated and updated by Ship as part of your standard context compile step.",
+        status: "supported",
+        link: "https://codeium.com/windsurf",
+      },
+    ],
+  },
+  {
+    category: "AI Terminal Agents",
+    color: "ship-blue",
+    items: [
+      {
+        name: "Aider",
+        file: ".aider.conf.yml",
+        description: "Ship manages Aider configuration and system prompt files, keeping model instructions aligned with the active feature spec.",
+        status: "supported",
+        link: "https://aider.chat",
+      },
+      {
+        name: "Claude Code",
+        file: ".CLAUDE.md",
+        description: "Claude Code reads the same .CLAUDE.md that Ship generates — no additional setup needed. Works out of the box.",
+        status: "supported",
+        link: "https://claude.ai/code",
+      },
+      {
+        name: "OpenAI Codex CLI",
+        file: ".codex/",
+        description: "Ship generates a .codex/ directory with agent instructions and permissions scoped to the active branch.",
+        status: "supported",
+        link: "https://github.com/openai/openai-codex",
+      },
+      {
+        name: "Gemini CLI",
+        file: ".gemini/",
+        description: "Ship compiles Gemini agent configuration into .gemini/ including system prompts, tool permissions, and skill definitions.",
+        status: "supported",
+        link: "https://gemini.google.com",
+      },
+    ],
+  },
+  {
+    category: "Agent Frameworks",
+    color: "ship-green",
+    items: [
+      {
+        name: "OpenHands",
+        file: ".agents/",
+        description: "Ship's .agents/ output is compatible with OpenHands workspace configuration. Perfect for automated PR agents.",
+        status: "beta",
+        link: "https://www.all-hands.dev",
+      },
+      {
+        name: "SWE-agent",
+        file: ".agents/",
+        description: "Ship generates repository-level configuration that SWE-agent can consume as task context at startup.",
+        status: "beta",
+        link: "https://swe-agent.com",
+      },
+      {
+        name: "Goose",
+        file: ".goose/",
+        description: "Goose extension configuration and toolkit scoping are managed through Ship's permissions layer.",
+        status: "coming-soon",
+        link: "https://block.github.io/goose",
+      },
+      {
+        name: "Devin",
+        file: "Custom",
+        description: "Session context and knowledge files for Devin can be exported from Ship as part of your release workflow.",
+        status: "coming-soon",
+        link: "https://devin.ai",
+      },
+    ],
+  },
+  {
+    category: "MCP Clients",
+    color: "ship-accent",
+    items: [
+      {
+        name: "Claude Desktop",
+        file: "MCP Config",
+        description: "Ship's MCP server registers directly into Claude Desktop. Context, skills, and permissions are injected per active project.",
+        status: "supported",
+        link: "https://claude.ai/download",
+      },
+      {
+        name: "Zed Editor",
+        file: "MCP Config",
+        description: "Zed's native MCP support connects to Ship Engine, giving in-editor agents access to your full project context.",
+        status: "supported",
+        link: "https://zed.dev",
+      },
+      {
+        name: "VS Code (Continue)",
+        file: "MCP Config",
+        description: "Continue extension connects to Ship via MCP for context-aware completions and inline agent actions.",
+        status: "beta",
+        link: "https://continue.dev",
+      },
+    ],
+  },
+];
+
+const statusConfig: Record<string, { label: string; dot: string; text: string }> = {
+  supported: { label: "Supported", dot: "bg-ship-green", text: "text-ship-green" },
+  beta: { label: "Beta", dot: "bg-ship-accent", text: "text-ship-accent" },
+  "coming-soon": { label: "Coming Soon", dot: "bg-ship-dim/40", text: "text-ship-dim/60" },
+};
+---
+
+<Layout>
+  <Navbar />
+  <main>
+    <!-- Header -->
+    <section class="relative px-10 pt-40 pb-20 bg-ship-bg overflow-hidden">
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-ship-accent/5 rounded-full blur-[140px] pointer-events-none"></div>
+      <div class="relative z-10 max-w-4xl mx-auto text-center">
+        <div class="inline-flex items-center gap-2 mb-6 px-3 py-1 rounded-full border border-ship-accent/20 bg-ship-accent/5 font-mono text-[10px] tracking-widest uppercase text-ship-accent/70 font-bold">
+          <span class="w-1.5 h-1.5 rounded-full bg-ship-green animate-pulse"></span>
+          COMPATIBILITY REGISTRY
+        </div>
+        <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter font-display uppercase italic mb-6 text-ship-text">
+          Compatible<br /><span class="text-ship-accent">Agents & Tools.</span>
+        </h1>
+        <p class="text-lg font-light text-ship-dim max-w-2xl mx-auto leading-relaxed">
+          Ship compiles your project intent into context files that every major AI agent and IDE understands — automatically, on every branch checkout.
+        </p>
+
+        <!-- Stats strip -->
+        <div class="mt-12 flex flex-wrap items-center justify-center gap-8 font-mono text-[10px] uppercase tracking-widest text-ship-dim/50">
+          <div class="flex items-center gap-2">
+            <span class="text-ship-green font-bold text-sm">{agents.flatMap(g => g.items).filter(i => i.status === 'supported').length}</span>
+            <span>Fully Supported</span>
+          </div>
+          <div class="w-px h-4 bg-ship-border"></div>
+          <div class="flex items-center gap-2">
+            <span class="text-ship-accent font-bold text-sm">{agents.flatMap(g => g.items).filter(i => i.status === 'beta').length}</span>
+            <span>In Beta</span>
+          </div>
+          <div class="w-px h-4 bg-ship-border"></div>
+          <div class="flex items-center gap-2">
+            <span class="text-ship-dim font-bold text-sm">{agents.flatMap(g => g.items).filter(i => i.status === 'coming-soon').length}</span>
+            <span>Coming Soon</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Agent Grid -->
+    <section class="px-6 sm:px-10 pb-32 bg-ship-bg">
+      <div class="max-w-6xl mx-auto space-y-20">
+        {agents.map((group) => (
+          <div>
+            <!-- Category header -->
+            <div class="flex items-center gap-4 mb-8">
+              <span class={`text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-${group.color}`}>
+                {group.category}
+              </span>
+              <div class="flex-1 h-px bg-ship-border/40"></div>
+            </div>
+
+            <!-- Agent cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+              {group.items.map((agent) => {
+                const st = statusConfig[agent.status];
+                return (
+                  <a
+                    href={agent.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class={`group block p-6 sm:p-8 rounded-2xl border bg-ship-bg hover:bg-ship-surface transition-all duration-300 ${agent.status === 'coming-soon' ? 'border-ship-border/30 opacity-60' : 'border-ship-border hover:border-ship-accent/20'}`}
+                  >
+                    <div class="flex items-start justify-between gap-4 mb-4">
+                      <div>
+                        <h3 class="text-base sm:text-lg font-bold tracking-tight font-display text-ship-text group-hover:text-ship-accent transition-colors">
+                          {agent.name}
+                        </h3>
+                        <div class="mt-1 font-mono text-[10px] text-ship-dim/50 tracking-wider">
+                          {agent.file}
+                        </div>
+                      </div>
+                      <div class={`flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full border ${agent.status === 'supported' ? 'border-ship-green/20 bg-ship-green/5' : agent.status === 'beta' ? 'border-ship-accent/20 bg-ship-accent/5' : 'border-ship-border bg-ship-surface'}`}>
+                        <span class={`w-1.5 h-1.5 rounded-full ${st.dot} ${agent.status === 'supported' ? 'animate-pulse' : ''}`}></span>
+                        <span class={`font-mono text-[9px] uppercase tracking-widest font-bold ${st.text}`}>{st.label}</span>
+                      </div>
+                    </div>
+                    <p class="text-sm text-ship-dim font-light leading-relaxed">
+                      {agent.description}
+                    </p>
+                    <div class="mt-4 flex items-center gap-1 text-[11px] font-mono text-ship-dim/30 group-hover:text-ship-accent/60 transition-colors">
+                      <span>VIEW DOCS</span>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- CTA strip -->
+    <section class="px-10 py-20 border-t border-ship-border/40 bg-ship-bg text-center">
+      <div class="max-w-xl mx-auto">
+        <div class="w-12 h-12 mx-auto mb-6">
+          <Logo class="w-full h-full" idPrefix="agents-cta" />
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tighter font-display uppercase italic mb-4 text-ship-text">Don't see your tool?</h2>
+        <p class="text-ship-dim font-light mb-8">We're adding integrations constantly. Open an issue on GitHub or join the alpha to request a specific agent.</p>
+        <div class="flex flex-wrap items-center justify-center gap-4">
+          <a
+            href="https://github.com/madvib/Ship/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="px-6 py-3 text-sm font-bold text-ship-bg bg-ship-accent rounded-xl hover:opacity-90 hover:-translate-y-0.5 transition-all shadow-lg shadow-ship-accent/10"
+          >
+            REQUEST AN INTEGRATION
+          </a>
+          <a href="/#waitlist" class="px-6 py-3 text-sm font-medium text-ship-dim border border-ship-border rounded-xl hover:bg-ship-surface hover:text-ship-text transition-all">
+            JOIN THE ALPHA
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</Layout>
+
+<style>
+  .animate-fade-up {
+    animation: fadeUp 1s cubic-bezier(0.2, 1, 0.2, 1) forwards;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
