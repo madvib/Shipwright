@@ -234,7 +234,18 @@ pub fn unregister_project(path: PathBuf) -> Result<()> {
 
 pub fn list_registered_projects() -> Result<Vec<ProjectEntry>> {
     let registry = load_registry()?;
-    Ok(registry.projects)
+    // A git worktree has a `.git` FILE (not a directory) at its root.
+    // We never want worktrees to appear as separate projects in the UI,
+    // because they share the same `.ship/` data as their main checkout.
+    Ok(registry
+        .projects
+        .into_iter()
+        .filter(|entry| {
+            let git_path = entry.path.join(".git");
+            // Keep: no .git at all (non-git project) OR .git is a directory (real repo)
+            !git_path.exists() || git_path.is_dir()
+        })
+        .collect())
 }
 
 /// Returns the global config directory (~/.ship)

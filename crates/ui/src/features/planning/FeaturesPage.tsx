@@ -125,7 +125,8 @@ export default function FeaturesPage({
       const ready = !blocking && readiness >= 90;
 
       const matchesSearch =
-        feature.title.toLowerCase().includes(needle) ||
+        !needle ||
+        (feature.title ?? '').toLowerCase().includes(needle) ||
         feature.file_name.toLowerCase().includes(needle) ||
         (feature.release_id ?? '').toLowerCase().includes(needle) ||
         (feature.spec_id ?? '').toLowerCase().includes(needle);
@@ -344,20 +345,20 @@ tags = []
                 </>
               }
               controls={
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <FeatureHubToolbar
-                  searchQuery={searchQuery}
-                  onSearchQueryChange={setSearchQuery}
-                  viewFilter={viewFilter}
-                  onViewFilterChange={setViewFilter}
-                  statusOptions={statusOptions}
-                  selectedStatuses={selectedStatuses}
-                  onSelectedStatusesChange={setSelectedStatuses}
-                  sortBy={sortBy}
-                  sortOptions={FEATURE_SORT_OPTIONS}
-                  onSortByChange={(value) => setSortBy(value as FeatureSort)}
-                />
-              </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <FeatureHubToolbar
+                    searchQuery={searchQuery}
+                    onSearchQueryChange={setSearchQuery}
+                    viewFilter={viewFilter}
+                    onViewFilterChange={setViewFilter}
+                    statusOptions={statusOptions}
+                    selectedStatuses={selectedStatuses}
+                    onSelectedStatusesChange={setSelectedStatuses}
+                    sortBy={sortBy}
+                    sortOptions={FEATURE_SORT_OPTIONS}
+                    onSortByChange={(value) => setSortBy(value as FeatureSort)}
+                  />
+                </div>
               }
             />
           </CardHeader>
