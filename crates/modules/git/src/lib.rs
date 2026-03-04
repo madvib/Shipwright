@@ -7,6 +7,7 @@ use ship_module_project::{
     Feature, FeatureEntry, IssueEntry, IssueStatus, Spec, SpecEntry, list_features, list_issues,
     list_specs,
 };
+use std::collections::BTreeSet;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -18,7 +19,7 @@ const PRE_COMMIT_HOOK_CONTENT: &str = "\
 #!/usr/bin/env sh
 # ship pre-commit: block staging of generated agent config files.
 # These are written by `ship git sync` / post-checkout and must never be committed.
-BLOCKED=\"CLAUDE.md GEMINI.md .mcp.json\"
+BLOCKED=\"CLAUDE.md GEMINI.md AGENTS.md .mcp.json\"
 for f in $BLOCKED; do
     if git diff --cached --name-only | grep -qx \"$f\"; then
         echo \"[ship] ERROR: '$f' is a generated file managed by Ship and must not be committed.\"
@@ -26,8 +27,8 @@ for f in $BLOCKED; do
         exit 1
     fi
 done
-# Also block .claude/, .gemini/, .codex/ directories
-for dir in .claude .gemini .codex; do
+# Also block generated provider directories.
+for dir in .claude .gemini .codex .agents; do
     if git diff --cached --name-only | grep -q \"^${dir}/\"; then
         echo \"[ship] ERROR: '$dir/' contains generated agent config managed by Ship.\"
         echo \"[ship]        Add '$dir/' to .gitignore and unstage: git restore --staged $dir/\"
@@ -41,10 +42,12 @@ exit 0
 pub const GENERATED_GITIGNORE_ENTRIES: &[&str] = &[
     "CLAUDE.md",
     "GEMINI.md",
+    "AGENTS.md",
     ".mcp.json",
     ".claude/",
     ".gemini/",
     ".codex/",
+    ".agents/",
 ];
 
 pub fn install_hooks(git_dir: &Path) -> Result<()> {
@@ -268,8 +271,23 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
     let config = get_effective_config(Some(ship_dir.to_path_buf()))?;
 
     let Some(doc) = linked else {
-        for provider in &config.providers {
-            agent_export::teardown(ship_dir.to_path_buf(), provider)?;
+        // Teardown must include:
+        // 1) currently configured providers, and
+        // 2) providers that have previously-exported Ship-managed state.
+        //
+        // This prevents stale context/config when a feature-level provider override
+        // (e.g. codex) differs from project-level providers.
+        let mut teardown_targets: BTreeSet<String> = config.providers.iter().cloned().collect();
+        for provider in runtime::list_providers(ship_dir)? {
+            let (managed_servers, last_mode) =
+                runtime::get_managed_state_db(ship_dir, &provider.id).unwrap_or_default();
+            if !managed_servers.is_empty() || last_mode.is_some() {
+                teardown_targets.insert(provider.id);
+            }
+        }
+
+        for provider in teardown_targets {
+            agent_export::teardown(ship_dir.to_path_buf(), &provider)?;
         }
         return Ok(());
     };

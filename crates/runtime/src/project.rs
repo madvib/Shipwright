@@ -405,6 +405,32 @@ mod tests {
         assert_eq!(resolved, canonicalize_lossy(&main_ship));
         Ok(())
     }
+
+    #[test]
+    fn resolve_project_ship_dir_follows_relative_git_worktree_pointer() -> Result<()> {
+        let tmp = tempdir()?;
+        let main_root = tmp.path().join("main");
+        let main_ship = main_root.join(".ship");
+        let common_git = main_root.join(".git");
+        let worktree_git = common_git.join("worktrees").join("feature-auth");
+        let wt_root = tmp.path().join("worktrees").join("feature-auth");
+        let wt_nested = wt_root.join("src");
+
+        fs::create_dir_all(&main_ship)?;
+        fs::create_dir_all(&worktree_git)?;
+        fs::create_dir_all(&wt_nested)?;
+
+        // Use a relative pointer to mirror setups where worktree metadata is not
+        // expressed as an absolute path.
+        fs::write(
+            wt_root.join(".git"),
+            "gitdir: ../../main/.git/worktrees/feature-auth\n",
+        )?;
+
+        let resolved = resolve_project_ship_dir(&wt_nested).expect("expected .ship resolution");
+        assert_eq!(resolved, canonicalize_lossy(&main_ship));
+        Ok(())
+    }
 }
 
 pub fn register_ship_namespace(

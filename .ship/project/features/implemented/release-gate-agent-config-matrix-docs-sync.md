@@ -2,7 +2,7 @@
 id = "ATeRtCPJ"
 title = "Release Gate: Agent Config Matrix + Docs Sync"
 created = "2026-03-04T03:01:06.866179+00:00"
-updated = "2026-03-04T07:24:44+0000"
+updated = "2026-03-04T15:05:56+0000"
 tags = []
 +++
 
@@ -25,4 +25,5 @@ tags = []
 
 ## Next
 
-- [ ] Add stale-skill deletion parity checks (skill removal, not just skill update) across Claude/Gemini/Codex outputs.
+- [x] Add stale-skill deletion parity checks (skill removal, not just skill update) across Claude/Gemini/Codex outputs.
+- [x] Release-gate hardening scope complete.

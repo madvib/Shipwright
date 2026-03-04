@@ -7,7 +7,7 @@ use crate::prompt::get_prompt;
 use crate::skill::list_effective_skills;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -1129,9 +1129,12 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
 /// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`
 fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
     let skills = list_effective_skills(project_dir)?;
+    let retain_ids: HashSet<String> = skills.iter().map(|skill| skill.id.clone()).collect();
+    prune_stale_managed_skill_dirs(skills_dir, &retain_ids);
     if skills.is_empty() {
         return Ok(());
     }
+
     fs::create_dir_all(skills_dir)?;
     for skill in &skills {
         let skill_dir = skills_dir.join(&skill.id);
@@ -1144,6 +1147,34 @@ fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
         crate::fs_util::write_atomic(&path, content)?;
     }
     Ok(())
+}
+
+fn prune_stale_managed_skill_dirs(skills_dir: &Path, retain_ids: &HashSet<String>) {
+    if !skills_dir.exists() {
+        return;
+    }
+
+    if let Ok(entries) = fs::read_dir(skills_dir) {
+        for entry in entries.flatten() {
+            let skill_dir = entry.path();
+            if !skill_dir.is_dir() {
+                continue;
+            }
+
+            let skill_id = entry.file_name().to_string_lossy().to_string();
+            if retain_ids.contains(&skill_id) {
+                continue;
+            }
+
+            let skill_md = skill_dir.join("SKILL.md");
+            if skill_md.exists()
+                && let Ok(content) = fs::read_to_string(&skill_md)
+                && content.starts_with("<!-- managed by ship")
+            {
+                fs::remove_dir_all(&skill_dir).ok();
+            }
+        }
+    }
 }
 
 /// Remove skill subdirectories that were written by Ship (identified by the

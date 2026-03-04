@@ -4,7 +4,7 @@ use runtime::config::{
     HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
     ProjectConfig, save_config,
 };
-use runtime::{create_prompt, update_prompt};
+use runtime::{create_prompt, create_skill, delete_skill, update_prompt};
 use std::collections::HashMap;
 use std::process::Output;
 
@@ -336,4 +336,50 @@ fn codex_export_reflects_prompt_updates_after_regeneration() {
         !second.contains("Codex release checklist v1."),
         "stale prompt content should not remain in AGENTS.md after regeneration"
     );
+}
+
+fn assert_deleted_skill_is_pruned_for_target(
+    target: &str,
+    skill_dir_prefix: &str,
+    skill_id: &str,
+) {
+    let p = TestProject::new().unwrap();
+    create_skill(
+        &p.ship_dir,
+        skill_id,
+        &format!("{} skill", skill_id),
+        "Managed skill content that should be pruned when deleted.",
+    )
+    .unwrap();
+
+    runtime::agent_export::export_to(p.ship_dir.clone(), target).unwrap();
+    let skill_dir = p.root().join(skill_dir_prefix).join(skill_id);
+    assert!(
+        skill_dir.join("SKILL.md").exists(),
+        "expected managed skill output for target {target}: {}",
+        skill_dir.display()
+    );
+
+    delete_skill(&p.ship_dir, skill_id).unwrap();
+    runtime::agent_export::export_to(p.ship_dir.clone(), target).unwrap();
+    assert!(
+        !skill_dir.exists(),
+        "deleted skill should be pruned for target {target}: {}",
+        skill_dir.display()
+    );
+}
+
+#[test]
+fn claude_export_prunes_deleted_managed_skill_dirs() {
+    assert_deleted_skill_is_pruned_for_target("claude", ".claude/skills", "prune-skill-claude");
+}
+
+#[test]
+fn gemini_export_prunes_deleted_managed_skill_dirs() {
+    assert_deleted_skill_is_pruned_for_target("gemini", ".gemini/skills", "prune-skill-gemini");
+}
+
+#[test]
+fn codex_export_prunes_deleted_managed_skill_dirs() {
+    assert_deleted_skill_is_pruned_for_target("codex", ".agents/skills", "prune-skill-codex");
 }

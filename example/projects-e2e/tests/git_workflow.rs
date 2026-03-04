@@ -461,6 +461,66 @@ mod pre_commit_hook {
         }
     }
 
+    /// Staging AGENTS.md is blocked by pre-commit hook.
+    #[test]
+    fn hook_blocks_staging_agents_md() {
+        let p = setup();
+        let agents_path = p.root().join("AGENTS.md");
+        // Temporarily remove from gitignore to test the hook independently
+        let gitignore_path = p.root().join(".gitignore");
+        let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
+        let without_agents = existing.replace("AGENTS.md\n", "").replace("AGENTS.md", "");
+        fs::write(&gitignore_path, &without_agents).unwrap();
+
+        fs::write(&agents_path, "# generated\n").unwrap();
+        p.git_stage("AGENTS.md");
+
+        let staged = p.git_staged_files();
+        if staged.contains(&"AGENTS.md".to_string()) {
+            let (ok, stderr) = p.git_commit("should fail");
+            assert!(
+                !ok,
+                "commit with AGENTS.md should be rejected by pre-commit hook"
+            );
+            assert!(stderr.contains("AGENTS.md") || stderr.contains("ship"));
+        }
+    }
+
+    /// Staging files under .agents/ is blocked by pre-commit hook.
+    #[test]
+    fn hook_blocks_staging_agents_directory() {
+        let p = setup();
+        let generated_skill = p
+            .root()
+            .join(".agents")
+            .join("skills")
+            .join("task-policy")
+            .join("SKILL.md");
+        if let Some(parent) = generated_skill.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+
+        // Temporarily remove from gitignore to test the hook independently
+        let gitignore_path = p.root().join(".gitignore");
+        let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
+        let without_agents_dir = existing.replace(".agents/\n", "").replace(".agents/", "");
+        fs::write(&gitignore_path, &without_agents_dir).unwrap();
+
+        fs::write(&generated_skill, "# generated\n").unwrap();
+        p.git_stage(".agents/skills/task-policy/SKILL.md");
+
+        let staged = p.git_staged_files();
+        let staged_path = ".agents/skills/task-policy/SKILL.md".to_string();
+        if staged.contains(&staged_path) {
+            let (ok, stderr) = p.git_commit("should fail");
+            assert!(
+                !ok,
+                "commit with .agents/ files should be rejected by pre-commit hook"
+            );
+            assert!(stderr.contains(".agents/") || stderr.contains("ship"));
+        }
+    }
+
     /// Generated files in root .gitignore cannot be staged at all.
     #[test]
     fn gitignore_prevents_staging_generated_files() {
