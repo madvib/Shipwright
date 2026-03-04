@@ -18,17 +18,27 @@ use runtime::project::{get_active_project_global, get_project_dir, set_active_pr
 use runtime::{
     add_status, autodetect_providers, create_user_skill, delete_skill, delete_user_skill,
     disable_provider, enable_provider, get_config, get_effective_skill, list_effective_skills,
-    list_events_since, list_models, list_providers, log_action, log_action_by, read_log,
-    remove_status, set_category_committed, update_skill, update_user_skill,
+    list_events_since, list_models, list_providers, log_action_by, read_log, remove_status,
+    set_category_committed, update_skill, update_user_skill,
 };
 use serde::Deserialize;
 use ship_module_git::{install_hooks, on_post_checkout};
+use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs};
+use ship_module_project::ops::feature::{
+    create_feature, get_feature_by_id, list_features, update_feature_content,
+};
+use ship_module_project::ops::issue::{
+    create_issue, delete_issue, get_issue_by_id, list_issues, move_issue_with_from, update_issue,
+};
+use ship_module_project::ops::note::{
+    create_note, get_note_by_id, list_notes, update_note_content,
+};
+use ship_module_project::ops::release::{
+    create_release, get_release_by_id, list_releases, update_release_content,
+};
+use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
 use ship_module_project::{
-    IssueEntry, IssueStatus, NoteScope, create_adr, create_feature, create_issue, create_note,
-    create_release, create_spec, delete_issue, get_adr_by_id, get_feature_by_id, get_issue_by_id,
-    get_note_by_id, get_project_name, get_release_by_id, get_spec_by_id, list_adrs, list_features,
-    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_issue,
-    update_feature_content, update_issue, update_note_content, update_release_content, update_spec,
+    IssueEntry, IssueStatus, NoteScope, get_project_name, list_registered_projects,
 };
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
@@ -651,17 +661,7 @@ impl ShipServer {
             None,
             None,
         ) {
-            Ok(file) => {
-                let fname = file.file_name.clone();
-                log_action_by(
-                    &project_dir,
-                    "agent",
-                    "issue create",
-                    &format!("{} ({})", fname, status),
-                )
-                .ok();
-                format!("Created issue: {} ({})", fname, status)
-            }
+            Ok(file) => format!("Created issue: {} ({})", file.file_name, status),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -716,12 +716,7 @@ impl ShipServer {
         };
         let body = req.content.unwrap_or_default();
         match create_note(scope, project_dir.as_deref(), &req.title, &body) {
-            Ok(note) => {
-                if let Some(project_dir) = project_dir {
-                    log_action_by(&project_dir, "agent", "note create", &note.id).ok();
-                }
-                format!("Created note: {} (id: {})", note.title, note.id)
-            }
+            Ok(note) => format!("Created note: {} (id: {})", note.title, note.id),
             Err(e) => format!("Error creating note: {}", e),
         }
     }
@@ -741,12 +736,7 @@ impl ShipServer {
             NoteScope::User => None,
         };
         match update_note_content(scope, project_dir.as_deref(), &req.file_name, &req.content) {
-            Ok(note) => {
-                if let Some(project_dir) = project_dir {
-                    log_action_by(&project_dir, "agent", "note update", &req.file_name).ok();
-                }
-                format!("Updated note: {}", note.title)
-            }
+            Ok(note) => format!("Updated note: {}", note.title),
             Err(e) => format!("Error updating note: {}", e),
         }
     }
@@ -872,21 +862,16 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        let from_status = match req.from_status.parse::<IssueStatus>() {
+            Ok(s) => s,
+            Err(e) => return format!("Error: {}", e),
+        };
         let to_status = match req.to_status.parse::<IssueStatus>() {
             Ok(s) => s,
             Err(e) => return format!("Error: {}", e),
         };
-        match move_issue(&project_dir, &req.file_name, to_status) {
-            Ok(_) => {
-                log_action_by(
-                    &project_dir,
-                    "agent",
-                    "issue move",
-                    &format!("{}: {} → {}", req.file_name, req.from_status, req.to_status),
-                )
-                .ok();
-                format!("{}: {} → {}", req.file_name, req.from_status, req.to_status)
-            }
+        match move_issue_with_from(&project_dir, &req.file_name, from_status, to_status) {
+            Ok(_) => format!("{}: {} → {}", req.file_name, req.from_status, req.to_status),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1004,13 +989,10 @@ impl ShipServer {
         };
         let content = req.content.as_deref().unwrap_or("");
         match create_release(&project_dir, &req.version, content) {
-            Ok(release) => {
-                log_action_by(&project_dir, "agent", "release create", &release.id).ok();
-                format!(
-                    "Created release: {} ({})",
-                    release.release.metadata.version, release.id
-                )
-            }
+            Ok(release) => format!(
+                "Created release: {} ({})",
+                release.release.metadata.version, release.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1039,13 +1021,10 @@ impl ShipServer {
             Err(e) => return e,
         };
         match update_release_content(&project_dir, &req.id, &req.content) {
-            Ok(release) => {
-                log_action_by(&project_dir, "agent", "release update", &req.id).ok();
-                format!(
-                    "Updated release: {} ({})",
-                    release.release.metadata.version, req.id
-                )
-            }
+            Ok(release) => format!(
+                "Updated release: {} ({})",
+                release.release.metadata.version, req.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1068,13 +1047,10 @@ impl ShipServer {
             req.spec_id.as_deref(),
             req.branch.as_deref(),
         ) {
-            Ok(feature) => {
-                log_action_by(&project_dir, "agent", "feature create", &feature.id).ok();
-                format!(
-                    "Created feature: {} ({})",
-                    feature.feature.metadata.title, feature.id
-                )
-            }
+            Ok(feature) => format!(
+                "Created feature: {} ({})",
+                feature.feature.metadata.title, feature.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1103,13 +1079,10 @@ impl ShipServer {
             Err(e) => return e,
         };
         match update_feature_content(&project_dir, &req.id, &req.content) {
-            Ok(feature) => {
-                log_action_by(&project_dir, "agent", "feature update", &req.id).ok();
-                format!(
-                    "Updated feature: {} ({})",
-                    feature.feature.metadata.title, req.id
-                )
-            }
+            Ok(feature) => format!(
+                "Updated feature: {} ({})",
+                feature.feature.metadata.title, req.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1252,15 +1225,7 @@ impl ShipServer {
                             None,
                             None,
                         ) {
-                            Ok(file) => {
-                                log_action(
-                                    &project_dir,
-                                    "issue create",
-                                    &format!("Ghost promoted: {}", title),
-                                )
-                                .ok();
-                                format!("Created issue: {}", file.file_name)
-                            }
+                            Ok(file) => format!("Created issue: {}", file.file_name),
                             Err(e) => format!("Marked promoted but failed to create issue: {}", e),
                         }
                     } else {

@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod config;
 pub mod events;
 pub mod fs_util;
+pub mod hooks;
 pub mod log;
 pub mod migration;
 pub mod permissions;
@@ -36,6 +37,7 @@ pub use events::{
     event_log_path, export_events_ndjson, ingest_external_events, latest_event_seq,
     list_events_since, read_events, sync_event_snapshot,
 };
+pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use migration::{
     GlobalStateMigrationReport, ProjectFileMigrationReport, ProjectStateMigrationReport,

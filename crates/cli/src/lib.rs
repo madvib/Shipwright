@@ -15,16 +15,25 @@ use runtime::{
     update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
+use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
+use ship_module_project::ops::feature::{
+    create_feature, feature_done, feature_start, get_feature_by_id, list_features, update_feature,
+};
+use ship_module_project::ops::issue::{
+    create_issue, get_issue_by_id, list_issues, move_issue_with_from,
+};
+use ship_module_project::ops::note::{
+    create_note, get_note_by_id, list_notes, update_note_content,
+};
+use ship_module_project::ops::release::{
+    create_release, get_release_by_id, list_releases, update_release,
+};
+use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs};
 use ship_module_project::{
-    ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, create_adr,
-    create_feature, create_issue, create_note, create_release, create_spec, feature_done,
-    feature_start, find_adr_path, get_feature_by_id, get_issue_by_id, get_note_by_id,
-    get_release_by_id, get_spec_by_id, import_adrs_from_files, import_features_from_files,
-    import_issues_from_files, import_notes_from_files, import_releases_from_files,
-    import_specs_from_files, init_demo_project, init_project, list_adrs, list_features,
-    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
-    move_issue, register_project, unregister_project, update_feature, update_note_content,
-    update_release,
+    ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, import_adrs_from_files,
+    import_features_from_files, import_issues_from_files, import_notes_from_files,
+    import_releases_from_files, import_specs_from_files, init_demo_project, init_project,
+    list_registered_projects, register_project, unregister_project,
 };
 use std::env;
 use std::path::{Path, PathBuf};
@@ -701,11 +710,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         None,
                     )?;
                     println!("Issue created: {} ({})", issue.file_name, issue.id);
-                    log_action(
-                        &project_dir,
-                        "issue create",
-                        &format!("Created issue: {}", title),
-                    )?;
                 }
                 IssueCommands::List => {
                     let issues = list_issues(&project_dir)?;
@@ -718,16 +722,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     from,
                     to,
                 } => {
+                    let from_status = from
+                        .parse::<IssueStatus>()
+                        .map_err(|_| anyhow::anyhow!("Invalid issue status: {}", from))?;
                     let to_status = to
                         .parse::<IssueStatus>()
                         .map_err(|_| anyhow::anyhow!("Invalid issue status: {}", to))?;
-                    move_issue(&project_dir, &file_name, to_status)?;
+                    move_issue_with_from(&project_dir, &file_name, from_status, to_status)?;
                     println!("Moved {} from {} to {}", file_name, from, to);
-                    log_action(
-                        &project_dir,
-                        "issue move",
-                        &format!("Moved {} to {}", file_name, to),
-                    )?;
                 }
             }
         }
@@ -737,11 +739,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 AdrCommands::Create { title, decision } => {
                     let entry = create_adr(&project_dir, &title, "", &decision, "proposed")?;
                     println!("ADR created: {} (id: {})", title, entry.id);
-                    log_action(
-                        &project_dir,
-                        "adr create",
-                        &format!("Created ADR: {}", title),
-                    )?;
                 }
                 AdrCommands::List => {
                     let mut adrs = list_adrs(&project_dir)?;
@@ -773,11 +770,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         .map_err(|_| anyhow::anyhow!("Could not parse ADR file: {}", file_name))?;
                     let entry = move_adr(&project_dir, &adr.metadata.id, new_status.clone())?;
                     println!("Moved {} to {} (id: {})", file_name, new_status, entry.id);
-                    log_action(
-                        &project_dir,
-                        "adr move",
-                        &format!("Moved {} to {}", file_name, new_status),
-                    )?;
                 }
             }
         }
@@ -795,13 +787,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let body = content.unwrap_or_default();
                 let note = create_note(scope, project_dir.as_deref(), &title, &body)?;
                 println!("Note created: {} (id: {})", note.title, note.id);
-                if let Some(project_dir) = project_dir {
-                    log_action(
-                        &project_dir,
-                        "note create",
-                        &format!("Created note: {}", title),
-                    )?;
-                }
             }
             NoteCommands::List { scope } => {
                 let scope = parse_note_scope(&scope)?;
@@ -840,13 +825,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 let note =
                     update_note_content(scope, project_dir.as_deref(), &file_name, &content)?;
                 println!("Updated note: {}", note.title);
-                if let Some(project_dir) = project_dir {
-                    log_action(
-                        &project_dir,
-                        "note update",
-                        &format!("Updated note: {}", note.title),
-                    )?;
-                }
             }
         },
         Some(Commands::Skill { action }) => match action {
@@ -962,11 +940,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let body = content.unwrap_or_default();
                     let spec = create_spec(&project_dir, &title, &body, None, None)?;
                     println!("Spec created: {} ({})", spec.file_name, spec.id);
-                    log_action(
-                        &project_dir,
-                        "spec create",
-                        &format!("Created spec: {}", title),
-                    )?;
                 }
                 SpecCommands::List => {
                     let mut specs = list_specs(&project_dir)?;
@@ -995,11 +968,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let body = content.unwrap_or_default();
                     let entry = create_release(&project_dir, &version, &body)?;
                     println!("Release created: {}", entry.path);
-                    log_action(
-                        &project_dir,
-                        "release create",
-                        &format!("Created release: {}", version),
-                    )?;
                 }
                 ReleaseCommands::List => {
                     let releases = list_releases(&project_dir)?;
@@ -1028,11 +996,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     entry.release.body = content;
                     update_release(&project_dir, version, entry.release)?;
                     println!("Updated release: {}", file_name);
-                    log_action(
-                        &project_dir,
-                        "release update",
-                        &format!("Updated release: {}", file_name),
-                    )?;
                 }
             }
         }
@@ -1056,11 +1019,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         branch.as_deref(),
                     )?;
                     println!("Feature created: {}", entry.path);
-                    log_action(
-                        &project_dir,
-                        "feature create",
-                        &format!("Created feature: {} ({})", title, entry.id),
-                    )?;
                 }
                 FeatureCommands::List { status } => {
                     let features = list_features(&project_dir)?;
@@ -1136,20 +1094,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     update_feature(&project_dir, &id, entry.feature)?;
                     feature_start(&project_dir, &id)?;
                     println!("Feature started: {}", id);
-                    log_action(
-                        &project_dir,
-                        "feature start",
-                        &format!("Started feature: {}", id),
-                    )?;
                 }
                 FeatureCommands::Done { id } => {
                     feature_done(&project_dir, &id)?;
                     println!("Feature marked as implemented: {}", id);
-                    log_action(
-                        &project_dir,
-                        "feature done",
-                        &format!("Completed feature: {}", id),
-                    )?;
                 }
             }
         }
@@ -1556,11 +1504,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                                     None,
                                 )?;
                                 println!("Created issue: {}", path.file_name);
-                                log_action(
-                                    &project_dir,
-                                    "issue create",
-                                    &format!("Ghost promoted: {}", title),
-                                )?;
                             }
                         }
                     } else {
