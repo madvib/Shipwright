@@ -448,3 +448,53 @@ fn workspace_recreate_without_worktree_clears_worktree_metadata() {
         "worktree path should be cleared when workspace is no longer a worktree"
     );
 }
+
+#[test]
+fn workspace_worktree_failure_preserves_preexisting_branch() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let branch = "feature/worktree-existing-branch";
+    project.checkout_new(branch).unwrap();
+    project.checkout("main").unwrap();
+    assert!(
+        branch_exists(&project, branch),
+        "precondition failed: branch should exist before test action"
+    );
+
+    let occupied_path = project.root().join(".worktrees").join("occupied-existing");
+    std::fs::create_dir_all(&occupied_path).unwrap();
+    std::fs::write(occupied_path.join("already.txt"), "occupied").unwrap();
+    let occupied_arg = occupied_path.to_string_lossy().to_string();
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            branch,
+            "--worktree",
+            "--worktree-path",
+            &occupied_arg,
+            "--feature",
+            "feat-worktree-existing-branch",
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "workspace create --worktree should fail for occupied path\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        branch_exists(&project, branch),
+        "failed worktree create should preserve an existing branch"
+    );
+
+    let workspace = get_workspace(&project.ship_dir, branch).unwrap();
+    assert!(
+        workspace.is_none(),
+        "failed worktree add should not leave a persisted workspace row"
+    );
+}

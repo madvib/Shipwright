@@ -48,6 +48,7 @@ tags = []
   - CLI now rejects conflicting `workspace create --checkout --worktree` flag combinations
   - failed `workspace create --worktree` now rolls back newly-created git branches when worktree add fails
   - added regression coverage to ensure failed worktree creation does not leave dangling git branches
+  - added regression coverage to ensure failed worktree creation preserves pre-existing branches
   - added runtime + e2e regression coverage for worktree-to-non-worktree metadata cleanup
 
 ## Next
