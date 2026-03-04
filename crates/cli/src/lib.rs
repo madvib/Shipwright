@@ -1167,34 +1167,21 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         .as_deref()
                         .map(str::parse::<WorkspaceType>)
                         .transpose()?;
-                    let desired_status = if activate || checkout {
-                        Some(WorkspaceStatus::Active)
-                    } else {
-                        None
-                    };
-
-                    let mut workspace = create_workspace(
-                        &project_dir,
-                        CreateWorkspaceRequest {
-                            branch: branch.clone(),
-                            workspace_type: parsed_workspace_type,
-                            status: desired_status,
-                            feature_id: feature,
-                            spec_id: spec,
-                            release_id: release,
-                            is_worktree: Some(worktree),
-                            worktree_path: worktree_path.clone(),
-                            ..CreateWorkspaceRequest::default()
-                        },
-                    )?;
-
-                    if worktree {
-                        let path = worktree_path.unwrap_or_else(|| {
+                    let resolved_worktree_path = if worktree {
+                        Some(worktree_path.unwrap_or_else(|| {
                             let b = branch
                                 .trim_start_matches("feature/")
                                 .trim_start_matches("hotfix/");
                             format!("../{}", b)
-                        });
+                        }))
+                    } else {
+                        None
+                    };
+
+                    if worktree {
+                        let path = resolved_worktree_path
+                            .as_deref()
+                            .ok_or_else(|| anyhow::anyhow!("Worktree path resolution failed"))?;
                         let exists = ProcessCommand::new("git")
                             .args(["rev-parse", "--verify", &branch])
                             .current_dir(&project_root)
@@ -1206,9 +1193,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         if !exists {
                             args.push("-b");
                             args.push(&branch);
-                            args.push(&path);
+                            args.push(path);
                         } else {
-                            args.push(&path);
+                            args.push(path);
                             args.push(&branch);
                         }
 
@@ -1219,7 +1206,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         if !status.success() {
                             anyhow::bail!("Failed to create git worktree: {}", branch);
                         }
-                        workspace = sync_workspace(&project_dir, &branch)?;
                     } else if checkout {
                         let exists = ProcessCommand::new("git")
                             .args(["rev-parse", "--verify", &branch])
@@ -1241,6 +1227,29 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         if !checkout_status.success() {
                             anyhow::bail!("Failed to create/switch branch: {}", branch);
                         }
+                    }
+
+                    let desired_status = if activate && !checkout && !worktree {
+                        Some(WorkspaceStatus::Active)
+                    } else {
+                        None
+                    };
+                    let mut workspace = create_workspace(
+                        &project_dir,
+                        CreateWorkspaceRequest {
+                            branch: branch.clone(),
+                            workspace_type: parsed_workspace_type,
+                            status: desired_status,
+                            feature_id: feature,
+                            spec_id: spec,
+                            release_id: release,
+                            is_worktree: Some(worktree),
+                            worktree_path: resolved_worktree_path,
+                            ..CreateWorkspaceRequest::default()
+                        },
+                    )?;
+
+                    if worktree || checkout {
                         workspace = sync_workspace(&project_dir, &branch)?;
                     } else if activate {
                         workspace = activate_workspace(&project_dir, &branch)?;

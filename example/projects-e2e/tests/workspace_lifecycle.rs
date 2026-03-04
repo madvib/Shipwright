@@ -202,3 +202,88 @@ fn workspace_archive_rejects_active_workspace_transition() {
         .expect("workspace should still exist");
     assert_eq!(workspace.status, WorkspaceStatus::Active);
 }
+
+#[test]
+fn workspace_checkout_failure_does_not_persist_workspace_record() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let invalid_branch = "feature invalid branch";
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            invalid_branch,
+            "--checkout",
+            "--feature",
+            "feat-invalid-checkout",
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "workspace create --checkout should fail for invalid branch\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let workspace = get_workspace(&project.ship_dir, invalid_branch).unwrap();
+    assert!(
+        workspace.is_none(),
+        "failed checkout should not leave a persisted workspace row"
+    );
+    assert_eq!(
+        project.current_branch(),
+        "main",
+        "failed checkout should not move current branch"
+    );
+}
+
+#[test]
+fn workspace_worktree_failure_does_not_persist_workspace_record() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let occupied_path = project.root().join(".worktrees").join("occupied");
+    std::fs::create_dir_all(&occupied_path).unwrap();
+    std::fs::write(occupied_path.join("already.txt"), "occupied").unwrap();
+    let occupied_arg = occupied_path.to_string_lossy().to_string();
+    let branch = "feature/worktree-create-failure";
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            branch,
+            "--worktree",
+            "--worktree-path",
+            &occupied_arg,
+            "--feature",
+            "feat-worktree-create-failure",
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "workspace create --worktree should fail for occupied path\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let workspace = get_workspace(&project.ship_dir, branch).unwrap();
+    assert!(
+        workspace.is_none(),
+        "failed worktree add should not leave a persisted workspace row"
+    );
+    assert!(
+        occupied_path.join("already.txt").exists(),
+        "occupied path contents should remain untouched after failed worktree create"
+    );
+    assert_eq!(
+        project.current_branch(),
+        "main",
+        "failed worktree create should not switch the main checkout branch"
+    );
+}

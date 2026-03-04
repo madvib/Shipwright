@@ -288,3 +288,52 @@ fn gemini_export_reflects_prompt_updates_after_regeneration() {
         "stale prompt content should not remain after regeneration"
     );
 }
+
+/// Codex export should keep AGENTS.md prompt output in sync across repeated regeneration.
+#[test]
+fn codex_export_reflects_prompt_updates_after_regeneration() {
+    let p = TestProject::new().unwrap();
+    create_prompt(
+        &p.ship_dir,
+        "codex-release-prompt",
+        "Codex Release Prompt",
+        "Codex release checklist v1.",
+    )
+    .unwrap();
+
+    let mut config = ProjectConfig::default();
+    config.modes = vec![ModeConfig {
+        id: "release".to_string(),
+        name: "Release".to_string(),
+        prompt_id: Some("codex-release-prompt".to_string()),
+        ..Default::default()
+    }];
+    config.active_mode = Some("release".to_string());
+    save_config(&config, Some(p.ship_dir.clone())).unwrap();
+
+    runtime::agent_export::export_to(p.ship_dir.clone(), "codex").unwrap();
+    let first = std::fs::read_to_string(p.root().join("AGENTS.md")).unwrap();
+    assert!(
+        first.contains("Codex release checklist v1."),
+        "initial prompt content should be written to AGENTS.md"
+    );
+
+    update_prompt(
+        &p.ship_dir,
+        "codex-release-prompt",
+        None,
+        Some("Codex release checklist v2."),
+    )
+    .unwrap();
+
+    runtime::agent_export::export_to(p.ship_dir.clone(), "codex").unwrap();
+    let second = std::fs::read_to_string(p.root().join("AGENTS.md")).unwrap();
+    assert!(
+        second.contains("Codex release checklist v2."),
+        "updated prompt content should be written to AGENTS.md after regeneration"
+    );
+    assert!(
+        !second.contains("Codex release checklist v1."),
+        "stale prompt content should not remain in AGENTS.md after regeneration"
+    );
+}

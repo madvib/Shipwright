@@ -929,6 +929,21 @@ fn export_toml(
 
     crate::fs_util::write_atomic(&config_path, toml::to_string_pretty(&doc)?)?;
 
+    // Prompt output
+    if let Some(prompt) = &payload.prompt {
+        match desc.prompt_output {
+            PromptOutput::AgentsMd => {
+                let md = project_root.join("AGENTS.md");
+                let content = format!(
+                    "<!-- managed by ship — prompt: {} -->\n\n{}\n",
+                    prompt.id, prompt.content
+                );
+                crate::fs_util::write_atomic(&md, content)?;
+            }
+            PromptOutput::ClaudeMd | PromptOutput::GeminiMd | PromptOutput::None => {}
+        }
+    }
+
     tool_state.managed_servers = written_ids;
     tool_state.last_mode = payload.active_mode_id.clone();
     Ok(())

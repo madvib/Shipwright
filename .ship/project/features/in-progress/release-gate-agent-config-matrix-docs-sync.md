@@ -2,7 +2,7 @@
 id = "ATeRtCPJ"
 title = "Release Gate: Agent Config Matrix + Docs Sync"
 created = "2026-03-04T03:01:06.866179+00:00"
-updated = "2026-03-04T07:11:02+0000"
+updated = "2026-03-04T07:24:44+0000"
 tags = []
 +++
 
@@ -19,7 +19,10 @@ tags = []
 - [x] Added docs-sync regeneration coverage for skill and prompt updates:
   - `CLAUDE.md` reflects updated skill content after repeated post-checkout regeneration
   - `GEMINI.md` reflects updated mode prompt content after repeated export regeneration
+- [x] Expanded multi-provider docs-sync parity for Codex/agents outputs:
+  - `AGENTS.md` prompt output updates correctly after repeated Codex export regeneration
+  - Codex provider context + `.agents/skills/*/SKILL.md` update and clear stale skill content after repeated post-checkout regeneration
 
 ## Next
 
-- [ ] Expand multi-provider docs-sync checks for Codex/agents output parity under repeated regeneration.
+- [ ] Add stale-skill deletion parity checks (skill removal, not just skill update) across Claude/Gemini/Codex outputs.

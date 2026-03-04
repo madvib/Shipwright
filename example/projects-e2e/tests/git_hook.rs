@@ -342,3 +342,93 @@ fn claude_md_reflects_skill_updates_after_regeneration() {
         "stale skill content should not remain after regeneration"
     );
 }
+
+#[test]
+fn agents_md_reflects_skill_updates_for_codex_after_regeneration() {
+    let p = TestProject::with_git().unwrap();
+    let feature_path = create_feature(
+        p.ship_dir.clone(),
+        "Codex Skill Sync",
+        "Ensure Codex context reflects skill updates.",
+        None,
+        None,
+        Some("feature/codex-skill-sync"),
+    )
+    .unwrap();
+
+    create_skill(
+        &p.ship_dir,
+        "codex-skill-sync-test",
+        "Codex Skill Sync Test",
+        "Use strict release gating for codex provider.",
+    )
+    .unwrap();
+    set_feature_agent(
+        &feature_path.1,
+        FeatureAgentConfig {
+            model: None,
+            max_cost_per_session: None,
+            mcp_servers: vec![],
+            skills: vec!["codex-skill-sync-test".to_string()],
+            providers: vec!["codex".to_string()],
+        },
+    );
+
+    on_post_checkout(&p.ship_dir, "feature/codex-skill-sync", &p.root()).unwrap();
+    let first = std::fs::read_to_string(p.root().join("AGENTS.md")).unwrap();
+    let first_skill = std::fs::read_to_string(
+        p.root()
+            .join(".agents")
+            .join("skills")
+            .join("codex-skill-sync-test")
+            .join("SKILL.md"),
+    )
+    .unwrap();
+    assert!(
+        first.contains("Use strict release gating for codex provider."),
+        "initial skill content should be present in AGENTS.md"
+    );
+    assert!(
+        first_skill.contains("Use strict release gating for codex provider."),
+        "initial skill content should be present in codex SKILL.md output"
+    );
+    assert!(
+        !p.root().join("CLAUDE.md").exists(),
+        "codex-only provider output should not emit CLAUDE.md"
+    );
+
+    update_skill(
+        &p.ship_dir,
+        "codex-skill-sync-test",
+        None,
+        Some("Use explicit rollback gates for codex provider."),
+    )
+    .unwrap();
+    on_post_checkout(&p.ship_dir, "feature/codex-skill-sync", &p.root()).unwrap();
+    let second = std::fs::read_to_string(p.root().join("AGENTS.md")).unwrap();
+    let second_skill = std::fs::read_to_string(
+        p.root()
+            .join(".agents")
+            .join("skills")
+            .join("codex-skill-sync-test")
+            .join("SKILL.md"),
+    )
+    .unwrap();
+
+    assert!(
+        second.contains("Use explicit rollback gates for codex provider."),
+        "updated skill content should be present in AGENTS.md after regeneration"
+    );
+    assert!(
+        !second.contains("Use strict release gating for codex provider."),
+        "stale skill content should not remain in AGENTS.md after regeneration"
+    );
+    assert!(
+        second_skill.contains("Use explicit rollback gates for codex provider."),
+        "updated skill content should be present in codex SKILL.md after regeneration"
+    );
+    assert!(
+        !second_skill.contains("Use strict release gating for codex provider."),
+        "stale skill content should not remain in codex SKILL.md after regeneration"
+    );
+}

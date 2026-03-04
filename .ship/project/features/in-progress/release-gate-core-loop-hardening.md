@@ -2,7 +2,7 @@
 id = "KPmx9VzP"
 title = "Release Gate: Core Loop Hardening"
 created = "2026-03-04T03:00:48.730307+00:00"
-updated = "2026-03-04T06:35:51+0000"
+updated = "2026-03-04T07:24:44+0000"
 tags = []
 +++
 
@@ -16,9 +16,12 @@ tags = []
   - checkout activation and active-workspace demotion
   - worktree creation metadata
 - [x] Full `cargo test -p e2e` green with new suites included.
+- [x] Added workspace failure-path rollback coverage:
+  - failed `workspace create --checkout` does not persist stale workspace rows
+  - failed `workspace create --worktree` does not persist stale workspace rows
 
 ## Next
 
 - [x] Add explicit edge-case e2e coverage for disallowed workspace transitions and expected error messaging.
 - [x] Add branch-context hydration edge cases for mixed feature/spec links when switching between branches/worktrees.
-- [ ] Add workspace failure-path e2e coverage for git checkout/worktree creation errors and rollback expectations.
+- [x] Add workspace failure-path e2e coverage for git checkout/worktree creation errors and rollback expectations.
