@@ -43,7 +43,7 @@ export const ROUTE_LABELS: Record<AppRoutePath, string> = {
   [RELEASES_ROUTE]: 'Releases',
   [FEATURES_ROUTE]: 'Features',
   [SPECS_ROUTE]: 'Specs',
-  [WORKFLOW_WORKSPACE_ROUTE]: 'Workspace',
+  [WORKFLOW_WORKSPACE_ROUTE]: 'Workspaces',
   [ADRS_ROUTE]: 'Decisions',
   [NOTES_ROUTE]: 'Notes',
   [ACTIVITY_ROUTE]: 'Activity',

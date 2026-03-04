@@ -12,9 +12,8 @@ import {
   ProjectConfig,
   ReleaseDocument,
   ReleaseInfo as ReleaseEntry,
-  SpecDocument,
-  SpecInfo as SpecEntry,
 } from '@/bindings';
+import { SpecDocument, SpecInfo as SpecEntry } from '@/lib/types/spec';
 import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import {
   getActiveProject,

@@ -23,7 +23,7 @@ pub fn import_notes_from_files(scope: NoteScope, ship_dir: Option<&Path>) -> Res
             let d = ship_dir.ok_or_else(|| anyhow!("Project scope requires ship_dir"))?;
             runtime::project::notes_dir(d)
         }
-        NoteScope::User => runtime::get_global_dir()?.join("notes"),
+        NoteScope::User => runtime::project::get_global_dir()?.join("notes"),
     };
     if !notes_dir.exists() {
         return Ok(0);

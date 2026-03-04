@@ -4,27 +4,30 @@ use runtime::config::{
     set_active_mode, AiConfig, McpServerConfig, ModeConfig, ProjectConfig, ProjectDiscovery,
 };
 use runtime::project::{
-    adrs_dir, features_dir, get_active_project_global, issues_dir, releases_dir,
-    set_active_project_global, specs_dir,
+    adrs_dir, features_dir, get_active_project_global, get_project_dir, issues_dir, releases_dir,
+    set_active_project_global, specs_dir, SHIP_DIR_NAME,
 };
 use runtime::{
-    create_issue, create_prompt, create_skill, create_spec, create_user_skill, delete_issue,
-    delete_prompt, delete_skill, delete_spec, delete_user_skill, get_effective_skill, get_issue,
-    get_project_dir, get_project_name, get_prompt, get_skill, get_spec_raw as get_spec_content,
-    get_user_skill, get_workspace, ingest_external_events, init_project, list_catalog,
-    list_catalog_by_kind, list_effective_skills, list_events_since, list_issues_full, list_models,
-    list_prompts, list_providers, list_registered_projects, list_skills, list_specs,
-    list_user_skills, log_action, move_issue, read_log_entries, read_template, register_project,
-    resolve_agent_config, search_catalog, update_issue, update_prompt, update_skill, update_spec,
-    update_user_skill, AgentConfig, CatalogEntry, CatalogKind, EventRecord, Issue, IssueEntry,
-    LogEntry, ModelInfo, Prompt, ProviderInfo, Skill, Workspace, SHIP_DIR_NAME,
+    activate_workspace, create_prompt, create_skill, create_user_skill, create_workspace,
+    delete_prompt, delete_skill, delete_user_skill, get_effective_skill, get_prompt, get_skill,
+    get_user_skill, get_workspace, ingest_external_events, list_catalog, list_catalog_by_kind,
+    list_effective_skills, list_events_since, list_models, list_prompts, list_providers,
+    list_skills, list_user_skills, list_workspaces, log_action, read_log_entries,
+    resolve_agent_config, search_catalog, sync_workspace, transition_workspace_status,
+    update_prompt, update_skill, update_user_skill, AgentConfig, CatalogEntry, CatalogKind,
+    CreateWorkspaceRequest, EventRecord, LogEntry, ModelInfo, Prompt, ProviderInfo, Skill,
+    Workspace, WorkspaceStatus, WorkspaceType,
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
-    create_adr, create_feature, create_note, create_release, delete_adr, get_adr_by_id,
-    get_feature_by_id, get_note_by_id, get_release_by_id, list_adrs, list_features, list_notes,
-    list_releases, move_adr, update_adr, update_feature, update_note_content, update_release,
-    AdrEntry, AdrStatus, FeatureEntry, NoteScope, ReleaseEntry, ADR,
+    create_adr, create_feature, create_issue, create_note, create_release, create_spec, delete_adr,
+    delete_issue, delete_spec, get_adr_by_id, get_feature_by_id, get_issue_by_id, get_note_by_id,
+    get_project_name, get_release_by_id, get_spec_by_id, init_project, list_adrs, list_features,
+    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
+    move_issue, read_template, register_project, update_adr, update_feature, update_issue,
+    update_note_content, update_release, update_spec, AdrEntry, AdrStatus,
+    FeatureEntry as ProjectFeatureEntry, Issue, IssueEntry, IssueStatus, NoteScope,
+    ReleaseEntry as ProjectReleaseEntry, Spec, SpecEntry, ADR,
 };
 use specta::Type;
 use std::collections::HashSet;
@@ -100,6 +103,69 @@ pub struct SpecDocument {
     pub file_name: String,
     pub title: String,
     pub path: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct VisionDocument {
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct ReleaseInfo {
+    pub id: String,
+    pub file_name: String,
+    pub version: String,
+    pub status: String,
+    pub path: String,
+    pub updated: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct ReleaseDocument {
+    pub id: String,
+    pub file_name: String,
+    pub version: String,
+    pub status: String,
+    pub path: String,
+    pub updated: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureInfo {
+    pub id: String,
+    pub file_name: String,
+    pub title: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub path: String,
+    pub updated: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureDocument {
+    pub id: String,
+    pub file_name: String,
+    pub title: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub path: String,
+    pub updated: String,
     pub content: String,
 }
 
@@ -196,36 +262,165 @@ fn issues_signature(dir: &Path) -> (u64, u128) {
     (count, latest)
 }
 
-fn derive_spec_title(file_name: &str, content: &str) -> String {
-    content
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix("# ")
-                .map(|value| value.trim().to_string())
-        })
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            Path::new(file_name)
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or(file_name)
-                .replace('-', " ")
-        })
+fn find_markdown_file_by_id(root: &Path, id: &str) -> Option<PathBuf> {
+    if !root.exists() {
+        return None;
+    }
+    let needle = format!("id = \"{}\"", id);
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            if content.contains(&needle) {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
-fn spec_document_from_path(path: PathBuf) -> Result<SpecDocument, String> {
-    let content = get_spec_content(path.clone()).map_err(|e| e.to_string())?;
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string();
-    Ok(SpecDocument {
-        title: derive_spec_title(&file_name, &content),
-        file_name,
+fn resolve_feature_markdown_path(
+    project_dir: &Path,
+    entry: &ProjectFeatureEntry,
+) -> Option<PathBuf> {
+    if !entry.path.is_empty() {
+        let direct = PathBuf::from(&entry.path);
+        if direct.exists() {
+            return Some(direct);
+        }
+    }
+
+    let features_root = features_dir(project_dir);
+    let status = entry.status.to_string();
+    let primary = features_root.join(&status).join(&entry.file_name);
+    if primary.exists() {
+        return Some(primary);
+    }
+
+    for candidate_dir in [
+        features_root.join("planned"),
+        features_root.join("in-progress"),
+        features_root.join("implemented"),
+        features_root.join("deprecated"),
+        features_root.clone(),
+    ] {
+        let candidate = candidate_dir.join(&entry.file_name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    find_markdown_file_by_id(&features_root, &entry.id)
+}
+
+fn resolve_release_markdown_path(
+    project_dir: &Path,
+    entry: &ProjectReleaseEntry,
+) -> Option<PathBuf> {
+    if !entry.path.is_empty() {
+        let direct = PathBuf::from(&entry.path);
+        if direct.exists() {
+            return Some(direct);
+        }
+    }
+
+    let releases_root = releases_dir(project_dir);
+    let dashed_file = format!("{}.md", entry.version.replace('.', "-"));
+    let candidates = [
+        entry.file_name.clone(),
+        format!("{}.md", entry.version),
+        dashed_file,
+    ];
+
+    for base_dir in [releases_root.clone(), releases_root.join("upcoming")] {
+        for file_name in &candidates {
+            let candidate = base_dir.join(file_name);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    find_markdown_file_by_id(&releases_root, &entry.id)
+}
+
+fn map_feature_info(project_dir: &Path, entry: &ProjectFeatureEntry) -> FeatureInfo {
+    let path = resolve_feature_markdown_path(project_dir, entry)
+        .unwrap_or_else(|| features_dir(project_dir).join(&entry.file_name));
+    FeatureInfo {
+        id: entry.id.clone(),
+        file_name: entry.file_name.clone(),
+        title: entry.feature.metadata.title.clone(),
+        status: entry.status.to_string(),
+        release_id: entry.feature.metadata.release_id.clone(),
+        spec_id: entry.feature.metadata.spec_id.clone(),
+        branch: entry.feature.metadata.branch.clone(),
+        description: entry.feature.metadata.description.clone(),
         path: path.to_string_lossy().to_string(),
+        updated: entry.feature.metadata.updated.clone(),
+    }
+}
+
+fn map_feature_document(project_dir: &Path, entry: &ProjectFeatureEntry) -> FeatureDocument {
+    let info = map_feature_info(project_dir, entry);
+    let content = resolve_feature_markdown_path(project_dir, entry)
+        .and_then(|path| fs::read_to_string(path).ok())
+        .unwrap_or_else(|| entry.feature.body.clone());
+    FeatureDocument {
+        id: info.id,
+        file_name: info.file_name,
+        title: info.title,
+        status: info.status,
+        release_id: info.release_id,
+        spec_id: info.spec_id,
+        branch: info.branch,
+        description: info.description,
+        path: info.path,
+        updated: info.updated,
         content,
-    })
+    }
+}
+
+fn map_release_info(project_dir: &Path, entry: &ProjectReleaseEntry) -> ReleaseInfo {
+    let path = resolve_release_markdown_path(project_dir, entry)
+        .unwrap_or_else(|| releases_dir(project_dir).join(&entry.file_name));
+    ReleaseInfo {
+        id: entry.id.clone(),
+        file_name: entry.file_name.clone(),
+        version: entry.version.clone(),
+        status: entry.status.to_string(),
+        path: path.to_string_lossy().to_string(),
+        updated: entry.release.metadata.updated.clone(),
+    }
+}
+
+fn map_release_document(project_dir: &Path, entry: &ProjectReleaseEntry) -> ReleaseDocument {
+    let info = map_release_info(project_dir, entry);
+    let content = resolve_release_markdown_path(project_dir, entry)
+        .and_then(|path| fs::read_to_string(path).ok())
+        .unwrap_or_else(|| entry.release.body.clone());
+    ReleaseDocument {
+        id: info.id,
+        file_name: info.file_name,
+        version: info.version,
+        status: info.status,
+        path: info.path,
+        updated: info.updated,
+        content,
+    }
 }
 
 // ─── AI helper ────────────────────────────────────────────────────────────────
@@ -282,7 +477,7 @@ fn list_projects() -> Result<Vec<ProjectDiscovery>, String> {
         let ship_path = ensure_ship_path(&entry.path);
         let key = ship_path.to_string_lossy().to_string();
         if ship_path.exists() && seen_paths.insert(key) {
-            let issue_count = list_issues_full(ship_path.clone())
+            let issue_count = list_issues(&ship_path)
                 .map(|issues| issues.len())
                 .unwrap_or(0);
             projects.push(ProjectDiscovery {
@@ -305,7 +500,7 @@ fn get_active_project(state: State<AppState>) -> Result<Option<ProjectInfo>, Str
             drop(guard);
             if let Ok(Some(path)) = get_active_project_global() {
                 if path.exists() {
-                    let issues = list_issues_full(path.clone()).unwrap_or_default();
+                    let issues = list_issues(&path).unwrap_or_default();
                     return Ok(Some(ProjectInfo {
                         name: get_project_name(&path),
                         path: path.to_string_lossy().to_string(),
@@ -316,7 +511,7 @@ fn get_active_project(state: State<AppState>) -> Result<Option<ProjectInfo>, Str
             Ok(None)
         }
         Some(path) => {
-            let issues = list_issues_full(path.clone()).unwrap_or_default();
+            let issues = list_issues(path).unwrap_or_default();
             Ok(Some(ProjectInfo {
                 name: get_project_name(path),
                 path: path.to_string_lossy().to_string(),
@@ -337,7 +532,7 @@ fn set_active_project(
     if !ship_path.exists() {
         return Err(format!("Path does not exist: {}", ship_path.display()));
     }
-    let issues = list_issues_full(ship_path.clone()).unwrap_or_default();
+    let issues = list_issues(&ship_path).unwrap_or_default();
     let info = ProjectInfo {
         name: get_project_name(&ship_path),
         path: ship_path.to_string_lossy().to_string(),
@@ -378,7 +573,7 @@ async fn pick_and_open_project(
         init_project(base_dir).map_err(|e| e.to_string())?
     };
 
-    let issues = list_issues_full(final_ship_path.clone()).unwrap_or_default();
+    let issues = list_issues(&final_ship_path).unwrap_or_default();
     let info = ProjectInfo {
         name: get_project_name(&final_ship_path),
         path: final_ship_path.to_string_lossy().to_string(),
@@ -411,7 +606,7 @@ fn detect_current_project(
             if !ship_path.exists() {
                 continue;
             }
-            let issues = list_issues_full(ship_path.clone()).unwrap_or_default();
+            let issues = list_issues(&ship_path).unwrap_or_default();
             let info = ProjectInfo {
                 name: get_project_name(&ship_path),
                 path: ship_path.to_string_lossy().to_string(),
@@ -429,7 +624,7 @@ fn detect_current_project(
     // Fallback: detect local .ship via cwd traversal and register it.
     match get_project_dir(None) {
         Ok(ship_path) => {
-            let issues = list_issues_full(ship_path.clone()).unwrap_or_default();
+            let issues = list_issues(&ship_path).unwrap_or_default();
             let info = ProjectInfo {
                 name: get_project_name(&ship_path),
                 path: ship_path.to_string_lossy().to_string(),
@@ -475,7 +670,7 @@ async fn create_new_project(
         init_project(base_dir.clone()).map_err(|e| e.to_string())?
     };
 
-    let issues = list_issues_full(ship_path.clone()).unwrap_or_default();
+    let issues = list_issues(&ship_path).unwrap_or_default();
     let info = ProjectInfo {
         name: get_project_name(&ship_path),
         path: ship_path.to_string_lossy().to_string(),
@@ -556,7 +751,7 @@ fn create_project_with_options(
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| get_project_name(&ship_path));
 
-    let issues = list_issues_full(ship_path.clone()).unwrap_or_default();
+    let issues = list_issues(&ship_path).unwrap_or_default();
     let info = ProjectInfo {
         name: display_name.clone(),
         path: ship_path.to_string_lossy().to_string(),
@@ -589,7 +784,7 @@ fn start_project_watcher(
         let adrs_dir = adrs_dir(&ship_root);
         let features_dir = features_dir(&ship_root);
         let releases_dir = releases_dir(&ship_root);
-        let events_file = ship_root.join("events.ndjson");
+        let events_db = runtime::state_db::project_db_path(&ship_root).ok();
         let config_file = ship_root.join(runtime::config::PRIMARY_CONFIG_FILE);
 
         let mut last_issues = issues_signature(&issues_dir);
@@ -597,7 +792,7 @@ fn start_project_watcher(
         let mut last_adrs = issues_signature(&adrs_dir);
         let mut last_features = issues_signature(&features_dir);
         let mut last_releases = issues_signature(&releases_dir);
-        let mut last_events = file_signature(&events_file);
+        let mut last_events = events_db.as_ref().and_then(|path| file_signature(path));
         let mut last_config = file_signature(&config_file);
 
         loop {
@@ -658,11 +853,15 @@ fn start_project_watcher(
                 }
             }
 
-            let next_events = file_signature(&events_file);
-            if next_events != last_events {
-                let _ = ShipEvent::EventsChanged.emit(&app_handle);
-                let _ = ShipEvent::LogChanged.emit(&app_handle);
-                last_events = next_events;
+            if let Some(events_db) = events_db.as_ref() {
+                let next_events = file_signature(events_db);
+                if next_events != last_events {
+                    let _ = ShipEvent::IssuesChanged.emit(&app_handle);
+                    let _ = ShipEvent::SpecsChanged.emit(&app_handle);
+                    let _ = ShipEvent::EventsChanged.emit(&app_handle);
+                    let _ = ShipEvent::LogChanged.emit(&app_handle);
+                    last_events = next_events;
+                }
             }
         }
     });
@@ -686,13 +885,14 @@ fn start_project_watcher(
 #[specta::specta]
 fn list_items(state: State<AppState>) -> Result<Vec<IssueEntry>, String> {
     let project_dir = get_active_dir(&state)?;
-    list_issues_full(project_dir).map_err(|e| e.to_string())
+    list_issues(&project_dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 #[specta::specta]
 fn get_issue_by_path(path: String) -> Result<Issue, String> {
-    get_issue(PathBuf::from(path)).map_err(|e| e.to_string())
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    Issue::from_markdown(&content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -706,84 +906,70 @@ fn create_new_issue(
     state: State<AppState>,
 ) -> Result<IssueEntry, String> {
     let project_dir = get_active_dir(&state)?;
+    let issue_status = status
+        .parse::<IssueStatus>()
+        .map_err(|_| format!("Invalid issue status: {}", status))?;
 
-    let path = create_issue(project_dir.clone(), &title, &description, &status)
-        .map_err(|e| e.to_string())?;
-    if assignee.is_some() || tags.is_some() {
-        let mut issue = get_issue(path.clone()).map_err(|e| e.to_string())?;
-        issue.metadata.assignee = assignee;
-        issue.metadata.tags = tags.unwrap_or_default();
-        update_issue(path.clone(), issue).map_err(|e| e.to_string())?;
+    let entry = create_issue(
+        &project_dir,
+        &title,
+        &description,
+        issue_status,
+        assignee,
+        None, // priority
+        None, // release_id
+        None, // feature_id
+    )
+    .map_err(|e| e.to_string())?;
+
+    if let Some(t) = tags {
+        let mut issue = entry.issue.clone();
+        issue.metadata.tags = t;
+        update_issue(&project_dir, &entry.id, issue).map_err(|e| e.to_string())?;
     }
+
     log_action(&project_dir, "issue create", &format!("Created: {}", title)).ok();
 
-    let issue = get_issue(path.clone()).map_err(|e| e.to_string())?;
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string();
-    Ok(IssueEntry {
-        file_name,
-        status,
-        path: path.to_string_lossy().to_string(),
-        issue,
-    })
+    get_issue_by_id(&project_dir, &entry.id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 #[specta::specta]
-fn update_issue_by_path(path: String, issue: Issue) -> Result<(), String> {
-    update_issue(PathBuf::from(&path), issue.clone()).map_err(|e| e.to_string())?;
+fn update_issue_command(id: String, issue: Issue, state: State<AppState>) -> Result<(), String> {
+    let project_dir = get_active_dir(&state)?;
+    update_issue(&project_dir, &id, issue).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 fn move_issue_status(
-    file_name: String,
-    from_status: String,
-    to_status: String,
+    id: String,
+    new_status: String,
     state: State<AppState>,
 ) -> Result<IssueEntry, String> {
     let project_dir = get_active_dir(&state)?;
+    let status = new_status
+        .parse::<IssueStatus>()
+        .map_err(|_| format!("Invalid issue status: {}", new_status))?;
 
-    let issue_path = issues_dir(&project_dir).join(&from_status).join(&file_name);
-    let new_path = move_issue(project_dir.clone(), issue_path, &from_status, &to_status)
-        .map_err(|e| e.to_string())?;
+    let entry = move_issue(&project_dir, &id, status).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
         "issue move",
-        &format!("Moved {} → {}", file_name, to_status),
+        &format!("Moved {} → {}", entry.file_name, new_status),
     )
     .ok();
 
-    let issue = get_issue(new_path.clone()).map_err(|e| e.to_string())?;
-    Ok(IssueEntry {
-        file_name,
-        status: to_status,
-        path: new_path.to_string_lossy().to_string(),
-        issue,
-    })
+    Ok(entry)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn delete_issue_by_path(path: String, state: State<AppState>) -> Result<(), String> {
-    let guard = state.active_project.lock().unwrap();
-    let project_dir = guard.as_ref().cloned();
-    drop(guard);
-
-    let p = PathBuf::from(&path);
-    let name = p
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string();
-    delete_issue(p).map_err(|e| e.to_string())?;
-    if let Some(dir) = project_dir {
-        log_action(&dir, "issue delete", &format!("Deleted: {}", name)).ok();
-    }
+fn delete_issue_cmd(id: String, state: State<AppState>) -> Result<(), String> {
+    let project_dir = get_active_dir(&state)?;
+    delete_issue(&project_dir, &id).map_err(|e| e.to_string())?;
+    log_action(&project_dir, "issue delete", &format!("Deleted: {}", id)).ok();
     Ok(())
 }
 
@@ -847,28 +1033,16 @@ fn delete_adr_cmd(id: String, state: State<AppState>) -> Result<(), String> {
 
 #[tauri::command]
 #[specta::specta]
-fn list_specs_cmd(state: State<AppState>) -> Result<Vec<SpecInfo>, String> {
+fn list_specs_cmd(state: State<AppState>) -> Result<Vec<SpecEntry>, String> {
     let project_dir = get_active_dir(&state)?;
-    let entries = list_specs(project_dir).map_err(|e| e.to_string())?;
-    Ok(entries
-        .into_iter()
-        .map(|entry| SpecInfo {
-            file_name: entry.file_name,
-            title: entry.title,
-            path: entry.path,
-        })
-        .collect())
+    list_specs(&project_dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 #[specta::specta]
-fn get_spec_cmd(file_name: String, state: State<AppState>) -> Result<SpecDocument, String> {
+fn get_spec_cmd(id: String, state: State<AppState>) -> Result<SpecEntry, String> {
     let project_dir = get_active_dir(&state)?;
-    let path = specs_dir(&project_dir).join(&file_name);
-    if !path.exists() {
-        return Err(format!("Spec not found: {}", file_name));
-    }
-    spec_document_from_path(path)
+    get_spec_by_id(&project_dir, &id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -877,54 +1051,42 @@ fn create_spec_cmd(
     title: String,
     content: String,
     state: State<AppState>,
-) -> Result<SpecDocument, String> {
+) -> Result<SpecEntry, String> {
     let project_dir = get_active_dir(&state)?;
-    let path =
-        create_spec(project_dir.clone(), &title, &content, "draft").map_err(|e| e.to_string())?;
+    let entry =
+        create_spec(&project_dir, &title, &content, None, None).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
         "spec create",
         &format!("Created Spec: {}", title),
     )
     .ok();
-    spec_document_from_path(path)
+    Ok(entry)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn update_spec_cmd(
-    file_name: String,
-    content: String,
-    state: State<AppState>,
-) -> Result<SpecDocument, String> {
+fn update_spec_cmd(id: String, spec: Spec, state: State<AppState>) -> Result<SpecEntry, String> {
     let project_dir = get_active_dir(&state)?;
-    let path = specs_dir(&project_dir).join(&file_name);
-    if !path.exists() {
-        return Err(format!("Spec not found: {}", file_name));
-    }
-    update_spec(path.clone(), &content).map_err(|e| e.to_string())?;
+    let entry = update_spec(&project_dir, &id, spec).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
         "spec update",
-        &format!("Updated Spec: {}", file_name),
+        &format!("Updated Spec: {}", entry.file_name),
     )
     .ok();
-    spec_document_from_path(path)
+    Ok(entry)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn delete_spec_cmd(file_name: String, state: State<AppState>) -> Result<(), String> {
+fn delete_spec_cmd(id: String, state: State<AppState>) -> Result<(), String> {
     let project_dir = get_active_dir(&state)?;
-    let path = specs_dir(&project_dir).join(&file_name);
-    if !path.exists() {
-        return Err(format!("Spec not found: {}", file_name));
-    }
-    delete_spec(path).map_err(|e| e.to_string())?;
+    delete_spec(&project_dir, &id).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
         "spec delete",
-        &format!("Deleted Spec: {}", file_name),
+        &format!("Deleted Spec: {}", id),
     )
     .ok();
     Ok(())
@@ -934,16 +1096,22 @@ fn delete_spec_cmd(file_name: String, state: State<AppState>) -> Result<(), Stri
 
 #[tauri::command]
 #[specta::specta]
-fn list_releases_cmd(state: State<AppState>) -> Result<Vec<ReleaseEntry>, String> {
+fn list_releases_cmd(state: State<AppState>) -> Result<Vec<ReleaseInfo>, String> {
     let project_dir = get_active_dir(&state)?;
-    list_releases(&project_dir).map_err(|e| e.to_string())
+    let entries = list_releases(&project_dir).map_err(|e| e.to_string())?;
+    Ok(entries
+        .iter()
+        .map(|entry| map_release_info(&project_dir, entry))
+        .collect())
 }
 
 #[tauri::command]
 #[specta::specta]
-fn get_release_cmd(file_name: String, state: State<AppState>) -> Result<ReleaseEntry, String> {
+fn get_release_cmd(file_name: String, state: State<AppState>) -> Result<ReleaseDocument, String> {
     let project_dir = get_active_dir(&state)?;
-    get_release_by_id(&project_dir, file_name.trim_end_matches(".md")).map_err(|e| e.to_string())
+    let entry = get_release_by_id(&project_dir, file_name.trim_end_matches(".md"))
+        .map_err(|e| e.to_string())?;
+    Ok(map_release_document(&project_dir, &entry))
 }
 
 #[tauri::command]
@@ -952,7 +1120,7 @@ fn create_release_cmd(
     version: String,
     content: String,
     state: State<AppState>,
-) -> Result<ReleaseEntry, String> {
+) -> Result<ReleaseDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let entry = create_release(&project_dir, &version, &content).map_err(|e| e.to_string())?;
     log_action(
@@ -961,7 +1129,7 @@ fn create_release_cmd(
         &format!("Created Release: {}", version),
     )
     .ok();
-    Ok(entry)
+    Ok(map_release_document(&project_dir, &entry))
 }
 
 #[tauri::command]
@@ -970,13 +1138,14 @@ fn update_release_cmd(
     file_name: String,
     content: String,
     state: State<AppState>,
-) -> Result<ReleaseEntry, String> {
+) -> Result<ReleaseDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let id = file_name.trim_end_matches(".md");
     let release_entry = get_release_by_id(&project_dir, id).map_err(|e| e.to_string())?;
     let entry =
         update_release(&project_dir, id, release_entry.release).map_err(|e| e.to_string())?;
-    let path = releases_dir(&project_dir).join(&file_name);
+    let path = resolve_release_markdown_path(&project_dir, &entry)
+        .unwrap_or_else(|| releases_dir(&project_dir).join(&file_name));
     fs::write(&path, &content).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
@@ -984,23 +1153,33 @@ fn update_release_cmd(
         &format!("Updated Release: {}", file_name),
     )
     .ok();
-    Ok(entry)
+    let updated = get_release_by_id(&project_dir, id).map_err(|e| e.to_string())?;
+    Ok(map_release_document(&project_dir, &updated))
 }
 
 // ─── Commands: Features ──────────────────────────────────────────────────────
 
 #[tauri::command]
 #[specta::specta]
-fn list_features_cmd(state: State<AppState>) -> Result<Vec<FeatureEntry>, String> {
+fn list_features_cmd(state: State<AppState>) -> Result<Vec<FeatureInfo>, String> {
     let project_dir = get_active_dir(&state)?;
-    list_features(&project_dir).map_err(|e| e.to_string())
+    let entries = list_features(&project_dir).map_err(|e| e.to_string())?;
+    Ok(entries
+        .iter()
+        .map(|entry| map_feature_info(&project_dir, entry))
+        .collect())
 }
 
 #[tauri::command]
 #[specta::specta]
-fn get_feature_cmd(file_name: String, state: State<'_, AppState>) -> Result<FeatureEntry, String> {
+fn get_feature_cmd(
+    file_name: String,
+    state: State<'_, AppState>,
+) -> Result<FeatureDocument, String> {
     let project_dir = get_active_dir(&state)?;
-    get_feature_by_id(&project_dir, file_name.trim_end_matches(".md")).map_err(|e| e.to_string())
+    let entry = get_feature_by_id(&project_dir, file_name.trim_end_matches(".md"))
+        .map_err(|e| e.to_string())?;
+    Ok(map_feature_document(&project_dir, &entry))
 }
 
 #[tauri::command]
@@ -1011,7 +1190,7 @@ fn create_feature_cmd(
     release: Option<String>,
     spec: Option<String>,
     state: State<AppState>,
-) -> Result<FeatureEntry, String> {
+) -> Result<FeatureDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let entry = create_feature(
         &project_dir,
@@ -1028,7 +1207,7 @@ fn create_feature_cmd(
         &format!("Created Feature: {}", title),
     )
     .ok();
-    Ok(entry)
+    Ok(map_feature_document(&project_dir, &entry))
 }
 
 #[tauri::command]
@@ -1037,18 +1216,16 @@ fn update_feature_cmd(
     file_name: String,
     content: String,
     state: State<AppState>,
-) -> Result<FeatureEntry, String> {
+) -> Result<FeatureDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let id = file_name.trim_end_matches(".md");
     // Get existing feature to update its content
     let feature_entry = get_feature_by_id(&project_dir, id).map_err(|e| e.to_string())?;
-    let entry =
+    let _entry =
         update_feature(&project_dir, id, feature_entry.feature).map_err(|e| e.to_string())?;
-    // We also need to update its content by saving it if it was a file, but `update_feature` handles metadata DB.
-    // However, `update_feature_raw` is not publicly exposed on `ship-module-project`, so we'll need to create a `update_feature_content` like in notes.
-    // Alternatively, I can just use `runtime::update_feature` but that was refactored.
-    // The previous implementation wrote to `features_dir(&project_dir).join(&file_name)`
-    let path = features_dir(&project_dir).join(&file_name);
+    let refreshed = get_feature_by_id(&project_dir, id).map_err(|e| e.to_string())?;
+    let path = resolve_feature_markdown_path(&project_dir, &refreshed)
+        .unwrap_or_else(|| features_dir(&project_dir).join(&file_name));
     fs::write(&path, &content).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
@@ -1056,7 +1233,8 @@ fn update_feature_cmd(
         &format!("Updated Feature: {}", file_name),
     )
     .ok();
-    Ok(entry)
+    let updated = get_feature_by_id(&project_dir, id).map_err(|e| e.to_string())?;
+    Ok(map_feature_document(&project_dir, &updated))
 }
 
 #[tauri::command]
@@ -1064,6 +1242,29 @@ fn update_feature_cmd(
 fn get_template_cmd(kind: String, state: State<AppState>) -> Result<String, String> {
     let project_dir = get_active_dir(&state)?;
     read_template(&project_dir, &kind).map_err(|e| e.to_string())
+}
+
+// ─── Commands: Vision ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+fn get_vision_cmd(state: State<AppState>) -> Result<VisionDocument, String> {
+    let project_dir = get_active_dir(&state)?;
+    let vision_path = runtime::project::project_ns(&project_dir).join("vision.md");
+    let content = std::fs::read_to_string(&vision_path).unwrap_or_default();
+    Ok(VisionDocument { content })
+}
+
+#[tauri::command]
+#[specta::specta]
+fn update_vision_cmd(content: String, state: State<AppState>) -> Result<VisionDocument, String> {
+    let project_dir = get_active_dir(&state)?;
+    let vision_path = runtime::project::project_ns(&project_dir).join("vision.md");
+    if let Some(parent) = vision_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&vision_path, &content).map_err(|e| e.to_string())?;
+    Ok(VisionDocument { content })
 }
 
 // ─── Commands: Notes ──────────────────────────────────────────────────────────
@@ -1231,6 +1432,123 @@ async fn get_workspace_cmd(
     let project_dir = get_active_dir(&state)?;
     tauri::async_runtime::spawn_blocking(move || {
         get_workspace(&project_dir, &branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn list_workspaces_cmd(state: State<'_, AppState>) -> Result<Vec<Workspace>, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        list_workspaces(&project_dir).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn sync_workspace_cmd(
+    branch: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Workspace, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let resolved_branch = if let Some(value) = branch {
+            value
+        } else {
+            let git_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+            let output = std::process::Command::new("git")
+                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                .current_dir(&git_root)
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err("Failed to resolve active git branch".to_string());
+            }
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+
+        if resolved_branch.is_empty() || resolved_branch == "HEAD" {
+            return Err("No active branch to sync".to_string());
+        }
+
+        sync_workspace(&project_dir, &resolved_branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn create_workspace_cmd(
+    branch: String,
+    workspace_type: Option<String>,
+    feature_id: Option<String>,
+    spec_id: Option<String>,
+    release_id: Option<String>,
+    activate: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<Workspace, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let parsed_workspace_type = workspace_type
+            .as_deref()
+            .map(|value| value.parse::<WorkspaceType>())
+            .transpose()
+            .map_err(|e| e.to_string())?;
+
+        let status = if activate.unwrap_or(false) {
+            Some(WorkspaceStatus::Active)
+        } else {
+            None
+        };
+
+        create_workspace(
+            &project_dir,
+            CreateWorkspaceRequest {
+                branch,
+                workspace_type: parsed_workspace_type,
+                status,
+                feature_id,
+                spec_id,
+                release_id,
+                ..CreateWorkspaceRequest::default()
+            },
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn activate_workspace_cmd(
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<Workspace, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        activate_workspace(&project_dir, &branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn transition_workspace_cmd(
+    branch: String,
+    status: String,
+    state: State<'_, AppState>,
+) -> Result<Workspace, String> {
+    let project_dir = get_active_dir(&state)?;
+    let next_status: WorkspaceStatus = status.parse().map_err(|e: anyhow::Error| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        transition_workspace_status(&project_dir, &branch, next_status).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1682,9 +2000,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             list_items,
             get_issue_by_path,
             create_new_issue,
-            update_issue_by_path,
+            update_issue_command,
             move_issue_status,
-            delete_issue_by_path,
+            delete_issue_cmd,
             // ADRs
             list_adrs_cmd,
             create_new_adr,
@@ -1709,6 +2027,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             create_feature_cmd,
             update_feature_cmd,
             get_template_cmd,
+            // Vision
+            get_vision_cmd,
+            update_vision_cmd,
             // Notes
             list_notes_cmd,
             get_note_cmd,
@@ -1725,6 +2046,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             save_permissions_cmd,
             // Workspace
             get_workspace_cmd,
+            list_workspaces_cmd,
+            sync_workspace_cmd,
+            create_workspace_cmd,
+            activate_workspace_cmd,
+            transition_workspace_cmd,
             get_current_branch_cmd,
             // Log
             list_events_cmd,

@@ -2,8 +2,6 @@
 members = [
     "crates/runtime",
     "crates/modules/project",
-    "crates/modules/workflow",
-    "crates/modules/agents",
     "crates/modules/git",
     "crates/cli",
     "crates/mcp",

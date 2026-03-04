@@ -22,25 +22,27 @@ export default function ReleaseHubToolbar({
   onSortByChange,
 }: ReleaseHubToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex w-full flex-nowrap items-center justify-end gap-2 overflow-x-auto pb-0.5">
       <Input
         value={search}
         onChange={(event) => onSearchChange(event.target.value)}
         placeholder="Search releases"
-        className="h-8 w-[220px]"
+        className="h-8 w-[210px] min-w-[180px] shrink-0"
       />
-      <HubViewToggle
-        value={viewFilter}
-        options={['all', 'blocking', 'ready']}
-        onChange={onViewFilterChange}
-      />
+      <div className="shrink-0">
+        <HubViewToggle
+          value={viewFilter}
+          options={['all', 'blocking', 'ready']}
+          onChange={onViewFilterChange}
+        />
+      </div>
       <Select
         value={sortBy}
         onValueChange={(value) => {
           if (value) onSortByChange(value);
         }}
       >
-        <SelectTrigger size="sm" className="w-[170px]">
+        <SelectTrigger size="sm" className="w-[160px] shrink-0">
           <SelectValue>
             {sortOptions.find((option) => option.value === sortBy)?.label}
           </SelectValue>

@@ -24,6 +24,48 @@ fn feature_file_path(ship_dir: &Path, status: &FeatureStatus, title: &str) -> Pa
     }
 }
 
+fn resolve_feature_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(entry) = get_feature_db(ship_dir, reference)? {
+        return Ok(Some(entry.id));
+    }
+
+    let without_ext = reference.trim_end_matches(".md");
+    if without_ext != reference {
+        if let Some(entry) = get_feature_db(ship_dir, without_ext)? {
+            return Ok(Some(entry.id));
+        }
+    }
+
+    let reference_file = if reference.ends_with(".md") {
+        reference.to_string()
+    } else {
+        format!("{}.md", reference)
+    };
+    let reference_slug = runtime::project::sanitize_file_name(without_ext);
+
+    for entry in list_features_db(ship_dir)? {
+        let file_match = entry.file_name.eq_ignore_ascii_case(reference)
+            || entry.file_name.eq_ignore_ascii_case(&reference_file);
+        let slug_match = runtime::project::sanitize_file_name(&entry.feature.metadata.title)
+            .eq_ignore_ascii_case(&reference_slug);
+        if file_match || slug_match {
+            return Ok(Some(entry.id));
+        }
+    }
+
+    Ok(None)
+}
+
+fn require_feature_id(ship_dir: &Path, reference: &str) -> Result<String> {
+    resolve_feature_id(ship_dir, reference)?
+        .ok_or_else(|| anyhow!("Feature not found: {}", reference))
+}
+
 pub fn write_feature_file(
     ship_dir: &Path,
     feature: &Feature,
@@ -132,12 +174,14 @@ pub fn create_feature(
 }
 
 pub fn get_feature_by_id(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
-    get_feature_db(ship_dir, id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))
+    let resolved_id = require_feature_id(ship_dir, id)?;
+    get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))
 }
 
 pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result<FeatureEntry> {
-    let existing =
-        get_feature_db(ship_dir, id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
+    let resolved_id = require_feature_id(ship_dir, id)?;
+    let existing = get_feature_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
     feature.metadata.updated = Utc::now().to_rfc3339();
 
     upsert_feature_db(ship_dir, &feature, &existing.status)?;
@@ -148,26 +192,31 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
         "logic",
         runtime::EventEntity::Feature,
         runtime::EventAction::Update,
-        id.to_string(),
+        resolved_id.clone(),
         Some(format!("title={}", feature.metadata.title)),
     )?;
 
-    Ok(get_feature_db(ship_dir, id)?.unwrap())
+    let mut entry = get_feature_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Feature not found after update"))?;
+    entry.feature.body = feature.body;
+    Ok(entry)
 }
 
 pub fn update_feature_content(ship_dir: &Path, id: &str, content: &str) -> Result<FeatureEntry> {
-    let mut entry =
-        get_feature_db(ship_dir, id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
+    let resolved_id = require_feature_id(ship_dir, id)?;
+    let mut entry = get_feature_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
     entry.feature.body = content.to_string();
-    update_feature(ship_dir, id, entry.feature)
+    update_feature(ship_dir, &resolved_id, entry.feature)
 }
 
 pub fn move_feature(ship_dir: &Path, id: &str, new_status: FeatureStatus) -> Result<FeatureEntry> {
-    let existing =
-        get_feature_db(ship_dir, id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
+    let resolved_id = require_feature_id(ship_dir, id)?;
+    let existing = get_feature_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
 
     upsert_feature_db(ship_dir, &existing.feature, &new_status)?;
-    remove_feature_files(ship_dir, id, &existing.feature.metadata.title);
+    remove_feature_files(ship_dir, &resolved_id, &existing.feature.metadata.title);
     write_feature_file(ship_dir, &existing.feature, &new_status)?;
 
     runtime::append_event(
@@ -175,25 +224,26 @@ pub fn move_feature(ship_dir: &Path, id: &str, new_status: FeatureStatus) -> Res
         "logic",
         runtime::EventEntity::Feature,
         runtime::EventAction::Update,
-        id.to_string(),
+        resolved_id.clone(),
         Some(format!("status={}", new_status)),
     )?;
 
-    Ok(get_feature_db(ship_dir, id)?.unwrap())
+    Ok(get_feature_db(ship_dir, &resolved_id)?.unwrap())
 }
 
 pub fn delete_feature(ship_dir: &Path, id: &str) -> Result<()> {
-    let entry =
-        get_feature_db(ship_dir, id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
-    delete_feature_db(ship_dir, id)?;
-    remove_feature_files(ship_dir, id, &entry.feature.metadata.title);
+    let resolved_id = require_feature_id(ship_dir, id)?;
+    let entry = get_feature_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
+    delete_feature_db(ship_dir, &resolved_id)?;
+    remove_feature_files(ship_dir, &resolved_id, &entry.feature.metadata.title);
 
     runtime::append_event(
         ship_dir,
         "logic",
         runtime::EventEntity::Feature,
         runtime::EventAction::Delete,
-        id.to_string(),
+        resolved_id,
         None,
     )?;
     Ok(())

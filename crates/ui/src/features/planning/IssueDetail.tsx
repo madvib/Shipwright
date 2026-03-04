@@ -61,7 +61,7 @@ function normalizeLink(link: unknown): IssueLink | null {
 function normalizeIssue(issue: Issue): Issue {
   const source = issue as Record<string, unknown>;
   return {
-    id: typeof source.id === 'string' ? source.id : undefined,
+    id: typeof source.id === 'string' ? source.id : '',
     title: typeof source.title === 'string' ? source.title : '',
     created: typeof source.created === 'string' ? source.created : '',
     updated: typeof source.updated === 'string' ? source.updated : '',

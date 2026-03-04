@@ -16,3 +16,6 @@ time-tracker = { path = "../plugins/time-tracker" }
 ghost-issues = { path = "../plugins/ghost-issues" }
 anyhow = "1.0"
 chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

@@ -33,15 +33,15 @@ build-all:
 
 # Run all tests
 test:
-    cargo test -p logic -p cli -p mcp
+    cargo test --workspace
 
-# Run logic tests only (fastest)
-test-logic:
-    cargo test -p logic
+# Run runtime tests only (fastest)
+test-runtime:
+    cargo test -p runtime
 
 # Run tests with output visible
 test-verbose:
-    cargo test -p logic -- --nocapture
+    cargo test -p runtime -- --nocapture
 
 # ── Migration ──────────────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ mcp-start:
 
 # Run clippy
 lint:
-    cargo clippy -p logic -p cli -p mcp -- -D warnings
+    cargo clippy --workspace -- -D warnings
 
 # Format all Rust code
 fmt:

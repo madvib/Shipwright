@@ -54,7 +54,7 @@ export function useIssueActions({
       if (options?.spec?.trim()) {
         const nextIssue: Issue = {
           ...created.issue,
-          spec: options.spec.trim(),
+          spec_id: options.spec.trim(),
         };
         await updateIssueByPathCmd(created.path, nextIssue);
         entry = { ...created, issue: nextIssue };

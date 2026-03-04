@@ -1,4 +1,4 @@
-use super::db::upsert_release_db;
+use super::db::{get_release_db, upsert_release_db};
 use super::types::{Release, ReleaseStatus};
 use anyhow::{Context, Result};
 use std::fs;
@@ -39,6 +39,9 @@ pub fn import_releases_from_files(ship_dir: &Path) -> Result<usize> {
                         release.metadata.status.clone()
                     };
 
+                    if get_release_db(ship_dir, &release.metadata.id)?.is_some() {
+                        continue;
+                    }
                     upsert_release_db(ship_dir, &release, &status)?;
                     count += 1;
                 }

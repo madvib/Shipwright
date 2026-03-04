@@ -23,6 +23,64 @@ fn release_file_path(ship_dir: &Path, version: &str) -> PathBuf {
     }
 }
 
+fn resolve_release_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(entry) = get_release_db(ship_dir, reference)? {
+        return Ok(Some(entry.id));
+    }
+
+    let without_ext = reference.trim_end_matches(".md");
+    if without_ext != reference {
+        if let Some(entry) = get_release_db(ship_dir, without_ext)? {
+            return Ok(Some(entry.id));
+        }
+    }
+
+    if let Some(file_name) = Path::new(reference)
+        .file_name()
+        .and_then(|name| name.to_str())
+    {
+        if file_name != reference {
+            if let Some(entry) = get_release_db(ship_dir, file_name.trim_end_matches(".md"))? {
+                return Ok(Some(entry.id));
+            }
+        }
+    }
+
+    let reference_file = if reference.ends_with(".md") {
+        reference.to_string()
+    } else {
+        format!("{}.md", reference)
+    };
+
+    for entry in list_releases_db(ship_dir)? {
+        let file_match = entry.file_name.eq_ignore_ascii_case(reference)
+            || entry.file_name.eq_ignore_ascii_case(&reference_file);
+        let id_match =
+            entry.id.eq_ignore_ascii_case(reference) || entry.id.eq_ignore_ascii_case(without_ext);
+        let version_match = entry.version.eq_ignore_ascii_case(reference)
+            || entry.version.eq_ignore_ascii_case(without_ext);
+        let dashed_version_match = entry
+            .version
+            .replace('.', "-")
+            .eq_ignore_ascii_case(without_ext);
+        if file_match || id_match || version_match || dashed_version_match {
+            return Ok(Some(entry.id));
+        }
+    }
+
+    Ok(None)
+}
+
+fn require_release_id(ship_dir: &Path, reference: &str) -> Result<String> {
+    resolve_release_id(ship_dir, reference)?
+        .ok_or_else(|| anyhow!("Release not found: {}", reference))
+}
+
 pub fn write_release_file(ship_dir: &Path, release: &Release) -> Result<PathBuf> {
     let path = release_file_path(ship_dir, &release.metadata.version);
     let content = release.to_markdown()?;
@@ -109,12 +167,14 @@ pub fn create_release(ship_dir: &Path, version: &str, body: &str) -> Result<Rele
 }
 
 pub fn get_release_by_id(ship_dir: &Path, id: &str) -> Result<ReleaseEntry> {
-    get_release_db(ship_dir, id)?.ok_or_else(|| anyhow!("Release not found: {}", id))
+    let resolved_id = require_release_id(ship_dir, id)?;
+    get_release_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Release not found: {}", id))
 }
 
 pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result<ReleaseEntry> {
-    let existing =
-        get_release_db(ship_dir, id)?.ok_or_else(|| anyhow!("Release not found: {}", id))?;
+    let resolved_id = require_release_id(ship_dir, id)?;
+    let existing = get_release_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Release not found: {}", id))?;
     release.metadata.updated = Utc::now().to_rfc3339();
 
     upsert_release_db(ship_dir, &release, &existing.status)?;
@@ -125,24 +185,29 @@ pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result
         "logic",
         runtime::EventEntity::Release,
         runtime::EventAction::Update,
-        id.to_string(),
+        resolved_id.clone(),
         Some(format!("version={}", release.metadata.version)),
     )?;
 
-    Ok(get_release_db(ship_dir, id)?.unwrap())
+    let mut entry = get_release_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Release not found after update"))?;
+    entry.release.body = release.body;
+    Ok(entry)
 }
 
 pub fn update_release_content(ship_dir: &Path, id: &str, content: &str) -> Result<ReleaseEntry> {
-    let mut entry =
-        get_release_db(ship_dir, id)?.ok_or_else(|| anyhow!("Release not found: {}", id))?;
+    let resolved_id = require_release_id(ship_dir, id)?;
+    let mut entry = get_release_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Release not found: {}", id))?;
     entry.release.body = content.to_string();
-    update_release(ship_dir, id, entry.release)
+    update_release(ship_dir, &resolved_id, entry.release)
 }
 
 pub fn delete_release(ship_dir: &Path, id: &str) -> Result<()> {
-    let entry =
-        get_release_db(ship_dir, id)?.ok_or_else(|| anyhow!("Release not found: {}", id))?;
-    delete_release_db(ship_dir, id)?;
+    let resolved_id = require_release_id(ship_dir, id)?;
+    let entry = get_release_db(ship_dir, &resolved_id)?
+        .ok_or_else(|| anyhow!("Release not found: {}", id))?;
+    delete_release_db(ship_dir, &resolved_id)?;
     remove_release_files(ship_dir, &entry.version);
 
     runtime::append_event(
@@ -150,7 +215,7 @@ pub fn delete_release(ship_dir: &Path, id: &str) -> Result<()> {
         "logic",
         runtime::EventEntity::Release,
         runtime::EventAction::Delete,
-        id.to_string(),
+        resolved_id,
         None,
     )?;
     Ok(())

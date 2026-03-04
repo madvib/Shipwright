@@ -2,9 +2,9 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use sqlx::{Row, SqliteConnection};
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -43,6 +43,49 @@ pub enum EventEntity {
     Mcp,
 }
 
+impl EventEntity {
+    fn as_db(&self) -> &'static str {
+        match self {
+            EventEntity::Project => "project",
+            EventEntity::Issue => "issue",
+            EventEntity::Note => "note",
+            EventEntity::Spec => "spec",
+            EventEntity::Adr => "adr",
+            EventEntity::Feature => "feature",
+            EventEntity::Release => "release",
+            EventEntity::Config => "config",
+            EventEntity::Mode => "mode",
+            EventEntity::Prompt => "prompt",
+            EventEntity::Plugin => "plugin",
+            EventEntity::Ghost => "ghost",
+            EventEntity::Time => "time",
+            EventEntity::Agent => "agent",
+            EventEntity::Mcp => "mcp",
+        }
+    }
+
+    fn from_db(value: &str) -> Result<Self> {
+        match value {
+            "project" => Ok(EventEntity::Project),
+            "issue" => Ok(EventEntity::Issue),
+            "note" => Ok(EventEntity::Note),
+            "spec" => Ok(EventEntity::Spec),
+            "adr" => Ok(EventEntity::Adr),
+            "feature" => Ok(EventEntity::Feature),
+            "release" => Ok(EventEntity::Release),
+            "config" => Ok(EventEntity::Config),
+            "mode" => Ok(EventEntity::Mode),
+            "prompt" => Ok(EventEntity::Prompt),
+            "plugin" => Ok(EventEntity::Plugin),
+            "ghost" => Ok(EventEntity::Ghost),
+            "time" => Ok(EventEntity::Time),
+            "agent" => Ok(EventEntity::Agent),
+            "mcp" => Ok(EventEntity::Mcp),
+            other => Err(anyhow!("Unknown event entity '{}'", other)),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EventAction {
@@ -62,6 +105,51 @@ pub enum EventAction {
     Start,
     Stop,
     Log,
+}
+
+impl EventAction {
+    fn as_db(&self) -> &'static str {
+        match self {
+            EventAction::Init => "init",
+            EventAction::Create => "create",
+            EventAction::Update => "update",
+            EventAction::Delete => "delete",
+            EventAction::Move => "move",
+            EventAction::Note => "note",
+            EventAction::Link => "link",
+            EventAction::Add => "add",
+            EventAction::Remove => "remove",
+            EventAction::Set => "set",
+            EventAction::Clear => "clear",
+            EventAction::Scan => "scan",
+            EventAction::Promote => "promote",
+            EventAction::Start => "start",
+            EventAction::Stop => "stop",
+            EventAction::Log => "log",
+        }
+    }
+
+    fn from_db(value: &str) -> Result<Self> {
+        match value {
+            "init" => Ok(EventAction::Init),
+            "create" => Ok(EventAction::Create),
+            "update" => Ok(EventAction::Update),
+            "delete" => Ok(EventAction::Delete),
+            "move" => Ok(EventAction::Move),
+            "note" => Ok(EventAction::Note),
+            "link" => Ok(EventAction::Link),
+            "add" => Ok(EventAction::Add),
+            "remove" => Ok(EventAction::Remove),
+            "set" => Ok(EventAction::Set),
+            "clear" => Ok(EventAction::Clear),
+            "scan" => Ok(EventAction::Scan),
+            "promote" => Ok(EventAction::Promote),
+            "start" => Ok(EventAction::Start),
+            "stop" => Ok(EventAction::Stop),
+            "log" => Ok(EventAction::Log),
+            other => Err(anyhow!("Unknown event action '{}'", other)),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -95,14 +183,6 @@ fn event_index_path(project_dir: &Path) -> PathBuf {
     project_dir.join(EVENT_INDEX_FILE)
 }
 
-pub fn ensure_event_log(project_dir: &Path) -> Result<()> {
-    let path = event_log_path(project_dir);
-    if !path.exists() {
-        fs::write(path, "")?;
-    }
-    Ok(())
-}
-
 fn read_events_from_path(path: &Path) -> Result<Vec<EventRecord>> {
     if !path.exists() {
         return Ok(Vec::new());
@@ -127,6 +207,85 @@ fn read_events_from_path(path: &Path) -> Result<Vec<EventRecord>> {
     Ok(events)
 }
 
+fn import_legacy_events_file(conn: &mut SqliteConnection, legacy_path: &Path) -> Result<()> {
+    if !legacy_path.exists() {
+        return Ok(());
+    }
+    let records = match read_events_from_path(legacy_path) {
+        Ok(records) => records,
+        Err(_) => return Ok(()),
+    };
+
+    for record in records {
+        let timestamp = record.timestamp.to_rfc3339();
+        crate::state_db::block_on(async {
+            sqlx::query(
+                "INSERT INTO event_log (timestamp, actor, entity, action, subject, details)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&timestamp)
+            .bind(&record.actor)
+            .bind(record.entity.as_db())
+            .bind(record.action.as_db())
+            .bind(&record.subject)
+            .bind(&record.details)
+            .execute(&mut *conn)
+            .await?;
+            Ok(())
+        })?;
+    }
+
+    fs::remove_file(legacy_path).with_context(|| {
+        format!(
+            "Failed to remove legacy event stream after import: {}",
+            legacy_path.display()
+        )
+    })?;
+    Ok(())
+}
+
+pub fn ensure_event_log(project_dir: &Path) -> Result<()> {
+    let mut conn = crate::state_db::open_project_connection(project_dir)?;
+    import_legacy_events_file(
+        &mut conn,
+        &project_dir.join("workflow").join(EVENTS_FILE_NAME),
+    )?;
+
+    let row = crate::state_db::block_on(async {
+        sqlx::query("SELECT COUNT(*) FROM event_log")
+            .fetch_one(&mut conn)
+            .await
+    })?;
+    let count: i64 = row.get(0);
+    if count == 0 {
+        import_legacy_events_file(&mut conn, &event_log_path(project_dir))?;
+    }
+    Ok(())
+}
+
+fn row_to_event_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
+    let seq: i64 = row.get(0);
+    let timestamp_raw: String = row.get(1);
+    let actor: String = row.get(2);
+    let entity_raw: String = row.get(3);
+    let action_raw: String = row.get(4);
+    let subject: String = row.get(5);
+    let details: Option<String> = row.get(6);
+
+    let parsed = DateTime::parse_from_rfc3339(&timestamp_raw)
+        .with_context(|| format!("Invalid event timestamp '{}'", timestamp_raw))?;
+
+    Ok(EventRecord {
+        seq: seq as u64,
+        timestamp: parsed.with_timezone(&Utc),
+        actor,
+        entity: EventEntity::from_db(&entity_raw)?,
+        action: EventAction::from_db(&action_raw)?,
+        subject,
+        details,
+    })
+}
+
 fn append_event_internal(
     project_dir: &Path,
     actor: &str,
@@ -137,26 +296,33 @@ fn append_event_internal(
     sync_snapshot: bool,
 ) -> Result<EventRecord> {
     ensure_event_log(project_dir)?;
-    let path = event_log_path(project_dir);
-    let seq = latest_event_seq(project_dir)? + 1;
+    let mut conn = crate::state_db::open_project_connection(project_dir)?;
+    let timestamp = Utc::now();
+    let timestamp_str = timestamp.to_rfc3339();
+    let result = crate::state_db::block_on(async {
+        sqlx::query(
+            "INSERT INTO event_log (timestamp, actor, entity, action, subject, details)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&timestamp_str)
+        .bind(actor)
+        .bind(entity.as_db())
+        .bind(action.as_db())
+        .bind(&subject)
+        .bind(&details)
+        .execute(&mut conn)
+        .await
+    })?;
+    let seq = result.last_insert_rowid() as u64;
     let record = EventRecord {
         seq,
-        timestamp: Utc::now(),
+        timestamp,
         actor: actor.to_string(),
         entity,
         action,
         subject,
         details,
     };
-
-    let line = serde_json::to_string(&record).context("Failed to serialise event")?;
-    let mut file = fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&path)
-        .with_context(|| format!("Failed to open event log: {}", path.display()))?;
-    file.write_all(line.as_bytes())?;
-    file.write_all(b"\n")?;
 
     if sync_snapshot {
         let _ = sync_event_snapshot(project_dir)?;
@@ -184,11 +350,30 @@ pub fn append_event(
 }
 
 pub fn read_events(project_dir: &Path) -> Result<Vec<EventRecord>> {
-    read_events_from_path(&event_log_path(project_dir))
+    ensure_event_log(project_dir)?;
+    let mut conn = crate::state_db::open_project_connection(project_dir)?;
+    let rows = crate::state_db::block_on(async {
+        sqlx::query(
+            "SELECT seq, timestamp, actor, entity, action, subject, details
+             FROM event_log
+             ORDER BY seq ASC",
+        )
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    rows.iter().map(row_to_event_record).collect()
 }
 
 pub fn latest_event_seq(project_dir: &Path) -> Result<u64> {
-    Ok(read_events(project_dir)?.last().map(|e| e.seq).unwrap_or(0))
+    ensure_event_log(project_dir)?;
+    let mut conn = crate::state_db::open_project_connection(project_dir)?;
+    let row = crate::state_db::block_on(async {
+        sqlx::query("SELECT COALESCE(MAX(seq), 0) FROM event_log")
+            .fetch_one(&mut conn)
+            .await
+    })?;
+    let seq: i64 = row.get(0);
+    Ok(seq as u64)
 }
 
 pub fn list_events_since(
@@ -196,16 +381,59 @@ pub fn list_events_since(
     since_seq: u64,
     limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
-    let mut events: Vec<EventRecord> = read_events(project_dir)?
-        .into_iter()
-        .filter(|e| e.seq > since_seq)
-        .collect();
-    if let Some(limit) = limit {
-        if events.len() > limit {
-            events = events[events.len() - limit..].to_vec();
-        }
+    ensure_event_log(project_dir)?;
+    let mut conn = crate::state_db::open_project_connection(project_dir)?;
+
+    let rows = if let Some(limit) = limit {
+        crate::state_db::block_on(async {
+            sqlx::query(
+                "SELECT seq, timestamp, actor, entity, action, subject, details
+                 FROM event_log
+                 WHERE seq > ?
+                 ORDER BY seq DESC
+                 LIMIT ?",
+            )
+            .bind(since_seq as i64)
+            .bind(limit as i64)
+            .fetch_all(&mut conn)
+            .await
+        })?
+    } else {
+        crate::state_db::block_on(async {
+            sqlx::query(
+                "SELECT seq, timestamp, actor, entity, action, subject, details
+                 FROM event_log
+                 WHERE seq > ?
+                 ORDER BY seq ASC",
+            )
+            .bind(since_seq as i64)
+            .fetch_all(&mut conn)
+            .await
+        })?
+    };
+
+    let mut events: Vec<EventRecord> = rows
+        .iter()
+        .map(row_to_event_record)
+        .collect::<Result<_>>()?;
+    if limit.is_some() {
+        events.reverse();
     }
     Ok(events)
+}
+
+pub fn export_events_ndjson(project_dir: &Path, output_path: &Path) -> Result<usize> {
+    let events = read_events(project_dir)?;
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut output = String::new();
+    for event in &events {
+        output.push_str(&serde_json::to_string(event)?);
+        output.push('\n');
+    }
+    crate::fs_util::write_atomic(output_path, output)?;
+    Ok(events.len())
 }
 
 fn load_snapshot(project_dir: &Path) -> Result<EventSnapshot> {
@@ -253,7 +481,7 @@ fn collect_tracked_files(project_dir: &Path) -> Result<HashMap<String, FileFinge
                 Err(_) => continue,
             };
             let path = entry.path();
-            if !path.is_file() || !path.extension().is_some_and(|ext| ext == "md") {
+            if !path.is_file() || path.extension().is_none_or(|ext| ext != "md") {
                 continue;
             }
             let file_name = path

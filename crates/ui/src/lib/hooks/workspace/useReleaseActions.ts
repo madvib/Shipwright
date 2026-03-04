@@ -51,6 +51,7 @@ export function useReleaseActions({
         setReleases((prev) => [
           ...prev,
           {
+            id: created.id,
             file_name: created.file_name,
             version: created.version,
             status: created.status,
@@ -84,6 +85,7 @@ export function useReleaseActions({
           prev.map((entry) =>
             entry.file_name === updated.file_name
               ? {
+                id: updated.id,
                 file_name: updated.file_name,
                 version: updated.version,
                 status: updated.status,

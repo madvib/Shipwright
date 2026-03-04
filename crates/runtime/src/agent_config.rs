@@ -95,35 +95,34 @@ pub fn resolve_agent_config(
     let mut mcp_servers = config.mcp_servers.clone();
 
     // Prioritize mcp.toml if it exists
-    if let Ok(toml_servers) = crate::config::get_mcp_config(ship_dir) {
-        if !toml_servers.is_empty() {
-            // Merge or replace? User wants "single source of truth", so let's prefer toml_servers.
-            // But we might want to combine them?
-            // For now, let's prefer toml_servers and append if they have different IDs.
-            for s in toml_servers {
-                if let Some(existing) = mcp_servers.iter_mut().find(|matching| matching.id == s.id)
-                {
-                    *existing = s;
-                } else {
-                    mcp_servers.push(s);
-                }
+    if let Ok(toml_servers) = crate::config::get_mcp_config(ship_dir)
+        && !toml_servers.is_empty()
+    {
+        // Merge or replace? User wants "single source of truth", so let's prefer toml_servers.
+        // But we might want to combine them?
+        // For now, let's prefer toml_servers and append if they have different IDs.
+        for s in toml_servers {
+            if let Some(existing) = mcp_servers.iter_mut().find(|matching| matching.id == s.id) {
+                *existing = s;
+            } else {
+                mcp_servers.push(s);
             }
         }
     }
 
     // Mode filter: if mode restricts servers, retain only allowed IDs.
-    if let Some(m) = mode {
-        if !m.mcp_servers.is_empty() {
-            mcp_servers.retain(|s| m.mcp_servers.contains(&s.id));
-        }
+    if let Some(m) = mode
+        && !m.mcp_servers.is_empty()
+    {
+        mcp_servers.retain(|s| m.mcp_servers.contains(&s.id));
     }
 
     // Feature filter: if feature specifies server IDs, retain only those.
-    if let Some(fa) = feature_agent {
-        if !fa.mcp_servers.is_empty() {
-            let ids: Vec<&str> = fa.mcp_servers.iter().map(|r| r.as_str()).collect();
-            mcp_servers.retain(|s| ids.contains(&s.id.as_str()));
-        }
+    if let Some(fa) = feature_agent
+        && !fa.mcp_servers.is_empty()
+    {
+        let ids: Vec<&str> = fa.mcp_servers.iter().map(|r| r.as_str()).collect();
+        mcp_servers.retain(|s| ids.contains(&s.id.as_str()));
     }
 
     // ── Skills ────────────────────────────────────────────────────────────────

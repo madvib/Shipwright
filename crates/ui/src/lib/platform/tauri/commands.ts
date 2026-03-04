@@ -18,12 +18,18 @@ import {
   ProjectConfig,
   ReleaseDocument,
   ReleaseInfo as ReleaseEntry,
-  SpecDocument,
-  SpecInfo as SpecEntry,
+  Spec,
+  SpecEntry as RawSpecEntry,
   Workspace,
   Result,
   commands as spectaCommands,
 } from '@/bindings';
+import {
+  SpecDocument,
+  SpecInfo as SpecEntry,
+  toSpecDocument,
+  toSpecInfo,
+} from '@/lib/types/spec';
 
 export interface CreateProjectPayload {
   directory: string;
@@ -45,7 +51,8 @@ const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> 
 
 export const listIssues = (): Promise<IssueEntry[]> => invoke('list_items');
 export const listAdrs = (): Promise<AdrEntry[]> => invoke('list_adrs_cmd');
-export const listSpecs = (): Promise<SpecEntry[]> => invoke('list_specs_cmd');
+export const listSpecs = (): Promise<SpecEntry[]> =>
+  invoke<RawSpecEntry[]>('list_specs_cmd').then((entries) => entries.map(toSpecInfo));
 export const listReleases = (): Promise<ReleaseEntry[]> => invoke('list_releases_cmd');
 export const listFeatures = (): Promise<FeatureEntry[]> => invoke('list_features_cmd');
 export const listNotes = (scope: NotesScope = 'project'): Promise<NoteEntry[]> =>
@@ -58,6 +65,35 @@ export const listEventEntries = (
 export const ingestEventChanges = (): Promise<number> => invoke('ingest_events_cmd');
 export const getWorkspaceCmd = (branch: string): Promise<Result<Workspace | null, string>> =>
   invoke('get_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace | null, string>)).catch(error => ({ status: 'error', error }));
+export const listWorkspacesCmd = (): Promise<Result<Workspace[], string>> =>
+  invoke('list_workspaces_cmd').then(data => ({ status: 'ok', data } as Result<Workspace[], string>)).catch(error => ({ status: 'error', error }));
+export const syncWorkspaceCmd = (branch?: string | null): Promise<Result<Workspace, string>> =>
+  invoke('sync_workspace_cmd', { branch: branch ?? null }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+export const createWorkspaceCmd = (
+  branch: string,
+  options?: {
+    workspaceType?: string | null;
+    featureId?: string | null;
+    specId?: string | null;
+    releaseId?: string | null;
+    activate?: boolean;
+  }
+): Promise<Result<Workspace, string>> =>
+  invoke('create_workspace_cmd', {
+    branch,
+    workspaceType: options?.workspaceType ?? null,
+    featureId: options?.featureId ?? null,
+    specId: options?.specId ?? null,
+    releaseId: options?.releaseId ?? null,
+    activate: options?.activate ?? null,
+  }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+export const activateWorkspaceCmd = (branch: string): Promise<Result<Workspace, string>> =>
+  invoke('activate_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+export const transitionWorkspaceCmd = (
+  branch: string,
+  status: string
+): Promise<Result<Workspace, string>> =>
+  invoke('transition_workspace_cmd', { branch, status }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const getCurrentBranchCmd = (): Promise<string | null> =>
   invoke<string | null>('get_current_branch_cmd').catch(() => null);
 
@@ -116,14 +152,29 @@ export const moveAdrCmd = (id: string, newStatus: AdrStatus): Promise<AdrEntry> 
 export const deleteAdrCmd = (id: string): Promise<void> =>
   unwrapResult(spectaCommands.deleteAdrCmd(id)).then(() => undefined);
 
-export const getSpecCmd = (fileName: string): Promise<Result<SpecDocument, string>> =>
-  invoke('get_spec_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<SpecDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export const getSpecCmd = (id: string): Promise<Result<SpecDocument, string>> =>
+  invoke<RawSpecEntry>('get_spec_cmd', { id })
+    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
+    .catch((error) => ({ status: 'error', error: String(error) }));
 
 export const createSpecCmd = (title: string, content: string): Promise<Result<SpecDocument, string>> =>
-  invoke('create_spec_cmd', { title, content }).then(data => ({ status: 'ok', data } as Result<SpecDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+  invoke<RawSpecEntry>('create_spec_cmd', { title, content })
+    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
+    .catch((error) => ({ status: 'error', error: String(error) }));
 
 export const updateSpecCmd = (fileName: string, content: string): Promise<Result<SpecDocument, string>> =>
-  invoke('update_spec_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<SpecDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+  invoke<RawSpecEntry>('get_spec_cmd', { id: fileName })
+    .then((current) =>
+      invoke<RawSpecEntry>('update_spec_cmd', {
+        id: fileName,
+        spec: {
+          ...(current.spec as Spec),
+          body: content,
+        },
+      })
+    )
+    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
+    .catch((error) => ({ status: 'error', error: String(error) }));
 
 export const deleteSpecCmd = (fileName: string): Promise<Result<null, string>> =>
   invoke('delete_spec_cmd', { fileName }).then(() => ({ status: 'ok' as const, data: null })).catch(error => ({ status: 'error', error: String(error) }));

@@ -52,7 +52,6 @@ const GIT_CATEGORIES = [
   'specs',
   'ship.toml',
   'templates',
-  'events.ndjson',
 ];
 const AI_PROVIDERS = [
   { id: 'claude', label: 'Claude (claude)' },
@@ -64,7 +63,6 @@ const EMPTY_AGENT_LAYER = {
   skills: [],
   prompts: [],
   context: [],
-  rules: [],
 };
 const DEFAULT_MODE_VALUE = 'default';
 
@@ -882,24 +880,7 @@ export default function SettingsPanel({
                       placeholder="AGENTS.md&#10;specs/&#10;adrs/"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="settings-agent-rules">Rules (one per line)</Label>
-                    <Textarea
-                      id="settings-agent-rules"
-                      rows={6}
-                      value={joinLines(activeAgentConfig.agent?.rules)}
-                      onChange={(event) =>
-                        updateActiveAgentConfig({
-                          ...activeAgentConfig,
-                          agent: {
-                            ...(activeAgentConfig.agent ?? EMPTY_AGENT_LAYER),
-                            rules: parseLines(event.target.value),
-                          },
-                        })
-                      }
-                      placeholder="Never rewrite git history&#10;Prefer rg for code search"
-                    />
-                  </div>
+
                 </CardContent>
               </Card>
 

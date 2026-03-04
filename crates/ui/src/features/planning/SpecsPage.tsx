@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, FileCode2, Plus } from 'lucide-react';
-import { SpecInfo as SpecEntry } from '@/bindings';
+import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import DetailSheet from './DetailSheet';
 import { Alert, AlertDescription } from '@ship/ui';
 import { Button } from '@ship/ui';

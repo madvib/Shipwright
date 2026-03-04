@@ -23,14 +23,14 @@ pub fn log_action_by(
     action: &str,
     details: &str,
 ) -> Result<()> {
-    let _ = crate::append_event(
+    crate::append_event(
         project_dir,
         actor,
         EventEntity::Project,
         EventAction::Log,
         action.to_string(),
         Some(details.to_string()),
-    );
+    )?;
     Ok(())
 }
 

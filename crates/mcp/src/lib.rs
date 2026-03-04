@@ -14,25 +14,33 @@ use rmcp::{
     service::Peer,
     tool, tool_handler, tool_router,
 };
+use runtime::project::{get_active_project_global, get_project_dir, set_active_project_global};
 use runtime::{
-    add_status, autodetect_providers, create_issue, create_skill, create_spec, create_user_skill,
-    delete_issue, delete_skill, delete_user_skill, disable_provider, enable_provider,
-    get_active_project_global, get_config, get_effective_skill, get_issue, get_project_dir,
-    get_project_name, get_project_statuses, list_effective_skills, list_events_since,
-    list_issues_full, list_models, list_providers, list_registered_projects, list_specs,
-    log_action, log_action_by, move_issue, read_log, remove_status, set_active_project_global,
-    set_category_committed, update_skill, update_spec, update_user_skill,
+    add_status, autodetect_providers, create_user_skill, delete_skill, delete_user_skill,
+    disable_provider, enable_provider, get_config, get_effective_skill, list_effective_skills,
+    list_events_since, list_models, list_providers, log_action_by, read_log, remove_status,
+    set_category_committed, update_skill, update_user_skill,
 };
 use serde::Deserialize;
 use ship_module_git::{install_hooks, on_post_checkout};
-use ship_module_project::{
-    NoteScope, create_adr, create_feature, create_note, create_release, get_adr_by_id,
-    get_feature_by_id, get_note_by_id, get_release_by_id, import_adrs_from_files,
-    import_features_from_files, import_notes_from_files, import_releases_from_files, list_adrs,
-    list_features, list_notes, list_releases, update_feature_content, update_note_content,
-    update_release_content,
+use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs};
+use ship_module_project::ops::feature::{
+    create_feature, get_feature_by_id, list_features, update_feature_content,
 };
-use std::path::{Path, PathBuf};
+use ship_module_project::ops::issue::{
+    create_issue, delete_issue, get_issue_by_id, list_issues, move_issue_with_from, update_issue,
+};
+use ship_module_project::ops::note::{
+    create_note, get_note_by_id, list_notes, update_note_content,
+};
+use ship_module_project::ops::release::{
+    create_release, get_release_by_id, list_releases, update_release_content,
+};
+use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
+use ship_module_project::{
+    IssueEntry, IssueStatus, NoteScope, get_project_name, list_registered_projects,
+};
+use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 // ─── Request Types ────────────────────────────────────────────────────────────
@@ -153,7 +161,7 @@ pub struct BrainstormRequest {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct GitIncludeRequest {
-    /// Category to change: issues, releases, features, specs, adrs, notes, agents, events.ndjson, ship.toml, templates
+    /// Category to change: issues, releases, features, specs, adrs, notes, agents, ship.toml, templates
     pub category: String,
     /// true = commit to git, false = local only (gitignored)
     pub commit: bool,
@@ -410,25 +418,14 @@ impl ShipServer {
         }
     }
 
-    fn ensure_imported(&self, project_dir: &Path) {
-        let _ = import_adrs_from_files(project_dir);
-        let _ = import_notes_from_files(NoteScope::Project, Some(project_dir));
-        let _ = import_notes_from_files(NoteScope::User, None);
-        let _ = import_features_from_files(project_dir);
-        let _ = import_releases_from_files(project_dir);
-    }
-
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
         let active = self.active_project.lock().await;
         if let Some(ref path) = *active {
-            let p = path.clone();
-            self.ensure_imported(&p);
-            return Ok(p);
+            return Ok(path.clone());
         }
         drop(active);
 
         if let Ok(project_dir) = get_project_dir(None) {
-            self.ensure_imported(&project_dir);
             return Ok(project_dir);
         }
 
@@ -498,10 +495,10 @@ impl ShipServer {
         let config = get_config(Some(project_dir.clone())).unwrap_or_default();
         let statuses: Vec<String> = config.statuses.iter().map(|s| s.id.clone()).collect();
 
-        let issues = list_issues_full(project_dir.clone()).unwrap_or_default();
+        let issues = list_issues(&project_dir).unwrap_or_default();
         let releases = list_releases(&project_dir).unwrap_or_default();
         let features = list_features(&project_dir).unwrap_or_default();
-        let specs = list_specs(project_dir.clone()).unwrap_or_default();
+        let specs = list_specs(&project_dir).unwrap_or_default();
         let adrs = list_adrs(&project_dir).unwrap_or_default();
 
         let mut out = format!("# Project: {}\n\n", name);
@@ -529,12 +526,18 @@ impl ShipServer {
 
         // Issue summary
         out.push_str("\n## Open Issues\n");
-        let open: Vec<_> = issues.iter().filter(|e| e.status != "done").collect();
+        let open: Vec<&IssueEntry> = issues
+            .iter()
+            .filter(|e| e.status != IssueStatus::Done)
+            .collect();
         if open.is_empty() {
             out.push_str("No open issues.\n");
         } else {
             for status in &statuses {
-                let in_status: Vec<_> = open.iter().filter(|e| &e.status == status).collect();
+                let in_status: Vec<_> = open
+                    .iter()
+                    .filter(|e| e.status.to_string() == *status)
+                    .collect();
                 if !in_status.is_empty() {
                     out.push_str(&format!("\n### {}\n", status));
                     for e in in_status {
@@ -573,7 +576,7 @@ impl ShipServer {
             out.push_str("No specs.\n");
         } else {
             for s in &specs {
-                out.push_str(&format!("- {} ({})\n", s.title, s.file_name));
+                out.push_str(&format!("- {} ({})\n", s.spec.metadata.title, s.file_name));
             }
         }
 
@@ -644,22 +647,21 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let status = req.status.as_deref().unwrap_or("backlog");
-        match create_issue(project_dir.clone(), &req.title, &req.description, status) {
-            Ok(file) => {
-                let fname = file
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown");
-                log_action_by(
-                    &project_dir,
-                    "agent",
-                    "issue create",
-                    &format!("{} ({})", fname, status),
-                )
-                .ok();
-                format!("Created issue: {} ({})", fname, status)
-            }
+        let status_str = req.status.as_deref().unwrap_or("backlog");
+        let status = status_str
+            .parse::<IssueStatus>()
+            .unwrap_or(IssueStatus::Backlog);
+        match create_issue(
+            &project_dir,
+            &req.title,
+            &req.description,
+            status.clone(),
+            None,
+            None,
+            None,
+            None,
+        ) {
+            Ok(file) => format!("Created issue: {} ({})", file.file_name, status),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -671,23 +673,28 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = runtime::project::issues_dir(&project_dir)
-            .join(&req.status)
-            .join(&req.file_name);
-        match get_issue(path.clone()) {
-            Ok(mut issue) => {
+        let issues = list_issues(&project_dir).unwrap_or_default();
+        let entry = issues
+            .iter()
+            .find(|e| e.status.to_string() == req.status && e.file_name == req.file_name);
+        match entry {
+            Some(entry) => {
+                let mut issue = entry.issue.clone();
                 if let Some(title) = req.title {
                     issue.metadata.title = title;
                 }
                 if let Some(desc) = req.description {
                     issue.description = desc;
                 }
-                match runtime::update_issue(path, issue) {
+                match update_issue(&project_dir, &entry.id, issue) {
                     Ok(_) => format!("Updated: {}", req.file_name),
                     Err(e) => format!("Error: {}", e),
                 }
             }
-            Err(e) => format!("Error reading issue: {}", e),
+            None => format!(
+                "Error: Issue not found in status {} with filename {}",
+                req.status, req.file_name
+            ),
         }
     }
 
@@ -709,12 +716,7 @@ impl ShipServer {
         };
         let body = req.content.unwrap_or_default();
         match create_note(scope, project_dir.as_deref(), &req.title, &body) {
-            Ok(note) => {
-                if let Some(project_dir) = project_dir {
-                    log_action_by(&project_dir, "agent", "note create", &note.id).ok();
-                }
-                format!("Created note: {} (id: {})", note.title, note.id)
-            }
+            Ok(note) => format!("Created note: {} (id: {})", note.title, note.id),
             Err(e) => format!("Error creating note: {}", e),
         }
     }
@@ -734,12 +736,7 @@ impl ShipServer {
             NoteScope::User => None,
         };
         match update_note_content(scope, project_dir.as_deref(), &req.file_name, &req.content) {
-            Ok(note) => {
-                if let Some(project_dir) = project_dir {
-                    log_action_by(&project_dir, "agent", "note update", &req.file_name).ok();
-                }
-                format!("Updated note: {}", note.title)
-            }
+            Ok(note) => format!("Updated note: {}", note.title),
             Err(e) => format!("Error updating note: {}", e),
         }
     }
@@ -760,7 +757,7 @@ impl ShipServer {
                     Ok(project_dir) => project_dir,
                     Err(err) => return err,
                 };
-                match create_skill(&project_dir, &req.id, &req.name, &req.content) {
+                match runtime::create_skill(&project_dir, &req.id, &req.name, &req.content) {
                     Ok(skill) => {
                         log_action_by(
                             &project_dir,
@@ -865,20 +862,16 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = runtime::project::issues_dir(&project_dir)
-            .join(&req.from_status)
-            .join(&req.file_name);
-        match move_issue(project_dir.clone(), path, &req.from_status, &req.to_status) {
-            Ok(_) => {
-                log_action_by(
-                    &project_dir,
-                    "agent",
-                    "issue move",
-                    &format!("{}: {} → {}", req.file_name, req.from_status, req.to_status),
-                )
-                .ok();
-                format!("{}: {} → {}", req.file_name, req.from_status, req.to_status)
-            }
+        let from_status = match req.from_status.parse::<IssueStatus>() {
+            Ok(s) => s,
+            Err(e) => return format!("Error: {}", e),
+        };
+        let to_status = match req.to_status.parse::<IssueStatus>() {
+            Ok(s) => s,
+            Err(e) => return format!("Error: {}", e),
+        };
+        match move_issue_with_from(&project_dir, &req.file_name, from_status, to_status) {
+            Ok(_) => format!("{}: {} → {}", req.file_name, req.from_status, req.to_status),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -890,10 +883,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = runtime::project::issues_dir(&project_dir)
-            .join(&req.status)
-            .join(&req.file_name);
-        match delete_issue(path) {
+        match delete_issue(&project_dir, &req.file_name) {
             Ok(_) => format!("Deleted: {}", req.file_name),
             Err(e) => format!("Error: {}", e),
         }
@@ -906,11 +896,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        match list_issues_full(project_dir) {
+        match list_issues(&project_dir) {
             Ok(entries) => {
                 let query = req.query.to_lowercase();
-                let matches: Vec<_> = entries
-                    .into_iter()
+                let matches: Vec<&IssueEntry> = entries
+                    .iter()
                     .filter(|e| {
                         e.issue.metadata.title.to_lowercase().contains(&query)
                             || e.issue.description.to_lowercase().contains(&query)
@@ -960,13 +950,8 @@ impl ShipServer {
             Err(e) => return e,
         };
         let content = req.content.as_deref().unwrap_or("");
-        match create_spec(project_dir, &req.title, content, "draft") {
-            Ok(file) => format!(
-                "Created spec: {}",
-                file.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown")
-            ),
+        match create_spec(&project_dir, &req.title, content, None, None) {
+            Ok(file) => format!("Created spec: {}", file.file_name),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -978,10 +963,18 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let path = runtime::project::specs_dir(&project_dir).join(&req.file_name);
-        match update_spec(path, &req.content) {
-            Ok(_) => format!("Updated spec: {}", req.file_name),
-            Err(e) => format!("Error: {}", e),
+        let issues = list_specs(&project_dir).unwrap_or_default();
+        let entry = issues.iter().find(|e| e.file_name == req.file_name);
+        match entry {
+            Some(entry) => {
+                let mut spec = entry.spec.clone();
+                spec.body = req.content;
+                match update_spec(&project_dir, &entry.id, spec) {
+                    Ok(_) => format!("Updated spec: {}", req.file_name),
+                    Err(e) => format!("Error: {}", e),
+                }
+            }
+            None => format!("Error: Spec not found with filename {}", req.file_name),
         }
     }
 
@@ -996,13 +989,10 @@ impl ShipServer {
         };
         let content = req.content.as_deref().unwrap_or("");
         match create_release(&project_dir, &req.version, content) {
-            Ok(release) => {
-                log_action_by(&project_dir, "agent", "release create", &release.id).ok();
-                format!(
-                    "Created release: {} ({})",
-                    release.release.metadata.version, release.id
-                )
-            }
+            Ok(release) => format!(
+                "Created release: {} ({})",
+                release.release.metadata.version, release.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1031,13 +1021,10 @@ impl ShipServer {
             Err(e) => return e,
         };
         match update_release_content(&project_dir, &req.id, &req.content) {
-            Ok(release) => {
-                log_action_by(&project_dir, "agent", "release update", &req.id).ok();
-                format!(
-                    "Updated release: {} ({})",
-                    release.release.metadata.version, req.id
-                )
-            }
+            Ok(release) => format!(
+                "Updated release: {} ({})",
+                release.release.metadata.version, req.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1060,13 +1047,10 @@ impl ShipServer {
             req.spec_id.as_deref(),
             req.branch.as_deref(),
         ) {
-            Ok(feature) => {
-                log_action_by(&project_dir, "agent", "feature create", &feature.id).ok();
-                format!(
-                    "Created feature: {} ({})",
-                    feature.feature.metadata.title, feature.id
-                )
-            }
+            Ok(feature) => format!(
+                "Created feature: {} ({})",
+                feature.feature.metadata.title, feature.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1095,13 +1079,10 @@ impl ShipServer {
             Err(e) => return e,
         };
         match update_feature_content(&project_dir, &req.id, &req.content) {
-            Ok(feature) => {
-                log_action_by(&project_dir, "agent", "feature update", &req.id).ok();
-                format!(
-                    "Updated feature: {} ({})",
-                    feature.feature.metadata.title, req.id
-                )
-            }
+            Ok(feature) => format!(
+                "Updated feature: {} ({})",
+                feature.feature.metadata.title, req.id
+            ),
             Err(e) => format!("Error: {}", e),
         }
     }
@@ -1234,21 +1215,17 @@ impl ShipServer {
                             g.kind.as_str(),
                             g.text.trim()
                         );
-                        match create_issue(project_dir.clone(), &title, &desc, "backlog") {
-                            Ok(path) => {
-                                log_action(
-                                    &project_dir,
-                                    "issue create",
-                                    &format!("Ghost promoted: {}", title),
-                                )
-                                .ok();
-                                format!(
-                                    "Created issue: {}",
-                                    path.file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("unknown")
-                                )
-                            }
+                        match create_issue(
+                            &project_dir,
+                            &title,
+                            &desc,
+                            IssueStatus::Backlog,
+                            None,
+                            None,
+                            None,
+                            None,
+                        ) {
+                            Ok(file) => format!("Created issue: {}", file.file_name),
                             Err(e) => format!("Marked promoted but failed to create issue: {}", e),
                         }
                     } else {
@@ -1355,7 +1332,7 @@ impl ShipServer {
 
     /// Update git commit settings for the active project
     #[tool(
-        description = "Set whether a category (issues/releases/features/specs/adrs/notes/agents/events.ndjson/ship.toml/templates) is committed to git or kept local. Updates .ship/.gitignore automatically."
+        description = "Set whether a category (issues/releases/features/specs/adrs/notes/agents/ship.toml/templates) is committed to git or kept local. Updates .ship/.gitignore automatically."
     )]
     async fn git_config_set(&self, Parameters(req): Parameters<GitIncludeRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
@@ -1370,7 +1347,6 @@ impl ShipServer {
             "specs",
             "notes",
             "agents",
-            "events.ndjson",
             "ship.toml",
             "templates",
         ];
@@ -1541,22 +1517,9 @@ impl ShipServer {
             return format!("Error: {}", e);
         }
         // Try to resolve title from issue file
-        let issue_title = {
-            let mut title = req.issue_file.clone();
-            let statuses = get_project_statuses(Some(project_dir.clone())).unwrap_or_default();
-            for status in &statuses {
-                let p = runtime::project::issues_dir(&project_dir)
-                    .join(status)
-                    .join(&req.issue_file);
-                if p.exists() {
-                    if let Ok(issue) = get_issue(p) {
-                        title = issue.metadata.title;
-                    }
-                    break;
-                }
-            }
-            title
-        };
+        let issue_title = get_issue_by_id(&project_dir, &req.issue_file)
+            .map(|entry| entry.issue.metadata.title)
+            .unwrap_or_else(|_| req.issue_file.clone());
         match time_tracker::start_timer(&project_dir, &req.issue_file, &issue_title, req.note) {
             Ok(t) => format!(
                 "Timer started: {} at {}",
@@ -1637,7 +1600,7 @@ impl ShipServer {
     async fn resolve_resource_uri(&self, uri: &str, dir: &PathBuf) -> Option<String> {
         // ship://issues
         if uri == "ship://issues" {
-            let entries = list_issues_full(dir.clone()).ok()?;
+            let entries = list_issues(dir).ok()?;
             if entries.is_empty() {
                 return Some("No issues found.".to_string());
             }
@@ -1655,16 +1618,19 @@ impl ShipServer {
             let parts: Vec<&str> = rest.splitn(2, '/').collect();
             if parts.len() == 2 {
                 let (status, file) = (parts[0], parts[1]);
-                let path = runtime::project::issues_dir(dir).join(status).join(file);
-                return get_issue(path).ok().map(|issue| {
+                return get_issue_by_id(dir, file).ok().and_then(|entry| {
+                    if entry.status.to_string() != status {
+                        return None;
+                    }
                     format!(
                         "Title: {}\nStatus: {}\nCreated: {}\nUpdated: {}\n\n{}",
-                        issue.metadata.title,
+                        entry.issue.metadata.title,
                         status,
-                        issue.metadata.created,
-                        issue.metadata.updated,
-                        issue.description
+                        entry.issue.metadata.created,
+                        entry.issue.metadata.updated,
+                        entry.issue.description
                     )
+                    .into()
                 });
             }
         }
@@ -1712,20 +1678,21 @@ impl ShipServer {
         }
         // ship://specs
         if uri == "ship://specs" {
-            let entries = list_specs(dir.clone()).ok()?;
+            let entries = list_specs(dir).ok()?;
             if entries.is_empty() {
                 return Some("No specs found.".to_string());
             }
             let mut out = String::from("Specs:\n");
             for s in &entries {
-                out.push_str(&format!("- {} ({})\n", s.title, s.file_name));
+                out.push_str(&format!("- {} ({})\n", s.spec.metadata.title, s.file_name));
             }
             return Some(out);
         }
         // ship://specs/{file}
         if let Some(file) = uri.strip_prefix("ship://specs/") {
-            let path = runtime::project::specs_dir(dir).join(file);
-            return std::fs::read_to_string(path).ok();
+            return get_spec_by_id(dir, file)
+                .ok()
+                .and_then(|entry| entry.spec.to_markdown().ok());
         }
         // ship://adrs
         if uri == "ship://adrs" {
@@ -1991,7 +1958,8 @@ pub async fn run_server() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::{EventAction, EventEntity, init_project, list_events_since};
+    use runtime::{EventAction, EventEntity, list_events_since};
+    use ship_module_project::init_project;
     use tempfile::tempdir;
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2096,5 +2064,45 @@ mod tests {
         let mcp_json = tmp.path().join(".mcp.json");
         assert!(claude_md.exists(), "CLAUDE.md should be written");
         assert!(mcp_json.exists(), ".mcp.json should be written");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_move_issue_rejects_from_status_mismatch() {
+        let tmp = tempdir().expect("tempdir");
+        let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
+
+        let server = ShipServer::new();
+        *server.active_project.lock().await = Some(project_dir.clone());
+
+        let created = server
+            .create_issue(Parameters(CreateIssueRequest {
+                title: "Ops guard".to_string(),
+                description: "ensure from-status check".to_string(),
+                status: Some("backlog".to_string()),
+            }))
+            .await;
+        assert!(
+            created.contains("Created issue:"),
+            "unexpected create response: {}",
+            created
+        );
+
+        let issues = list_issues(&project_dir).expect("list issues");
+        assert_eq!(issues.len(), 1);
+        let file_name = issues[0].file_name.clone();
+
+        let moved = server
+            .move_issue(Parameters(MoveIssueRequest {
+                file_name,
+                from_status: "in-progress".to_string(),
+                to_status: "done".to_string(),
+            }))
+            .await;
+
+        assert!(
+            moved.contains("Invalid status transition"),
+            "unexpected move response: {}",
+            moved
+        );
     }
 }

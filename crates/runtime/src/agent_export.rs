@@ -364,10 +364,8 @@ pub fn disable_provider(project_dir: &std::path::Path, provider_id: &str) -> Res
 pub fn autodetect_providers(project_dir: &std::path::Path) -> Result<Vec<String>> {
     let mut newly_enabled = Vec::new();
     for d in PROVIDERS {
-        if detect_binary(d.binary) {
-            if enable_provider(project_dir, d.id)? {
-                newly_enabled.push(d.id.to_string());
-            }
+        if detect_binary(d.binary) && enable_provider(project_dir, d.id)? {
+            newly_enabled.push(d.id.to_string());
         }
     }
     Ok(newly_enabled)
@@ -407,16 +405,16 @@ struct ToolState {
 fn load_managed_state(project_dir: &Path) -> ManagedState {
     let mut state = ManagedState::default();
     for p in PROVIDERS {
-        if let Ok((ids, last_mode)) = crate::state_db::get_managed_state_db(project_dir, p.id) {
-            if !ids.is_empty() || last_mode.is_some() {
-                state.providers.insert(
-                    p.id.to_string(),
-                    ToolState {
-                        managed_servers: ids,
-                        last_mode,
-                    },
-                );
-            }
+        if let Ok((ids, last_mode)) = crate::state_db::get_managed_state_db(project_dir, p.id)
+            && (!ids.is_empty() || last_mode.is_some())
+        {
+            state.providers.insert(
+                p.id.to_string(),
+                ToolState {
+                    managed_servers: ids,
+                    last_mode,
+                },
+            );
         }
     }
     state
@@ -733,32 +731,32 @@ pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<u
 fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
 
-    if let Some(mode_id) = &config.active_mode {
-        if let Some(mode) = config.modes.iter().find(|m| &m.id == mode_id) {
-            let servers = if mode.mcp_servers.is_empty() {
-                config.mcp_servers.clone()
-            } else {
-                config
-                    .mcp_servers
-                    .iter()
-                    .filter(|s| mode.mcp_servers.contains(&s.id))
-                    .cloned()
-                    .collect()
-            };
-            let prompt = mode
-                .prompt_id
-                .as_ref()
-                .and_then(|id| get_prompt(project_dir, id).ok());
-            let mut hooks = config.hooks.clone();
-            hooks.extend(mode.hooks.clone());
-            return Ok(SyncPayload {
-                servers,
-                prompt,
-                hooks,
-                permissions: mode.permissions.clone(),
-                active_mode_id: Some(mode_id.clone()),
-            });
-        }
+    if let Some(mode_id) = &config.active_mode
+        && let Some(mode) = config.modes.iter().find(|m| &m.id == mode_id)
+    {
+        let servers = if mode.mcp_servers.is_empty() {
+            config.mcp_servers.clone()
+        } else {
+            config
+                .mcp_servers
+                .iter()
+                .filter(|s| mode.mcp_servers.contains(&s.id))
+                .cloned()
+                .collect()
+        };
+        let prompt = mode
+            .prompt_id
+            .as_ref()
+            .and_then(|id| get_prompt(project_dir, id).ok());
+        let mut hooks = config.hooks.clone();
+        hooks.extend(mode.hooks.clone());
+        return Ok(SyncPayload {
+            servers,
+            prompt,
+            hooks,
+            permissions: mode.permissions.clone(),
+            active_mode_id: Some(mode_id.clone()),
+        });
     }
 
     Ok(SyncPayload {
@@ -1048,11 +1046,7 @@ fn json_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> serde_json:
             }
             if let Some(t) = s.timeout_secs {
                 // Gemini timeout is in ms
-                let key = if desc.http_url_field == "httpUrl" {
-                    "timeout"
-                } else {
-                    "timeout"
-                };
+                let key = "timeout";
                 entry[key] = serde_json::json!(if desc.http_url_field == "httpUrl" {
                     t * 1000
                 } else {
@@ -1094,7 +1088,7 @@ fn toml_mcp_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> toml::Value
                 entry.insert(desc.http_url_field.into(), toml::Value::String(url.clone()));
             }
             // Bearer token: if env has a *_TOKEN or *_KEY, surface it
-            for (k, _) in &s.env {
+            for k in s.env.keys() {
                 if k.ends_with("_TOKEN") || k.ends_with("_KEY") {
                     entry.insert(
                         "bearer_token_env_var".into(),
@@ -1150,12 +1144,11 @@ fn remove_ship_managed_skill_dirs(skills_dir: &Path) {
                 continue;
             }
             let skill_md = skill_dir.join("SKILL.md");
-            if skill_md.exists() {
-                if let Ok(c) = fs::read_to_string(&skill_md) {
-                    if c.starts_with("<!-- managed by ship") {
-                        fs::remove_dir_all(&skill_dir).ok();
-                    }
-                }
+            if skill_md.exists()
+                && let Ok(c) = fs::read_to_string(&skill_md)
+                && c.starts_with("<!-- managed by ship")
+            {
+                fs::remove_dir_all(&skill_dir).ok();
             }
         }
     }
@@ -1268,8 +1261,10 @@ mod tests {
     fn project_with_servers(servers: Vec<McpServerConfig>) -> (tempfile::TempDir, PathBuf) {
         let tmp = tempdir().unwrap();
         let project_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        let mut config = ProjectConfig::default();
-        config.mcp_servers = servers;
+        let config = ProjectConfig {
+            mcp_servers: servers,
+            ..ProjectConfig::default()
+        };
         save_config(&config, Some(project_dir.clone())).unwrap();
         (tmp, project_dir)
     }

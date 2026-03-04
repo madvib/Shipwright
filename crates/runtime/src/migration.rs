@@ -7,7 +7,6 @@ use crate::state_db::{DatabaseMigrationReport, ensure_global_database, ensure_pr
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -198,40 +197,7 @@ fn migrate_project_config_file(ship_dir: &Path) -> Result<()> {
 }
 
 fn migrate_workflow_event_stream(ship_dir: &Path) -> Result<()> {
-    let legacy = ship_dir.join("workflow").join("events.ndjson");
-    if !legacy.exists() {
-        return Ok(());
-    }
-
-    let target = ship_dir.join("events.ndjson");
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let target_content = fs::read_to_string(&target).unwrap_or_default();
-    let mut seen: HashSet<String> = target_content
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.to_string())
-        .collect();
-
-    let legacy_content = fs::read_to_string(&legacy).unwrap_or_default();
-    let mut file = fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&target)?;
-    for line in legacy_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if seen.insert(trimmed.to_string()) {
-            writeln!(file, "{}", trimmed)?;
-        }
-    }
-
-    fs::remove_file(legacy)?;
-    Ok(())
+    crate::events::ensure_event_log(ship_dir)
 }
 
 fn migrate_event_index_location(ship_dir: &Path) -> Result<()> {
