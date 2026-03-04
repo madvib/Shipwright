@@ -13,7 +13,6 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": "/src",
-      "@shared": fileURLToPath(new URL("../../shared", import.meta.url))
     }
   },
 

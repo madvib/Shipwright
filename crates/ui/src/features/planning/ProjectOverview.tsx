@@ -42,9 +42,9 @@ import {
   RELEASES_ROUTE,
   ACTIVITY_ROUTE,
 } from '@/lib/constants/routes';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface ProjectOverviewProps {

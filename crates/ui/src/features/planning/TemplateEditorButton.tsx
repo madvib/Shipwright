@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FilePenLine } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 import { TemplateKind } from '@/lib/platform/tauri/commands';
 import TemplateEditorModal from './TemplateEditorModal';
 

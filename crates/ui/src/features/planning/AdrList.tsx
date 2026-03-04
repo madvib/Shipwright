@@ -19,12 +19,12 @@ import {
 import { ADR, AdrEntry, AdrStatus } from '@/bindings';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import { StatusFilter } from '@/components/app/StatusFilter';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { EmptyState } from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,7 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from '@ship/ui';
 import { formatDate } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { getAdrStatusClasses } from '@/lib/workspace-ui';

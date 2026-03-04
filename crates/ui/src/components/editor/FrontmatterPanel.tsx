@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Plus, Tag } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { FacetedFilter } from '@/components/ui/faceted-filter';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Textarea } from '@ship/ui';
+import { FacetedFilter } from '@ship/ui';
+import AutocompleteInput from '@ship/ui';
 import { cn } from '@/lib/utils';
 import {
   FrontmatterDelimiter,

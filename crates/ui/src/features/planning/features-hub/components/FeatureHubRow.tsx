@@ -1,7 +1,7 @@
 import { ArrowRight, Link2 } from 'lucide-react';
 import { FeatureInfo as FeatureEntry, ReleaseInfo as ReleaseEntry, SpecInfo as SpecEntry } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Badge } from '@ship/ui';
+import { Progress } from '@ship/ui';
 import { cn } from '@/lib/utils';
 import { FeatureChecklistMetrics, formatStatusLabel } from '@/features/planning/hub/utils/featureMetrics';
 

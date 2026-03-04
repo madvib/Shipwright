@@ -1,7 +1,7 @@
-import AutocompleteInput from '@/components/ui/autocomplete-input';
-import { FacetedFilter } from '@/components/ui/faceted-filter';
-import { FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import AutocompleteInput from '@ship/ui';
+import { FacetedFilter } from '@ship/ui';
+import { FieldLabel } from '@ship/ui';
+import { Input } from '@ship/ui';
 import { StatusConfig } from '@/bindings';
 import { getStatusStyles } from '@/lib/workspace-ui';
 import { cn } from '@/lib/utils';

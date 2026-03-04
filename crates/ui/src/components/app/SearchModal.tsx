@@ -16,7 +16,7 @@ import {
     CommandInput,
     CommandItem,
     CommandList,
-} from '@/components/ui/command';
+} from '@ship/ui';
 import { ADRS_ROUTE, FEATURES_ROUTE, NOTES_ROUTE, RELEASES_ROUTE } from '@/lib/constants/routes';
 
 export function SearchModal() {

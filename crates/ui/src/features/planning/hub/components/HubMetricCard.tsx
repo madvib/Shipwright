@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 type HubMetricTone = 'default' | 'primary' | 'success' | 'warning';

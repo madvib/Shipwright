@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import IssueList from '@/features/planning/IssueList';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { EmptyState } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import TemplateEditorButton from '@/features/planning/TemplateEditorButton';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';

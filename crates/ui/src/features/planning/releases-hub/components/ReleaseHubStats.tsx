@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Gauge, Link2, Rocket } from 'lucide-react';
 import { ReleaseInfo as ReleaseEntry } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 interface ReleaseHubStatsProps {

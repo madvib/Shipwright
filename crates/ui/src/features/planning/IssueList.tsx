@@ -12,9 +12,9 @@ import {
 } from '@dnd-kit/core';
 import { ChevronDown, ChevronUp, GripVertical, Plus } from 'lucide-react';
 import { IssueEntry, StatusConfig } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@ship/ui';
 import { getStatusStyles } from '@/lib/workspace-ui';
 import { cn } from '@/lib/utils';
 

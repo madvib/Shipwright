@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 
 interface HubViewToggleProps<TValue extends string> {
   value: TValue;

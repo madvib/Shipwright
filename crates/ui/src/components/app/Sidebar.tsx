@@ -22,7 +22,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import { ProjectDiscovery as Project } from '@/bindings';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,8 +31,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Separator } from '@/components/ui/separator';
+} from '@ship/ui';
+import { Separator } from '@ship/ui';
 import { cn } from '@/lib/utils';
 import {
   AppRoutePath,

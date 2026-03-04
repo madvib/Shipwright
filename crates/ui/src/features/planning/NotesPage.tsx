@@ -1,11 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, StickyNote } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@ship/ui';
+import { Input } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import MarkdownEditor from '@/components/editor';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@ship/ui';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import { relativeDate } from '@/lib/date';
 import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';

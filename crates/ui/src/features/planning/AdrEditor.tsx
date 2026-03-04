@@ -3,8 +3,8 @@ import { FilePlus2 } from 'lucide-react';
 import { ADR } from '@/bindings';
 import MarkdownEditor from '@/components/editor';
 import AdrFrontmatterPanel from '@/components/editor/AdrFrontmatterPanel';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@ship/ui';
+import { Textarea } from '@ship/ui';
 import { deriveAdrDocTitle } from './adrTitle';
 
 interface AdrEditorProps {

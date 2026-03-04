@@ -8,7 +8,7 @@ import NewIssueModal from '@/features/planning/NewIssueModal';
 import ProjectOnboarding from '@/features/planning/ProjectOnboarding';
 import SpecDetail from '@/features/planning/SpecDetail';
 import { SearchModal } from '@/components/app/SearchModal';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import {
   AppRoutePath,

@@ -6,10 +6,10 @@ import {
   ReleaseInfo as ReleaseEntry,
 } from '@/bindings';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardHeader } from '@ship/ui';
+import { EmptyState } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import TemplateEditorButton from './TemplateEditorButton';

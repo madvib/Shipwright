@@ -9,16 +9,16 @@ import {
 } from 'lucide-react';
 import { ProjectDiscovery as Project, StatusConfig } from '@/bindings';
 import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@ship/ui';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
+} from '@ship/ui';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,9 +27,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+} from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Textarea } from '@ship/ui';
 
 export interface CreateProjectInput {
   name: string;

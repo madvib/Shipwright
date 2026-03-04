@@ -1,8 +1,8 @@
 import { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
 
 interface DetailSheetProps {
   label?: ReactNode;

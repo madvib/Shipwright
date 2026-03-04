@@ -1,7 +1,7 @@
 import { Search } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Input } from '@ship/ui';
 import { StatusFilter } from '@/components/app/StatusFilter';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 import HubViewToggle from '@/features/planning/hub/components/HubViewToggle';
 
 interface FeatureHubToolbarProps {

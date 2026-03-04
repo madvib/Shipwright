@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { FacetedFilter } from '@/components/ui/faceted-filter';
-import { FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { FacetedFilter } from '@ship/ui';
+import { FieldLabel } from '@ship/ui';
+import { Input } from '@ship/ui';
 import {
   FrontmatterDelimiter,
   readFrontmatterStringField,

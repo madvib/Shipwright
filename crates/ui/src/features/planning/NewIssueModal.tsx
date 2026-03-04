@@ -2,17 +2,17 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { StatusConfig } from '@/bindings';
 import { generateIssueDescriptionCmd } from '@/lib/platform/tauri/commands';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Input } from '@ship/ui';
+import AutocompleteInput from '@ship/ui';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 
 interface NewIssueModalProps {

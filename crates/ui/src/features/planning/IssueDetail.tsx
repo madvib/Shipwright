@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Issue, IssueEntry, IssueLink, StatusConfig } from '@/bindings';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@ship/ui';
+import { Card, CardContent } from '@ship/ui';
+import AutocompleteInput from '@ship/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
+import { Badge } from '@ship/ui';
 import IssueMetadataPanel from '@/components/editor/IssueMetadataPanel';
 
 interface IssueDetailProps {

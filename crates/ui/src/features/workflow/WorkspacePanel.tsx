@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { GitBranch, Box, Loader2, Info, Zap, RefreshCw } from 'lucide-react';
 import { getCurrentBranchCmd, getWorkspaceCmd } from '@/lib/platform/tauri/commands';
 import { Workspace } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ship/ui';
+import { Alert, AlertDescription, AlertTitle } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 export default function WorkspacePanel() {

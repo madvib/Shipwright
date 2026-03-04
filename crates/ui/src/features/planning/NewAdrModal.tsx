@@ -4,9 +4,9 @@ import { generateAdrCmd } from '@/lib/platform/tauri/commands';
 import AdrEditor from './AdrEditor';
 import DetailSheet from './DetailSheet';
 import { loadProjectTemplate } from '@/components/editor/templateLoader';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 import { deriveAdrHeaderTitle } from './adrTitle';
 
 interface NewAdrModalProps {

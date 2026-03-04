@@ -1,6 +1,6 @@
 import { Bot, ChevronDown, Settings2 } from 'lucide-react';
 import { ModeConfig } from '@/bindings';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +11,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 interface AgentModeControlProps {

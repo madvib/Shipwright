@@ -4,7 +4,7 @@ import { Target, ExternalLink, Trash2 } from 'lucide-react';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';
 import SpecMetadataPanel from '@/components/editor/SpecMetadataPanel';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
 import {
   AlertDialog,
@@ -16,8 +16,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
+} from '@ship/ui';
+import { Badge } from '@ship/ui';
 
 interface SpecDetailProps {
   spec: SpecDocument;

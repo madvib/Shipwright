@@ -1,5 +1,5 @@
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@ship/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 
 export type AgentConfigScope = 'project' | 'global';
 

@@ -2,17 +2,17 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, FileCode2, Plus } from 'lucide-react';
 import { SpecInfo as SpecEntry } from '@/bindings';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { EmptyState } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import SpecMetadataPanel from '@/components/editor/SpecMetadataPanel';
 import { readFrontmatterStringField, splitFrontmatterDocument } from '@/components/editor/frontmatter';
 import TemplateEditorButton from './TemplateEditorButton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
+import { Input } from '@ship/ui';
 
 interface SpecsPageProps {
   specs: SpecEntry[];

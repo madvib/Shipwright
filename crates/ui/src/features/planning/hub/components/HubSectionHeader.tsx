@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { CardDescription, CardTitle } from '@/components/ui/card';
+import { CardDescription, CardTitle } from '@ship/ui';
 
 interface HubSectionHeaderProps {
   title: string;

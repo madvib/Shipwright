@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { ADR, AdrEntry } from '@/bindings';
 import AdrEditor from './AdrEditor';
 import DetailSheet from './DetailSheet';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ship/ui';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from '@ship/ui';
 import { deriveAdrHeaderTitle } from './adrTitle';
 
 interface AdrDetailProps {

@@ -8,17 +8,17 @@ import {
   SpecInfo as SpecEntry,
 } from '@/bindings';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@ship/ui';
 import {
   Card,
   CardContent,
   CardHeader,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+} from '@ship/ui';
+import { Button } from '@ship/ui';
 import TemplateEditorButton from './TemplateEditorButton';
 import MarkdownEditor from '@/components/editor';
 import FeatureMetadataPanel from '@/components/editor/FeatureMetadataPanel';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import {
   readFrontmatterStringField,

@@ -3,19 +3,19 @@ import { Bot, Plus, Shield, ShieldAlert, FileSearch, Trash2, Upload, LockIcon, S
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commands, ModeConfig, ProjectConfig, Permissions } from '@/bindings';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Label } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
+import { Separator } from '@ship/ui';
+import { Textarea } from '@ship/ui';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
+import AutocompleteInput from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 interface AgentsPanelProps {

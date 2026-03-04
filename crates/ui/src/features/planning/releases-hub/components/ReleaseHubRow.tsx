@@ -1,8 +1,8 @@
 import { AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { FeatureInfo as FeatureEntry, ReleaseInfo as ReleaseEntry } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Progress } from '@ship/ui';
 import { cn } from '@/lib/utils';
 import { formatStatusLabel } from '@/features/planning/hub/utils/featureMetrics';
 

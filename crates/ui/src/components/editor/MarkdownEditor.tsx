@@ -3,9 +3,9 @@ import { ChevronDown, ChevronUp, Maximize2, Minimize2, Sparkles, SquarePen } fro
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@ship/ui';
+import { Label } from '@ship/ui';
+import { Tabs, TabsList, TabsTrigger } from '@ship/ui';
 import CustomMilkdownEditor from './CustomMilkdownEditor';
 import FrontmatterPanel from './FrontmatterPanel';
 import {
@@ -23,7 +23,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@ship/ui';
 import { Wand2, Type, AlignLeft, CheckCircle } from 'lucide-react';
 
 type EditorMode = 'edit' | 'read';
