@@ -1163,6 +1163,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     worktree,
                     worktree_path,
                 } => {
+                    if worktree && checkout {
+                        anyhow::bail!("--worktree and --checkout cannot be used together");
+                    }
                     if worktree_path.is_some() && !worktree {
                         anyhow::bail!("--worktree-path requires --worktree");
                     }

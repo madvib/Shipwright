@@ -332,6 +332,49 @@ fn workspace_create_rejects_worktree_path_without_worktree_flag() {
 }
 
 #[test]
+fn workspace_create_rejects_checkout_and_worktree_flag_combo() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let branch = "feature/invalid-flag-combo";
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            branch,
+            "--checkout",
+            "--worktree",
+            "--feature",
+            "feat-invalid-flag-combo",
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "workspace create should fail when --checkout and --worktree are combined\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--worktree and --checkout cannot be used together"),
+        "unexpected validation error:\n{stderr}"
+    );
+
+    let workspace = get_workspace(&project.ship_dir, branch).unwrap();
+    assert!(
+        workspace.is_none(),
+        "validation failure should not persist a workspace row"
+    );
+    assert_eq!(
+        project.current_branch(),
+        "main",
+        "validation failure should not switch branches"
+    );
+}
+
+#[test]
 fn workspace_recreate_without_worktree_clears_worktree_metadata() {
     let project = TestProject::with_git().unwrap();
     let init = project.initial_commit().unwrap();

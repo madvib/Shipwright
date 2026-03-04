@@ -45,6 +45,7 @@ tags = []
   - recreating/updating a workspace with `is_worktree=false` now clears stale `worktree_path` state
   - worktree workspace records now require a non-empty `worktree_path`
   - CLI now rejects `workspace create --worktree-path ...` when `--worktree` is not set
+  - CLI now rejects conflicting `workspace create --checkout --worktree` flag combinations
   - added runtime + e2e regression coverage for worktree-to-non-worktree metadata cleanup
 
 ## Next
