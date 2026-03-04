@@ -1,7 +1,21 @@
 mod helpers;
 use helpers::TestProject;
-use runtime::config::{McpServerConfig, McpServerType, ProjectConfig, save_config};
+use runtime::config::{
+    HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
+    ProjectConfig, save_config,
+};
 use std::collections::HashMap;
+use std::process::Output;
+
+fn assert_success(out: &Output, context: &str) {
+    assert!(
+        out.status.success(),
+        "{}\nstdout: {}\nstderr: {}",
+        context,
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
 
 fn make_stdio_server(id: &str) -> McpServerConfig {
     McpServerConfig {
@@ -115,4 +129,112 @@ fn gemini_http_server_uses_httpurl() {
         serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
     assert!(val["mcpServers"]["figma"]["httpUrl"].is_string());
     assert!(val["mcpServers"]["figma"]["url"].is_null());
+}
+
+/// Mode hooks + permissions propagate through CLI export to ~/.claude/settings.json.
+#[test]
+fn claude_export_writes_mode_hooks_and_permissions_to_home_settings() {
+    let p = TestProject::new().unwrap();
+    let home = tempfile::TempDir::new().unwrap();
+
+    let mut config = ProjectConfig::default();
+    config.modes = vec![ModeConfig {
+        id: "focus".to_string(),
+        name: "Focus".to_string(),
+        description: None,
+        active_tools: vec![],
+        mcp_servers: vec![],
+        prompt_id: None,
+        hooks: vec![HookConfig {
+            id: "mode-pre-tool".to_string(),
+            trigger: HookTrigger::PreToolUse,
+            matcher: Some("Bash".to_string()),
+            command: "echo pre".to_string(),
+        }],
+        permissions: PermissionConfig {
+            allow: vec!["Bash(*)".to_string()],
+            deny: vec!["WebFetch(*)".to_string()],
+        },
+        target_agents: vec![],
+    }];
+    config.active_mode = Some("focus".to_string());
+    save_config(&config, Some(p.ship_dir.clone())).unwrap();
+
+    let out = p
+        .cli(&["config", "export", "--target", "claude"])
+        .env("HOME", home.path())
+        .output()
+        .unwrap();
+    assert_success(&out, "ship config export claude failed");
+
+    let settings_path = home.path().join(".claude/settings.json");
+    assert!(
+        settings_path.exists(),
+        "expected Claude settings at {}",
+        settings_path.display()
+    );
+
+    let settings_raw = std::fs::read_to_string(settings_path).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&settings_raw).unwrap();
+
+    let allow = value["permissions"]["allow"].as_array().unwrap();
+    let deny = value["permissions"]["deny"].as_array().unwrap();
+    assert!(
+        allow.iter().any(|v| v.as_str() == Some("Bash(*)")),
+        "missing allow permission in Claude settings"
+    );
+    assert!(
+        deny.iter().any(|v| v.as_str() == Some("WebFetch(*)")),
+        "missing deny permission in Claude settings"
+    );
+
+    assert!(
+        settings_raw.contains("\"PreToolUse\"") && settings_raw.contains("echo pre"),
+        "missing PreToolUse hook command in Claude settings:\n{}",
+        settings_raw
+    );
+}
+
+/// Non-Claude exports should not touch Claude home settings.
+#[test]
+fn gemini_export_does_not_write_claude_settings_file() {
+    let p = TestProject::new().unwrap();
+    let home = tempfile::TempDir::new().unwrap();
+
+    let mut config = ProjectConfig::default();
+    config.modes = vec![ModeConfig {
+        id: "focus".to_string(),
+        name: "Focus".to_string(),
+        description: None,
+        active_tools: vec![],
+        mcp_servers: vec![],
+        prompt_id: None,
+        hooks: vec![HookConfig {
+            id: "mode-pre-tool".to_string(),
+            trigger: HookTrigger::PreToolUse,
+            matcher: Some("Bash".to_string()),
+            command: "echo pre".to_string(),
+        }],
+        permissions: PermissionConfig {
+            allow: vec!["Bash(*)".to_string()],
+            deny: vec!["WebFetch(*)".to_string()],
+        },
+        target_agents: vec![],
+    }];
+    config.active_mode = Some("focus".to_string());
+    save_config(&config, Some(p.ship_dir.clone())).unwrap();
+
+    let out = p
+        .cli(&["config", "export", "--target", "gemini"])
+        .env("HOME", home.path())
+        .output()
+        .unwrap();
+    assert_success(&out, "ship config export gemini failed");
+
+    let settings_path = home.path().join(".claude/settings.json");
+    assert!(
+        !settings_path.exists(),
+        "gemini export should not create Claude settings at {}",
+        settings_path.display()
+    );
 }
