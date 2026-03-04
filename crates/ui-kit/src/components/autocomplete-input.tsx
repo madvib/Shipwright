@@ -138,5 +138,3 @@ export function AutocompleteInput({
     </Combobox>
   );
 }
-
-export { AutocompleteInput };
