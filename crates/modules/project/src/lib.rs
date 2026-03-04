@@ -34,8 +34,8 @@ pub use project::{
     ADR_STATUSES, DEFAULT_STATUSES, FEATURE_STATUSES, ISSUE_STATUSES, ProjectEntry,
     ProjectRegistry, SPEC_STATUSES, discover_projects, get_project_dir, get_project_name,
     init_project, list_registered_namespaces, list_registered_projects, read_template,
-    register_project, register_ship_namespace, sanitize_file_name, unregister_project,
-    write_template,
+    register_project, register_ship_namespace, rename_project, sanitize_file_name,
+    unregister_project, write_template,
 };
 pub use release::{
     Release, ReleaseBreakingChange, ReleaseEntry, ReleaseMetadata, ReleaseStatus, create_release,

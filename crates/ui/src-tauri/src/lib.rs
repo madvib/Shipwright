@@ -5,7 +5,7 @@ use runtime::config::{
 };
 use runtime::project::{
     adrs_dir, features_dir, get_active_project_global, get_project_dir, issues_dir, releases_dir,
-    set_active_project_global, specs_dir, SHIP_DIR_NAME,
+    resolve_project_ship_dir, set_active_project_global, specs_dir, SHIP_DIR_NAME,
 };
 use runtime::{
     activate_workspace, create_prompt, create_skill, create_user_skill, create_workspace,
@@ -24,8 +24,8 @@ use ship_module_project::{
     delete_issue, delete_spec, get_adr_by_id, get_feature_by_id, get_issue_by_id, get_note_by_id,
     get_project_name, get_release_by_id, get_spec_by_id, init_project, list_adrs, list_features,
     list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
-    move_issue, read_template, register_project, update_adr, update_feature, update_issue,
-    update_note_content, update_release, update_spec, AdrEntry, AdrStatus,
+    move_issue, read_template, register_project, rename_project, update_adr, update_feature,
+    update_issue, update_note_content, update_release, update_spec, AdrEntry, AdrStatus,
     FeatureEntry as ProjectFeatureEntry, Issue, IssueEntry, IssueStatus, NoteScope,
     ReleaseEntry as ProjectReleaseEntry, Spec, SpecEntry, ADR,
 };
@@ -219,9 +219,43 @@ fn selected_base_dir(path: &Path) -> PathBuf {
 }
 
 fn current_inside_project(cwd: &Path, registered_path: &Path) -> bool {
+    if let (Some(cwd_ship), Some(registered_ship)) = (
+        resolve_project_ship_dir(cwd),
+        resolve_project_ship_dir(registered_path),
+    ) {
+        return cwd_ship == registered_ship;
+    }
+
     let ship_path = ensure_ship_path(registered_path);
     let root = ship_path.parent().unwrap_or(&ship_path);
     cwd.starts_with(root)
+}
+
+fn project_display_name(ship_path: &Path) -> String {
+    if let Ok(config) = get_config(Some(ship_path.to_path_buf())) {
+        if let Some(name) = config.name {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    let canonical_ship = fs::canonicalize(ship_path).unwrap_or_else(|_| ship_path.to_path_buf());
+    if let Ok(registry) = list_registered_projects() {
+        for entry in registry {
+            let entry_ship = ensure_ship_path(&entry.path);
+            let entry_ship = fs::canonicalize(&entry_ship).unwrap_or(entry_ship);
+            if entry_ship == canonical_ship {
+                let trimmed = entry.name.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+
+    get_project_name(ship_path)
 }
 
 fn timestamp_nanos(time: SystemTime) -> u128 {
@@ -502,7 +536,7 @@ fn get_active_project(state: State<AppState>) -> Result<Option<ProjectInfo>, Str
                 if path.exists() {
                     let issues = list_issues(&path).unwrap_or_default();
                     return Ok(Some(ProjectInfo {
-                        name: get_project_name(&path),
+                        name: project_display_name(&path),
                         path: path.to_string_lossy().to_string(),
                         issue_count: issues.len(),
                     }));
@@ -513,7 +547,7 @@ fn get_active_project(state: State<AppState>) -> Result<Option<ProjectInfo>, Str
         Some(path) => {
             let issues = list_issues(path).unwrap_or_default();
             Ok(Some(ProjectInfo {
-                name: get_project_name(path),
+                name: project_display_name(path),
                 path: path.to_string_lossy().to_string(),
                 issue_count: issues.len(),
             }))
@@ -533,14 +567,14 @@ fn set_active_project(
         return Err(format!("Path does not exist: {}", ship_path.display()));
     }
     let issues = list_issues(&ship_path).unwrap_or_default();
+    let display_name = project_display_name(&ship_path);
     let info = ProjectInfo {
-        name: get_project_name(&ship_path),
+        name: display_name.clone(),
         path: ship_path.to_string_lossy().to_string(),
         issue_count: issues.len(),
     };
     *state.active_project.lock().unwrap() = Some(ship_path.clone());
-    register_project(get_project_name(&ship_path), ship_path.clone())
-        .map_err(|e: anyhow::Error| e.to_string())?;
+    register_project(display_name, ship_path.clone()).map_err(|e: anyhow::Error| e.to_string())?;
     if let Err(err) = start_project_watcher(&app, &state, &ship_path) {
         eprintln!("Failed to start project watcher: {}", err);
     }
@@ -574,13 +608,14 @@ async fn pick_and_open_project(
     };
 
     let issues = list_issues(&final_ship_path).unwrap_or_default();
+    let display_name = project_display_name(&final_ship_path);
     let info = ProjectInfo {
-        name: get_project_name(&final_ship_path),
+        name: display_name.clone(),
         path: final_ship_path.to_string_lossy().to_string(),
         issue_count: issues.len(),
     };
     *state.active_project.lock().unwrap() = Some(final_ship_path.clone());
-    register_project(get_project_name(&final_ship_path), final_ship_path.clone())
+    register_project(display_name, final_ship_path.clone())
         .map_err(|e: anyhow::Error| e.to_string())?;
     if let Err(err) = start_project_watcher(&app, &state, &final_ship_path) {
         eprintln!("Failed to start project watcher: {}", err);
@@ -607,8 +642,9 @@ fn detect_current_project(
                 continue;
             }
             let issues = list_issues(&ship_path).unwrap_or_default();
+            let display_name = project_display_name(&ship_path);
             let info = ProjectInfo {
-                name: get_project_name(&ship_path),
+                name: display_name,
                 path: ship_path.to_string_lossy().to_string(),
                 issue_count: issues.len(),
             };
@@ -625,14 +661,15 @@ fn detect_current_project(
     match get_project_dir(None) {
         Ok(ship_path) => {
             let issues = list_issues(&ship_path).unwrap_or_default();
+            let display_name = project_display_name(&ship_path);
             let info = ProjectInfo {
-                name: get_project_name(&ship_path),
+                name: display_name.clone(),
                 path: ship_path.to_string_lossy().to_string(),
                 issue_count: issues.len(),
             };
             // Also set as active
             *state.active_project.lock().unwrap() = Some(ship_path.clone());
-            register_project(get_project_name(&ship_path), ship_path.clone())
+            register_project(display_name, ship_path.clone())
                 .map_err(|e: anyhow::Error| e.to_string())?;
             if let Err(err) = start_project_watcher(&app, &state, &ship_path) {
                 eprintln!("Failed to start project watcher: {}", err);
@@ -671,14 +708,14 @@ async fn create_new_project(
     };
 
     let issues = list_issues(&ship_path).unwrap_or_default();
+    let display_name = project_display_name(&ship_path);
     let info = ProjectInfo {
-        name: get_project_name(&ship_path),
+        name: display_name.clone(),
         path: ship_path.to_string_lossy().to_string(),
         issue_count: issues.len(),
     };
     *state.active_project.lock().unwrap() = Some(ship_path.clone());
-    register_project(get_project_name(&ship_path), ship_path.clone())
-        .map_err(|e: anyhow::Error| e.to_string())?;
+    register_project(display_name, ship_path.clone()).map_err(|e: anyhow::Error| e.to_string())?;
     if let Err(err) = start_project_watcher(&app, &state, &ship_path) {
         eprintln!("Failed to start project watcher: {}", err);
     }
@@ -767,6 +804,28 @@ fn create_project_with_options(
 
     set_active_project_global(ship_path).map_err(|e| e.to_string())?;
     Ok(info)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn rename_project_cmd(
+    path: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<ProjectInfo, String> {
+    let ship_path = ensure_ship_path(Path::new(&path));
+    rename_project(ship_path.clone(), name).map_err(|e| e.to_string())?;
+
+    if ship_path.exists() {
+        *state.active_project.lock().unwrap() = Some(ship_path.clone());
+    }
+
+    let issues = list_issues(&ship_path).unwrap_or_default();
+    Ok(ProjectInfo {
+        name: project_display_name(&ship_path),
+        path: ship_path.to_string_lossy().to_string(),
+        issue_count: issues.len(),
+    })
 }
 
 fn start_project_watcher(
@@ -1995,6 +2054,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             create_new_project,
             pick_project_directory,
             create_project_with_options,
+            rename_project_cmd,
             detect_current_project,
             // Issues
             list_items,

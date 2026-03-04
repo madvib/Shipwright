@@ -33,7 +33,7 @@ use ship_module_project::{
     ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, import_adrs_from_files,
     import_features_from_files, import_issues_from_files, import_notes_from_files,
     import_releases_from_files, import_specs_from_files, init_demo_project, init_project,
-    list_registered_projects, register_project, unregister_project,
+    list_registered_projects, register_project, rename_project, unregister_project,
 };
 use std::env;
 use std::path::{Path, PathBuf};
@@ -626,6 +626,8 @@ pub enum ProjectCommands {
     List,
     /// Start tracking a project
     Track { name: String, path: PathBuf },
+    /// Rename a tracked project without changing its path
+    Rename { path: PathBuf, name: String },
     /// Stop tracking a project
     Untrack { path: PathBuf },
 }
@@ -1343,6 +1345,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             ProjectCommands::Track { name, path } => {
                 register_project(name.clone(), path.clone())?;
                 println!("Now tracking project: {} ({})", name, path.display());
+            }
+            ProjectCommands::Rename { path, name } => {
+                rename_project(path.clone(), name.clone())?;
+                println!("Renamed project at {} to {}", path.display(), name);
             }
             ProjectCommands::Untrack { path } => {
                 unregister_project(path.clone())?;
