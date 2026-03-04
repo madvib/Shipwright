@@ -1163,6 +1163,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     worktree,
                     worktree_path,
                 } => {
+                    if worktree_path.is_some() && !worktree {
+                        anyhow::bail!("--worktree-path requires --worktree");
+                    }
+
                     let parsed_workspace_type = workspace_type
                         .as_deref()
                         .map(str::parse::<WorkspaceType>)

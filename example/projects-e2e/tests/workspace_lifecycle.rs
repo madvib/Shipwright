@@ -289,6 +289,49 @@ fn workspace_worktree_failure_does_not_persist_workspace_record() {
 }
 
 #[test]
+fn workspace_create_rejects_worktree_path_without_worktree_flag() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let branch = "feature/worktree-path-without-flag";
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            branch,
+            "--worktree-path",
+            "../worktrees/ignored",
+            "--feature",
+            "feat-worktree-path-without-flag",
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "workspace create should fail when --worktree-path is used without --worktree\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--worktree-path requires --worktree"),
+        "unexpected validation error:\n{stderr}"
+    );
+
+    let workspace = get_workspace(&project.ship_dir, branch).unwrap();
+    assert!(
+        workspace.is_none(),
+        "validation failure should not persist a workspace row"
+    );
+    assert_eq!(
+        project.current_branch(),
+        "main",
+        "validation failure should not switch branches"
+    );
+}
+
+#[test]
 fn workspace_recreate_without_worktree_clears_worktree_metadata() {
     let project = TestProject::with_git().unwrap();
     let init = project.initial_commit().unwrap();
