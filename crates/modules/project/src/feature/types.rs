@@ -44,7 +44,7 @@ impl std::str::FromStr for FeatureStatus {
 
 // ─── Core types ───────────────────────────────────────────────────────────────
 
-pub use runtime::agent_config::FeatureAgentConfig;
+pub use runtime::agents::config::FeatureAgentConfig;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct FeatureMetadata {

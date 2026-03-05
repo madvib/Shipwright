@@ -91,6 +91,46 @@ SET status = 'active'
 WHERE status IS NULL OR status = '';
 "#;
 
+const PROJECT_SCHEMA_AGENT_RUNTIME_SETTINGS: &str = r#"
+CREATE TABLE IF NOT EXISTS agent_runtime_settings (
+  id             INTEGER PRIMARY KEY CHECK(id = 1),
+  active_mode    TEXT,
+  providers_json TEXT NOT NULL DEFAULT '[]',
+  hooks_json     TEXT NOT NULL DEFAULT '[]',
+  updated_at     TEXT NOT NULL
+);
+"#;
+
+const PROJECT_SCHEMA_AGENT_CATALOG: &str = r#"
+CREATE TABLE IF NOT EXISTS agent_artifact_registry (
+  uuid         TEXT PRIMARY KEY,
+  kind         TEXT NOT NULL,
+  external_id  TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  source_path  TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  UNIQUE(kind, external_id)
+);
+CREATE INDEX IF NOT EXISTS agent_artifact_kind_idx
+  ON agent_artifact_registry(kind);
+
+CREATE TABLE IF NOT EXISTS agent_mode (
+  id                TEXT PRIMARY KEY,
+  name              TEXT NOT NULL,
+  description       TEXT,
+  active_tools_json TEXT NOT NULL DEFAULT '[]',
+  mcp_refs_json     TEXT NOT NULL DEFAULT '[]',
+  skill_refs_json   TEXT NOT NULL DEFAULT '[]',
+  rule_refs_json    TEXT NOT NULL DEFAULT '[]',
+  prompt_id         TEXT,
+  hooks_json        TEXT NOT NULL DEFAULT '[]',
+  permissions_json  TEXT NOT NULL DEFAULT '{}',
+  target_agents_json TEXT NOT NULL DEFAULT '[]',
+  updated_at        TEXT NOT NULL
+);
+"#;
+
 const PROJECT_SCHEMA_ADRS: &str = r#"
 CREATE TABLE IF NOT EXISTS adr (
   id              TEXT PRIMARY KEY,
@@ -248,6 +288,11 @@ const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
     ("0008_issues_specs", PROJECT_SCHEMA_ISSUES_SPECS),
     ("0009_migration_meta", SCHEMA_MIGRATION_META),
     ("0010_event_log", PROJECT_SCHEMA_EVENTS),
+    (
+        "0011_agent_runtime_settings",
+        PROJECT_SCHEMA_AGENT_RUNTIME_SETTINGS,
+    ),
+    ("0012_agent_catalog", PROJECT_SCHEMA_AGENT_CATALOG),
 ];
 const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_global_schema", GLOBAL_SCHEMA_V1),
@@ -312,6 +357,38 @@ pub struct WorkspaceUpsert<'a> {
     pub worktree_path: Option<&'a str>,
     pub last_activated_at: Option<&'a str>,
     pub context_hash: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentRuntimeSettingsDb {
+    pub providers: Vec<String>,
+    pub active_mode: Option<String>,
+    pub hooks_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentArtifactRegistryDb {
+    pub uuid: String,
+    pub kind: String,
+    pub external_id: String,
+    pub name: String,
+    pub source_path: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentModeDb {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub active_tools_json: String,
+    pub mcp_refs_json: String,
+    pub skill_refs_json: String,
+    pub rule_refs_json: String,
+    pub prompt_id: Option<String>,
+    pub hooks_json: String,
+    pub permissions_json: String,
+    pub target_agents_json: String,
 }
 
 /// Returns `~/.ship/state/<project-slug>/ship.db` for the given ship_dir.
@@ -488,6 +565,259 @@ pub fn set_managed_state_db(
         .bind(&now)
         .execute(&mut conn)
         .await
+    })?;
+    Ok(())
+}
+
+pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRuntimeSettingsDb>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let row_opt = block_on(async {
+        sqlx::query(
+            "SELECT providers_json, active_mode, hooks_json
+             FROM agent_runtime_settings
+             WHERE id = 1",
+        )
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+
+    let Some(row) = row_opt else {
+        return Ok(None);
+    };
+
+    use sqlx::Row;
+    let providers_json: String = row.get(0);
+    let active_mode: Option<String> = row.get(1);
+    let hooks_json: String = row.get(2);
+    let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
+
+    Ok(Some(AgentRuntimeSettingsDb {
+        providers,
+        active_mode,
+        hooks_json,
+    }))
+}
+
+pub fn set_agent_runtime_settings_db(
+    ship_dir: &Path,
+    providers: &[String],
+    active_mode: Option<&str>,
+    hooks_json: &str,
+) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
+    let providers_json = serde_json::to_string(providers)
+        .with_context(|| "Failed to serialize providers for agent runtime settings")?;
+    let now = Utc::now().to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "INSERT INTO agent_runtime_settings (id, providers_json, active_mode, hooks_json, updated_at)
+             VALUES (1, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               providers_json = excluded.providers_json,
+               active_mode = excluded.active_mode,
+               hooks_json = excluded.hooks_json,
+               updated_at = excluded.updated_at",
+        )
+        .bind(&providers_json)
+        .bind(active_mode)
+        .bind(hooks_json)
+        .bind(&now)
+        .execute(&mut conn)
+        .await
+    })?;
+    Ok(())
+}
+
+pub fn upsert_agent_artifact_registry_db(
+    ship_dir: &Path,
+    kind: &str,
+    external_id: &str,
+    name: &str,
+    source_path: &str,
+    content_hash: &str,
+) -> Result<String> {
+    let mut conn = open_project_db(ship_dir)?;
+    let existing_uuid = block_on(async {
+        sqlx::query(
+            "SELECT uuid
+             FROM agent_artifact_registry
+             WHERE kind = ? AND external_id = ?",
+        )
+        .bind(kind)
+        .bind(external_id)
+        .fetch_optional(&mut conn)
+        .await
+    })?
+    .map(|row| row.get::<String, _>(0));
+
+    let uuid = existing_uuid.unwrap_or_else(crate::gen_nanoid);
+    let now = Utc::now().to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "INSERT INTO agent_artifact_registry
+                (uuid, kind, external_id, name, source_path, content_hash, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(kind, external_id) DO UPDATE SET
+               name = excluded.name,
+               source_path = excluded.source_path,
+               content_hash = excluded.content_hash,
+               updated_at = excluded.updated_at",
+        )
+        .bind(&uuid)
+        .bind(kind)
+        .bind(external_id)
+        .bind(name)
+        .bind(source_path)
+        .bind(content_hash)
+        .bind(&now)
+        .execute(&mut conn)
+        .await
+    })?;
+
+    Ok(uuid)
+}
+
+pub fn get_agent_artifact_registry_by_uuid_db(
+    ship_dir: &Path,
+    kind: &str,
+    uuid: &str,
+) -> Result<Option<AgentArtifactRegistryDb>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let row_opt = block_on(async {
+        sqlx::query(
+            "SELECT uuid, kind, external_id, name, source_path, content_hash
+             FROM agent_artifact_registry
+             WHERE kind = ? AND uuid = ?",
+        )
+        .bind(kind)
+        .bind(uuid)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+
+    let Some(row) = row_opt else {
+        return Ok(None);
+    };
+
+    Ok(Some(AgentArtifactRegistryDb {
+        uuid: row.get(0),
+        kind: row.get(1),
+        external_id: row.get(2),
+        name: row.get(3),
+        source_path: row.get(4),
+        content_hash: row.get(5),
+    }))
+}
+
+pub fn get_agent_artifact_registry_by_external_id_db(
+    ship_dir: &Path,
+    kind: &str,
+    external_id: &str,
+) -> Result<Option<AgentArtifactRegistryDb>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let row_opt = block_on(async {
+        sqlx::query(
+            "SELECT uuid, kind, external_id, name, source_path, content_hash
+             FROM agent_artifact_registry
+             WHERE kind = ? AND external_id = ?",
+        )
+        .bind(kind)
+        .bind(external_id)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+
+    let Some(row) = row_opt else {
+        return Ok(None);
+    };
+
+    Ok(Some(AgentArtifactRegistryDb {
+        uuid: row.get(0),
+        kind: row.get(1),
+        external_id: row.get(2),
+        name: row.get(3),
+        source_path: row.get(4),
+        content_hash: row.get(5),
+    }))
+}
+
+pub fn list_agent_modes_db(ship_dir: &Path) -> Result<Vec<AgentModeDb>> {
+    let mut conn = open_project_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(
+            "SELECT id, name, description, active_tools_json, mcp_refs_json, skill_refs_json, rule_refs_json, prompt_id, hooks_json, permissions_json, target_agents_json
+             FROM agent_mode
+             ORDER BY id ASC",
+        )
+        .fetch_all(&mut conn)
+        .await
+    })?;
+
+    let mut modes = Vec::with_capacity(rows.len());
+    for row in rows {
+        modes.push(AgentModeDb {
+            id: row.get(0),
+            name: row.get(1),
+            description: row.get(2),
+            active_tools_json: row.get(3),
+            mcp_refs_json: row.get(4),
+            skill_refs_json: row.get(5),
+            rule_refs_json: row.get(6),
+            prompt_id: row.get(7),
+            hooks_json: row.get(8),
+            permissions_json: row.get(9),
+            target_agents_json: row.get(10),
+        });
+    }
+    Ok(modes)
+}
+
+pub fn upsert_agent_mode_db(ship_dir: &Path, mode: &AgentModeDb) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
+    let now = Utc::now().to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "INSERT INTO agent_mode
+                (id, name, description, active_tools_json, mcp_refs_json, skill_refs_json, rule_refs_json, prompt_id, hooks_json, permissions_json, target_agents_json, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               name = excluded.name,
+               description = excluded.description,
+               active_tools_json = excluded.active_tools_json,
+               mcp_refs_json = excluded.mcp_refs_json,
+               skill_refs_json = excluded.skill_refs_json,
+               rule_refs_json = excluded.rule_refs_json,
+               prompt_id = excluded.prompt_id,
+               hooks_json = excluded.hooks_json,
+               permissions_json = excluded.permissions_json,
+               target_agents_json = excluded.target_agents_json,
+               updated_at = excluded.updated_at",
+        )
+        .bind(&mode.id)
+        .bind(&mode.name)
+        .bind(&mode.description)
+        .bind(&mode.active_tools_json)
+        .bind(&mode.mcp_refs_json)
+        .bind(&mode.skill_refs_json)
+        .bind(&mode.rule_refs_json)
+        .bind(&mode.prompt_id)
+        .bind(&mode.hooks_json)
+        .bind(&mode.permissions_json)
+        .bind(&mode.target_agents_json)
+        .bind(&now)
+        .execute(&mut conn)
+        .await
+    })?;
+    Ok(())
+}
+
+pub fn delete_agent_mode_db(ship_dir: &Path, id: &str) -> Result<()> {
+    let mut conn = open_project_db(ship_dir)?;
+    block_on(async {
+        sqlx::query("DELETE FROM agent_mode WHERE id = ?")
+            .bind(id)
+            .execute(&mut conn)
+            .await
     })?;
     Ok(())
 }
@@ -684,38 +1014,12 @@ fn ensure_global_dir_outside_project(ship_dir: &Path, global_dir: &Path) -> Resu
 /// Derives a filesystem-safe slug from the project root path.
 /// `/home/alice/dev/my-app` → `home-alice-dev-my-app`
 fn project_slug(ship_dir: &Path) -> Result<String> {
-    let project_root = ship_dir
-        .parent()
-        .ok_or_else(|| anyhow!("Cannot determine project root from {}", ship_dir.display()))?;
-
-    // Canonicalize if possible (resolves symlinks), fall back to raw path.
-    let canonical =
-        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
-
-    let raw = canonical.to_string_lossy();
-    // Strip leading slash, map non-alphanumeric/hyphen/underscore to hyphens,
-    // then collapse consecutive hyphens so the slug stays readable.
-    let slug: String = raw
-        .trim_start_matches('/')
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let slug = slug
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
+    let slug = crate::project::project_slug_from_ship_dir(ship_dir);
 
     if slug.is_empty() {
         return Err(anyhow!(
-            "Could not derive a project slug from path: {}",
-            canonical.display()
+            "Could not derive a project slug from {}",
+            ship_dir.display()
         ));
     }
     Ok(slug)

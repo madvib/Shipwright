@@ -1,5 +1,4 @@
-pub mod agent_config;
-pub mod agent_export;
+pub mod agents;
 pub mod catalog;
 pub mod config;
 pub mod events;
@@ -7,14 +6,18 @@ pub mod fs_util;
 pub mod hooks;
 pub mod log;
 pub mod migration;
-pub mod permissions;
 pub mod plugin;
 pub mod project;
-pub mod prompt;
-pub mod rule;
-pub mod skill;
 pub mod state_db;
 pub mod workspace;
+
+// Backward-compatible module aliases.
+// Canonical implementation lives under `runtime::agents::*`.
+pub use agents::config as agent_config;
+pub use agents::export as agent_export;
+pub use agents::permissions;
+pub use agents::rule;
+pub use agents::skill;
 
 pub use agent_config::{AgentConfig, resolve_agent_config};
 pub use agent_export::{
@@ -51,12 +54,11 @@ pub use plugin::{Plugin, PluginRegistry};
 // NOTE: ship-specific project primitives stay under `runtime::project`.
 // Do not re-export them from the runtime root; this keeps the root API closer
 // to domain-agnostic runtime/engine concerns.
-pub use prompt::{Prompt, create_prompt, delete_prompt, get_prompt, list_prompts, update_prompt};
 pub use rule::{Rule, create_rule, delete_rule, get_rule, list_rules, update_rule};
 pub use skill::{
-    Skill, SkillSource, create_skill, create_user_skill, delete_skill, delete_user_skill,
-    get_effective_skill, get_skill, get_user_skill, list_effective_skills, list_skills,
-    list_user_skills, update_skill, update_user_skill,
+    Skill, SkillInstallScope, SkillSource, create_skill, create_user_skill, delete_skill,
+    delete_user_skill, get_effective_skill, get_skill, get_user_skill, install_skill_from_source,
+    list_effective_skills, list_skills, list_user_skills, update_skill, update_user_skill,
 };
 pub use state_db::{
     DatabaseMigrationReport, clear_branch_doc, clear_branch_link, clear_global_migration_meta,
@@ -130,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_layer_roundtrip() -> anyhow::Result<()> {
+    fn test_agent_layer_is_not_file_backed() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
 
@@ -147,9 +149,9 @@ mod tests {
 
         let loaded = get_config(Some(project_dir))?;
         assert_eq!(loaded.ai.and_then(|ai| ai.provider), Some("codex".into()));
-        assert_eq!(loaded.agent.skills.len(), 2);
-        assert_eq!(loaded.agent.prompts.len(), 1);
-        assert_eq!(loaded.agent.context.len(), 2);
+        assert!(loaded.agent.skills.is_empty());
+        assert!(loaded.agent.prompts.is_empty());
+        assert!(loaded.agent.context.is_empty());
         Ok(())
     }
 
@@ -233,11 +235,9 @@ mod tests {
         assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/notes").is_dir());
         assert!(ship_path.join("project/vision.md").is_file());
-        // agents/ namespace
-        assert!(ship_path.join("agents/modes").is_dir());
-        assert!(ship_path.join("agents/skills").is_dir());
-        assert!(ship_path.join("agents/prompts").is_dir());
         assert!(ship_path.join("generated").is_dir());
+        let project_skills_dir = crate::project::skills_dir(&ship_path);
+        assert!(project_skills_dir.is_dir());
         // shared
         assert!(ship_path.join("project/releases/TEMPLATE.md").is_file());
         assert!(ship_path.join("project/features/TEMPLATE.md").is_file());
@@ -246,23 +246,15 @@ mod tests {
         assert!(ship_path.join("README.md").is_file());
         assert!(ship_path.join("project/README.md").is_file());
         assert!(ship_path.join("workflow/README.md").is_file());
-        assert!(ship_path.join("agents/modes/planning.toml").is_file());
-        assert!(ship_path.join("agents/modes/execution.toml").is_file());
+        let cfg = crate::config::get_config(Some(ship_path.clone()))?;
+        assert!(cfg.modes.iter().any(|mode| mode.id == "planning"));
+        assert!(cfg.modes.iter().any(|mode| mode.id == "code"));
+        assert!(cfg.modes.iter().any(|mode| mode.id == "config"));
         assert!(!ship_path.join("events.ndjson").is_file());
         assert!(ship_path.join("ship.toml").is_file());
         // default skill seeded
-        assert!(
-            ship_path
-                .join("agents/skills/task-policy/index.md")
-                .is_file()
-        );
-        assert!(
-            ship_path
-                .join("agents/skills/task-policy/skill.toml")
-                .is_file()
-        );
-        let skill_content =
-            fs::read_to_string(ship_path.join("agents/skills/task-policy/index.md"))?;
+        assert!(project_skills_dir.join("task-policy/SKILL.md").is_file());
+        let skill_content = fs::read_to_string(project_skills_dir.join("task-policy/SKILL.md"))?;
         assert!(skill_content.contains("task-policy"));
         assert!(skill_content.contains("Shipwright Workflow Policy"));
         Ok(())
@@ -273,11 +265,13 @@ mod tests {
         let tmp = tempdir()?;
         // First init
         let ship_path = init_project(tmp.path().to_path_buf())?;
+        let project_skills_dir = crate::project::skills_dir(&ship_path);
         // Write a custom skill so we can verify it isn't clobbered
-        let custom_skill = ship_path.join("agents/skills/custom.md");
+        let custom_skill = project_skills_dir.join("custom/SKILL.md");
+        fs::create_dir_all(custom_skill.parent().expect("custom skill dir"))?;
         fs::write(
             &custom_skill,
-            "+++\nid = \"custom\"\nname = \"Custom\"\n+++\nmy content",
+            "---\nname: custom\ndescription: Custom test skill.\n---\n\nmy content",
         )?;
         // Second init on the same directory
         let ship_path2 = init_project(tmp.path().to_path_buf())?;
@@ -286,14 +280,10 @@ mod tests {
         assert!(custom_skill.exists());
         assert_eq!(
             fs::read_to_string(&custom_skill)?,
-            "+++\nid = \"custom\"\nname = \"Custom\"\n+++\nmy content"
+            "---\nname: custom\ndescription: Custom test skill.\n---\n\nmy content"
         );
         // Default skill still present
-        assert!(
-            ship_path
-                .join("agents/skills/task-policy/index.md")
-                .is_file()
-        );
+        assert!(project_skills_dir.join("task-policy/SKILL.md").is_file());
         Ok(())
     }
 

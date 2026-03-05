@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 pub const PRIMARY_CONFIG_FILE: &str = "ship.toml";
@@ -109,7 +110,9 @@ pub struct HookConfig {
     pub command: String,
 }
 
-/// Allow/deny permission set — tool name patterns.
+/// Mode-scoped tool permission overrides.
+/// These overlay canonical `.ship/agents/permissions.toml` `tools.allow/deny`
+/// when a mode is active.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct PermissionConfig {
     #[serde(default)]
@@ -123,12 +126,27 @@ pub struct AgentLayerConfig {
     /// Skill IDs to load for all sessions in this project.
     #[serde(default)]
     pub skills: Vec<String>,
-    /// Prompt IDs to activate for all sessions in this project.
+    /// Legacy alias for global instruction skill IDs.
+    /// Prompts are modeled as skills in Ship.
     #[serde(default)]
     pub prompts: Vec<String>,
     /// Context files/folders to preload for agents.
     #[serde(default)]
     pub context: Vec<String>,
+}
+
+fn is_agent_layer_empty(config: &AgentLayerConfig) -> bool {
+    config.skills.is_empty() && config.prompts.is_empty() && config.context.is_empty()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct LegacyAgentsConfigFile {
+    #[serde(default)]
+    pub providers: Vec<String>,
+    #[serde(default)]
+    pub active_mode: Option<String>,
+    #[serde(default)]
+    pub hooks: Vec<HookConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
@@ -178,7 +196,15 @@ pub struct ModeConfig {
     /// MCP server IDs active in this mode (empty = all)
     #[serde(default)]
     pub mcp_servers: Vec<String>,
-    /// Which prompt to activate (references a .ship/agents/prompts/<id>.md)
+    /// Skill IDs active in this mode (empty = all)
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// Rule IDs active in this mode (empty = all). Rule IDs map to rule file
+    /// names without the `.md` suffix.
+    #[serde(default)]
+    pub rules: Vec<String>,
+    /// Legacy field name for mode-level instruction skill selection.
+    /// This now references a skill ID.
     #[serde(default)]
     pub prompt_id: Option<String>,
     /// Hooks to apply when this mode is active
@@ -203,6 +229,7 @@ pub enum McpServerType {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct McpServerConfig {
+    #[serde(default)]
     pub id: String,
     pub name: String,
     /// For stdio servers: the binary to run
@@ -253,20 +280,20 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub git: GitConfig,
     pub ai: Option<AiConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modes: Vec<ModeConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_servers: Vec<McpServerConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_mode: Option<String>,
     /// Global hooks applied regardless of active mode
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<HookConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_agent_layer_empty")]
     pub agent: AgentLayerConfig,
     /// Which agent providers to generate config for on branch checkout.
     /// Alpha: "claude" | "gemini" | "codex". Defaults to ["claude"].
-    #[serde(default = "default_providers")]
+    #[serde(default = "default_providers", skip_serializing_if = "Vec::is_empty")]
     pub providers: Vec<String>,
     /// Claimed `.ship` namespaces. First-party modules are always present.
     #[serde(default = "default_namespaces")]
@@ -344,6 +371,7 @@ pub struct ProjectDiscovery {
 // ─── Read / Write ─────────────────────────────────────────────────────────────
 
 pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
+    let is_project = project_dir.is_some();
     let config_dir = match project_dir {
         Some(dir) => dir,
         None => get_global_dir()?,
@@ -355,20 +383,54 @@ pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
     let legacy_path = config_dir.join(LEGACY_CONFIG_FILE);
     let json_path = config_dir.join("config.json");
 
+    let mut config = None;
     for path in [&primary_path, &secondary_path, &legacy_path] {
         if !path.exists() {
             continue;
         }
         let content = fs::read_to_string(path)?;
-        return Ok(toml::from_str(&content)?);
+        config = Some(toml::from_str(&content)?);
+        break;
     }
 
-    if json_path.exists() {
+    let mut config = if let Some(config) = config {
+        config
+    } else if json_path.exists() {
         // Legacy JSON config — read what we can and migrate.
-        return Ok(migrate_json_config(&json_path).unwrap_or_default());
+        migrate_json_config(&json_path).unwrap_or_default()
+    } else {
+        ProjectConfig::default()
+    };
+
+    if is_project {
+        if let Some((providers, active_mode, hooks)) = get_runtime_settings(&config_dir)? {
+            config.providers = providers;
+            config.active_mode = active_mode;
+            config.hooks = hooks;
+        } else if let Some(legacy) = get_legacy_agents_config(&config_dir)? {
+            // One-time compatibility path: bootstrap SQLite runtime settings from
+            // legacy .ship/agents/config.toml if present.
+            config.providers = legacy.providers;
+            config.active_mode = legacy.active_mode;
+            config.hooks = legacy.hooks;
+            save_runtime_settings(&config_dir, &config)?;
+            remove_legacy_agents_config(&config_dir)?;
+        }
     }
 
-    Ok(ProjectConfig::default())
+    if is_project {
+        let modes = get_modes_config(&config_dir)?;
+        if !modes.is_empty() {
+            config.modes = modes;
+        }
+    }
+
+    let servers = get_mcp_config(&config_dir)?;
+    if !servers.is_empty() {
+        config.mcp_servers = servers;
+    }
+
+    Ok(config)
 }
 
 /// Returns a merged view of global + project config.
@@ -389,8 +451,10 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     project.agent.prompts = merge_string_lists(&global.agent.prompts, &project.agent.prompts);
     project.agent.context = merge_string_lists(&global.agent.context, &project.agent.context);
 
-    // Project providers win; fall back to global if project is still the default ["claude"].
-    if project.providers == default_providers() && global.providers != default_providers() {
+    // Project providers win; fall back to global when project does not specify a real override.
+    if (project.providers.is_empty() || project.providers == default_providers())
+        && !global.providers.is_empty()
+    {
         project.providers = global.providers;
     }
 
@@ -419,8 +483,281 @@ pub fn get_mcp_config(ship_dir: &Path) -> Result<Vec<McpServerConfig>> {
         server.id = id;
         servers.push(server);
     }
+    servers.sort_by(|a, b| a.id.cmp(&b.id));
 
     Ok(servers)
+}
+
+fn save_mcp_config(ship_dir: &Path, servers: &[McpServerConfig]) -> Result<()> {
+    let path = crate::project::mcp_config_path(ship_dir);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut by_id: HashMap<String, McpServerConfig> = HashMap::new();
+    for server in servers {
+        let mut cloned = server.clone();
+        cloned.id.clear();
+        by_id.insert(server.id.clone(), cloned);
+    }
+
+    let raw = McpConfig {
+        mcp: McpSection { servers: by_id },
+    };
+    write_atomic(&path, toml::to_string_pretty(&raw)?)?;
+    Ok(())
+}
+
+const ARTIFACT_KIND_MCP: &str = "mcp";
+const ARTIFACT_KIND_SKILL: &str = "skill";
+const ARTIFACT_KIND_RULE: &str = "rule";
+
+fn stable_hash(value: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+fn normalize_rule_external_id(id: &str) -> String {
+    let normalized = id.trim().trim_end_matches(".md");
+    if let Some((prefix, rest)) = normalized.split_once('-')
+        && !prefix.is_empty()
+        && prefix.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return rest.to_string();
+    }
+    normalized.to_string()
+}
+
+fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
+    for skill in crate::skill::list_skills(ship_dir)? {
+        let path = crate::project::skills_dir(ship_dir)
+            .join(&skill.id)
+            .join("SKILL.md");
+        let digest = stable_hash(&skill.content);
+        crate::state_db::upsert_agent_artifact_registry_db(
+            ship_dir,
+            ARTIFACT_KIND_SKILL,
+            &skill.id,
+            &skill.name,
+            &path.to_string_lossy(),
+            &digest,
+        )?;
+    }
+
+    for rule in crate::rule::list_rules(ship_dir.to_path_buf())? {
+        let external_id = normalize_rule_external_id(&rule.file_name);
+        let digest = stable_hash(&rule.content);
+        crate::state_db::upsert_agent_artifact_registry_db(
+            ship_dir,
+            ARTIFACT_KIND_RULE,
+            &external_id,
+            &rule.file_name,
+            &rule.path,
+            &digest,
+        )?;
+    }
+
+    for server in get_mcp_config(ship_dir)? {
+        let digest = stable_hash(&toml::to_string(&server)?);
+        crate::state_db::upsert_agent_artifact_registry_db(
+            ship_dir,
+            ARTIFACT_KIND_MCP,
+            &server.id,
+            &server.name,
+            &crate::project::mcp_config_path(ship_dir).to_string_lossy(),
+            &digest,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn resolve_refs_to_external_ids(
+    ship_dir: &Path,
+    kind: &str,
+    refs: &[String],
+) -> Result<Vec<String>> {
+    let mut resolved = Vec::new();
+    let mut seen = HashSet::new();
+    for reference in refs {
+        if let Some(entry) =
+            crate::state_db::get_agent_artifact_registry_by_uuid_db(ship_dir, kind, reference)?
+        {
+            let external_id = if kind == ARTIFACT_KIND_RULE {
+                normalize_rule_external_id(&entry.external_id)
+            } else {
+                entry.external_id
+            };
+            if seen.insert(external_id.clone()) {
+                resolved.push(external_id);
+            }
+            continue;
+        }
+
+        let lookup = if kind == ARTIFACT_KIND_RULE {
+            normalize_rule_external_id(reference)
+        } else {
+            reference.clone()
+        };
+        if let Some(entry) =
+            crate::state_db::get_agent_artifact_registry_by_external_id_db(ship_dir, kind, &lookup)?
+            && seen.insert(entry.external_id.clone())
+        {
+            resolved.push(entry.external_id);
+        }
+    }
+    Ok(resolved)
+}
+
+fn resolve_external_ids_to_refs(
+    ship_dir: &Path,
+    kind: &str,
+    external_ids: &[String],
+) -> Result<Vec<String>> {
+    let mut refs = Vec::new();
+    let mut seen = HashSet::new();
+    for id in external_ids {
+        let lookup = if kind == ARTIFACT_KIND_RULE {
+            normalize_rule_external_id(id)
+        } else {
+            id.clone()
+        };
+        if let Some(entry) =
+            crate::state_db::get_agent_artifact_registry_by_external_id_db(ship_dir, kind, &lookup)?
+            && seen.insert(entry.uuid.clone())
+        {
+            refs.push(entry.uuid);
+        }
+    }
+    Ok(refs)
+}
+
+fn get_modes_config(ship_dir: &Path) -> Result<Vec<ModeConfig>> {
+    sync_agent_artifact_registry(ship_dir)?;
+
+    let mode_rows = crate::state_db::list_agent_modes_db(ship_dir)?;
+    let mut modes = Vec::new();
+    for row in mode_rows {
+        let active_tools: Vec<String> =
+            serde_json::from_str(&row.active_tools_json).unwrap_or_default();
+        let mcp_refs: Vec<String> = serde_json::from_str(&row.mcp_refs_json).unwrap_or_default();
+        let skill_refs: Vec<String> =
+            serde_json::from_str(&row.skill_refs_json).unwrap_or_default();
+        let rule_refs: Vec<String> = serde_json::from_str(&row.rule_refs_json).unwrap_or_default();
+        let hooks: Vec<HookConfig> = serde_json::from_str(&row.hooks_json).unwrap_or_default();
+        let permissions: PermissionConfig =
+            serde_json::from_str(&row.permissions_json).unwrap_or_default();
+        let target_agents: Vec<String> =
+            serde_json::from_str(&row.target_agents_json).unwrap_or_default();
+
+        modes.push(ModeConfig {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            active_tools,
+            mcp_servers: resolve_refs_to_external_ids(ship_dir, ARTIFACT_KIND_MCP, &mcp_refs)?,
+            skills: resolve_refs_to_external_ids(ship_dir, ARTIFACT_KIND_SKILL, &skill_refs)?,
+            rules: resolve_refs_to_external_ids(ship_dir, ARTIFACT_KIND_RULE, &rule_refs)?,
+            prompt_id: row.prompt_id,
+            hooks,
+            permissions,
+            target_agents,
+        });
+    }
+    modes.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(modes)
+}
+
+fn save_modes_config(ship_dir: &Path, modes: &[ModeConfig]) -> Result<()> {
+    sync_agent_artifact_registry(ship_dir)?;
+
+    let existing_ids: HashSet<String> = crate::state_db::list_agent_modes_db(ship_dir)?
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+    let mut next_ids = HashSet::new();
+
+    for mode in modes {
+        next_ids.insert(mode.id.clone());
+        let db_mode = crate::state_db::AgentModeDb {
+            id: mode.id.clone(),
+            name: mode.name.clone(),
+            description: mode.description.clone(),
+            active_tools_json: serde_json::to_string(&mode.active_tools)?,
+            mcp_refs_json: serde_json::to_string(&resolve_external_ids_to_refs(
+                ship_dir,
+                ARTIFACT_KIND_MCP,
+                &mode.mcp_servers,
+            )?)?,
+            skill_refs_json: serde_json::to_string(&resolve_external_ids_to_refs(
+                ship_dir,
+                ARTIFACT_KIND_SKILL,
+                &mode.skills,
+            )?)?,
+            rule_refs_json: serde_json::to_string(&resolve_external_ids_to_refs(
+                ship_dir,
+                ARTIFACT_KIND_RULE,
+                &mode.rules,
+            )?)?,
+            prompt_id: mode.prompt_id.clone(),
+            hooks_json: serde_json::to_string(&mode.hooks)?,
+            permissions_json: serde_json::to_string(&mode.permissions)?,
+            target_agents_json: serde_json::to_string(&mode.target_agents)?,
+        };
+        crate::state_db::upsert_agent_mode_db(ship_dir, &db_mode)?;
+    }
+
+    for id in existing_ids {
+        if !next_ids.contains(&id) {
+            crate::state_db::delete_agent_mode_db(ship_dir, &id)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn get_legacy_agents_config(ship_dir: &Path) -> Result<Option<LegacyAgentsConfigFile>> {
+    let path = legacy_agents_config_path(ship_dir);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(path)?;
+    let parsed: LegacyAgentsConfigFile = toml::from_str(&content)?;
+    Ok(Some(parsed))
+}
+
+fn remove_legacy_agents_config(ship_dir: &Path) -> Result<()> {
+    let path = legacy_agents_config_path(ship_dir);
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn legacy_agents_config_path(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("agents").join("config.toml")
+}
+
+fn get_runtime_settings(
+    ship_dir: &Path,
+) -> Result<Option<(Vec<String>, Option<String>, Vec<HookConfig>)>> {
+    let Some(raw) = crate::state_db::get_agent_runtime_settings_db(ship_dir)? else {
+        return Ok(None);
+    };
+
+    let hooks: Vec<HookConfig> = serde_json::from_str(&raw.hooks_json).unwrap_or_default();
+    Ok(Some((raw.providers, raw.active_mode, hooks)))
+}
+
+fn save_runtime_settings(ship_dir: &Path, config: &ProjectConfig) -> Result<()> {
+    let hooks_json = serde_json::to_string(&config.hooks)?;
+    crate::state_db::set_agent_runtime_settings_db(
+        ship_dir,
+        &config.providers,
+        config.active_mode.as_deref(),
+        &hooks_json,
+    )
 }
 
 fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
@@ -476,17 +813,40 @@ fn merge_hooks(base: &[HookConfig], overlay: &[HookConfig]) -> Vec<HookConfig> {
 }
 
 pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Result<()> {
-    let path = if let Some(p_dir) = project_dir {
-        p_dir.join(PRIMARY_CONFIG_FILE)
+    let config_dir = if let Some(p_dir) = project_dir.clone() {
+        p_dir
     } else {
-        get_global_dir()?.join(PRIMARY_CONFIG_FILE)
+        get_global_dir()?
     };
+    let path = config_dir.join(PRIMARY_CONFIG_FILE);
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    let toml_str = toml::to_string_pretty(config)?;
+    if project_dir.is_none() {
+        // Global config stays file-backed for now.
+        let toml_str = toml::to_string_pretty(config)?;
+        write_atomic(&path, toml_str)?;
+        return Ok(());
+    }
+
+    // Project runtime settings + mode bindings live in SQLite.
+    save_runtime_settings(&config_dir, config)?;
+    // File-backed catalog state (mcp/skills/rules) is indexed into SQLite for mode refs.
+    save_mcp_config(&config_dir, &config.mcp_servers)?;
+    save_modes_config(&config_dir, &config.modes)?;
+
+    // Keep ship.toml focused on core project/workflow config.
+    let mut core = config.clone();
+    core.modes.clear();
+    core.mcp_servers.clear();
+    core.active_mode = None;
+    core.hooks.clear();
+    core.agent = AgentLayerConfig::default();
+    core.providers.clear();
+
+    let toml_str = toml::to_string_pretty(&core)?;
     write_atomic(&path, toml_str)?;
     Ok(())
 }
@@ -868,7 +1228,7 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
     save_config(&config, project_dir.clone())?;
     // Auto-sync to configured agent targets after mode change
     if let Some(ref dir) = project_dir {
-        if let Err(error) = crate::agent_export::sync_active_mode(dir) {
+        if let Err(error) = crate::agents::export::sync_active_mode(dir) {
             eprintln!("[ship] warning: active mode sync failed: {}", error);
         }
     }
@@ -1178,6 +1538,135 @@ mod tests {
         assert_eq!(servers[0].server_type, McpServerType::Http);
         assert_eq!(servers[0].url.as_deref(), Some("http://localhost:8080"));
         assert_eq!(servers[0].timeout_secs, Some(30));
+        Ok(())
+    }
+
+    #[test]
+    fn save_config_keeps_ship_toml_free_of_agent_sections() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        fs::create_dir_all(&ship_dir)?;
+
+        let mut config = ProjectConfig::default();
+        config.providers = vec!["claude".to_string(), "codex".to_string()];
+        config.active_mode = Some("planning".to_string());
+        config.hooks = vec![HookConfig {
+            id: "audit".to_string(),
+            trigger: HookTrigger::PostToolUse,
+            matcher: Some("Bash".to_string()),
+            command: "echo audit".to_string(),
+        }];
+        config.agent = AgentLayerConfig {
+            skills: vec!["task-policy".to_string()],
+            prompts: vec![],
+            context: vec!["project/README.md".to_string()],
+        };
+        config.modes = vec![ModeConfig {
+            id: "planning".to_string(),
+            name: "Planning".to_string(),
+            ..Default::default()
+        }];
+        config.mcp_servers = vec![McpServerConfig {
+            id: "github".to_string(),
+            name: "GitHub".to_string(),
+            command: "npx".to_string(),
+            args: vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-github".to_string(),
+            ],
+            env: HashMap::new(),
+            scope: "project".to_string(),
+            server_type: McpServerType::Stdio,
+            url: None,
+            disabled: false,
+            timeout_secs: Some(30),
+        }];
+
+        save_config(&config, Some(ship_dir.clone()))?;
+
+        let ship_toml = fs::read_to_string(ship_dir.join("ship.toml"))?;
+        assert!(
+            !ship_toml.contains("[[modes]]"),
+            "ship.toml must not persist mode definitions"
+        );
+        assert!(
+            !ship_toml.contains("[[mcp_servers]]"),
+            "ship.toml must not persist MCP servers"
+        );
+        assert!(
+            !ship_toml.contains("[agent]"),
+            "ship.toml must not persist agent block"
+        );
+        assert!(
+            !ship_toml.contains("providers ="),
+            "ship.toml must not persist providers"
+        );
+        assert!(
+            !ship_toml.contains("active_mode ="),
+            "ship.toml must not persist active_mode"
+        );
+
+        assert!(
+            !ship_dir.join("agents").join("config.toml").exists(),
+            "legacy agents/config.toml should not be written"
+        );
+
+        let runtime_settings = crate::state_db::get_agent_runtime_settings_db(&ship_dir)?
+            .expect("expected runtime settings row");
+        assert_eq!(
+            runtime_settings.providers,
+            vec!["claude".to_string(), "codex".to_string()]
+        );
+        assert_eq!(runtime_settings.active_mode.as_deref(), Some("planning"));
+        assert!(runtime_settings.hooks_json.contains("\"audit\""));
+
+        let mode_rows = crate::state_db::list_agent_modes_db(&ship_dir)?;
+        assert_eq!(mode_rows.len(), 1);
+        assert_eq!(mode_rows[0].id, "planning");
+
+        let mcp_cfg = fs::read_to_string(ship_dir.join("agents").join("mcp.toml"))?;
+        assert!(mcp_cfg.contains("[mcp.servers.github]"));
+        Ok(())
+    }
+
+    #[test]
+    fn get_config_round_trips_agent_sidecars() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        fs::create_dir_all(&ship_dir)?;
+
+        let mut config = ProjectConfig::default();
+        config.providers = vec!["gemini".to_string()];
+        config.active_mode = Some("focus".to_string());
+        config.modes = vec![ModeConfig {
+            id: "focus".to_string(),
+            name: "Focus".to_string(),
+            mcp_servers: vec!["github".to_string()],
+            ..Default::default()
+        }];
+        config.mcp_servers = vec![McpServerConfig {
+            id: "github".to_string(),
+            name: "GitHub".to_string(),
+            command: "npx".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            scope: "project".to_string(),
+            server_type: McpServerType::Stdio,
+            url: None,
+            disabled: false,
+            timeout_secs: None,
+        }];
+
+        save_config(&config, Some(ship_dir.clone()))?;
+        let loaded = get_config(Some(ship_dir))?;
+
+        assert_eq!(loaded.providers, vec!["gemini".to_string()]);
+        assert_eq!(loaded.active_mode.as_deref(), Some("focus"));
+        assert!(loaded.agent.skills.is_empty());
+        assert_eq!(loaded.modes.len(), 1);
+        assert_eq!(loaded.modes[0].id, "focus");
+        assert_eq!(loaded.mcp_servers.len(), 1);
+        assert_eq!(loaded.mcp_servers[0].id, "github");
         Ok(())
     }
 }

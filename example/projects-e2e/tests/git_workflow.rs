@@ -39,9 +39,7 @@ mod new_project {
         p.assert_ship_file("project/releases");
         p.assert_ship_file("project/adrs");
         p.assert_ship_file("project/notes");
-        p.assert_ship_file("agents/modes");
-        p.assert_ship_file("agents/skills");
-        p.assert_ship_file("agents/prompts");
+        p.assert_ship_file("agents/rules");
 
         // Config
         p.assert_ship_file("ship.toml");
@@ -52,10 +50,6 @@ mod new_project {
         p.assert_ship_file("workflow/specs/TEMPLATE.md");
         p.assert_ship_file("project/adrs/TEMPLATE.md");
 
-        // Default modes
-        p.assert_ship_file("agents/modes/planning.toml");
-        p.assert_ship_file("agents/modes/execution.toml");
-
         // Runtime state is SQLite-first; no NDJSON event file is required on init.
     }
 
@@ -63,12 +57,11 @@ mod new_project {
     #[test]
     fn init_seeds_task_policy_skill() {
         let p = TestProject::with_git().unwrap();
-        p.assert_ship_file("agents/skills/task-policy/index.md");
-        p.assert_ship_file("agents/skills/task-policy/skill.toml");
-        let content = p.read_ship_file("agents/skills/task-policy/index.md");
+        let content = fs::read_to_string(
+            runtime::project::skills_dir(&p.ship_dir).join("task-policy/SKILL.md"),
+        )
+        .unwrap();
         assert!(content.contains("task-policy"), "skill content missing");
-        let config = p.read_ship_file("agents/skills/task-policy/skill.toml");
-        assert!(config.contains("task-policy"), "skill id missing from toml");
         assert!(
             content.contains("Shipwright Workflow Policy"),
             "skill name missing"
@@ -123,26 +116,35 @@ mod new_project {
         let p = TestProject::with_git().unwrap();
 
         // Write a custom skill
-        let custom_dir = p.ship_dir.join("agents/skills/my-skill");
+        let custom_dir = runtime::project::skills_dir(&p.ship_dir).join("my-skill");
         fs::create_dir_all(&custom_dir).unwrap();
         fs::write(
-            custom_dir.join("skill.toml"),
-            "id = \"my-skill\"\nname = \"Mine\"\n",
+            custom_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: My custom skill.\n---\n\ncontent",
         )
         .unwrap();
-        fs::write(custom_dir.join("index.md"), "content").unwrap();
 
         // Re-init
-        ship_module_project::init_project(p.root().to_path_buf()).unwrap();
+        let out = p.cli(&["init", "."]).output().unwrap();
+        assert!(
+            out.status.success(),
+            "ship init should be idempotent\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
 
         // Custom skill must be intact
-        assert!(custom_dir.join("index.md").exists());
+        assert!(custom_dir.join("SKILL.md").exists());
         assert_eq!(
-            fs::read_to_string(custom_dir.join("index.md")).unwrap(),
-            "content"
+            fs::read_to_string(custom_dir.join("SKILL.md")).unwrap(),
+            "---\nname: my-skill\ndescription: My custom skill.\n---\n\ncontent"
         );
         // Default skill still present
-        p.assert_ship_file("agents/skills/task-policy/index.md");
+        assert!(
+            runtime::project::skills_dir(&p.ship_dir)
+                .join("task-policy/SKILL.md")
+                .exists()
+        );
     }
 
     /// Feature template has the richer lifecycle fields (planned, version, Why/Delivery sections).
@@ -175,7 +177,11 @@ mod existing_project {
 
         // .ship/ also created
         p.assert_ship_file("ship.toml");
-        p.assert_ship_file("agents/skills/task-policy/index.md");
+        assert!(
+            runtime::project::skills_dir(&p.ship_dir)
+                .join("task-policy/SKILL.md")
+                .exists()
+        );
     }
 
     /// Existing .gitignore entries are preserved; Ship's entries are appended.
@@ -227,7 +233,11 @@ mod existing_project {
         assert!(p.root().join("Cargo.toml").exists());
         assert!(p.root().join("src/main.rs").exists());
         p.assert_ship_file("ship.toml");
-        p.assert_ship_file("agents/skills/task-policy/index.md");
+        assert!(
+            runtime::project::skills_dir(&p.ship_dir)
+                .join("task-policy/SKILL.md")
+                .exists()
+        );
     }
 
     /// Existing user-managed .mcp.json is preserved on init (Ship doesn't touch it until checkout).
@@ -798,7 +808,11 @@ mod core_loop {
         p.initial_commit().unwrap();
 
         // 2. Verify init state
-        p.assert_ship_file("agents/skills/task-policy/index.md");
+        assert!(
+            runtime::project::skills_dir(&p.ship_dir)
+                .join("task-policy/SKILL.md")
+                .exists()
+        );
         p.assert_ship_file("ship.toml");
         let gitignore = fs::read_to_string(p.root().join(".gitignore")).unwrap();
         assert!(gitignore.contains("CLAUDE.md"));
@@ -865,7 +879,11 @@ mod core_loop {
         assert!(p.root().join("src/index.js").exists());
 
         // Ship structure present
-        p.assert_ship_file("agents/skills/task-policy/index.md");
+        assert!(
+            runtime::project::skills_dir(&p.ship_dir)
+                .join("task-policy/SKILL.md")
+                .exists()
+        );
 
         // Feature branch workflow works identically
         create_feature(

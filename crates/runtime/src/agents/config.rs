@@ -75,19 +75,42 @@ fn normalize_provider_ids(ids: &[String]) -> Vec<String> {
     normalized
 }
 
+fn normalize_rule_id(id: &str) -> String {
+    let normalized = id.trim().trim_end_matches(".md");
+    if let Some((prefix, rest)) = normalized.split_once('-')
+        && !prefix.is_empty()
+        && prefix.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return rest.to_string();
+    }
+    normalized.to_string()
+}
+
 // ─── Resolution ───────────────────────────────────────────────────────────────
 
 /// Resolve the effective [`AgentConfig`] for the current project state.
 ///
 /// Resolution order (highest wins):
 /// 1. Project defaults (`ship.toml` + `agents/` directory)
-/// 2. Active mode overrides (mode's `mcp_servers` filter, `prompt_id`)
+/// 2. Active mode overrides (mode's `mcp_servers` filter, instruction skill via `prompt_id`)
 /// 3. Feature `[agent]` block — thin overrides: `model`, `providers`, filtered server/skill IDs
 ///
 /// Pass `None` for `feature_agent` when not on a feature branch.
 pub fn resolve_agent_config(
     ship_dir: &Path,
     feature_agent: Option<&FeatureAgentConfig>,
+) -> Result<AgentConfig> {
+    resolve_agent_config_with_mode_override(ship_dir, feature_agent, None)
+}
+
+/// Resolve effective agent config with an optional mode override.
+///
+/// `active_mode_override` is intended for workspace-level mode selection.
+/// When provided and valid, it takes precedence over project `active_mode`.
+pub fn resolve_agent_config_with_mode_override(
+    ship_dir: &Path,
+    feature_agent: Option<&FeatureAgentConfig>,
+    active_mode_override: Option<&str>,
 ) -> Result<AgentConfig> {
     let config = get_config(Some(ship_dir.to_path_buf()))?;
 
@@ -108,7 +131,12 @@ pub fn resolve_agent_config(
     };
 
     // ── Active mode ───────────────────────────────────────────────────────────
-    let active_mode = config.active_mode.clone();
+    let override_mode = active_mode_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|value| config.modes.iter().any(|mode| mode.id == *value))
+        .map(str::to_string);
+    let active_mode = override_mode.or_else(|| config.active_mode.clone());
     let mode = config
         .modes
         .iter()
@@ -126,22 +154,6 @@ pub fn resolve_agent_config(
     // ── MCP servers ───────────────────────────────────────────────────────────
     let mut mcp_servers = config.mcp_servers.clone();
 
-    // Prioritize mcp.toml if it exists
-    if let Ok(toml_servers) = crate::config::get_mcp_config(ship_dir)
-        && !toml_servers.is_empty()
-    {
-        // Merge or replace? User wants "single source of truth", so let's prefer toml_servers.
-        // But we might want to combine them?
-        // For now, let's prefer toml_servers and append if they have different IDs.
-        for s in toml_servers {
-            if let Some(existing) = mcp_servers.iter_mut().find(|matching| matching.id == s.id) {
-                *existing = s;
-            } else {
-                mcp_servers.push(s);
-            }
-        }
-    }
-
     // Mode filter: if mode restricts servers, retain only allowed IDs.
     if let Some(m) = mode
         && !m.mcp_servers.is_empty()
@@ -158,23 +170,31 @@ pub fn resolve_agent_config(
     }
 
     // ── Skills ────────────────────────────────────────────────────────────────
-    let all_skills = list_effective_skills(ship_dir)?;
-    let skills = if let Some(fa) = feature_agent {
-        if !fa.skills.is_empty() {
-            let ids: Vec<&str> = fa.skills.iter().map(|r| r.as_str()).collect();
-            all_skills
-                .into_iter()
-                .filter(|s| ids.contains(&s.id.as_str()))
-                .collect()
-        } else {
-            all_skills
-        }
-    } else {
-        all_skills
-    };
+    let mut skills = list_effective_skills(ship_dir)?;
+
+    // Mode filter: if mode restricts skills, retain only allowed IDs.
+    if let Some(m) = mode
+        && !m.skills.is_empty()
+    {
+        skills.retain(|s| m.skills.contains(&s.id));
+    }
+
+    // Feature filter: if feature specifies skill IDs, retain only those.
+    if let Some(fa) = feature_agent
+        && !fa.skills.is_empty()
+    {
+        let ids: Vec<&str> = fa.skills.iter().map(|r| r.as_str()).collect();
+        skills.retain(|s| ids.contains(&s.id.as_str()));
+    }
 
     // ── Rules ─────────────────────────────────────────────────────────────────
-    let rules = list_rules(ship_dir.to_path_buf())?;
+    let mut rules = list_rules(ship_dir.to_path_buf())?;
+    if let Some(m) = mode
+        && !m.rules.is_empty()
+    {
+        let allowed: HashSet<String> = m.rules.iter().map(|id| normalize_rule_id(id)).collect();
+        rules.retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
+    }
 
     // ── Permissions ───────────────────────────────────────────────────────────
     let permissions = get_permissions(ship_dir.to_path_buf())?;
@@ -197,6 +217,7 @@ mod tests {
     use super::*;
     use crate::config::{AiConfig, McpServerType, ModeConfig, ProjectConfig, save_config};
     use crate::project::init_project;
+    use crate::rule::create_rule;
     use crate::skill::create_skill;
     use std::collections::HashMap;
     use tempfile::tempdir;
@@ -221,8 +242,8 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        create_skill(&ship_dir, "__rt_alpha_skill__", "Alpha", "alpha body")?;
-        create_skill(&ship_dir, "__rt_beta_skill__", "Beta", "beta body")?;
+        create_skill(&ship_dir, "rt-alpha-skill", "Alpha", "alpha body")?;
+        create_skill(&ship_dir, "rt-beta-skill", "Beta", "beta body")?;
 
         let mut config = ProjectConfig::default();
         config.providers = vec!["claude".to_string(), "gemini".to_string()];
@@ -238,7 +259,7 @@ mod tests {
             model: Some("feature-model".to_string()),
             max_cost_per_session: Some(4.2),
             mcp_servers: vec!["github".to_string()],
-            skills: vec!["__rt_beta_skill__".to_string()],
+            skills: vec!["rt-beta-skill".to_string()],
             providers: vec!["codex".to_string()],
         };
 
@@ -252,7 +273,7 @@ mod tests {
                 .iter()
                 .map(|skill| skill.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["__rt_beta_skill__"]
+            vec!["rt-beta-skill"]
         );
         Ok(())
     }
@@ -262,16 +283,13 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        create_skill(&ship_dir, "__rt_only_skill__", "Only", "only body")?;
+        create_skill(&ship_dir, "rt-only-skill", "Only", "only body")?;
 
         let feature_agent = FeatureAgentConfig {
             model: None,
             max_cost_per_session: None,
             mcp_servers: vec![],
-            skills: vec![
-                "__rt_missing_skill__".to_string(),
-                "__rt_only_skill__".to_string(),
-            ],
+            skills: vec!["rt-missing-skill".to_string(), "rt-only-skill".to_string()],
             providers: vec![],
         };
 
@@ -282,7 +300,7 @@ mod tests {
                 .iter()
                 .map(|skill| skill.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["__rt_only_skill__"]
+            vec!["rt-only-skill"]
         );
         Ok(())
     }
@@ -506,6 +524,114 @@ mod tests {
 
         let resolved = resolve_agent_config(&ship_dir, None)?;
         assert_eq!(resolved.providers, vec!["claude".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_agent_config_mode_filters_skills_and_rules() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = init_project(tmp.path().to_path_buf())?;
+
+        create_skill(&ship_dir, "rt-alpha-skill", "Alpha", "alpha body")?;
+        create_skill(&ship_dir, "rt-beta-skill", "Beta", "beta body")?;
+        create_rule(
+            ship_dir.clone(),
+            "010-runtime-hardening.md",
+            "# Runtime Hardening\n",
+        )?;
+
+        let mut config = ProjectConfig::default();
+        config.active_mode = Some("planning".to_string());
+        config.modes = vec![ModeConfig {
+            id: "planning".to_string(),
+            name: "Planning".to_string(),
+            skills: vec!["rt-alpha-skill".to_string()],
+            rules: vec!["010-runtime-hardening".to_string()],
+            ..Default::default()
+        }];
+        save_config(&config, Some(ship_dir.clone()))?;
+
+        let resolved = resolve_agent_config(&ship_dir, None)?;
+        assert_eq!(
+            resolved
+                .skills
+                .iter()
+                .map(|skill| skill.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["rt-alpha-skill"]
+        );
+        assert_eq!(
+            resolved
+                .rules
+                .iter()
+                .map(|rule| rule.file_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["010-runtime-hardening.md"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_agent_config_workspace_mode_override_takes_precedence() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = init_project(tmp.path().to_path_buf())?;
+
+        create_skill(&ship_dir, "rt-plan-skill", "Plan Skill", "plan body")?;
+        create_skill(&ship_dir, "rt-code-skill", "Code Skill", "code body")?;
+
+        let mut config = ProjectConfig::default();
+        config.active_mode = Some("planning".to_string());
+        config.modes = vec![
+            ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                skills: vec!["rt-plan-skill".to_string()],
+                ..Default::default()
+            },
+            ModeConfig {
+                id: "code".to_string(),
+                name: "Code".to_string(),
+                skills: vec!["rt-code-skill".to_string()],
+                ..Default::default()
+            },
+        ];
+        save_config(&config, Some(ship_dir.clone()))?;
+
+        let baseline = resolve_agent_config(&ship_dir, None)?;
+        assert_eq!(baseline.active_mode.as_deref(), Some("planning"));
+        assert_eq!(
+            baseline
+                .skills
+                .iter()
+                .map(|skill| skill.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["rt-plan-skill"]
+        );
+
+        let overridden = resolve_agent_config_with_mode_override(&ship_dir, None, Some("code"))?;
+        assert_eq!(overridden.active_mode.as_deref(), Some("code"));
+        assert_eq!(
+            overridden
+                .skills
+                .iter()
+                .map(|skill| skill.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["rt-code-skill"]
+        );
+
+        // Invalid workspace override should not clobber the project active mode.
+        let invalid_override =
+            resolve_agent_config_with_mode_override(&ship_dir, None, Some("missing-mode"))?;
+        assert_eq!(invalid_override.active_mode.as_deref(), Some("planning"));
+        assert_eq!(
+            invalid_override
+                .skills
+                .iter()
+                .map(|skill| skill.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["rt-plan-skill"]
+        );
+
         Ok(())
     }
 }

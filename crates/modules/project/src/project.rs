@@ -13,7 +13,7 @@ use runtime::project::{
     issues_dir as runtime_issues_dir, mcp_config_path as runtime_mcp_config_path,
     modes_dir as runtime_modes_dir, notes_dir as runtime_notes_dir,
     permissions_config_path as runtime_permissions_config_path, project_ns as runtime_project_ns,
-    prompts_dir as runtime_prompts_dir, register_ship_namespace as runtime_register_ship_namespace,
+    register_ship_namespace as runtime_register_ship_namespace,
     releases_dir as runtime_releases_dir,
     resolve_project_ship_dir as runtime_resolve_project_ship_dir, rules_dir as runtime_rules_dir,
     sanitize_file_name as runtime_sanitize_file_name,
@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub const DEFAULT_STATUSES: &[&str] = &["backlog", "in-progress", "blocked", "done"];
 pub const ISSUE_STATUSES: &[&str] = DEFAULT_STATUSES;
@@ -94,10 +94,6 @@ pub fn skills_dir(ship_dir: &Path) -> PathBuf {
     runtime_skills_dir(ship_dir)
 }
 
-pub fn prompts_dir(ship_dir: &Path) -> PathBuf {
-    runtime_prompts_dir(ship_dir)
-}
-
 pub fn rules_dir(ship_dir: &Path) -> PathBuf {
     runtime_rules_dir(ship_dir)
 }
@@ -131,7 +127,10 @@ pub fn load_registry() -> Result<ProjectRegistry> {
     }
     let content = fs::read_to_string(path)?;
     let registry: ProjectRegistry = serde_json::from_str(&content)?;
-    let (registry, changed) = normalize_registry(registry);
+    let (registry, changed) = normalize_registry(
+        registry,
+        should_filter_transient_registry_entries(&get_registry_path()?),
+    );
     if changed {
         save_registry(&registry)?;
     }
@@ -189,13 +188,91 @@ fn should_prefer_candidate_name(
     existing_is_default && !candidate_is_default
 }
 
-fn normalize_registry(registry: ProjectRegistry) -> (ProjectRegistry, bool) {
+fn path_starts_with_components(path: &Path, parts: &[&str]) -> bool {
+    let mut normal_components = path.components().filter_map(|component| match component {
+        Component::Normal(value) => value.to_str(),
+        _ => None,
+    });
+
+    for expected in parts {
+        if normal_components.next() != Some(*expected) {
+            return false;
+        }
+    }
+    true
+}
+
+fn path_contains_component_sequence(path: &Path, parts: &[&str]) -> bool {
+    let normal_components: Vec<&str> = path
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+        .collect();
+    if parts.is_empty() || normal_components.len() < parts.len() {
+        return false;
+    }
+    normal_components
+        .windows(parts.len())
+        .any(|window| window == parts)
+}
+
+fn should_filter_transient_registry_path(path: &Path) -> bool {
+    if let Some(global_dir) =
+        default_registry_path().and_then(|registry| registry.parent().map(Path::to_path_buf))
+    {
+        let canonical_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let canonical_global_dir = fs::canonicalize(&global_dir).unwrap_or(global_dir);
+        if canonical_path == canonical_global_dir {
+            return true;
+        }
+    }
+
+    if path_starts_with_components(path, &["tmp"])
+        || path_starts_with_components(path, &["private", "tmp"])
+        || path_starts_with_components(path, &["var", "folders"])
+        || path_starts_with_components(path, &["private", "var", "folders"])
+    {
+        return true;
+    }
+
+    path_contains_component_sequence(path, &["example", "projects-e2e"])
+}
+
+fn default_registry_path() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| {
+        PathBuf::from(home)
+            .join(SHIP_DIR_NAME)
+            .join("projects.json")
+    })
+}
+
+fn should_filter_transient_registry_entries(registry_path: &Path) -> bool {
+    let Some(default_path) = default_registry_path() else {
+        return false;
+    };
+    let canonical_registry_path =
+        fs::canonicalize(registry_path).unwrap_or_else(|_| registry_path.to_path_buf());
+    let canonical_default_path = fs::canonicalize(&default_path).unwrap_or(default_path);
+    canonical_registry_path == canonical_default_path
+}
+
+fn normalize_registry(
+    registry: ProjectRegistry,
+    filter_transient_paths: bool,
+) -> (ProjectRegistry, bool) {
     let mut changed = false;
     let mut deduped: Vec<ProjectEntry> = Vec::new();
     let mut index_by_path: HashMap<PathBuf, usize> = HashMap::new();
 
     for project in registry.projects {
         let normalized_path = normalize_registry_project_path(&project.path);
+        if filter_transient_paths && should_filter_transient_registry_path(&normalized_path) {
+            changed = true;
+            continue;
+        }
+
         let default_name = runtime_get_project_name(&normalized_path);
         let normalized_name = normalize_registry_project_name(&project.name, &default_name);
 
@@ -234,6 +311,12 @@ fn should_keep_existing_name(existing_name: &str, incoming_name: &str, default_n
 pub fn register_project(name: String, path: PathBuf) -> Result<()> {
     let mut registry = load_registry()?;
     let canonical_path = normalize_registry_project_path(&path);
+    if should_filter_transient_registry_entries(&get_registry_path()?)
+        && should_filter_transient_registry_path(&canonical_path)
+    {
+        return Ok(());
+    }
+
     let default_name = runtime_get_project_name(&canonical_path);
     let incoming_name = {
         let trimmed = name.trim();
@@ -281,6 +364,14 @@ pub fn register_project(name: String, path: PathBuf) -> Result<()> {
 
 pub fn rename_project(path: PathBuf, name: String) -> Result<()> {
     let normalized = normalize_registry_project_path(&path);
+    if should_filter_transient_registry_entries(&get_registry_path()?)
+        && should_filter_transient_registry_path(&normalized)
+    {
+        return Err(anyhow!(
+            "Refusing to rename transient project path: {}",
+            normalized.display()
+        ));
+    }
     let renamed = name.trim();
     if renamed.is_empty() {
         return Err(anyhow!("Project name cannot be empty"));
@@ -309,6 +400,11 @@ pub fn rename_project(path: PathBuf, name: String) -> Result<()> {
 pub fn unregister_project(path: PathBuf) -> Result<()> {
     let mut registry = load_registry()?;
     let path = normalize_registry_project_path(&path);
+    if should_filter_transient_registry_entries(&get_registry_path()?)
+        && should_filter_transient_registry_path(&path)
+    {
+        return Ok(());
+    }
     registry
         .projects
         .retain(|p| normalize_registry_project_path(&p.path) != path);
@@ -372,9 +468,7 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         fs::create_dir_all(specs.join(status))?;
     }
 
-    fs::create_dir_all(modes_dir(&ship_path))?;
     fs::create_dir_all(skills_dir(&ship_path))?;
-    fs::create_dir_all(prompts_dir(&ship_path))?;
     fs::create_dir_all(rules_dir(&ship_path))?;
 
     runtime::events::ensure_event_log(&ship_path)?;
@@ -391,8 +485,7 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         &permissions_config_path(&ship_path),
         include_str!("../../../runtime/src/templates/PERMISSIONS.toml"),
     )?;
-
-    let principles_path = rules_dir(&ship_path).join("001-core-principles.md");
+    let principles_path = rules_dir(&ship_path).join("core-principles.md");
     write_if_missing(
         &principles_path,
         include_str!("../../../runtime/src/templates/RULE.md"),
@@ -498,7 +591,7 @@ fn write_directory_readmes(ship_path: &Path) -> Result<()> {
         ),
         (
             agents_ns(ship_path),
-            "# agents/\n\nAgent runtime config: prompts, skills, rules, and modes.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- `skills/`: Reusable agent capabilities (folder-based).\n- `prompts/`: Global and project system instructions.\n- `modes/`: High-level agent behavior presets.\n".to_string(),
+            "# agents/\n\nAgent runtime config and policy.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- Skills are stored outside repo state (`~/.ship/skills` and `~/.ship/projects/<project>/skills`).\n- Modes: persisted in SQLite runtime state.\n".to_string(),
         ),
         (
             rules_dir(ship_path),
@@ -560,20 +653,79 @@ fn cleanup_legacy_config_files(ship_path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn default_agent_modes() -> Vec<ModeConfig> {
+    vec![
+        ModeConfig {
+            id: "planning".to_string(),
+            name: "Planning".to_string(),
+            description: Some(
+                "High-context planning for specs, issues, and ADR prep before coding.".to_string(),
+            ),
+            active_tools: vec![
+                "ship_list_notes".to_string(),
+                "ship_create_note".to_string(),
+                "ship_list_specs".to_string(),
+                "ship_get_spec".to_string(),
+                "ship_create_spec".to_string(),
+                "ship_update_spec".to_string(),
+                "ship_list_issues".to_string(),
+                "ship_create_issue".to_string(),
+                "ship_draft_adr".to_string(),
+                "ship_get_project_info".to_string(),
+            ],
+            ..Default::default()
+        },
+        ModeConfig {
+            id: "code".to_string(),
+            name: "Code".to_string(),
+            description: Some(
+                "Execution-focused mode for implementing and moving work through issue status."
+                    .to_string(),
+            ),
+            active_tools: vec![
+                "ship_list_issues".to_string(),
+                "ship_get_issue".to_string(),
+                "ship_update_issue".to_string(),
+                "ship_move_issue".to_string(),
+                "ship_list_specs".to_string(),
+                "ship_get_spec".to_string(),
+                "ship_update_spec".to_string(),
+                "ship_list_notes".to_string(),
+                "ship_create_note".to_string(),
+                "ship_git_feature_sync".to_string(),
+            ],
+            ..Default::default()
+        },
+        ModeConfig {
+            id: "config".to_string(),
+            name: "Config".to_string(),
+            description: Some(
+                "Configuration and environment mode for skills, providers, hooks, and project policy."
+                    .to_string(),
+            ),
+            active_tools: vec![
+                "ship_get_project_info".to_string(),
+                "ship_create_skill".to_string(),
+                "ship_update_skill".to_string(),
+                "ship_delete_skill".to_string(),
+                "ship_git_config_set".to_string(),
+                "ship_git_hooks_install".to_string(),
+                "ship_detect_providers".to_string(),
+                "ship_connect_provider".to_string(),
+                "ship_disconnect_provider".to_string(),
+            ],
+            ..Default::default()
+        },
+    ]
+}
+
 fn write_default_agent_mode_files(ship_path: &Path) -> Result<()> {
-    let planning = modes_dir(ship_path).join("planning.toml");
-    if !planning.exists() {
-        fs::write(
-            planning,
-            "id = \"planning\"\nname = \"Planning\"\nactive_tools = [\"ship_list_notes\", \"ship_create_note\", \"ship_list_specs\", \"ship_get_spec\", \"ship_create_spec\", \"ship_update_spec\", \"ship_list_issues\", \"ship_create_issue\", \"ship_draft_adr\", \"ship_get_project_info\"]\n",
-        )?;
-    }
-    let execution = modes_dir(ship_path).join("execution.toml");
-    if !execution.exists() {
-        fs::write(
-            execution,
-            "id = \"execution\"\nname = \"Execution\"\nactive_tools = [\"ship_list_issues\", \"ship_get_issue\", \"ship_update_issue\", \"ship_move_issue\", \"ship_list_notes\", \"ship_create_note\"]\n",
-        )?;
+    let project_dir = Some(ship_path.to_path_buf());
+    let config = get_config(project_dir.clone())?;
+    for mode in default_agent_modes() {
+        if !config.modes.iter().any(|existing| existing.id == mode.id) {
+            runtime_add_mode(project_dir.clone(), mode)?;
+        }
     }
     Ok(())
 }
@@ -582,24 +734,151 @@ fn write_default_skills(ship_path: &Path) -> Result<()> {
     let skill_root = skills_dir(ship_path).join("task-policy");
     fs::create_dir_all(&skill_root)?;
 
-    let config_path = skill_root.join("skill.toml");
-    let content_path = skill_root.join("index.md");
+    write_if_missing(
+        &skill_root.join("SKILL.md"),
+        r#"---
+name: task-policy
+description: Ship workflow policy and execution guardrails for daily delivery.
+metadata:
+  display_name: Shipwright Workflow Policy
+  source: builtin
+---
 
-    if write_if_missing(
-        &config_path,
-        "id = \"task-policy\"\nname = \"Task Policy\"\nversion = \"0.1.0\"\n",
-    )? {
-        write_if_missing(
-            &content_path,
-            include_str!("../../../runtime/src/skills/task-policy.md"),
-        )?;
+# Shipwright Workflow Policy
 
-        let mut config = get_config(Some(ship_path.to_path_buf()))?;
-        if !config.agent.skills.contains(&"task-policy".to_string()) {
-            config.agent.skills.push("task-policy".to_string());
-            save_config(&config, Some(ship_path.to_path_buf()))?;
-        }
+Use Ship as the system of record for workflow state changes.
+
+## Canonical Flow
+
+Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release
+"#,
+    )?;
+
+    let mut config = get_config(Some(ship_path.to_path_buf()))?;
+    if !config.agent.skills.contains(&"task-policy".to_string()) {
+        config.agent.skills.push("task-policy".to_string());
+        save_config(&config, Some(ship_path.to_path_buf()))?;
     }
+    seed_builtin_user_skills(&runtime::project::user_skills_dir())?;
+    Ok(())
+}
+
+fn seed_builtin_user_skills(user_skills_root: &Path) -> Result<()> {
+    fs::create_dir_all(user_skills_root)?;
+    let ship_workflow_path = user_skills_root.join("ship-workflow").join("SKILL.md");
+    write_if_missing(
+        &ship_workflow_path,
+        include_str!("../../../runtime/src/templates/skills/ship-workflow.SKILL.md"),
+    )?;
+
+    let skill_creator_root = user_skills_root.join("skill-creator");
+    if !skill_creator_root.exists() {
+        seed_skill_creator_template(&skill_creator_root)?;
+    }
+
+    Ok(())
+}
+
+fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
+    const FILES: &[(&str, &str)] = &[
+        (
+            "SKILL.md",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/SKILL.md"),
+        ),
+        (
+            "LICENSE.txt",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/LICENSE.txt"),
+        ),
+        (
+            "agents/analyzer.md",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/agents/analyzer.md"),
+        ),
+        (
+            "agents/comparator.md",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/agents/comparator.md"
+            ),
+        ),
+        (
+            "agents/grader.md",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/agents/grader.md"),
+        ),
+        (
+            "assets/eval_review.html",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/assets/eval_review.html"
+            ),
+        ),
+        (
+            "eval-viewer/generate_review.py",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/eval-viewer/generate_review.py"
+            ),
+        ),
+        (
+            "eval-viewer/viewer.html",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/eval-viewer/viewer.html"
+            ),
+        ),
+        (
+            "references/schemas.md",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/references/schemas.md"
+            ),
+        ),
+        (
+            "scripts/__init__.py",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/__init__.py"),
+        ),
+        (
+            "scripts/aggregate_benchmark.py",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/scripts/aggregate_benchmark.py"
+            ),
+        ),
+        (
+            "scripts/generate_report.py",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/scripts/generate_report.py"
+            ),
+        ),
+        (
+            "scripts/improve_description.py",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/scripts/improve_description.py"
+            ),
+        ),
+        (
+            "scripts/package_skill.py",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/scripts/package_skill.py"
+            ),
+        ),
+        (
+            "scripts/quick_validate.py",
+            include_str!(
+                "../../../runtime/src/templates/skills/skill-creator/scripts/quick_validate.py"
+            ),
+        ),
+        (
+            "scripts/run_eval.py",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/run_eval.py"),
+        ),
+        (
+            "scripts/run_loop.py",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/run_loop.py"),
+        ),
+        (
+            "scripts/utils.py",
+            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/utils.py"),
+        ),
+    ];
+
+    for (rel, content) in FILES {
+        write_if_missing(&skill_root.join(rel), content)?;
+    }
+
     Ok(())
 }
 
@@ -859,7 +1138,7 @@ mod tests {
             ],
         };
 
-        let (normalized, changed) = normalize_registry(registry);
+        let (normalized, changed) = normalize_registry(registry, false);
         assert!(changed);
         assert_eq!(normalized.projects.len(), 1);
         assert_eq!(normalized.projects[0].name, "Shipwright Runtime");
@@ -881,11 +1160,132 @@ mod tests {
             }],
         };
 
-        let (normalized, changed) = normalize_registry(registry);
+        let (normalized, changed) = normalize_registry(registry, false);
         assert!(changed);
         assert_eq!(normalized.projects.len(), 1);
         assert_eq!(normalized.projects[0].name, "alpha");
         assert_eq!(normalized.projects[0].path, fs::canonicalize(ship)?);
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_registry_filters_transient_paths_when_enabled() {
+        let registry = ProjectRegistry {
+            projects: vec![
+                ProjectEntry {
+                    name: "Main".to_string(),
+                    path: PathBuf::from("/Users/micah/dev/shipwright/.ship"),
+                },
+                ProjectEntry {
+                    name: "Tmp".to_string(),
+                    path: PathBuf::from("/private/tmp/ship-init-abc/.ship"),
+                },
+                ProjectEntry {
+                    name: "E2E".to_string(),
+                    path: PathBuf::from("/Users/micah/dev/shipwright/example/projects-e2e/.ship"),
+                },
+            ],
+        };
+
+        let (normalized, changed) = normalize_registry(registry, true);
+        assert!(changed);
+        assert_eq!(normalized.projects.len(), 1);
+        assert_eq!(normalized.projects[0].name, "Main");
+    }
+
+    #[test]
+    fn transient_path_detection_catches_tmp_var_folders_and_e2e() {
+        assert!(should_filter_transient_registry_path(Path::new(
+            "/private/tmp/ship-init-abc/.ship"
+        )));
+        assert!(should_filter_transient_registry_path(Path::new(
+            "/private/var/folders/x/T/tmp.123/.ship"
+        )));
+        assert!(should_filter_transient_registry_path(Path::new(
+            "/Users/me/dev/shipwright/example/projects-e2e/.ship"
+        )));
+        assert!(!should_filter_transient_registry_path(Path::new(
+            "/Users/me/dev/shipwright/.ship"
+        )));
+    }
+
+    #[test]
+    fn transient_path_detection_filters_default_global_ship_dir() {
+        let Some(registry_path) = default_registry_path() else {
+            return;
+        };
+        let global_dir = registry_path
+            .parent()
+            .expect("default registry path should have a parent");
+        assert!(should_filter_transient_registry_path(global_dir));
+    }
+
+    #[test]
+    fn seed_builtin_user_skills_writes_ship_workflow_and_skill_creator() -> Result<()> {
+        let tmp = tempdir()?;
+        let user_skills = tmp.path().join("skills");
+        seed_builtin_user_skills(&user_skills)?;
+
+        let ship_workflow = user_skills.join("ship-workflow").join("SKILL.md");
+        let skill_creator = user_skills.join("skill-creator").join("SKILL.md");
+        assert!(ship_workflow.is_file());
+        assert!(skill_creator.is_file());
+        let ship_workflow_content = fs::read_to_string(&ship_workflow)?;
+        let skill_creator_content = fs::read_to_string(&skill_creator)?;
+        assert!(
+            ship_workflow_content.contains("name: ship-workflow"),
+            "ship-workflow template should be seeded"
+        );
+        assert!(
+            ship_workflow_content.contains("## System Of Record Contract"),
+            "ship-workflow template should include execution contract guidance"
+        );
+        assert!(
+            skill_creator_content.contains("name: skill-creator"),
+            "skill-creator template should be seeded"
+        );
+        assert!(
+            skill_creator_content.contains("# Skill Creator"),
+            "skill-creator template should contain canonical upstream body"
+        );
+        assert!(
+            user_skills
+                .join("skill-creator")
+                .join("scripts")
+                .join("quick_validate.py")
+                .is_file(),
+            "skill-creator template should include bundled scripts"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn init_project_seeds_default_planning_code_and_config_modes() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        let config = get_config(Some(ship_path))?;
+
+        assert!(config.modes.iter().any(|mode| mode.id == "planning"));
+        assert!(config.modes.iter().any(|mode| mode.id == "code"));
+        assert!(config.modes.iter().any(|mode| mode.id == "config"));
+        assert!(
+            !config.modes.iter().any(|mode| mode.id == "execution"),
+            "new init should not seed legacy execution mode"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn write_default_agent_mode_files_is_idempotent() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        write_default_agent_mode_files(&ship_path)?;
+        let config = get_config(Some(ship_path))?;
+
+        for id in ["planning", "code", "config"] {
+            let count = config.modes.iter().filter(|mode| mode.id == id).count();
+            assert_eq!(count, 1, "mode '{}' should be present exactly once", id);
+        }
         Ok(())
     }
 }

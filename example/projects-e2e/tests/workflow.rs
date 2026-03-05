@@ -27,11 +27,7 @@ fn init_creates_namespace_structure() {
     p.assert_ship_file("project/notes/TEMPLATE.md");
 
     // agents/
-    p.assert_ship_file("agents/modes");
-    p.assert_ship_file("agents/modes/planning.toml");
-    p.assert_ship_file("agents/modes/execution.toml");
-    p.assert_ship_file("agents/skills");
-    p.assert_ship_file("agents/prompts");
+    p.assert_ship_file("agents/rules");
 
     // shared
     p.assert_ship_file("generated");

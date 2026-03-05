@@ -8,14 +8,13 @@ use runtime::project::{
     resolve_project_ship_dir, set_active_project_global, specs_dir, SHIP_DIR_NAME,
 };
 use runtime::{
-    activate_workspace, create_prompt, create_skill, create_user_skill, create_workspace,
-    delete_prompt, delete_skill, delete_user_skill, get_effective_skill, get_prompt, get_skill,
-    get_user_skill, get_workspace, ingest_external_events, list_catalog, list_catalog_by_kind,
-    list_effective_skills, list_events_since, list_models, list_prompts, list_providers,
-    list_skills, list_user_skills, list_workspaces, log_action, read_log_entries,
-    resolve_agent_config, search_catalog, sync_workspace, transition_workspace_status,
-    update_prompt, update_skill, update_user_skill, AgentConfig, CatalogEntry, CatalogKind,
-    CreateWorkspaceRequest, EventRecord, LogEntry, ModelInfo, Prompt, ProviderInfo, Skill,
+    activate_workspace, create_skill, create_user_skill, create_workspace, delete_skill,
+    delete_user_skill, get_effective_skill, get_skill, get_user_skill, get_workspace,
+    ingest_external_events, list_catalog, list_catalog_by_kind, list_effective_skills,
+    list_events_since, list_models, list_providers, list_skills, list_user_skills, list_workspaces,
+    log_action, read_log_entries, resolve_agent_config, search_catalog, sync_workspace,
+    transition_workspace_status, update_skill, update_user_skill, AgentConfig, CatalogEntry,
+    CatalogKind, CreateWorkspaceRequest, EventRecord, LogEntry, ModelInfo, ProviderInfo, Skill,
     Workspace, WorkspaceStatus, WorkspaceType,
 };
 use serde::{Deserialize, Serialize};
@@ -1835,53 +1834,6 @@ fn delete_skill_cmd(
     }
 }
 
-// ─── Commands: Prompts ────────────────────────────────────────────────────────
-
-#[tauri::command]
-#[specta::specta]
-fn list_prompts_cmd(state: State<AppState>) -> Result<Vec<Prompt>, String> {
-    let dir = get_active_dir(&state)?;
-    list_prompts(&dir).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn get_prompt_cmd(id: String, state: State<AppState>) -> Result<Prompt, String> {
-    let dir = get_active_dir(&state)?;
-    get_prompt(&dir, &id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn create_prompt_cmd(
-    id: String,
-    name: String,
-    content: String,
-    state: State<AppState>,
-) -> Result<Prompt, String> {
-    let dir = get_active_dir(&state)?;
-    create_prompt(&dir, &id, &name, &content).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn update_prompt_cmd(
-    id: String,
-    name: Option<String>,
-    content: Option<String>,
-    state: State<AppState>,
-) -> Result<Prompt, String> {
-    let dir = get_active_dir(&state)?;
-    update_prompt(&dir, &id, name.as_deref(), content.as_deref()).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn delete_prompt_cmd(id: String, state: State<AppState>) -> Result<(), String> {
-    let dir = get_active_dir(&state)?;
-    delete_prompt(&dir, &id).map_err(|e| e.to_string())
-}
-
 // ─── Commands: Agents / Providers ─────────────────────────────────────────────
 
 /// List all supported agent providers with enabled + installed status and known models.
@@ -2137,12 +2089,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             create_skill_cmd,
             update_skill_cmd,
             delete_skill_cmd,
-            // Prompts
-            list_prompts_cmd,
-            get_prompt_cmd,
-            create_prompt_cmd,
-            update_prompt_cmd,
-            delete_prompt_cmd,
             // Agents / Providers
             list_providers_cmd,
             list_models_cmd,

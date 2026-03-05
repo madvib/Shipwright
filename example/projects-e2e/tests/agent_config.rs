@@ -1,10 +1,9 @@
 mod helpers;
 use helpers::TestProject;
-use runtime::config::{
-    HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
-    ProjectConfig, save_config,
+use runtime::config::{McpServerConfig, McpServerType, ModeConfig, ProjectConfig, save_config};
+use runtime::{
+    Permissions, ToolPermissions, create_skill, delete_skill, save_permissions, update_skill,
 };
-use runtime::{create_prompt, create_skill, delete_skill, update_prompt};
 use std::collections::HashMap;
 use std::process::Output;
 
@@ -41,7 +40,7 @@ fn claude_export_writes_mcp_json_at_project_root() {
     config.mcp_servers = vec![make_stdio_server("github")];
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "claude").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "claude").unwrap();
 
     let mcp_json = p.root().join(".mcp.json");
     assert!(mcp_json.exists(), ".mcp.json should exist at project root");
@@ -65,7 +64,7 @@ fn disabled_server_not_exported() {
     config.mcp_servers = vec![server];
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "claude").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "claude").unwrap();
 
     let content = std::fs::read_to_string(p.root().join(".mcp.json")).unwrap();
     let val: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -83,7 +82,7 @@ fn export_preserves_user_servers() {
     config.mcp_servers = vec![make_stdio_server("mine")];
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "claude").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "claude").unwrap();
 
     // Manually inject a user server
     let mcp_json = p.root().join(".mcp.json");
@@ -93,7 +92,7 @@ fn export_preserves_user_servers() {
     std::fs::write(&mcp_json, serde_json::to_string_pretty(&val).unwrap()).unwrap();
 
     // Re-export — user server must survive
-    runtime::agent_export::export_to(p.ship_dir.clone(), "claude").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "claude").unwrap();
 
     let content = std::fs::read_to_string(&mcp_json).unwrap();
     let val2: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -122,7 +121,7 @@ fn gemini_http_server_uses_httpurl() {
     }];
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "gemini").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "gemini").unwrap();
 
     let settings = p.root().join(".gemini/settings.json");
     assert!(settings.exists());
@@ -132,38 +131,28 @@ fn gemini_http_server_uses_httpurl() {
     assert!(val["mcpServers"]["figma"]["url"].is_null());
 }
 
-/// Mode hooks + permissions propagate through CLI export to ~/.claude/settings.json.
+/// Canonical permissions.toml propagates through CLI export to ~/.claude/settings.json.
 #[test]
-fn claude_export_writes_mode_hooks_and_permissions_to_home_settings() {
+fn claude_export_writes_permissions_to_home_settings() {
     let p = TestProject::new().unwrap();
     let home = tempfile::TempDir::new().unwrap();
 
-    let mut config = ProjectConfig::default();
-    config.modes = vec![ModeConfig {
-        id: "focus".to_string(),
-        name: "Focus".to_string(),
-        description: None,
-        active_tools: vec![],
-        mcp_servers: vec![],
-        prompt_id: None,
-        hooks: vec![HookConfig {
-            id: "mode-pre-tool".to_string(),
-            trigger: HookTrigger::PreToolUse,
-            matcher: Some("Bash".to_string()),
-            command: "echo pre".to_string(),
-        }],
-        permissions: PermissionConfig {
-            allow: vec!["Bash(*)".to_string()],
-            deny: vec!["WebFetch(*)".to_string()],
+    save_permissions(
+        p.ship_dir.clone(),
+        &Permissions {
+            tools: ToolPermissions {
+                allow: vec!["Bash(*)".to_string()],
+                deny: vec!["WebFetch(*)".to_string()],
+            },
+            ..Default::default()
         },
-        target_agents: vec![],
-    }];
-    config.active_mode = Some("focus".to_string());
-    save_config(&config, Some(p.ship_dir.clone())).unwrap();
+    )
+    .unwrap();
 
     let out = p
         .cli(&["config", "export", "--target", "claude"])
         .env("HOME", home.path())
+        .env("SHIP_GLOBAL_DIR", &p.global_dir)
         .output()
         .unwrap();
     assert_success(&out, "ship config export claude failed");
@@ -188,12 +177,6 @@ fn claude_export_writes_mode_hooks_and_permissions_to_home_settings() {
         deny.iter().any(|v| v.as_str() == Some("WebFetch(*)")),
         "missing deny permission in Claude settings"
     );
-
-    assert!(
-        settings_raw.contains("\"PreToolUse\"") && settings_raw.contains("echo pre"),
-        "missing PreToolUse hook command in Claude settings:\n{}",
-        settings_raw
-    );
 }
 
 /// Non-Claude exports should not touch Claude home settings.
@@ -202,32 +185,22 @@ fn gemini_export_does_not_write_claude_settings_file() {
     let p = TestProject::new().unwrap();
     let home = tempfile::TempDir::new().unwrap();
 
-    let mut config = ProjectConfig::default();
-    config.modes = vec![ModeConfig {
-        id: "focus".to_string(),
-        name: "Focus".to_string(),
-        description: None,
-        active_tools: vec![],
-        mcp_servers: vec![],
-        prompt_id: None,
-        hooks: vec![HookConfig {
-            id: "mode-pre-tool".to_string(),
-            trigger: HookTrigger::PreToolUse,
-            matcher: Some("Bash".to_string()),
-            command: "echo pre".to_string(),
-        }],
-        permissions: PermissionConfig {
-            allow: vec!["Bash(*)".to_string()],
-            deny: vec!["WebFetch(*)".to_string()],
+    save_permissions(
+        p.ship_dir.clone(),
+        &Permissions {
+            tools: ToolPermissions {
+                allow: vec!["Bash(*)".to_string()],
+                deny: vec!["WebFetch(*)".to_string()],
+            },
+            ..Default::default()
         },
-        target_agents: vec![],
-    }];
-    config.active_mode = Some("focus".to_string());
-    save_config(&config, Some(p.ship_dir.clone())).unwrap();
+    )
+    .unwrap();
 
     let out = p
         .cli(&["config", "export", "--target", "gemini"])
         .env("HOME", home.path())
+        .env("SHIP_GLOBAL_DIR", &p.global_dir)
         .output()
         .unwrap();
     assert_success(&out, "ship config export gemini failed");
@@ -240,11 +213,11 @@ fn gemini_export_does_not_write_claude_settings_file() {
     );
 }
 
-/// Prompt content updates should propagate to regenerated provider docs.
+/// Instruction skill content updates should propagate to regenerated provider docs.
 #[test]
-fn gemini_export_reflects_prompt_updates_after_regeneration() {
+fn gemini_export_reflects_instruction_skill_updates_after_regeneration() {
     let p = TestProject::new().unwrap();
-    create_prompt(
+    create_skill(
         &p.ship_dir,
         "release-gate-prompt",
         "Release Gate Prompt",
@@ -262,14 +235,14 @@ fn gemini_export_reflects_prompt_updates_after_regeneration() {
     config.active_mode = Some("release".to_string());
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "gemini").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "gemini").unwrap();
     let first = std::fs::read_to_string(p.root().join("GEMINI.md")).unwrap();
     assert!(
         first.contains("Always run the initial release gate checklist."),
-        "initial prompt content should be written to GEMINI.md"
+        "initial instruction content should be written to GEMINI.md"
     );
 
-    update_prompt(
+    update_skill(
         &p.ship_dir,
         "release-gate-prompt",
         None,
@@ -277,23 +250,23 @@ fn gemini_export_reflects_prompt_updates_after_regeneration() {
     )
     .unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "gemini").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "gemini").unwrap();
     let second = std::fs::read_to_string(p.root().join("GEMINI.md")).unwrap();
     assert!(
         second.contains("Always run the updated release gate checklist."),
-        "updated prompt content should be written after regeneration"
+        "updated instruction content should be written after regeneration"
     );
     assert!(
         !second.contains("Always run the initial release gate checklist."),
-        "stale prompt content should not remain after regeneration"
+        "stale instruction content should not remain after regeneration"
     );
 }
 
-/// Codex export should keep AGENTS.md prompt output in sync across repeated regeneration.
+/// Codex export should keep AGENTS.md instruction output in sync across repeated regeneration.
 #[test]
-fn codex_export_reflects_prompt_updates_after_regeneration() {
+fn codex_export_reflects_instruction_skill_updates_after_regeneration() {
     let p = TestProject::new().unwrap();
-    create_prompt(
+    create_skill(
         &p.ship_dir,
         "codex-release-prompt",
         "Codex Release Prompt",
@@ -311,14 +284,14 @@ fn codex_export_reflects_prompt_updates_after_regeneration() {
     config.active_mode = Some("release".to_string());
     save_config(&config, Some(p.ship_dir.clone())).unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "codex").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "codex").unwrap();
     let first = std::fs::read_to_string(p.root().join("AGENTS.md")).unwrap();
     assert!(
         first.contains("Codex release checklist v1."),
-        "initial prompt content should be written to AGENTS.md"
+        "initial instruction content should be written to AGENTS.md"
     );
 
-    update_prompt(
+    update_skill(
         &p.ship_dir,
         "codex-release-prompt",
         None,
@@ -326,15 +299,15 @@ fn codex_export_reflects_prompt_updates_after_regeneration() {
     )
     .unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), "codex").unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), "codex").unwrap();
     let second = std::fs::read_to_string(p.root().join("AGENTS.md")).unwrap();
     assert!(
         second.contains("Codex release checklist v2."),
-        "updated prompt content should be written to AGENTS.md after regeneration"
+        "updated instruction content should be written to AGENTS.md after regeneration"
     );
     assert!(
         !second.contains("Codex release checklist v1."),
-        "stale prompt content should not remain in AGENTS.md after regeneration"
+        "stale instruction content should not remain in AGENTS.md after regeneration"
     );
 }
 
@@ -348,7 +321,7 @@ fn assert_deleted_skill_is_pruned_for_target(target: &str, skill_dir_prefix: &st
     )
     .unwrap();
 
-    runtime::agent_export::export_to(p.ship_dir.clone(), target).unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), target).unwrap();
     let skill_dir = p.root().join(skill_dir_prefix).join(skill_id);
     assert!(
         skill_dir.join("SKILL.md").exists(),
@@ -357,7 +330,7 @@ fn assert_deleted_skill_is_pruned_for_target(target: &str, skill_dir_prefix: &st
     );
 
     delete_skill(&p.ship_dir, skill_id).unwrap();
-    runtime::agent_export::export_to(p.ship_dir.clone(), target).unwrap();
+    runtime::agents::export::export_to(p.ship_dir.clone(), target).unwrap();
     assert!(
         !skill_dir.exists(),
         "deleted skill should be pruned for target {target}: {}",

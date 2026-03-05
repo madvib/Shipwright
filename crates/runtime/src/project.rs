@@ -4,8 +4,19 @@ use specta::Type;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 pub const SHIP_DIR_NAME: &str = ".ship";
+const TEST_GLOBAL_DIR_PREFIX: &str = "ship-test-global-";
+
+static TEST_GLOBAL_CLEANUP_PATH: OnceLock<PathBuf> = OnceLock::new();
+static TEST_GLOBAL_CLEANUP_REGISTERED: OnceLock<()> = OnceLock::new();
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn atexit(cb: extern "C" fn()) -> i32;
+    fn kill(pid: i32, sig: i32) -> i32;
+}
 
 // ── Namespace path helpers ────────────────────────────────────────────────────
 // All document paths are derived from these. Never construct paths with raw
@@ -21,7 +32,7 @@ pub fn workflow_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("workflow")
 }
 
-/// `.ship/agents/` — modes, skills, prompts
+/// `.ship/agents/` — rules, permissions, MCP config
 pub fn agents_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("agents")
 }
@@ -65,11 +76,7 @@ pub fn modes_dir(ship_dir: &Path) -> PathBuf {
 }
 
 pub fn skills_dir(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("skills")
-}
-
-pub fn prompts_dir(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("prompts")
+    project_skills_dir(ship_dir)
 }
 
 pub fn rules_dir(ship_dir: &Path) -> PathBuf {
@@ -82,6 +89,61 @@ pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
 
 pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
     agents_ns(ship_dir).join("permissions.toml")
+}
+
+/// Derive a stable, filesystem-safe project slug from a `.ship` path.
+/// This is shared across runtime storage surfaces under `~/.ship`.
+pub fn project_slug_from_ship_dir(ship_dir: &Path) -> String {
+    let project_root = if ship_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == SHIP_DIR_NAME)
+    {
+        ship_dir.parent().unwrap_or(ship_dir)
+    } else {
+        ship_dir
+    };
+    let canonical =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    let raw = canonical.to_string_lossy();
+    let slug: String = raw
+        .trim_start_matches('/')
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let slug = slug
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        "unknown-project".to_string()
+    } else {
+        slug
+    }
+}
+
+/// Global/shared skills store: `~/.ship/skills/`
+pub fn user_skills_dir() -> PathBuf {
+    get_global_dir()
+        .unwrap_or_else(|_| PathBuf::from(".ship"))
+        .join("skills")
+}
+
+/// Project-scoped skills store: `~/.ship/projects/<project-slug>/skills/`
+pub fn project_skills_dir(ship_dir: &Path) -> PathBuf {
+    let slug = project_slug_from_ship_dir(ship_dir);
+    get_global_dir()
+        .unwrap_or_else(|_| PathBuf::from(".ship"))
+        .join("projects")
+        .join(slug)
+        .join("skills")
 }
 
 /// Resolve the enclosing `.ship` directory from any descendant path.
@@ -252,9 +314,120 @@ pub fn get_global_dir() -> Result<PathBuf> {
         }
     }
 
+    if let Some(test_dir) = auto_test_global_dir() {
+        fs::create_dir_all(&test_dir).with_context(|| {
+            format!(
+                "Failed to create auto-isolated test global dir at {}",
+                test_dir.display()
+            )
+        })?;
+        return Ok(test_dir);
+    }
+
     home::home_dir()
         .map(|h| h.join(SHIP_DIR_NAME))
         .ok_or_else(|| anyhow!("Could not find home directory"))
+}
+
+fn auto_test_global_dir() -> Option<PathBuf> {
+    if std::env::var_os("SHIP_DISABLE_AUTO_TEST_GLOBAL_DIR").is_some() {
+        return None;
+    }
+
+    let exe = std::env::current_exe().ok()?;
+    if !is_likely_rust_test_binary(&exe) {
+        return None;
+    }
+
+    static TEST_GLOBAL_DIR: OnceLock<PathBuf> = OnceLock::new();
+    let dir = TEST_GLOBAL_DIR
+        .get_or_init(|| {
+            std::env::temp_dir()
+                .join(format!("{}{}", TEST_GLOBAL_DIR_PREFIX, std::process::id()))
+                .join(SHIP_DIR_NAME)
+        })
+        .clone();
+    register_test_global_cleanup(&dir);
+    cleanup_stale_test_global_dirs();
+    Some(dir)
+}
+
+fn is_likely_rust_test_binary(path: &Path) -> bool {
+    let path_str = path.to_string_lossy();
+    let in_test_deps = path_str.contains("/target/debug/deps/")
+        || path_str.contains("/target/release/deps/")
+        || path_str.contains("\\target\\debug\\deps\\")
+        || path_str.contains("\\target\\release\\deps\\");
+    if !in_test_deps {
+        return false;
+    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.contains('-'))
+}
+
+#[cfg(unix)]
+extern "C" fn cleanup_test_global_dir_on_exit() {
+    if let Some(path) = TEST_GLOBAL_CLEANUP_PATH.get() {
+        if let Some(run_root) = path.parent() {
+            let _ = fs::remove_dir_all(run_root);
+        }
+    }
+}
+
+fn register_test_global_cleanup(path: &Path) {
+    let _ = TEST_GLOBAL_CLEANUP_PATH.set(path.to_path_buf());
+    #[cfg(unix)]
+    if TEST_GLOBAL_CLEANUP_REGISTERED.get().is_none() {
+        // SAFETY: registering a process-exit callback once is safe here; callback
+        // does best-effort cleanup and ignores failures.
+        let _ = unsafe { atexit(cleanup_test_global_dir_on_exit) };
+        let _ = TEST_GLOBAL_CLEANUP_REGISTERED.set(());
+    }
+}
+
+fn cleanup_stale_test_global_dirs() {
+    let Ok(entries) = fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(pid) = parse_test_global_dir_pid(name) else {
+            continue;
+        };
+        if pid == std::process::id() {
+            continue;
+        }
+        if is_process_alive(pid) {
+            continue;
+        }
+        if path.is_dir() {
+            let _ = fs::remove_dir_all(path);
+        }
+    }
+}
+
+fn parse_test_global_dir_pid(name: &str) -> Option<u32> {
+    name.strip_prefix(TEST_GLOBAL_DIR_PREFIX)?.parse().ok()
+}
+
+#[cfg(unix)]
+fn is_process_alive(pid: u32) -> bool {
+    // SAFETY: kill(pid, 0) is a read-only existence/permission probe.
+    let rc = unsafe { kill(pid as i32, 0) };
+    if rc == 0 {
+        return true;
+    }
+    // ESRCH (3) => process does not exist.
+    std::io::Error::last_os_error().raw_os_error() != Some(3)
+}
+
+#[cfg(not(unix))]
+fn is_process_alive(_pid: u32) -> bool {
+    false
 }
 
 // ─── Global App State ─────────────────────────────────────────────────────────
@@ -431,6 +604,30 @@ mod tests {
         assert_eq!(resolved, canonicalize_lossy(&main_ship));
         Ok(())
     }
+
+    #[test]
+    fn detects_rust_test_binaries_from_target_deps_path() {
+        assert!(is_likely_rust_test_binary(Path::new(
+            "/tmp/repo/target/debug/deps/runtime-abc123"
+        )));
+        assert!(is_likely_rust_test_binary(Path::new(
+            "C:\\repo\\target\\release\\deps\\runtime-abc123.exe"
+        )));
+        assert!(!is_likely_rust_test_binary(Path::new(
+            "/tmp/repo/target/debug/ship"
+        )));
+        assert!(!is_likely_rust_test_binary(Path::new(
+            "/tmp/repo/target/debug/deps/ship"
+        )));
+    }
+
+    #[test]
+    fn parses_test_global_dir_pid() -> Result<()> {
+        assert_eq!(parse_test_global_dir_pid("ship-test-global-123"), Some(123));
+        assert_eq!(parse_test_global_dir_pid("ship-test-global-abc"), None);
+        assert_eq!(parse_test_global_dir_pid("other-prefix-123"), None);
+        Ok(())
+    }
 }
 
 pub fn register_ship_namespace(
@@ -479,13 +676,12 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         "workflow/issues/blocked",
         "workflow/issues/done",
         "workflow/specs",
-        "agents/modes",
-        "agents/skills/task-policy",
-        "agents/prompts",
         "generated",
     ] {
         fs::create_dir_all(ship_path.join(rel))?;
     }
+
+    fs::create_dir_all(skills_dir(&ship_path).join("task-policy"))?;
 
     write_if_missing(
         &ship_path.join("project/features/TEMPLATE.md"),
@@ -516,26 +712,59 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         &ship_path.join("workflow/README.md"),
         "# Workflow Namespace\n",
     )?;
-    write_if_missing(
-        &ship_path.join("agents/modes/planning.toml"),
-        "id = \"planning\"\nname = \"Planning\"\n",
-    )?;
-    write_if_missing(
-        &ship_path.join("agents/modes/execution.toml"),
-        "id = \"execution\"\nname = \"Execution\"\n",
-    )?;
     crate::events::ensure_event_log(&ship_path)?;
     write_if_missing(
-        &ship_path.join("agents/skills/task-policy/index.md"),
-        "# task-policy\n\nShipwright Workflow Policy\n",
-    )?;
-    write_if_missing(
-        &ship_path.join("agents/skills/task-policy/skill.toml"),
-        "id = \"task-policy\"\nname = \"Task Policy\"\n",
+        &skills_dir(&ship_path).join("task-policy").join("SKILL.md"),
+        r#"---
+name: task-policy
+description: Ship workflow policy and execution guardrails for daily delivery.
+metadata:
+  display_name: Shipwright Workflow Policy
+  source: builtin
+---
+
+# Shipwright Workflow Policy
+
+Use Ship as the system of record for workflow state changes.
+
+## Canonical Flow
+
+Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release
+"#,
     )?;
 
     if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
-        let config = crate::config::ProjectConfig::default();
+        let mut config = crate::config::ProjectConfig::default();
+        config.modes = vec![
+            crate::config::ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                description: Some(
+                    "High-context planning for specs, issues, and ADR prep before coding."
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+            crate::config::ModeConfig {
+                id: "code".to_string(),
+                name: "Code".to_string(),
+                description: Some(
+                    "Execution-focused mode for implementing and moving work through issue status."
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+            crate::config::ModeConfig {
+                id: "config".to_string(),
+                name: "Config".to_string(),
+                description: Some(
+                    "Configuration mode for skills, providers, hooks, and project policy."
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+        ];
+        config.active_mode = Some("planning".to_string());
         crate::config::save_config(&config, Some(ship_path.clone()))?;
     }
 

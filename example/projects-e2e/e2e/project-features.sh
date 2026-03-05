@@ -69,10 +69,11 @@ assert_path_exists "$WORK_DIR/.ship/project/notes"
 assert_path_exists "$WORK_DIR/.ship/project/vision.md"
 assert_path_exists "$WORK_DIR/.ship/project/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/project/releases/TEMPLATE.md"
-assert_path_exists "$WORK_DIR/.ship/agents/modes"
-assert_path_exists "$WORK_DIR/.ship/agents/modes/planning.toml"
-assert_path_exists "$WORK_DIR/.ship/agents/modes/execution.toml"
-assert_path_exists "$WORK_DIR/.ship/agents/skills"
+# Skills are stored outside repo-local .ship to avoid git noise.
+if [[ -z "$(find "$HOME_DIR/.ship/projects" -type f -path '*/skills/task-policy/SKILL.md' -print -quit 2>/dev/null)" ]]; then
+  echo "ASSERTION FAILED: expected seeded task-policy skill under \$HOME/.ship/projects/*/skills" >&2
+  exit 1
+fi
 assert_path_exists "$WORK_DIR/.ship/generated"
 assert_path_exists "$WORK_DIR/.ship/project/features/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/workflow/specs/TEMPLATE.md"

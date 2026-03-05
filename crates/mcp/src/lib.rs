@@ -1438,7 +1438,7 @@ impl ShipServer {
 
     /// Connect (enable) an AI provider for this project
     #[tool(
-        description = "Connect (enable) an AI provider for this project by adding it to ship.toml providers list. Provider ID must be one of: claude, gemini, codex"
+        description = "Connect (enable) an AI provider for this project by updating runtime settings in SQLite. Provider ID must be one of: claude, gemini, codex"
     )]
     async fn connect_provider(
         &self,
@@ -1457,7 +1457,7 @@ impl ShipServer {
 
     /// Disconnect (disable) an AI provider from this project
     #[tool(
-        description = "Disconnect (disable) an AI provider from this project by removing it from ship.toml providers list"
+        description = "Disconnect (disable) an AI provider from this project by updating runtime settings in SQLite"
     )]
     async fn disconnect_provider(
         &self,
