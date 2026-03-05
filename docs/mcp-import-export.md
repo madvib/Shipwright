@@ -86,7 +86,7 @@ When exporting to provider configs:
 
 Runtime coverage lives in:
 
-- `crates/runtime/src/agents/export/sections/tests.rs`
+- `core/runtime/src/agents/export/sections/tests.rs`
 
 Key cases:
 

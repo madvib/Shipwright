@@ -4,7 +4,7 @@ Ship uses a single canonical permissions schema at:
 
 - `.ship/agents/permissions.toml`
 
-This file is parsed by `crates/runtime/src/permissions.rs` and consumed by agent config resolution + provider export.
+This file is parsed by `core/runtime/src/agents/permissions.rs` and consumed by agent config resolution + provider export.
 
 ## Canonical TOML Shape
 

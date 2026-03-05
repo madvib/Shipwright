@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dev-dependencies]
-runtime = { path = "../../crates/runtime" }
+runtime = { path = "../../core/runtime" }
 ship-module-git = { path = "../../crates/modules/git" }
 ship-module-project = { path = "../../crates/modules/project" }
 anyhow = "1.0"

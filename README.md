@@ -185,7 +185,7 @@ Shipwright is a Rust monorepo:
 
 | Crate                | Role                                                         |
 | -------------------- | ------------------------------------------------------------ |
-| `crates/runtime`     | Core data model, CRUD, event stream, agent config resolution |
+| `core/runtime`       | Core data model, CRUD, event stream, agent config resolution |
 | `crates/cli`         | `ship` binary — workflow CLI                                 |
 | `crates/mcp`         | `ship-mcp` binary — MCP stdio server                         |
 | `crates/modules/git` | Git hook handler, context file generation                    |

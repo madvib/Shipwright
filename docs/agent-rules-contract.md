@@ -37,6 +37,6 @@ Rules are resolved in `resolve_agent_config`:
 ## Test Coverage
 
 - Rule CRUD + filename validation:
-  - `crates/runtime/src/agents/rule.rs` tests
+  - `core/runtime/src/agents/rule.rs` tests
 - Mode-based rule filtering:
-  - `crates/runtime/src/agents/config.rs` tests (`resolve_agent_config_mode_filters_skills_and_rules`)
+  - `core/runtime/src/agents/config.rs` tests (`resolve_agent_config_mode_filters_skills_and_rules`)

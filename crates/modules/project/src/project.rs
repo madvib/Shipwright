@@ -479,16 +479,16 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     write_default_skills(&ship_path)?;
     write_if_missing(
         &mcp_config_path(&ship_path),
-        include_str!("../../../runtime/src/templates/MCP.toml"),
+        include_str!("../../../../core/runtime/src/templates/MCP.toml"),
     )?;
     write_if_missing(
         &permissions_config_path(&ship_path),
-        include_str!("../../../runtime/src/templates/PERMISSIONS.toml"),
+        include_str!("../../../../core/runtime/src/templates/PERMISSIONS.toml"),
     )?;
     let principles_path = rules_dir(&ship_path).join("core-principles.md");
     write_if_missing(
         &principles_path,
-        include_str!("../../../runtime/src/templates/RULE.md"),
+        include_str!("../../../../core/runtime/src/templates/RULE.md"),
     )?;
 
     let gitignore_path = ship_path.join(".gitignore");
@@ -512,37 +512,37 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
 fn write_default_templates(ship_path: &Path) -> Result<()> {
     write_if_missing(
         &issues_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/ISSUE.md"),
+        include_str!("../../../../core/runtime/src/templates/ISSUE.md"),
     )?;
     write_if_missing(
         &specs_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/SPEC.md"),
+        include_str!("../../../../core/runtime/src/templates/SPEC.md"),
     )?;
     write_if_missing(
         &features_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/FEATURE.md"),
+        include_str!("../../../../core/runtime/src/templates/FEATURE.md"),
     )?;
     write_if_missing(
         &releases_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/RELEASE.md"),
+        include_str!("../../../../core/runtime/src/templates/RELEASE.md"),
     )?;
     write_if_missing(
         &adrs_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/ADR.md"),
+        include_str!("../../../../core/runtime/src/templates/ADR.md"),
     )?;
     write_if_missing(
         &notes_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/NOTE.md"),
+        include_str!("../../../../core/runtime/src/templates/NOTE.md"),
     )?;
     write_if_missing(
         &project_ns(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../runtime/src/templates/VISION.md"),
+        include_str!("../../../../core/runtime/src/templates/VISION.md"),
     )?;
 
     let vision_doc = project_ns(ship_path).join("vision.md");
     write_if_missing(
         &vision_doc,
-        include_str!("../../../runtime/src/templates/VISION.md"),
+        include_str!("../../../../core/runtime/src/templates/VISION.md"),
     )?;
     Ok(())
 }
@@ -768,7 +768,7 @@ fn seed_builtin_user_skills(user_skills_root: &Path) -> Result<()> {
     let ship_workflow_path = user_skills_root.join("ship-workflow").join("SKILL.md");
     write_if_missing(
         &ship_workflow_path,
-        include_str!("../../../runtime/src/templates/skills/ship-workflow.SKILL.md"),
+        include_str!("../../../../core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
     )?;
 
     let skill_creator_root = user_skills_root.join("skill-creator");
@@ -783,95 +783,95 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
     const FILES: &[(&str, &str)] = &[
         (
             "SKILL.md",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/SKILL.md"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/SKILL.md"),
         ),
         (
             "LICENSE.txt",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/LICENSE.txt"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/LICENSE.txt"),
         ),
         (
             "agents/analyzer.md",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/agents/analyzer.md"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/agents/analyzer.md"),
         ),
         (
             "agents/comparator.md",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/agents/comparator.md"
+                "../../../../core/runtime/src/templates/skills/skill-creator/agents/comparator.md"
             ),
         ),
         (
             "agents/grader.md",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/agents/grader.md"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/agents/grader.md"),
         ),
         (
             "assets/eval_review.html",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/assets/eval_review.html"
+                "../../../../core/runtime/src/templates/skills/skill-creator/assets/eval_review.html"
             ),
         ),
         (
             "eval-viewer/generate_review.py",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/eval-viewer/generate_review.py"
+                "../../../../core/runtime/src/templates/skills/skill-creator/eval-viewer/generate_review.py"
             ),
         ),
         (
             "eval-viewer/viewer.html",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/eval-viewer/viewer.html"
+                "../../../../core/runtime/src/templates/skills/skill-creator/eval-viewer/viewer.html"
             ),
         ),
         (
             "references/schemas.md",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/references/schemas.md"
+                "../../../../core/runtime/src/templates/skills/skill-creator/references/schemas.md"
             ),
         ),
         (
             "scripts/__init__.py",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/__init__.py"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/__init__.py"),
         ),
         (
             "scripts/aggregate_benchmark.py",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/scripts/aggregate_benchmark.py"
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/aggregate_benchmark.py"
             ),
         ),
         (
             "scripts/generate_report.py",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/scripts/generate_report.py"
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/generate_report.py"
             ),
         ),
         (
             "scripts/improve_description.py",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/scripts/improve_description.py"
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/improve_description.py"
             ),
         ),
         (
             "scripts/package_skill.py",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/scripts/package_skill.py"
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/package_skill.py"
             ),
         ),
         (
             "scripts/quick_validate.py",
             include_str!(
-                "../../../runtime/src/templates/skills/skill-creator/scripts/quick_validate.py"
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/quick_validate.py"
             ),
         ),
         (
             "scripts/run_eval.py",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/run_eval.py"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_eval.py"),
         ),
         (
             "scripts/run_loop.py",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/run_loop.py"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_loop.py"),
         ),
         (
             "scripts/utils.py",
-            include_str!("../../../runtime/src/templates/skills/skill-creator/scripts/utils.py"),
+            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/utils.py"),
         ),
     ];
 
@@ -935,13 +935,13 @@ fn legacy_template_file_name(kind: &str) -> Option<&'static str> {
 
 fn template_fallback(kind: &str) -> Result<&'static str> {
     match kind {
-        "issue" | "issues" => Ok(include_str!("../../../runtime/src/templates/ISSUE.md")),
-        "adr" | "adrs" => Ok(include_str!("../../../runtime/src/templates/ADR.md")),
-        "note" | "notes" => Ok(include_str!("../../../runtime/src/templates/NOTE.md")),
-        "spec" | "specs" => Ok(include_str!("../../../runtime/src/templates/SPEC.md")),
-        "release" | "releases" => Ok(include_str!("../../../runtime/src/templates/RELEASE.md")),
-        "feature" | "features" => Ok(include_str!("../../../runtime/src/templates/FEATURE.md")),
-        "vision" => Ok(include_str!("../../../runtime/src/templates/VISION.md")),
+        "issue" | "issues" => Ok(include_str!("../../../../core/runtime/src/templates/ISSUE.md")),
+        "adr" | "adrs" => Ok(include_str!("../../../../core/runtime/src/templates/ADR.md")),
+        "note" | "notes" => Ok(include_str!("../../../../core/runtime/src/templates/NOTE.md")),
+        "spec" | "specs" => Ok(include_str!("../../../../core/runtime/src/templates/SPEC.md")),
+        "release" | "releases" => Ok(include_str!("../../../../core/runtime/src/templates/RELEASE.md")),
+        "feature" | "features" => Ok(include_str!("../../../../core/runtime/src/templates/FEATURE.md")),
+        "vision" => Ok(include_str!("../../../../core/runtime/src/templates/VISION.md")),
         _ => Err(anyhow!("No fallback for template kind: {}", kind)),
     }
 }

@@ -1,7 +1,7 @@
 # Agent permissions schema (canonical).
 # Source of truth: `.ship/agents/permissions.toml`
 #
-# This file is runtime-owned and parsed by `crates/runtime/src/permissions.rs`.
+# This file is runtime-owned and parsed by `core/runtime/src/agents/permissions.rs`.
 # Keep keys aligned with that struct to avoid drift.
 
 [tools]
