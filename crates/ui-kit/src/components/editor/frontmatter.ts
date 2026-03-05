@@ -10,6 +10,9 @@ export interface FrontmatterSummary {
     title: string;
     status: string;
     tags: string[];
+    specs: string[];
+    version?: string;
+    target_date?: string;
 }
 
 export interface FrontmatterEntry {
@@ -18,9 +21,10 @@ export interface FrontmatterEntry {
 }
 
 const FRONTMATTER_RE =
-    /^\uFEFF?(?:[ \t]*\r?\n)*(\+\+\+|---)\r?\n([\s\S]*?)\r?\n\1(?:\r?\n|$)/;
+    /^\uFEFF?(?:[ \t]*\r?\n)*[ \t]*(\+\+\+|---)[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\1[ \t]*(?:\r?\n|$)/;
 
 const TAGS_KEY = 'tags';
+const SPECS_KEY = 'specs';
 
 function escapeRegex(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -173,11 +177,17 @@ export function readFrontmatterSummary(frontmatter: string | null): FrontmatterS
     const rawTitle = findLineValue(frontmatter, 'title');
     const rawStatus = findLineValue(frontmatter, 'status');
     const rawTags = findLineValue(frontmatter, TAGS_KEY);
+    const rawSpecs = findLineValue(frontmatter, SPECS_KEY);
+    const rawVersion = findLineValue(frontmatter, 'version');
+    const rawTargetDate = findLineValue(frontmatter, 'target_date');
 
     return {
         title: rawTitle ? unquote(rawTitle) : '',
         status: rawStatus ? unquote(rawStatus) : '',
         tags: rawTags ? parseInlineList(rawTags) : [],
+        specs: rawSpecs ? parseInlineList(rawSpecs) : [],
+        version: rawVersion ? unquote(rawVersion) : undefined,
+        target_date: rawTargetDate ? unquote(rawTargetDate) : undefined,
     };
 }
 

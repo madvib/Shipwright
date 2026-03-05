@@ -11,7 +11,7 @@ export default defineConfig({
     plugins: [
         react(),
         tailwind(),
-        dts({ include: ["src"], rollupTypes: true }),
+        dts({ include: ["src"] }),
     ],
     resolve: {
         alias: { "@": resolve(__dirname, "src") },

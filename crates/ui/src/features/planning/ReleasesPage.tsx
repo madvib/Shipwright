@@ -13,8 +13,14 @@ import { EmptyState } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import TemplateEditorButton from './TemplateEditorButton';
-import ReleaseMetadataPanel from '@/components/editor/ReleaseMetadataPanel';
-import { readFrontmatterStringField, splitFrontmatterDocument } from '@ship/ui';
+import {
+  readFrontmatterStringField,
+  readFrontmatterStringListField,
+  splitFrontmatterDocument,
+  setFrontmatterStringField,
+  setFrontmatterStringListField,
+} from '@ship/ui';
+import { ReleaseHeaderMetadata } from './ReleaseHeaderMetadata';
 import {
   featureStatusFallbackReadiness,
   FeatureChecklistMetrics,
@@ -125,6 +131,32 @@ tags = []
 
 ## Notes
 `;
+  };
+
+  const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const fm = documentModel.frontmatter;
+  const currentVersion = readFrontmatterStringField(fm, 'version') || 'v0.1.0-alpha';
+  const currentStatus = readFrontmatterStringField(fm, 'status') || 'planned';
+  const currentTargetDate = readFrontmatterStringField(fm, 'target_date');
+  const currentTags = readFrontmatterStringListField(fm, 'tags');
+
+  const handleMetadataUpdate = (updates: {
+    version?: string;
+    status?: string;
+    target_date?: string;
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '+++';
+
+    if (updates.version !== undefined) nextContent = setFrontmatterStringField(nextContent, 'version', updates.version, delimiter) ?? nextContent;
+    if (updates.status !== undefined) nextContent = setFrontmatterStringField(nextContent, 'status', updates.status, delimiter) ?? nextContent;
+    if (updates.target_date !== undefined) nextContent = setFrontmatterStringField(nextContent, 'target_date', updates.target_date, delimiter) ?? nextContent;
+    if (updates.tags !== undefined) nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) ?? nextContent;
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+    }
   };
 
   const releaseSummaries = useMemo(() => {
@@ -385,9 +417,14 @@ tags = []
           label="New Release"
           title={<h2 className="text-xl font-semibold tracking-tight">Create Release</h2>}
           meta={
-            <p className="text-muted-foreground text-xs">
-              Use a stable identifier, for example <code>v0.1.0-alpha</code>.
-            </p>
+            <ReleaseHeaderMetadata
+              version={currentVersion}
+              status={currentStatus}
+              targetDate={currentTargetDate}
+              tags={currentTags}
+              isEditing={true}
+              onUpdate={handleMetadataUpdate}
+            />
           }
           onClose={() => {
             if (creating) return;
@@ -418,16 +455,6 @@ tags = []
                 setContent(next);
                 setError(null);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-                <ReleaseMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultVersion="v0.1.0-alpha"
-                  defaultStatus="planned"
-                  tagSuggestions={[]}
-                  onChange={onChange}
-                />
-              )}
               placeholder="# Release Goal"
               rows={22}
               defaultMode="doc"

@@ -47,6 +47,8 @@ interface SidebarProps {
   agentControl?: ReactNode;
   theme?: 'light' | 'dark';
   onThemeChange?: (theme: 'light' | 'dark') => void;
+  contextualContent?: ReactNode;
+  onBackToGlobal?: () => void;
 }
 
 function initialsFromProjectName(projectName: string | null | undefined): string {
@@ -77,6 +79,8 @@ export default function Sidebar({
   sections,
   theme,
   onThemeChange,
+  contextualContent,
+  onBackToGlobal,
 }: SidebarProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     sections.reduce((acc, section) => ({ ...acc, [section.id]: true }), {})
@@ -300,7 +304,24 @@ export default function Sidebar({
           collapsed && 'items-center p-1.5'
         )}
       >
-        {!collapsed ? (
+        {contextualContent ? (
+          <div className="flex h-full flex-col gap-3">
+            {!collapsed && onBackToGlobal && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="justify-start gap-2 h-8 text-xs font-semibold hover:bg-sidebar-accent"
+                onClick={onBackToGlobal}
+              >
+                <History className="size-4 rotate-180" />
+                Back to Navigation
+              </Button>
+            )}
+            <div className="flex-1 min-h-0">
+              {contextualContent}
+            </div>
+          </div>
+        ) : !collapsed ? (
           sections.map((section, idx) => (
             <div key={section.id} className="w-full">
               <div className="w-full space-y-0.5">

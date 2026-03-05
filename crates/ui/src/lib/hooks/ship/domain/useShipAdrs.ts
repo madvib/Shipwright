@@ -35,9 +35,12 @@ export function useShipAdrs({
 
     const adrSuggestions = useMemo(() => {
         return adrs
-            .map((entry) => entry.adr.metadata.id)
-            .filter((value) => value.trim().length > 0)
-            .sort((a, b) => a.localeCompare(b));
+            .map((entry) => ({
+                id: entry.adr.metadata.id,
+                title: entry.adr.metadata.title
+            }))
+            .filter((s) => s.id.trim().length > 0)
+            .sort((a, b) => a.title.localeCompare(b.title));
     }, [adrs]);
 
     return {

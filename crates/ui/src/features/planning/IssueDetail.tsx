@@ -6,8 +6,7 @@ import { Button } from '@ship/ui';
 import { Card, CardContent } from '@ship/ui';
 import { AutocompleteInput } from '@ship/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
-import { Badge } from '@ship/ui';
-import IssueMetadataPanel from '@/components/editor/IssueMetadataPanel';
+import { IssueHeaderMetadata } from './IssueHeaderMetadata';
 import { EntityLink } from '@/lib/links';
 
 interface IssueDetailProps {
@@ -105,12 +104,6 @@ export default function IssueDetail({
     setNewLinkTarget('');
   }, [entry]);
 
-  const createdDate = (() => {
-    const date = new Date(draft.created);
-    if (Number.isNaN(date.getTime())) return 'Unknown';
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  })();
-
   const displayTitle = draft.title.trim() || deriveTitleFromFileName(entry.file_name);
 
   const linkRows = (draft.links ?? []).map((link) => ({
@@ -185,16 +178,34 @@ export default function IssueDetail({
     <DetailSheet
       label={activeStatus?.name ?? entry.status}
       title={<h2 className="truncate text-lg font-semibold tracking-tight">{displayTitle}</h2>}
-      meta={<p className="text-muted-foreground text-xs">Created {createdDate} · {entry.file_name}</p>}
+      meta={
+        <IssueHeaderMetadata
+          status={entry.status}
+          statuses={statuses}
+          assignee={draft.assignee ?? null}
+          specId={draft.spec_id ?? null}
+          tags={draft.tags ?? []}
+          tagSuggestions={tagSuggestions}
+          specSuggestions={specSuggestions}
+          onStatusChange={(nextStatus) => {
+            if (nextStatus !== entry.status) {
+              onStatusChange(entry.file_name, entry.status, nextStatus);
+            }
+          }}
+          onAssigneeChange={(v) => { setDraft((c) => ({ ...c, assignee: v })); markDirty(); }}
+          onSpecIdChange={(v) => { setDraft((c) => ({ ...c, spec_id: v })); markDirty(); }}
+          onTagsChange={(v) => { setDraft((c) => ({ ...c, tags: v })); markDirty(); }}
+        />
+      }
       onClose={onClose}
-      className="max-w-[1800px]"
+      className="max-w-[1400px]"
       bodyScrollable={false}
       bodyClassName="overflow-hidden p-0"
       inlineHeader
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1">
-          {/* Editor — left */}
+          {/* Editor */}
           <div className="min-w-0 flex-1 p-1.5">
             <MarkdownEditor
               label={undefined}
@@ -210,29 +221,6 @@ export default function IssueDetail({
               fillHeight
               showStats={false}
               mcpEnabled={mcpEnabled}
-            />
-          </div>
-
-          {/* Metadata sidebar — right */}
-          <div className="w-[260px] shrink-0">
-            <IssueMetadataPanel
-              title={draft.title}
-              assignee={draft.assignee ?? null}
-              specId={draft.spec_id ?? null}
-              tags={draft.tags ?? []}
-              status={entry.status}
-              statuses={statuses}
-              tagSuggestions={tagSuggestions}
-              specSuggestions={specSuggestions}
-              onTitleChange={(v) => { setDraft((c) => ({ ...c, title: v })); markDirty(); }}
-              onAssigneeChange={(v) => { setDraft((c) => ({ ...c, assignee: v })); markDirty(); }}
-              onSpecIdChange={(v) => { setDraft((c) => ({ ...c, spec_id: v })); markDirty(); }}
-              onTagsChange={(v) => { setDraft((c) => ({ ...c, tags: v })); markDirty(); }}
-              onStatusChange={(nextStatus) => {
-                if (nextStatus !== entry.status) {
-                  onStatusChange(entry.file_name, entry.status, nextStatus);
-                }
-              }}
             />
           </div>
         </div>

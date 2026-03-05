@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';
 import AgentModeControl from '@/features/agents/AgentModeControl';
-import { PageChromeProvider } from '@/components/app/PageFrame';
+import { PageChromeProvider, PageChromeContextValue } from '@/components/app/PageFrame';
 import IssueDetail from '@/features/planning/IssueDetail';
 import NewIssueModal from '@/features/planning/NewIssueModal';
 import ProjectOnboarding from '@/features/planning/ProjectOnboarding';
@@ -162,6 +162,56 @@ export default function App() {
     );
   }
 
+  const [pageChrome, setPageChrome] = useState<Partial<PageChromeContextValue>>({});
+
+  const defaultChrome = useMemo((): Partial<PageChromeContextValue> =>
+  (!workspace.noProject || routePath === PROJECTS_ROUTE
+    ? {
+      breadcrumb: (
+        <nav className="text-muted-foreground flex items-center gap-1 text-xs">
+          {routePath === PROJECTS_ROUTE ? (
+            <span className="text-foreground">Projects</span>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-6 px-1.5 text-xs"
+                onClick={() => navigateTo(PROJECTS_ROUTE)}
+              >
+                Projects
+              </Button>
+              <span>/</span>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-6 px-1.5 text-xs"
+                onClick={() => navigateTo(OVERVIEW_ROUTE)}
+              >
+                {workspace.activeProject?.name ?? 'Project'}
+              </Button>
+              {routePath !== OVERVIEW_ROUTE && (
+                <>
+                  <span>/</span>
+                  <span className="text-foreground">{ROUTE_LABELS[routePath]}</span>
+                </>
+              )}
+            </>
+          )}
+        </nav>
+      ),
+    }
+    : {}), [workspace.noProject, workspace.activeProject, routePath, PROJECTS_ROUTE, OVERVIEW_ROUTE, ROUTE_LABELS, navigateTo]);
+
+  const activeChrome = useMemo(() => ({
+    ...defaultChrome,
+    ...pageChrome,
+  }), [defaultChrome, pageChrome]);
+
+  const handleUpdateChrome = (updates: Partial<PageChromeContextValue>) => {
+    setPageChrome(prev => ({ ...prev, ...updates }));
+  };
+
   return (
     <div
       className="app-shell"
@@ -186,6 +236,8 @@ export default function App() {
         sections={COMBINED_SECTIONS}
         theme={workspace.config.theme as 'light' | 'dark'}
         onThemeChange={workspace.applyTheme}
+        contextualContent={activeChrome.sidebar}
+        onBackToGlobal={activeChrome.onBack}
         agentControl={
           !workspace.noProject ? (
             <AgentModeControl
@@ -211,45 +263,8 @@ export default function App() {
           </div>
         )}
         <PageChromeProvider
-          value={
-            !workspace.noProject || routePath === PROJECTS_ROUTE
-              ? {
-                breadcrumb: (
-                  <nav className="text-muted-foreground flex items-center gap-1 text-xs">
-                    {routePath === PROJECTS_ROUTE ? (
-                      <span className="text-foreground">Projects</span>
-                    ) : (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="h-6 px-1.5 text-xs"
-                          onClick={() => navigateTo(PROJECTS_ROUTE)}
-                        >
-                          Projects
-                        </Button>
-                        <span>/</span>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="h-6 px-1.5 text-xs"
-                          onClick={() => navigateTo(OVERVIEW_ROUTE)}
-                        >
-                          {workspace.activeProject?.name ?? 'Project'}
-                        </Button>
-                        {routePath !== OVERVIEW_ROUTE && (
-                          <>
-                            <span>/</span>
-                            <span className="text-foreground">{ROUTE_LABELS[routePath]}</span>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </nav>
-                ),
-              }
-              : null
-          }
+          value={activeChrome}
+          onUpdate={handleUpdateChrome}
         >
           <Outlet />
         </PageChromeProvider>

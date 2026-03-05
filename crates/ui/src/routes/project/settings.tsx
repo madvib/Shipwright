@@ -7,12 +7,15 @@ function SettingsRouteComponent() {
   const workspace = useWorkspace();
   const navigate = useNavigate();
 
+  const { tab } = Route.useSearch();
+
   return (
     <SettingsPanel
       config={workspace.config}
       projectConfig={workspace.projectConfig}
       globalAgentConfig={workspace.globalAgentConfig}
       panelMode="settings-only"
+      initialTab={tab as any}
       onThemePreview={workspace.applyTheme}
       onSave={async (config) => {
         await workspace.handleSaveSettings(config);
@@ -35,4 +38,9 @@ function SettingsRouteComponent() {
 
 export const Route = createFileRoute('/project/settings')({
   component: SettingsRouteComponent,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      tab: (search.tab as string) || undefined,
+    };
+  },
 });

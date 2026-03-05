@@ -5,7 +5,6 @@ import {
   FeatureDocument,
   ReleaseInfo as ReleaseEntry,
   SpecEntry,
-  AdrEntry,
 } from '@/bindings';
 import DetailSheet from './DetailSheet';
 import { Alert, AlertDescription } from '@ship/ui';
@@ -17,18 +16,22 @@ import {
 import { Button } from '@ship/ui';
 import TemplateEditorButton from './TemplateEditorButton';
 import MarkdownEditor from '@/components/editor';
-import FeatureMetadataPanel from '@/components/editor/FeatureMetadataPanel';
 import { EmptyState } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import {
   readFrontmatterStringField,
   splitFrontmatterDocument,
-  FrontmatterDelimiter,
 } from '@ship/ui';
 import {
   featureStatusFallbackReadiness,
   formatStatusLabel,
 } from '@/features/planning/hub/utils/featureMetrics';
+import { FeatureHeaderMetadata } from './FeatureHeaderMetadata';
+import {
+  setFrontmatterStringField,
+  setFrontmatterStringListField,
+  readFrontmatterStringListField,
+} from '@ship/ui';
 import FeatureHubStats from '@/features/planning/features-hub/components/FeatureHubStats';
 import FeatureHubToolbar from '@/features/planning/features-hub/components/FeatureHubToolbar';
 import FeatureHubRow from '@/features/planning/features-hub/components/FeatureHubRow';
@@ -40,7 +43,6 @@ interface FeaturesPageProps {
   features: FeatureEntry[];
   releases: ReleaseEntry[];
   specs: SpecEntry[];
-  adrs: AdrEntry[];
   selectedFeature: FeatureDocument | null;
   onCloseFeatureDetail: () => void;
   onSelectFeature: (entry: FeatureEntry) => void;
@@ -78,7 +80,6 @@ export default function FeaturesPage({
   features,
   releases,
   specs,
-  adrs,
   selectedFeature,
   onCloseFeatureDetail,
   onSelectFeature,
@@ -227,8 +228,8 @@ export default function FeaturesPage({
   }, [featureMetricsByFile, features]);
 
   const createInitialFeatureDocument = () => {
-    return `++ +
-  title = ""
+    return `+++
+title = ""
 status = "planned"
 release_id = ""
 spec_id = ""
@@ -249,6 +250,40 @@ tags = []
 
 ## Notes
   `;
+  };
+
+  const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const fm = documentModel.frontmatter;
+  const currentStatus = readFrontmatterStringField(fm, 'status') || 'planned';
+  const currentReleaseId = readFrontmatterStringField(fm, 'release_id') || readFrontmatterStringField(fm, 'release');
+  const currentSpecId = readFrontmatterStringField(fm, 'spec_id') || readFrontmatterStringField(fm, 'spec');
+  const currentTags = readFrontmatterStringListField(fm, 'tags');
+
+  const handleMetadataUpdate = (updates: {
+    status?: string;
+    release_id?: string;
+    spec_id?: string;
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '+++';
+
+    if (updates.status) {
+      nextContent = setFrontmatterStringField(nextContent, 'status', updates.status, delimiter) || nextContent;
+    }
+    if (updates.release_id !== undefined) {
+      nextContent = setFrontmatterStringField(nextContent, 'release_id', updates.release_id, delimiter) || nextContent;
+    }
+    if (updates.spec_id !== undefined) {
+      nextContent = setFrontmatterStringField(nextContent, 'spec_id', updates.spec_id, delimiter) || nextContent;
+    }
+    if (updates.tags) {
+      nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) || nextContent;
+    }
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+    }
   };
 
   const submitCreate = async (event: FormEvent) => {
@@ -316,7 +351,6 @@ tags = []
           feature={selectedFeature}
           releaseSuggestions={releases.map((entry) => entry.file_name)}
           specSuggestions={specs.map((entry) => entry.file_name)}
-          adrSuggestions={adrs.map((entry) => entry.file_name)}
           tagSuggestions={tagSuggestions}
           mcpEnabled={mcpEnabled}
           onClose={onCloseFeatureDetail}
@@ -416,9 +450,17 @@ tags = []
           label="New Feature"
           title={<h2 className="text-xl font-semibold tracking-tight">Create Feature</h2>}
           meta={
-            <p className="text-muted-foreground text-xs">
-              Add optional links to a release and a spec.
-            </p>
+            <FeatureHeaderMetadata
+              status={currentStatus}
+              releaseId={currentReleaseId || undefined}
+              specId={currentSpecId || undefined}
+              tags={currentTags}
+              isEditing={true}
+              onUpdate={handleMetadataUpdate}
+              releaseSuggestions={releases.map(r => r.file_name)}
+              specSuggestions={specs.map(s => s.file_name)}
+              tagSuggestions={tagSuggestions}
+            />
           }
           onClose={() => {
             if (creating) return;
@@ -449,19 +491,6 @@ tags = []
                 setContent(next);
                 setError(null);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }: { frontmatter: string | null; delimiter: FrontmatterDelimiter | null; onChange: (fm: string | null, d: FrontmatterDelimiter) => void }) => (
-                <FeatureMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultTitle=""
-                  defaultStatus="planned"
-                  releaseSuggestions={releases.map((entry: ReleaseEntry) => entry.file_name)}
-                  specSuggestions={specs.map((entry: SpecEntry) => entry.file_name)}
-                  adrSuggestions={adrs.map((entry: AdrEntry) => entry.file_name)}
-                  tagSuggestions={tagSuggestions}
-                  onChange={onChange}
-                />
-              )}
               placeholder="# Why this feature"
               rows={22}
               defaultMode="doc"

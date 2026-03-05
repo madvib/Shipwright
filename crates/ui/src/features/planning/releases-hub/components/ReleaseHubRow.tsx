@@ -39,7 +39,7 @@ export default function ReleaseHubRow({
     <div
       className={cn(
         'grid gap-3 rounded-md border p-3 transition-colors',
-        blockers > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'hover:bg-muted/35'
+        blockers > 0 ? 'border-orange-500/25 bg-orange-500/[0.03] shadow-sm' : 'hover:bg-muted/35'
       )}
       title={release.path}
     >

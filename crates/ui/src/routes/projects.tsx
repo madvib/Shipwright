@@ -20,13 +20,12 @@ function ProjectsRouteComponent() {
       detectingProject={workspace.detectingProject}
       creatingProject={workspace.creatingProject}
       recentProjects={workspace.recentProjects}
-      globalConfig={workspace.config}
       onRefreshDetection={workspace.refreshDetectedProject}
       onOpenProject={workspace.handleOpenProject}
       onCreateProject={workspace.handleCreateProjectFromForm}
       onPickDirectory={workspace.handlePickProjectDirectory}
       onSelectProject={handleSelectProject}
-      onOpenSettings={() => navigate({ to: SETTINGS_ROUTE })}
+      onOpenSettings={(tab) => navigate({ to: SETTINGS_ROUTE, search: { tab } })}
     />
   );
 }

@@ -21,6 +21,7 @@ export interface FrontmatterPanelProps {
     delimiter: FrontmatterDelimiter | null;
     className?: string;
     statusOptions?: string[];
+    specSuggestions?: { id: string; title: string }[];
     onChange: (frontmatter: string | null, delimiter: FrontmatterDelimiter) => void;
 }
 
@@ -34,6 +35,7 @@ export default function FrontmatterPanel({
     delimiter,
     className,
     statusOptions,
+    specSuggestions = [],
     onChange,
 }: FrontmatterPanelProps) {
     const [expanded, setExpanded] = useState(false);
@@ -69,6 +71,11 @@ export default function FrontmatterPanel({
 
     const updateTags = (tags: string[]) => {
         const next = setFrontmatterStringListField(frontmatter, 'tags', tags, currentDelimiter);
+        applyUpdate(next);
+    };
+
+    const updateSpecs = (specs: string[]) => {
+        const next = setFrontmatterStringListField(frontmatter, 'specs', specs, currentDelimiter);
         applyUpdate(next);
     };
 
@@ -162,6 +169,20 @@ export default function FrontmatterPanel({
                             onSelectionChange={updateTags}
                             allowNew
                             onAddNew={(tag) => updateTags([...summary.tags, tag])}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                            Linked Specs {summary.specs.length ? `(${summary.specs.length})` : ''}
+                        </label>
+                        <FacetedFilter
+                            title="Link spec"
+                            options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
+                            selectedValues={summary.specs}
+                            onSelectionChange={updateSpecs}
+                            className="w-full"
                         />
                     </div>
 

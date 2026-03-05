@@ -5,30 +5,25 @@ import {
   ArrowLeft,
   CheckCircle2,
   Edit3,
-  ExternalLink,
-  FileText,
   GitBranch,
-  Package,
   Save,
-  Shapes,
-  Tag,
   X,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MarkdownEditor from '@/components/editor';
-import FeatureMetadataPanel from '@/components/editor/FeatureMetadataPanel';
-import { Badge } from '@ship/ui';
+import { FeatureHeaderMetadata } from './FeatureHeaderMetadata';
 import { Button } from '@ship/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { Progress } from '@ship/ui';
 import {
   readFrontmatterStringListField,
   splitFrontmatterDocument,
+  setFrontmatterStringField,
+  setFrontmatterStringListField,
 } from '@ship/ui';
 import {
   deriveFeatureChecklistMetrics,
-  formatStatusLabel,
 } from '@/features/planning/hub/utils/featureMetrics';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +31,6 @@ interface FeatureDetailProps {
   feature: FeatureEntry;
   releaseSuggestions?: string[];
   specSuggestions?: string[];
-  adrSuggestions?: string[];
   tagSuggestions?: string[];
   mcpEnabled?: boolean;
   onClose: () => void;
@@ -49,7 +43,6 @@ export default function FeatureDetail({
   feature,
   releaseSuggestions = [],
   specSuggestions = [],
-  adrSuggestions = [],
   tagSuggestions = [],
   mcpEnabled = true,
   onClose,
@@ -92,14 +85,38 @@ export default function FeatureDetail({
     () => deriveFeatureChecklistMetrics(content, feature.status),
     [content, feature.status]
   );
-  const adrLinks = useMemo(
-    () => readFrontmatterStringListField(documentModel.frontmatter, 'adrs'),
-    [documentModel.frontmatter]
-  );
   const tags = useMemo(
     () => readFrontmatterStringListField(documentModel.frontmatter, 'tags'),
     [documentModel.frontmatter]
   );
+
+  const handleMetadataUpdate = useCallback((updates: {
+    status?: string;
+    release_id?: string;
+    spec_id?: string;
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '---';
+
+    if (updates.status) {
+      nextContent = setFrontmatterStringField(nextContent, 'status', updates.status, delimiter) || nextContent;
+    }
+    if (updates.release_id !== undefined) {
+      nextContent = setFrontmatterStringField(nextContent, 'release_id', updates.release_id, delimiter) || nextContent;
+    }
+    if (updates.spec_id !== undefined) {
+      nextContent = setFrontmatterStringField(nextContent, 'spec_id', updates.spec_id, delimiter) || nextContent;
+    }
+    if (updates.tags) {
+      nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) || nextContent;
+    }
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+      setDirty(true);
+    }
+  }, [content, documentModel.delimiter]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -149,11 +166,22 @@ export default function FeatureDetail({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Badge variant="outline">{formatStatusLabel(feature.status)}</Badge>
-            <Badge variant={readiness.blocking ? 'secondary' : 'outline'}>
-              {readiness.blocking ? 'Blocking' : 'Ready'}
-            </Badge>
+          <div className="flex flex-col items-center gap-2">
+            <FeatureHeaderMetadata
+              status={feature.status}
+              releaseId={feature.release_id || undefined}
+              specId={feature.spec_id || undefined}
+              tags={tags}
+              isEditing={editing}
+              onUpdate={handleMetadataUpdate}
+              releaseSuggestions={releaseSuggestions}
+              specSuggestions={specSuggestions}
+              tagSuggestions={tagSuggestions}
+              onNavigate={(id, type) => {
+                if (type === 'release') onSelectRelease(id);
+                if (type === 'spec') onSelectSpec(id);
+              }}
+            />
           </div>
         </CardContent>
       </Card>
@@ -178,19 +206,6 @@ export default function FeatureDetail({
                 setContent(next);
                 setDirty(true);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-                <FeatureMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultTitle={feature?.title}
-                  defaultStatus={feature.status}
-                  releaseSuggestions={releaseSuggestions}
-                  specSuggestions={specSuggestions}
-                  adrSuggestions={adrSuggestions}
-                  tagSuggestions={tagSuggestions}
-                  onChange={onChange}
-                />
-              )}
               mcpEnabled={mcpEnabled}
               fillHeight
               rows={24}
@@ -225,90 +240,19 @@ export default function FeatureDetail({
               </CardContent>
             </Card>
 
-            <Card size="sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Planning Links</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {feature?.release_id ? (
-                  <button
-                    type="button"
-                    onClick={() => onSelectRelease(feature?.release_id!)}
-                    className="hover:bg-muted/40 flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <Package className="size-3.5 text-primary" />
-                      {feature?.release_id}
-                    </span>
-                    <ExternalLink className="size-3.5 text-muted-foreground" />
-                  </button>
-                ) : (
-                  <p className="text-muted-foreground text-xs italic">No linked release.</p>
-                )}
-
-                {feature?.spec_id ? (
-                  <button
-                    type="button"
-                    onClick={() => onSelectSpec(feature?.spec_id!)}
-                    className="hover:bg-muted/40 flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <FileText className="size-3.5 text-primary" />
-                      {feature?.spec_id}
-                    </span>
-                    <ExternalLink className="size-3.5 text-muted-foreground" />
-                  </button>
-                ) : (
-                  <p className="text-muted-foreground text-xs italic">No linked specification.</p>
-                )}
-
-                {feature?.branch && (
+            {feature.branch && (
+              <Card size="sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">VCS Context</CardTitle>
+                </CardHeader>
+                <CardContent>
                   <p className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
                     <GitBranch className="size-3.5" />
                     {feature?.branch}
                   </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card size="sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Context</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="space-y-1">
-                  <p className="text-muted-foreground text-[11px] uppercase tracking-wide">ADRs</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {adrLinks.length > 0 ? (
-                      adrLinks.map((adr) => (
-                        <Badge key={adr} variant="secondary" className="h-5 px-1.5 text-[10px]">
-                          <Shapes className="mr-1 size-3" />
-                          {adr}
-                        </Badge>
-                      ))
-                    ) : (
-                      <p className="text-muted-foreground text-xs italic">No linked ADRs.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-muted-foreground text-[11px] uppercase tracking-wide">Tags</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {tags.length > 0 ? (
-                      tags.map((tag) => (
-                        <Badge key={tag} variant="outline" className="h-5 px-1.5 text-[10px]">
-                          <Tag className="mr-1 size-3" />
-                          {tag}
-                        </Badge>
-                      ))
-                    ) : (
-                      <p className="text-muted-foreground text-xs italic">No tags.</p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </aside>
 
           <Card size="sm" className="flex min-h-[calc(100vh-15.5rem)] flex-col">

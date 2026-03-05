@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
 import { ADR, AdrEntry } from '@/bindings';
 import AdrEditor from './AdrEditor';
@@ -15,13 +16,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@ship/ui';
+import { AdrHeaderMetadata } from './AdrHeaderMetadata';
+import { AdrContextDialog } from './AdrContextDialog';
 import { deriveAdrHeaderTitle } from './adrTitle';
+import { SPECS_ROUTE } from '@/lib/constants/routes';
 
 interface AdrDetailProps {
   entry: AdrEntry;
-  specSuggestions: string[];
+  specSuggestions: { id: string; title: string }[];
   tagSuggestions: string[];
-  adrSuggestions?: string[];
+  adrSuggestions?: { id: string; title: string }[];
   mcpEnabled?: boolean;
   onClose: () => void;
   onSave: (id: string, adr: ADR) => void;
@@ -50,6 +54,8 @@ export default function AdrDetail({
 }: AdrDetailProps) {
   const [draft, setDraft] = useState<ADR>(normalizeAdr(entry.adr));
   const [dirty, setDirty] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setDraft(normalizeAdr(entry.adr));
@@ -79,6 +85,15 @@ export default function AdrDetail({
 
   const actionButtons = (
     <>
+      <Button
+        variant="outline"
+        size="xs"
+        onClick={() => setContextOpen(true)}
+        className="h-7 gap-1.5"
+      >
+        Context
+      </Button>
+
       <AlertDialog>
         <AlertDialogTrigger
           render={
@@ -115,29 +130,63 @@ export default function AdrDetail({
   );
 
   return (
-    <DetailSheet
-      title={<h2 className="truncate text-lg font-semibold tracking-tight">{deriveAdrHeaderTitle(draft, entry.file_name)}</h2>}
-      meta={null}
-      onClose={onClose}
-      className="max-w-[1800px]"
-      bodyScrollable={false}
-      bodyClassName="overflow-hidden p-0"
-      inlineHeader
-    >
-      <div className="h-full min-h-0 p-1.5">
-        <AdrEditor
-          adr={draft}
-          onChange={(next) => {
-            setDraft(next);
-            setDirty(true);
-          }}
-          specSuggestions={specSuggestions}
-          tagSuggestions={tagSuggestions}
-          extraActions={actionButtons}
-          adrSuggestions={adrSuggestions}
-          mcpEnabled={mcpEnabled}
-        />
-      </div>
-    </DetailSheet>
+    <>
+      <DetailSheet
+        title={<h2 className="truncate text-base font-semibold tracking-tight max-w-[500px] text-left">{deriveAdrHeaderTitle(draft, entry.file_name)}</h2>}
+        meta={
+          <div className="flex-1 min-w-0">
+            <AdrHeaderMetadata
+              adr={draft}
+              onChange={(next) => {
+                setDraft(next);
+                setDirty(true);
+              }}
+              specSuggestions={specSuggestions}
+              tagSuggestions={tagSuggestions}
+              adrSuggestions={adrSuggestions}
+              isEditing={false}
+              onNavigate={(type, id) => {
+                onClose();
+                if (type === 'spec') {
+                  navigate({ to: SPECS_ROUTE, search: { id } });
+                }
+              }}
+            />
+          </div>
+        }
+        onClose={onClose}
+        className="max-w-[1800px]"
+        bodyScrollable={false}
+        bodyClassName="overflow-hidden p-0"
+        inlineHeader
+      >
+        <div className="h-full min-h-0 p-1.5 flex flex-col">
+          <AdrEditor
+            key={draft?.metadata.id || 'new'}
+            adr={draft}
+            onChange={(next) => {
+              setDraft(next);
+              setDirty(true);
+            }}
+            specSuggestions={specSuggestions}
+            tagSuggestions={tagSuggestions}
+            extraActions={actionButtons}
+            adrSuggestions={adrSuggestions}
+            mcpEnabled={mcpEnabled}
+          />
+        </div>
+      </DetailSheet>
+
+      <AdrContextDialog
+        isOpen={contextOpen}
+        onOpenChange={setContextOpen}
+        context={draft.context}
+        onContextChange={(next) => {
+          setDraft({ ...draft, context: next });
+          setDirty(true);
+        }}
+        isEditing={true}
+      />
+    </>
   );
 }

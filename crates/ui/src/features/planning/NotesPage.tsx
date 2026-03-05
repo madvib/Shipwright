@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, StickyNote } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { Plus, StickyNote, Trash2 } from 'lucide-react';
 import { Button } from '@ship/ui';
 import { Input } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
@@ -9,8 +10,15 @@ import { Badge } from '@ship/ui';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { relativeDate } from '@/lib/date';
 import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';
-import { createNoteCmd, getNoteCmd, listNotes, updateNoteCmd } from '@/lib/platform/tauri/commands';
+import { createNoteCmd, deleteNoteCmd, getNoteCmd, listNotes, updateNoteCmd } from '@/lib/platform/tauri/commands';
 import { isTauriRuntime } from '@/lib/platform/tauri/runtime';
+import { NoteMetadata } from './NoteMetadata';
+import {
+    splitFrontmatterDocument,
+    composeFrontmatterDocument,
+    setFrontmatterStringListField,
+} from '@ship/ui';
+import { SPECS_ROUTE } from '@/lib/constants/routes';
 
 type EditableNote = {
     title: string;
@@ -57,7 +65,10 @@ export default function NotesPage() {
         handleSelectNote: handleSelectProjectNote,
         handleCreateNote: handleCreateProjectNote,
         handleSaveNote: handleSaveProjectNote,
+        handleDeleteNote: handleDeleteProjectNote,
         setSelectedNote: setProjectSelectedNote,
+        specSuggestions,
+        tagSuggestions,
     } = useShip();
 
     const isGlobalScope = notesScope === 'global';
@@ -74,6 +85,7 @@ export default function NotesPage() {
     const titleInputRef = useRef<HTMLInputElement>(null);
     const [localNote, setLocalNote] = useState<EditableNote | null>(null);
     const activeNoteId = useRef<string | null>(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         if (!isGlobalScope) return;
@@ -217,6 +229,26 @@ export default function NotesPage() {
         }
     }, [isGlobalScope, handleSaveProjectNote, refreshActivity, setError]);
 
+    const handleDeleteNote = useCallback(async () => {
+        if (!localNote?.id) return;
+
+        if (!confirm('Are you sure you want to delete this note?')) return;
+
+        try {
+            if (isGlobalScope) {
+                await deleteNoteCmd(localNote.id, 'global');
+                setGlobalNotes(prev => prev.filter(n => n.id !== localNote.id));
+                setGlobalSelectedNote(null);
+            } else {
+                await handleDeleteProjectNote(localNote.id);
+            }
+            setLocalNote(null);
+            await refreshActivity();
+        } catch (error) {
+            setError(String(error));
+        }
+    }, [isGlobalScope, localNote?.id, refreshActivity, setError, handleDeleteProjectNote]);
+
     const handleNewNote = useCallback(() => {
         const stub: EditableNote = {
             title: '',
@@ -264,6 +296,25 @@ export default function NotesPage() {
         const next = { ...localNote, content };
         setLocalNote(next);
         scheduleAutoSave(next.title, next.content, next.id);
+    };
+
+    const handleMetadataChange = (nextSpecs: string[], nextTags: string[]) => {
+        if (!localNote) return;
+        const { frontmatter, body, delimiter } = splitFrontmatterDocument(localNote.content);
+        let nextFrontmatter = setFrontmatterStringListField(
+            frontmatter,
+            'specs',
+            nextSpecs,
+            delimiter ?? '+++'
+        );
+        nextFrontmatter = setFrontmatterStringListField(
+            nextFrontmatter,
+            'tags',
+            nextTags,
+            delimiter ?? '+++'
+        );
+        const nextContent = composeFrontmatterDocument(nextFrontmatter, body, delimiter ?? '+++');
+        handleContentChange(nextContent);
     };
 
     const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -360,15 +411,36 @@ export default function NotesPage() {
                                 >
                                     {saveIndicator === 'saving' ? 'Saving…' : 'Saved ✓'}
                                 </div>
+                                <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    onClick={handleDeleteNote}
+                                    className="text-muted-foreground hover:text-destructive transition-colors"
+                                >
+                                    <Trash2 className="size-4" />
+                                </Button>
                             </div>
+
+                            <NoteMetadata
+                                frontmatter={splitFrontmatterDocument(localNote.content).frontmatter}
+                                updated={selectedNote?.updated || new Date().toISOString()}
+                                specSuggestions={specSuggestions}
+                                tagSuggestions={tagSuggestions}
+                                isEditing={true}
+                                onChange={handleMetadataChange}
+                                onNavigate={(id) => navigate({ to: SPECS_ROUTE, search: { id } })}
+                            />
+
                             <div className="flex-1 min-h-0 rounded-lg border border-border/40 bg-background/50 overflow-hidden shadow-inner ring-1 ring-inset ring-white/5">
                                 <MarkdownEditor
+                                    key={localNote?.id || 'new'}
                                     value={localNote.content}
                                     onChange={handleContentChange}
                                     placeholder="Start writing your thoughts…"
                                     showFrontmatter={false}
                                     showStats={false}
                                     fillHeight
+                                    specSuggestions={specSuggestions}
                                 />
                             </div>
                         </div>

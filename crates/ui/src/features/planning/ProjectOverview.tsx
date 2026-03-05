@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commands } from '@/bindings';
 import MarkdownEditor from '@/components/editor';
@@ -12,14 +13,13 @@ import {
   Sparkles,
   Target,
   Lightbulb,
-  MessageSquarePlus,
-  BrainCircuit,
   FolderGit2,
   Plus,
-  Loader2,
   ArrowRight,
   History,
 } from 'lucide-react';
+import { splitFrontmatterDocument } from '@ship/ui';
+import { AdrHeaderMetadata } from './AdrHeaderMetadata';
 
 import {
   AdrEntry,
@@ -72,14 +72,10 @@ export default function ProjectOverview({
   statuses,
   onNavigate,
 }: ProjectOverviewProps) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [visionEditing, setVisionEditing] = useState(false);
   const [visionDraft, setVisionDraft] = useState('');
-
-  // Brainstorm state
-  const [brainstormTopic, setBrainstormTopic] = useState('');
-  const [isBrainstorming, setIsBrainstorming] = useState(false);
-  const [brainstormResults, setBrainstormResults] = useState<string[]>([]);
 
   const { data: visionData } = useQuery({
     queryKey: ['vision'],
@@ -115,43 +111,17 @@ export default function ProjectOverview({
     setVisionEditing(false);
   };
 
-  const handleBrainstorm = async () => {
-    if (!brainstormTopic.trim()) return;
-    setIsBrainstorming(true);
-    setBrainstormResults([]);
-    try {
-      const res = await commands.brainstormIssuesCmd(brainstormTopic);
-      if (res.status === 'ok') {
-        setBrainstormResults(res.data);
-      }
-    } finally {
-      setIsBrainstorming(false);
-    }
-  };
+  const visionBody = useMemo(() => {
+    if (!visionData?.content) return '';
+    const { body } = splitFrontmatterDocument(visionData.content);
 
-  const handleQuickCreateIssue = async (title: string) => {
-    const res = await commands.createNewIssue(
-      title,
-      'Generated from brainstorm.',
-      statuses[0]?.id || 'backlog',
-      null,
-      ['brainstorm']
-    );
-    if (res.status === 'ok') {
-      setBrainstormResults(prev => prev.filter(t => t !== title));
-      queryClient.invalidateQueries({ queryKey: ['issues'] });
-    }
-  };
-
-  const stripMarkdown = (md: string) => {
-    return md
+    // Strip markdown symbols for the preview
+    return body
       .replace(/^#+\s+/gm, '') // Remove headers
       .replace(/[*_~`]/g, '') // Remove simple formatting
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links
       .trim();
-  };
-
-  const hasVision = !!visionData?.content?.trim();
+  }, [visionData?.content]);
 
   const activeRelease = releases.find(r => r.status === 'active') || releases[0];
   const activeFeatures = activeRelease ? features.filter(f =>
@@ -204,7 +174,7 @@ export default function ProjectOverview({
                   <Button size="xs" variant="ghost" className="h-6 px-2 text-[10px]" onClick={handleVisionEdit}>View Vision</Button>
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed italic">
-                  {hasVision ? stripMarkdown(visionData?.content ?? '') : "No vision defined yet. What is your goal?"}
+                  {visionBody || "No vision defined yet. What is your goal?"}
                 </p>
               </div>
 
@@ -275,9 +245,25 @@ export default function ProjectOverview({
                 {specCount} spec{specCount === 1 ? '' : 's'} in context
               </div>
               {recentAdrs.map(adr => (
-                <div key={adr.file_name} className="flex items-center justify-between rounded-md border bg-card/30 px-3 py-2 text-xs">
-                  <span className="font-medium truncate">{adr.adr.metadata.title}</span>
-                  <Badge variant="outline" className="text-[9px]">{adr.status}</Badge>
+                <div key={adr.file_name} className="flex flex-col gap-1.5 rounded-md border bg-card/30 px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium truncate">{adr.adr.metadata.title}</span>
+                    <Badge variant="outline" className="text-[9px] uppercase tracking-tight">{adr.status}</Badge>
+                  </div>
+                  <AdrHeaderMetadata
+                    adr={adr.adr}
+                    specSuggestions={specs.map(s => ({ id: s.id, title: s.title }))}
+                    adrSuggestions={adrs.map(a => ({ id: a.file_name, title: a.adr.metadata.title }))}
+                    tagSuggestions={[]}
+                    isEditing={false}
+                    onNavigate={(type, id) => {
+                      if (type === 'spec') {
+                        navigate({ to: SPECS_ROUTE, search: { id } });
+                      } else if (type === 'adr') {
+                        navigate({ to: ADRS_ROUTE, search: { id } });
+                      }
+                    }}
+                  />
                 </div>
               ))}
               {recentAdrs.length === 0 && (
@@ -301,7 +287,7 @@ export default function ProjectOverview({
                   Inbox (Notes)
                 </CardTitle>
                 <Button size="xs" variant="ghost" onClick={() => onNavigate(NOTES_ROUTE)}>
-                  <MessageSquarePlus className="size-3.5" />
+                  <Plus className="size-3.5" />
                 </Button>
               </div>
               <CardDescription>Brain dump and quick thoughts.</CardDescription>
@@ -343,41 +329,6 @@ export default function ProjectOverview({
                     </div>
                   );
                 })}
-              </div>
-
-              <div className="rounded-lg border bg-sky-500/5 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-sky-600">
-                  <BrainCircuit className="size-4" />
-                  BRAINSTORM ISSUES
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 rounded-md border bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-sky-500"
-                    placeholder="Topic: e.g. Login flow..."
-                    value={brainstormTopic}
-                    onChange={e => setBrainstormTopic(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleBrainstorm()}
-                  />
-                  <Button size="xs" onClick={handleBrainstorm} disabled={isBrainstorming || !brainstormTopic.trim()}>
-                    {isBrainstorming ? <Loader2 className="size-3 animate-spin" /> : 'Go'}
-                  </Button>
-                </div>
-
-                {brainstormResults.length > 0 && (
-                  <div className="space-y-2 mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-70">Suggested Tasks</p>
-                    {brainstormResults.map((suggestion, idx) => (
-                      <div key={idx} className="flex items-center justify-between gap-2 rounded border bg-background/50 p-2 text-[11px] group">
-                        <span className="flex-1 line-clamp-1">{suggestion}</span>
-                        <Button size="xs" variant="ghost" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100" onClick={() => handleQuickCreateIssue(suggestion)}>
-                          <Plus className="size-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-[10px] text-muted-foreground italic">AI will generate a list of candidate issues for your backlog.</p>
               </div>
 
               <Button variant="outline" size="sm" className="w-full" onClick={() => onNavigate(ISSUES_ROUTE)}>

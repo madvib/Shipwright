@@ -257,8 +257,8 @@ export default function WorkspacePanel() {
   const linkedFeature = useMemo(() => {
     if (!detail) return null;
     return (
-      ship.features.find((entry) => entry.feature.metadata.branch === detail.branch) ??
-      ship.features.find((entry) => entry.file_name === detail.featureId) ??
+      ship.features.find((entry) => entry?.branch === detail.branch) ??
+      ship.features.find((entry) => entry?.file_name === detail.featureId) ??
       null
     );
   }, [detail, ship.features]);
@@ -267,10 +267,10 @@ export default function WorkspacePanel() {
     if (!detail) return null;
     return (
       ship.specs.find((entry) => entry.file_name === detail.specId) ??
-      ship.specs.find((entry) => entry.file_name === linkedFeature?.feature.metadata.spec_id) ??
+      ship.specs.find((entry) => entry.file_name === linkedFeature?.spec_id) ??
       null
     );
-  }, [detail, linkedFeature?.feature.metadata.spec_id, ship.specs]);
+  }, [detail, linkedFeature?.spec_id, ship.specs]);
 
   const syncCurrentWorkspace = async () => {
     if (!branch) return;
@@ -321,12 +321,12 @@ export default function WorkspacePanel() {
     setError(null);
     try {
       const linkedFeatureForBranch =
-        ship.features.find((entry) => entry.feature.metadata.branch === key) ?? null;
+        ship.features.find((entry) => entry?.branch === key) ?? null;
       const result = await createWorkspaceCmd(key, {
         activate: true,
         featureId: linkedFeatureForBranch?.file_name ?? null,
-        specId: linkedFeatureForBranch?.feature.metadata.spec_id ?? null,
-        releaseId: linkedFeatureForBranch?.feature.metadata.release_id ?? null,
+        specId: linkedFeatureForBranch?.spec_id ?? null,
+        releaseId: linkedFeatureForBranch?.release_id ?? null,
       });
       if (result.status === 'ok') {
         setSelectedBranch(result.data.branch);
@@ -597,7 +597,7 @@ export default function WorkspacePanel() {
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Linked Context</span>
                   {linkedSpec ? (
                     <Button size="xs" variant="outline" onClick={openSpec} className="h-6 max-w-[16rem]">
-                      <span className="truncate">spec {shortToken(linkedSpec.title, 24)}</span>
+                      <span className="truncate">spec {shortToken(linkedSpec.spec.metadata.title, 24)}</span>
                       <ExternalLink className="size-3.5" />
                     </Button>
                   ) : (
@@ -605,7 +605,7 @@ export default function WorkspacePanel() {
                   )}
                   {linkedFeature ? (
                     <Button size="xs" variant="outline" onClick={openFeature} className="h-6 max-w-[16rem]">
-                      <span className="truncate">feature {shortToken(linkedFeature.feature.metadata.title, 24)}</span>
+                      <span className="truncate">feature {shortToken(linkedFeature.title, 24)}</span>
                       <ExternalLink className="size-3.5" />
                     </Button>
                   ) : (

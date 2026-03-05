@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { replaceAll } from '@milkdown/kit/utils';
 import { cn } from '@/lib/utils';
+import './editor.css';
 
 export interface CustomMilkdownEditorProps {
     value: string;
@@ -57,6 +58,16 @@ export default function CustomMilkdownEditor({
             defaultValue: externalValueRef.current,
             features: {
                 [CrepeFeature.Toolbar]: true,
+                [CrepeFeature.BlockEdit]: false,
+                [CrepeFeature.LinkTooltip]: true,
+                [CrepeFeature.Placeholder]: true,
+                [CrepeFeature.Table]: true,
+                [CrepeFeature.ListItem]: true,
+                [CrepeFeature.ImageBlock]: true,
+                [CrepeFeature.CodeBlock]: true,
+                [CrepeFeature.Formatting]: true,
+                [CrepeFeature.Latex]: true,
+                [CrepeFeature.Video]: true,
             },
             featureConfigs: {
                 [CrepeFeature.Placeholder]: {

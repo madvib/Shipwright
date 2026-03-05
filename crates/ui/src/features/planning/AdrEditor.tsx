@@ -2,17 +2,15 @@ import { ReactNode } from 'react';
 import { FilePlus2 } from 'lucide-react';
 import { ADR } from '@/bindings';
 import MarkdownEditor from '@/components/editor';
-import AdrFrontmatterPanel from '@/components/editor/AdrFrontmatterPanel';
 import { Button } from '@ship/ui';
-import { Textarea } from '@ship/ui';
 import { deriveAdrDocTitle } from './adrTitle';
 
 interface AdrEditorProps {
   adr: ADR;
   onChange: (next: ADR) => void;
-  specSuggestions: string[];
+  specSuggestions: { id: string; title: string }[];
   tagSuggestions: string[];
-  adrSuggestions?: string[];
+  adrSuggestions?: { id: string; title: string }[];
   placeholder?: string;
   onInsertTemplate?: () => void | Promise<void>;
   onMcpSample?: () => Promise<string | null | undefined> | string | null | undefined;
@@ -25,9 +23,6 @@ interface AdrEditorProps {
 export default function AdrEditor({
   adr,
   onChange,
-  specSuggestions,
-  tagSuggestions,
-  adrSuggestions = [],
   placeholder,
   onInsertTemplate,
   onMcpSample,
@@ -54,31 +49,6 @@ export default function AdrEditor({
       toolbarStart={toolbarControls}
       showStats={false}
       showFrontmatter={false}
-      frontmatterPanel={
-        <div className="space-y-3 p-4">
-          <section className="rounded-lg border border-border/40 bg-muted/20 px-4 py-3">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="size-1.5 rounded-full bg-primary/60" />
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">
-                Context
-              </h3>
-            </div>
-            <Textarea
-              value={adr.context}
-              onChange={(event) => onChange({ ...adr, context: event.target.value })}
-              placeholder="Capture constraints, drivers, and background for this decision."
-              className="min-h-24 bg-background/60 text-sm"
-            />
-          </section>
-          <AdrFrontmatterPanel
-            adr={adr}
-            specSuggestions={specSuggestions}
-            tagSuggestions={tagSuggestions}
-            adrSuggestions={adrSuggestions}
-            onChange={onChange}
-          />
-        </div>
-      }
       value={adr.decision}
       onChange={(decision) => {
         const docTitle = deriveAdrDocTitle(decision) || deriveAdrDocTitle(adr.context);

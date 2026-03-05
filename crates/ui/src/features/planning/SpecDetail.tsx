@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FeatureInfo } from '@/bindings';
-import { SpecDocument } from '@/lib/types/spec';
+import { SpecInfo } from '@/lib/types/spec';
 import { Target, ExternalLink, Trash2 } from 'lucide-react';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';
-import SpecMetadataPanel from '@/components/editor/SpecMetadataPanel';
-import { Button } from '@ship/ui';
-import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
+import { SpecHeaderMetadata } from './SpecHeaderMetadata';
 import {
+  Button,
+  Badge,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -17,11 +17,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  readFrontmatterStringListField,
+  splitFrontmatterDocument,
+  setFrontmatterStringListField,
 } from '@ship/ui';
-import { Badge } from '@ship/ui';
+import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
 
 interface SpecDetailProps {
-  spec: SpecDocument;
+  spec: SpecInfo;
   features: FeatureInfo[];
   tagSuggestions?: string[];
   mcpEnabled?: boolean;
@@ -41,15 +44,37 @@ export default function SpecDetail({
   onSave,
   onDelete,
 }: SpecDetailProps) {
-  const [content, setContent] = useState(spec.content);
+  const [content, setContent] = useState(spec.spec.body);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setContent(spec.content);
+    setContent(spec.spec.body);
     setDirty(false);
     setSaving(false);
   }, [spec]);
+
+  const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const tags = useMemo(
+    () => readFrontmatterStringListField(documentModel.frontmatter, 'tags'),
+    [documentModel.frontmatter]
+  );
+
+  const handleMetadataUpdate = useCallback((updates: {
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '---';
+
+    if (updates.tags) {
+      nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) || nextContent;
+    }
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+      setDirty(true);
+    }
+  }, [content, documentModel.delimiter]);
 
   const saveSpec = useCallback(async () => {
     if (!dirty || saving) return;
@@ -107,8 +132,16 @@ export default function SpecDetail({
   return (
     <DetailSheet
       label="Spec"
-      title={<h2 className="truncate text-lg font-semibold tracking-tight">{spec.title}</h2>}
-      meta={<p className="text-muted-foreground text-xs">{spec.file_name}</p>}
+      title={<h2 className="truncate text-lg font-semibold tracking-tight">{spec.spec.metadata.title}</h2>}
+      meta={
+        <SpecHeaderMetadata
+          fileName={spec.file_name}
+          tags={tags}
+          isEditing={true}
+          onUpdate={handleMetadataUpdate}
+          tagSuggestions={tagSuggestions}
+        />
+      }
       onClose={onClose}
       className="max-w-[1800px]"
       bodyScrollable={false}
@@ -120,6 +153,7 @@ export default function SpecDetail({
           {/* Editor — left */}
           <div className="min-w-0 flex-1 p-1.5">
             <MarkdownEditor
+              key={spec.file_name || 'new'}
               label={undefined}
               toolbarStart={actionButtons}
               value={content}
@@ -127,15 +161,6 @@ export default function SpecDetail({
                 setContent(next);
                 setDirty(true);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-                <SpecMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultTitle={spec.title}
-                  tagSuggestions={tagSuggestions}
-                  onChange={onChange}
-                />
-              )}
               showStats={false}
               fillHeight
               rows={18}

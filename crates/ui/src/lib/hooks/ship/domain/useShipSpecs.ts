@@ -23,9 +23,12 @@ export function useShipSpecs({
 
     const specSuggestions = useMemo(() => {
         return specs
-            .map((entry) => entry.file_name)
-            .filter((value) => value.trim().length > 0)
-            .sort((a, b) => a.localeCompare(b));
+            .map((entry) => ({
+                id: entry.file_name,
+                title: entry.spec.metadata.title
+            }))
+            .filter((s) => s.id.trim().length > 0)
+            .sort((a, b) => a.title.localeCompare(b.title));
     }, [specs]);
 
     return {

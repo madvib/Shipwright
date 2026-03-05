@@ -2,6 +2,7 @@ import { Dispatch, SetStateAction } from 'react';
 import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';
 import {
     createNoteCmd,
+    deleteNoteCmd,
     getNoteCmd,
     updateNoteCmd,
 } from '../../platform/tauri/commands';
@@ -79,9 +80,27 @@ export function useNoteActions({
         }
     };
 
+    const handleDeleteNote = async (id: string) => {
+        if (!isTauriRuntime()) {
+            setError('Deleting notes is only available in Tauri runtime.');
+            return;
+        }
+
+        try {
+            await deleteNoteCmd(id);
+            setNotes((prev) => prev.filter((entry) => entry.id !== id));
+            setSelectedNote(null);
+            await refreshActivity();
+        } catch (error) {
+            setError(String(error));
+            throw error;
+        }
+    };
+
     return {
         handleSelectNote,
         handleCreateNote,
         handleSaveNote,
+        handleDeleteNote,
     };
 }

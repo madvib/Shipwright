@@ -4,8 +4,8 @@ import {
   AdrEntry,
   AdrStatus,
   EventRecord,
-  Feature,
-  FeatureEntry,
+  FeatureDocument as Feature,
+  FeatureInfo as FeatureEntry,
   Issue,
   IssueEntry,
   LogEntry,
@@ -16,10 +16,10 @@ import {
   ProjectDiscovery,
   ProjectInfo,
   ProjectConfig,
-  Release,
-  ReleaseEntry,
-  SpecDocument as RawSpecDocument,
-  SpecInfo as RawSpecInfo,
+  ReleaseDocument as Release,
+  ReleaseInfo as ReleaseEntry,
+  Spec as RawSpecDocument,
+  SpecEntry as RawSpecInfo,
   Workspace,
   Result,
   commands as spectaCommands,
@@ -155,22 +155,35 @@ export const deleteAdrCmd = (id: string): Promise<void> =>
   unwrapResult(spectaCommands.deleteAdrCmd(id)).then(() => undefined);
 
 export const getSpecCmd = (id: string): Promise<Result<SpecDocument, string>> =>
-  invoke<RawSpecDocument>('get_spec_cmd', { fileName: id })
-    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
-    .catch((error) => ({ status: 'error', error: String(error) }));
+  spectaCommands.getSpecCmd(id)
+    .then((result) => {
+      if (result.status === 'ok') {
+        return { status: 'ok', data: toSpecDocument(result.data.spec) } as Result<SpecDocument, string>;
+      }
+      return result as Result<SpecDocument, string>;
+    });
 
 export const createSpecCmd = (title: string, content: string): Promise<Result<SpecDocument, string>> =>
   invoke<RawSpecDocument>('create_spec_cmd', { title, content })
     .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
     .catch((error) => ({ status: 'error', error: String(error) }));
 
-export const updateSpecCmd = (fileName: string, content: string): Promise<Result<SpecDocument, string>> =>
-  invoke<RawSpecDocument>('update_spec_cmd', { fileName, content })
-    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
-    .catch((error) => ({ status: 'error', error: String(error) }));
+export const updateSpecCmd = async (id: string, content: string): Promise<Result<SpecDocument, string>> => {
+  const existing = await spectaCommands.getSpecCmd(id);
+  if (existing.status === 'error') {
+    return existing as Result<SpecDocument, string>;
+  }
+  return spectaCommands.updateSpecCmd(id, { ...existing.data.spec, body: content })
+    .then((result) => {
+      if (result.status === 'ok') {
+        return { status: 'ok', data: toSpecDocument(result.data.spec) } as Result<SpecDocument, string>;
+      }
+      return result as Result<SpecDocument, string>;
+    });
+};
 
-export const deleteSpecCmd = (fileName: string): Promise<Result<null, string>> =>
-  invoke('delete_spec_cmd', { fileName }).then(() => ({ status: 'ok' as const, data: null })).catch(error => ({ status: 'error', error: String(error) }));
+export const deleteSpecCmd = (id: string): Promise<Result<null, string>> =>
+  spectaCommands.deleteSpecCmd(id);
 
 export const getReleaseCmd = (fileName: string): Promise<Result<Release, string>> =>
   invoke('get_release_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
@@ -210,6 +223,12 @@ export const updateNoteCmd = (
   scope: NotesScope = 'project'
 ): Promise<NoteDocument> =>
   invoke('update_note_cmd', { id, content, scope });
+
+export const deleteNoteCmd = (
+  id: string,
+  scope: NotesScope = 'project'
+): Promise<void> =>
+  invoke('delete_note_cmd', { id, scope });
 
 export const getTemplateCmd = (kind: TemplateKind): Promise<string> =>
   invoke('get_template_cmd', { kind });

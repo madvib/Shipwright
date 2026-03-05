@@ -1,7 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import {
   FolderOpen,
-  FolderPlus,
   RefreshCcw,
   Search,
   Settings2,
@@ -9,7 +8,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { ProjectDiscovery as Project, StatusConfig } from '@/bindings';
-import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
+import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@ship/ui';
 import { Badge } from '@ship/ui';
 import { Button } from '@ship/ui';
@@ -19,15 +18,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@ship/ui';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from '@ship/ui';
 import { Input } from '@ship/ui';
 import { Textarea } from '@ship/ui';
@@ -46,13 +36,12 @@ interface ProjectOnboardingProps {
   detectingProject: boolean;
   creatingProject: boolean;
   recentProjects: Project[];
-  globalConfig: Config;
   onRefreshDetection: () => void;
   onOpenProject: () => void;
   onCreateProject: (input: CreateProjectInput) => Promise<void>;
   onPickDirectory: () => Promise<string | null>;
   onSelectProject: (project: Project) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: 'global' | 'project' | 'agents' | 'modules') => void;
 }
 
 export default function ProjectOnboarding({
@@ -60,7 +49,6 @@ export default function ProjectOnboarding({
   detectingProject,
   creatingProject,
   recentProjects,
-  globalConfig,
   onRefreshDetection,
   onOpenProject,
   onCreateProject,
@@ -90,12 +78,6 @@ export default function ProjectOnboarding({
     }
     return Array.from(byPath.values());
   }, [detectedProject, recentProjects]);
-
-  const userSummary = [globalConfig.author, globalConfig.email].filter(Boolean).join(' · ') || 'Not configured';
-  const themeSummary = globalConfig.theme === 'light' ? 'Light' : 'Dark';
-  const mcpSummary = globalConfig.mcp_enabled === false
-    ? 'Disabled'
-    : `Enabled${globalConfig.mcp_port ? ` :${globalConfig.mcp_port}` : ''}`;
 
   const toggleStatus = (statusId: string) => {
     setSelectedStatuses((prev) => {
@@ -158,36 +140,11 @@ export default function ProjectOnboarding({
         title="Select a project"
         description="Open an existing project or create a new one to get started."
         actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" className="gap-2" />}>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => onOpenSettings()}>
               <Settings2 className="size-4" />
-              Settings
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Global Settings</DropdownMenuLabel>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem className="flex-col items-start gap-0.5">
-                  <span className="text-xs font-medium">Theme</span>
-                  <span className="text-muted-foreground text-xs">{themeSummary}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex-col items-start gap-0.5">
-                  <span className="text-xs font-medium">MCP</span>
-                  <span className="text-muted-foreground text-xs">{mcpSummary}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex-col items-start gap-0.5">
-                  <span className="text-xs font-medium">User</span>
-                  <span className="text-muted-foreground text-xs">{userSummary}</span>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={onOpenSettings}>Open full settings page</DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </Button>
+          </div>
         }
       />
 
@@ -203,41 +160,11 @@ export default function ProjectOnboarding({
         </CardHeader>
 
         <CardContent className="space-y-3 !pt-5">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button className="gap-2" onClick={onOpenProject}>
               <FolderOpen className="size-4" />
               Open Project Folder
             </Button>
-
-            {!detectedProject ? (
-              <Button variant="outline" onClick={onRefreshDetection} disabled={detectingProject}>
-                {detectingProject ? (
-                  <>
-                    <RefreshCcw className="mr-2 size-4 animate-spin" />
-                    Detecting...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 size-4" />
-                    Detect Nearby Project
-                  </>
-                )}
-              </Button>
-            ) : (
-              <div className="text-muted-foreground inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
-                <Sparkles className="size-3.5 text-primary" />
-                Nearby project detected
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={onRefreshDetection}
-                  disabled={detectingProject}
-                  className="h-auto px-1.5"
-                >
-                  Refresh
-                </Button>
-              </div>
-            )}
 
             <AlertDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <AlertDialogTrigger render={<Button variant="outline" className="gap-2" />}>
@@ -338,6 +265,36 @@ export default function ProjectOnboarding({
                 </form>
               </AlertDialogContent>
             </AlertDialog>
+
+            {!detectedProject ? (
+              <Button variant="ghost" size="sm" onClick={onRefreshDetection} disabled={detectingProject} className="text-xs text-muted-foreground">
+                {detectingProject ? (
+                  <>
+                    <RefreshCcw className="mr-2 size-3 animate-spin" />
+                    Detecting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 size-3" />
+                    Detect Nearby Project
+                  </>
+                )}
+              </Button>
+            ) : (
+              <div className="text-muted-foreground inline-flex items-center gap-2 rounded-md border bg-muted/30 px-2 py-1 text-[10px]">
+                <Sparkles className="size-3 text-primary" />
+                Nearby project detected
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={onRefreshDetection}
+                  disabled={detectingProject}
+                  className="h-auto px-1 py-0"
+                >
+                  Refresh
+                </Button>
+              </div>
+            )}
           </div>
 
           {projectOptions.length === 0 ? (

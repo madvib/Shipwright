@@ -1,10 +1,13 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 type PageWidth = 'narrow' | 'default' | 'wide' | 'full';
 
-interface PageChromeContextValue {
+export interface PageChromeContextValue {
   breadcrumb?: ReactNode;
+  sidebar?: ReactNode;
+  onBack?: () => void;
+  setChrome: (value: Partial<PageChromeContextValue>) => void;
 }
 
 interface PageFrameProps {
@@ -24,16 +27,35 @@ interface PageHeaderProps {
   className?: string;
 }
 
-const PageChromeContext = createContext<PageChromeContextValue | null>(null);
+export const PageChromeContext = createContext<PageChromeContextValue>({
+  setChrome: () => { },
+});
+
+export function usePageChrome(value: Partial<PageChromeContextValue>) {
+  const { setChrome } = useContext(PageChromeContext);
+  useEffect(() => {
+    setChrome(value);
+    return () => setChrome({});
+  }, [value, setChrome]);
+}
 
 export function PageChromeProvider({
   value,
+  onUpdate,
   children,
 }: {
-  value: PageChromeContextValue | null;
+  value: Partial<PageChromeContextValue>;
+  onUpdate?: (value: Partial<PageChromeContextValue>) => void;
   children: ReactNode;
 }) {
-  return <PageChromeContext.Provider value={value}>{children}</PageChromeContext.Provider>;
+  const contextValue = useMemo(() => ({
+    ...value,
+    setChrome: (updates: Partial<PageChromeContextValue>) => {
+      if (onUpdate) onUpdate(updates);
+    }
+  }), [value, onUpdate]);
+
+  return <PageChromeContext.Provider value={contextValue}>{children}</PageChromeContext.Provider>;
 }
 
 export function PageFrame({ children, className, width = 'default' }: PageFrameProps) {

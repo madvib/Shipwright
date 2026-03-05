@@ -54,6 +54,7 @@ export interface MarkdownEditorProps {
         onChange: (frontmatter: string | null, delimiter: FrontmatterDelimiter) => void;
     }) => ReactNode);
     showAiActions?: boolean;
+    specSuggestions?: { id: string; title: string }[];
     // This is a generic editor, so transform command should be passed in or handled via module slots
     onTransformText?: (instruction: string, text: string) => Promise<string>;
 }
@@ -85,6 +86,7 @@ export default function MarkdownEditor({
     showFrontmatter = true,
     frontmatterPanel,
     showAiActions = true,
+    specSuggestions = [],
     onTransformText,
 }: MarkdownEditorProps) {
     const onChangeRef = useRef(onChange);
@@ -93,7 +95,6 @@ export default function MarkdownEditor({
     const [mode, setMode] = useState<EditorMode>(normalizeMode(defaultMode));
     const [sampling, setSampling] = useState(false);
     const [expanded, setExpanded] = useState(false);
-    const [frontmatterOpen, setFrontmatterOpen] = useState(false);
     const [sampleUndoState, setSampleUndoState] = useState<{ before: string; after: string } | null>(null);
     const [internalMarkdown, setInternalMarkdown] = useState(value);
 
@@ -119,7 +120,6 @@ export default function MarkdownEditor({
 
     const resolvedSampleLabel = sampleLabel ?? (sampleRequiresMcp ? 'Generate Draft' : 'Insert Template');
     const sampleDisabled = sampling || !onMcpSample || (sampleRequiresMcp && !mcpEnabled);
-    const frontmatterAvailable = (!!frontmatterPanel || showFrontmatter) && mode === 'edit';
     const metadataManagedExternally = !!frontmatterPanel;
 
     const handleEditorChange = (next: string) => {
@@ -199,14 +199,6 @@ export default function MarkdownEditor({
     };
 
 
-    const renderedFrontmatterPanel =
-        typeof frontmatterPanel === 'function'
-            ? frontmatterPanel({
-                frontmatter: model.frontmatter,
-                delimiter: model.delimiter,
-                onChange: handleFrontmatterChange,
-            })
-            : frontmatterPanel;
 
     return (
         <div
@@ -227,13 +219,6 @@ export default function MarkdownEditor({
                 )}
 
                 <div className="ml-auto flex shrink-0 items-center gap-1">
-                    {frontmatterAvailable && (
-                        <Button type="button" variant="outline" size="xs" onClick={() => setFrontmatterOpen((open) => !open)}>
-                            <SquarePen className="size-3.5" />
-                            Metadata
-                            {frontmatterOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                        </Button>
-                    )}
 
                     {onMcpSample && mode === 'edit' && (
                         <>
@@ -313,16 +298,6 @@ export default function MarkdownEditor({
                 </div>
             </div>
 
-            {/* Frontmatter panel (edit mode only) */}
-            {frontmatterAvailable && frontmatterOpen && (
-                renderedFrontmatterPanel ?? (
-                    <FrontmatterPanel
-                        frontmatter={model.frontmatter}
-                        delimiter={model.delimiter}
-                        onChange={handleFrontmatterChange}
-                    />
-                )
-            )}
 
             {/* Editor / Reader */}
             <div className={cn(fillHeight && 'min-h-0 flex-1')}>
@@ -349,7 +324,7 @@ export default function MarkdownEditor({
                         style={fillHeight ? undefined : { minHeight: `${minHeightPx}px`, maxHeight: '600px' }}
                     >
                         {/* Frontmatter summary in read mode */}
-                        {model.frontmatter && !metadataManagedExternally && (
+                        {showFrontmatter && model.frontmatter && !metadataManagedExternally && (
                             <section className="ship-markdown-frontmatter mb-4 rounded-md border bg-muted/30 px-3 py-2">
                                 <p className="text-muted-foreground mb-1 text-[11px] font-medium uppercase tracking-wide">
                                     Metadata
