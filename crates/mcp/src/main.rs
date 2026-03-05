@@ -1,4 +1,4 @@
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    mcp::run_server().await
+    mcp::run().await
 }

@@ -1,0 +1,15 @@
+name: Compatibility Guard
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  no-compat-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard CLI/MCP compatibility shims
+        run: ./scripts/check-no-compat-surface.sh

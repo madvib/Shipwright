@@ -586,12 +586,22 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "cli-framework",
  "ghost-issues",
  "runtime",
  "ship-module-git",
  "ship-module-project",
  "tempfile",
  "time-tracker",
+]
+
+[[package]]
+name = "cli-framework"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "runtime",
 ]
 
 [[package]]
@@ -2456,8 +2466,10 @@ name = "mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "ghost-issues",
+ "mcp-framework",
  "rmcp",
  "runtime",
  "serde",
@@ -2466,6 +2478,15 @@ dependencies = [
  "ship-module-project",
  "tempfile",
  "time-tracker",
+ "tokio",
+]
+
+[[package]]
+name = "mcp-framework"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
  "tokio",
 ]
 

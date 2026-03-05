@@ -600,8 +600,10 @@ pub fn set_workspace_active_mode(
     workspace.resolved_at = Utc::now();
     upsert_workspace(ship_dir, &workspace)?;
     if workspace.status == WorkspaceStatus::Active
-        && let Err(error) =
-            crate::agents::export::sync_active_mode_with_override(ship_dir, workspace.active_mode.as_deref())
+        && let Err(error) = crate::agents::export::sync_active_mode_with_override(
+            ship_dir,
+            workspace.active_mode.as_deref(),
+        )
     {
         eprintln!(
             "[ship] warning: workspace mode sync failed for branch '{}': {}",
@@ -962,7 +964,8 @@ mod tests {
             },
         )?;
 
-        let updated = set_workspace_active_mode(&ship_dir, "feature/mode-override", Some("planning"))?;
+        let updated =
+            set_workspace_active_mode(&ship_dir, "feature/mode-override", Some("planning"))?;
         assert_eq!(updated.active_mode.as_deref(), Some("planning"));
         assert!(tmp.path().join(".codex").join("config.toml").exists());
 

@@ -74,6 +74,7 @@ Shipwright knows how each agent tool works. It writes config in the format each 
 | OpenAI Codex | `AGENTS.md`  | `.codex/config.toml` (TOML) | `.agents/skills/<id>/SKILL.md`  |
 
 MCP sync contract (import/export paths, guardrails, precedence): `docs/mcp-import-export.md`
+CLI/MCP binary surfaces + PATH install/update workflow: `docs/cli-mcp-offerings.md`
 
 Add a provider in one command. Ship handles the rest:
 

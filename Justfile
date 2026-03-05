@@ -47,7 +47,7 @@ test-verbose:
 
 # Migrate existing YAML issues → TOML in-place
 migrate:
-    SHIP_DIR={{ship_dir}} {{cli}} migrate
+    SHIP_DIR={{ship_dir}} {{cli}} dev migrate
 
 # ── Dev workflow ───────────────────────────────────────────────────────────────
 
@@ -99,7 +99,12 @@ mcp-start:
 
 # Run clippy
 lint:
+    ./scripts/check-no-compat-surface.sh
     cargo clippy --workspace -- -D warnings
+
+# Guard against compatibility shims in product surfaces
+check-no-compat:
+    ./scripts/check-no-compat-surface.sh
 
 # Format all Rust code
 fmt:

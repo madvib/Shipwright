@@ -791,7 +791,9 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
         ),
         (
             "agents/analyzer.md",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/agents/analyzer.md"),
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/skill-creator/agents/analyzer.md"
+            ),
         ),
         (
             "agents/comparator.md",
@@ -801,7 +803,9 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
         ),
         (
             "agents/grader.md",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/agents/grader.md"),
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/skill-creator/agents/grader.md"
+            ),
         ),
         (
             "assets/eval_review.html",
@@ -829,7 +833,9 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
         ),
         (
             "scripts/__init__.py",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/__init__.py"),
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/__init__.py"
+            ),
         ),
         (
             "scripts/aggregate_benchmark.py",
@@ -863,15 +869,21 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
         ),
         (
             "scripts/run_eval.py",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_eval.py"),
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_eval.py"
+            ),
         ),
         (
             "scripts/run_loop.py",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_loop.py"),
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_loop.py"
+            ),
         ),
         (
             "scripts/utils.py",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/scripts/utils.py"),
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/utils.py"
+            ),
         ),
     ];
 
@@ -935,13 +947,27 @@ fn legacy_template_file_name(kind: &str) -> Option<&'static str> {
 
 fn template_fallback(kind: &str) -> Result<&'static str> {
     match kind {
-        "issue" | "issues" => Ok(include_str!("../../../../core/runtime/src/templates/ISSUE.md")),
-        "adr" | "adrs" => Ok(include_str!("../../../../core/runtime/src/templates/ADR.md")),
-        "note" | "notes" => Ok(include_str!("../../../../core/runtime/src/templates/NOTE.md")),
-        "spec" | "specs" => Ok(include_str!("../../../../core/runtime/src/templates/SPEC.md")),
-        "release" | "releases" => Ok(include_str!("../../../../core/runtime/src/templates/RELEASE.md")),
-        "feature" | "features" => Ok(include_str!("../../../../core/runtime/src/templates/FEATURE.md")),
-        "vision" => Ok(include_str!("../../../../core/runtime/src/templates/VISION.md")),
+        "issue" | "issues" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/ISSUE.md"
+        )),
+        "adr" | "adrs" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/ADR.md"
+        )),
+        "note" | "notes" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/NOTE.md"
+        )),
+        "spec" | "specs" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/SPEC.md"
+        )),
+        "release" | "releases" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/RELEASE.md"
+        )),
+        "feature" | "features" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/FEATURE.md"
+        )),
+        "vision" => Ok(include_str!(
+            "../../../../core/runtime/src/templates/VISION.md"
+        )),
         _ => Err(anyhow!("No fallback for template kind: {}", kind)),
     }
 }

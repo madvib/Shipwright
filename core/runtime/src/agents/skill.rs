@@ -765,7 +765,11 @@ mod tests {
         let got = get_skill(&project_dir, "review")?;
         assert_eq!(got.content, "Review this: $ARGUMENTS");
         assert!(skill_dir(&project_dir, "review").is_dir());
-        assert!(!skill_dir(&project_dir, "review").join("skill.toml").exists());
+        assert!(
+            !skill_dir(&project_dir, "review")
+                .join("skill.toml")
+                .exists()
+        );
         assert!(skill_dir(&project_dir, "review").join("SKILL.md").is_file());
         Ok(())
     }

@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
+cli-framework = { path = "../../core/cli-framework" }
 runtime = { path = "../../core/runtime" }
 ship-module-git = { path = "../modules/git" }
 ship-module-project = { path = "../modules/project" }

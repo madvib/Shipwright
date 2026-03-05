@@ -1,9 +1,6 @@
 use anyhow::Result;
-use clap::Parser;
-use cli::{Cli, handle_cli};
+use cli::run;
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
-    handle_cli(cli)?;
-    Ok(())
+    run()
 }

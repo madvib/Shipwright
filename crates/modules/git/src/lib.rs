@@ -343,8 +343,11 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
         }
         BranchLinkedEntity::Spec(spec_entry) => {
             let spec = spec_entry.spec;
-            let agent_cfg =
-                resolve_agent_config_with_mode_override(ship_dir, None, workspace_mode_override.as_deref())?;
+            let agent_cfg = resolve_agent_config_with_mode_override(
+                ship_dir,
+                None,
+                workspace_mode_override.as_deref(),
+            )?;
 
             let context =
                 build_spec_context(&spec, &open_issues, &agent_cfg.skills, &agent_cfg.rules);

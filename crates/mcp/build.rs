@@ -15,14 +15,14 @@ fn main() {
         .unwrap_or_else(|_| "unknown".to_string());
     let version_string = build_version_string(&base_version, &commit_count, &git_hash, dirty);
 
-    println!("cargo:rustc-env=SHIP_VERSION_STRING={}", version_string);
-    println!("cargo:rustc-env=SHIP_GIT_SHA={}", git_hash);
-    println!("cargo:rustc-env=SHIP_GIT_COMMIT_COUNT={}", commit_count);
+    println!("cargo:rustc-env=SHIP_MCP_VERSION_STRING={}", version_string);
+    println!("cargo:rustc-env=SHIP_MCP_GIT_SHA={}", git_hash);
+    println!("cargo:rustc-env=SHIP_MCP_GIT_COMMIT_COUNT={}", commit_count);
     println!(
-        "cargo:rustc-env=SHIP_GIT_DIRTY={}",
+        "cargo:rustc-env=SHIP_MCP_GIT_DIRTY={}",
         if dirty { "1" } else { "0" }
     );
-    println!("cargo:rustc-env=SHIP_BUILD_TIMESTAMP={}", build_time);
+    println!("cargo:rustc-env=SHIP_MCP_BUILD_TIMESTAMP={}", build_time);
     println!("cargo:rerun-if-changed=../../.git/HEAD");
 }
 
