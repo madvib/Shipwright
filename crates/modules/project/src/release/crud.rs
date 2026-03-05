@@ -23,6 +23,22 @@ fn release_file_path(ship_dir: &Path, version: &str) -> PathBuf {
     }
 }
 
+fn release_update_path(ship_dir: &Path, version: &str) -> PathBuf {
+    let releases_dir = runtime::project::releases_dir(ship_dir);
+    let primary = releases_dir.join(format!("{}.md", version));
+    if primary.exists() {
+        return primary;
+    }
+
+    let upcoming_dir = runtime::project::upcoming_releases_dir(ship_dir);
+    let legacy = upcoming_dir.join(format!("{}.md", version));
+    if legacy.exists() {
+        return legacy;
+    }
+
+    primary
+}
+
 fn resolve_release_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
     let reference = reference.trim();
     if reference.is_empty() {
@@ -178,7 +194,9 @@ pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result
     release.metadata.updated = Utc::now().to_rfc3339();
 
     upsert_release_db(ship_dir, &release, &existing.status)?;
-    write_release_file(ship_dir, &release)?;
+    let path = release_update_path(ship_dir, &release.metadata.version);
+    let content = release.to_markdown()?;
+    runtime::fs_util::write_atomic(&path, content)?;
 
     runtime::append_event(
         ship_dir,

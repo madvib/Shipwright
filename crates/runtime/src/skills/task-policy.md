@@ -16,6 +16,11 @@ ADRs and notes are ambient records — create them when a decision or insight su
 
 ## Execution Rules
 
+0. **Use Ship As System of Record**
+   - For project state changes, use Ship tools/commands (`ship ...` or Ship MCP tools), not ad-hoc file edits.
+   - Treat SQLite + Ship ops as authoritative for issues/features/specs/releases/notes.
+   - Keep transport thin: parse input, call Ship, report output.
+
 1. **Release Then Feature**
    - Associate work to a canonical release document.
    - Start feature work within that release context.

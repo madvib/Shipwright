@@ -420,7 +420,65 @@ mod tests {
         fs::create_dir_all(&project_path)?;
         let project_dir = get_project_dir(Some(tmp.path().to_path_buf()))?;
         assert!(!project_path.exists());
-        assert_eq!(project_dir, tmp.path().join(".ship"));
+        assert_eq!(
+            fs::canonicalize(project_dir)?,
+            fs::canonicalize(tmp.path().join(".ship"))?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_project_dir_resolves_main_ship_from_worktree() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let main_root = tmp.path().join("main");
+        let main_ship = main_root.join(".ship");
+        let common_git = main_root.join(".git");
+        let worktree_git = common_git.join("worktrees").join("feature-auth");
+        let worktree_root = tmp.path().join("worktrees").join("feature-auth");
+        let worktree_nested = worktree_root.join("src").join("ui");
+
+        fs::create_dir_all(&main_ship)?;
+        fs::create_dir_all(&worktree_git)?;
+        fs::create_dir_all(&worktree_nested)?;
+        fs::write(
+            worktree_root.join(".git"),
+            format!("gitdir: {}\n", worktree_git.display()),
+        )?;
+
+        let resolved = get_project_dir(Some(worktree_nested))?;
+        assert_eq!(
+            fs::canonicalize(resolved)?,
+            fs::canonicalize(main_ship)?,
+            "worktree paths should resolve to the main checkout .ship"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_project_dir_prefers_main_ship_when_worktree_has_local_copy() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let main_root = tmp.path().join("main");
+        let main_ship = main_root.join(".ship");
+        let common_git = main_root.join(".git");
+        let worktree_git = common_git.join("worktrees").join("feature-auth");
+        let worktree_root = tmp.path().join("worktrees").join("feature-auth");
+        let worktree_nested = worktree_root.join("src").join("ui");
+
+        fs::create_dir_all(&main_ship)?;
+        fs::create_dir_all(&worktree_git)?;
+        fs::create_dir_all(worktree_root.join(".ship"))?;
+        fs::create_dir_all(&worktree_nested)?;
+        fs::write(
+            worktree_root.join(".git"),
+            format!("gitdir: {}\n", worktree_git.display()),
+        )?;
+
+        let resolved = get_project_dir(Some(worktree_nested))?;
+        assert_eq!(
+            fs::canonicalize(resolved)?,
+            fs::canonicalize(main_ship)?,
+            "worktree paths should resolve to the main checkout .ship even when the worktree has a local .ship copy"
+        );
         Ok(())
     }
 

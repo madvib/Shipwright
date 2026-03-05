@@ -31,3 +31,11 @@ path = "tests/branch_config.rs"
 [[test]]
 name = "git_workflow"
 path = "tests/git_workflow.rs"
+
+[[test]]
+name = "project_registry"
+path = "tests/project_registry.rs"
+
+[[test]]
+name = "workspace_lifecycle"
+path = "tests/workspace_lifecycle.rs"

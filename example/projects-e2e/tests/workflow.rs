@@ -35,7 +35,6 @@ fn init_creates_namespace_structure() {
 
     // shared
     p.assert_ship_file("generated");
-    p.assert_ship_file("events.ndjson");
     p.assert_ship_file("ship.toml");
     p.assert_ship_file("README.md");
     p.assert_ship_file("workflow/README.md");
@@ -90,7 +89,9 @@ fn issue_move_updates_path() {
     let new_path =
         crate::helpers::move_issue(p.ship_dir.clone(), path, "backlog", "in-progress").unwrap();
     assert!(new_path.to_string_lossy().contains("in-progress"));
-    assert!(new_path.exists());
+    let reference = new_path.file_name().unwrap().to_string_lossy().to_string();
+    let moved = ship_module_project::get_issue_by_id(&p.ship_dir, &reference).unwrap();
+    assert_eq!(moved.status, ship_module_project::IssueStatus::InProgress);
 }
 
 /// ADRs land in project/adrs/.
@@ -130,7 +131,7 @@ fn gitignore_uses_namespace_paths() {
         "issues should be gitignored"
     );
     assert!(gitignore.contains("generated/"));
-    assert!(gitignore.contains("events.ndjson"));
+    assert!(!gitignore.contains("events.ndjson"));
     // ship.db lives at ~/.ship/state/<slug>/ship.db — outside the project, not gitignored here
 
     // These are committed by default — must NOT appear in gitignore

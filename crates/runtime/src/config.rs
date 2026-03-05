@@ -868,7 +868,9 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
     save_config(&config, project_dir.clone())?;
     // Auto-sync to configured agent targets after mode change
     if let Some(ref dir) = project_dir {
-        let _ = crate::agent_export::sync_active_mode(dir);
+        if let Err(error) = crate::agent_export::sync_active_mode(dir) {
+            eprintln!("[ship] warning: active mode sync failed: {}", error);
+        }
     }
     emit_mode_event(
         &project_dir,

@@ -33,7 +33,7 @@ use ship_module_project::{
     ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, import_adrs_from_files,
     import_features_from_files, import_issues_from_files, import_notes_from_files,
     import_releases_from_files, import_specs_from_files, init_demo_project, init_project,
-    list_registered_projects, register_project, unregister_project,
+    list_registered_projects, register_project, rename_project, unregister_project,
 };
 use std::env;
 use std::path::{Path, PathBuf};
@@ -626,6 +626,8 @@ pub enum ProjectCommands {
     List,
     /// Start tracking a project
     Track { name: String, path: PathBuf },
+    /// Rename a tracked project without changing its path
+    Rename { path: PathBuf, name: String },
     /// Stop tracking a project
     Untrack { path: PathBuf },
 }
@@ -984,11 +986,25 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 }
                 ReleaseCommands::Get { file_name } => {
                     let version = file_name.trim_end_matches(".md");
-                    if let Ok(entry) = get_release_by_id(&project_dir, version) {
-                        println!("{}", entry.release.to_markdown()?);
-                    } else {
-                        println!("Release not found: {}", file_name);
-                    }
+                    let entry = get_release_by_id(&project_dir, version)
+                        .map_err(|_| anyhow::anyhow!("Release not found: {}", file_name))?;
+                    let release_path = {
+                        let primary =
+                            runtime::project::releases_dir(&project_dir).join(&entry.file_name);
+                        if primary.exists() {
+                            primary
+                        } else {
+                            let legacy = runtime::project::upcoming_releases_dir(&project_dir)
+                                .join(&entry.file_name);
+                            if legacy.exists() {
+                                legacy
+                            } else {
+                                anyhow::bail!("Release file not found: {}", entry.file_name);
+                            }
+                        }
+                    };
+                    let content = std::fs::read_to_string(release_path)?;
+                    println!("{}", content);
                 }
                 ReleaseCommands::Update { file_name, content } => {
                     let version = file_name.trim_end_matches(".md");
@@ -1161,38 +1177,32 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     worktree,
                     worktree_path,
                 } => {
+                    if worktree && checkout {
+                        anyhow::bail!("--worktree and --checkout cannot be used together");
+                    }
+                    if worktree_path.is_some() && !worktree {
+                        anyhow::bail!("--worktree-path requires --worktree");
+                    }
+
                     let parsed_workspace_type = workspace_type
                         .as_deref()
                         .map(str::parse::<WorkspaceType>)
                         .transpose()?;
-                    let desired_status = if activate || checkout {
-                        Some(WorkspaceStatus::Active)
-                    } else {
-                        None
-                    };
-
-                    let mut workspace = create_workspace(
-                        &project_dir,
-                        CreateWorkspaceRequest {
-                            branch: branch.clone(),
-                            workspace_type: parsed_workspace_type,
-                            status: desired_status,
-                            feature_id: feature,
-                            spec_id: spec,
-                            release_id: release,
-                            is_worktree: Some(worktree),
-                            worktree_path: worktree_path.clone(),
-                            ..CreateWorkspaceRequest::default()
-                        },
-                    )?;
-
-                    if worktree {
-                        let path = worktree_path.unwrap_or_else(|| {
+                    let resolved_worktree_path = if worktree {
+                        Some(worktree_path.unwrap_or_else(|| {
                             let b = branch
                                 .trim_start_matches("feature/")
                                 .trim_start_matches("hotfix/");
                             format!("../{}", b)
-                        });
+                        }))
+                    } else {
+                        None
+                    };
+
+                    if worktree {
+                        let path = resolved_worktree_path
+                            .as_deref()
+                            .ok_or_else(|| anyhow::anyhow!("Worktree path resolution failed"))?;
                         let exists = ProcessCommand::new("git")
                             .args(["rev-parse", "--verify", &branch])
                             .current_dir(&project_root)
@@ -1204,9 +1214,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         if !exists {
                             args.push("-b");
                             args.push(&branch);
-                            args.push(&path);
+                            args.push(path);
                         } else {
-                            args.push(&path);
+                            args.push(path);
                             args.push(&branch);
                         }
 
@@ -1215,9 +1225,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             .current_dir(&project_root)
                             .status()?;
                         if !status.success() {
+                            if !exists {
+                                let _ = ProcessCommand::new("git")
+                                    .args(["branch", "-D", &branch])
+                                    .current_dir(&project_root)
+                                    .status();
+                            }
                             anyhow::bail!("Failed to create git worktree: {}", branch);
                         }
-                        workspace = sync_workspace(&project_dir, &branch)?;
                     } else if checkout {
                         let exists = ProcessCommand::new("git")
                             .args(["rev-parse", "--verify", &branch])
@@ -1239,6 +1254,29 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         if !checkout_status.success() {
                             anyhow::bail!("Failed to create/switch branch: {}", branch);
                         }
+                    }
+
+                    let desired_status = if activate && !checkout && !worktree {
+                        Some(WorkspaceStatus::Active)
+                    } else {
+                        None
+                    };
+                    let mut workspace = create_workspace(
+                        &project_dir,
+                        CreateWorkspaceRequest {
+                            branch: branch.clone(),
+                            workspace_type: parsed_workspace_type,
+                            status: desired_status,
+                            feature_id: feature,
+                            spec_id: spec,
+                            release_id: release,
+                            is_worktree: Some(worktree),
+                            worktree_path: resolved_worktree_path,
+                            ..CreateWorkspaceRequest::default()
+                        },
+                    )?;
+
+                    if worktree || checkout {
                         workspace = sync_workspace(&project_dir, &branch)?;
                     } else if activate {
                         workspace = activate_workspace(&project_dir, &branch)?;
@@ -1343,6 +1381,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             ProjectCommands::Track { name, path } => {
                 register_project(name.clone(), path.clone())?;
                 println!("Now tracking project: {} ({})", name, path.display());
+            }
+            ProjectCommands::Rename { path, name } => {
+                rename_project(path.clone(), name.clone())?;
+                println!("Renamed project at {} to {}", path.display(), name);
             }
             ProjectCommands::Untrack { path } => {
                 unregister_project(path.clone())?;
@@ -2201,5 +2243,21 @@ mod tests {
         ensure_project_imported_once(&project_dir, true, true)?;
         assert_eq!(list_features(&project_dir)?.len(), 2);
         Ok(())
+    }
+
+    #[test]
+    fn cli_parses_projects_rename_subcommand() {
+        let cli = Cli::try_parse_from(["ship", "projects", "rename", "/tmp/project", "ship-core"])
+            .expect("projects rename should parse");
+
+        match cli.command {
+            Some(Commands::Projects {
+                action: ProjectCommands::Rename { path, name },
+            }) => {
+                assert_eq!(path, PathBuf::from("/tmp/project"));
+                assert_eq!(name, "ship-core");
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
     }
 }

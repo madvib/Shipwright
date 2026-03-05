@@ -454,7 +454,23 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
         workspace.is_worktree = is_worktree;
     }
     if let Some(worktree_path) = request.worktree_path {
-        workspace.worktree_path = Some(worktree_path);
+        let path = worktree_path.trim();
+        if path.is_empty() {
+            workspace.worktree_path = None;
+        } else if workspace.is_worktree {
+            workspace.worktree_path = Some(path.to_string());
+        } else {
+            return Err(anyhow::anyhow!(
+                "Worktree path can only be set when is_worktree=true"
+            ));
+        }
+    }
+    if !workspace.is_worktree {
+        workspace.worktree_path = None;
+    } else if workspace.worktree_path.is_none() {
+        return Err(anyhow::anyhow!(
+            "Worktree workspace requires a worktree path"
+        ));
     }
     if let Some(context_hash) = request.context_hash {
         workspace.context_hash = Some(context_hash);
@@ -555,7 +571,40 @@ pub fn sync_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::Connection;
     use tempfile::tempdir;
+
+    fn insert_feature_for_branch(
+        ship_dir: &Path,
+        feature_id: &str,
+        branch: &str,
+        spec_id: Option<&str>,
+        release_id: Option<&str>,
+    ) -> Result<()> {
+        crate::state_db::ensure_project_database(ship_dir)?;
+        let mut conn = crate::state_db::open_project_connection(ship_dir)?;
+        let now = Utc::now().to_rfc3339();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async {
+            sqlx::query(
+                "INSERT INTO feature (id, title, description, status, release_id, spec_id, branch, agent_json, tags_json, created_at, updated_at)
+                 VALUES (?, ?, '', 'planned', ?, ?, ?, '{}', '[]', ?, ?)",
+            )
+            .bind(feature_id)
+            .bind(format!("Feature {}", feature_id))
+            .bind(release_id)
+            .bind(spec_id)
+            .bind(branch)
+            .bind(&now)
+            .bind(&now)
+            .execute(&mut conn)
+            .await
+        })?;
+        rt.block_on(async { conn.close().await })?;
+        Ok(())
+    }
 
     #[test]
     fn lifecycle_transition_matrix_covers_expected_paths() {
@@ -668,6 +717,158 @@ mod tests {
         )?;
 
         assert_eq!(workspace.feature_id.as_deref(), Some("feat-auth"));
+        Ok(())
+    }
+
+    #[test]
+    fn create_workspace_mixed_branch_links_preserve_spec_context_and_hydrate_feature_release()
+    -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        insert_feature_for_branch(
+            &ship_dir,
+            "feat-mixed",
+            "feature/mixed",
+            Some("spec-from-feature"),
+            Some("release-from-feature"),
+        )?;
+        crate::state_db::set_branch_link(&ship_dir, "feature/mixed", "spec", "spec-direct")?;
+
+        let workspace = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/mixed".to_string(),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+
+        assert_eq!(workspace.feature_id.as_deref(), Some("feat-mixed"));
+        assert_eq!(workspace.spec_id.as_deref(), Some("spec-direct"));
+        assert_eq!(
+            workspace.release_id.as_deref(),
+            Some("release-from-feature")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn activating_workspace_demotes_other_active_workspace() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        let first = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/alpha".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                feature_id: Some("feat-alpha".to_string()),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+        assert_eq!(first.status, WorkspaceStatus::Active);
+
+        let second = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/beta".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                feature_id: Some("feat-beta".to_string()),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+        assert_eq!(second.status, WorkspaceStatus::Active);
+
+        let first_after = get_workspace(&ship_dir, "feature/alpha")?
+            .ok_or_else(|| anyhow::anyhow!("feature/alpha workspace missing"))?;
+        let second_after = get_workspace(&ship_dir, "feature/beta")?
+            .ok_or_else(|| anyhow::anyhow!("feature/beta workspace missing"))?;
+        assert_eq!(first_after.status, WorkspaceStatus::Idle);
+        assert_eq!(second_after.status, WorkspaceStatus::Active);
+        assert!(second_after.last_activated_at.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn activate_workspace_main_branch_stays_unlinked() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        let workspace = activate_workspace(&ship_dir, "main")?;
+        assert_eq!(workspace.status, WorkspaceStatus::Active);
+        assert!(workspace.feature_id.is_none());
+        assert!(workspace.spec_id.is_none());
+        assert!(get_branch_link(&ship_dir, "main")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn create_workspace_clears_worktree_metadata_when_switched_to_non_worktree() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        let branch = "feature/worktree-cleanup";
+        let initial = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: branch.to_string(),
+                is_worktree: Some(true),
+                worktree_path: Some("../worktrees/worktree-cleanup".to_string()),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+        assert!(initial.is_worktree);
+        assert_eq!(
+            initial.worktree_path.as_deref(),
+            Some("../worktrees/worktree-cleanup")
+        );
+
+        let updated = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: branch.to_string(),
+                is_worktree: Some(false),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+        assert!(!updated.is_worktree);
+        assert!(updated.worktree_path.is_none());
+
+        let stored = get_workspace(&ship_dir, branch)?
+            .ok_or_else(|| anyhow::anyhow!("workspace missing after update"))?;
+        assert!(!stored.is_worktree);
+        assert!(stored.worktree_path.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn create_workspace_requires_path_for_worktree_records() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        let err = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/missing-path".to_string(),
+                is_worktree: Some(true),
+                ..CreateWorkspaceRequest::default()
+            },
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Worktree workspace requires a worktree path")
+        );
         Ok(())
     }
 }

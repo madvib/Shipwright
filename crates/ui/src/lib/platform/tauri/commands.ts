@@ -114,6 +114,8 @@ export const createProjectWithOptionsCmd = (payload: CreateProjectPayload): Prom
   invoke('create_project_with_options', { ...payload });
 export const setActiveProjectCmd = (path: string): Promise<ProjectInfo> =>
   invoke('set_active_project', { path });
+export const renameProjectCmd = (path: string, name: string): Promise<ProjectInfo> =>
+  invoke('rename_project_cmd', { path, name });
 
 export const createNewIssueCmd = (
   title: string,

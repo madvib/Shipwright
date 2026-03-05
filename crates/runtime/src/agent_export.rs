@@ -7,7 +7,7 @@ use crate::prompt::get_prompt;
 use crate::skill::list_effective_skills;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -627,10 +627,19 @@ pub fn sync_active_mode(project_dir: &Path) -> Result<Vec<String>> {
         })
         .unwrap_or_default();
 
+    let mut seen = std::collections::HashSet::new();
     let mut synced = Vec::new();
-    for target in &targets {
-        export_to(project_dir.to_path_buf(), target)?;
-        synced.push(target.clone());
+    for target in targets {
+        let normalized = target.trim().to_ascii_lowercase();
+        if normalized.is_empty() || !seen.insert(normalized.clone()) {
+            continue;
+        }
+        if get_provider(&normalized).is_none() {
+            eprintln!("[ship] warning: skipping unknown target agent '{}'", target);
+            continue;
+        }
+        export_to(project_dir.to_path_buf(), &normalized)?;
+        synced.push(normalized);
     }
     Ok(synced)
 }
@@ -929,6 +938,21 @@ fn export_toml(
 
     crate::fs_util::write_atomic(&config_path, toml::to_string_pretty(&doc)?)?;
 
+    // Prompt output
+    if let Some(prompt) = &payload.prompt {
+        match desc.prompt_output {
+            PromptOutput::AgentsMd => {
+                let md = project_root.join("AGENTS.md");
+                let content = format!(
+                    "<!-- managed by ship — prompt: {} -->\n\n{}\n",
+                    prompt.id, prompt.content
+                );
+                crate::fs_util::write_atomic(&md, content)?;
+            }
+            PromptOutput::ClaudeMd | PromptOutput::GeminiMd | PromptOutput::None => {}
+        }
+    }
+
     tool_state.managed_servers = written_ids;
     tool_state.last_mode = payload.active_mode_id.clone();
     Ok(())
@@ -1114,9 +1138,12 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
 /// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`
 fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
     let skills = list_effective_skills(project_dir)?;
+    let retain_ids: HashSet<String> = skills.iter().map(|skill| skill.id.clone()).collect();
+    prune_stale_managed_skill_dirs(skills_dir, &retain_ids);
     if skills.is_empty() {
         return Ok(());
     }
+
     fs::create_dir_all(skills_dir)?;
     for skill in &skills {
         let skill_dir = skills_dir.join(&skill.id);
@@ -1129,6 +1156,34 @@ fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
         crate::fs_util::write_atomic(&path, content)?;
     }
     Ok(())
+}
+
+fn prune_stale_managed_skill_dirs(skills_dir: &Path, retain_ids: &HashSet<String>) {
+    if !skills_dir.exists() {
+        return;
+    }
+
+    if let Ok(entries) = fs::read_dir(skills_dir) {
+        for entry in entries.flatten() {
+            let skill_dir = entry.path();
+            if !skill_dir.is_dir() {
+                continue;
+            }
+
+            let skill_id = entry.file_name().to_string_lossy().to_string();
+            if retain_ids.contains(&skill_id) {
+                continue;
+            }
+
+            let skill_md = skill_dir.join("SKILL.md");
+            if skill_md.exists()
+                && let Ok(content) = fs::read_to_string(&skill_md)
+                && content.starts_with("<!-- managed by ship")
+            {
+                fs::remove_dir_all(&skill_dir).ok();
+            }
+        }
+    }
 }
 
 /// Remove skill subdirectories that were written by Ship (identified by the
@@ -1223,8 +1278,12 @@ fn home() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{McpServerConfig, McpServerType, ProjectConfig, save_config};
+    use crate::config::{
+        HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
+        ProjectConfig, save_config,
+    };
     use crate::project::init_project;
+    use crate::skill::{create_skill, delete_skill};
     use std::collections::HashMap;
     use tempfile::tempdir;
 
@@ -1267,6 +1326,161 @@ mod tests {
         };
         save_config(&config, Some(project_dir.clone())).unwrap();
         (tmp, project_dir)
+    }
+
+    #[test]
+    fn build_payload_active_mode_filters_servers_and_applies_mode_hooks_permissions() {
+        let (_tmp, project_dir) = project_with_servers(vec![
+            make_stdio_server("allowed"),
+            make_stdio_server("blocked"),
+        ]);
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.hooks = vec![HookConfig {
+            id: "project-global-hook".to_string(),
+            trigger: HookTrigger::PreToolUse,
+            matcher: Some("Bash".to_string()),
+            command: "echo global".to_string(),
+        }];
+        config.modes = vec![ModeConfig {
+            id: "focus".to_string(),
+            name: "Focus".to_string(),
+            description: None,
+            active_tools: vec![],
+            mcp_servers: vec!["allowed".to_string()],
+            prompt_id: None,
+            hooks: vec![HookConfig {
+                id: "mode-hook".to_string(),
+                trigger: HookTrigger::PostToolUse,
+                matcher: Some("Bash".to_string()),
+                command: "echo mode".to_string(),
+            }],
+            permissions: PermissionConfig {
+                allow: vec!["Bash(*)".to_string()],
+                deny: vec!["WebFetch(*)".to_string()],
+            },
+            target_agents: vec![],
+        }];
+        config.active_mode = Some("focus".to_string());
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let payload = build_payload(&project_dir).unwrap();
+        let server_ids: Vec<_> = payload.servers.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(server_ids, vec!["allowed"]);
+        assert_eq!(payload.active_mode_id.as_deref(), Some("focus"));
+        assert_eq!(payload.permissions.allow, vec!["Bash(*)".to_string()]);
+        assert_eq!(payload.permissions.deny, vec!["WebFetch(*)".to_string()]);
+
+        let hook_ids: Vec<_> = payload.hooks.iter().map(|h| h.id.as_str()).collect();
+        let global_idx = hook_ids
+            .iter()
+            .position(|id| *id == "project-global-hook")
+            .expect("global hook missing");
+        let mode_idx = hook_ids
+            .iter()
+            .position(|id| *id == "mode-hook")
+            .expect("mode hook missing");
+        assert!(
+            global_idx < mode_idx,
+            "mode hooks must append after global hooks"
+        );
+    }
+
+    #[test]
+    fn build_payload_without_active_mode_uses_default_permissions() {
+        let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.hooks = vec![HookConfig {
+            id: "project-global-hook-only".to_string(),
+            trigger: HookTrigger::Notification,
+            matcher: None,
+            command: "echo global".to_string(),
+        }];
+        config.modes = vec![ModeConfig {
+            id: "unused".to_string(),
+            name: "Unused".to_string(),
+            description: None,
+            active_tools: vec![],
+            mcp_servers: vec![],
+            prompt_id: None,
+            hooks: vec![HookConfig {
+                id: "unused-mode-hook".to_string(),
+                trigger: HookTrigger::Stop,
+                matcher: None,
+                command: "echo unused".to_string(),
+            }],
+            permissions: PermissionConfig {
+                allow: vec!["Bash(*)".to_string()],
+                deny: vec!["WebFetch(*)".to_string()],
+            },
+            target_agents: vec![],
+        }];
+        config.active_mode = None;
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let payload = build_payload(&project_dir).unwrap();
+        assert_eq!(payload.active_mode_id, None);
+        assert!(payload.permissions.allow.is_empty());
+        assert!(payload.permissions.deny.is_empty());
+        assert!(
+            payload
+                .hooks
+                .iter()
+                .any(|hook| hook.id == "project-global-hook-only")
+        );
+        assert!(
+            !payload
+                .hooks
+                .iter()
+                .any(|hook| hook.id == "unused-mode-hook")
+        );
+        assert!(payload.servers.iter().any(|server| server.id == "github"));
+    }
+
+    #[test]
+    fn sync_active_mode_defaults_to_claude_when_targets_empty() {
+        let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.modes = vec![ModeConfig {
+            id: "focus".to_string(),
+            name: "Focus".to_string(),
+            target_agents: vec![],
+            ..Default::default()
+        }];
+        config.active_mode = Some("focus".to_string());
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let synced = sync_active_mode(&project_dir).unwrap();
+        assert_eq!(synced, vec!["claude".to_string()]);
+        assert!(tmp.path().join(".mcp.json").exists());
+    }
+
+    #[test]
+    fn sync_active_mode_normalizes_targets_and_skips_unknown_values() {
+        let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.modes = vec![ModeConfig {
+            id: "focus".to_string(),
+            name: "Focus".to_string(),
+            target_agents: vec![
+                " codex ".to_string(),
+                "unknown-agent".to_string(),
+                "CLAUDE".to_string(),
+                "claude".to_string(),
+                "".to_string(),
+            ],
+            ..Default::default()
+        }];
+        config.active_mode = Some("focus".to_string());
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let synced = sync_active_mode(&project_dir).unwrap();
+        assert_eq!(
+            synced,
+            vec!["codex".to_string(), "claude".to_string()],
+            "targets should be normalized, deduped, and unknown providers skipped"
+        );
+        assert!(tmp.path().join(".codex").join("config.toml").exists());
+        assert!(tmp.path().join(".mcp.json").exists());
     }
 
     // ── Registry ───────────────────────────────────────────────────────────────
@@ -1514,6 +1728,48 @@ mod tests {
         )
         .unwrap();
         assert!(val["mcp_servers"]["ship"].is_table());
+    }
+
+    #[test]
+    fn codex_export_prunes_stale_managed_skill_dirs() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(&project_dir, "__rt_live_skill__", "Live", "live body").unwrap();
+        create_skill(&project_dir, "__rt_stale_skill__", "Stale", "stale body").unwrap();
+
+        export_to(project_dir.clone(), "codex").unwrap();
+        let skills_dir = tmp.path().join(".agents").join("skills");
+        let live_skill_dir = skills_dir.join("__rt_live_skill__");
+        let stale_skill_dir = skills_dir.join("__rt_stale_skill__");
+        assert!(live_skill_dir.join("SKILL.md").exists());
+        assert!(stale_skill_dir.join("SKILL.md").exists());
+
+        delete_skill(&project_dir, "__rt_stale_skill__").unwrap();
+        export_to(project_dir, "codex").unwrap();
+
+        assert!(live_skill_dir.join("SKILL.md").exists());
+        assert!(
+            !stale_skill_dir.exists(),
+            "stale managed skill directory should be pruned on export"
+        );
+    }
+
+    #[test]
+    fn codex_export_preserves_unmanaged_skill_dirs() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let unmanaged_dir = tmp
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("__rt_unmanaged_skill__");
+        std::fs::create_dir_all(&unmanaged_dir).unwrap();
+        let unmanaged_file = unmanaged_dir.join("SKILL.md");
+        std::fs::write(&unmanaged_file, "manual skill content").unwrap();
+
+        export_to(project_dir, "codex").unwrap();
+
+        assert!(unmanaged_dir.exists());
+        let content = std::fs::read_to_string(&unmanaged_file).unwrap();
+        assert_eq!(content, "manual skill content");
     }
 
     // ── Import ─────────────────────────────────────────────────────────────────

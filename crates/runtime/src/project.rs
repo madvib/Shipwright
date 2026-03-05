@@ -96,6 +96,129 @@ pub fn ship_dir_from_path(path: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+fn canonicalize_lossy(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn parse_gitdir_pointer(dot_git_file: &Path) -> Option<PathBuf> {
+    let content = fs::read_to_string(dot_git_file).ok()?;
+    let line = content.lines().next()?.trim();
+    let raw = line.strip_prefix("gitdir:")?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let parsed = PathBuf::from(raw);
+    if parsed.is_absolute() {
+        Some(parsed)
+    } else {
+        let base = dot_git_file.parent()?;
+        Some(base.join(parsed))
+    }
+}
+
+fn git_common_dir_from(dot_git_path: &Path) -> Option<PathBuf> {
+    if dot_git_path.is_dir() {
+        return Some(canonicalize_lossy(dot_git_path));
+    }
+
+    let gitdir = canonicalize_lossy(&parse_gitdir_pointer(dot_git_path)?);
+    // Worktree pointers usually target: <main>/.git/worktrees/<name>
+    // In that case, the common git dir is <main>/.git.
+    let worktrees = gitdir.parent()?;
+    let marker = worktrees.file_name()?.to_str()?;
+    if marker == "worktrees" {
+        return worktrees.parent().map(canonicalize_lossy);
+    }
+    Some(gitdir)
+}
+
+fn ship_dir_from_git_worktree(start_dir: &Path) -> Option<PathBuf> {
+    for ancestor in start_dir.ancestors() {
+        let dot_git = ancestor.join(".git");
+        if !dot_git.exists() {
+            continue;
+        }
+
+        let common_git = git_common_dir_from(&dot_git)?;
+        let main_root = common_git.parent()?;
+        let ship_candidate = main_root.join(SHIP_DIR_NAME);
+        if ship_candidate.exists() && ship_candidate.is_dir() {
+            return Some(canonicalize_lossy(&ship_candidate));
+        }
+    }
+    None
+}
+
+fn ship_dir_from_git_worktree_pointer(start_dir: &Path) -> Option<PathBuf> {
+    for ancestor in start_dir.ancestors() {
+        let dot_git = ancestor.join(".git");
+        if !dot_git.exists() {
+            continue;
+        }
+
+        if dot_git.is_dir() {
+            return None;
+        }
+
+        let gitdir = canonicalize_lossy(&parse_gitdir_pointer(&dot_git)?);
+        let worktrees = gitdir.parent()?;
+        if worktrees.file_name()?.to_str()? != "worktrees" {
+            return None;
+        }
+        let common_git = canonicalize_lossy(worktrees.parent()?);
+        let main_root = common_git.parent()?;
+        let ship_candidate = main_root.join(SHIP_DIR_NAME);
+        if ship_candidate.exists() && ship_candidate.is_dir() {
+            return Some(canonicalize_lossy(&ship_candidate));
+        }
+        return None;
+    }
+    None
+}
+
+fn resolve_project_dir_from_start(
+    start_dir: &Path,
+    migrate_legacy: bool,
+) -> Result<Option<PathBuf>> {
+    if let Some(ship_path) = ship_dir_from_git_worktree_pointer(start_dir) {
+        return Ok(Some(ship_path));
+    }
+
+    let mut current_dir = start_dir.to_path_buf();
+    loop {
+        let ship_path = current_dir.join(SHIP_DIR_NAME);
+        if ship_path.exists() && ship_path.is_dir() {
+            return Ok(Some(canonicalize_lossy(&ship_path)));
+        }
+
+        if migrate_legacy {
+            let legacy_path = current_dir.join(".project");
+            if legacy_path.exists() && legacy_path.is_dir() {
+                fs::rename(&legacy_path, &ship_path)
+                    .context("Failed to migrate .project to .ship")?;
+                return Ok(Some(canonicalize_lossy(&ship_path)));
+            }
+        }
+
+        if let Some(parent) = current_dir.parent() {
+            current_dir = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+
+    Ok(ship_dir_from_git_worktree(start_dir))
+}
+
+/// Resolve the canonical `.ship` directory for a given path without using env
+/// overrides and without mutating legacy folders.
+pub fn resolve_project_ship_dir(start_dir: &Path) -> Option<PathBuf> {
+    resolve_project_dir_from_start(start_dir, false)
+        .ok()
+        .flatten()
+}
+
 /// Resolves the .ship directory by searching upwards from the given directory.
 /// Also checks for legacy `.project` and migrates it to `.ship` if found.
 /// Supports `SHIP_DIR` environment variable override.
@@ -108,30 +231,16 @@ pub fn get_project_dir(start_dir: Option<PathBuf>) -> Result<PathBuf> {
         }
     }
 
-    // 2. Traversal logic — any directory containing a .ship folder is a project
-    let mut current_dir = start_dir.unwrap_or(env::current_dir()?);
-    loop {
-        let ship_path = current_dir.join(SHIP_DIR_NAME);
-        if ship_path.exists() && ship_path.is_dir() {
-            return Ok(ship_path);
-        }
-
-        // Check for legacy .project
-        let legacy_path = current_dir.join(".project");
-        if legacy_path.exists() && legacy_path.is_dir() {
-            let ship_path = current_dir.join(SHIP_DIR_NAME);
-            fs::rename(&legacy_path, &ship_path).context("Failed to migrate .project to .ship")?;
-            return Ok(ship_path);
-        }
-
-        if let Some(parent) = current_dir.parent() {
-            current_dir = parent.to_path_buf();
-        } else {
-            return Err(anyhow!(
-                "Project tracking not initialized in this directory or its parents. Run `ship init` to create a .ship directory."
-            ));
-        }
+    // 2. Traversal logic — any directory containing a .ship folder is a project.
+    // If none is found, attempt git-worktree resolution back to the main checkout.
+    let start = start_dir.unwrap_or(env::current_dir()?);
+    if let Some(project_dir) = resolve_project_dir_from_start(&start, true)? {
+        return Ok(project_dir);
     }
+
+    Err(anyhow!(
+        "Project tracking not initialized in this directory or its parents. Run `ship init` to create a .ship directory."
+    ))
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -350,6 +459,85 @@ pub fn get_project_name(ship_path: &Path) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or("Unknown")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn resolve_project_ship_dir_follows_git_worktree_pointer() -> Result<()> {
+        let tmp = tempdir()?;
+        let main_root = tmp.path().join("main");
+        let main_ship = main_root.join(".ship");
+        let common_git = main_root.join(".git");
+        let worktree_git = common_git.join("worktrees").join("feature-auth");
+        let wt_root = tmp.path().join("worktrees").join("feature-auth");
+        let wt_nested = wt_root.join("src").join("app");
+
+        fs::create_dir_all(&main_ship)?;
+        fs::create_dir_all(&worktree_git)?;
+        fs::create_dir_all(&wt_nested)?;
+        fs::write(
+            wt_root.join(".git"),
+            format!("gitdir: {}\n", worktree_git.display()),
+        )?;
+
+        let resolved = resolve_project_ship_dir(&wt_nested).expect("expected .ship resolution");
+        assert_eq!(resolved, canonicalize_lossy(&main_ship));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_project_ship_dir_prefers_main_ship_over_worktree_copy() -> Result<()> {
+        let tmp = tempdir()?;
+        let main_root = tmp.path().join("main");
+        let main_ship = main_root.join(".ship");
+        let common_git = main_root.join(".git");
+        let worktree_git = common_git.join("worktrees").join("feature-auth");
+        let wt_root = tmp.path().join("worktrees").join("feature-auth");
+        let wt_nested = wt_root.join("src").join("app");
+
+        fs::create_dir_all(&main_ship)?;
+        fs::create_dir_all(&worktree_git)?;
+        fs::create_dir_all(wt_root.join(".ship"))?;
+        fs::create_dir_all(&wt_nested)?;
+        fs::write(
+            wt_root.join(".git"),
+            format!("gitdir: {}\n", worktree_git.display()),
+        )?;
+
+        let resolved = resolve_project_ship_dir(&wt_nested).expect("expected .ship resolution");
+        assert_eq!(resolved, canonicalize_lossy(&main_ship));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_project_ship_dir_follows_relative_git_worktree_pointer() -> Result<()> {
+        let tmp = tempdir()?;
+        let main_root = tmp.path().join("main");
+        let main_ship = main_root.join(".ship");
+        let common_git = main_root.join(".git");
+        let worktree_git = common_git.join("worktrees").join("feature-auth");
+        let wt_root = tmp.path().join("worktrees").join("feature-auth");
+        let wt_nested = wt_root.join("src");
+
+        fs::create_dir_all(&main_ship)?;
+        fs::create_dir_all(&worktree_git)?;
+        fs::create_dir_all(&wt_nested)?;
+
+        // Use a relative pointer to mirror setups where worktree metadata is not
+        // expressed as an absolute path.
+        fs::write(
+            wt_root.join(".git"),
+            "gitdir: ../../main/.git/worktrees/feature-auth\n",
+        )?;
+
+        let resolved = resolve_project_ship_dir(&wt_nested).expect("expected .ship resolution");
+        assert_eq!(resolved, canonicalize_lossy(&main_ship));
+        Ok(())
+    }
 }
 
 pub fn register_ship_namespace(

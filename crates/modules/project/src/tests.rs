@@ -42,9 +42,15 @@ mod tests {
         let initial = get_release_by_id(&project_dir, &entry.id)?;
         assert_eq!(initial.release.metadata.version, "v0.2.0-alpha");
 
+        let canonical_path = runtime::project::releases_dir(&project_dir).join("v0.2.0-alpha.md");
+        let suffixed_path = runtime::project::releases_dir(&project_dir).join("v0.2.0-alpha-2.md");
+
         let updated = update_release_content(&project_dir, &entry.id, "updated")?;
         assert_eq!(updated.release.body, "updated");
         assert!(updated.release.metadata.updated >= initial.release.metadata.updated);
+        let content = std::fs::read_to_string(&canonical_path)?;
+        assert!(content.contains("updated"));
+        assert!(!suffixed_path.exists());
         Ok(())
     }
 

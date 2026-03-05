@@ -1,0 +1,112 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Logo from "../components/Logo.astro";
+
+const productPoints = [
+  "High-Context SDLC: Maps Vision -> Specs -> Git Workspaces 1:1.",
+  "Hybrid Interface: A high-performance CLI for speed, paired with a rich Tauri-based GUI for complex orchestration and markdown-heavy documentation.",
+  "Instant Sync: Local-first architecture with Git hooks and MCP integration ensures the agent never drifts from the repo state.",
+];
+
+const shapeRuntimePoints = [
+  "Deterministic Core: A Rust-based permissions and configuration engine that \"shapes\" agent behavior before it hits the system.",
+  "Portable Architecture: Built to run as a local desktop binary today and as a massive-scale cloud layer tomorrow using Rivet Actors on Cloudflare Durable Objects.",
+  "The \"App-in-a-Box\" Framework: Shape abstracts away the boilerplate (Agent config, Persistence, Auth, UI modules), allowing us to spin up new vertical agents - from CRM to Documentation - with minimal effort.",
+];
+
+const enterprisePlayPoints = [
+  "Self-Hostable Infrastructure: Unlike black-box AI wrappers, our runtime is designed for the enterprise. It offers full auditability, local-first privacy, and deterministic governance.",
+  "Beyond the IDE: While Ship dominates the SDLC, the Shape runtime is the foundation for the next generation of enterprise software. We are building the orchestration layer that turns AI from a \"chatbot\" into a reliable, autonomous worker.",
+];
+---
+
+<Layout
+  title="Ship — Investor Brief"
+  description="Investor one-sheet: business value, platform strategy, and enterprise vision."
+>
+  <main class="min-h-screen bg-ship-bg text-ship-text">
+    <section class="px-6 sm:px-10 lg:px-16 pt-16 pb-8 border-b border-ship-border">
+      <div class="max-w-5xl mx-auto">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <a
+            href="/"
+            class="inline-flex items-center gap-3 text-ship-text hover:text-ship-accent transition-colors"
+          >
+            <Logo class="h-8 w-auto" idPrefix="investors" />
+            <span class="font-display font-bold text-xl tracking-tight">SHIP</span>
+          </a>
+          <p class="text-xs font-mono tracking-[0.22em] text-ship-dim/60 uppercase">
+            Investor Brief
+          </p>
+        </div>
+
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-display font-bold tracking-tight leading-tight">
+          The Intent-to-Action Runtime
+        </h1>
+
+        <p class="mt-4 text-sm sm:text-base font-mono tracking-[0.12em] uppercase text-ship-accent/75">
+          Software Engineering is just the first vertical.
+        </p>
+
+        <p class="mt-6 text-base sm:text-lg text-ship-dim max-w-3xl leading-relaxed">
+          Shape is a Rust-native agentic runtime designed for deterministic execution. It provides
+          the "AgentOS" - persistence, workspace provisioning, and an intent-compiler - that turns
+          amorphous LLM outputs into structured system actions.
+        </p>
+
+        <p class="mt-4 text-base sm:text-lg text-ship-dim max-w-3xl leading-relaxed">
+          Ship is the first application built on Shape. It is an AI-native SDLC command center
+          that maps technical vision to git-level execution. By dogfooding the hardest vertical
+          first - software engineering - we are hardening a runtime capable of orchestrating any
+          enterprise workflow.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-6 sm:px-10 lg:px-16 py-12">
+      <div class="max-w-5xl mx-auto grid gap-8">
+        <article class="rounded-2xl border border-ship-border bg-ship-surface/70 p-6 sm:p-8">
+          <p class="text-[11px] font-mono tracking-[0.2em] uppercase text-ship-accent/80 mb-3">
+            01 / The Product: Ship (Alpha)
+          </p>
+          <ul class="space-y-4">
+            {productPoints.map((item) => (
+              <li class="text-ship-dim leading-relaxed flex gap-3">
+                <span class="mt-2 h-1.5 w-1.5 rounded-full bg-ship-accent flex-shrink-0"></span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article class="rounded-2xl border border-ship-border bg-ship-surface/70 p-6 sm:p-8">
+          <p class="text-[11px] font-mono tracking-[0.2em] uppercase text-ship-blue/90 mb-3">
+            02 / The Secret Sauce: The Shape Runtime
+          </p>
+          <ul class="space-y-4">
+            {shapeRuntimePoints.map((item) => (
+              <li class="text-ship-dim leading-relaxed flex gap-3">
+                <span class="mt-2 h-1.5 w-1.5 rounded-full bg-ship-blue flex-shrink-0"></span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article class="rounded-2xl border border-ship-border bg-ship-surface/70 p-6 sm:p-8">
+          <p class="text-[11px] font-mono tracking-[0.2em] uppercase text-ship-green/90 mb-3">
+            03 / The Enterprise Play
+          </p>
+          <ul class="space-y-4">
+            {enterprisePlayPoints.map((item) => (
+              <li class="text-ship-dim leading-relaxed flex gap-3">
+                <span class="mt-2 h-1.5 w-1.5 rounded-full bg-ship-green flex-shrink-0"></span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+</Layout>
