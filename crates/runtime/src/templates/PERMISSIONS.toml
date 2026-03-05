@@ -1,8 +1,35 @@
-# Agent Permissions Configuration
-# - Control what your agents are allowed to do.
+# Agent permissions schema (canonical).
+# Source of truth: `.ship/agents/permissions.toml`
+#
+# This file is runtime-owned and parsed by `crates/runtime/src/permissions.rs`.
+# Keep keys aligned with that struct to avoid drift.
 
-[permissions]
-# List allowed directories, tools, or network domains.
-# Example:
-# allow_filesystem = ["./src", "./docs"]
-# allow_tools = ["*"]
+[tools]
+# Tool pattern allow/deny lists.
+# `allow = ["*"]` means all tools unless denied.
+# Patterns are provider/tool specific (e.g. "Bash(*)", "WebFetch(*)", "mcp__ship__*").
+allow = ["*"]
+deny = []
+
+[filesystem]
+# Path globs. Empty means no extra constraints at this layer.
+# Example: allow = ["./src/**", "./docs/**"]
+allow = []
+deny = []
+
+[commands]
+# Shell command prefix patterns.
+# Example: allow = ["cargo test", "git status"]
+allow = []
+deny = []
+
+[network]
+# one of: "none" | "localhost" | "allow-list" | "unrestricted"
+policy = "none"
+allow_hosts = []
+
+[agent]
+# Optional runtime guardrails.
+# max_cost_per_session = 10.0
+# max_turns = 40
+require_confirmation = []

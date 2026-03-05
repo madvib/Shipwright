@@ -1,7 +1,7 @@
 use crate::config::{
-    HookConfig, HookTrigger, McpServerConfig, McpServerType, PermissionConfig, get_config,
-    get_effective_config,
+    HookConfig, HookTrigger, McpServerConfig, McpServerType, get_config, get_effective_config,
 };
+use crate::permissions::{Permissions, get_permissions};
 use crate::prompt::Prompt;
 use crate::prompt::get_prompt;
 use crate::skill::list_effective_skills;
@@ -439,7 +439,7 @@ pub struct SyncPayload {
     pub servers: Vec<McpServerConfig>,
     pub prompt: Option<Prompt>,
     pub hooks: Vec<HookConfig>,
-    pub permissions: PermissionConfig,
+    pub permissions: Permissions,
     pub active_mode_id: Option<String>,
 }
 
@@ -523,13 +523,15 @@ fn export_to_inner(
         SkillsOutput::None => {}
     }
 
-    // Hooks + permissions (Claude-only for now)
-    if target == "claude"
-        && (!payload.hooks.is_empty()
-            || !payload.permissions.allow.is_empty()
-            || !payload.permissions.deny.is_empty())
-    {
-        export_claude_settings(&payload.hooks, &payload.permissions)?;
+    // Provider-native hooks + permissions.
+    match target {
+        "claude" => {
+            if !payload.hooks.is_empty() || has_claude_permission_overrides(&payload.permissions) {
+                export_claude_settings(&payload.hooks, &payload.permissions)?;
+            }
+        }
+        "gemini" => export_gemini_workspace_policy(project_root, &payload.permissions)?,
+        _ => {}
     }
 
     save_managed_state(&project_dir, &state)?;
@@ -614,18 +616,19 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
 /// Sync all target agents configured for the active mode.
 pub fn sync_active_mode(project_dir: &Path) -> Result<Vec<String>> {
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
-    let targets: Vec<String> = config
+    let mode_targets = config
         .active_mode
         .as_ref()
         .and_then(|id| config.modes.iter().find(|m| &m.id == id))
-        .map(|m| {
-            if m.target_agents.is_empty() {
-                vec!["claude".to_string()]
-            } else {
-                m.target_agents.clone()
-            }
-        })
+        .map(|m| m.target_agents.clone())
         .unwrap_or_default();
+    let targets: Vec<String> = if !mode_targets.is_empty() {
+        mode_targets
+    } else if !config.providers.is_empty() {
+        config.providers.clone()
+    } else {
+        vec!["claude".to_string()]
+    };
 
     let mut seen = std::collections::HashSet::new();
     let mut synced = Vec::new();
@@ -735,14 +738,42 @@ pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<u
     Ok(added)
 }
 
+/// Import provider-native permission settings into canonical
+/// `.ship/agents/permissions.toml`.
+///
+/// Returns `true` when permissions were imported and saved, `false` when no
+/// importable permissions were found for the provider.
+pub fn import_permissions_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<bool> {
+    let imported = match provider_id {
+        "claude" => import_permissions_from_claude()?,
+        "gemini" => import_permissions_from_gemini(&project_dir)?,
+        "codex" => import_permissions_from_codex(&project_dir)?,
+        _ => return Err(anyhow!("Unsupported provider '{}'", provider_id)),
+    };
+
+    if let Some(permissions) = imported {
+        crate::permissions::save_permissions(project_dir, &permissions)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 // ─── Payload builder ──────────────────────────────────────────────────────────
 
 fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
+    let mut effective_permissions = get_permissions(project_dir.to_path_buf())?;
 
     if let Some(mode_id) = &config.active_mode
         && let Some(mode) = config.modes.iter().find(|m| &m.id == mode_id)
     {
+        if !mode.permissions.allow.is_empty() {
+            effective_permissions.tools.allow = mode.permissions.allow.clone();
+        }
+        if !mode.permissions.deny.is_empty() {
+            effective_permissions.tools.deny = mode.permissions.deny.clone();
+        }
         let servers = if mode.mcp_servers.is_empty() {
             config.mcp_servers.clone()
         } else {
@@ -763,7 +794,7 @@ fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
             servers,
             prompt,
             hooks,
-            permissions: mode.permissions.clone(),
+            permissions: effective_permissions,
             active_mode_id: Some(mode_id.clone()),
         });
     }
@@ -772,7 +803,7 @@ fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
         servers: config.mcp_servers,
         prompt: None,
         hooks: config.hooks,
-        permissions: Default::default(),
+        permissions: effective_permissions,
         active_mode_id: config.active_mode,
     })
 }
@@ -935,6 +966,9 @@ fn export_toml(
     }
 
     root.insert(desc.mcp_key.to_string(), toml::Value::Table(new_mcp));
+    if desc.id == "codex" {
+        apply_codex_permissions(root, &payload.permissions);
+    }
 
     crate::fs_util::write_atomic(&config_path, toml::to_string_pretty(&doc)?)?;
 
@@ -1135,9 +1169,23 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
     export_skills_to_dir(project_dir, &project_root.join(".claude").join("skills"))
 }
 
+fn resolve_skills_for_export(project_dir: &Path) -> Result<Vec<crate::skill::Skill>> {
+    let config = get_effective_config(Some(project_dir.to_path_buf()))?;
+    let mut skills = list_effective_skills(project_dir)?;
+
+    if let Some(active_mode_id) = config.active_mode.as_deref()
+        && let Some(mode) = config.modes.iter().find(|m| m.id == active_mode_id)
+        && !mode.skills.is_empty()
+    {
+        skills.retain(|skill| mode.skills.contains(&skill.id));
+    }
+
+    Ok(skills)
+}
+
 /// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`
 fn export_skills_to_dir(project_dir: &Path, skills_dir: &Path) -> Result<()> {
-    let skills = list_effective_skills(project_dir)?;
+    let skills = resolve_skills_for_export(project_dir)?;
     let retain_ids: HashSet<String> = skills.iter().map(|skill| skill.id.clone()).collect();
     prune_stale_managed_skill_dirs(skills_dir, &retain_ids);
     if skills.is_empty() {
@@ -1209,9 +1257,46 @@ fn remove_ship_managed_skill_dirs(skills_dir: &Path) {
     }
 }
 
-// ─── Hooks + permissions (Claude settings.json) ───────────────────────────────
+// ─── Hooks + permissions (provider-native mappings) ──────────────────────────
 
-fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) -> Result<()> {
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct GeminiPolicyDoc {
+    #[serde(rename = "rule", default)]
+    rules: Vec<GeminiPolicyRule>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct GeminiPolicyRule {
+    #[serde(rename = "toolName", skip_serializing_if = "Option::is_none")]
+    tool_name: Option<String>,
+    #[serde(rename = "mcpName", skip_serializing_if = "Option::is_none")]
+    mcp_name: Option<String>,
+    #[serde(rename = "commandPrefix", skip_serializing_if = "Option::is_none")]
+    command_prefix: Option<String>,
+    #[serde(rename = "commandRegex", skip_serializing_if = "Option::is_none")]
+    command_regex: Option<String>,
+    decision: String,
+    priority: i32,
+}
+
+fn is_default_tool_permissions(permissions: &Permissions) -> bool {
+    (permissions.tools.allow.is_empty()
+        || (permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*"))
+        && permissions.tools.deny.is_empty()
+}
+
+fn has_claude_permission_overrides(permissions: &Permissions) -> bool {
+    !is_default_tool_permissions(permissions)
+}
+
+fn has_gemini_policy_overrides(permissions: &Permissions) -> bool {
+    !is_default_tool_permissions(permissions)
+        || !permissions.commands.allow.is_empty()
+        || !permissions.commands.deny.is_empty()
+        || !permissions.agent.require_confirmation.is_empty()
+}
+
+fn export_claude_settings(hooks: &[HookConfig], permissions: &Permissions) -> Result<()> {
     let path = home()?.join(".claude").join("settings.json");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1225,17 +1310,13 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) 
         .as_object_mut()
         .ok_or_else(|| anyhow!("~/.claude/settings.json is not an object"))?;
 
-    if !permissions.allow.is_empty() || !permissions.deny.is_empty() {
+    if has_claude_permission_overrides(permissions) {
         let perms = obj.entry("permissions").or_insert(serde_json::json!({}));
         let p = perms
             .as_object_mut()
             .ok_or_else(|| anyhow!("permissions not an object"))?;
-        if !permissions.allow.is_empty() {
-            p.insert("allow".into(), serde_json::json!(permissions.allow));
-        }
-        if !permissions.deny.is_empty() {
-            p.insert("deny".into(), serde_json::json!(permissions.deny));
-        }
+        p.insert("allow".into(), serde_json::json!(permissions.tools.allow));
+        p.insert("deny".into(), serde_json::json!(permissions.tools.deny));
     }
 
     if !hooks.is_empty() {
@@ -1267,9 +1348,461 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &PermissionConfig) 
     crate::fs_util::write_atomic(&path, serde_json::to_string_pretty(&root)?)
 }
 
+fn export_gemini_workspace_policy(project_root: &Path, permissions: &Permissions) -> Result<()> {
+    let path = project_root
+        .join(".gemini")
+        .join("policies")
+        .join("ship-permissions.toml");
+
+    if !has_gemini_policy_overrides(permissions) {
+        fs::remove_file(&path).ok();
+        return Ok(());
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut rules = Vec::new();
+
+    // Highest priority: explicit denies
+    for pattern in &permissions.tools.deny {
+        rules.push(GeminiPolicyRule {
+            tool_name: Some(pattern.clone()),
+            decision: "deny".to_string(),
+            priority: 900,
+            ..Default::default()
+        });
+    }
+    for pattern in &permissions.commands.deny {
+        let (prefix, regex) = command_pattern_fields(pattern);
+        rules.push(GeminiPolicyRule {
+            tool_name: Some("run_shell_command".to_string()),
+            command_prefix: prefix,
+            command_regex: regex,
+            decision: "deny".to_string(),
+            priority: 900,
+            ..Default::default()
+        });
+    }
+
+    // Mid priority: explicit confirmation
+    for pattern in &permissions.agent.require_confirmation {
+        let (prefix, regex) = command_pattern_fields(pattern);
+        rules.push(GeminiPolicyRule {
+            tool_name: Some("run_shell_command".to_string()),
+            command_prefix: prefix,
+            command_regex: regex,
+            decision: "ask_user".to_string(),
+            priority: 800,
+            ..Default::default()
+        });
+    }
+
+    // Lower priority: allows
+    for pattern in &permissions.tools.allow {
+        rules.push(GeminiPolicyRule {
+            tool_name: Some(pattern.clone()),
+            decision: "allow".to_string(),
+            priority: 700,
+            ..Default::default()
+        });
+    }
+    for pattern in &permissions.commands.allow {
+        let (prefix, regex) = command_pattern_fields(pattern);
+        rules.push(GeminiPolicyRule {
+            tool_name: Some("run_shell_command".to_string()),
+            command_prefix: prefix,
+            command_regex: regex,
+            decision: "allow".to_string(),
+            priority: 700,
+            ..Default::default()
+        });
+    }
+
+    let doc = GeminiPolicyDoc { rules };
+    let body = toml::to_string_pretty(&doc)?;
+    let content = format!(
+        "# managed by ship\n# source: .ship/agents/permissions.toml\n\n{}",
+        body
+    );
+    crate::fs_util::write_atomic(&path, content)
+}
+
+fn apply_codex_permissions(root: &mut toml::value::Table, permissions: &Permissions) {
+    let network_access = matches!(
+        permissions.network.policy,
+        crate::permissions::NetworkPolicy::AllowList
+            | crate::permissions::NetworkPolicy::Unrestricted
+    );
+    root.insert(
+        "sandbox_mode".to_string(),
+        toml::Value::String("workspace-write".to_string()),
+    );
+    let approval = if permissions.agent.require_confirmation.is_empty()
+        && permissions.commands.deny.is_empty()
+        && permissions.tools.deny.is_empty()
+        && permissions.tools.allow.iter().any(|p| p == "*")
+    {
+        "on-failure"
+    } else {
+        "on-request"
+    };
+    root.insert(
+        "approval_policy".to_string(),
+        toml::Value::String(approval.to_string()),
+    );
+
+    if !permissions.commands.allow.is_empty() {
+        root.insert(
+            "allow".to_string(),
+            toml::Value::Array(
+                permissions
+                    .commands
+                    .allow
+                    .iter()
+                    .cloned()
+                    .map(toml::Value::String)
+                    .collect(),
+            ),
+        );
+    }
+
+    let sandbox_entry = root
+        .entry("sandbox_workspace_write".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::value::Table::new()));
+    if let Some(table) = sandbox_entry.as_table_mut() {
+        table.insert(
+            "network_access".to_string(),
+            toml::Value::Boolean(network_access),
+        );
+    }
+
+    let mut prefix_rules = read_codex_prefix_rules(root);
+    for pattern in &permissions.commands.deny {
+        if let Some(prefix) = command_prefix_from_pattern(pattern) {
+            prefix_rules.push((prefix, "forbidden".to_string()));
+        }
+    }
+    for pattern in &permissions.agent.require_confirmation {
+        if let Some(prefix) = command_prefix_from_pattern(pattern) {
+            prefix_rules.push((prefix, "prompt".to_string()));
+        }
+    }
+    dedupe_pairs(&mut prefix_rules);
+    if !prefix_rules.is_empty() {
+        let rules_entry = root
+            .entry("rules".to_string())
+            .or_insert_with(|| toml::Value::Table(toml::value::Table::new()));
+        if let Some(rules_table) = rules_entry.as_table_mut() {
+            let array = prefix_rules
+                .into_iter()
+                .map(|(prefix, decision)| {
+                    let mut table = toml::value::Table::new();
+                    table.insert("prefix".to_string(), toml::Value::String(prefix));
+                    table.insert("decision".to_string(), toml::Value::String(decision));
+                    toml::Value::Table(table)
+                })
+                .collect();
+            rules_table.insert("prefix_rules".to_string(), toml::Value::Array(array));
+        }
+    }
+}
+
+fn import_permissions_from_claude() -> Result<Option<Permissions>> {
+    let path = home()?.join(".claude").join("settings.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let root: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    let Some(perms) = root.get("permissions").and_then(|p| p.as_object()) else {
+        return Ok(None);
+    };
+    let allow = perms
+        .get("allow")
+        .and_then(|v| v.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let deny = perms
+        .get("deny")
+        .and_then(|v| v.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if allow.is_empty() && deny.is_empty() {
+        return Ok(None);
+    }
+
+    let mut permissions = Permissions::default();
+    if !allow.is_empty() {
+        permissions.tools.allow = allow;
+    }
+    permissions.tools.deny = deny;
+    Ok(Some(permissions))
+}
+
+fn import_permissions_from_gemini(project_dir: &Path) -> Result<Option<Permissions>> {
+    let Some(project_root) = project_dir.parent() else {
+        return Ok(None);
+    };
+    let path = project_root
+        .join(".gemini")
+        .join("policies")
+        .join("ship-permissions.toml");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let root: toml::Value = toml::from_str(&fs::read_to_string(path)?)?;
+    let rules = root
+        .get("rule")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if rules.is_empty() {
+        return Ok(None);
+    }
+
+    let mut permissions = Permissions::default();
+    permissions.tools.allow.clear();
+    permissions.tools.deny.clear();
+    permissions.commands.allow.clear();
+    permissions.commands.deny.clear();
+    permissions.agent.require_confirmation.clear();
+
+    for value in rules {
+        let Some(rule) = value.as_table() else {
+            continue;
+        };
+        let decision = rule
+            .get("decision")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if decision.is_empty() {
+            continue;
+        }
+
+        let tool_names = value_to_string_list(rule.get("toolName"));
+        let mcp_names = value_to_string_list(rule.get("mcpName"));
+        let command_prefixes = value_to_string_list(rule.get("commandPrefix"));
+        let command_regexes = value_to_string_list(rule.get("commandRegex"));
+
+        for command in command_prefixes {
+            match decision.as_str() {
+                "allow" => permissions.commands.allow.push(format!("{}*", command)),
+                "deny" => permissions.commands.deny.push(format!("{}*", command)),
+                "ask_user" => permissions
+                    .agent
+                    .require_confirmation
+                    .push(format!("{}*", command)),
+                _ => {}
+            }
+        }
+        for regex in command_regexes {
+            let pattern = format!("regex:{}", regex);
+            match decision.as_str() {
+                "allow" => permissions.commands.allow.push(pattern),
+                "deny" => permissions.commands.deny.push(pattern),
+                "ask_user" => permissions.agent.require_confirmation.push(pattern),
+                _ => {}
+            }
+        }
+
+        let mut composite_tools = Vec::new();
+        if tool_names.is_empty() && mcp_names.is_empty() {
+            continue;
+        }
+        if tool_names.is_empty() {
+            for mcp_name in &mcp_names {
+                composite_tools.push(format!("{}__*", mcp_name));
+            }
+        } else if mcp_names.is_empty() {
+            composite_tools.extend(tool_names.clone());
+        } else {
+            for mcp_name in &mcp_names {
+                for tool_name in &tool_names {
+                    composite_tools.push(format!("{}__{}", mcp_name, tool_name));
+                }
+            }
+        }
+
+        for tool in composite_tools {
+            if tool == "run_shell_command" {
+                continue;
+            }
+            match decision.as_str() {
+                "allow" => permissions.tools.allow.push(tool),
+                "deny" => permissions.tools.deny.push(tool),
+                _ => {}
+            }
+        }
+    }
+
+    dedupe_strings(&mut permissions.tools.allow);
+    dedupe_strings(&mut permissions.tools.deny);
+    dedupe_strings(&mut permissions.commands.allow);
+    dedupe_strings(&mut permissions.commands.deny);
+    dedupe_strings(&mut permissions.agent.require_confirmation);
+
+    if permissions.tools.allow.is_empty() {
+        permissions.tools.allow.push("*".to_string());
+    }
+    Ok(Some(permissions))
+}
+
+fn import_permissions_from_codex(project_dir: &Path) -> Result<Option<Permissions>> {
+    let Some(project_root) = project_dir.parent() else {
+        return Ok(None);
+    };
+    let path = project_root.join(".codex").join("config.toml");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let root: toml::Value = toml::from_str(&fs::read_to_string(path)?)?;
+    let mut imported = false;
+    let mut permissions = Permissions::default();
+
+    if let Some(allow) = root.get("allow").and_then(|v| v.as_array()) {
+        permissions.commands.allow = allow
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        imported = true;
+    }
+
+    if let Some(network_access) = root
+        .get("sandbox_workspace_write")
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get("network_access"))
+        .and_then(|v| v.as_bool())
+    {
+        imported = true;
+        permissions.network.policy = if network_access {
+            crate::permissions::NetworkPolicy::Unrestricted
+        } else {
+            crate::permissions::NetworkPolicy::None
+        };
+    }
+
+    let prefix_rules = read_codex_prefix_rules_from_value(&root);
+    for (prefix, decision) in prefix_rules {
+        imported = true;
+        let pattern = format!("{}*", prefix);
+        match decision.as_str() {
+            "forbidden" => permissions.commands.deny.push(pattern),
+            "prompt" => permissions.agent.require_confirmation.push(pattern),
+            _ => {}
+        }
+    }
+
+    if !imported {
+        return Ok(None);
+    }
+    dedupe_strings(&mut permissions.commands.allow);
+    dedupe_strings(&mut permissions.commands.deny);
+    dedupe_strings(&mut permissions.agent.require_confirmation);
+    Ok(Some(permissions))
+}
+
+fn command_pattern_fields(pattern: &str) -> (Option<String>, Option<String>) {
+    if let Some(prefix) = command_prefix_from_pattern(pattern) {
+        return (Some(prefix), None);
+    }
+    (None, Some(glob_to_regex(pattern)))
+}
+
+fn command_prefix_from_pattern(pattern: &str) -> Option<String> {
+    let trimmed = pattern.trim();
+    if !trimmed.ends_with('*') || trimmed.matches('*').count() != 1 {
+        return None;
+    }
+    let prefix = trimmed.trim_end_matches('*').trim();
+    if prefix.is_empty() {
+        return None;
+    }
+    Some(prefix.to_string())
+}
+
+fn glob_to_regex(glob: &str) -> String {
+    let mut out = String::new();
+    for ch in glob.chars() {
+        match ch {
+            '*' => out.push_str(".*"),
+            '\\' | '.' | '+' | '?' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '|' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn value_to_string_list(value: Option<&toml::Value>) -> Vec<String> {
+    match value {
+        Some(toml::Value::String(s)) => vec![s.to_string()],
+        Some(toml::Value::Array(values)) => values
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn read_codex_prefix_rules(root: &toml::value::Table) -> Vec<(String, String)> {
+    read_codex_prefix_rules_from_value(&toml::Value::Table(root.clone()))
+}
+
+fn read_codex_prefix_rules_from_value(root: &toml::Value) -> Vec<(String, String)> {
+    root.get("rules")
+        .and_then(|v| v.as_table())
+        .and_then(|table| table.get("prefix_rules"))
+        .and_then(|v| v.as_array())
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| {
+                    let table = entry.as_table()?;
+                    let prefix = table.get("prefix")?.as_str()?.to_string();
+                    let decision = table.get("decision")?.as_str()?.to_string();
+                    Some((prefix, decision))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn dedupe_strings(values: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    values.retain(|item| seen.insert(item.clone()));
+}
+
+fn dedupe_pairs(values: &mut Vec<(String, String)>) {
+    let mut seen = HashSet::new();
+    values.retain(|item| seen.insert(item.clone()));
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 fn home() -> Result<PathBuf> {
+    if let Some(home) = std::env::var_os("HOME") {
+        let path = PathBuf::from(home);
+        if !path.as_os_str().is_empty() {
+            return Ok(path);
+        }
+    }
     home::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))
 }
 
@@ -1282,6 +1815,7 @@ mod tests {
         HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
         ProjectConfig, save_config,
     };
+    use crate::permissions::{Permissions, save_permissions};
     use crate::project::init_project;
     use crate::skill::{create_skill, delete_skill};
     use std::collections::HashMap;
@@ -1334,6 +1868,17 @@ mod tests {
             make_stdio_server("allowed"),
             make_stdio_server("blocked"),
         ]);
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                tools: crate::permissions::ToolPermissions {
+                    allow: vec!["Read(*)".to_string()],
+                    deny: vec!["Edit(*)".to_string()],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.hooks = vec![HookConfig {
             id: "project-global-hook".to_string(),
@@ -1347,6 +1892,8 @@ mod tests {
             description: None,
             active_tools: vec![],
             mcp_servers: vec!["allowed".to_string()],
+            skills: vec![],
+            rules: vec![],
             prompt_id: None,
             hooks: vec![HookConfig {
                 id: "mode-hook".to_string(),
@@ -1367,8 +1914,11 @@ mod tests {
         let server_ids: Vec<_> = payload.servers.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(server_ids, vec!["allowed"]);
         assert_eq!(payload.active_mode_id.as_deref(), Some("focus"));
-        assert_eq!(payload.permissions.allow, vec!["Bash(*)".to_string()]);
-        assert_eq!(payload.permissions.deny, vec!["WebFetch(*)".to_string()]);
+        assert_eq!(payload.permissions.tools.allow, vec!["Bash(*)".to_string()]);
+        assert_eq!(
+            payload.permissions.tools.deny,
+            vec!["WebFetch(*)".to_string()]
+        );
 
         let hook_ids: Vec<_> = payload.hooks.iter().map(|h| h.id.as_str()).collect();
         let global_idx = hook_ids
@@ -1386,8 +1936,19 @@ mod tests {
     }
 
     #[test]
-    fn build_payload_without_active_mode_uses_default_permissions() {
+    fn build_payload_without_active_mode_uses_permissions_toml() {
         let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                tools: crate::permissions::ToolPermissions {
+                    allow: vec!["Read(*)".to_string()],
+                    deny: vec!["Edit(*)".to_string()],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.hooks = vec![HookConfig {
             id: "project-global-hook-only".to_string(),
@@ -1401,6 +1962,8 @@ mod tests {
             description: None,
             active_tools: vec![],
             mcp_servers: vec![],
+            skills: vec![],
+            rules: vec![],
             prompt_id: None,
             hooks: vec![HookConfig {
                 id: "unused-mode-hook".to_string(),
@@ -1419,8 +1982,8 @@ mod tests {
 
         let payload = build_payload(&project_dir).unwrap();
         assert_eq!(payload.active_mode_id, None);
-        assert!(payload.permissions.allow.is_empty());
-        assert!(payload.permissions.deny.is_empty());
+        assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
+        assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
         assert!(
             payload
                 .hooks
@@ -1437,9 +2000,58 @@ mod tests {
     }
 
     #[test]
-    fn sync_active_mode_defaults_to_claude_when_targets_empty() {
+    fn build_payload_mode_overrides_replace_only_tool_permissions() {
+        let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                tools: crate::permissions::ToolPermissions {
+                    allow: vec!["Read(*)".to_string()],
+                    deny: vec!["Edit(*)".to_string()],
+                },
+                network: crate::permissions::NetworkPermissions {
+                    policy: crate::permissions::NetworkPolicy::AllowList,
+                    allow_hosts: vec!["api.example.com".to_string()],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.modes = vec![ModeConfig {
+            id: "focus".to_string(),
+            name: "Focus".to_string(),
+            permissions: PermissionConfig {
+                allow: vec!["Bash(*)".to_string()],
+                deny: vec!["WebFetch(*)".to_string()],
+            },
+            ..Default::default()
+        }];
+        config.active_mode = Some("focus".to_string());
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let payload = build_payload(&project_dir).unwrap();
+        assert_eq!(payload.permissions.tools.allow, vec!["Bash(*)".to_string()]);
+        assert_eq!(
+            payload.permissions.tools.deny,
+            vec!["WebFetch(*)".to_string()]
+        );
+        assert_eq!(
+            payload.permissions.network.policy,
+            crate::permissions::NetworkPolicy::AllowList
+        );
+        assert_eq!(
+            payload.permissions.network.allow_hosts,
+            vec!["api.example.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn sync_active_mode_uses_connected_providers_when_targets_empty() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.providers = vec!["codex".to_string()];
         config.modes = vec![ModeConfig {
             id: "focus".to_string(),
             name: "Focus".to_string(),
@@ -1450,8 +2062,21 @@ mod tests {
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let synced = sync_active_mode(&project_dir).unwrap();
-        assert_eq!(synced, vec!["claude".to_string()]);
-        assert!(tmp.path().join(".mcp.json").exists());
+        assert_eq!(synced, vec!["codex".to_string()]);
+        assert!(tmp.path().join(".codex").join("config.toml").exists());
+    }
+
+    #[test]
+    fn sync_active_mode_without_active_mode_uses_connected_providers() {
+        let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.providers = vec!["gemini".to_string()];
+        config.active_mode = None;
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let synced = sync_active_mode(&project_dir).unwrap();
+        assert_eq!(synced, vec!["gemini".to_string()]);
+        assert!(tmp.path().join(".gemini").join("settings.json").exists());
     }
 
     #[test]
@@ -1609,6 +2234,38 @@ mod tests {
         std::fs::remove_file(crate::state_db::project_db_path(&project_dir).unwrap()).ok();
     }
 
+    #[test]
+    fn claude_permissions_round_trip_imports_back_to_canonical() {
+        let (_tmp, project_dir) = project_with_servers(vec![]);
+        let home = tempdir().unwrap();
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                tools: crate::permissions::ToolPermissions {
+                    allow: vec!["Bash(*)".to_string()],
+                    deny: vec!["WebFetch(*)".to_string()],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        export_to(project_dir.clone(), "claude").unwrap();
+
+        save_permissions(project_dir.clone(), &Permissions::default()).unwrap();
+        let imported = import_permissions_from_provider("claude", project_dir.clone()).unwrap();
+        assert!(imported);
+        let restored = crate::permissions::get_permissions(project_dir).unwrap();
+        assert_eq!(restored.tools.allow, vec!["Bash(*)".to_string()]);
+        assert_eq!(restored.tools.deny, vec!["WebFetch(*)".to_string()]);
+        unsafe {
+            std::env::remove_var("HOME");
+        }
+    }
+
     // ── Gemini ─────────────────────────────────────────────────────────────────
 
     #[test]
@@ -1665,6 +2322,93 @@ mod tests {
         )
         .unwrap();
         assert!(val["mcpServers"]["ship"].is_object());
+    }
+
+    #[test]
+    fn gemini_exports_workspace_policy_from_permissions() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                tools: crate::permissions::ToolPermissions {
+                    allow: vec!["mcp__ship__*".to_string()],
+                    deny: vec!["WebFetch(*)".to_string()],
+                },
+                commands: crate::permissions::CommandPermissions {
+                    allow: vec!["git status*".to_string()],
+                    deny: vec!["rm -rf *".to_string()],
+                },
+                agent: crate::permissions::AgentLimits {
+                    require_confirmation: vec!["git push *".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        export_to(project_dir, "gemini").unwrap();
+        let policy_path = tmp
+            .path()
+            .join(".gemini")
+            .join("policies")
+            .join("ship-permissions.toml");
+        assert!(policy_path.exists());
+        let content = std::fs::read_to_string(policy_path).unwrap();
+        assert!(content.contains("toolName = \"run_shell_command\""));
+        assert!(content.contains("commandPrefix = \"git status\""));
+        assert!(content.contains("decision = \"ask_user\""));
+    }
+
+    #[test]
+    fn gemini_permissions_round_trip_imports_back_to_canonical() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let policy_dir = tmp.path().join(".gemini").join("policies");
+        std::fs::create_dir_all(&policy_dir).unwrap();
+        std::fs::write(
+            policy_dir.join("ship-permissions.toml"),
+            r#"
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = "git "
+decision = "allow"
+priority = 100
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = "rm -rf "
+decision = "deny"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = "git push "
+decision = "ask_user"
+priority = 800
+
+[[rule]]
+toolName = "mcp__ship__*"
+decision = "allow"
+priority = 700
+"#,
+        )
+        .unwrap();
+
+        let imported = import_permissions_from_provider("gemini", project_dir.clone()).unwrap();
+        assert!(imported);
+        let restored = crate::permissions::get_permissions(project_dir).unwrap();
+        assert!(
+            restored.commands.allow.contains(&"git *".to_string()),
+            "expected command allow imported from Gemini policy"
+        );
+        assert!(restored.commands.deny.contains(&"rm -rf *".to_string()));
+        assert!(
+            restored
+                .agent
+                .require_confirmation
+                .contains(&"git push *".to_string())
+        );
+        assert!(restored.tools.allow.contains(&"mcp__ship__*".to_string()));
     }
 
     // ── Codex ──────────────────────────────────────────────────────────────────
@@ -1731,19 +2475,101 @@ mod tests {
     }
 
     #[test]
+    fn codex_exports_permissions_to_native_fields() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                commands: crate::permissions::CommandPermissions {
+                    allow: vec!["cargo *".to_string()],
+                    deny: vec!["rm -rf *".to_string()],
+                },
+                network: crate::permissions::NetworkPermissions {
+                    policy: crate::permissions::NetworkPolicy::AllowList,
+                    allow_hosts: vec!["github.com".to_string()],
+                },
+                agent: crate::permissions::AgentLimits {
+                    require_confirmation: vec!["git push *".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        export_to(project_dir, "codex").unwrap();
+        let val: toml::Value = toml::from_str(
+            &std::fs::read_to_string(tmp.path().join(".codex/config.toml")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            val["sandbox_mode"].as_str(),
+            Some("workspace-write"),
+            "codex export should enforce workspace-write sandbox for mapped permissions"
+        );
+        assert_eq!(
+            val["sandbox_workspace_write"]["network_access"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(val["approval_policy"].as_str(), Some("on-request"));
+        assert!(val["rules"]["prefix_rules"].is_array());
+    }
+
+    #[test]
+    fn codex_permissions_round_trip_imports_back_to_canonical() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let codex_dir = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        std::fs::write(
+            codex_dir.join("config.toml"),
+            r#"
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+allow = ["cargo *"]
+
+[sandbox_workspace_write]
+network_access = false
+
+[rules]
+prefix_rules = [
+  { prefix = "rm -rf ", decision = "forbidden" },
+  { prefix = "git push ", decision = "prompt" }
+]
+"#,
+        )
+        .unwrap();
+
+        let imported = import_permissions_from_provider("codex", project_dir.clone()).unwrap();
+        assert!(imported);
+        let restored = crate::permissions::get_permissions(project_dir).unwrap();
+        assert_eq!(
+            restored.network.policy,
+            crate::permissions::NetworkPolicy::None
+        );
+        assert!(restored.commands.allow.contains(&"cargo *".to_string()));
+        assert!(restored.commands.deny.contains(&"rm -rf *".to_string()));
+        assert!(
+            restored
+                .agent
+                .require_confirmation
+                .contains(&"git push *".to_string())
+        );
+    }
+
+    #[test]
     fn codex_export_prunes_stale_managed_skill_dirs() {
         let (tmp, project_dir) = project_with_servers(vec![]);
-        create_skill(&project_dir, "__rt_live_skill__", "Live", "live body").unwrap();
-        create_skill(&project_dir, "__rt_stale_skill__", "Stale", "stale body").unwrap();
+        create_skill(&project_dir, "rt-live-skill", "Live", "live body").unwrap();
+        create_skill(&project_dir, "rt-stale-skill", "Stale", "stale body").unwrap();
 
         export_to(project_dir.clone(), "codex").unwrap();
         let skills_dir = tmp.path().join(".agents").join("skills");
-        let live_skill_dir = skills_dir.join("__rt_live_skill__");
-        let stale_skill_dir = skills_dir.join("__rt_stale_skill__");
+        let live_skill_dir = skills_dir.join("rt-live-skill");
+        let stale_skill_dir = skills_dir.join("rt-stale-skill");
         assert!(live_skill_dir.join("SKILL.md").exists());
         assert!(stale_skill_dir.join("SKILL.md").exists());
 
-        delete_skill(&project_dir, "__rt_stale_skill__").unwrap();
+        delete_skill(&project_dir, "rt-stale-skill").unwrap();
         export_to(project_dir, "codex").unwrap();
 
         assert!(live_skill_dir.join("SKILL.md").exists());
@@ -1754,13 +2580,50 @@ mod tests {
     }
 
     #[test]
+    fn codex_export_applies_active_mode_skill_filter() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(&project_dir, "rt-allowed-skill", "Allowed", "allowed body").unwrap();
+        create_skill(&project_dir, "rt-blocked-skill", "Blocked", "blocked body").unwrap();
+
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.modes = vec![ModeConfig {
+            id: "focus".to_string(),
+            name: "Focus".to_string(),
+            description: None,
+            active_tools: vec![],
+            mcp_servers: vec![],
+            skills: vec!["rt-allowed-skill".to_string()],
+            rules: vec![],
+            prompt_id: None,
+            hooks: vec![],
+            permissions: PermissionConfig::default(),
+            target_agents: vec![],
+        }];
+        config.active_mode = Some("focus".to_string());
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        export_to(project_dir, "codex").unwrap();
+        let skills_dir = tmp.path().join(".agents").join("skills");
+        assert!(
+            skills_dir
+                .join("rt-allowed-skill")
+                .join("SKILL.md")
+                .exists()
+        );
+        assert!(
+            !skills_dir.join("rt-blocked-skill").exists(),
+            "skills excluded by active mode should not be exported"
+        );
+    }
+
+    #[test]
     fn codex_export_preserves_unmanaged_skill_dirs() {
         let (tmp, project_dir) = project_with_servers(vec![]);
         let unmanaged_dir = tmp
             .path()
             .join(".agents")
             .join("skills")
-            .join("__rt_unmanaged_skill__");
+            .join("rt-unmanaged-skill");
         std::fs::create_dir_all(&unmanaged_dir).unwrap();
         let unmanaged_file = unmanaged_dir.join("SKILL.md");
         std::fs::write(&unmanaged_file, "manual skill content").unwrap();
@@ -1770,6 +2633,46 @@ mod tests {
         assert!(unmanaged_dir.exists());
         let content = std::fs::read_to_string(&unmanaged_file).unwrap();
         assert_eq!(content, "manual skill content");
+    }
+
+    #[test]
+    fn codex_export_migrates_and_exports_legacy_repo_local_skills() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let legacy_skill_dir = project_dir
+            .join("agents")
+            .join("skills")
+            .join("legacy-export");
+        std::fs::create_dir_all(&legacy_skill_dir).unwrap();
+        std::fs::write(
+            legacy_skill_dir.join("SKILL.md"),
+            r#"---
+name: legacy-export
+description: Legacy repo-local skill that should be migrated and exported.
+---
+
+Legacy export skill body.
+"#,
+        )
+        .unwrap();
+
+        export_to(project_dir, "codex").unwrap();
+
+        let exported = tmp
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("legacy-export")
+            .join("SKILL.md");
+        assert!(
+            exported.exists(),
+            "legacy skill should be exported after migration"
+        );
+        let exported_body = std::fs::read_to_string(exported).unwrap();
+        assert!(exported_body.contains("Legacy export skill body."));
+        assert!(
+            !legacy_skill_dir.exists(),
+            "legacy repo-local skill should be migrated out of .ship"
+        );
     }
 
     // ── Import ─────────────────────────────────────────────────────────────────
