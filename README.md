@@ -73,6 +73,8 @@ Shipwright knows how each agent tool works. It writes config in the format each 
 | Gemini CLI   | `GEMINI.md`  | `.gemini/settings.json`     | `.gemini/skills/<id>/SKILL.md`  |
 | OpenAI Codex | `AGENTS.md`  | `.codex/config.toml` (TOML) | `.agents/skills/<id>/SKILL.md`  |
 
+MCP sync contract (import/export paths, guardrails, precedence): `docs/mcp-import-export.md`
+
 Add a provider in one command. Ship handles the rest:
 
 ```bash

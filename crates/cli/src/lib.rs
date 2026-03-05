@@ -3,16 +3,16 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use runtime::project::{get_global_dir, get_project_dir};
 use runtime::{
-    CreateWorkspaceRequest, McpServerConfig, McpServerType, WorkspaceStatus, WorkspaceType,
-    activate_workspace, add_mcp_server, add_mode, add_status, autodetect_providers, create_skill,
-    create_user_skill, create_workspace, delete_skill, delete_user_skill, disable_provider,
-    enable_provider, get_active_mode, get_config, get_effective_skill, get_git_config,
-    get_project_statuses, get_skill, get_user_skill, ingest_external_events, is_category_committed,
-    list_effective_skills, list_events_since, list_mcp_servers, list_models, list_providers,
-    list_skills, list_user_skills, list_workspaces, log_action, migrate_global_state,
-    migrate_json_config_file, migrate_project_state, remove_mcp_server, remove_mode, remove_status,
-    set_active_mode, set_category_committed, sync_workspace, transition_workspace_status,
-    update_skill, update_user_skill,
+    CreateWorkspaceRequest, McpServerConfig, McpServerType, SkillInstallScope, WorkspaceStatus,
+    WorkspaceType, activate_workspace, add_mcp_server, add_mode, add_status, autodetect_providers,
+    create_skill, create_user_skill, create_workspace, delete_skill, delete_user_skill,
+    disable_provider, enable_provider, get_active_mode, get_config, get_effective_skill,
+    get_git_config, get_project_statuses, get_skill, get_user_skill, ingest_external_events,
+    install_skill_from_source, is_category_committed, list_effective_skills, list_events_since,
+    list_mcp_servers, list_models, list_providers, list_skills, list_user_skills, list_workspaces,
+    log_action, migrate_global_state, migrate_json_config_file, migrate_project_state,
+    remove_mcp_server, remove_mode, remove_status, set_active_mode, set_category_committed,
+    sync_workspace, transition_workspace_status, update_skill, update_user_skill,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
@@ -139,7 +139,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: ModeCommands,
     },
-    /// Manage MCP servers registered in ship.toml. Runs the server if no subcommand is provided.
+    /// Manage MCP servers registered in .ship/agents/mcp.toml. Runs the server if no subcommand is provided.
     Mcp {
         #[command(subcommand)]
         action: Option<McpCommands>,
@@ -252,8 +252,19 @@ pub enum ModeCommands {
 pub enum McpCommands {
     /// Start the MCP stdio server (explicitly)
     Serve,
-    /// List MCP servers registered in ship.toml
+    /// List MCP servers registered in .ship/agents/mcp.toml
     List,
+    /// Export MCP server registry to an AI client's config file
+    Export {
+        /// Target AI client: claude, codex, or gemini
+        #[arg(short, long)]
+        target: String,
+    },
+    /// Import MCP server registry from an AI client's config file
+    Import {
+        /// Provider ID: claude, codex, or gemini
+        provider: String,
+    },
     Add {
         /// Stable server ID (used in feature frontmatter)
         id: String,
@@ -301,6 +312,11 @@ pub enum ProviderCommands {
     Models {
         /// Provider ID (claude, gemini, codex)
         id: String,
+    },
+    /// Import provider-managed state back into Ship (MCP servers + permissions)
+    Import {
+        /// Provider ID (claude, gemini, codex). If omitted, imports all connected providers.
+        id: Option<String>,
     },
 }
 
@@ -416,6 +432,25 @@ pub enum NoteCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum SkillCommands {
+    /// Install a skill from a Git source (GitHub shorthand, URL, or local path)
+    Install {
+        /// Source repo: owner/repo, git URL, or local path
+        source: String,
+        /// Skill ID (directory name containing SKILL.md)
+        id: String,
+        /// Git ref to clone
+        #[arg(long, default_value = "main")]
+        git_ref: String,
+        /// Subpath in repo to search
+        #[arg(long, default_value = ".")]
+        repo_path: String,
+        /// Scope: user (default) or project
+        #[arg(long, default_value = "user")]
+        scope: String,
+        /// Overwrite destination if already installed
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
     /// Create a new skill
     Create {
         id: String,
@@ -830,6 +865,56 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             }
         },
         Some(Commands::Skill { action }) => match action {
+            SkillCommands::Install {
+                source,
+                id,
+                git_ref,
+                repo_path,
+                scope,
+                force,
+            } => {
+                let scope = parse_skill_write_scope(&scope)?;
+                eprintln!(
+                    "[ship] warning: installing untrusted skill content from '{}'. Review SKILL.md and any scripts before use.",
+                    source
+                );
+
+                let (project_dir, install_scope) = match scope {
+                    SkillWriteScope::Project => {
+                        (Some(get_project_dir_cli()?), SkillInstallScope::Project)
+                    }
+                    SkillWriteScope::User => (None, SkillInstallScope::User),
+                };
+
+                let installed = install_skill_from_source(
+                    project_dir.as_deref(),
+                    &source,
+                    &id,
+                    Some(&git_ref),
+                    Some(&repo_path),
+                    install_scope,
+                    force,
+                )?;
+
+                let installed_path = match install_scope {
+                    SkillInstallScope::Project => {
+                        let dir = project_dir
+                            .as_ref()
+                            .ok_or_else(|| anyhow::anyhow!("Missing project dir"))?;
+                        runtime::project::skills_dir(dir).join(&installed.id)
+                    }
+                    SkillInstallScope::User => {
+                        runtime::project::user_skills_dir().join(&installed.id)
+                    }
+                };
+
+                println!(
+                    "Installed skill: {} ({}) -> {}",
+                    installed.id,
+                    installed.name,
+                    installed_path.display()
+                );
+            }
             SkillCommands::Create {
                 id,
                 name,
@@ -1584,7 +1669,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let dir = project_dir.ok_or_else(|| {
                         anyhow::anyhow!("No Ship project found in current directory")
                     })?;
-                    runtime::agent_export::export_to(dir, &target)?;
+                    runtime::agents::export::export_to(dir, &target)?;
                     println!("Exported MCP server registry to {} config.", target);
                 }
                 ConfigCommands::Ai => {
@@ -1673,6 +1758,19 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         }
                     }
                 }
+                Some(McpCommands::Export { target }) => {
+                    let project_dir = get_project_dir_cli()?;
+                    runtime::agents::export::export_to(project_dir, &target)?;
+                    println!("Exported MCP server registry to {} config.", target);
+                }
+                Some(McpCommands::Import { provider }) => {
+                    let project_dir = get_project_dir_cli()?;
+                    let added = runtime::agents::export::import_from_provider(
+                        &provider,
+                        project_dir.to_path_buf(),
+                    )?;
+                    println!("Imported {} MCP server(s) from {}.", added, provider);
+                }
                 Some(McpCommands::Add {
                     id,
                     name,
@@ -1751,6 +1849,17 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     } else {
                         println!("Provider '{}' is already connected.", id);
                     }
+                    let summary = import_provider_surface(&project_dir, &id)?;
+                    println!(
+                        "Imported from {}: mcp_servers={}, permissions={}",
+                        id,
+                        summary.mcp_servers_added,
+                        if summary.permissions_imported {
+                            "yes"
+                        } else {
+                            "no"
+                        }
+                    );
                 }
                 ProviderCommands::Disconnect { id } => {
                     if disable_provider(&project_dir, &id)? {
@@ -1778,6 +1887,38 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             format!("{}k", m.context_window / 1000),
                             if m.recommended { "(recommended)" } else { "" },
                         );
+                    }
+                }
+                ProviderCommands::Import { id } => {
+                    let targets: Vec<String> = if let Some(provider) = id {
+                        vec![provider.to_ascii_lowercase()]
+                    } else {
+                        let providers = list_providers(&project_dir)?;
+                        providers
+                            .into_iter()
+                            .filter(|provider| provider.enabled)
+                            .map(|provider| provider.id)
+                            .collect()
+                    };
+
+                    if targets.is_empty() {
+                        println!(
+                            "No connected providers to import from. Connect one with `ship providers connect <id>`."
+                        );
+                    } else {
+                        for provider in targets {
+                            let summary = import_provider_surface(&project_dir, &provider)?;
+                            println!(
+                                "Imported from {}: mcp_servers={}, permissions={}",
+                                provider,
+                                summary.mcp_servers_added,
+                                if summary.permissions_imported {
+                                    "yes"
+                                } else {
+                                    "no"
+                                }
+                            );
+                        }
                     }
                 }
             }
@@ -1922,7 +2063,9 @@ fn handle_doctor_command() -> Result<()> {
                         );
                     }
                 }
-                None => println!("  ⚠ Shipwright MCP server 'ship' is not registered in ship.toml"),
+                None => println!(
+                    "  ⚠ Shipwright MCP server 'ship' is not registered in .ship/agents/mcp.toml"
+                ),
             }
         }
     }
@@ -2067,6 +2210,25 @@ fn parse_skill_write_scope(raw: &str) -> Result<SkillWriteScope> {
             other
         ),
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ProviderImportSummary {
+    mcp_servers_added: usize,
+    permissions_imported: bool,
+}
+
+fn import_provider_surface(project_dir: &Path, provider_id: &str) -> Result<ProviderImportSummary> {
+    let mcp_servers_added =
+        runtime::agents::export::import_from_provider(provider_id, project_dir.to_path_buf())?;
+    let permissions_imported = runtime::agents::export::import_permissions_from_provider(
+        provider_id,
+        project_dir.to_path_buf(),
+    )?;
+    Ok(ProviderImportSummary {
+        mcp_servers_added,
+        permissions_imported,
+    })
 }
 
 fn ensure_builtin_plugin_namespaces(project_dir: &PathBuf) -> Result<()> {
@@ -2257,6 +2419,92 @@ mod tests {
                 assert_eq!(path, PathBuf::from("/tmp/project"));
                 assert_eq!(name, "ship-core");
             }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_skill_install_subcommand() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "skill",
+            "install",
+            "vercel-labs/agent-skills",
+            "vercel-react-best-practices",
+            "--scope",
+            "user",
+            "--repo-path",
+            "skills",
+            "--git-ref",
+            "main",
+            "--force",
+        ])
+        .expect("skill install should parse");
+
+        match cli.command {
+            Some(Commands::Skill {
+                action:
+                    SkillCommands::Install {
+                        source,
+                        id,
+                        git_ref,
+                        repo_path,
+                        scope,
+                        force,
+                    },
+            }) => {
+                assert_eq!(source, "vercel-labs/agent-skills");
+                assert_eq!(id, "vercel-react-best-practices");
+                assert_eq!(git_ref, "main");
+                assert_eq!(repo_path, "skills");
+                assert_eq!(scope, "user");
+                assert!(force);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_providers_import_subcommand() {
+        let with_id = Cli::try_parse_from(["ship", "providers", "import", "codex"])
+            .expect("providers import <id> should parse");
+        match with_id.command {
+            Some(Commands::Providers {
+                action: ProviderCommands::Import { id },
+            }) => assert_eq!(id.as_deref(), Some("codex")),
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+
+        let no_id = Cli::try_parse_from(["ship", "providers", "import"])
+            .expect("providers import should parse");
+        match no_id.command {
+            Some(Commands::Providers {
+                action: ProviderCommands::Import { id },
+            }) => assert!(id.is_none()),
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mcp_export_subcommand() {
+        let cli = Cli::try_parse_from(["ship", "mcp", "export", "--target", "codex"])
+            .expect("mcp export should parse");
+        match cli.command {
+            Some(Commands::Mcp {
+                action: Some(McpCommands::Export { target }),
+            }) => assert_eq!(target, "codex"),
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mcp_import_subcommand() {
+        let cli = Cli::try_parse_from(["ship", "mcp", "import", "gemini"])
+            .expect("mcp import should parse");
+        match cli.command {
+            Some(Commands::Mcp {
+                action: Some(McpCommands::Import { provider }),
+            }) => assert_eq!(provider, "gemini"),
             other => panic!("unexpected parse result: {:?}", other),
         }
     }
