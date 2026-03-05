@@ -103,7 +103,6 @@ pub fn remove_feature_files(ship_dir: &Path, id: &str, title: &str) {
                 if let Ok(content) = std::fs::read_to_string(&p) {
                     if content.contains(id) {
                         std::fs::remove_file(&p).ok();
-                        return;
                     }
                 }
             }
@@ -185,6 +184,9 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
     feature.metadata.updated = Utc::now().to_rfc3339();
 
     upsert_feature_db(ship_dir, &feature, &existing.status)?;
+    // Ensure updates replace the existing exported markdown file instead of
+    // generating suffixed duplicates like `foo-2.md`.
+    remove_feature_files(ship_dir, &resolved_id, &existing.feature.metadata.title);
     write_feature_file(ship_dir, &feature, &existing.status)?;
 
     runtime::append_event(

@@ -131,6 +131,39 @@ mod tests {
     }
 
     #[test]
+    fn test_update_feature_content_rewrites_in_place_without_suffix_files() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_feature(
+            &project_dir,
+            "Pre-defined Agent Modes",
+            "initial",
+            None,
+            None,
+            None,
+        )?;
+
+        let canonical_path = runtime::project::features_dir(&project_dir)
+            .join("planned")
+            .join("pre-defined-agent-modes.md");
+        let suffixed_path = runtime::project::features_dir(&project_dir)
+            .join("planned")
+            .join("pre-defined-agent-modes-2.md");
+
+        // Simulate a stale duplicate file from prior updates.
+        let current = std::fs::read_to_string(&canonical_path)?;
+        std::fs::write(&suffixed_path, current)?;
+        assert!(suffixed_path.exists());
+
+        update_feature_content(&project_dir, &entry.id, "updated")?;
+        assert!(canonical_path.exists());
+        assert!(!suffixed_path.exists());
+        let content = std::fs::read_to_string(&canonical_path)?;
+        assert!(content.contains("updated"));
+        Ok(())
+    }
+
+    #[test]
     fn test_list_features() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
