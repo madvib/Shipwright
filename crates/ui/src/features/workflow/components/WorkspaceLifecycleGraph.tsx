@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '@ship/ui';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 export type WorkspaceGraphStatus =
@@ -296,13 +295,13 @@ export function WorkspaceLifecycleGraph({
   };
 
   return (
-    <Card size="sm" className="min-w-0">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{title}</CardTitle>
-        <CardDescription className="text-xs">{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-stretch gap-2.5 overflow-x-auto pb-1">
+    <div className="min-w-0 space-y-2">
+      <div className="px-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className="text-[11px] text-muted-foreground/80">{description}</p>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
           {columns.map((column) => {
             const collapsed = isCollapsed(column.id, column.rows.length);
 
@@ -340,10 +339,10 @@ export function WorkspaceLifecycleGraph({
             }
 
             return (
-              <div key={column.id} className="flex min-w-[300px] flex-1 flex-col">
+              <div key={column.id} className="flex min-w-[320px] flex-1 flex-col">
                 <div
                   className={cn(
-                    'flex h-full min-h-[20rem] max-h-[calc(100vh-17rem)] flex-col rounded-lg border bg-muted/20',
+                    'flex h-full min-h-[26rem] flex-col rounded-lg border bg-muted/20',
                     column.isSelected && 'ring-1 ring-primary/35'
                   )}
                 >
@@ -469,7 +468,7 @@ export function WorkspaceLifecycleGraph({
             </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

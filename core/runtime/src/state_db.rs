@@ -1230,6 +1230,45 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
     Ok(())
 }
 
+/// Delete workspace state for a branch, including any session history.
+pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
+    let mut conn = open_project_db(ship_dir)?;
+    let workspace_id = block_on(async {
+        sqlx::query_scalar::<_, String>(
+            "SELECT COALESCE(id, branch) FROM workspace WHERE branch = ?",
+        )
+        .bind(branch)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+
+    let Some(workspace_id) = workspace_id else {
+        return Ok(false);
+    };
+
+    let deleted = block_on(async {
+        sqlx::query("DELETE FROM workspace_session WHERE workspace_id = ? OR workspace_branch = ?")
+            .bind(&workspace_id)
+            .bind(branch)
+            .execute(&mut conn)
+            .await?;
+
+        sqlx::query("UPDATE spec SET workspace_id = NULL WHERE workspace_id = ?")
+            .bind(&workspace_id)
+            .execute(&mut conn)
+            .await?;
+
+        let result = sqlx::query("DELETE FROM workspace WHERE branch = ?")
+            .bind(branch)
+            .execute(&mut conn)
+            .await?;
+
+        Ok::<bool, sqlx::Error>(result.rows_affected() > 0)
+    })?;
+
+    Ok(deleted)
+}
+
 /// Mark any currently active workspace as idle except `active_branch`.
 pub fn demote_other_active_workspaces_db(
     ship_dir: &Path,

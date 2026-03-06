@@ -71,9 +71,9 @@ pub use state_db::{
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Workspace, WorkspaceSession,
     WorkspaceSessionStatus, WorkspaceStatus, WorkspaceType, activate_workspace, create_workspace,
-    end_workspace_session, get_active_workspace_session, get_workspace, list_workspace_sessions,
-    list_workspaces, start_workspace_session, sync_workspace, transition_workspace_status,
-    upsert_workspace, validate_workspace_transition,
+    delete_workspace, end_workspace_session, get_active_workspace_session, get_workspace,
+    list_workspace_sessions, list_workspaces, start_workspace_session, sync_workspace,
+    transition_workspace_status, upsert_workspace, validate_workspace_transition,
 };
 
 pub fn gen_nanoid() -> String {

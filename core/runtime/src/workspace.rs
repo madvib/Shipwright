@@ -1,9 +1,9 @@
 use crate::project::sanitize_file_name;
 use crate::state_db::{
-    WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, demote_other_active_workspaces_db,
-    get_active_workspace_session_db, get_workspace_db, get_workspace_session_db,
-    insert_workspace_session_db, list_workspace_sessions_db, list_workspaces_db, set_branch_link,
-    update_workspace_session_db, upsert_workspace_db,
+    WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, delete_workspace_db,
+    demote_other_active_workspaces_db, get_active_workspace_session_db, get_workspace_db,
+    get_workspace_session_db, insert_workspace_session_db, list_workspace_sessions_db,
+    list_workspaces_db, set_branch_link, update_workspace_session_db, upsert_workspace_db,
 };
 use crate::state_db::{get_branch_link, get_feature_by_branch_links, get_feature_links};
 use anyhow::{Context, Result, anyhow};
@@ -557,6 +557,13 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         });
     }
     Ok(workspaces)
+}
+
+pub fn delete_workspace(ship_dir: &Path, branch: &str) -> Result<()> {
+    let branch = ensure_branch_key(branch)?;
+    clear_branch_link(ship_dir, branch)?;
+    let _ = delete_workspace_db(ship_dir, branch)?;
+    Ok(())
 }
 
 pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
@@ -1178,6 +1185,55 @@ mod tests {
         assert!(workspace.feature_id.is_none());
         assert!(workspace.spec_id.is_none());
         assert!(get_branch_link(&ship_dir, "main")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn delete_workspace_removes_workspace_links_and_sessions() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        let workspace = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/delete-me".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                feature_id: Some("feat-delete".to_string()),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+
+        let now = Utc::now().to_rfc3339();
+        insert_workspace_session_db(
+            &ship_dir,
+            &WorkspaceSessionDb {
+                id: "session-delete-me".to_string(),
+                workspace_id: workspace.id.clone(),
+                workspace_branch: workspace.branch.clone(),
+                status: WorkspaceSessionStatus::Ended.to_string(),
+                started_at: now.clone(),
+                ended_at: Some(now.clone()),
+                mode_id: None,
+                primary_provider: None,
+                goal: None,
+                summary: Some("done".to_string()),
+                updated_feature_ids: Vec::new(),
+                updated_spec_ids: Vec::new(),
+                compiled_at: None,
+                compile_error: None,
+                created_at: now.clone(),
+                updated_at: now,
+            },
+        )?;
+        assert_eq!(list_workspace_sessions(&ship_dir, None, 10)?.len(), 1);
+
+        delete_workspace(&ship_dir, "feature/delete-me")?;
+
+        assert!(get_workspace(&ship_dir, "feature/delete-me")?.is_none());
+        assert!(get_branch_link(&ship_dir, "feature/delete-me")?.is_none());
+        assert!(list_workspace_sessions(&ship_dir, None, 10)?.is_empty());
         Ok(())
     }
 

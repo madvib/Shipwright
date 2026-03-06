@@ -33,6 +33,36 @@ export interface CreateProjectPayload {
   config?: ProjectConfig;
 }
 
+export interface WorkspaceEditorInfo {
+  id: string;
+  name: string;
+  binary: string;
+}
+
+export interface WorkspaceFileChange {
+  status: string;
+  path: string;
+}
+
+export interface WorkspaceSessionInfo {
+  id: string;
+  workspace_id: string;
+  workspace_branch: string;
+  status: 'active' | 'ended';
+  started_at: string;
+  ended_at?: string | null;
+  mode_id?: string | null;
+  primary_provider?: string | null;
+  goal?: string | null;
+  summary?: string | null;
+  updated_feature_ids: string[];
+  updated_spec_ids: string[];
+  compiled_at?: string | null;
+  compile_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type TemplateKind = 'issue' | 'adr' | 'spec' | 'release' | 'feature' | 'vision';
 export type NotesScope = 'project' | 'global';
 
@@ -59,6 +89,8 @@ export const listEventEntries = (
 export const ingestEventChanges = (): Promise<number> => invoke('ingest_events_cmd');
 export const getWorkspaceCmd = (branch: string): Promise<Result<Workspace | null, string>> =>
   invoke('get_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace | null, string>)).catch(error => ({ status: 'error', error }));
+export const listWorkspaceEditorsCmd = (): Promise<Result<WorkspaceEditorInfo[], string>> =>
+  invoke('list_workspace_editors_cmd').then(data => ({ status: 'ok', data } as Result<WorkspaceEditorInfo[], string>)).catch(error => ({ status: 'error', error }));
 export const listWorkspacesCmd = (): Promise<Result<Workspace[], string>> =>
   invoke('list_workspaces_cmd').then(data => ({ status: 'ok', data } as Result<Workspace[], string>)).catch(error => ({ status: 'error', error }));
 export const syncWorkspaceCmd = (branch?: string | null): Promise<Result<Workspace, string>> =>
@@ -83,6 +115,36 @@ export const createWorkspaceCmd = (
   }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const activateWorkspaceCmd = (branch: string): Promise<Result<Workspace, string>> =>
   invoke('activate_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+export const deleteWorkspaceCmd = (branch: string): Promise<Result<null, string>> =>
+  invoke('delete_workspace_cmd', { branch })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const getActiveWorkspaceSessionCmd = (
+  branch: string
+): Promise<Result<WorkspaceSessionInfo | null, string>> =>
+  invoke('get_active_workspace_session_cmd', { branch })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo | null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const listWorkspaceSessionsCmd = (
+  branch?: string | null,
+  limit?: number | null
+): Promise<Result<WorkspaceSessionInfo[], string>> =>
+  invoke('list_workspace_sessions_cmd', { branch: branch ?? null, limit: limit ?? null })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo[], string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const listWorkspaceChangesCmd = (
+  branch: string
+): Promise<Result<WorkspaceFileChange[], string>> =>
+  invoke('list_workspace_changes_cmd', { branch })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceFileChange[], string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const openWorkspaceEditorCmd = (
+  branch: string,
+  editor: string
+): Promise<Result<null, string>> =>
+  invoke('open_workspace_editor_cmd', { branch, editor })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
 export const transitionWorkspaceCmd = (
   branch: string,
   status: string

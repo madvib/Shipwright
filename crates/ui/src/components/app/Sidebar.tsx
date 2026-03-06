@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import {
-  ChevronDown,
   FileCog,
   FolderOpen,
   FolderPlus,
@@ -82,13 +81,7 @@ export default function Sidebar({
   contextualContent,
   onBackToGlobal,
 }: SidebarProps) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
-    sections.reduce((acc, section) => ({ ...acc, [section.id]: true }), {})
-  );
-
-  const toggleSection = (id: string) => {
-    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const hasSingleSection = sections.length <= 1;
 
   const otherProjects = (recentProjects || [])
     .filter((project) => project.path !== activeProject?.path)
@@ -325,33 +318,27 @@ export default function Sidebar({
           sections.map((section, idx) => (
             <div key={section.id} className="w-full">
               <div className="w-full space-y-0.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start px-2 h-7 hover:bg-transparent cursor-default"
-                  onClick={() => toggleSection(section.id)}
-                >
-                  <span className="font-mono text-[9px] font-black text-sidebar-foreground/50 uppercase tracking-[0.2em]">
+                {!hasSingleSection && section.label.trim().length > 0 && (
+                  <p className="px-2 pt-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-sidebar-foreground/50">
                     {section.label}
-                  </span>
-                  <ChevronDown className={cn('ml-auto size-3 opacity-30 transition-transform text-sidebar-foreground', openSections[section.id] && 'rotate-180')} />
-                </Button>
-                {openSections[section.id] && (
-                  <div className="space-y-0.5 pb-1">
-                    {section.items.map((item) => renderNavButton(item))}
-                  </div>
+                  </p>
                 )}
+                <div className={cn("space-y-0.5", !hasSingleSection && "pb-1")}>
+                  {section.items.map((item) => renderNavButton(item))}
+                </div>
               </div>
-              {idx < sections.length - 1 && <Separator className="my-2 opacity-10 bg-sidebar-border" />}
+              {!hasSingleSection && idx < sections.length - 1 && <Separator className="my-2 opacity-10 bg-sidebar-border" />}
             </div>
           ))
         ) : (
           <div className="flex flex-col items-center gap-6 py-4">
             {sections.map((section, idx) => (
               <div key={section.id} className="group flex flex-col items-center gap-1.5">
-                <span className="text-[7px] font-black text-sidebar-foreground/50 uppercase tracking-[0.2em] transition-colors group-hover:text-sidebar-primary/70">
-                  {section.id.slice(0, 3).toUpperCase()}
-                </span>
+                {section.label.trim().length > 0 && (
+                  <span className="text-[7px] font-black text-sidebar-foreground/50 uppercase tracking-[0.2em] transition-colors group-hover:text-sidebar-primary/70">
+                    {section.label.slice(0, 3).toUpperCase()}
+                  </span>
+                )}
                 <div className="flex flex-col gap-1 w-full">
                   {section.items.map(item => renderNavButton(item, true))}
                 </div>

@@ -9,13 +9,14 @@ use runtime::project::{
 };
 use runtime::{
     activate_workspace, create_skill, create_user_skill, create_workspace, delete_skill,
-    delete_user_skill, get_effective_skill, get_skill, get_user_skill, get_workspace,
-    ingest_external_events, list_catalog, list_catalog_by_kind, list_effective_skills,
-    list_events_since, list_models, list_providers, list_skills, list_user_skills, list_workspaces,
-    log_action, read_log_entries, resolve_agent_config, search_catalog, sync_workspace,
+    delete_user_skill, delete_workspace, get_active_workspace_session, get_effective_skill,
+    get_skill, get_user_skill, get_workspace, ingest_external_events, list_catalog,
+    list_catalog_by_kind, list_effective_skills, list_events_since, list_models, list_providers,
+    list_skills, list_user_skills, list_workspace_sessions, list_workspaces, log_action,
+    read_log_entries, resolve_agent_config, search_catalog, sync_workspace,
     transition_workspace_status, update_skill, update_user_skill, AgentConfig, CatalogEntry,
     CatalogKind, CreateWorkspaceRequest, EventRecord, LogEntry, ModelInfo, ProviderInfo, Skill,
-    Workspace, WorkspaceStatus, WorkspaceType,
+    Workspace, WorkspaceSession, WorkspaceStatus, WorkspaceType,
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
@@ -166,6 +167,19 @@ pub struct FeatureDocument {
     pub path: String,
     pub updated: String,
     pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct WorkspaceEditorInfo {
+    pub id: String,
+    pub name: String,
+    pub binary: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct WorkspaceFileChange {
+    pub status: String,
+    pub path: String,
 }
 
 fn get_active_dir(state: &State<AppState>) -> Result<PathBuf, String> {
@@ -1532,6 +1546,96 @@ fn save_permissions_cmd(
 
 // ─── Commands: Workspace ──────────────────────────────────────────────────────
 
+const WORKSPACE_EDITOR_ALIASES_CURSOR: &[&str] = &["cursor"];
+const WORKSPACE_EDITOR_ALIASES_VSCODE: &[&str] = &["vscode", "code", "vs-code"];
+const WORKSPACE_EDITOR_ALIASES_ZED: &[&str] = &["zed"];
+
+const SUPPORTED_WORKSPACE_EDITORS: [(&str, &str, &str, &[&str]); 3] = [
+    (
+        "cursor",
+        "Cursor",
+        "cursor",
+        WORKSPACE_EDITOR_ALIASES_CURSOR,
+    ),
+    ("vscode", "VS Code", "code", WORKSPACE_EDITOR_ALIASES_VSCODE),
+    ("zed", "Zed", "zed", WORKSPACE_EDITOR_ALIASES_ZED),
+];
+
+fn command_exists_in_path(binary: &str) -> bool {
+    let path_env = match std::env::var_os("PATH") {
+        Some(value) => value,
+        None => return false,
+    };
+
+    for dir in std::env::split_paths(&path_env) {
+        let candidate = dir.join(binary);
+        if candidate.is_file() {
+            return true;
+        }
+
+        #[cfg(windows)]
+        {
+            let exts = ["exe", "cmd", "bat", "com"];
+            if exts
+                .iter()
+                .map(|ext| dir.join(format!("{}.{}", binary, ext)))
+                .any(|path| path.is_file())
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn normalize_workspace_editor_id(raw: &str) -> Option<&'static str> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    SUPPORTED_WORKSPACE_EDITORS
+        .iter()
+        .find(|(id, _, _, aliases)| {
+            id.eq_ignore_ascii_case(&normalized)
+                || aliases
+                    .iter()
+                    .any(|alias| alias.eq_ignore_ascii_case(&normalized))
+        })
+        .map(|(id, _, _, _)| *id)
+}
+
+fn resolve_workspace_target_dir(ship_dir: &Path, workspace: Option<&Workspace>) -> PathBuf {
+    if let Some(entry) = workspace {
+        if entry.is_worktree {
+            if let Some(path) = entry.worktree_path.as_deref() {
+                if !path.trim().is_empty() {
+                    return PathBuf::from(path);
+                }
+            }
+        }
+    }
+
+    ship_dir.parent().unwrap_or(ship_dir).to_path_buf()
+}
+
+#[tauri::command]
+#[specta::specta]
+fn list_workspace_editors_cmd() -> Result<Vec<WorkspaceEditorInfo>, String> {
+    let installed = SUPPORTED_WORKSPACE_EDITORS
+        .iter()
+        .filter(|(_, _, binary, _)| command_exists_in_path(binary))
+        .map(|(id, name, binary, _)| WorkspaceEditorInfo {
+            id: (*id).to_string(),
+            name: (*name).to_string(),
+            binary: (*binary).to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(installed)
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn get_workspace_cmd(
@@ -1642,6 +1746,144 @@ async fn activate_workspace_cmd(
     let project_dir = get_active_dir(&state)?;
     tauri::async_runtime::spawn_blocking(move || {
         activate_workspace(&project_dir, &branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn delete_workspace_cmd(branch: String, state: State<'_, AppState>) -> Result<(), String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        delete_workspace(&project_dir, &branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_active_workspace_session_cmd(
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<Option<WorkspaceSession>, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        get_active_workspace_session(&project_dir, &branch).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn list_workspace_sessions_cmd(
+    branch: Option<String>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkspaceSession>, String> {
+    let project_dir = get_active_dir(&state)?;
+    let clamped_limit = limit.unwrap_or(25).clamp(1, 200);
+    tauri::async_runtime::spawn_blocking(move || {
+        list_workspace_sessions(&project_dir, branch.as_deref(), clamped_limit)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn list_workspace_changes_cmd(
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkspaceFileChange>, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let workspace = get_workspace(&project_dir, &branch).map_err(|e| e.to_string())?;
+        let target_dir = resolve_workspace_target_dir(&project_dir, workspace.as_ref());
+
+        let output = std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&target_dir)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            return Err("Failed to resolve workspace file changes".to_string());
+        }
+
+        let parsed = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+
+                let status = line.get(0..2)?.trim().to_string();
+                let raw_path = line.get(3..)?.trim();
+                if raw_path.is_empty() {
+                    return None;
+                }
+                let normalized_path = raw_path
+                    .rsplit(" -> ")
+                    .next()
+                    .unwrap_or(raw_path)
+                    .trim()
+                    .to_string();
+
+                Some(WorkspaceFileChange {
+                    status,
+                    path: normalized_path,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(parsed)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn open_workspace_editor_cmd(
+    branch: String,
+    editor: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let workspace = get_workspace(&project_dir, &branch).map_err(|e| e.to_string())?;
+        let target_dir = resolve_workspace_target_dir(&project_dir, workspace.as_ref());
+
+        let normalized_editor_id = normalize_workspace_editor_id(&editor).ok_or_else(|| {
+            format!(
+                "Unknown editor '{}'. Use one of: cursor, vscode, zed",
+                editor
+            )
+        })?;
+
+        let (_, _, binary, _) = SUPPORTED_WORKSPACE_EDITORS
+            .iter()
+            .find(|(id, _, _, _)| *id == normalized_editor_id)
+            .ok_or_else(|| format!("Editor '{}' is not supported", normalized_editor_id))?;
+
+        if !command_exists_in_path(binary) {
+            return Err(format!(
+                "Editor '{}' is not available in PATH on this machine",
+                normalized_editor_id
+            ));
+        }
+
+        std::process::Command::new(binary)
+            .arg(target_dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2109,11 +2351,17 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             get_permissions_cmd,
             save_permissions_cmd,
             // Workspace
+            list_workspace_editors_cmd,
             get_workspace_cmd,
             list_workspaces_cmd,
             sync_workspace_cmd,
             create_workspace_cmd,
             activate_workspace_cmd,
+            delete_workspace_cmd,
+            get_active_workspace_session_cmd,
+            list_workspace_sessions_cmd,
+            list_workspace_changes_cmd,
+            open_workspace_editor_cmd,
             transition_workspace_cmd,
             get_current_branch_cmd,
             // Log

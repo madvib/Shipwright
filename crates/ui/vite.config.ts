@@ -11,6 +11,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [TanStackRouterVite(), react(), tailwind()],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": "/src",
       "@ship/ui": fileURLToPath(new URL("../ui-kit/src/index.ts", import.meta.url)),
