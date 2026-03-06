@@ -397,6 +397,73 @@ fn workspace_create_worktree_sets_metadata_and_creates_worktree_dir() {
 }
 
 #[test]
+fn workspace_switch_to_worktree_branch_activates_without_main_checkout() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let worktree_path = project.root().join(".worktrees").join("feature-ai-runtime");
+    let worktree_arg = worktree_path.to_string_lossy().to_string();
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            "feature/ai-runtime",
+            "--worktree",
+            "--worktree-path",
+            &worktree_arg,
+            "--type",
+            "feature",
+            "--feature-title",
+            "AI Runtime",
+        ],
+    );
+    assert_success(&out, "workspace create --worktree failed");
+
+    let out = run_cli(
+        &project,
+        &["workspace", "create", "feature/main-runtime", "--checkout"],
+    );
+    assert_success(&out, "workspace create --checkout failed");
+    assert_eq!(project.current_branch(), "feature/main-runtime");
+    let root_context_before = std::fs::read_to_string(project.root().join("CLAUDE.md")).ok();
+
+    let out = run_cli(&project, &["workspace", "switch", "feature/ai-runtime"]);
+    assert_success(
+        &out,
+        "workspace switch should activate worktree branch without git checkout in main checkout",
+    );
+
+    let worktree_workspace = get_workspace(&project.ship_dir, "feature/ai-runtime")
+        .unwrap()
+        .expect("worktree workspace should exist");
+    let main_workspace = get_workspace(&project.ship_dir, "feature/main-runtime")
+        .unwrap()
+        .expect("main workspace should exist");
+    assert_eq!(worktree_workspace.status, WorkspaceStatus::Active);
+    assert_eq!(main_workspace.status, WorkspaceStatus::Idle);
+    assert_eq!(
+        project.current_branch(),
+        "feature/main-runtime",
+        "main checkout branch should remain unchanged when switching to a worktree workspace"
+    );
+    let root_context_after = std::fs::read_to_string(project.root().join("CLAUDE.md")).ok();
+    assert_eq!(
+        root_context_before, root_context_after,
+        "switching to a worktree workspace should not mutate context in main checkout root"
+    );
+    let worktree_context = std::fs::read_to_string(worktree_path.join("CLAUDE.md"))
+        .expect("switching worktree workspace should ensure worktree context is present");
+    assert!(
+        worktree_context.contains("# [ship] AI Runtime"),
+        "worktree context should match linked feature title:\n{}",
+        worktree_context
+    );
+}
+
+#[test]
 fn workspace_archive_rejects_active_workspace_transition() {
     let project = TestProject::with_git().unwrap();
     let init = project.initial_commit().unwrap();

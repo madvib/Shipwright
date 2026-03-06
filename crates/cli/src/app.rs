@@ -583,12 +583,29 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     );
                 }
                 WorkspaceCommands::Switch { branch, mode } => {
-                    let result = ProcessCommand::new("git")
-                        .args(["checkout", &branch])
-                        .current_dir(&project_root)
-                        .status()?;
-                    if !result.success() {
-                        anyhow::bail!("Failed to checkout branch: {}", branch);
+                    let existing_workspace = get_workspace(&project_dir, &branch)?;
+                    let switch_targets_worktree = existing_workspace
+                        .as_ref()
+                        .map(|workspace| workspace.is_worktree)
+                        .unwrap_or(false);
+
+                    if !switch_targets_worktree {
+                        let result = ProcessCommand::new("git")
+                            .args(["checkout", &branch])
+                            .current_dir(&project_root)
+                            .status()?;
+                        if !result.success() {
+                            anyhow::bail!("Failed to checkout branch: {}", branch);
+                        }
+                    } else if let Some(workspace) = existing_workspace.as_ref() {
+                        let context_root = resolve_workspace_context_root(&project_root, workspace);
+                        if !context_root.exists() {
+                            anyhow::bail!(
+                                "Workspace '{}' is a worktree, but path does not exist: {}",
+                                branch,
+                                context_root.display()
+                            );
+                        }
                     }
                     let mut workspace = activate_workspace(&project_dir, &branch)?;
                     if let Some(mode_id) = mode.as_deref() {
