@@ -1,14 +1,13 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import {
   AdrEntry,
   FeatureDocument,
-  IssueEntry,
   ProjectDiscovery as Project,
   ProjectConfig,
   ReleaseDocument,
   StatusConfig,
 } from '@/bindings';
-import { SpecDocument } from '@/lib/types/spec';
+import { SpecInfo } from '@/lib/types/spec';
 import { CreateProjectInput } from '@/features/planning/ProjectOnboarding';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import {
@@ -26,9 +25,8 @@ interface UseProjectActionsParams {
   setError: Dispatch<SetStateAction<string | null>>;
   setActiveProject: Dispatch<SetStateAction<Project | null>>;
   setDetectedProject: Dispatch<SetStateAction<Project | null>>;
-  setSelectedIssue: Dispatch<SetStateAction<IssueEntry | null>>;
   setSelectedAdr: Dispatch<SetStateAction<AdrEntry | null>>;
-  setSelectedSpec: Dispatch<SetStateAction<SpecDocument | null>>;
+  setSelectedSpec: Dispatch<SetStateAction<SpecInfo | null>>;
   setSelectedRelease: Dispatch<SetStateAction<ReleaseDocument | null>>;
   setSelectedFeature: Dispatch<SetStateAction<FeatureDocument | null>>;
   setCreatingProject: Dispatch<SetStateAction<boolean>>;
@@ -40,7 +38,6 @@ export function useProjectActions({
   setError,
   setActiveProject,
   setDetectedProject,
-  setSelectedIssue,
   setSelectedAdr,
   setSelectedSpec,
   setSelectedRelease,
@@ -49,23 +46,22 @@ export function useProjectActions({
   loadProjectData,
   loadProjectConfig,
 }: UseProjectActionsParams) {
-  const resetSelection = () => {
-    setSelectedIssue(null);
+  const resetSelection = useCallback(() => {
     setSelectedAdr(null);
     setSelectedSpec(null);
     setSelectedRelease(null);
     setSelectedFeature(null);
-  };
+  }, [setSelectedAdr, setSelectedSpec, setSelectedRelease, setSelectedFeature]);
 
-  const activateProjectFromInfo = async (info: { name: string; path: string; issue_count?: number }) => {
+  const activateProjectFromInfo = useCallback(async (info: { name: string; path: string; issue_count?: number }) => {
     setActiveProject(projectFromInfo(info));
     setDetectedProject(null);
     resetSelection();
     await loadProjectData();
     await loadProjectConfig();
-  };
+  }, [setActiveProject, setDetectedProject, resetSelection, loadProjectData, loadProjectConfig]);
 
-  const handleOpenProject = async () => {
+  const handleOpenProject = useCallback(async () => {
     if (!isTauriRuntime()) {
       setError('Project picker is only available in Tauri runtime.');
       return;
@@ -78,9 +74,9 @@ export function useProjectActions({
       if (String(error).includes('No directory selected')) return;
       setError(String(error));
     }
-  };
+  }, [setError, activateProjectFromInfo]);
 
-  const handleNewProject = async () => {
+  const handleNewProject = useCallback(async () => {
     if (!isTauriRuntime()) {
       setError('Project creation is only available in Tauri runtime.');
       return;
@@ -93,9 +89,9 @@ export function useProjectActions({
       if (String(error).includes('No directory selected')) return;
       setError(String(error));
     }
-  };
+  }, [setError, activateProjectFromInfo]);
 
-  const handlePickProjectDirectory = async (): Promise<string | null> => {
+  const handlePickProjectDirectory = useCallback(async (): Promise<string | null> => {
     if (!isTauriRuntime()) {
       setError('Directory picker is only available in Tauri runtime.');
       return null;
@@ -107,9 +103,9 @@ export function useProjectActions({
       setError(String(error));
       return null;
     }
-  };
+  }, [setError]);
 
-  const handleCreateProjectFromForm = async (input: CreateProjectInput) => {
+  const handleCreateProjectFromForm = useCallback(async (input: CreateProjectInput) => {
     if (!isTauriRuntime()) {
       setError('Project creation is only available in Tauri runtime.');
       return;
@@ -147,9 +143,9 @@ export function useProjectActions({
     } finally {
       setCreatingProject(false);
     }
-  };
+  }, [setError, setCreatingProject, activateProjectFromInfo]);
 
-  const handleSelectProject = async (project: Project): Promise<boolean> => {
+  const handleSelectProject = useCallback(async (project: Project): Promise<boolean> => {
     if (!isTauriRuntime()) {
       setError('Project switching is only available in Tauri runtime.');
       return false;
@@ -163,13 +159,19 @@ export function useProjectActions({
       setError(String(error));
       return false;
     }
-  };
+  }, [setError, activateProjectFromInfo]);
 
-  return {
+  return useMemo(() => ({
     handleOpenProject,
     handleNewProject,
     handlePickProjectDirectory,
     handleCreateProjectFromForm,
     handleSelectProject,
-  };
+  }), [
+    handleOpenProject,
+    handleNewProject,
+    handlePickProjectDirectory,
+    handleCreateProjectFromForm,
+    handleSelectProject,
+  ]);
 }

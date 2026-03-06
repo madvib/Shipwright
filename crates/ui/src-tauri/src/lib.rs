@@ -1452,6 +1452,18 @@ fn update_note_cmd(
     })
 }
 
+#[tauri::command]
+#[specta::specta]
+fn delete_note_cmd(
+    id: String,
+    scope: Option<String>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let (note_scope, project_dir) = resolve_note_scope_and_dir(&state, scope)?;
+    ship_module_project::delete_note(note_scope, project_dir.as_deref(), &id)
+        .map_err(|e| e.to_string())
+}
+
 // ─── Commands: Rules ──────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -2086,6 +2098,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             get_note_cmd,
             create_note_cmd,
             update_note_cmd,
+            delete_note_cmd,
             // Rules
             list_rules_cmd,
             get_rule_cmd,
@@ -2186,6 +2199,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(builder.invoke_handler())
+        .setup(move |app| {
+            builder.mount_events(app);
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

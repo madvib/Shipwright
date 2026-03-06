@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import ProjectOverview from '@/features/planning/ProjectOverview';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
+import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { AppRoutePath } from '@/lib/constants/routes';
 
 function OverviewRouteComponent() {
   const workspace = useWorkspace();
+  const ship = useShip();
   const navigate = useNavigate();
 
   if (!workspace.activeProject) {
@@ -18,14 +19,12 @@ function OverviewRouteComponent() {
   return (
     <ProjectOverview
       project={workspace.activeProject}
-      issues={workspace.issues}
-      specs={workspace.specs}
-      adrs={workspace.adrs}
-      releases={workspace.releases}
-      features={workspace.features}
-      notes={workspace.notes}
+      specs={ship.specs}
+      adrs={ship.adrs}
+      releases={ship.releases}
+      features={ship.features}
+      notes={ship.notes}
       events={workspace.eventEntries}
-      statuses={workspace.statuses}
       onNavigate={handleNavigate}
     />
   );

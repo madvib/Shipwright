@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import { ADR } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import DatePicker from '@/components/ui/date-picker';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { DatePicker } from '@ship/ui';
+import { AutocompleteInput } from '@ship/ui';
 
 interface AdrFrontmatterPanelProps {
   adr: ADR;

@@ -1,39 +1,39 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import FeaturesPage from '@/features/planning/FeaturesPage';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
+import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { RELEASES_ROUTE } from '@/lib/constants/routes';
 
 function FeaturesRouteComponent() {
   const workspace = useWorkspace();
+  const ship = useShip();
   const navigate = useNavigate();
 
   return (
     <FeaturesPage
-      features={workspace.features}
-      releases={workspace.releases}
-      specs={workspace.specs}
-      adrs={workspace.adrs}
-      selectedFeature={workspace.selectedFeature}
-      onCloseFeatureDetail={() => workspace.setSelectedFeature(null)}
-      onSelectFeature={workspace.handleSelectFeature}
+      features={ship.features}
+      releases={ship.releases}
+      specs={ship.specs}
+      selectedFeature={ship.selectedFeature}
+      onCloseFeatureDetail={() => ship.setSelectedFeature(null)}
+      onSelectFeature={ship.handleSelectFeature}
       onSelectReleaseFromFeature={(name) => {
-        const release = workspace.releases.find(
+        const release = ship.releases.find(
           (entry) => entry.file_name === name || entry.version === name
         );
         if (!release) return;
-        workspace.setSelectedFeature(null);
+        ship.setSelectedFeature(null);
         void navigate({ to: RELEASES_ROUTE });
-        void workspace.handleSelectRelease(release);
+        void ship.handleSelectRelease(release);
       }}
       onSelectSpecFromFeature={(name) => {
-        const spec = workspace.specs.find((entry) => entry.file_name === name);
+        const spec = ship.specs.find((entry) => entry.file_name === name);
         if (!spec) return;
-        workspace.setSelectedFeature(null);
-        void workspace.handleSelectSpec(spec);
+        ship.setSelectedFeature(null);
+        void ship.handleSelectSpec(spec);
       }}
-      onSaveFeature={workspace.handleSaveFeature}
-      onCreateFeature={workspace.handleCreateFeature}
-      tagSuggestions={workspace.tagSuggestions}
+      onSaveFeature={ship.handleSaveFeature}
+      onCreateFeature={ship.handleCreateFeature}
+      tagSuggestions={ship.tagSuggestions}
       mcpEnabled={workspace.mcpEnabled}
     />
   );

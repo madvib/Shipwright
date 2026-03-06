@@ -1,16 +1,24 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, StickyNote } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+// useNavigate removed – no longer needed after SPECS_ROUTE removal
+import { Plus, StickyNote, Trash2 } from 'lucide-react';
+import { Button } from '@ship/ui';
+import { Input } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import MarkdownEditor from '@/components/editor';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
+import { Badge } from '@ship/ui';
+import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { relativeDate } from '@/lib/date';
 import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';
-import { createNoteCmd, getNoteCmd, listNotes, updateNoteCmd } from '@/lib/platform/tauri/commands';
+import { createNoteCmd, deleteNoteCmd, getNoteCmd, listNotes, updateNoteCmd } from '@/lib/platform/tauri/commands';
 import { isTauriRuntime } from '@/lib/platform/tauri/runtime';
+import { NoteMetadata } from './NoteMetadata';
+import {
+    splitFrontmatterDocument,
+    composeFrontmatterDocument,
+    setFrontmatterStringListField,
+} from '@ship/ui';
+// Specs are no longer a top-level route
 
 type EditableNote = {
     title: string;
@@ -45,17 +53,23 @@ NoteListItem.displayName = 'NoteListItem';
 
 export default function NotesPage() {
     const {
-        notes: projectNotes,
-        selectedNote: projectSelectedNote,
         loading: projectLoading,
         notesScope,
-        handleSelectNote: handleSelectProjectNote,
-        handleCreateNote: handleCreateProjectNote,
-        handleSaveNote: handleSaveProjectNote,
-        setSelectedNote: setProjectSelectedNote,
         setError,
         refreshActivity,
     } = useWorkspace();
+
+    const {
+        notes: projectNotes,
+        selectedNote: projectSelectedNote,
+        handleSelectNote: handleSelectProjectNote,
+        handleCreateNote: handleCreateProjectNote,
+        handleSaveNote: handleSaveProjectNote,
+        handleDeleteNote: handleDeleteProjectNote,
+        setSelectedNote: setProjectSelectedNote,
+        specSuggestions,
+        tagSuggestions,
+    } = useShip();
 
     const isGlobalScope = notesScope === 'global';
     const [globalNotes, setGlobalNotes] = useState<NoteEntry[]>([]);
@@ -214,6 +228,26 @@ export default function NotesPage() {
         }
     }, [isGlobalScope, handleSaveProjectNote, refreshActivity, setError]);
 
+    const handleDeleteNote = useCallback(async () => {
+        if (!localNote?.id) return;
+
+        if (!confirm('Are you sure you want to delete this note?')) return;
+
+        try {
+            if (isGlobalScope) {
+                await deleteNoteCmd(localNote.id, 'global');
+                setGlobalNotes(prev => prev.filter(n => n.id !== localNote.id));
+                setGlobalSelectedNote(null);
+            } else {
+                await handleDeleteProjectNote(localNote.id);
+            }
+            setLocalNote(null);
+            await refreshActivity();
+        } catch (error) {
+            setError(String(error));
+        }
+    }, [isGlobalScope, localNote?.id, refreshActivity, setError, handleDeleteProjectNote]);
+
     const handleNewNote = useCallback(() => {
         const stub: EditableNote = {
             title: '',
@@ -263,6 +297,25 @@ export default function NotesPage() {
         scheduleAutoSave(next.title, next.content, next.id);
     };
 
+    const handleMetadataChange = (nextSpecs: string[], nextTags: string[]) => {
+        if (!localNote) return;
+        const { frontmatter, body, delimiter } = splitFrontmatterDocument(localNote.content);
+        let nextFrontmatter = setFrontmatterStringListField(
+            frontmatter,
+            'specs',
+            nextSpecs,
+            delimiter ?? '+++'
+        );
+        nextFrontmatter = setFrontmatterStringListField(
+            nextFrontmatter,
+            'tags',
+            nextTags,
+            delimiter ?? '+++'
+        );
+        const nextContent = composeFrontmatterDocument(nextFrontmatter, body, delimiter ?? '+++');
+        handleContentChange(nextContent);
+    };
+
     const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Tab') {
             e.preventDefault();
@@ -291,8 +344,8 @@ export default function NotesPage() {
                     title={isGlobalScope ? 'Global Notes' : 'Notes'}
                     badge={<Badge variant="outline">{isGlobalScope ? 'Global' : 'Project'}</Badge>}
                     actions={
-                        <Button size="sm" onClick={handleNewNote}>
-                            <Plus className="size-3.5" />
+                        <Button onClick={handleNewNote} className="gap-2">
+                            <Plus className="size-4" />
                             New Note
                         </Button>
                     }
@@ -357,15 +410,36 @@ export default function NotesPage() {
                                 >
                                     {saveIndicator === 'saving' ? 'Saving…' : 'Saved ✓'}
                                 </div>
+                                <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    onClick={handleDeleteNote}
+                                    className="text-muted-foreground hover:text-destructive transition-colors"
+                                >
+                                    <Trash2 className="size-4" />
+                                </Button>
                             </div>
+
+                            <NoteMetadata
+                                frontmatter={splitFrontmatterDocument(localNote.content).frontmatter}
+                                updated={selectedNote?.updated || new Date().toISOString()}
+                                specSuggestions={specSuggestions}
+                                tagSuggestions={tagSuggestions}
+                                isEditing={true}
+                                onChange={handleMetadataChange}
+                                onNavigate={() => {}}
+                            />
+
                             <div className="flex-1 min-h-0 rounded-lg border border-border/40 bg-background/50 overflow-hidden shadow-inner ring-1 ring-inset ring-white/5">
                                 <MarkdownEditor
+                                    key={localNote?.id || 'new'}
                                     value={localNote.content}
                                     onChange={handleContentChange}
                                     placeholder="Start writing your thoughts…"
                                     showFrontmatter={false}
                                     showStats={false}
                                     fillHeight
+                                    specSuggestions={specSuggestions}
                                 />
                             </div>
                         </div>

@@ -1,5 +1,5 @@
-import { Dispatch, SetStateAction } from 'react';
-import { FeatureDocument, FeatureInfo as FeatureEntry } from '@/bindings';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
+import { FeatureInfo, FeatureDocument } from '@/bindings';
 import {
   createFeatureCmd,
   getFeatureCmd,
@@ -8,7 +8,7 @@ import {
 import { isTauriRuntime } from '../../platform/tauri/runtime';
 
 interface UseFeatureActionsParams {
-  setFeatures: Dispatch<SetStateAction<FeatureEntry[]>>;
+  setFeatures: Dispatch<SetStateAction<FeatureInfo[]>>;
   setSelectedFeature: Dispatch<SetStateAction<FeatureDocument | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   refreshActivity: () => Promise<void>;
@@ -20,9 +20,11 @@ export function useFeatureActions({
   setError,
   refreshActivity,
 }: UseFeatureActionsParams) {
-  const handleSelectFeature = async (entry: FeatureEntry) => {
+  const handleSelectFeature = useCallback(async (entry: FeatureInfo) => {
     if (!isTauriRuntime()) {
-      setSelectedFeature({ ...entry, content: '' });
+      // In non-tauri, we can't fetch the document, so we just set the info
+      // but the types will complain. This is a fallback case.
+      setSelectedFeature(entry as unknown as FeatureDocument);
       return;
     }
 
@@ -36,9 +38,9 @@ export function useFeatureActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setSelectedFeature, setError]);
 
-  const handleCreateFeature = async (
+  const handleCreateFeature = useCallback(async (
     title: string,
     content: string,
     release?: string | null,
@@ -53,21 +55,7 @@ export function useFeatureActions({
       const result = await createFeatureCmd(title, content, release, spec);
       if (result.status === 'ok') {
         const created = result.data;
-        setFeatures((prev) => [
-          ...prev,
-          {
-            id: created.id,
-            file_name: created.file_name,
-            title: created.title,
-            status: created.status,
-            release_id: created.release_id,
-            spec_id: created.spec_id,
-            branch: created.branch,
-            description: created.description,
-            path: created.path,
-            updated: created.updated,
-          },
-        ]);
+        setFeatures((prev) => [...prev, created]);
         setSelectedFeature(created);
         await refreshActivity();
       } else {
@@ -78,9 +66,9 @@ export function useFeatureActions({
       setError(String(error));
       throw error;
     }
-  };
+  }, [setFeatures, setSelectedFeature, setError, refreshActivity]);
 
-  const handleSaveFeature = async (fileName: string, content: string) => {
+  const handleSaveFeature = useCallback(async (fileName: string, content: string) => {
     if (!isTauriRuntime()) {
       setError('Saving features is only available in Tauri runtime.');
       return;
@@ -91,22 +79,7 @@ export function useFeatureActions({
       if (result.status === 'ok') {
         const updated = result.data;
         setFeatures((prev) =>
-          prev.map((entry) =>
-            entry.file_name === updated.file_name
-              ? {
-                id: updated.id,
-                file_name: updated.file_name,
-                title: updated.title,
-                status: updated.status,
-                release_id: updated.release_id,
-                spec_id: updated.spec_id,
-                branch: updated.branch,
-                description: updated.description,
-                path: updated.path,
-                updated: updated.updated,
-              }
-              : entry
-          )
+          prev.map((entry: FeatureInfo) => (entry.file_name === updated.file_name ? updated : entry))
         );
         setSelectedFeature(updated);
         await refreshActivity();
@@ -116,11 +89,11 @@ export function useFeatureActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setFeatures, setSelectedFeature, setError, refreshActivity]);
 
-  return {
+  return useMemo(() => ({
     handleSelectFeature,
     handleCreateFeature,
     handleSaveFeature,
-  };
+  }), [handleSelectFeature, handleCreateFeature, handleSaveFeature]);
 }

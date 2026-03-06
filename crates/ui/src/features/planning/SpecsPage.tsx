@@ -2,17 +2,22 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, FileCode2, Plus } from 'lucide-react';
 import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { EmptyState } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
-import SpecMetadataPanel from '@/components/editor/SpecMetadataPanel';
-import { readFrontmatterStringField, splitFrontmatterDocument } from '@/components/editor/frontmatter';
+import {
+  readFrontmatterStringField,
+  readFrontmatterStringListField,
+  splitFrontmatterDocument,
+  setFrontmatterStringListField,
+} from '@ship/ui';
+import { SpecHeaderMetadata } from './SpecHeaderMetadata';
 import TemplateEditorButton from './TemplateEditorButton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
+import { Input } from '@ship/ui';
 
 interface SpecsPageProps {
   specs: SpecEntry[];
@@ -45,7 +50,7 @@ export default function SpecsPage({
     const next = specs.filter((spec) => {
       if (!needle) return true;
       return (
-        spec.title.toLowerCase().includes(needle) ||
+        spec.spec.metadata.title.toLowerCase().includes(needle) ||
         spec.file_name.toLowerCase().includes(needle)
       );
     });
@@ -84,6 +89,27 @@ tags = []
 
 ## Open Questions
 `;
+  };
+
+  const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const currentTags = useMemo(
+    () => readFrontmatterStringListField(documentModel.frontmatter, 'tags'),
+    [documentModel.frontmatter]
+  );
+
+  const handleMetadataUpdate = (updates: {
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '+++';
+
+    if (updates.tags) {
+      nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) || nextContent;
+    }
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+    }
   };
 
   const submitCreate = async (event: FormEvent) => {
@@ -201,7 +227,7 @@ tags = []
                 title={spec.path}
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{spec.title}</p>
+                  <p className="truncate text-sm font-medium">{spec.spec.metadata.title}</p>
                   <p className="text-muted-foreground truncate text-xs">{spec.file_name}</p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => onSelectSpec(spec)}>
@@ -219,9 +245,13 @@ tags = []
           label="New Spec"
           title={<h2 className="text-xl font-semibold tracking-tight">Create Spec</h2>}
           meta={
-            <p className="text-muted-foreground text-xs">
-              Start with a title and optional markdown body.
-            </p>
+            <SpecHeaderMetadata
+              fileName="new-spec.md"
+              tags={currentTags}
+              isEditing={true}
+              onUpdate={handleMetadataUpdate}
+              tagSuggestions={tagSuggestions}
+            />
           }
           onClose={() => {
             if (creating) return;
@@ -257,16 +287,6 @@ tags = []
                 setContent(next);
                 setError(null);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-                <SpecMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultTitle=""
-                  defaultStatus="draft"
-                  tagSuggestions={tagSuggestions}
-                  onChange={onChange}
-                />
-              )}
               placeholder="# Alpha Spec"
               rows={22}
               defaultMode="doc"

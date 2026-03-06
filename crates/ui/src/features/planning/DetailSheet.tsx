@@ -1,8 +1,8 @@
 import { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
 
 interface DetailSheetProps {
   label?: ReactNode;
@@ -48,7 +48,7 @@ export default function DetailSheet({
         onClick={(event) => event.stopPropagation()}
       >
         {showHeader && (
-          <header className={cn('border-b px-4 py-3 md:px-5 md:py-4', headerClassName)}>
+          <header className={cn('border-b px-4 py-2 md:px-5 md:py-2.5', headerClassName)}>
             {inlineHeader ? (
               <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
@@ -87,7 +87,7 @@ export default function DetailSheet({
 
         <div
           className={cn(
-            'flex-1 px-4 py-4 md:px-5 md:py-5',
+            'flex-1 px-4 py-3 md:px-5 md:py-4',
             bodyScrollable ? 'overflow-auto' : 'overflow-hidden',
             bodyClassName
           )}

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import ProjectsDashboard from '@/features/planning/ProjectsDashboard';
+import ProjectOnboarding from '@/features/planning/ProjectOnboarding';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
-import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
+import { OVERVIEW_ROUTE, SETTINGS_ROUTE } from '@/lib/constants/routes';
 
 function ProjectsRouteComponent() {
   const workspace = useWorkspace();
@@ -15,12 +15,17 @@ function ProjectsRouteComponent() {
   };
 
   return (
-    <ProjectsDashboard
-      projects={workspace.recentProjects}
-      activeProject={workspace.activeProject}
-      onSelectProject={handleSelectProject}
+    <ProjectOnboarding
+      detectedProject={workspace.detectedProject}
+      detectingProject={workspace.detectingProject}
+      creatingProject={workspace.creatingProject}
+      recentProjects={workspace.recentProjects}
+      onRefreshDetection={workspace.refreshDetectedProject}
       onOpenProject={workspace.handleOpenProject}
-      onNewProject={workspace.handleNewProject}
+      onCreateProject={workspace.handleCreateProjectFromForm}
+      onPickDirectory={workspace.handlePickProjectDirectory}
+      onSelectProject={handleSelectProject}
+      onOpenSettings={(tab) => navigate({ to: SETTINGS_ROUTE, search: { tab } })}
     />
   );
 }

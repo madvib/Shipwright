@@ -4,10 +4,8 @@ import {
   AdrEntry,
   AdrStatus,
   EventRecord,
-  FeatureDocument,
+  FeatureDocument as Feature,
   FeatureInfo as FeatureEntry,
-  Issue,
-  IssueEntry,
   LogEntry,
   McpServerConfig,
   ModeConfig,
@@ -16,18 +14,15 @@ import {
   ProjectDiscovery,
   ProjectInfo,
   ProjectConfig,
-  ReleaseDocument,
-  ReleaseInfo as ReleaseEntry,
-  Spec,
-  SpecEntry as RawSpecEntry,
+  ReleaseDocument as Release,
+  ReleaseInfo,
+  SpecEntry as RawSpecInfo,
   Workspace,
   Result,
   commands as spectaCommands,
 } from '@/bindings';
 import {
-  SpecDocument,
-  SpecInfo as SpecEntry,
-  toSpecDocument,
+  SpecInfo,
   toSpecInfo,
 } from '@/lib/types/spec';
 
@@ -49,11 +44,10 @@ const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> 
   throw new Error(String(result.error));
 };
 
-export const listIssues = (): Promise<IssueEntry[]> => invoke('list_items');
 export const listAdrs = (): Promise<AdrEntry[]> => invoke('list_adrs_cmd');
-export const listSpecs = (): Promise<SpecEntry[]> =>
-  invoke<RawSpecEntry[]>('list_specs_cmd').then((entries) => entries.map(toSpecInfo));
-export const listReleases = (): Promise<ReleaseEntry[]> => invoke('list_releases_cmd');
+export const listSpecs = (): Promise<SpecInfo[]> =>
+  invoke<RawSpecInfo[]>('list_specs_cmd').then((entries) => entries.map(toSpecInfo));
+export const listReleases = (): Promise<ReleaseInfo[]> => invoke<ReleaseInfo[]>('list_releases_cmd');
 export const listFeatures = (): Promise<FeatureEntry[]> => invoke('list_features_cmd');
 export const listNotes = (scope: NotesScope = 'project'): Promise<NoteEntry[]> =>
   invoke('list_notes_cmd', { scope });
@@ -117,25 +111,6 @@ export const setActiveProjectCmd = (path: string): Promise<ProjectInfo> =>
 export const renameProjectCmd = (path: string, name: string): Promise<ProjectInfo> =>
   invoke('rename_project_cmd', { path, name });
 
-export const createNewIssueCmd = (
-  title: string,
-  description: string,
-  status: string,
-  assignee?: string | null,
-  tags?: string[] | null
-): Promise<IssueEntry> => invoke('create_new_issue', { title, description, status, assignee, tags });
-
-export const moveIssueStatusCmd = (
-  fileName: string,
-  fromStatus: string,
-  toStatus: string
-): Promise<IssueEntry> => invoke('move_issue_status', { fileName, fromStatus, toStatus });
-
-export const updateIssueByPathCmd = (path: string, issue: Issue): Promise<void> =>
-  invoke('update_issue_by_path', { path, issue });
-
-export const deleteIssueByPathCmd = (path: string): Promise<void> => invoke('delete_issue_by_path', { path });
-
 export const createNewAdrCmd = (
   title: string,
   context: string,
@@ -154,54 +129,58 @@ export const moveAdrCmd = (id: string, newStatus: AdrStatus): Promise<AdrEntry> 
 export const deleteAdrCmd = (id: string): Promise<void> =>
   unwrapResult(spectaCommands.deleteAdrCmd(id)).then(() => undefined);
 
-export const getSpecCmd = (id: string): Promise<Result<SpecDocument, string>> =>
-  invoke<RawSpecEntry>('get_spec_cmd', { id })
-    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
+export const getSpecCmd = (id: string): Promise<Result<SpecInfo, string>> =>
+  spectaCommands.getSpecCmd(id)
+    .then((result) => {
+      if (result.status === 'ok') {
+        return { status: 'ok', data: toSpecInfo(result.data) } as Result<SpecInfo, string>;
+      }
+      return result as unknown as Result<SpecInfo, string>;
+    });
+
+export const createSpecCmd = (title: string, content: string): Promise<Result<SpecInfo, string>> =>
+  invoke<RawSpecInfo>('create_spec_cmd', { title, content })
+    .then((data) => ({ status: 'ok', data: toSpecInfo(data) } as Result<SpecInfo, string>))
     .catch((error) => ({ status: 'error', error: String(error) }));
 
-export const createSpecCmd = (title: string, content: string): Promise<Result<SpecDocument, string>> =>
-  invoke<RawSpecEntry>('create_spec_cmd', { title, content })
-    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
-    .catch((error) => ({ status: 'error', error: String(error) }));
+export const updateSpecCmd = async (id: string, content: string): Promise<Result<SpecInfo, string>> => {
+  const existing = await spectaCommands.getSpecCmd(id);
+  if (existing.status === 'error') {
+    return existing as unknown as Result<SpecInfo, string>;
+  }
+  return spectaCommands.updateSpecCmd(id, { ...existing.data.spec, body: content })
+    .then((result) => {
+      if (result.status === 'ok') {
+        return { status: 'ok', data: toSpecInfo(result.data) } as Result<SpecInfo, string>;
+      }
+      return result as unknown as Result<SpecInfo, string>;
+    });
+};
 
-export const updateSpecCmd = (fileName: string, content: string): Promise<Result<SpecDocument, string>> =>
-  invoke<RawSpecEntry>('get_spec_cmd', { id: fileName })
-    .then((current) =>
-      invoke<RawSpecEntry>('update_spec_cmd', {
-        id: fileName,
-        spec: {
-          ...(current.spec as Spec),
-          body: content,
-        },
-      })
-    )
-    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
-    .catch((error) => ({ status: 'error', error: String(error) }));
+export const deleteSpecCmd = (id: string): Promise<Result<null, string>> =>
+  spectaCommands.deleteSpecCmd(id);
 
-export const deleteSpecCmd = (fileName: string): Promise<Result<null, string>> =>
-  invoke('delete_spec_cmd', { fileName }).then(() => ({ status: 'ok' as const, data: null })).catch(error => ({ status: 'error', error: String(error) }));
+export const getReleaseCmd = (fileName: string): Promise<Result<Release, string>> =>
+  invoke('get_release_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
-export const getReleaseCmd = (fileName: string): Promise<Result<ReleaseDocument, string>> =>
-  invoke('get_release_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<ReleaseDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export const createReleaseCmd = (version: string, content: string): Promise<Result<Release, string>> =>
+  invoke('create_release_cmd', { version, content }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
-export const createReleaseCmd = (version: string, content: string): Promise<Result<ReleaseDocument, string>> =>
-  invoke('create_release_cmd', { version, content }).then(data => ({ status: 'ok', data } as Result<ReleaseDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export const updateReleaseCmd = (fileName: string, content: string): Promise<Result<Release, string>> =>
+  invoke('update_release_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
-export const updateReleaseCmd = (fileName: string, content: string): Promise<Result<ReleaseDocument, string>> =>
-  invoke('update_release_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<ReleaseDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
-
-export const getFeatureCmd = (fileName: string): Promise<Result<FeatureDocument, string>> =>
-  invoke('get_feature_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<FeatureDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export const getFeatureCmd = (fileName: string): Promise<Result<Feature, string>> =>
+  invoke('get_feature_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
 export const createFeatureCmd = (
   title: string,
   content: string,
   release?: string | null,
   spec?: string | null
-): Promise<Result<FeatureDocument, string>> => invoke('create_feature_cmd', { title, content, release, spec }).then(data => ({ status: 'ok', data } as Result<FeatureDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+): Promise<Result<Feature, string>> => invoke('create_feature_cmd', { title, content, release, spec }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
-export const updateFeatureCmd = (fileName: string, content: string): Promise<Result<FeatureDocument, string>> =>
-  invoke('update_feature_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<FeatureDocument, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export const updateFeatureCmd = (fileName: string, content: string): Promise<Result<Feature, string>> =>
+  invoke('update_feature_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
 export const getNoteCmd = (id: string, scope: NotesScope = 'project'): Promise<NoteDocument> =>
   invoke('get_note_cmd', { id, scope });
@@ -219,6 +198,12 @@ export const updateNoteCmd = (
   scope: NotesScope = 'project'
 ): Promise<NoteDocument> =>
   invoke('update_note_cmd', { id, content, scope });
+
+export const deleteNoteCmd = (
+  id: string,
+  scope: NotesScope = 'project'
+): Promise<void> =>
+  invoke('delete_note_cmd', { id, scope });
 
 export const getTemplateCmd = (kind: TemplateKind): Promise<string> =>
   invoke('get_template_cmd', { kind });
@@ -252,13 +237,7 @@ export const exportAgentConfigCmd = (
   invoke('export_agent_config_cmd', { target });
 
 // AI
-export const generateIssueDescriptionCmd = (title: string): Promise<string> =>
-  invoke('generate_issue_description_cmd', { title });
-
 export const generateAdrCmd = (title: string, context: string): Promise<string> =>
   invoke('generate_adr_cmd', { title, context });
-
-export const brainstormIssuesCmd = (topic: string): Promise<string[]> =>
-  invoke('brainstorm_issues_cmd', { topic });
 export const transformTextCmd = (instruction: string, text: string): Promise<string> =>
   invoke('transform_text_cmd', { instruction, text });

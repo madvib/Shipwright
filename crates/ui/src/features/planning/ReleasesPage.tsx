@@ -2,19 +2,25 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PackagePlus, Plus } from 'lucide-react';
 import {
   FeatureInfo as FeatureEntry,
+  ReleaseInfo,
   ReleaseDocument,
-  ReleaseInfo as ReleaseEntry,
 } from '@/bindings';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardHeader } from '@ship/ui';
+import { EmptyState } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import TemplateEditorButton from './TemplateEditorButton';
-import ReleaseMetadataPanel from '@/components/editor/ReleaseMetadataPanel';
-import { readFrontmatterStringField, splitFrontmatterDocument } from '@/components/editor/frontmatter';
+import {
+  readFrontmatterStringField,
+  readFrontmatterStringListField,
+  splitFrontmatterDocument,
+  setFrontmatterStringField,
+  setFrontmatterStringListField,
+} from '@ship/ui';
+import { ReleaseHeaderMetadata } from './ReleaseHeaderMetadata';
 import {
   featureStatusFallbackReadiness,
   FeatureChecklistMetrics,
@@ -27,11 +33,11 @@ import ReleaseDetail from './ReleaseDetail';
 import HubSectionHeader from '@/features/planning/hub/components/HubSectionHeader';
 
 interface ReleasesPageProps {
-  releases: ReleaseEntry[];
+  releases: ReleaseInfo[];
   features: FeatureEntry[];
   selectedRelease: ReleaseDocument | null;
   onCloseReleaseDetail: () => void;
-  onSelectRelease: (entry: ReleaseEntry) => void;
+  onSelectRelease: (entry: ReleaseInfo) => void;
   onSelectFeatureFromRelease: (feature: FeatureEntry) => void;
   onSaveRelease: (fileName: string, content: string) => Promise<void> | void;
   onCreateRelease: (version: string, content: string) => Promise<void>;
@@ -63,7 +69,7 @@ interface ReleaseFeatureReadiness {
 }
 
 interface ReleaseReadinessSummary {
-  release: ReleaseEntry;
+  release: ReleaseInfo;
   linked: ReleaseFeatureReadiness[];
   progressPercent: number;
   blockers: number;
@@ -125,6 +131,32 @@ tags = []
 
 ## Notes
 `;
+  };
+
+  const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const fm = documentModel.frontmatter;
+  const currentVersion = readFrontmatterStringField(fm, 'version') || 'v0.1.0-alpha';
+  const currentStatus = readFrontmatterStringField(fm, 'status') || 'planned';
+  const currentTargetDate = readFrontmatterStringField(fm, 'target_date');
+  const currentTags = readFrontmatterStringListField(fm, 'tags');
+
+  const handleMetadataUpdate = (updates: {
+    version?: string;
+    status?: string;
+    target_date?: string;
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '+++';
+
+    if (updates.version !== undefined) nextContent = setFrontmatterStringField(nextContent, 'version', updates.version, delimiter) ?? nextContent;
+    if (updates.status !== undefined) nextContent = setFrontmatterStringField(nextContent, 'status', updates.status, delimiter) ?? nextContent;
+    if (updates.target_date !== undefined) nextContent = setFrontmatterStringField(nextContent, 'target_date', updates.target_date, delimiter) ?? nextContent;
+    if (updates.tags !== undefined) nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) ?? nextContent;
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+    }
   };
 
   const releaseSummaries = useMemo(() => {
@@ -384,9 +416,14 @@ tags = []
           label="New Release"
           title={<h2 className="text-xl font-semibold tracking-tight">Create Release</h2>}
           meta={
-            <p className="text-muted-foreground text-xs">
-              Use a stable identifier, for example <code>v0.1.0-alpha</code>.
-            </p>
+            <ReleaseHeaderMetadata
+              version={currentVersion}
+              status={currentStatus}
+              targetDate={currentTargetDate}
+              tags={currentTags}
+              isEditing={true}
+              onUpdate={handleMetadataUpdate}
+            />
           }
           onClose={() => {
             if (creating) return;
@@ -417,16 +454,6 @@ tags = []
                 setContent(next);
                 setError(null);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-                <ReleaseMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultVersion="v0.1.0-alpha"
-                  defaultStatus="planned"
-                  tagSuggestions={[]}
-                  onChange={onChange}
-                />
-              )}
               placeholder="# Release Goal"
               rows={22}
               defaultMode="doc"

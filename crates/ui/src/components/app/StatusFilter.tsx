@@ -1,9 +1,9 @@
 import { Check, Filter } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
-import { Separator } from '@/components/ui/separator';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Popover, PopoverContent, PopoverTrigger } from '@ship/ui';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@ship/ui';
+import { Separator } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 interface StatusOption {

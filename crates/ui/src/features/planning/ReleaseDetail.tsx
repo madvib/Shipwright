@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FeatureInfo, ReleaseDocument } from '@/bindings';
+import { FeatureInfo as FeatureEntry, ReleaseDocument as ReleaseEntry } from '@/bindings';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -13,44 +13,43 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MarkdownEditor from '@/components/editor';
-import ReleaseMetadataPanel from '@/components/editor/ReleaseMetadataPanel';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { splitFrontmatterDocument } from '@/components/editor/frontmatter';
+import { ReleaseHeaderMetadata } from './ReleaseHeaderMetadata';
+import { readFrontmatterSummary, setFrontmatterStringField, setFrontmatterStringListField } from '@ship/ui';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { Progress } from '@ship/ui';
+import { splitFrontmatterDocument, stripAllFrontmatter } from '@ship/ui';
 import { featureStatusFallbackReadiness, formatStatusLabel } from '@/features/planning/hub/utils/featureMetrics';
 import { cn } from '@/lib/utils';
 
 interface ReleaseDetailProps {
-  release: ReleaseDocument;
-  features: FeatureInfo[];
+  release: ReleaseEntry;
+  features: FeatureEntry[];
   mcpEnabled?: boolean;
   onClose: () => void;
-  onSelectFeature: (feature: FeatureInfo) => void;
+  onSelectFeature: (feature: FeatureEntry) => void;
   onSave: (fileName: string, content: string) => Promise<void> | void;
 }
 
-function normalizeReleaseStatus(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
+
 
 function featureTileClasses(status: string) {
   switch (status) {
     case 'implemented':
       return {
-        tile: 'border-emerald-500/35 bg-emerald-500/5',
-        progress: 'bg-emerald-500',
+        tile: 'border-status-green/35 bg-status-green/5',
+        progress: 'bg-status-green',
       };
     case 'in-progress':
       return {
-        tile: 'border-sky-500/35 bg-sky-500/5',
-        progress: 'bg-sky-500',
+        tile: 'border-status-blue/35 bg-status-blue/5',
+        progress: 'bg-status-blue',
       };
     case 'planned':
       return {
-        tile: 'border-amber-500/35 bg-amber-500/5',
-        progress: 'bg-amber-500',
+        tile: 'border-status-yellow/35 bg-status-yellow/5',
+        progress: 'bg-status-yellow',
       };
     default:
       return {
@@ -68,14 +67,14 @@ export default function ReleaseDetail({
   onSelectFeature,
   onSave,
 }: ReleaseDetailProps) {
-  const [content, setContent] = useState(release.content);
+  const [content, setContent] = useState(release.content ?? '');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showAllLinkedFeatures, setShowAllLinkedFeatures] = useState(false);
 
   useEffect(() => {
-    setContent(release.content);
+    setContent(release.content ?? '');
     setDirty(false);
     setSaving(false);
     setEditing(false);
@@ -95,7 +94,7 @@ export default function ReleaseDetail({
   }, [content, dirty, onSave, release.file_name, saving]);
 
   const cancelEditing = useCallback(() => {
-    setContent(release.content);
+    setContent(release.content ?? '');
     setDirty(false);
     setEditing(false);
   }, [release.content]);
@@ -116,11 +115,11 @@ export default function ReleaseDetail({
       linkedFeatures.length === 0
         ? 0
         : Math.round(
-            linkedFeatures.reduce(
-              (sum, entry) => sum + featureStatusFallbackReadiness(entry.status),
-              0
-            ) / linkedFeatures.length
-          );
+          linkedFeatures.reduce(
+            (sum, entry) => sum + featureStatusFallbackReadiness(entry.status),
+            0
+          ) / linkedFeatures.length
+        );
     return {
       implemented,
       inProgress,
@@ -137,6 +136,27 @@ export default function ReleaseDetail({
   const hiddenLinkedFeatureCount = Math.max(linkedFeatures.length - 8, 0);
 
   const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const summary = useMemo(() => readFrontmatterSummary(release.content), [release.content]);
+
+  const handleMetadataUpdate = useCallback((updates: {
+    version?: string;
+    status?: string;
+    target_date?: string;
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '+++';
+
+    if (updates.version !== undefined) nextContent = setFrontmatterStringField(nextContent, 'version', updates.version, delimiter) ?? nextContent;
+    if (updates.status !== undefined) nextContent = setFrontmatterStringField(nextContent, 'status', updates.status, delimiter) ?? nextContent;
+    if (updates.target_date !== undefined) nextContent = setFrontmatterStringField(nextContent, 'target_date', updates.target_date, delimiter) ?? nextContent;
+    if (updates.tags !== undefined) nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) ?? nextContent;
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+      setDirty(true);
+    }
+  }, [content, documentModel.delimiter]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -155,40 +175,56 @@ export default function ReleaseDetail({
   }, [cancelEditing, editing, saveRelease]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <Card size="sm" className="border-primary/20">
-        <CardContent className="space-y-2 py-3">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onClose}>
-                <ArrowLeft className="size-4" />
-                Back To Hub
-              </Button>
+        <CardContent className="space-y-3 py-3">
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex w-full items-center justify-between">
+              <div className="flex-1">
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onClose}>
+                  <ArrowLeft className="size-4" />
+                  Back To Hub
+                </Button>
+              </div>
+
+              <h2 className="px-4 text-center text-xl font-bold tracking-tight text-foreground">
+                {summary.version || release.version}
+              </h2>
+
+              <div className="flex flex-1 justify-end gap-2">
+                {!editing ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-2 border-primary/30 text-primary/80 hover:text-primary"
+                    onClick={() => setEditing(true)}
+                  >
+                    <Edit3 className="size-4" />
+                    Edit Full Screen
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" className="h-8" onClick={cancelEditing} disabled={saving}>
+                      <X className="size-4" />
+                      Cancel
+                    </Button>
+                    <Button size="sm" className="h-8 shadow-sm" onClick={() => void saveRelease()} disabled={!dirty || saving}>
+                      <Save className="size-4" />
+                      {saving ? 'Saving…' : 'Save'}
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
 
-            <h2 className="truncate px-2 text-center text-xl font-semibold tracking-tight">
-              {release.version}
-            </h2>
-
-            <div className="flex min-w-0 justify-end gap-2">
-              {editing && (
-                <>
-                  <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving}>
-                    <X className="size-4" />
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={() => void saveRelease()} disabled={!dirty || saving}>
-                    <Save className="size-4" />
-                    {saving ? 'Saving…' : 'Save'}
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Badge variant="outline">{normalizeReleaseStatus(release.status)}</Badge>
-            <Badge variant="secondary">{linkedFeatures.length} linked features</Badge>
+            <ReleaseHeaderMetadata
+              version={summary.version || release.version}
+              status={summary.status || release.status}
+              targetDate={summary.target_date}
+              tags={summary.tags}
+              isEditing={editing}
+              onUpdate={handleMetadataUpdate}
+            />
           </div>
         </CardContent>
       </Card>
@@ -211,15 +247,6 @@ export default function ReleaseDetail({
                 setContent(next);
                 setDirty(true);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }) => (
-                <ReleaseMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultVersion={release.version}
-                  defaultStatus={release.status}
-                  onChange={onChange}
-                />
-              )}
               mcpEnabled={mcpEnabled}
               fillHeight
               rows={24}
@@ -253,8 +280,8 @@ export default function ReleaseDetail({
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-3">
               <article className="ship-markdown-preview rounded-md border bg-background px-4 py-3">
-                {documentModel.body.trim() ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{documentModel.body}</ReactMarkdown>
+                {stripAllFrontmatter(documentModel.body).trim() ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripAllFrontmatter(documentModel.body)}</ReactMarkdown>
                 ) : (
                   <p className="text-muted-foreground text-sm italic">No body content yet.</p>
                 )}

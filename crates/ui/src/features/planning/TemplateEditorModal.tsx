@@ -1,8 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import DetailSheet from './DetailSheet';
 import MarkdownEditor from '@/components/editor';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Button } from '@ship/ui';
 import { getTemplateCmd, saveTemplateCmd, TemplateKind } from '@/lib/platform/tauri/commands';
 
 interface TemplateEditorModalProps {

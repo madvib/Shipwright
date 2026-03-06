@@ -1,33 +1,36 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import SettingsPanel from '@/features/agents/SettingsPanel';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
-import { AGENTS_PROVIDERS_ROUTE, ISSUES_ROUTE } from '@/lib/constants/routes';
+import { WORKFLOW_WORKSPACE_ROUTE } from '@/lib/constants/routes';
+import SettingsLayout, { type SettingsSection } from '@/features/settings/SettingsLayout';
 
 function SettingsRouteComponent() {
   const workspace = useWorkspace();
   const navigate = useNavigate();
+  const { tab } = Route.useSearch();
+
+  const activeSection = (tab as SettingsSection) || 'global';
 
   return (
-    <SettingsPanel
+    <SettingsLayout
       config={workspace.config}
       projectConfig={workspace.projectConfig}
       globalAgentConfig={workspace.globalAgentConfig}
-      panelMode="settings-only"
+      activeSection={activeSection}
+      onSectionChange={(section) => {
+        void navigate({ to: '/project/settings', search: { tab: section } });
+      }}
       onThemePreview={workspace.applyTheme}
       onSave={async (config) => {
         await workspace.handleSaveSettings(config);
-        void navigate({ to: ISSUES_ROUTE });
       }}
       onSaveProject={async (config) => {
         await workspace.handleSaveProjectSettings(config);
-        void navigate({ to: ISSUES_ROUTE });
       }}
       onSaveGlobalAgentConfig={async (config) => {
         await workspace.handleSaveGlobalAgentSettings(config);
-        void navigate({ to: ISSUES_ROUTE });
       }}
-      onOpenAgentsModule={() => {
-        void navigate({ to: AGENTS_PROVIDERS_ROUTE });
+      onDone={() => {
+        void navigate({ to: WORKFLOW_WORKSPACE_ROUTE });
       }}
     />
   );
@@ -35,4 +38,9 @@ function SettingsRouteComponent() {
 
 export const Route = createFileRoute('/project/settings')({
   component: SettingsRouteComponent,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      tab: (search.tab as string) || undefined,
+    };
+  },
 });

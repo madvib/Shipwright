@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Link2, Sparkles } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 export interface FeatureHubSummaryMetrics {

@@ -1,9 +1,12 @@
 import { Suspense, lazy } from 'react';
-import type { MarkdownEditorProps } from './MarkdownEditor';
+import type { MarkdownEditorProps } from '@ship/ui';
+import { transformTextCmd } from '@/lib/platform/tauri/commands';
 
-const MarkdownEditorModule = lazy(() => import('./MarkdownEditor'));
+const MarkdownEditorModule = lazy(() =>
+  import('@ship/ui').then((m) => ({ default: m.MarkdownEditor }))
+);
 
-export type { MarkdownEditorProps } from './MarkdownEditor';
+export type { MarkdownEditorProps } from '@ship/ui';
 
 export default function MarkdownEditor(props: MarkdownEditorProps) {
   const fallbackClass = props.fillHeight
@@ -12,7 +15,7 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
 
   return (
     <Suspense fallback={<div className={fallbackClass} />}>
-      <MarkdownEditorModule {...props} />
+      <MarkdownEditorModule {...props} onTransformText={transformTextCmd} />
     </Suspense>
   );
 }

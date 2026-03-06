@@ -1,26 +1,27 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import ReleasesPage from '@/features/planning/ReleasesPage';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
+import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { FEATURES_ROUTE } from '@/lib/constants/routes';
 
 function ReleasesRouteComponent() {
   const workspace = useWorkspace();
+  const ship = useShip();
   const navigate = useNavigate();
 
   return (
     <ReleasesPage
-      releases={workspace.releases}
-      features={workspace.features}
-      selectedRelease={workspace.selectedRelease}
-      onCloseReleaseDetail={() => workspace.setSelectedRelease(null)}
-      onSelectRelease={workspace.handleSelectRelease}
+      releases={ship.releases}
+      features={ship.features}
+      selectedRelease={ship.selectedRelease}
+      onCloseReleaseDetail={() => ship.setSelectedRelease(null)}
+      onSelectRelease={ship.handleSelectRelease}
       onSelectFeatureFromRelease={(feature) => {
-        workspace.setSelectedRelease(null);
+        ship.setSelectedRelease(null);
         void navigate({ to: FEATURES_ROUTE });
-        void workspace.handleSelectFeature(feature);
+        void ship.handleSelectFeature(feature);
       }}
-      onSaveRelease={workspace.handleSaveRelease}
-      onCreateRelease={workspace.handleCreateRelease}
+      onSaveRelease={ship.handleSaveRelease}
+      onCreateRelease={ship.handleCreateRelease}
       mcpEnabled={workspace.mcpEnabled}
     />
   );

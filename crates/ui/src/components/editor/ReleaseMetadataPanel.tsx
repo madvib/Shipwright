@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import DatePicker from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { DatePicker } from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Switch } from '@ship/ui';
+import { AutocompleteInput } from '@ship/ui';
 import {
   FrontmatterDelimiter,
   readFrontmatterBooleanField,
@@ -14,7 +14,7 @@ import {
   setFrontmatterBooleanField,
   setFrontmatterStringField,
   setFrontmatterStringListField,
-} from './frontmatter';
+} from '@ship/ui';
 
 const RELEASE_STATUSES = ['planned', 'active', 'shipped', 'archived'];
 

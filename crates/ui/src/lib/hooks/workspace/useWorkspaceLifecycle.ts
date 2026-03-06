@@ -1,29 +1,17 @@
-import { Dispatch, SetStateAction, useCallback, useEffect } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo } from 'react';
 import {
-  AdrEntry,
   EventRecord,
-  FeatureInfo as FeatureEntry,
-  IssueEntry,
-  NoteInfo as NoteEntry,
   ProjectDiscovery as Project,
   ProjectConfig,
-  ReleaseInfo as ReleaseEntry,
 } from '@/bindings';
-import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import { Config } from '@/lib/workspace-ui';
 import { subscribeProjectEvents } from '../../platform/tauri/events';
 import {
   detectCurrentProject,
   getAppSettingsCmd,
   getProjectConfigCmd,
-  listAdrs,
   listEventEntries,
-  listFeatures,
-  listIssues,
-  listNotes,
   listProjects,
-  listReleases,
-  listSpecs,
 } from '../../platform/tauri/commands';
 import { isTauriRuntime } from '../../platform/tauri/runtime';
 import {
@@ -38,12 +26,6 @@ import {
 interface UseWorkspaceLifecycleParams {
   activeProject: Project | null;
   sidebarCollapsed: boolean;
-  setIssues: Dispatch<SetStateAction<IssueEntry[]>>;
-  setAdrs: Dispatch<SetStateAction<AdrEntry[]>>;
-  setSpecs: Dispatch<SetStateAction<SpecEntry[]>>;
-  setReleases: Dispatch<SetStateAction<ReleaseEntry[]>>;
-  setFeatures: Dispatch<SetStateAction<FeatureEntry[]>>;
-  setNotes: Dispatch<SetStateAction<NoteEntry[]>>;
   setEventEntries: Dispatch<SetStateAction<EventRecord[]>>;
   setProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setGlobalAgentConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
@@ -53,17 +35,12 @@ interface UseWorkspaceLifecycleParams {
   setConfig: Dispatch<SetStateAction<Config>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setLoading: Dispatch<SetStateAction<boolean>>;
+  onProjectDataChange?: () => Promise<void>;
 }
 
 export function useWorkspaceLifecycle({
   activeProject,
   sidebarCollapsed,
-  setIssues,
-  setAdrs,
-  setSpecs,
-  setReleases,
-  setFeatures,
-  setNotes,
   setEventEntries,
   setProjectConfig,
   setGlobalAgentConfig,
@@ -73,39 +50,23 @@ export function useWorkspaceLifecycle({
   setConfig,
   setError,
   setLoading,
+  onProjectDataChange,
 }: UseWorkspaceLifecycleParams) {
   const loadProjectData = useCallback(async () => {
     if (!isTauriRuntime()) {
-      setIssues([]);
-      setAdrs([]);
-      setSpecs([]);
-      setReleases([]);
-      setFeatures([]);
-      setNotes([]);
       return;
     }
 
     try {
-      const [issueList, adrList, specList, releaseList, featureList, noteList, eventList] = await Promise.all([
-        listIssues().catch(() => []),
-        listAdrs().catch(() => []),
-        listSpecs().catch(() => []),
-        listReleases().catch(() => []),
-        listFeatures().catch(() => []),
-        listNotes().catch(() => []),
-        listEventEntries(0, 200).catch(() => []),
-      ]);
-      setIssues(issueList);
-      setAdrs(adrList);
-      setSpecs(specList);
-      setReleases(releaseList);
-      setFeatures(featureList);
-      setNotes(noteList);
+      const eventList = await listEventEntries(0, 200).catch(() => []);
       setEventEntries(eventList);
+      if (onProjectDataChange) {
+        await onProjectDataChange();
+      }
     } catch (error) {
       console.error('Failed to load project data', error);
     }
-  }, [setAdrs, setEventEntries, setFeatures, setIssues, setReleases, setSpecs, setNotes]);
+  }, [setEventEntries, onProjectDataChange]);
 
   const loadProjectConfig = useCallback(async () => {
     if (!isTauriRuntime()) {
@@ -274,9 +235,9 @@ export function useWorkspaceLifecycle({
     setRecentProjects,
   ]);
 
-  return {
+  return useMemo(() => ({
     loadProjectData,
     loadProjectConfig,
     refreshDetectedProject,
-  };
+  }), [loadProjectData, loadProjectConfig, refreshDetectedProject]);
 }

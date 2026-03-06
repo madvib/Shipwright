@@ -1,30 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, User as UserIcon, Palette, Globe2, GitBranch, Cpu, Plus, Trash2, Upload } from 'lucide-react';
+import { Settings, User as UserIcon, Palette, Globe2, GitBranch, Trash2, Upload, Sun, Moon, Cpu, Plus } from 'lucide-react';
 import { GitConfig, McpServerConfig, ModeConfig, ProjectConfig, StatusConfig } from '@/bindings';
 import {
   exportAgentConfigCmd,
-  generateIssueDescriptionCmd,
+  transformTextCmd,
 } from '@/lib/platform/tauri/commands';
 import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@ship/ui';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { Checkbox } from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Label } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
+} from '@ship/ui';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@ship/ui';
+import { Separator } from '@ship/ui';
+import { Switch } from '@ship/ui';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ship/ui';
+import { Textarea } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import AgentScopeCard from '@/features/agents/AgentScopeCard';
 
@@ -35,7 +41,7 @@ interface SettingsPanelProps {
   config: Config;
   projectConfig: ProjectConfig | null;
   globalAgentConfig: ProjectConfig | null;
-  onThemePreview: (theme?: string) => void;
+  onThemePreview: (theme: 'light' | 'dark' | undefined) => void;
   onSave: (config: Config) => void;
   onSaveProject: (config: ProjectConfig) => void;
   onSaveGlobalAgentConfig: (config: ProjectConfig) => void;
@@ -88,47 +94,42 @@ function StatusColorPicker({
   value: string;
   onChange: (color: string) => void;
 }) {
-  const isPreset = STATUS_COLORS.some((c) => c.value === value);
+  const current = STATUS_COLORS.find((c) => c.value === value);
+  const currentHex = current?.hex ?? '#6b7280';
+
   return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1.5">
-        {STATUS_COLORS.map((c) => (
-          <button
-            key={c.value}
-            type="button"
-            title={c.label}
-            onClick={() => onChange(c.value)}
-            className="relative size-6 rounded-full border-2 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-            style={{
-              backgroundColor: c.hex,
-              borderColor: value === c.value ? 'white' : 'transparent',
-              boxShadow: value === c.value ? `0 0 0 2px ${c.hex}` : undefined,
-            }}
-          >
-            {value === c.value && (
-              <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-bold">✓</span>
-            )}
-          </button>
-        ))}
-      </div>
-      {!isPreset && (
-        <Input
-          value={value}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-          placeholder="custom color"
-          className="h-6 text-xs"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors hover:bg-accent/50"
+      >
+        <span
+          className="size-4 rounded-full border border-border/50 shadow-sm"
+          style={{ backgroundColor: currentHex }}
         />
-      )}
-      {isPreset && (
-        <button
-          type="button"
-          className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-          onClick={() => onChange('')}
-        >
-          custom…
-        </button>
-      )}
-    </div>
+        <span className="text-muted-foreground">{current?.label ?? (value || 'Pick')}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-auto p-2">
+        <div className="grid grid-cols-6 gap-1.5">
+          {STATUS_COLORS.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              title={c.label}
+              onClick={() => onChange(c.value)}
+              className={cn(
+                'relative size-7 rounded-full border-2 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
+                value === c.value ? 'border-foreground shadow-md scale-110' : 'border-transparent'
+              )}
+              style={{ backgroundColor: c.hex }}
+            >
+              {value === c.value && (
+                <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-bold drop-shadow">✓</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -182,6 +183,8 @@ function normalizeProjectConfig(config: ProjectConfig | null): NormalizedProject
       ...EMPTY_AGENT_LAYER,
       ...(config?.agent ?? {}),
     },
+    hooks: config?.hooks ?? [],
+    providers: config?.providers ?? ['claude'],
   };
 }
 
@@ -215,10 +218,11 @@ export default function SettingsPanel({
   onSave,
   onSaveProject,
   onSaveGlobalAgentConfig,
-  onOpenAgentsModule,
+  onOpenAgentsModule: _onOpenAgentsModule,
   initialTab = 'global',
   panelMode = 'full',
 }: SettingsPanelProps) {
+  void _onOpenAgentsModule;
   const [activeTab, setActiveTab] = useState<SettingsTab>(() =>
     panelMode === 'agents-only' ? 'agents' : initialTab
   );
@@ -393,7 +397,7 @@ export default function SettingsPanel({
     setTestStatus('loading');
     setAgentError(null);
     try {
-      await generateIssueDescriptionCmd('test task');
+      await transformTextCmd('summarize', 'test connection');
       setTestStatus('ok');
     } catch (err) {
       setTestStatus('error');
@@ -430,7 +434,7 @@ export default function SettingsPanel({
       />
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="gap-2">
-        {!agentsOnly && (
+        {!agentsOnly && !settingsOnly && (
           <TabsList className="h-8 w-full justify-start rounded-lg border bg-muted/40 p-1">
             <TabsTrigger className="h-6 gap-1.5 px-3 text-xs" value="global">
               <Globe2 className="size-3" />Global
@@ -438,16 +442,9 @@ export default function SettingsPanel({
             <TabsTrigger className="h-6 gap-1.5 px-3 text-xs" value="project" disabled={!projectConfig}>
               <GitBranch className="size-3" />Project
             </TabsTrigger>
-            {settingsOnly && (
-              <TabsTrigger className="h-6 gap-1.5 px-3 text-xs" value="modules">
-                <Cpu className="size-3" />Modules
-              </TabsTrigger>
-            )}
-            {!settingsOnly && (
-              <TabsTrigger className="h-6 gap-1.5 px-3 text-xs" value="agents">
-                <Cpu className="size-3" />Agents
-              </TabsTrigger>
-            )}
+            <TabsTrigger className="h-6 gap-1.5 px-3 text-xs" value="agents">
+              <Cpu className="size-3" />Agents
+            </TabsTrigger>
           </TabsList>
         )}
 
@@ -464,7 +461,7 @@ export default function SettingsPanel({
                   <p className="text-[11px] text-muted-foreground">Name and email for authorship metadata.</p>
                 </div>
               </div>
-              <CardContent className="space-y-2 pt-4">
+              <CardContent className="space-y-2 !pt-5">
                 <div className="space-y-2">
                   <Label htmlFor="settings-author">Name</Label>
                   <Input
@@ -496,7 +493,7 @@ export default function SettingsPanel({
                   <p className="text-[11px] text-muted-foreground">Local bridge for AI clients and tooling.</p>
                 </div>
               </div>
-              <CardContent className="space-y-2 pt-4">
+              <CardContent className="space-y-2 !pt-5">
                 <div className="space-y-2">
                   <Label htmlFor="settings-mcp-port">Port</Label>
                   <Input
@@ -535,12 +532,15 @@ export default function SettingsPanel({
                   <p className="text-[11px] text-muted-foreground">Theme and creation defaults for new issues.</p>
                 </div>
               </div>
-              <CardContent className="grid gap-2 pt-4 md:grid-cols-[1.2fr_1fr_1fr]">
+              <CardContent className="grid gap-2 !pt-5 md:grid-cols-[1.2fr_1fr_1fr]">
                 <div className="rounded-md border px-3 py-2">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <Label className="text-sm">Theme</Label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground text-xs">Light</span>
+                    <Label className="text-sm font-semibold tracking-tight">Appearance</Label>
+                    <div className="flex items-center gap-3 rounded-full border bg-muted/20 p-1">
+                      <div className={cn("flex items-center gap-1.5 px-2 py-1 rounded-full transition-all", (local.theme ?? 'dark') === 'light' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
+                        <Sun className="size-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-tighter">Light</span>
+                      </div>
                       <Switch
                         checked={(local.theme ?? 'dark') === 'dark'}
                         onCheckedChange={(checked) => {
@@ -549,10 +549,13 @@ export default function SettingsPanel({
                           onThemePreview(theme);
                         }}
                       />
-                      <span className="text-muted-foreground text-xs">Dark</span>
+                      <div className={cn("flex items-center gap-1.5 px-2 py-1 rounded-full transition-all", (local.theme ?? 'dark') === 'dark' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
+                        <Moon className="size-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-tighter">Dark</span>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-muted-foreground text-xs">Use dark theme for lower-light editing.</p>
+                  <p className="text-muted-foreground text-[11px] opacity-70">Choose your preferred interface theme.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Default Issue Status</Label>
@@ -588,22 +591,6 @@ export default function SettingsPanel({
           </div>
         </TabsContent>
 
-        {settingsOnly && (
-          <TabsContent value="modules">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Module Settings</CardTitle>
-                <CardDescription>Open module-specific settings pages.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button type="button" variant="outline" onClick={onOpenAgentsModule}>
-                  Open Agents Module
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-
         {/* ── Project tab ─────────────────────────────────────────────────── */}
         <TabsContent value="project">
           {!projectConfig ? (
@@ -618,9 +605,9 @@ export default function SettingsPanel({
               <Card size="sm">
                 <CardHeader className="pb-2">
                   <CardTitle>Project</CardTitle>
-                  <CardDescription>Metadata stored in `.ship/ship.toml`.</CardDescription>
+                  <CardDescription>Metadata stored in `.ship / ship.toml`.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-2 !pt-5">
                   <div className="space-y-2">
                     <Label htmlFor="settings-project-name">Project Name</Label>
                     <Input
@@ -655,7 +642,7 @@ export default function SettingsPanel({
                     <p className="text-[11px] text-muted-foreground">Customize issue workflow columns for this project.</p>
                   </div>
                 </div>
-                <CardContent className="space-y-3 pt-4">
+                <CardContent className="space-y-3 !pt-5">
                   <div className="hidden grid-cols-[1fr_1.2fr_auto_auto] gap-2 px-1 text-xs text-muted-foreground md:grid">
                     <span>ID</span>
                     <span>Name</span>
@@ -663,7 +650,7 @@ export default function SettingsPanel({
                     <span />
                   </div>
                   {localProject.statuses.map((status, index) => (
-                    <div key={`${status.id}-${index}`} className="grid items-start gap-2 md:grid-cols-[1fr_1.2fr_auto_auto]">
+                    <div key={`${status.id} -${index} `} className="grid items-start gap-2 md:grid-cols-[1fr_1.2fr_auto_auto]">
                       <Input
                         value={status.id}
                         onChange={(event) => updateStatus(index, { id: event.target.value })}
@@ -712,7 +699,7 @@ export default function SettingsPanel({
                   <CardTitle>Git Commit Categories</CardTitle>
                   <CardDescription>Choose which docs are staged by default for project commits.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-2 sm:grid-cols-2">
+                <CardContent className="grid gap-2 !pt-5 sm:grid-cols-2">
                   {GIT_CATEGORIES.map((category) => {
                     const committed = localProject.git?.commit?.includes(category) ?? false;
                     return (
@@ -748,7 +735,7 @@ export default function SettingsPanel({
                     Pass-through CLI provider used for generation features in the UI.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 !pt-5">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Provider</Label>
@@ -823,7 +810,7 @@ export default function SettingsPanel({
                     One place for skills, prompts, context, and rules.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-3 lg:grid-cols-2">
+                <CardContent className="grid gap-3 !pt-5 lg:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="settings-agent-skills">Skills (one per line)</Label>
                     <Textarea
@@ -891,7 +878,7 @@ export default function SettingsPanel({
                     Mode switching is capability control. Keep this central and explicit.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 !pt-5">
                   {(activeAgentConfig.modes ?? []).length > 0 && (
                     <>
                       <div className="space-y-2">
@@ -963,7 +950,7 @@ export default function SettingsPanel({
                     Registry for MCP tools used by this scope.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 !pt-5">
                   {(activeAgentConfig.mcp_servers ?? []).length > 0 && (
                     <>
                       {(activeAgentConfig.mcp_servers ?? []).map((server) => (
@@ -985,7 +972,7 @@ export default function SettingsPanel({
                           <Button
                             variant="ghost"
                             size="xs"
-                            onClick={() => handleRemoveServer(server.id)}
+                            onClick={() => handleRemoveServer(server.id ?? server.name)}
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -1057,7 +1044,7 @@ export default function SettingsPanel({
                     Export current scope MCP registry and agent layer docs to client configs.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 !pt-5">
                   {agentError && (
                     <Alert variant="destructive">
                       <AlertDescription>{agentError}</AlertDescription>
@@ -1078,7 +1065,7 @@ export default function SettingsPanel({
                           ? 'Syncing…'
                           : exportStatus[target] === 'ok'
                             ? `Synced to ${target} ✓`
-                            : `Sync to ${target}`}
+                            : `Sync to ${target} `}
                       </Button>
                     ))}
                   </div>
@@ -1095,11 +1082,7 @@ export default function SettingsPanel({
       </Tabs>
 
       <footer className="flex items-center justify-end gap-2 border-t pt-4">
-        {settingsOnly && activeTab === 'modules' ? (
-          <Button type="button" variant="outline" onClick={onOpenAgentsModule}>
-            Open Agents Module
-          </Button>
-        ) : agentsOnly ? (
+        {agentsOnly ? (
           agentScope === 'global' ? (
             <Button onClick={() => onSaveGlobalAgentConfig(localGlobalAgent)}>
               Save Global Agent Config

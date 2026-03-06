@@ -1,7 +1,8 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';
 import {
     createNoteCmd,
+    deleteNoteCmd,
     getNoteCmd,
     updateNoteCmd,
 } from '../../platform/tauri/commands';
@@ -20,12 +21,9 @@ export function useNoteActions({
     setError,
     refreshActivity,
 }: UseNoteActionsParams) {
-    const handleSelectNote = async (entry: NoteEntry) => {
+    const handleSelectNote = useCallback(async (entry: NoteEntry) => {
         if (!isTauriRuntime()) {
-            setSelectedNote({
-                ...entry,
-                content: '',
-            });
+            setSelectedNote({ ...entry, content: '' });
             return;
         }
 
@@ -35,9 +33,9 @@ export function useNoteActions({
         } catch (error) {
             setError(String(error));
         }
-    };
+    }, [setSelectedNote, setError]);
 
-    const handleCreateNote = async (title: string, content: string) => {
+    const handleCreateNote = useCallback(async (title: string, content: string) => {
         if (!isTauriRuntime()) {
             setError('Note creation is only available in Tauri runtime.');
             return;
@@ -45,7 +43,8 @@ export function useNoteActions({
 
         try {
             const created = await createNoteCmd(title, content);
-            setNotes((prev) => [{ id: created.id, title: created.title, updated: created.updated }, ...prev.filter((entry) => entry.id !== created.id)]);
+            const infoEntry = { id: created.id, title: created.title, updated: created.updated };
+            setNotes((prev) => [infoEntry, ...prev.filter((e) => e.id !== created.id)]);
             setSelectedNote(created);
             await refreshActivity();
             return created;
@@ -53,9 +52,9 @@ export function useNoteActions({
             setError(String(error));
             throw error;
         }
-    };
+    }, [setNotes, setSelectedNote, setError, refreshActivity]);
 
-    const handleSaveNote = async (id: string, content: string) => {
+    const handleSaveNote = useCallback(async (id: string, content: string) => {
         if (!isTauriRuntime()) {
             setError('Saving notes is only available in Tauri runtime.');
             return;
@@ -63,11 +62,10 @@ export function useNoteActions({
 
         try {
             const updated = await updateNoteCmd(id, content);
+            const infoEntry = { id: updated.id, title: updated.title, updated: updated.updated };
             setNotes((prev) =>
-                prev.map((entry) =>
-                    entry.id === updated.id
-                        ? { id: updated.id, title: updated.title, updated: updated.updated }
-                        : entry
+                prev.map((e) =>
+                    e.id === updated.id ? infoEntry : e
                 )
             );
             setSelectedNote(updated);
@@ -77,11 +75,29 @@ export function useNoteActions({
             setError(String(error));
             throw error;
         }
-    };
+    }, [setNotes, setSelectedNote, setError, refreshActivity]);
 
-    return {
+    const handleDeleteNote = useCallback(async (id: string) => {
+        if (!isTauriRuntime()) {
+            setError('Deleting notes is only available in Tauri runtime.');
+            return;
+        }
+
+        try {
+            await deleteNoteCmd(id);
+            setNotes((prev) => prev.filter((entry) => entry.id !== id));
+            setSelectedNote(null);
+            await refreshActivity();
+        } catch (error) {
+            setError(String(error));
+            throw error;
+        }
+    }, [setNotes, setSelectedNote, setError, refreshActivity]);
+
+    return useMemo(() => ({
         handleSelectNote,
         handleCreateNote,
         handleSaveNote,
-    };
+        handleDeleteNote,
+    }), [handleSelectNote, handleCreateNote, handleSaveNote, handleDeleteNote]);
 }

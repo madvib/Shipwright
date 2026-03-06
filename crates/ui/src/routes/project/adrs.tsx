@@ -1,23 +1,32 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useCallback } from 'react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import AdrList from '@/features/planning/AdrList';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
+import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
+import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
 
 function AdrsRouteComponent() {
   const workspace = useWorkspace();
+  const ship = useShip();
+  const navigate = useNavigate();
+
+  const onBack = useCallback(() => {
+    void navigate({ to: OVERVIEW_ROUTE });
+  }, [navigate]);
 
   return (
     <AdrList
-      adrs={workspace.adrs}
-      selectedAdr={workspace.selectedAdr}
-      onCreateAdr={workspace.handleCreateAdr}
-      onSelectAdr={workspace.handleSelectAdr}
-      onMoveAdr={workspace.handleMoveAdr}
-      onSaveAdr={workspace.handleSaveAdr}
-      onDeleteAdr={workspace.handleDeleteAdr}
-      specSuggestions={workspace.specSuggestions}
-      tagSuggestions={workspace.tagSuggestions}
-      adrSuggestions={workspace.adrSuggestions}
+      adrs={ship.adrs}
+      selectedAdr={ship.selectedAdr}
+      onCreateAdr={ship.handleCreateAdr}
+      onSelectAdr={ship.handleSelectAdr}
+      onMoveAdr={ship.handleMoveAdr}
+      onSaveAdr={ship.handleSaveAdr}
+      onDeleteAdr={ship.handleDeleteAdr}
+      specSuggestions={ship.specSuggestions}
+      tagSuggestions={ship.tagSuggestions}
+      adrSuggestions={ship.adrSuggestions}
       mcpEnabled={workspace.mcpEnabled}
+      onBackToGlobal={onBack}
     />
   );
 }

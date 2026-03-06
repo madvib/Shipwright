@@ -17,3 +17,8 @@ export function useWorkspace() {
   }
   return context;
 }
+
+export function useShip() {
+  const { ship } = useWorkspace();
+  return ship;
+}

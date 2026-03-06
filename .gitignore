@@ -1,5 +1,7 @@
 # Dependencies
-/node_modules
+**/node_modules/
+node_modules/
+.tanstack/
 
 # Logs
 logs
@@ -91,3 +93,6 @@ AGENTS.md
 .claude/
 .gemini/
 .codex/
+
+# Ship — generated agent config (never commit these)
+.agents/

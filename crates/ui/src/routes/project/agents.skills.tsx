@@ -1,22 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router';
-import AgentsPanel from '@/features/agents/AgentsPanel';
-import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
-
-function AgentsSkillsRouteComponent() {
-  const workspace = useWorkspace();
-
-  return (
-    <AgentsPanel
-      projectConfig={workspace.projectConfig}
-      globalAgentConfig={workspace.globalAgentConfig}
-      onSaveProject={workspace.handleSaveProjectSettings}
-      onSaveGlobalAgentConfig={workspace.handleSaveGlobalAgentSettings}
-      initialSection="skills"
-    />
-  );
-}
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { SETTINGS_ROUTE } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/project/agents/skills')({
-  component: AgentsSkillsRouteComponent,
+  beforeLoad: () => {
+    throw redirect({ to: SETTINGS_ROUTE, search: { tab: 'skills' } });
+  },
+  component: () => null,
 });
 

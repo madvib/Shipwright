@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import { ProjectConfig } from '@/bindings';
 import { Config } from '@/lib/workspace-ui';
 import { saveAppSettingsCmd, saveProjectConfigCmd } from '../../platform/tauri/commands';
@@ -18,7 +18,7 @@ export function useSettingsActions({
   setGlobalAgentConfig,
   setError,
 }: UseSettingsActionsParams) {
-  const handleSaveSettings = async (newConfig: Config) => {
+  const handleSaveSettings = useCallback(async (newConfig: Config) => {
     try {
       setConfig(newConfig);
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newConfig));
@@ -29,9 +29,9 @@ export function useSettingsActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setConfig, setError]);
 
-  const handleSaveProjectSettings = async (newConfig: ProjectConfig) => {
+  const handleSaveProjectSettings = useCallback(async (newConfig: ProjectConfig) => {
     if (!isTauriRuntime()) {
       setError('Project settings can only be saved in Tauri runtime.');
       return;
@@ -43,9 +43,9 @@ export function useSettingsActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setProjectConfig, setError]);
 
-  const handleSaveGlobalAgentSettings = async (newConfig: ProjectConfig) => {
+  const handleSaveGlobalAgentSettings = useCallback(async (newConfig: ProjectConfig) => {
     if (!isTauriRuntime()) {
       setError('Global settings can only be saved in Tauri runtime.');
       return;
@@ -57,11 +57,11 @@ export function useSettingsActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setGlobalAgentConfig, setError]);
 
-  return {
+  return useMemo(() => ({
     handleSaveSettings,
     handleSaveProjectSettings,
     handleSaveGlobalAgentSettings,
-  };
+  }), [handleSaveSettings, handleSaveProjectSettings, handleSaveGlobalAgentSettings]);
 }

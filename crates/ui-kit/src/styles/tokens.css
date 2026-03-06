@@ -1,0 +1,52 @@
+/* ─────────────────────────────────────────────────────────
+   ui-kit/tokens.css  —  INFRASTRUCTURE ONLY
+   ─────────────────────────────────────────────────────────
+   This file is pure Tailwind plumbing. Zero brand colors.
+   Each consuming application defines its own brand by:
+
+     1. Declaring :root { --background: ...; --primary: ...; } etc.
+     2. Declaring .dark { ... } for dark mode overrides
+     3. Declaring @theme inline { --color-X: var(--X); } Tailwind bridges
+
+   See crates/ui/src/App.css for a reference implementation.
+   ─────────────────────────────────────────────────────────
+*/
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Structural base styles (theme-agnostic) ─────────────
+   These are safe to apply in every consuming app because
+   they rely only on semantic tokens the app must provide. */
+@layer base {
+    * {
+        box-sizing: border-box;
+    }
+
+    /* Thin scrollbars that adapt to any theme */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--muted, color-mix(in srgb, currentColor 20%, transparent)) transparent;
+    }
+
+    *::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    *::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+        background: color-mix(in oklch, var(--muted, #888) 40%, transparent);
+        border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in oklch, var(--muted, #888) 70%, transparent);
+    }
+}

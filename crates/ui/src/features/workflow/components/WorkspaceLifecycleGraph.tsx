@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@ship/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 export type WorkspaceGraphStatus =

@@ -1,2 +1,2 @@
 export { default } from './LazyMarkdownEditor';
-export type { MarkdownEditorProps } from './MarkdownEditor';
+export type { MarkdownEditorProps } from '@ship/ui';

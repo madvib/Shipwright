@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Gauge, Link2, Rocket } from 'lucide-react';
 import { ReleaseInfo as ReleaseEntry } from '@/bindings';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 interface ReleaseHubStatsProps {
@@ -26,8 +26,8 @@ function StatChip({ label, value, hint, icon, tone = 'default' }: StatChipProps)
     <div
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs',
-        tone === 'warning' && 'border-amber-500/40 bg-amber-500/5',
-        tone === 'success' && 'border-emerald-500/35 bg-emerald-500/5'
+        tone === 'warning' && 'border-orange-500/30 bg-orange-500/5',
+        tone === 'success' && 'border-emerald-500/30 bg-emerald-500/5'
       )}
     >
       {icon}
@@ -61,7 +61,7 @@ export default function ReleaseHubStats({
           <AlertTriangle
             className={cn(
               'size-3.5',
-              activeBlockers > 0 ? 'text-amber-500' : 'text-muted-foreground'
+              activeBlockers > 0 ? 'text-orange-500/80' : 'text-muted-foreground'
             )}
           />
         }
@@ -82,7 +82,7 @@ export default function ReleaseHubStats({
       <StatChip
         label="Avg Progress"
         value={`${avgProgress}%`}
-        icon={<Gauge className="size-4 text-amber-500" />}
+        icon={<Gauge className="size-4 text-emerald-500/70" />}
       />
       <StatChip
         label="Coverage"

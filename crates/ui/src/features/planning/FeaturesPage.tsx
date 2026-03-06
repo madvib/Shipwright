@@ -1,34 +1,37 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Flag, Plus } from 'lucide-react';
 import {
-  AdrEntry,
-  FeatureDocument,
   FeatureInfo as FeatureEntry,
+  FeatureDocument,
   ReleaseInfo as ReleaseEntry,
+  SpecEntry,
 } from '@/bindings';
-import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import DetailSheet from './DetailSheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@ship/ui';
 import {
   Card,
   CardContent,
   CardHeader,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+} from '@ship/ui';
+import { Button } from '@ship/ui';
 import TemplateEditorButton from './TemplateEditorButton';
 import MarkdownEditor from '@/components/editor';
-import FeatureMetadataPanel from '@/components/editor/FeatureMetadataPanel';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import {
   readFrontmatterStringField,
   splitFrontmatterDocument,
-  FrontmatterDelimiter,
-} from '@/components/editor/frontmatter';
+} from '@ship/ui';
 import {
   featureStatusFallbackReadiness,
   formatStatusLabel,
 } from '@/features/planning/hub/utils/featureMetrics';
+import { FeatureHeaderMetadata } from './FeatureHeaderMetadata';
+import {
+  setFrontmatterStringField,
+  setFrontmatterStringListField,
+  readFrontmatterStringListField,
+} from '@ship/ui';
 import FeatureHubStats from '@/features/planning/features-hub/components/FeatureHubStats';
 import FeatureHubToolbar from '@/features/planning/features-hub/components/FeatureHubToolbar';
 import FeatureHubRow from '@/features/planning/features-hub/components/FeatureHubRow';
@@ -40,7 +43,6 @@ interface FeaturesPageProps {
   features: FeatureEntry[];
   releases: ReleaseEntry[];
   specs: SpecEntry[];
-  adrs: AdrEntry[];
   selectedFeature: FeatureDocument | null;
   onCloseFeatureDetail: () => void;
   onSelectFeature: (entry: FeatureEntry) => void;
@@ -78,7 +80,6 @@ export default function FeaturesPage({
   features,
   releases,
   specs,
-  adrs,
   selectedFeature,
   onCloseFeatureDetail,
   onSelectFeature,
@@ -109,9 +110,8 @@ export default function FeaturesPage({
     const available = Array.from(
       new Set([
         ...fallback,
-        ...features
-          .map((feature) => feature.status)
-          .filter((status): status is string => typeof status === 'string' && status.length > 0),
+        ...(Array.from(new Set(features.map((f) => f.status)))
+          .filter((status): status is string => typeof status === 'string' && status.length > 0)),
       ])
     );
     available.sort((a, b) => {
@@ -130,6 +130,9 @@ export default function FeaturesPage({
   const sortedFeatures = useMemo(() => {
     const needle = searchQuery.trim().toLowerCase();
     const filtered = features.filter((feature) => {
+      // Guard against stale/partial backend data
+      if (!feature?.id) return false;
+
       const featureStatus = feature.status ?? 'planned';
       const metric = featureMetricsByFile[feature.file_name];
       const readiness = metric?.readinessPercent ?? featureStatusFallbackReadiness(featureStatus);
@@ -137,10 +140,10 @@ export default function FeaturesPage({
         metric?.blocking ?? (featureStatus !== 'implemented' && featureStatus !== 'deprecated');
       const ready = !blocking && readiness >= 90;
 
-      const title = (feature.title ?? '').toLowerCase();
-      const fileName = (feature.file_name ?? '').toLowerCase();
-      const releaseId = (feature.release_id ?? '').toLowerCase();
-      const specId = (feature.spec_id ?? '').toLowerCase();
+      const title = (feature?.title ?? '').toLowerCase();
+      const fileName = (feature?.file_name ?? '').toLowerCase();
+      const releaseId = (feature?.release_id ?? '').toLowerCase();
+      const specId = (feature?.spec_id ?? '').toLowerCase();
 
       const matchesSearch =
         title.includes(needle) ||
@@ -200,7 +203,7 @@ export default function FeaturesPage({
       if (featureStatus === 'implemented') {
         implemented += 1;
       }
-      if (!feature.release_id) {
+      if (!feature?.release_id) {
         unlinked += 1;
       }
 
@@ -239,14 +242,48 @@ tags = []
 
 ## Acceptance Criteria
 
-- [ ]
+  - []
 
 ## Delivery Todos
 
-- [ ]
+  - []
 
 ## Notes
-`;
+  `;
+  };
+
+  const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
+  const fm = documentModel.frontmatter;
+  const currentStatus = readFrontmatterStringField(fm, 'status') || 'planned';
+  const currentReleaseId = readFrontmatterStringField(fm, 'release_id') || readFrontmatterStringField(fm, 'release');
+  const currentSpecId = readFrontmatterStringField(fm, 'spec_id') || readFrontmatterStringField(fm, 'spec');
+  const currentTags = readFrontmatterStringListField(fm, 'tags');
+
+  const handleMetadataUpdate = (updates: {
+    status?: string;
+    release_id?: string;
+    spec_id?: string;
+    tags?: string[];
+  }) => {
+    let nextContent = content;
+    const delimiter = documentModel.delimiter || '+++';
+
+    if (updates.status) {
+      nextContent = setFrontmatterStringField(nextContent, 'status', updates.status, delimiter) || nextContent;
+    }
+    if (updates.release_id !== undefined) {
+      nextContent = setFrontmatterStringField(nextContent, 'release_id', updates.release_id, delimiter) || nextContent;
+    }
+    if (updates.spec_id !== undefined) {
+      nextContent = setFrontmatterStringField(nextContent, 'spec_id', updates.spec_id, delimiter) || nextContent;
+    }
+    if (updates.tags) {
+      nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) || nextContent;
+    }
+
+    if (nextContent !== content) {
+      setContent(nextContent);
+    }
   };
 
   const submitCreate = async (event: FormEvent) => {
@@ -314,7 +351,6 @@ tags = []
           feature={selectedFeature}
           releaseSuggestions={releases.map((entry) => entry.file_name)}
           specSuggestions={specs.map((entry) => entry.file_name)}
-          adrSuggestions={adrs.map((entry) => entry.file_name)}
           tagSuggestions={tagSuggestions}
           mcpEnabled={mcpEnabled}
           onClose={onCloseFeatureDetail}
@@ -385,8 +421,8 @@ tags = []
             )}
 
             {sortedFeatures.map((feature) => {
-              const linkedRelease = releases.find((release) => release.file_name === feature.release_id);
-              const linkedSpec = specs.find((spec) => spec.file_name === feature.spec_id);
+              const linkedRelease = releases.find((release) => release.file_name === feature?.release_id);
+              const linkedSpec = specs.find((spec) => spec.file_name === feature?.spec_id);
               const metric = featureMetricsByFile[feature.file_name];
               const readiness = metric?.readinessPercent ?? featureStatusFallbackReadiness(feature.status);
               const isBlocking =
@@ -414,9 +450,17 @@ tags = []
           label="New Feature"
           title={<h2 className="text-xl font-semibold tracking-tight">Create Feature</h2>}
           meta={
-            <p className="text-muted-foreground text-xs">
-              Add optional links to a release and a spec.
-            </p>
+            <FeatureHeaderMetadata
+              status={currentStatus}
+              releaseId={currentReleaseId || undefined}
+              specId={currentSpecId || undefined}
+              tags={currentTags}
+              isEditing={true}
+              onUpdate={handleMetadataUpdate}
+              releaseSuggestions={releases.map(r => r.file_name)}
+              specSuggestions={specs.map(s => s.file_name)}
+              tagSuggestions={tagSuggestions}
+            />
           }
           onClose={() => {
             if (creating) return;
@@ -447,19 +491,6 @@ tags = []
                 setContent(next);
                 setError(null);
               }}
-              frontmatterPanel={({ frontmatter, delimiter, onChange }: { frontmatter: string | null; delimiter: FrontmatterDelimiter | null; onChange: (fm: string | null, d: FrontmatterDelimiter) => void }) => (
-                <FeatureMetadataPanel
-                  frontmatter={frontmatter}
-                  delimiter={delimiter}
-                  defaultTitle=""
-                  defaultStatus="planned"
-                  releaseSuggestions={releases.map((entry: ReleaseEntry) => entry.file_name)}
-                  specSuggestions={specs.map((entry: SpecEntry) => entry.file_name)}
-                  adrSuggestions={adrs.map((entry: AdrEntry) => entry.file_name)}
-                  tagSuggestions={tagSuggestions}
-                  onChange={onChange}
-                />
-              )}
               placeholder="# Why this feature"
               rows={22}
               defaultMode="doc"

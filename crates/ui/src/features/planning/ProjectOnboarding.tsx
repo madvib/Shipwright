@@ -1,35 +1,27 @@
 import { FormEvent, useMemo, useState } from 'react';
 import {
   FolderOpen,
-  FolderPlus,
   RefreshCcw,
   Search,
   Settings2,
   Sparkles,
+  Plus,
 } from 'lucide-react';
 import { ProjectDiscovery as Project, StatusConfig } from '@/bindings';
-import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@ship/ui';
+import { Badge } from '@ship/ui';
+import { Button } from '@ship/ui';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+} from '@ship/ui';
+import { Input } from '@ship/ui';
+import { Textarea } from '@ship/ui';
+import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 export interface CreateProjectInput {
   name: string;
@@ -44,13 +36,12 @@ interface ProjectOnboardingProps {
   detectingProject: boolean;
   creatingProject: boolean;
   recentProjects: Project[];
-  globalConfig: Config;
   onRefreshDetection: () => void;
   onOpenProject: () => void;
   onCreateProject: (input: CreateProjectInput) => Promise<void>;
   onPickDirectory: () => Promise<string | null>;
   onSelectProject: (project: Project) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: 'global' | 'project' | 'agents' | 'modules') => void;
 }
 
 export default function ProjectOnboarding({
@@ -58,7 +49,6 @@ export default function ProjectOnboarding({
   detectingProject,
   creatingProject,
   recentProjects,
-  globalConfig,
   onRefreshDetection,
   onOpenProject,
   onCreateProject,
@@ -88,12 +78,6 @@ export default function ProjectOnboarding({
     }
     return Array.from(byPath.values());
   }, [detectedProject, recentProjects]);
-
-  const userSummary = [globalConfig.author, globalConfig.email].filter(Boolean).join(' · ') || 'Not configured';
-  const themeSummary = globalConfig.theme === 'light' ? 'Light' : 'Dark';
-  const mcpSummary = globalConfig.mcp_enabled === false
-    ? 'Disabled'
-    : `Enabled${globalConfig.mcp_port ? ` :${globalConfig.mcp_port}` : ''}`;
 
   const toggleStatus = (statusId: string) => {
     setSelectedStatuses((prev) => {
@@ -151,55 +135,18 @@ export default function ProjectOnboarding({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-5 md:p-8">
-      <header className="relative overflow-hidden rounded-2xl border bg-card p-5 md:p-6">
-        <div className="from-primary/15 pointer-events-none absolute inset-0 bg-gradient-to-br via-transparent to-transparent" />
-        <div className="relative flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="bg-primary/10 border-primary/30 flex size-14 items-center justify-center rounded-xl border md:size-16">
-              <span className="text-primary text-lg font-black tracking-tight md:text-xl">SW</span>
-            </div>
-            <div className="space-y-2">
-              <p className="text-muted-foreground text-xs font-medium uppercase tracking-widest">Shipwright</p>
-              <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Select a project</h1>
-              <p className="text-muted-foreground max-w-2xl text-sm md:text-base">
-                Open an existing project or create a new one to get started.
-              </p>
-            </div>
-          </div>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" className="gap-2" />}>
+    <PageFrame width="wide">
+      <PageHeader
+        title="Select a project"
+        description="Open an existing project or create a new one to get started."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => onOpenSettings()}>
               <Settings2 className="size-4" />
-              Settings
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Global Settings</DropdownMenuLabel>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem className="flex-col items-start gap-0.5">
-                  <span className="text-xs font-medium">Theme</span>
-                  <span className="text-muted-foreground text-xs">{themeSummary}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex-col items-start gap-0.5">
-                  <span className="text-xs font-medium">MCP</span>
-                  <span className="text-muted-foreground text-xs">{mcpSummary}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex-col items-start gap-0.5">
-                  <span className="text-xs font-medium">User</span>
-                  <span className="text-muted-foreground text-xs">{userSummary}</span>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={onOpenSettings}>Open full settings page</DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+            </Button>
+          </div>
+        }
+      />
 
       <Card size="sm" className="overflow-hidden">
         <CardHeader className="pb-3">
@@ -212,46 +159,16 @@ export default function ProjectOnboarding({
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
+        <CardContent className="space-y-3 !pt-5">
+          <div className="flex flex-wrap items-center gap-2">
             <Button className="gap-2" onClick={onOpenProject}>
               <FolderOpen className="size-4" />
               Open Project Folder
             </Button>
 
-            {!detectedProject ? (
-              <Button variant="outline" onClick={onRefreshDetection} disabled={detectingProject}>
-                {detectingProject ? (
-                  <>
-                    <RefreshCcw className="mr-2 size-4 animate-spin" />
-                    Detecting...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 size-4" />
-                    Detect Nearby Project
-                  </>
-                )}
-              </Button>
-            ) : (
-              <div className="text-muted-foreground inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
-                <Sparkles className="size-3.5 text-primary" />
-                Nearby project detected
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={onRefreshDetection}
-                  disabled={detectingProject}
-                  className="h-auto px-1.5"
-                >
-                  Refresh
-                </Button>
-              </div>
-            )}
-
             <AlertDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <AlertDialogTrigger render={<Button variant="secondary" className="gap-2" />}>
-                <FolderPlus className="size-4" />
+              <AlertDialogTrigger render={<Button variant="outline" className="gap-2" />}>
+                <Plus className="size-4" />
                 Create New Project
               </AlertDialogTrigger>
 
@@ -348,6 +265,36 @@ export default function ProjectOnboarding({
                 </form>
               </AlertDialogContent>
             </AlertDialog>
+
+            {!detectedProject ? (
+              <Button variant="ghost" size="sm" onClick={onRefreshDetection} disabled={detectingProject} className="text-xs text-muted-foreground">
+                {detectingProject ? (
+                  <>
+                    <RefreshCcw className="mr-2 size-3 animate-spin" />
+                    Detecting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 size-3" />
+                    Detect Nearby Project
+                  </>
+                )}
+              </Button>
+            ) : (
+              <div className="text-muted-foreground inline-flex items-center gap-2 rounded-md border bg-muted/30 px-2 py-1 text-[10px]">
+                <Sparkles className="size-3 text-primary" />
+                Nearby project detected
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={onRefreshDetection}
+                  disabled={detectingProject}
+                  className="h-auto px-1 py-0"
+                >
+                  Refresh
+                </Button>
+              </div>
+            )}
           </div>
 
           {projectOptions.length === 0 ? (
@@ -378,6 +325,6 @@ export default function ProjectOnboarding({
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageFrame>
   );
 }
