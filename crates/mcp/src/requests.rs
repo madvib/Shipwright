@@ -362,3 +362,83 @@ pub struct ListModelsRequest {
     /// Provider ID (claude, gemini, codex)
     pub provider_id: String,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SetModeRequest {
+    /// Mode ID to activate. Omit to clear active mode.
+    pub id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetWorkspaceRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateWorkspaceToolRequest {
+    /// Workspace branch/id.
+    pub branch: String,
+    /// Workspace type (feature, refactor, experiment, hotfix)
+    pub workspace_type: Option<String>,
+    /// Optional linked feature ID.
+    pub feature_id: Option<String>,
+    /// Optional linked spec ID.
+    pub spec_id: Option<String>,
+    /// Optional linked release ID.
+    pub release_id: Option<String>,
+    /// Optional workspace mode override.
+    pub mode_id: Option<String>,
+    /// Whether this workspace is a git worktree.
+    pub is_worktree: Option<bool>,
+    /// Worktree path (required when is_worktree=true).
+    pub worktree_path: Option<String>,
+    /// Activate immediately after create.
+    pub activate: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ActivateWorkspaceRequest {
+    /// Workspace branch/id to activate.
+    pub branch: String,
+    /// Optional workspace mode override to apply after activation.
+    pub mode_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SyncWorkspaceRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct WorkspaceSessionStartRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+    /// Optional goal for this session.
+    pub goal: Option<String>,
+    /// Optional mode override for this session/workspace.
+    pub mode_id: Option<String>,
+    /// Optional primary provider for this session.
+    pub provider_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct WorkspaceSessionEndRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+    /// Optional end-of-session summary.
+    pub summary: Option<String>,
+    /// Feature IDs updated during this session.
+    pub updated_feature_ids: Option<Vec<String>>,
+    /// Spec IDs updated during this session.
+    pub updated_spec_ids: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct WorkspaceSessionsRequest {
+    /// Optional workspace branch/id filter.
+    pub branch: Option<String>,
+    /// Optional max number of sessions to return.
+    pub limit: Option<usize>,
+}

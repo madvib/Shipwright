@@ -458,10 +458,8 @@ fn map_release_document(project_dir: &Path, entry: &ProjectReleaseEntry) -> Rele
 
 // ─── AI helper ────────────────────────────────────────────────────────────────
 
-fn invoke_ai_cli(ai: &AiConfig, prompt: &str) -> Result<String, String> {
-    let cli = ai.effective_cli().to_string();
-    let provider = ai.effective_provider().to_ascii_lowercase();
-    let attempts: Vec<Vec<String>> = match provider.as_str() {
+fn ai_cli_attempts(provider: &str, prompt: &str) -> Vec<Vec<String>> {
+    match provider.to_ascii_lowercase().as_str() {
         "claude" | "gemini" => {
             vec![
                 vec!["-p".to_string(), prompt.to_string()],
@@ -477,25 +475,67 @@ fn invoke_ai_cli(ai: &AiConfig, prompt: &str) -> Result<String, String> {
             vec!["-p".to_string(), prompt.to_string()],
             vec![prompt.to_string()],
         ],
-    };
+    }
+}
 
-    let mut last_error = String::new();
+fn ai_cli_success_text(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+    let stdout = String::from_utf8_lossy(stdout).trim().to_string();
+    if !stdout.is_empty() {
+        return Some(stdout);
+    }
+    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
+    if !stderr.is_empty() {
+        return Some(stderr);
+    }
+    None
+}
+
+fn invoke_ai_cli(ai: &AiConfig, prompt: &str) -> Result<String, String> {
+    let cli = ai.effective_cli().to_string();
+    let provider = ai.effective_provider().to_ascii_lowercase();
+    let attempts = ai_cli_attempts(&provider, prompt);
+
+    let mut attempt_errors: Vec<String> = Vec::new();
     for args in attempts {
         let output = std::process::Command::new(&cli)
             .args(&args)
             .output()
             .map_err(|e| format!("Failed to launch '{}': {}", cli, e))?;
         if output.status.success() {
-            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            if let Some(text) = ai_cli_success_text(&output.stdout, &output.stderr) {
+                return Ok(text);
+            }
+            return Err(format!("AI CLI '{}' succeeded but returned no output", cli));
         }
-        last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+        let status = output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "signal".to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let body = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "no output".to_string()
+        };
+        attempt_errors.push(format!(
+            "{} {} -> exit {}: {}",
+            cli,
+            args.join(" "),
+            status,
+            body
+        ));
     }
 
-    if last_error.is_empty() {
-        Err("AI CLI failed with no error output".to_string())
-    } else {
-        Err(format!("AI CLI error: {}", last_error))
-    }
+    Err(format!(
+        "AI CLI failed after {} attempt(s): {}",
+        attempt_errors.len(),
+        attempt_errors.join(" | ")
+    ))
 }
 
 // ─── Commands: Project ────────────────────────────────────────────────────────
@@ -2148,4 +2188,46 @@ pub fn run() {
         .invoke_handler(builder.invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_cli_attempts_codex_prefers_exec_then_prompt() {
+        let attempts = ai_cli_attempts("codex", "hello");
+        assert_eq!(
+            attempts,
+            vec![
+                vec!["exec".to_string(), "hello".to_string()],
+                vec!["-p".to_string(), "hello".to_string()],
+                vec!["hello".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn ai_cli_attempts_claude_uses_prompt_fallback() {
+        let attempts = ai_cli_attempts("claude", "hello");
+        assert_eq!(
+            attempts,
+            vec![
+                vec!["-p".to_string(), "hello".to_string()],
+                vec!["hello".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn ai_cli_success_text_prefers_stdout_then_stderr() {
+        let stdout = ai_cli_success_text(b"  primary output  ", b"secondary");
+        assert_eq!(stdout.as_deref(), Some("primary output"));
+
+        let stderr = ai_cli_success_text(b"   ", b" fallback stderr ");
+        assert_eq!(stderr.as_deref(), Some("fallback stderr"));
+
+        let none = ai_cli_success_text(b"", b"");
+        assert!(none.is_none());
+    }
 }

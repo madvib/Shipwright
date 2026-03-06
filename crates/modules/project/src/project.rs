@@ -238,6 +238,7 @@ fn should_filter_transient_registry_path(path: &Path) -> bool {
     }
 
     path_contains_component_sequence(path, &["example", "projects-e2e"])
+        || path_contains_component_sequence(path, &["target", "tmp"])
 }
 
 fn default_registry_path() -> Option<PathBuf> {
@@ -1210,6 +1211,10 @@ mod tests {
                     name: "E2E".to_string(),
                     path: PathBuf::from("/Users/micah/dev/shipwright/example/projects-e2e/.ship"),
                 },
+                ProjectEntry {
+                    name: "TargetTmp".to_string(),
+                    path: PathBuf::from("/Users/micah/dev/shipwright/target/tmp/ship-e2e/.ship"),
+                },
             ],
         };
 
@@ -1229,6 +1234,9 @@ mod tests {
         )));
         assert!(should_filter_transient_registry_path(Path::new(
             "/Users/me/dev/shipwright/example/projects-e2e/.ship"
+        )));
+        assert!(should_filter_transient_registry_path(Path::new(
+            "/Users/me/dev/shipwright/target/tmp/ship-e2e/.ship"
         )));
         assert!(!should_filter_transient_registry_path(Path::new(
             "/Users/me/dev/shipwright/.ship"
