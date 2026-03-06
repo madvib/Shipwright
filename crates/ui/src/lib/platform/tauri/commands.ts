@@ -6,8 +6,6 @@ import {
   EventRecord,
   FeatureDocument as Feature,
   FeatureInfo as FeatureEntry,
-  Issue,
-  IssueEntry,
   LogEntry,
   McpServerConfig,
   ModeConfig,
@@ -18,16 +16,13 @@ import {
   ProjectConfig,
   ReleaseDocument as Release,
   ReleaseInfo,
-  Spec as RawSpecDocument,
   SpecEntry as RawSpecInfo,
   Workspace,
   Result,
   commands as spectaCommands,
 } from '@/bindings';
 import {
-  SpecDocument,
   SpecInfo,
-  toSpecDocument,
   toSpecInfo,
 } from '@/lib/types/spec';
 
@@ -49,7 +44,6 @@ const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> 
   throw new Error(String(result.error));
 };
 
-export const listIssues = (): Promise<IssueEntry[]> => invoke('list_items');
 export const listAdrs = (): Promise<AdrEntry[]> => invoke('list_adrs_cmd');
 export const listSpecs = (): Promise<SpecInfo[]> =>
   invoke<RawSpecInfo[]>('list_specs_cmd').then((entries) => entries.map(toSpecInfo));
@@ -116,25 +110,6 @@ export const setActiveProjectCmd = (path: string): Promise<ProjectInfo> =>
   invoke('set_active_project', { path });
 export const renameProjectCmd = (path: string, name: string): Promise<ProjectInfo> =>
   invoke('rename_project_cmd', { path, name });
-
-export const createNewIssueCmd = (
-  title: string,
-  description: string,
-  status: string,
-  assignee?: string | null,
-  tags?: string[] | null
-): Promise<IssueEntry> => invoke('create_new_issue', { title, description, status, assignee, tags });
-
-export const moveIssueStatusCmd = (
-  fileName: string,
-  fromStatus: string,
-  toStatus: string
-): Promise<IssueEntry> => invoke('move_issue_status', { fileName, fromStatus, toStatus });
-
-export const updateIssueByPathCmd = (path: string, issue: Issue): Promise<void> =>
-  invoke('update_issue_by_path', { path, issue });
-
-export const deleteIssueByPathCmd = (path: string): Promise<void> => invoke('delete_issue_by_path', { path });
 
 export const createNewAdrCmd = (
   title: string,
@@ -262,13 +237,7 @@ export const exportAgentConfigCmd = (
   invoke('export_agent_config_cmd', { target });
 
 // AI
-export const generateIssueDescriptionCmd = (title: string): Promise<string> =>
-  invoke('generate_issue_description_cmd', { title });
-
 export const generateAdrCmd = (title: string, context: string): Promise<string> =>
   invoke('generate_adr_cmd', { title, context });
-
-export const brainstormIssuesCmd = (topic: string): Promise<string[]> =>
-  invoke('brainstorm_issues_cmd', { topic });
 export const transformTextCmd = (instruction: string, text: string): Promise<string> =>
   invoke('transform_text_cmd', { instruction, text });

@@ -208,7 +208,7 @@
 @layer components {
   .app-shell {
     display: grid;
-    grid-template-columns: 16rem minmax(0, 1fr);
+    grid-template-columns: 3.25rem minmax(0, 1fr);
     height: 100%;
     width: 100%;
     overflow-x: hidden;

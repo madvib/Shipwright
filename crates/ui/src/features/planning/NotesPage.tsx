@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+// useNavigate removed – no longer needed after SPECS_ROUTE removal
 import { Plus, StickyNote, Trash2 } from 'lucide-react';
 import { Button } from '@ship/ui';
 import { Input } from '@ship/ui';
@@ -18,7 +18,7 @@ import {
     composeFrontmatterDocument,
     setFrontmatterStringListField,
 } from '@ship/ui';
-import { SPECS_ROUTE } from '@/lib/constants/routes';
+// Specs are no longer a top-level route
 
 type EditableNote = {
     title: string;
@@ -85,7 +85,6 @@ export default function NotesPage() {
     const titleInputRef = useRef<HTMLInputElement>(null);
     const [localNote, setLocalNote] = useState<EditableNote | null>(null);
     const activeNoteId = useRef<string | null>(null);
-    const navigate = useNavigate();
 
     useEffect(() => {
         if (!isGlobalScope) return;
@@ -428,7 +427,7 @@ export default function NotesPage() {
                                 tagSuggestions={tagSuggestions}
                                 isEditing={true}
                                 onChange={handleMetadataChange}
-                                onNavigate={(id) => navigate({ to: SPECS_ROUTE, search: { id } })}
+                                onNavigate={() => {}}
                             />
 
                             <div className="flex-1 min-h-0 rounded-lg border border-border/40 bg-background/50 overflow-hidden shadow-inner ring-1 ring-inset ring-white/5">

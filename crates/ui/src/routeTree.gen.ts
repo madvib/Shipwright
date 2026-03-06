@@ -11,12 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectSpecsRouteImport } from './routes/project/specs'
 import { Route as ProjectSettingsRouteImport } from './routes/project/settings'
 import { Route as ProjectReleasesRouteImport } from './routes/project/releases'
 import { Route as ProjectOverviewRouteImport } from './routes/project/overview'
 import { Route as ProjectNotesRouteImport } from './routes/project/notes'
-import { Route as ProjectIssuesRouteImport } from './routes/project/issues'
 import { Route as ProjectFeaturesRouteImport } from './routes/project/features'
 import { Route as ProjectAgentsRouteImport } from './routes/project/agents'
 import { Route as ProjectAdrsRouteImport } from './routes/project/adrs'
@@ -39,11 +37,6 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectSpecsRoute = ProjectSpecsRouteImport.update({
-  id: '/project/specs',
-  path: '/project/specs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ProjectSettingsRoute = ProjectSettingsRouteImport.update({
   id: '/project/settings',
   path: '/project/settings',
@@ -62,11 +55,6 @@ const ProjectOverviewRoute = ProjectOverviewRouteImport.update({
 const ProjectNotesRoute = ProjectNotesRouteImport.update({
   id: '/project/notes',
   path: '/project/notes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectIssuesRoute = ProjectIssuesRouteImport.update({
-  id: '/project/issues',
-  path: '/project/issues',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectFeaturesRoute = ProjectFeaturesRouteImport.update({
@@ -134,12 +122,10 @@ export interface FileRoutesByFullPath {
   '/project/adrs': typeof ProjectAdrsRoute
   '/project/agents': typeof ProjectAgentsRouteWithChildren
   '/project/features': typeof ProjectFeaturesRoute
-  '/project/issues': typeof ProjectIssuesRoute
   '/project/notes': typeof ProjectNotesRoute
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
   '/project/agents/providers': typeof ProjectAgentsProvidersRoute
@@ -155,12 +141,10 @@ export interface FileRoutesByTo {
   '/project/adrs': typeof ProjectAdrsRoute
   '/project/agents': typeof ProjectAgentsRouteWithChildren
   '/project/features': typeof ProjectFeaturesRoute
-  '/project/issues': typeof ProjectIssuesRoute
   '/project/notes': typeof ProjectNotesRoute
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
   '/project/agents/providers': typeof ProjectAgentsProvidersRoute
@@ -177,12 +161,10 @@ export interface FileRoutesById {
   '/project/adrs': typeof ProjectAdrsRoute
   '/project/agents': typeof ProjectAgentsRouteWithChildren
   '/project/features': typeof ProjectFeaturesRoute
-  '/project/issues': typeof ProjectIssuesRoute
   '/project/notes': typeof ProjectNotesRoute
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
   '/project/agents/providers': typeof ProjectAgentsProvidersRoute
@@ -200,12 +182,10 @@ export interface FileRouteTypes {
     | '/project/adrs'
     | '/project/agents'
     | '/project/features'
-    | '/project/issues'
     | '/project/notes'
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/specs'
     | '/project/agents/mcp'
     | '/project/agents/permissions'
     | '/project/agents/providers'
@@ -221,12 +201,10 @@ export interface FileRouteTypes {
     | '/project/adrs'
     | '/project/agents'
     | '/project/features'
-    | '/project/issues'
     | '/project/notes'
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/specs'
     | '/project/agents/mcp'
     | '/project/agents/permissions'
     | '/project/agents/providers'
@@ -242,12 +220,10 @@ export interface FileRouteTypes {
     | '/project/adrs'
     | '/project/agents'
     | '/project/features'
-    | '/project/issues'
     | '/project/notes'
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/specs'
     | '/project/agents/mcp'
     | '/project/agents/permissions'
     | '/project/agents/providers'
@@ -264,12 +240,10 @@ export interface RootRouteChildren {
   ProjectAdrsRoute: typeof ProjectAdrsRoute
   ProjectAgentsRoute: typeof ProjectAgentsRouteWithChildren
   ProjectFeaturesRoute: typeof ProjectFeaturesRoute
-  ProjectIssuesRoute: typeof ProjectIssuesRoute
   ProjectNotesRoute: typeof ProjectNotesRoute
   ProjectOverviewRoute: typeof ProjectOverviewRoute
   ProjectReleasesRoute: typeof ProjectReleasesRoute
   ProjectSettingsRoute: typeof ProjectSettingsRoute
-  ProjectSpecsRoute: typeof ProjectSpecsRoute
   ProjectWorkflowWorkspaceRoute: typeof ProjectWorkflowWorkspaceRoute
 }
 
@@ -287,13 +261,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/project/specs': {
-      id: '/project/specs'
-      path: '/project/specs'
-      fullPath: '/project/specs'
-      preLoaderRoute: typeof ProjectSpecsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project/settings': {
@@ -322,13 +289,6 @@ declare module '@tanstack/react-router' {
       path: '/project/notes'
       fullPath: '/project/notes'
       preLoaderRoute: typeof ProjectNotesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/project/issues': {
-      id: '/project/issues'
-      path: '/project/issues'
-      fullPath: '/project/issues'
-      preLoaderRoute: typeof ProjectIssuesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project/features': {
@@ -440,12 +400,10 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectAdrsRoute: ProjectAdrsRoute,
   ProjectAgentsRoute: ProjectAgentsRouteWithChildren,
   ProjectFeaturesRoute: ProjectFeaturesRoute,
-  ProjectIssuesRoute: ProjectIssuesRoute,
   ProjectNotesRoute: ProjectNotesRoute,
   ProjectOverviewRoute: ProjectOverviewRoute,
   ProjectReleasesRoute: ProjectReleasesRoute,
   ProjectSettingsRoute: ProjectSettingsRoute,
-  ProjectSpecsRoute: ProjectSpecsRoute,
   ProjectWorkflowWorkspaceRoute: ProjectWorkflowWorkspaceRoute,
 }
 export const routeTree = rootRouteImport

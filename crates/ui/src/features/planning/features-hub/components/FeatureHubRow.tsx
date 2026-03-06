@@ -40,7 +40,7 @@ export default function FeatureHubRow({
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <Badge variant="secondary">{release?.version ?? feature.release_id ?? 'No release'}</Badge>
-          {spec && <Badge variant="secondary">{spec.title}</Badge>}
+          {spec && <Badge variant="secondary">{spec.spec.metadata.title}</Badge>}
           {feature.branch && (
             <span className="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
               <Link2 className="size-3" />

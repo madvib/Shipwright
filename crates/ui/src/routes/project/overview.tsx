@@ -19,14 +19,12 @@ function OverviewRouteComponent() {
   return (
     <ProjectOverview
       project={workspace.activeProject}
-      issues={ship.issues}
       specs={ship.specs}
       adrs={ship.adrs}
       releases={ship.releases}
       features={ship.features}
       notes={ship.notes}
       events={workspace.eventEntries}
-      statuses={workspace.statuses}
       onNavigate={handleNavigate}
     />
   );

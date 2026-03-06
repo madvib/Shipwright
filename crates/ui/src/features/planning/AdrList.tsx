@@ -1,5 +1,5 @@
 import { ComponentType, useCallback, useContext, useEffect, useMemo, useState, ChangeEvent, MouseEvent } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+// useNavigate removed – no longer needed after SPECS_ROUTE removal
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -15,7 +15,6 @@ import {
   Trash2,
   X,
   XCircle,
-  ChevronDown,
 } from 'lucide-react';
 import { ADR, AdrEntry, AdrStatus } from '@/bindings';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
@@ -51,7 +50,7 @@ import {
 } from '@ship/ui';
 import { cn } from '@/lib/utils';
 import { PageChromeContext } from '@/components/app/PageFrame';
-import { SPECS_ROUTE } from '@/lib/constants/routes';
+// Route imports removed – specs is no longer a top-level page
 import { getAdrStatusClasses } from '@/lib/workspace-ui';
 import AdrEditor from './AdrEditor';
 import TemplateEditorButton from './TemplateEditorButton';
@@ -160,7 +159,6 @@ export default function AdrList({
   const [createStatus, setCreateStatus] = useState<AdrStatus>('proposed');
   const [createError, setCreateError] = useState<string | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
-  const navigate = useNavigate();
 
   const activeEntry = useMemo(() => {
     if (!selectedAdr) return null;
@@ -220,29 +218,6 @@ export default function AdrList({
 
   useEffect(() => {
     if (!selectedAdr && sortedAdrs.length > 0 && !creating) {
-      // #region agent log
-      fetch('http://127.0.0.1:7589/ingest/f85ceda4-335f-4e01-985d-67f8dc3ec941',{
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'X-Debug-Session-Id':'25afe1'
-        },
-        body:JSON.stringify({
-          sessionId:'25afe1',
-          runId:'initial',
-          hypothesisId:'H1',
-          location:'AdrList.tsx:221',
-          message:'Default select ADR effect firing',
-          data:{
-            selectedAdrId:selectedAdr?.id ?? null,
-            firstAdrId:sortedAdrs[0]?.id ?? null,
-            sortedCount:sortedAdrs.length,
-            creating
-          },
-          timestamp:Date.now()
-        })
-      }).catch(()=>{});
-      // #endregion agent log
       void Promise.resolve(onSelectAdr(sortedAdrs[0]));
     }
   }, [creating, onSelectAdr, selectedAdr, sortedAdrs]);
@@ -644,9 +619,7 @@ export default function AdrList({
                             tagSuggestions={tagSuggestions}
                             adrSuggestions={adrSuggestions}
                             onNavigate={(type: string, id: string) => {
-                              if (type === 'spec') {
-                                void navigate({ to: SPECS_ROUTE, search: { id } });
-                              } else if (type === 'adr') {
+                              if (type === 'adr') {
                                 const found = adrs.find(a => a.id === id);
                                 if (found) void onSelectAdr(found);
                               }

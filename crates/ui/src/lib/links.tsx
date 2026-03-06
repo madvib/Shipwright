@@ -3,7 +3,7 @@ import { useShip } from './hooks/workspace/WorkspaceContext';
 import { Badge, Button } from '@ship/ui';
 import { ExternalLink } from 'lucide-react';
 
-export type EntityType = 'issue' | 'spec' | 'feature' | 'release' | 'adr' | 'note';
+export type EntityType = 'spec' | 'feature' | 'release' | 'adr' | 'note';
 
 export interface EntityLinkInfo {
     type: string;
@@ -21,14 +21,13 @@ export function useEntityLink() {
         if (lowerType === 'spec') {
             const entry = ship.specs.find(s => s.file_name === target || s.id === target);
             if (entry) ship.setSelectedSpec(entry);
-            navigate({ to: '/project/specs' });
         } else if (lowerType === 'feature') {
             const entry = ship.features.find(f => f.file_name === target || f.id === target);
-            if (entry) ship.setSelectedFeature(entry);
+            if (entry) void ship.handleSelectFeature(entry);
             navigate({ to: '/project/features' });
         } else if (lowerType === 'release') {
             const entry = ship.releases.find(r => r.file_name === target || r.id === target);
-            if (entry) ship.setSelectedRelease(entry);
+            if (entry) void ship.handleSelectRelease(entry);
             navigate({ to: '/project/releases' });
         } else if (lowerType === 'adr') {
             const entry = ship.adrs.find(a => a.file_name === target || a.id === target);
@@ -36,13 +35,8 @@ export function useEntityLink() {
             navigate({ to: '/project/adrs' });
         } else if (lowerType === 'note') {
             const entry = ship.notes.find(n => n.id === target);
-            if (entry) ship.setSelectedNote(entry);
+            if (entry) void ship.handleSelectNote(entry);
             navigate({ to: '/project/notes' });
-        } else {
-            // Default to issue
-            const entry = ship.issues.find(i => i.file_name === target || i.id === target);
-            if (entry) ship.setSelectedIssue(entry);
-            navigate({ to: '/project/issues' });
         }
     };
 

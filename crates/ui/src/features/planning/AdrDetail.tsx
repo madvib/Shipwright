@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
 import { ADR, AdrEntry } from '@/bindings';
 import AdrEditor from './AdrEditor';
@@ -19,7 +18,6 @@ import {
 import { AdrHeaderMetadata } from './AdrHeaderMetadata';
 import { AdrContextDialog } from './AdrContextDialog';
 import { deriveAdrHeaderTitle } from './adrTitle';
-import { SPECS_ROUTE } from '@/lib/constants/routes';
 
 interface AdrDetailProps {
   entry: AdrEntry;
@@ -55,7 +53,6 @@ export default function AdrDetail({
   const [draft, setDraft] = useState<ADR>(normalizeAdr(entry.adr));
   const [dirty, setDirty] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     setDraft(normalizeAdr(entry.adr));
@@ -144,11 +141,9 @@ export default function AdrDetail({
               specSuggestions={specSuggestions}
               tagSuggestions={tagSuggestions}
               adrSuggestions={adrSuggestions}
-              isEditing={false}
-              onNavigate={(type, id) => {
-                onClose();
-                if (type === 'spec') {
-                  navigate({ to: SPECS_ROUTE, search: { id } });
+              onNavigate={(type) => {
+                if (type === 'adr') {
+                  onClose();
                 }
               }}
             />

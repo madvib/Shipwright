@@ -2,7 +2,6 @@ import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import {
   AdrEntry,
   FeatureDocument,
-  IssueEntry,
   ProjectDiscovery as Project,
   ProjectConfig,
   ReleaseDocument,
@@ -26,7 +25,6 @@ interface UseProjectActionsParams {
   setError: Dispatch<SetStateAction<string | null>>;
   setActiveProject: Dispatch<SetStateAction<Project | null>>;
   setDetectedProject: Dispatch<SetStateAction<Project | null>>;
-  setSelectedIssue: Dispatch<SetStateAction<IssueEntry | null>>;
   setSelectedAdr: Dispatch<SetStateAction<AdrEntry | null>>;
   setSelectedSpec: Dispatch<SetStateAction<SpecInfo | null>>;
   setSelectedRelease: Dispatch<SetStateAction<ReleaseDocument | null>>;
@@ -40,7 +38,6 @@ export function useProjectActions({
   setError,
   setActiveProject,
   setDetectedProject,
-  setSelectedIssue,
   setSelectedAdr,
   setSelectedSpec,
   setSelectedRelease,
@@ -50,12 +47,11 @@ export function useProjectActions({
   loadProjectConfig,
 }: UseProjectActionsParams) {
   const resetSelection = useCallback(() => {
-    setSelectedIssue(null);
     setSelectedAdr(null);
     setSelectedSpec(null);
     setSelectedRelease(null);
     setSelectedFeature(null);
-  }, [setSelectedIssue, setSelectedAdr, setSelectedSpec, setSelectedRelease, setSelectedFeature]);
+  }, [setSelectedAdr, setSelectedSpec, setSelectedRelease, setSelectedFeature]);
 
   const activateProjectFromInfo = useCallback(async (info: { name: string; path: string; issue_count?: number }) => {
     setActiveProject(projectFromInfo(info));

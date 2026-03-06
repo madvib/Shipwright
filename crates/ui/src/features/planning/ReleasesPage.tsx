@@ -391,7 +391,6 @@ tags = []
               const linked = summary?.linked ?? [];
               const progress = summary?.progressPercent ?? 0;
               const blockers = summary?.blockers ?? 0;
-              const releaseSuggestions = releases.map((entry: ReleaseInfo) => entry.file_name);
 
               return (
                 <ReleaseHubRow

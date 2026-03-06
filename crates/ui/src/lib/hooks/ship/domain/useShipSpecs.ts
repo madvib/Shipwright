@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction, useState, useMemo } from 'react';
-import { SpecDocument, SpecInfo as SpecEntry } from '@/lib/types/spec';
+import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import { useSpecActions } from '../../workspace/useSpecActions';
 
 interface UseShipSpecsParams {

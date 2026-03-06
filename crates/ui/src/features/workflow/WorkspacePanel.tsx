@@ -3,11 +3,14 @@ import { useNavigate } from '@tanstack/react-router';
 import {
   ExternalLink,
   GitBranch,
+  GitFork,
   Loader2,
   Plus,
   Search,
   RefreshCw,
+  Settings2,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   activateWorkspaceCmd,
@@ -20,12 +23,10 @@ import { Workspace } from '@/bindings';
 import { RuntimeWorkspace } from '@/lib/types/workspace';
 import { Badge } from '@ship/ui';
 import { Button } from '@ship/ui';
-import { Card, CardContent, CardHeader, CardTitle } from '@ship/ui';
 import { Alert, AlertDescription, AlertTitle } from '@ship/ui';
 import { Input } from '@ship/ui';
-import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
-import { AGENTS_PROVIDERS_ROUTE, FEATURES_ROUTE, SPECS_ROUTE } from '@/lib/constants/routes';
+import { FEATURES_ROUTE, SETTINGS_ROUTE } from '@/lib/constants/routes';
 import {
   WorkspaceLifecycleGraph,
   type WorkspaceGroupBy,
@@ -184,57 +185,6 @@ export default function WorkspacePanel() {
     });
   }, [rows, searchQuery]);
 
-  const statusCounts = useMemo(() => {
-    const counts: Record<WorkspaceGraphStatus, number> = {
-      planned: 0,
-      active: 0,
-      idle: 0,
-      review: 0,
-      merged: 0,
-      archived: 0,
-    };
-    for (const row of filteredRows) {
-      counts[row.status] += 1;
-    }
-    return counts;
-  }, [filteredRows]);
-
-  const typeCounts = useMemo(() => {
-    const counts: Record<WorkspaceGraphRow['workspaceType'], number> = {
-      feature: 0,
-      refactor: 0,
-      experiment: 0,
-      hotfix: 0,
-    };
-    for (const row of filteredRows) {
-      counts[row.workspaceType] += 1;
-    }
-    return counts;
-  }, [filteredRows]);
-
-  const releaseCounts = useMemo(() => {
-    const byRelease = new Map<string, number>();
-    let unassigned = 0;
-
-    for (const row of filteredRows) {
-      const release = row.releaseId?.trim() ?? '';
-      if (!release) {
-        unassigned += 1;
-        continue;
-      }
-      byRelease.set(release, (byRelease.get(release) ?? 0) + 1);
-    }
-
-    const topReleases = Array.from(byRelease.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
-
-    return {
-      releaseGroups: byRelease.size,
-      unassigned,
-      topReleases,
-    };
-  }, [filteredRows]);
 
   useEffect(() => {
     if (filteredRows.length === 0) {
@@ -346,40 +296,6 @@ export default function WorkspacePanel() {
     setSearchQuery('');
   };
 
-  const actions = (
-    <div className="flex items-center gap-1.5">
-      <Input
-        value={workspaceKeyInput}
-        onChange={(event) => setWorkspaceKeyInput(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            void createWorkspaceFromInput();
-          }
-        }}
-        placeholder={branch ? `workspace key (default ${branch})` : 'workspace key (branch/id)'}
-        className="h-7 w-52 text-xs"
-      />
-      <Button variant="outline" size="xs" onClick={() => void createWorkspaceFromInput()} disabled={creating}>
-        <Plus className={`size-3.5 ${creating ? 'animate-pulse' : ''}`} />
-        Create
-      </Button>
-      <Button
-        variant="outline"
-        size="xs"
-        onClick={() => void syncCurrentWorkspace()}
-        disabled={!branch || syncing}
-      >
-        <GitBranch className={`size-3.5 ${syncing ? 'animate-pulse' : ''}`} />
-        Sync Git
-      </Button>
-      <Button variant="outline" size="xs" onClick={() => void load()} disabled={loading}>
-        <RefreshCw className={`size-3.5 ${loading ? 'animate-spin' : ''}`} />
-        Refresh
-      </Button>
-    </div>
-  );
-
   const openFeature = () => {
     if (!linkedFeature) return;
     void navigate({ to: FEATURES_ROUTE });
@@ -388,349 +304,299 @@ export default function WorkspacePanel() {
 
   const openSpec = () => {
     if (!linkedSpec) return;
-    void navigate({ to: SPECS_ROUTE });
     void ship.handleSelectSpec(linkedSpec);
   };
 
   const openAgentProviders = () => {
-    void navigate({ to: AGENTS_PROVIDERS_ROUTE });
+    void navigate({ to: SETTINGS_ROUTE, search: { tab: 'providers' } });
   };
 
   if (loading) {
     return (
-      <PageFrame width="wide">
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      </PageFrame>
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <PageFrame width="wide">
-        <Alert variant="destructive">
+      <div className="flex h-full items-center justify-center p-8">
+        <Alert variant="destructive" className="max-w-lg">
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      </PageFrame>
+      </div>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <PageFrame width="wide">
-        <PageHeader title="Workspaces" actions={actions} />
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center">
-          <GitBranch className="size-12 text-muted-foreground/30" />
-          <div>
-            <h3 className="text-base font-semibold">No Workspaces Yet</h3>
-            <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Workspaces are the runtime unit where agents execute context-aware work.
-            </p>
-            {branch && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Current git branch:{' '}
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{branch}</code>
-              </p>
-            )}
-          </div>
-          <div className="flex w-full max-w-md items-center gap-2">
-            <Input
-              value={workspaceKeyInput}
-              onChange={(event) => setWorkspaceKeyInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void createWorkspaceFromInput();
-                }
-              }}
-              placeholder={branch ? `workspace key (default ${branch})` : 'workspace key (branch/id)'}
-              className="h-8"
-            />
-            <Button size="sm" onClick={() => void createWorkspaceFromInput()} disabled={creating}>
-              {creating ? 'Creating…' : 'Create Workspace'}
-            </Button>
-          </div>
+      <div className="flex h-full flex-col items-center justify-center gap-5 p-8">
+        <div className="flex size-16 items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/20">
+          <GitBranch className="size-7 text-muted-foreground/40" />
         </div>
-      </PageFrame>
+        <div className="text-center">
+          <h3 className="text-lg font-semibold">No Workspaces Yet</h3>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Create a workspace to start context-aware agent execution.
+          </p>
+          {branch && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Current branch:{' '}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{branch}</code>
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            value={workspaceKeyInput}
+            onChange={(event) => setWorkspaceKeyInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void createWorkspaceFromInput();
+              }
+            }}
+            placeholder={branch ? `key (default: ${branch})` : 'workspace key'}
+            className="h-9 w-56"
+          />
+          <Button onClick={() => void createWorkspaceFromInput()} disabled={creating}>
+            <Plus className="size-4" />
+            {creating ? 'Creating…' : 'Create Workspace'}
+          </Button>
+        </div>
+      </div>
     );
   }
 
   const hasActiveFilters = searchQuery.trim().length > 0;
 
   return (
-    <PageFrame width="wide" className="min-h-0">
-      <PageHeader
-        title="Workspaces"
-        actions={actions}
-        badge={
-          <Badge variant="outline">
-            {filteredRows.length}/{rows.length} in view
-          </Badge>
-        }
-      />
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Toolbar */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-2">
+        <div className="relative h-7 min-w-[180px] flex-1 max-w-xs">
+          <Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search workspaces…"
+            className="h-7 pl-7 text-xs"
+          />
+        </div>
 
-      <Card size="sm">
-        <CardContent className="space-y-3 pt-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative h-8 w-full min-w-[220px] flex-1 md:max-w-[340px]">
-              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search branch, feature, spec, mode, provider…"
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
+        <div className="flex h-7 items-center gap-0.5 rounded-md border bg-muted/30 p-0.5">
+          {GROUP_BY_OPTIONS.map((option) => (
+            <Button
+              key={option.key}
+              type="button"
+              size="xs"
+              variant={groupBy === option.key ? 'secondary' : 'ghost'}
+              className="h-5 px-2 text-[10px]"
+              onClick={() => setGroupBy(option.key)}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
 
-            <div className="flex h-8 shrink-0 items-center gap-1 rounded-md border bg-muted/20 p-0.5">
-              <span className="px-1 text-[10px] uppercase tracking-wider text-muted-foreground">Group</span>
-              {GROUP_BY_OPTIONS.map((option) => (
-                <Button
-                  key={option.key}
-                  type="button"
-                  size="xs"
-                  variant={groupBy === option.key ? 'secondary' : 'ghost'}
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => setGroupBy(option.key)}
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="xs" onClick={clearFilters} className="h-7">
+            <X className="size-3" />
+          </Button>
+        )}
 
-            {hasActiveFilters && (
-              <Button variant="outline" size="xs" onClick={clearFilters}>
-                <X className="size-3.5" />
-                Clear
-              </Button>
-            )}
-          </div>
+        <div className="flex-1" />
 
-          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-            {groupBy === 'status' ? (
-              <>
-                <Badge variant="outline">active {statusCounts.active}</Badge>
-                <Badge variant="outline">idle {statusCounts.idle}</Badge>
-                <Badge variant="outline">planned {statusCounts.planned}</Badge>
-                <Badge variant="outline">review {statusCounts.review}</Badge>
-                <Badge variant="outline">merged {statusCounts.merged}</Badge>
-                <Badge variant="outline">archived {statusCounts.archived}</Badge>
-              </>
-            ) : groupBy === 'type' ? (
-              <>
-                <Badge variant="outline">feature {typeCounts.feature}</Badge>
-                <Badge variant="outline">refactor {typeCounts.refactor}</Badge>
-                <Badge variant="outline">experiment {typeCounts.experiment}</Badge>
-                <Badge variant="outline">hotfix {typeCounts.hotfix}</Badge>
-              </>
-            ) : (
-              <>
-                <Badge variant="outline">releases {releaseCounts.releaseGroups}</Badge>
-                <Badge variant="outline">unassigned {releaseCounts.unassigned}</Badge>
-                {releaseCounts.topReleases.map(([release, count]) => (
-                  <Badge key={release} variant="outline">
-                    {release} {count}
-                  </Badge>
-                ))}
-              </>
-            )}
-            {hasActiveFilters && (
-              <span className="ml-1 text-muted-foreground">
-                filtered from {rows.length} total
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <span className="text-[10px] text-muted-foreground">
+          {filteredRows.length} of {rows.length}
+        </span>
 
-      {filteredRows.length === 0 ? (
-        <Card size="sm">
-          <CardContent className="py-10 text-center">
-            <p className="text-sm font-medium">No workspaces match this search.</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Adjust search terms or clear filters.
-            </p>
-            {hasActiveFilters && (
-              <Button className="mt-3" size="sm" variant="outline" onClick={clearFilters}>
-                Reset Filters
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
+        <div className="flex items-center gap-1">
+          <Input
+            value={workspaceKeyInput}
+            onChange={(event) => setWorkspaceKeyInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void createWorkspaceFromInput();
+              }
+            }}
+            placeholder={branch ? `new (default: ${branch})` : 'new workspace'}
+            className="h-7 w-40 text-xs"
+          />
+          <Button variant="outline" size="xs" className="h-7" onClick={() => void createWorkspaceFromInput()} disabled={creating}>
+            <Plus className={`size-3 ${creating ? 'animate-pulse' : ''}`} />
+          </Button>
+          <Button variant="outline" size="xs" className="h-7" onClick={() => void syncCurrentWorkspace()} disabled={!branch || syncing}>
+            <GitBranch className={`size-3 ${syncing ? 'animate-pulse' : ''}`} />
+          </Button>
+          <Button variant="outline" size="xs" className="h-7" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`size-3 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Main split layout */}
+      <div className="flex flex-1 min-h-0">
+        {/* Kanban */}
+        <div className="flex-1 min-w-0 overflow-auto p-3">
           <WorkspaceLifecycleGraph
             rows={filteredRows}
             selectedBranch={selectedBranch}
             onSelectBranch={setSelectedBranch}
             groupBy={groupBy}
           />
+        </div>
 
-          {detail && (
-            <Card size="sm" className="min-h-0">
-              <CardHeader className="pb-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <CardTitle className="min-w-0 truncate text-sm">{detail.branch}</CardTitle>
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant={statusVariant(detail.status)} className="h-6 px-2 text-[11px]">
-                      {detail.status}
-                    </Badge>
-                    {detail.isWorktree && <Badge variant="secondary">worktree</Badge>}
-                    {detail.status !== 'active' && (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() => void activateSelectedWorkspace()}
-                        disabled={activating}
-                      >
-                        {activating ? 'Activating…' : 'Activate'}
+        {/* Detail Panel */}
+        {detail && (
+          <aside className="w-[380px] shrink-0 overflow-y-auto border-l border-border/50 bg-card/30">
+            {/* Detail Header */}
+            <div className="sticky top-0 z-10 border-b border-border/50 bg-card/80 backdrop-blur-sm px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold">{detail.branch}</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    {detail.workspaceType} · {detail.isWorktree ? 'worktree' : 'checkout'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Badge variant={statusVariant(detail.status)} className="h-6 px-2 text-[11px]">
+                    {detail.status}
+                  </Badge>
+                  {detail.status !== 'active' && (
+                    <Button
+                      size="xs"
+                      onClick={() => void activateSelectedWorkspace()}
+                      disabled={activating}
+                    >
+                      {activating ? '…' : 'Activate'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {branch === detail.branch && (
+                <Badge variant="default" className="mt-1.5 h-5 px-1.5 text-[10px]">
+                  current branch
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-4 p-4">
+              {/* Linked Context */}
+              <section>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Linked Context</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between rounded-md border bg-background/60 px-3 py-2">
+                    <span className="text-xs text-muted-foreground">Spec</span>
+                    {linkedSpec ? (
+                      <Button size="xs" variant="ghost" onClick={openSpec} className="h-6 gap-1 px-1.5">
+                        <span className="truncate max-w-[160px] text-xs">{linkedSpec.spec.metadata.title}</span>
+                        <ExternalLink className="size-3 shrink-0" />
                       </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50 italic">none</span>
                     )}
                   </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-2 pt-0 text-xs">
-                <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-muted/10 px-2.5 py-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Linked Context</span>
-                  {linkedSpec ? (
-                    <Button size="xs" variant="outline" onClick={openSpec} className="h-6 max-w-[16rem]">
-                      <span className="truncate">spec {shortToken(linkedSpec.spec.metadata.title, 24)}</span>
-                      <ExternalLink className="size-3.5" />
-                    </Button>
-                  ) : (
-                    <Badge variant="ghost" className="h-6 px-2 text-[11px]">spec none</Badge>
-                  )}
-                  {linkedFeature ? (
-                    <Button size="xs" variant="outline" onClick={openFeature} className="h-6 max-w-[16rem]">
-                      <span className="truncate">feature {shortToken(linkedFeature.title, 24)}</span>
-                      <ExternalLink className="size-3.5" />
-                    </Button>
-                  ) : (
-                    <Badge variant="ghost" className="h-6 px-2 text-[11px]">feature none</Badge>
-                  )}
-                  <Badge variant="outline" className="h-6 px-2 text-[11px]">
-                    release {detail.releaseId ? shortToken(detail.releaseId, 20) : 'unassigned'}
-                  </Badge>
-                </div>
-
-                <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="space-y-2">
-                    <div className="rounded-md border bg-muted/[0.12] px-2.5 py-2 transition-colors hover:bg-muted/25">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Execution Scope</p>
-                      <div className="mt-1.5 grid gap-1.5 text-[11px]">
-                        <div className="flex items-center justify-between rounded border bg-background/60 px-2 py-1">
-                          <span className="text-muted-foreground">Spec</span>
-                          <span className="truncate font-medium">
-                            {linkedSpec ? shortToken(linkedSpec.file_name, 28) : 'not linked'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between rounded border bg-background/60 px-2 py-1">
-                          <span className="text-muted-foreground">Feature</span>
-                          <span className="truncate font-medium">
-                            {linkedFeature ? shortToken(linkedFeature.file_name, 28) : 'not linked'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between rounded border bg-background/60 px-2 py-1">
-                          <span className="text-muted-foreground">Release</span>
-                          <span className="truncate font-medium">
-                            {detail.releaseId ? shortToken(detail.releaseId, 28) : 'not linked'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-transparent px-2.5 py-2 transition-colors hover:bg-primary/[0.08]">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">Runtime Matrix</p>
-                      <Button size="xs" variant="outline" onClick={openAgentProviders}>
-                        Providers
-                        <ExternalLink className="size-3.5" />
+                  <div className="flex items-center justify-between rounded-md border bg-background/60 px-3 py-2">
+                    <span className="text-xs text-muted-foreground">Feature</span>
+                    {linkedFeature ? (
+                      <Button size="xs" variant="ghost" onClick={openFeature} className="h-6 gap-1 px-1.5">
+                        <span className="truncate max-w-[160px] text-xs">{linkedFeature.title}</span>
+                        <ExternalLink className="size-3 shrink-0" />
                       </Button>
-                    </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50 italic">none</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border bg-background/60 px-3 py-2">
+                    <span className="text-xs text-muted-foreground">Release</span>
+                    <span className="truncate max-w-[160px] text-xs font-medium">
+                      {detail.releaseId || <span className="text-muted-foreground/50 italic font-normal">none</span>}
+                    </span>
+                  </div>
+                </div>
+              </section>
 
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                      <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                        mode {detail.activeMode ?? workspaceUi.activeModeId ?? 'default'}
-                      </Badge>
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                        {detail.providers.length} provider{detail.providers.length === 1 ? '' : 's'}
-                      </Badge>
-                      <Badge variant={detail.isWorktree ? 'secondary' : 'outline'} className="h-5 px-1.5 text-[10px]">
-                        {detail.isWorktree ? 'worktree' : 'checkout'}
-                      </Badge>
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px]">target local</Badge>
-                      {detail.contextHash && (
-                        <Badge
-                          variant="ghost"
-                          className="h-5 px-1.5 text-[10px] cursor-help"
-                          title={`Context hash: ${detail.contextHash}`}
-                        >
-                          ctx {shortToken(detail.contextHash, 8)}
+              {/* Runtime */}
+              <section>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Runtime</p>
+                  <Button size="xs" variant="ghost" onClick={openAgentProviders} className="h-5 gap-1 px-1 text-[10px]">
+                    <Settings2 className="size-3" />
+                    Configure
+                  </Button>
+                </div>
+                <div className="rounded-lg border bg-gradient-to-br from-primary/5 to-transparent p-3 space-y-2.5">
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      <Zap className="size-2.5 mr-0.5" />
+                      {detail.activeMode ?? workspaceUi.activeModeId ?? 'default'}
+                    </Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      {detail.providers.length} provider{detail.providers.length === 1 ? '' : 's'}
+                    </Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      <GitFork className="size-2.5 mr-0.5" />
+                      {detail.isWorktree ? 'worktree' : 'checkout'}
+                    </Badge>
+                  </div>
+                  {detail.providers.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {detail.providers.map((provider) => (
+                        <Badge key={provider} variant="secondary" className="h-5 px-1.5 text-[10px]">
+                          {provider}
                         </Badge>
-                      )}
+                      ))}
                     </div>
+                  )}
+                </div>
+              </section>
 
-                    <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-[11px]">
-                      <span className="text-muted-foreground">Branch</span>
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <code className="min-w-0 truncate rounded border bg-background/70 px-1.5 py-0.5 font-mono">
-                          {detail.branch}
-                        </code>
-                        {branch === detail.branch && (
-                          <Badge variant="default" className="h-5 px-1.5 text-[10px]">
-                            current
-                          </Badge>
-                        )}
-                      </div>
-
-                      <span className="text-muted-foreground">Lifecycle</span>
-                      <span className="truncate">{detail.status} · {detail.workspaceType}</span>
-
-                      <span className="text-muted-foreground">Worktree Path</span>
-                      {detail.worktreePath ? (
-                        <code className="min-w-0 truncate rounded border bg-background/70 px-1.5 py-0.5 font-mono">
-                          {detail.worktreePath}
-                        </code>
-                      ) : (
-                        <span className="text-muted-foreground">repo checkout</span>
-                      )}
-
-                      <span className="text-muted-foreground">Resolved</span>
-                      <span className="truncate text-muted-foreground">{new Date(detail.resolvedAt).toLocaleString()}</span>
-
-                      <span className="text-muted-foreground">Last Active</span>
-                      <span className="truncate text-muted-foreground">
-                        {detail.lastActivatedAt ? new Date(detail.lastActivatedAt).toLocaleString() : 'never'}
-                      </span>
-
-                      <span className="text-muted-foreground">Workspace ID</span>
-                      <code className="min-w-0 truncate rounded border bg-muted/30 px-1.5 py-0.5 font-mono">
-                        {detail.id}
+              {/* Details */}
+              <section>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Details</p>
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between py-1 border-b border-border/30">
+                    <span className="text-muted-foreground">Branch</span>
+                    <code className="font-mono text-[10px] truncate max-w-[180px]">{detail.branch}</code>
+                  </div>
+                  {detail.worktreePath && (
+                    <div className="flex justify-between py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Worktree</span>
+                      <code className="font-mono text-[10px] truncate max-w-[180px]">{detail.worktreePath}</code>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-1 border-b border-border/30">
+                    <span className="text-muted-foreground">Resolved</span>
+                    <span className="text-muted-foreground">{new Date(detail.resolvedAt).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-border/30">
+                    <span className="text-muted-foreground">Last Active</span>
+                    <span className="text-muted-foreground">
+                      {detail.lastActivatedAt ? new Date(detail.lastActivatedAt).toLocaleDateString() : 'never'}
+                    </span>
+                  </div>
+                  {detail.contextHash && (
+                    <div className="flex justify-between py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Context Hash</span>
+                      <code className="font-mono text-[10px] truncate max-w-[120px]" title={detail.contextHash}>
+                        {shortToken(detail.contextHash, 12)}
                       </code>
                     </div>
-
-                    <div className="mt-2 flex flex-wrap gap-1 rounded-md border bg-background/65 px-2 py-1.5">
-                      {detail.providers.length > 0 ? (
-                        detail.providers.map((provider) => (
-                          <Badge key={provider} variant="secondary" className="h-5 px-1.5 text-[10px]">
-                            {provider}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-[11px] italic text-muted-foreground">No provider snapshot captured yet.</span>
-                      )}
-                    </div>
+                  )}
+                  <div className="flex justify-between py-1">
+                    <span className="text-muted-foreground">ID</span>
+                    <code className="font-mono text-[10px] truncate max-w-[180px]">{detail.id}</code>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-    </PageFrame>
+              </section>
+            </div>
+          </aside>
+        )}
+      </div>
+    </div>
   );
 }

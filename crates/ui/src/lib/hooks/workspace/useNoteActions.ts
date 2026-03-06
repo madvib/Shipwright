@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
-import { NoteInfo as NoteEntry } from '@/bindings';
+import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';
 import {
     createNoteCmd,
     deleteNoteCmd,
@@ -10,7 +10,7 @@ import { isTauriRuntime } from '../../platform/tauri/runtime';
 
 interface UseNoteActionsParams {
     setNotes: Dispatch<SetStateAction<NoteEntry[]>>;
-    setSelectedNote: Dispatch<SetStateAction<NoteEntry | null>>;
+    setSelectedNote: Dispatch<SetStateAction<NoteDocument | null>>;
     setError: Dispatch<SetStateAction<string | null>>;
     refreshActivity: () => Promise<void>;
 }
@@ -23,13 +23,13 @@ export function useNoteActions({
 }: UseNoteActionsParams) {
     const handleSelectNote = useCallback(async (entry: NoteEntry) => {
         if (!isTauriRuntime()) {
-            setSelectedNote(entry);
+            setSelectedNote({ ...entry, content: '' });
             return;
         }
 
         try {
             const latest = await getNoteCmd(entry.id);
-            setSelectedNote({ id: latest.id, title: latest.title, updated: latest.updated });
+            setSelectedNote(latest);
         } catch (error) {
             setError(String(error));
         }
@@ -43,9 +43,9 @@ export function useNoteActions({
 
         try {
             const created = await createNoteCmd(title, content);
-            const entry = { id: created.id, title: created.title, updated: created.updated };
-            setNotes((prev) => [entry, ...prev.filter((e) => e.id !== created.id)]);
-            setSelectedNote(entry);
+            const infoEntry = { id: created.id, title: created.title, updated: created.updated };
+            setNotes((prev) => [infoEntry, ...prev.filter((e) => e.id !== created.id)]);
+            setSelectedNote(created);
             await refreshActivity();
             return created;
         } catch (error) {
@@ -62,13 +62,13 @@ export function useNoteActions({
 
         try {
             const updated = await updateNoteCmd(id, content);
-            const entry = { id: updated.id, title: updated.title, updated: updated.updated };
+            const infoEntry = { id: updated.id, title: updated.title, updated: updated.updated };
             setNotes((prev) =>
                 prev.map((e) =>
-                    e.id === updated.id ? entry : e
+                    e.id === updated.id ? infoEntry : e
                 )
             );
-            setSelectedNote(entry);
+            setSelectedNote(updated);
             await refreshActivity();
             return updated;
         } catch (error) {

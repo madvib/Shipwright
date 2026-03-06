@@ -13,9 +13,7 @@ import {
   Sparkles,
   Target,
   Lightbulb,
-  FolderGit2,
   Plus,
-  ArrowRight,
   History,
 } from 'lucide-react';
 import { splitFrontmatterDocument } from '@ship/ui';
@@ -25,18 +23,15 @@ import {
   AdrEntry,
   EventRecord,
   FeatureInfo as FeatureEntry,
-  IssueEntry,
   NoteInfo as NoteEntry,
   ProjectDiscovery as Project,
   ReleaseInfo as ReleaseEntry,
-  StatusConfig,
 } from '@/bindings';
 import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import {
   ADRS_ROUTE,
   AppRoutePath,
   FEATURES_ROUTE,
-  ISSUES_ROUTE,
   NOTES_ROUTE,
   PROJECTS_ROUTE,
   RELEASES_ROUTE,
@@ -49,27 +44,23 @@ import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 
 interface ProjectOverviewProps {
   project: Project;
-  issues: IssueEntry[];
   specs: SpecEntry[];
   adrs: AdrEntry[];
   releases: ReleaseEntry[];
   features: FeatureEntry[];
   notes: NoteEntry[];
   events: EventRecord[];
-  statuses: StatusConfig[];
   onNavigate: (path: AppRoutePath) => void;
 }
 
 export default function ProjectOverview({
   project,
-  issues,
   specs,
   adrs,
   releases,
   features,
   notes,
   events,
-  statuses,
   onNavigate,
 }: ProjectOverviewProps) {
   const navigate = useNavigate();
@@ -252,14 +243,12 @@ export default function ProjectOverview({
                   </div>
                   <AdrHeaderMetadata
                     adr={adr.adr}
-                    specSuggestions={specs.map(s => ({ id: s.id, title: s.title }))}
+                    onChange={() => {}}
+                    specSuggestions={specs.map(s => ({ id: s.id, title: s.spec.metadata.title }))}
                     adrSuggestions={adrs.map(a => ({ id: a.file_name, title: a.adr.metadata.title }))}
                     tagSuggestions={[]}
-                    isEditing={false}
                     onNavigate={(type, id) => {
-                      if (type === 'spec') {
-                        navigate({ to: SPECS_ROUTE, search: { id } });
-                      } else if (type === 'adr') {
+                      if (type === 'adr') {
                         navigate({ to: ADRS_ROUTE, search: { id } });
                       }
                     }}
@@ -306,35 +295,6 @@ export default function ProjectOverview({
                   <Button variant="link" size="xs" onClick={() => onNavigate(NOTES_ROUTE)}>Capture a thought</Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Task Board / Issues */}
-          <Card className="border-l-4 border-l-sky-500/60">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FolderGit2 className="size-4 text-sky-500" />
-                Task Loop
-              </CardTitle>
-              <CardDescription>Active work items and status.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                {statuses.slice(0, 4).map(status => {
-                  const count = issues.filter(i => i.status === status.id).length;
-                  return (
-                    <div key={status.id} className="rounded-md border bg-card/30 p-2 text-center">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter truncate">{status.name}</p>
-                      <p className="text-lg font-bold">{count}</p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <Button variant="outline" size="sm" className="w-full" onClick={() => onNavigate(ISSUES_ROUTE)}>
-                Open Task Board
-                <ArrowRight className="ml-2 size-3.5" />
-              </Button>
             </CardContent>
           </Card>
 

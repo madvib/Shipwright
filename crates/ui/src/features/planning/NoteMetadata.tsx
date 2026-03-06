@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Calendar as CalendarIcon, Shapes, Tag } from 'lucide-react';
 import {
     Popover,
@@ -10,7 +9,6 @@ import {
     readFrontmatterSummary,
 } from '@ship/ui';
 import { formatDate } from '@/lib/date';
-import { cn } from '@/lib/utils';
 
 interface NoteMetadataProps {
     frontmatter: string | null;
@@ -34,7 +32,6 @@ export function NoteMetadata({
     const summary = readFrontmatterSummary(frontmatter);
     const { specs = [], tags = [] } = summary;
 
-    const [tagInput, setTagInput] = useState('');
 
     const handleSpecChange = (nextSpecs: string[]) => {
         onChange(nextSpecs, tags);
@@ -101,7 +98,6 @@ export function NoteMetadata({
                                 options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
                                 selectedValues={specs}
                                 onSelectionChange={handleSpecChange}
-                                className="w-full"
                             />
                         )}
                     </div>
@@ -145,7 +141,6 @@ export function NoteMetadata({
                                 onSelectionChange={handleTagChange}
                                 allowNew
                                 onAddNew={(tag) => handleTagChange([...tags, tag])}
-                                className="w-full"
                             />
                         )}
                     </div>

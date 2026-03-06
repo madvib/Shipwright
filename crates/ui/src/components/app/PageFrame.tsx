@@ -87,7 +87,7 @@ export function PageHeader({
   eyebrow,
   badge,
   footer,
-  showGlobalChrome = true,
+  showGlobalChrome = false,
   className,
 }: PageHeaderProps) {
   const chrome = useContext(PageChromeContext);

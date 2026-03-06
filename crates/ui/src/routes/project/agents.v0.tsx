@@ -1,10 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState, useRef } from 'react';
 import { Button } from '@ship/ui';
-import { PageFrame } from '@/components/app/PageFrame';
 import { SideBySide, SideBySideChatPanel, SideBySideMessages, SideBySideInputBar, SideBySidePreviewPanel, SideBySidePreviewHeader, SideBySidePreviewContent } from '@ship/ui';
 import { Textarea } from '@ship/ui';
-import { Separator } from '@ship/ui';
 import { Bot, Send, RefreshCw, Code2, Eye } from 'lucide-react';
 
 interface ChatMessage {

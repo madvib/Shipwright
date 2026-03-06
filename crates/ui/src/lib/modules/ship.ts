@@ -1,17 +1,13 @@
 import {
     ADRS_ROUTE,
     FEATURES_ROUTE,
-    ISSUES_ROUTE,
     NOTES_ROUTE,
     OVERVIEW_ROUTE,
     RELEASES_ROUTE,
-    SPECS_ROUTE,
 } from '../constants/routes';
 import {
-    FileCode2,
     FileStack,
     Flag,
-    FolderSearch,
     LayoutDashboard,
     NotebookPen,
     Package,
@@ -30,14 +26,6 @@ export const SHIP_NAV_SECTIONS: NavSection[] = [
             { id: 'decisions', path: ADRS_ROUTE, label: 'Decisions', icon: FileStack },
             { id: 'releases', path: RELEASES_ROUTE, label: 'Releases', icon: Package },
             { id: 'features', path: FEATURES_ROUTE, label: 'Features', icon: Flag },
-        ],
-    },
-    {
-        id: 'workflow',
-        label: 'Workflow',
-        items: [
-            { id: 'specs', path: SPECS_ROUTE, label: 'Specs', icon: FileCode2 },
-            { id: 'issues', path: ISSUES_ROUTE, label: 'Issues', icon: FolderSearch, priority: 'secondary' },
         ],
     },
 ];

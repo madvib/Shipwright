@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bot, Plus, Shield, ShieldAlert, FileSearch, Trash2, Upload, LockIcon, ScrollText, Zap, Globe, Folder } from 'lucide-react';
+import { Bot, Plus, Shield, ShieldAlert, FileSearch, Trash2, Upload, LockIcon, ScrollText, Zap, Globe, Folder, Layers, Package, PenLine, Info } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commands, ModeConfig, ProjectConfig, Permissions } from '@/bindings';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import { Alert, AlertDescription } from '@ship/ui';
 import { Badge } from '@ship/ui';
 import { Button } from '@ship/ui';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import { Card, CardContent } from '@ship/ui';
 import { Input } from '@ship/ui';
 import { Label } from '@ship/ui';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
@@ -143,6 +143,8 @@ function normalizeProjectConfig(config: ProjectConfig | null): ProjectConfig {
       ...EMPTY_AGENT_LAYER,
       ...(config?.agent ?? {}),
     },
+    hooks: config?.hooks ?? [],
+    providers: config?.providers ?? ['claude'],
   };
 }
 
@@ -519,7 +521,7 @@ export default function AgentsPanel({
                   <p className="text-[11px] text-muted-foreground">Choose provider and model for AI generation features.</p>
                 </div>
               </div>
-              <CardContent className="space-y-4 pt-4">
+              <CardContent className="space-y-4 !pt-5">
                 {/* Provider pill selector */}
                 <div className="space-y-2">
                   <Label>Provider</Label>
@@ -622,12 +624,17 @@ export default function AgentsPanel({
               </CardContent>
             </Card>
 
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Modes</CardTitle>
-                <CardDescription>Modes define explicit capability boundaries.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <Card size="sm" className="overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-amber-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10">
+                  <Layers className="size-3.5 text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">Modes</h3>
+                  <p className="text-[11px] text-muted-foreground">Modes define explicit capability boundaries.</p>
+                </div>
+              </div>
+              <CardContent className="space-y-3 !pt-5">
                 <div className="space-y-2">
                   <Label>Active Mode</Label>
                   <Select
@@ -694,12 +701,17 @@ export default function AgentsPanel({
 
         {initialSection === 'mcp' && (
           <div className="grid gap-4">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>MCP Servers</CardTitle>
-                <CardDescription>JSON snippet editor for MCP server configuration.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <Card size="sm" className="overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-violet-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-violet-500/20 bg-violet-500/10">
+                  <Package className="size-3.5 text-violet-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">MCP Servers</h3>
+                  <p className="text-[11px] text-muted-foreground">JSON snippet editor for MCP server configuration.</p>
+                </div>
+              </div>
+              <CardContent className="space-y-3 !pt-5">
                 <div className="rounded-md border bg-card/50">
                   <div className="text-muted-foreground border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wide">
                     JSON
@@ -725,12 +737,17 @@ export default function AgentsPanel({
               </CardContent>
             </Card>
 
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Sync to AI Clients</CardTitle>
-                <CardDescription>Export MCP registry and agent docs to client configs.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <Card size="sm" className="overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-emerald-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10">
+                  <Upload className="size-3.5 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">Sync to AI Clients</h3>
+                  <p className="text-[11px] text-muted-foreground">Export MCP registry and agent docs to client configs.</p>
+                </div>
+              </div>
+              <CardContent className="space-y-3 !pt-5">
                 {agentError && (
                   <Alert variant="destructive">
                     <AlertDescription>{agentError}</AlertDescription>
@@ -765,12 +782,17 @@ export default function AgentsPanel({
 
         {(initialSection === 'skills' || initialSection === 'rules') && activeDocKind && (
           <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-            <Card size="sm" className="xl:h-[640px]">
-              <CardHeader>
-                <CardTitle>{initialSection === 'skills' ? 'Skill Docs' : 'Rule Docs'}</CardTitle>
-                <CardDescription>Markdown file list (local stub until API integration).</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
+            <Card size="sm" className="xl:h-[640px] overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-cyan-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10">
+                  <ScrollText className="size-3.5 text-cyan-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">{initialSection === 'skills' ? 'Skill Docs' : 'Rule Docs'}</h3>
+                  <p className="text-[11px] text-muted-foreground">Markdown file list (local stub until API integration).</p>
+                </div>
+              </div>
+              <CardContent className="space-y-2 !pt-5">
                 <Button variant="outline" size="sm" className="w-full" onClick={() => handleCreateDoc(activeDocKind)}>
                   <Plus className="size-3.5" />
                   New {initialSection === 'skills' ? 'Skill' : 'Rule'}
@@ -803,13 +825,14 @@ export default function AgentsPanel({
               </CardContent>
             </Card>
 
-            <Card size="sm" className="xl:h-[640px]">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle>{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</CardTitle>
-                  <CardDescription>
-                    Markdown editor for selected {initialSection === 'skills' ? 'skill' : 'rule'}.
-                  </CardDescription>
+            <Card size="sm" className="xl:h-[640px] overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-indigo-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-indigo-500/20 bg-indigo-500/10">
+                  <PenLine className="size-3.5 text-indigo-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold">{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</h3>
+                  <p className="text-[11px] text-muted-foreground">Markdown editor for selected {initialSection === 'skills' ? 'skill' : 'rule'}.</p>
                 </div>
                 {activeDoc && (
                   <Button
@@ -822,8 +845,8 @@ export default function AgentsPanel({
                     Delete
                   </Button>
                 )}
-              </CardHeader>
-              <CardContent className="space-y-3">
+              </div>
+              <CardContent className="space-y-3 !pt-5">
                 {!activeDoc ? (
                   <div className="flex h-[400px] flex-col items-center justify-center gap-2 text-center">
                     <ScrollText className="size-8 text-muted-foreground opacity-30" />
@@ -856,12 +879,17 @@ export default function AgentsPanel({
 
         {initialSection === 'permissions' && (
           <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Capabilities</CardTitle>
-                <CardDescription>Structured policy for agent tool usage and access.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
+            <Card size="sm" className="overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-rose-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10">
+                  <Shield className="size-3.5 text-rose-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">Capabilities</h3>
+                  <p className="text-[11px] text-muted-foreground">Structured policy for agent tool usage and access.</p>
+                </div>
+              </div>
+              <CardContent className="space-y-6 !pt-5">
                 {!permissions ? (
                   <p className="text-muted-foreground py-10 text-center text-sm">Loading permissions...</p>
                 ) : (
@@ -1086,11 +1114,14 @@ export default function AgentsPanel({
               </CardContent>
             </Card>
 
-            <Card size="sm" className="bg-muted/10">
-              <CardHeader>
-                <CardTitle className="text-sm">Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-xs leading-relaxed">
+            <Card size="sm" className="bg-muted/10 overflow-hidden">
+              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-slate-500/10 via-card/80 to-card/50 px-4 py-3">
+                <div className="flex size-7 items-center justify-center rounded-lg border border-slate-500/20 bg-slate-500/10">
+                  <Info className="size-3.5 text-slate-500" />
+                </div>
+                <h3 className="text-sm font-semibold">Information</h3>
+              </div>
+              <CardContent className="space-y-4 text-xs leading-relaxed !pt-5">
                 <p>
                   Permissions define the security sandbox for AI agents operating in this project.
                 </p>

@@ -7,13 +7,12 @@ import {
 } from '@/bindings';
 import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import {
-  getActiveProject,
   ingestEventChanges,
   listEventEntries,
   setActiveModeCmd,
 } from '../platform/tauri/commands';
 import { isTauriRuntime } from '../platform/tauri/runtime';
-import { SIDEBAR_COLLAPSED_STORAGE_KEY, projectFromInfo } from './workspace/constants';
+import { SIDEBAR_COLLAPSED_STORAGE_KEY } from './workspace/constants';
 import { useWorkspaceLifecycle } from './workspace/useWorkspaceLifecycle';
 import { useProjectActions } from './workspace/useProjectActions';
 import { useSettingsActions } from './workspace/useSettingsActions';
@@ -45,8 +44,10 @@ export function useWorkspaceController() {
   const [globalAgentConfig, setGlobalAgentConfig] = useState<ProjectConfig | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1';
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    if (stored === null) return true;
+    return stored === '1';
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,15 +76,8 @@ export function useWorkspaceController() {
     await refreshEvents();
   }, [refreshEvents]);
 
-  const refreshProjectInfo = useCallback(async () => {
-    if (!isTauriRuntime()) return;
-    const info = await getActiveProject().catch(() => null);
-    if (info) setActiveProject(projectFromInfo(info));
-  }, []);
-
   const ship = useShipEntities({
     refreshActivity,
-    refreshProjectInfo,
     setError,
   });
   const { loadProjectData, loadProjectConfig, refreshDetectedProject } = useWorkspaceLifecycle({
@@ -119,7 +113,6 @@ export function useWorkspaceController() {
     setError,
     setActiveProject,
     setDetectedProject,
-    setSelectedIssue: ship.setSelectedIssue,
     setSelectedAdr: ship.setSelectedAdr,
     setSelectedSpec: ship.setSelectedSpec,
     setSelectedRelease: ship.setSelectedRelease,
