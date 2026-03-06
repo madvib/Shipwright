@@ -2,6 +2,7 @@ mod helpers;
 
 use helpers::TestProject;
 use runtime::{WorkspaceStatus, get_workspace};
+use ship_module_project::ops::feature::{create_feature, get_feature_by_id};
 use std::process::{Command, Output};
 
 fn run_cli(project: &TestProject, args: &[&str]) -> Output {
@@ -71,6 +72,160 @@ fn workspace_create_list_and_archive_happy_path() {
         .unwrap()
         .expect("workspace should still exist after archive");
     assert_eq!(archived.status, WorkspaceStatus::Archived);
+}
+
+#[test]
+fn workspace_create_feature_type_auto_creates_and_links_feature() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            "feature/workspace-first",
+            "--type",
+            "feature",
+            "--feature-title",
+            "Workspace First Runtime",
+        ],
+    );
+    assert_success(&out, "workspace create should auto-create a feature");
+
+    let workspace = get_workspace(&project.ship_dir, "feature/workspace-first")
+        .unwrap()
+        .expect("workspace should exist");
+    let feature_id = workspace
+        .feature_id
+        .clone()
+        .expect("workspace should link a feature");
+    let feature = get_feature_by_id(&project.ship_dir, &feature_id).unwrap();
+    assert_eq!(feature.feature.metadata.title, "Workspace First Runtime");
+    assert_eq!(
+        feature.feature.metadata.branch.as_deref(),
+        Some("feature/workspace-first")
+    );
+}
+
+#[test]
+fn workspace_create_feature_type_reuses_existing_branch_linked_feature() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let existing = create_feature(
+        &project.ship_dir,
+        "Existing Workspace Feature",
+        "",
+        None,
+        None,
+        Some("feature/reuse-existing"),
+    )
+    .unwrap();
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "create",
+            "feature/reuse-existing",
+            "--type",
+            "feature",
+        ],
+    );
+    assert_success(
+        &out,
+        "workspace create should reuse an existing branch-linked feature",
+    );
+
+    let workspace = get_workspace(&project.ship_dir, "feature/reuse-existing")
+        .unwrap()
+        .expect("workspace should exist");
+    assert_eq!(workspace.feature_id.as_deref(), Some(existing.id.as_str()));
+}
+
+#[test]
+fn workspace_session_start_status_end_and_list_happy_path() {
+    let project = TestProject::with_git().unwrap();
+    let init = project.initial_commit().unwrap();
+    assert_success(&init, "initial git commit failed");
+
+    let out = run_cli(
+        &project,
+        &["workspace", "create", "feature/session-flow", "--checkout"],
+    );
+    assert_success(&out, "workspace create --checkout failed");
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "session",
+            "start",
+            "--goal",
+            "Implement workspace sessions",
+        ],
+    );
+    assert_success(&out, "workspace session start failed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Session started:"),
+        "session start output mismatch:\n{stdout}"
+    );
+
+    let out = run_cli(&project, &["workspace", "session", "status"]);
+    assert_success(&out, "workspace session status failed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("[active]"),
+        "session status should show an active session:\n{stdout}"
+    );
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "session",
+            "end",
+            "--summary",
+            "Implemented lifecycle wiring",
+            "--updated-feature",
+            "feat-session-flow",
+            "--updated-spec",
+            "spec-session-flow",
+        ],
+    );
+    assert_success(&out, "workspace session end failed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Session ended:"),
+        "session end output mismatch:\n{stdout}"
+    );
+
+    let out = run_cli(
+        &project,
+        &[
+            "workspace",
+            "session",
+            "list",
+            "--branch",
+            "feature/session-flow",
+            "--limit",
+            "5",
+        ],
+    );
+    assert_success(&out, "workspace session list failed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("[ended]"),
+        "session list should include ended session:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("summary=\"Implemented lifecycle wiring\""),
+        "session list should include summary:\n{stdout}"
+    );
 }
 
 #[test]

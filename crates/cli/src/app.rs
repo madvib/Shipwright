@@ -2,11 +2,13 @@ use anyhow::Result;
 use runtime::project::{get_global_dir, get_project_dir};
 use runtime::workspace::set_workspace_active_mode;
 use runtime::{
-    CreateWorkspaceRequest, WorkspaceStatus, WorkspaceType, activate_workspace, add_status,
-    autodetect_providers, create_workspace, get_config, get_git_config, get_project_statuses,
-    is_category_committed, list_mcp_servers, list_providers, list_workspaces, log_action,
-    migrate_global_state, migrate_json_config_file, migrate_project_state, remove_status,
-    set_category_committed, sync_workspace, transition_workspace_status,
+    CreateWorkspaceRequest, EndWorkspaceSessionRequest, WorkspaceStatus, WorkspaceType,
+    activate_workspace, add_status, autodetect_providers, create_workspace, end_workspace_session,
+    get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
+    is_category_committed, list_mcp_servers, list_providers, list_workspace_sessions,
+    list_workspaces, log_action, migrate_global_state, migrate_json_config_file,
+    migrate_project_state, remove_status, set_category_committed, start_workspace_session,
+    sync_workspace, transition_workspace_status,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
@@ -369,9 +371,13 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         Some(Commands::Spec { action }) => {
             let project_dir = get_project_dir_cli()?;
             match action {
-                SpecCommands::Create { title, content } => {
+                SpecCommands::Create {
+                    title,
+                    content,
+                    workspace,
+                } => {
                     let body = content.unwrap_or_default();
-                    let spec = create_spec(&project_dir, &title, &body, None, None)?;
+                    let spec = create_spec(&project_dir, &title, &body, workspace.as_deref())?;
                     println!("Spec created: {} ({})", spec.file_name, spec.id);
                 }
                 SpecCommands::List => {
@@ -558,17 +564,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         println!("No workspaces found.");
                     } else {
                         for workspace in workspaces {
-                            println!(
-                                "[{}] {} ({}){}",
-                                workspace.status,
-                                workspace.branch,
-                                workspace.workspace_type,
-                                workspace
-                                    .feature_id
-                                    .as_ref()
-                                    .map(|id| format!(" feature={}", id))
-                                    .unwrap_or_default()
-                            );
+                            println!("{}", format_workspace_summary(&workspace));
                         }
                     }
                 }
@@ -608,6 +604,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     branch,
                     workspace_type,
                     feature,
+                    feature_title,
                     spec,
                     release,
                     mode,
@@ -627,6 +624,9 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         .as_deref()
                         .map(str::parse::<WorkspaceType>)
                         .transpose()?;
+                    let is_feature_workspace = parsed_workspace_type
+                        == Some(WorkspaceType::Feature)
+                        || (parsed_workspace_type.is_none() && branch.starts_with("feature/"));
                     let resolved_worktree_path = if worktree {
                         Some(worktree_path.unwrap_or_else(|| {
                             let b = branch
@@ -695,6 +695,14 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         }
                     }
 
+                    let resolved_feature_id = resolve_workspace_feature_link(
+                        &project_dir,
+                        &branch,
+                        feature,
+                        feature_title,
+                        is_feature_workspace,
+                    )?;
+
                     let desired_status = if activate && !checkout && !worktree {
                         Some(WorkspaceStatus::Active)
                     } else {
@@ -706,7 +714,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             branch: branch.clone(),
                             workspace_type: parsed_workspace_type,
                             status: desired_status,
-                            feature_id: feature,
+                            feature_id: resolved_feature_id,
                             spec_id: spec,
                             release_id: release,
                             active_mode: mode,
@@ -742,6 +750,109 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     println!(
                         "Workspace archived: {} [{}]",
                         workspace.branch, workspace.status
+                    );
+                }
+                WorkspaceCommands::Session { action } => match action {
+                    WorkspaceSessionCommands::Start {
+                        branch,
+                        goal,
+                        mode,
+                        provider,
+                    } => {
+                        let branch = branch.unwrap_or(current_branch(&project_root)?);
+                        let session =
+                            start_workspace_session(&project_dir, &branch, goal, mode, provider)?;
+                        println!(
+                            "Session started: {} [{}] branch={}{}{}{}",
+                            session.id,
+                            session.status,
+                            session.workspace_branch,
+                            session
+                                .mode_id
+                                .as_ref()
+                                .map(|mode| format!(" mode={}", mode))
+                                .unwrap_or_default(),
+                            session
+                                .primary_provider
+                                .as_ref()
+                                .map(|provider| format!(" provider={}", provider))
+                                .unwrap_or_default(),
+                            session
+                                .goal
+                                .as_ref()
+                                .map(|goal| format!(" goal=\"{}\"", goal))
+                                .unwrap_or_default()
+                        );
+                    }
+                    WorkspaceSessionCommands::End {
+                        branch,
+                        summary,
+                        updated_feature,
+                        updated_spec,
+                    } => {
+                        let branch = branch.unwrap_or(current_branch(&project_root)?);
+                        let session = end_workspace_session(
+                            &project_dir,
+                            &branch,
+                            EndWorkspaceSessionRequest {
+                                summary,
+                                updated_feature_ids: updated_feature,
+                                updated_spec_ids: updated_spec,
+                            },
+                        )?;
+                        println!(
+                            "Session ended: {} [{}] branch={}{}",
+                            session.id,
+                            session.status,
+                            session.workspace_branch,
+                            session
+                                .summary
+                                .as_ref()
+                                .map(|summary| format!(" summary=\"{}\"", summary))
+                                .unwrap_or_default()
+                        );
+                    }
+                    WorkspaceSessionCommands::Status { branch } => {
+                        let branch = branch.unwrap_or(current_branch(&project_root)?);
+                        match get_active_workspace_session(&project_dir, &branch)? {
+                            Some(session) => println!("{}", format_workspace_session(&session)),
+                            None => println!("No active session for workspace '{}'.", branch),
+                        }
+                    }
+                    WorkspaceSessionCommands::List { branch, limit } => {
+                        let sessions =
+                            list_workspace_sessions(&project_dir, branch.as_deref(), limit)?;
+                        if sessions.is_empty() {
+                            println!("No workspace sessions found.");
+                        } else {
+                            for session in sessions {
+                                println!("{}", format_workspace_session(&session));
+                            }
+                        }
+                    }
+                },
+                WorkspaceCommands::Open { branch, editor } => {
+                    let branch = branch.unwrap_or(current_branch(&project_root)?);
+                    let target_path =
+                        resolve_workspace_open_path(&project_dir, &project_root, &branch)?;
+                    let path_env = env::var("PATH").ok();
+                    let selected_editor =
+                        resolve_workspace_editor(editor.as_deref(), path_env.as_deref())?;
+                    let status = ProcessCommand::new(selected_editor.binary)
+                        .arg(&target_path)
+                        .status()?;
+                    if !status.success() {
+                        anyhow::bail!(
+                            "Failed to open {} with editor '{}'",
+                            target_path.display(),
+                            selected_editor.id
+                        );
+                    }
+                    println!(
+                        "Opened {} in {} ({})",
+                        branch,
+                        selected_editor.id,
+                        target_path.display()
                     );
                 }
             }
@@ -1087,9 +1198,19 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 handle_migrate_command(force)?;
             }
         },
-        None => {
-            // This case should be handled by the caller to decide whether to show help or launch GUI
-        }
+        None => match get_project_dir(None) {
+            Ok(project_dir) => {
+                println!("{}", render_workspace_home(&project_dir)?);
+            }
+            Err(_) => {
+                println!("No Ship project found.");
+                println!("Start here:");
+                println!("  ship init .");
+                println!(
+                    "  ship workspace create feature/<name> --type feature --feature-title \"<Feature Title>\" --checkout --activate"
+                );
+            }
+        },
     }
 
     Ok(())
@@ -1157,8 +1278,221 @@ fn current_branch(project_root: &std::path::Path) -> Result<String> {
     Ok(branch)
 }
 
+fn branch_to_feature_title(branch: &str) -> String {
+    let core = branch
+        .trim()
+        .strip_prefix("feature/")
+        .unwrap_or(branch)
+        .trim();
+    let words: Vec<String> = core
+        .split(['/', '-', '_'])
+        .filter(|segment| !segment.trim().is_empty())
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut title = first.to_uppercase().to_string();
+                    title.push_str(chars.as_str());
+                    title
+                }
+                None => String::new(),
+            }
+        })
+        .filter(|segment| !segment.is_empty())
+        .collect();
+
+    if words.is_empty() {
+        "Workspace Feature".to_string()
+    } else {
+        words.join(" ")
+    }
+}
+
+fn resolve_workspace_feature_link(
+    project_dir: &Path,
+    branch: &str,
+    feature_id: Option<String>,
+    feature_title: Option<String>,
+    is_feature_workspace: bool,
+) -> Result<Option<String>> {
+    if let Some(feature_id) = feature_id {
+        if let Ok(feature) = get_feature_by_id(project_dir, &feature_id)
+            && feature
+                .feature
+                .metadata
+                .branch
+                .as_deref()
+                .map(|value| value != branch)
+                .unwrap_or(true)
+        {
+            let mut updated = feature.feature;
+            updated.metadata.branch = Some(branch.to_string());
+            update_feature(project_dir, &feature_id, updated)?;
+        }
+        return Ok(Some(feature_id));
+    }
+
+    if !is_feature_workspace {
+        return Ok(None);
+    }
+
+    let existing = list_features(project_dir)?
+        .into_iter()
+        .find(|entry| entry.feature.metadata.branch.as_deref() == Some(branch));
+    if let Some(existing) = existing {
+        return Ok(Some(existing.id));
+    }
+
+    let title = feature_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(|title| title.to_string())
+        .unwrap_or_else(|| branch_to_feature_title(branch));
+    let created = create_feature(project_dir, &title, "", None, None, Some(branch))?;
+    println!(
+        "Feature created and linked: {} ({})",
+        created.feature.metadata.title, created.id
+    );
+    Ok(Some(created.id))
+}
+
 fn get_project_dir_cli() -> Result<PathBuf> {
     get_project_dir(None)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WorkspaceEditor {
+    id: &'static str,
+    binary: &'static str,
+    aliases: &'static [&'static str],
+}
+
+const WORKSPACE_EDITORS: &[WorkspaceEditor] = &[
+    WorkspaceEditor {
+        id: "cursor",
+        binary: "cursor",
+        aliases: &["cursor"],
+    },
+    WorkspaceEditor {
+        id: "vscode",
+        binary: "code",
+        aliases: &["vscode", "code", "vs-code"],
+    },
+    WorkspaceEditor {
+        id: "zed",
+        binary: "zed",
+        aliases: &["zed"],
+    },
+];
+
+fn normalize_workspace_editor_id(raw: &str) -> Option<&'static str> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    WORKSPACE_EDITORS
+        .iter()
+        .find(|editor| {
+            editor.id.eq_ignore_ascii_case(&normalized)
+                || editor
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.eq_ignore_ascii_case(&normalized))
+        })
+        .map(|editor| editor.id)
+}
+
+fn command_exists_in_path(binary: &str, path_env: Option<&str>) -> bool {
+    let Some(path_env) = path_env else {
+        return false;
+    };
+    for dir in env::split_paths(path_env) {
+        let path = dir.join(binary);
+        if path.is_file() {
+            return true;
+        }
+        #[cfg(windows)]
+        {
+            let path_exe = dir.join(format!("{}.exe", binary));
+            if path_exe.is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn available_workspace_editors(path_env: Option<&str>) -> Vec<WorkspaceEditor> {
+    WORKSPACE_EDITORS
+        .iter()
+        .copied()
+        .filter(|editor| command_exists_in_path(editor.binary, path_env))
+        .collect()
+}
+
+fn resolve_workspace_editor(
+    requested: Option<&str>,
+    path_env: Option<&str>,
+) -> Result<WorkspaceEditor> {
+    let available = available_workspace_editors(path_env);
+    if let Some(raw) = requested {
+        let normalized = normalize_workspace_editor_id(raw).ok_or_else(|| {
+            anyhow::anyhow!("Unknown editor '{}'. Use cursor, vscode, or zed", raw)
+        })?;
+        return available
+            .into_iter()
+            .find(|editor| editor.id == normalized)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Editor '{}' is not installed in PATH. Available: {}",
+                    normalized,
+                    WORKSPACE_EDITORS
+                        .iter()
+                        .map(|editor| editor.id)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            });
+    }
+
+    available.into_iter().next().ok_or_else(|| {
+        anyhow::anyhow!(
+            "No supported editors found in PATH (looked for: {})",
+            WORKSPACE_EDITORS
+                .iter()
+                .map(|editor| editor.binary)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })
+}
+
+fn resolve_workspace_open_path(
+    project_dir: &Path,
+    project_root: &Path,
+    branch: &str,
+) -> Result<PathBuf> {
+    if let Some(workspace) = get_workspace(project_dir, branch)?
+        && workspace.is_worktree
+        && let Some(path) = workspace.worktree_path.as_deref()
+    {
+        let candidate = PathBuf::from(path);
+        let resolved = if candidate.is_absolute() {
+            candidate
+        } else {
+            project_root.join(candidate)
+        };
+        if !resolved.exists() {
+            return Err(anyhow::anyhow!(
+                "Workspace worktree path does not exist: {}",
+                resolved.display()
+            ));
+        }
+        return Ok(resolved);
+    }
+
+    Ok(project_root.to_path_buf())
 }
 
 fn ensure_project_imported_once(project_dir: &Path, force: bool, strict: bool) -> Result<()> {
@@ -1245,6 +1579,109 @@ where
 
 fn parse_note_scope(raw: &str) -> Result<NoteScope> {
     raw.parse::<NoteScope>()
+}
+
+fn format_workspace_summary(workspace: &runtime::workspace::Workspace) -> String {
+    let mut parts = vec![format!(
+        "[{}] {} ({})",
+        workspace.status, workspace.branch, workspace.workspace_type
+    )];
+
+    if let Some(feature_id) = workspace.feature_id.as_deref() {
+        parts.push(format!("feature={}", feature_id));
+    }
+    if let Some(spec_id) = workspace.spec_id.as_deref() {
+        parts.push(format!("spec={}", spec_id));
+    }
+    if let Some(release_id) = workspace.release_id.as_deref() {
+        parts.push(format!("release={}", release_id));
+    }
+    if let Some(mode) = workspace.active_mode.as_deref() {
+        parts.push(format!("mode={}", mode));
+    }
+    if workspace.is_worktree {
+        if let Some(path) = workspace.worktree_path.as_deref() {
+            parts.push(format!("worktree={}", path));
+        } else {
+            parts.push("worktree=true".to_string());
+        }
+    }
+
+    parts.join(" ")
+}
+
+fn format_workspace_session(session: &runtime::WorkspaceSession) -> String {
+    let mut parts = vec![format!(
+        "[{}] {} workspace={} started={}",
+        session.status, session.id, session.workspace_branch, session.started_at
+    )];
+
+    if let Some(ended_at) = session.ended_at.as_ref() {
+        parts.push(format!("ended={}", ended_at));
+    }
+    if let Some(mode_id) = session.mode_id.as_deref() {
+        parts.push(format!("mode={}", mode_id));
+    }
+    if let Some(provider) = session.primary_provider.as_deref() {
+        parts.push(format!("provider={}", provider));
+    }
+    if let Some(goal) = session.goal.as_deref() {
+        parts.push(format!("goal=\"{}\"", goal));
+    }
+    if let Some(summary) = session.summary.as_deref() {
+        parts.push(format!("summary=\"{}\"", summary));
+    }
+    if !session.updated_feature_ids.is_empty() {
+        parts.push(format!(
+            "features=[{}]",
+            session.updated_feature_ids.join(",")
+        ));
+    }
+    if !session.updated_spec_ids.is_empty() {
+        parts.push(format!("specs=[{}]", session.updated_spec_ids.join(",")));
+    }
+    if let Some(compiled_at) = session.compiled_at.as_ref() {
+        parts.push(format!("compiled_at={}", compiled_at));
+    }
+    if let Some(compile_error) = session.compile_error.as_deref() {
+        parts.push(format!("compile_error=\"{}\"", compile_error));
+    }
+
+    parts.join(" ")
+}
+
+fn render_workspace_home(project_dir: &Path) -> Result<String> {
+    let workspaces = list_workspaces(project_dir)?;
+    let mut out = String::new();
+
+    out.push_str("Workspace Home\n");
+    out.push_str("--------------\n");
+
+    if workspaces.is_empty() {
+        out.push_str("No workspaces found.\n");
+        out.push_str("Start here:\n");
+        out.push_str(
+            "  ship workspace create feature/<name> --type feature --feature-title \"<Feature Title>\" --checkout --activate\n",
+        );
+        out.push_str("  ship workspace list\n");
+        return Ok(out);
+    }
+
+    out.push_str("Workspaces:\n");
+    for workspace in &workspaces {
+        out.push_str(&format!("  {}\n", format_workspace_summary(workspace)));
+    }
+
+    out.push_str("\nNext:\n");
+    out.push_str("  ship workspace switch <branch>\n");
+    out.push_str("  ship workspace open --branch <branch> --editor <cursor|vscode|zed>\n");
+    out.push_str(
+        "  ship workspace session start --branch <branch> --goal \"<goal>\" --provider <id>\n",
+    );
+    out.push_str("  ship workspace session end --branch <branch> --summary \"<summary>\"\n");
+    out.push_str("  ship workspace sync --branch <branch>\n");
+
+    Ok(out)
 }
 
 fn ensure_builtin_plugin_namespaces(project_dir: &PathBuf) -> Result<()> {
@@ -1425,6 +1862,50 @@ mod tests {
     }
 
     #[test]
+    fn render_workspace_home_empty_guides_creation() -> Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+
+        let rendered = render_workspace_home(&project_dir)?;
+        assert!(rendered.contains("No workspaces found."));
+        assert!(rendered.contains("ship workspace create"));
+        Ok(())
+    }
+
+    #[test]
+    fn render_workspace_home_lists_existing_workspaces() -> Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &project_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/workspace-home".to_string(),
+                workspace_type: Some(WorkspaceType::Feature),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+        activate_workspace(&project_dir, "feature/workspace-home")?;
+
+        let rendered = render_workspace_home(&project_dir)?;
+        assert!(rendered.contains("[active] feature/workspace-home (feature)"));
+        assert!(rendered.contains("ship workspace switch <branch>"));
+        Ok(())
+    }
+
+    #[test]
+    fn branch_to_feature_title_normalizes_branch_name() {
+        assert_eq!(
+            branch_to_feature_title("feature/workspace-first-launch"),
+            "Workspace First Launch"
+        );
+        assert_eq!(
+            branch_to_feature_title("feature/nested/workspace_flow"),
+            "Nested Workspace Flow"
+        );
+    }
+
+    #[test]
     fn cli_parses_projects_rename_subcommand() {
         let cli = Cli::try_parse_from(["ship", "projects", "rename", "/tmp/project", "ship-core"])
             .expect("projects rename should parse");
@@ -1479,6 +1960,231 @@ mod tests {
             }
             other => panic!("unexpected parse result: {:?}", other),
         }
+    }
+
+    #[test]
+    fn cli_parses_spec_create_with_workspace_override() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "spec",
+            "create",
+            "Execution Plan",
+            "--workspace",
+            "feature/execution-plan",
+        ])
+        .expect("spec create with workspace should parse");
+
+        match cli.command {
+            Some(Commands::Spec {
+                action:
+                    SpecCommands::Create {
+                        title, workspace, ..
+                    },
+            }) => {
+                assert_eq!(title, "Execution Plan");
+                assert_eq!(workspace.as_deref(), Some("feature/execution-plan"));
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_create_with_feature_title() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "create",
+            "feature/workspace-first",
+            "--type",
+            "feature",
+            "--feature-title",
+            "Workspace First",
+            "--checkout",
+            "--activate",
+        ])
+        .expect("workspace create with feature title should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action:
+                    WorkspaceCommands::Create {
+                        branch,
+                        workspace_type,
+                        feature_title,
+                        checkout,
+                        activate,
+                        ..
+                    },
+            }) => {
+                assert_eq!(branch, "feature/workspace-first");
+                assert_eq!(workspace_type.as_deref(), Some("feature"));
+                assert_eq!(feature_title.as_deref(), Some("Workspace First"));
+                assert!(checkout);
+                assert!(activate);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_session_start() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "session",
+            "start",
+            "--branch",
+            "feature/session-flow",
+            "--goal",
+            "Implement parser",
+            "--mode",
+            "code",
+            "--provider",
+            "claude",
+        ])
+        .expect("workspace session start should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action:
+                    WorkspaceCommands::Session {
+                        action:
+                            WorkspaceSessionCommands::Start {
+                                branch,
+                                goal,
+                                mode,
+                                provider,
+                            },
+                    },
+            }) => {
+                assert_eq!(branch.as_deref(), Some("feature/session-flow"));
+                assert_eq!(goal.as_deref(), Some("Implement parser"));
+                assert_eq!(mode.as_deref(), Some("code"));
+                assert_eq!(provider.as_deref(), Some("claude"));
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_session_end_with_updates() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "session",
+            "end",
+            "--summary",
+            "Done",
+            "--updated-feature",
+            "feat-auth",
+            "--updated-feature",
+            "feat-session",
+            "--updated-spec",
+            "spec-auth",
+        ])
+        .expect("workspace session end should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action:
+                    WorkspaceCommands::Session {
+                        action:
+                            WorkspaceSessionCommands::End {
+                                branch,
+                                summary,
+                                updated_feature,
+                                updated_spec,
+                            },
+                    },
+            }) => {
+                assert!(branch.is_none());
+                assert_eq!(summary.as_deref(), Some("Done"));
+                assert_eq!(updated_feature, vec!["feat-auth", "feat-session"]);
+                assert_eq!(updated_spec, vec!["spec-auth"]);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_open_command() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "open",
+            "--branch",
+            "feature/session-flow",
+            "--editor",
+            "vscode",
+        ])
+        .expect("workspace open should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action: WorkspaceCommands::Open { branch, editor },
+            }) => {
+                assert_eq!(branch.as_deref(), Some("feature/session-flow"));
+                assert_eq!(editor.as_deref(), Some("vscode"));
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn normalize_workspace_editor_id_supports_aliases() {
+        assert_eq!(normalize_workspace_editor_id("code"), Some("vscode"));
+        assert_eq!(normalize_workspace_editor_id("VSCode"), Some("vscode"));
+        assert_eq!(normalize_workspace_editor_id("cursor"), Some("cursor"));
+        assert_eq!(normalize_workspace_editor_id("zed"), Some("zed"));
+        assert_eq!(normalize_workspace_editor_id(""), None);
+        assert_eq!(normalize_workspace_editor_id("ghost"), None);
+    }
+
+    #[test]
+    fn resolve_workspace_editor_prefers_installed_priority_and_honors_requested_id() -> Result<()> {
+        let tmp = tempdir()?;
+        std::fs::write(tmp.path().join("cursor"), "")?;
+        std::fs::write(tmp.path().join("code"), "")?;
+        let path_env = tmp.path().to_string_lossy().to_string();
+
+        let auto = resolve_workspace_editor(None, Some(&path_env))?;
+        assert_eq!(auto.id, "cursor");
+
+        let vscode = resolve_workspace_editor(Some("code"), Some(&path_env))?;
+        assert_eq!(vscode.id, "vscode");
+
+        let err = resolve_workspace_editor(Some("zed"), Some(&path_env)).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Editor 'zed' is not installed in PATH")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_workspace_open_path_prefers_workspace_worktree() -> Result<()> {
+        let tmp = tempdir()?;
+        let project_root = tmp.path().join("repo");
+        std::fs::create_dir_all(&project_root)?;
+        let ship_dir = init_project(project_root.clone())?;
+        let worktree_dir = tmp.path().join("wt-feature");
+        std::fs::create_dir_all(&worktree_dir)?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/open-worktree".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                is_worktree: Some(true),
+                worktree_path: Some(worktree_dir.to_string_lossy().to_string()),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+
+        let resolved =
+            resolve_workspace_open_path(&ship_dir, &project_root, "feature/open-worktree")?;
+        assert_eq!(resolved, worktree_dir);
+        Ok(())
     }
 
     #[test]

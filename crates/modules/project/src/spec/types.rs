@@ -52,6 +52,8 @@ pub struct SpecMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub feature_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub release_id: Option<String>,

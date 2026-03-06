@@ -513,7 +513,19 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
 }
 
 pub fn create_spec(ship_dir: PathBuf, title: &str, body: &str, status: &str) -> Result<PathBuf> {
-    let entry = ship_module_project::create_spec(&ship_dir, title, body, None, None)?;
+    let branch = format!(
+        "feature/spec-{}",
+        runtime::project::sanitize_file_name(title)
+    );
+    runtime::create_workspace(
+        &ship_dir,
+        runtime::CreateWorkspaceRequest {
+            branch,
+            status: Some(runtime::WorkspaceStatus::Active),
+            ..Default::default()
+        },
+    )?;
+    let entry = ship_module_project::create_spec(&ship_dir, title, body, None)?;
     if status != "draft" {
         anyhow::bail!("unsupported e2e helper status for create_spec: {}", status);
     }

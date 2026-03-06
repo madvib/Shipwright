@@ -45,16 +45,63 @@ fn require_spec_id(ship_dir: &Path, reference: &str) -> Result<String> {
     resolve_spec_id(ship_dir, reference)?.ok_or_else(|| anyhow!("Spec not found: {}", reference))
 }
 
+fn find_workspace_by_ref(
+    workspaces: &[runtime::Workspace],
+    reference: &str,
+) -> Option<runtime::Workspace> {
+    workspaces
+        .iter()
+        .find(|workspace| workspace.branch == reference || workspace.id == reference)
+        .cloned()
+}
+
+fn resolve_spec_workspace(
+    ship_dir: &Path,
+    workspace_ref: Option<&str>,
+) -> Result<runtime::Workspace> {
+    let workspaces = runtime::list_workspaces(ship_dir)?;
+    if let Some(reference) = workspace_ref {
+        let trimmed = reference.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!("Workspace reference cannot be empty"));
+        }
+
+        if let Some(workspace) = runtime::get_workspace(ship_dir, trimmed)? {
+            return Ok(workspace);
+        }
+
+        return find_workspace_by_ref(&workspaces, trimmed).ok_or_else(|| {
+            anyhow!(
+                "Workspace '{}' not found. Use `ship workspace list` to view available workspaces.",
+                trimmed
+            )
+        });
+    }
+
+    let mut active = workspaces
+        .into_iter()
+        .filter(|workspace| workspace.status == runtime::WorkspaceStatus::Active);
+    match (active.next(), active.next()) {
+        (Some(workspace), None) => Ok(workspace),
+        (Some(_), Some(_)) => Err(anyhow!(
+            "Multiple active workspaces detected. Provide --workspace explicitly."
+        )),
+        _ => Err(anyhow!(
+            "No active workspace found. Provision and activate a workspace first (`ship workspace create ... --activate` or `ship workspace switch ...`)."
+        )),
+    }
+}
+
 pub fn create_spec(
     ship_dir: &Path,
     title: &str,
     body: &str,
-    feature_id: Option<String>,
-    release_id: Option<String>,
+    workspace_ref: Option<&str>,
 ) -> Result<SpecEntry> {
     if title.trim().is_empty() {
         return Err(anyhow!("Spec title cannot be empty"));
     }
+    let workspace = resolve_spec_workspace(ship_dir, workspace_ref)?;
     let id = runtime::gen_nanoid();
     let now = Utc::now().to_rfc3339();
 
@@ -64,8 +111,10 @@ pub fn create_spec(
             title: title.to_string(),
             created: now.clone(),
             updated: now,
-            feature_id,
-            release_id,
+            branch: Some(workspace.branch.clone()),
+            workspace_id: Some(workspace.id.clone()),
+            feature_id: workspace.feature_id.clone(),
+            release_id: workspace.release_id.clone(),
             ..Default::default()
         },
         body: body.to_string(),

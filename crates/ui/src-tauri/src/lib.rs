@@ -1111,8 +1111,7 @@ fn create_spec_cmd(
     state: State<AppState>,
 ) -> Result<SpecEntry, String> {
     let project_dir = get_active_dir(&state)?;
-    let entry =
-        create_spec(&project_dir, &title, &content, None, None).map_err(|e| e.to_string())?;
+    let entry = create_spec(&project_dir, &title, &content, None).map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
         "spec create",

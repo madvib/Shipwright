@@ -69,8 +69,10 @@ pub use state_db::{
     upsert_workspace_db,
 };
 pub use workspace::{
-    CreateWorkspaceRequest, Workspace, WorkspaceStatus, WorkspaceType, activate_workspace,
-    create_workspace, get_workspace, list_workspaces, sync_workspace, transition_workspace_status,
+    CreateWorkspaceRequest, EndWorkspaceSessionRequest, Workspace, WorkspaceSession,
+    WorkspaceSessionStatus, WorkspaceStatus, WorkspaceType, activate_workspace, create_workspace,
+    end_workspace_session, get_active_workspace_session, get_workspace, list_workspace_sessions,
+    list_workspaces, start_workspace_session, sync_workspace, transition_workspace_status,
     upsert_workspace, validate_workspace_transition,
 };
 

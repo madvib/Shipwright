@@ -4,7 +4,10 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "ship")]
 #[command(version = env!("SHIP_VERSION_STRING"))]
-#[command(about = "A project-aware task and ADR tracker", long_about = None)]
+#[command(
+    about = "Workspace-first AI-native software lifecycle CLI",
+    long_about = None
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -466,6 +469,9 @@ pub enum SpecCommands {
         /// Optional initial content (defaults to scaffold)
         #[arg(short, long)]
         content: Option<String>,
+        /// Workspace branch/id. Defaults to the active workspace.
+        #[arg(long)]
+        workspace: Option<String>,
     },
     /// List spec documents
     List,
@@ -577,6 +583,9 @@ pub enum WorkspaceCommands {
         /// Link this workspace to a feature id
         #[arg(long)]
         feature: Option<String>,
+        /// Title for an auto-created feature when --type feature is used without --feature
+        #[arg(long)]
+        feature_title: Option<String>,
         /// Link this workspace to a spec id
         #[arg(long)]
         spec: Option<String>,
@@ -599,8 +608,71 @@ pub enum WorkspaceCommands {
         #[arg(long)]
         worktree_path: Option<String>,
     },
+    /// Manage execution sessions within a long-lived workspace
+    Session {
+        #[command(subcommand)]
+        action: WorkspaceSessionCommands,
+    },
+    /// Open a workspace in an installed IDE (cursor, vscode, zed)
+    Open {
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+        /// IDE/editor id (cursor, vscode, zed). Auto-selects when omitted.
+        #[arg(long)]
+        editor: Option<String>,
+    },
     /// Mark a workspace as archived
     Archive { branch: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WorkspaceSessionCommands {
+    /// Start a new session in a workspace (defaults to current branch workspace)
+    Start {
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+        /// Session goal/intention
+        #[arg(long)]
+        goal: Option<String>,
+        /// Optional mode override for this session/workspace
+        #[arg(long)]
+        mode: Option<String>,
+        /// Primary provider to compile/export for this session
+        #[arg(long)]
+        provider: Option<String>,
+    },
+    /// End the active session in a workspace (defaults to current branch workspace)
+    End {
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+        /// Session summary to fold back into planning artifacts
+        #[arg(long)]
+        summary: Option<String>,
+        /// Feature IDs updated during the session
+        #[arg(long = "updated-feature")]
+        updated_feature: Vec<String>,
+        /// Spec IDs updated during the session
+        #[arg(long = "updated-spec")]
+        updated_spec: Vec<String>,
+    },
+    /// Show the active session for a workspace (defaults to current branch workspace)
+    Status {
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// List recent sessions (workspace-filtered when branch is provided)
+    List {
+        /// Branch workspace key
+        #[arg(long)]
+        branch: Option<String>,
+        /// Max sessions to return
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand, Debug)]

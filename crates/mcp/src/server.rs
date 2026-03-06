@@ -592,7 +592,7 @@ impl ShipServer {
             Err(e) => return e,
         };
         let content = req.content.as_deref().unwrap_or("");
-        match create_spec(&project_dir, &req.title, content, None, None) {
+        match create_spec(&project_dir, &req.title, content, req.workspace.as_deref()) {
             Ok(file) => format!("Created spec: {}", file.file_name),
             Err(e) => format!("Error: {}", e),
         }

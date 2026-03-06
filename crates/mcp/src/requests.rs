@@ -257,6 +257,8 @@ pub struct CreateSpecRequest {
     pub title: String,
     /// Initial markdown content (optional — defaults to a blank template)
     pub content: Option<String>,
+    /// Workspace branch/id. If omitted, uses active workspace.
+    pub workspace: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]

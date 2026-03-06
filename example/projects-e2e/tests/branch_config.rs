@@ -82,9 +82,9 @@ fn happy_path_feature_branch_generates_claude_md() {
     p.assert_root_file_contains("CLAUDE.md", "# [ship] Auth Flow");
 }
 
-/// Open issues (not done) appear in CLAUDE.md; closed ones do not.
+/// Issue content is no longer included in generated branch context.
 #[test]
-fn claude_md_lists_open_issues_only() {
+fn claude_md_omits_issue_section() {
     let p = TestProject::with_git().unwrap();
     create_feature(
         p.ship_dir.clone(),
@@ -95,33 +95,10 @@ fn claude_md_lists_open_issues_only() {
         Some("feature/auth"),
     )
     .unwrap();
-    ship_module_project::create_issue(
-        &p.ship_dir,
-        "Add login page",
-        "",
-        ship_module_project::IssueStatus::Backlog,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    ship_module_project::create_issue(
-        &p.ship_dir,
-        "Already shipped",
-        "",
-        ship_module_project::IssueStatus::Done,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
 
     on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
 
-    p.assert_root_file_contains("CLAUDE.md", "Add login page");
-    p.assert_root_file_not_contains("CLAUDE.md", "Already shipped");
+    p.assert_root_file_not_contains("CLAUDE.md", "## Open Issues");
 }
 
 /// Skill content is inlined into CLAUDE.md under ## Skills.

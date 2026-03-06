@@ -1,10 +1,12 @@
 use crate::project::sanitize_file_name;
 use crate::state_db::{
-    WorkspaceUpsert, clear_branch_link, demote_other_active_workspaces_db, get_workspace_db,
-    list_workspaces_db, set_branch_link, upsert_workspace_db,
+    WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, demote_other_active_workspaces_db,
+    get_active_workspace_session_db, get_workspace_db, get_workspace_session_db,
+    insert_workspace_session_db, list_workspace_sessions_db, list_workspaces_db, set_branch_link,
+    update_workspace_session_db, upsert_workspace_db,
 };
 use crate::state_db::{get_branch_link, get_feature_by_branch_links, get_feature_links};
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -119,6 +121,74 @@ pub struct Workspace {
     pub context_hash: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceSessionStatus {
+    #[default]
+    Active,
+    Ended,
+}
+
+impl std::fmt::Display for WorkspaceSessionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WorkspaceSessionStatus::Active => write!(f, "active"),
+            WorkspaceSessionStatus::Ended => write!(f, "ended"),
+        }
+    }
+}
+
+impl std::str::FromStr for WorkspaceSessionStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
+            "active" => Ok(WorkspaceSessionStatus::Active),
+            "ended" => Ok(WorkspaceSessionStatus::Ended),
+            _ => Err(anyhow::anyhow!(
+                "Invalid workspace session status: {}",
+                value
+            )),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct WorkspaceSession {
+    pub id: String,
+    pub workspace_id: String,
+    pub workspace_branch: String,
+    pub status: WorkspaceSessionStatus,
+    pub started_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goal: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub updated_feature_ids: Vec<String>,
+    #[serde(default)]
+    pub updated_spec_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compiled_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EndWorkspaceSessionRequest {
+    pub summary: Option<String>,
+    pub updated_feature_ids: Vec<String>,
+    pub updated_spec_ids: Vec<String>,
+}
+
 /// Input for creating or updating a workspace runtime record.
 #[derive(Debug, Clone, Default)]
 pub struct CreateWorkspaceRequest {
@@ -143,6 +213,38 @@ fn parse_datetime(value: &str) -> DateTime<Utc> {
 
 fn parse_datetime_opt(value: Option<String>) -> Option<DateTime<Utc>> {
     value.and_then(|entry| DateTime::from_str(&entry).ok())
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|entry| {
+        let trimmed = entry.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn hydrate_workspace_session(row: WorkspaceSessionDb) -> WorkspaceSession {
+    WorkspaceSession {
+        id: row.id,
+        workspace_id: row.workspace_id,
+        workspace_branch: row.workspace_branch,
+        status: row.status.parse().unwrap_or(WorkspaceSessionStatus::Active),
+        started_at: parse_datetime(&row.started_at),
+        ended_at: parse_datetime_opt(row.ended_at),
+        mode_id: row.mode_id,
+        primary_provider: row.primary_provider,
+        goal: row.goal,
+        summary: row.summary,
+        updated_feature_ids: row.updated_feature_ids,
+        updated_spec_ids: row.updated_spec_ids,
+        compiled_at: parse_datetime_opt(row.compiled_at),
+        compile_error: row.compile_error,
+        created_at: parse_datetime(&row.created_at),
+        updated_at: parse_datetime(&row.updated_at),
+    }
 }
 
 fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> WorkspaceType {
@@ -174,6 +276,15 @@ fn normalize_mode_ref(mode: &str) -> Option<String> {
     }
 }
 
+fn normalize_provider_ref(provider: &str) -> Option<String> {
+    let trimmed = provider.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
 fn validate_mode_exists(ship_dir: &Path, mode_id: &str) -> Result<String> {
     let normalized = normalize_mode_ref(mode_id)
         .ok_or_else(|| anyhow::anyhow!("Workspace mode cannot be empty"))?;
@@ -183,6 +294,49 @@ fn validate_mode_exists(ship_dir: &Path, mode_id: &str) -> Result<String> {
     } else {
         Err(anyhow::anyhow!("Mode '{}' not found", normalized))
     }
+}
+
+fn resolve_session_providers(
+    ship_dir: &Path,
+    workspace: &Workspace,
+    mode_id: Option<&str>,
+) -> Result<Vec<String>> {
+    let config = crate::config::get_effective_config(Some(ship_dir.to_path_buf()))?;
+    let mode_targets = mode_id
+        .and_then(|id| config.modes.iter().find(|mode| mode.id == id))
+        .map(|mode| mode.target_agents.clone())
+        .unwrap_or_default();
+
+    let candidates = if !workspace.providers.is_empty() {
+        workspace.providers.clone()
+    } else if !mode_targets.is_empty() {
+        mode_targets
+    } else if !config.providers.is_empty() {
+        config.providers
+    } else {
+        vec!["claude".to_string()]
+    };
+
+    let mut providers = Vec::new();
+    for candidate in candidates {
+        let Some(normalized) = normalize_provider_ref(&candidate) else {
+            continue;
+        };
+        if crate::agents::export::get_provider(&normalized).is_some()
+            && !providers.iter().any(|p| p == &normalized)
+        {
+            providers.push(normalized);
+        }
+    }
+
+    if providers.is_empty() {
+        return Err(anyhow!(
+            "No valid providers resolved for workspace '{}' (configure providers or mode target agents)",
+            workspace.branch
+        ));
+    }
+
+    Ok(providers)
 }
 
 fn ensure_branch_key(branch: &str) -> Result<&str> {
@@ -266,9 +420,6 @@ fn hydrate_from_feature_links(ship_dir: &Path, workspace: &mut Workspace) -> Res
 fn persist_branch_link_from_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
     if let Some(feature_id) = workspace.feature_id.as_deref() {
         return set_branch_link(ship_dir, &workspace.branch, "feature", feature_id);
-    }
-    if let Some(spec_id) = workspace.spec_id.as_deref() {
-        return set_branch_link(ship_dir, &workspace.branch, "spec", spec_id);
     }
     clear_branch_link(ship_dir, &workspace.branch)
 }
@@ -442,6 +593,151 @@ pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
             context_hash: workspace.context_hash.as_deref(),
         },
     )
+}
+
+pub fn get_active_workspace_session(
+    ship_dir: &Path,
+    branch: &str,
+) -> Result<Option<WorkspaceSession>> {
+    let branch = ensure_branch_key(branch)?;
+    let workspace = match get_workspace(ship_dir, branch)? {
+        Some(workspace) => workspace,
+        None => return Ok(None),
+    };
+    Ok(get_active_workspace_session_db(ship_dir, &workspace.id)?.map(hydrate_workspace_session))
+}
+
+pub fn list_workspace_sessions(
+    ship_dir: &Path,
+    branch: Option<&str>,
+    limit: usize,
+) -> Result<Vec<WorkspaceSession>> {
+    let workspace_id = if let Some(branch) = branch {
+        let branch = ensure_branch_key(branch)?;
+        match get_workspace(ship_dir, branch)? {
+            Some(workspace) => Some(workspace.id),
+            None => return Ok(Vec::new()),
+        }
+    } else {
+        None
+    };
+
+    let rows = list_workspace_sessions_db(ship_dir, workspace_id.as_deref(), limit)?;
+    Ok(rows.into_iter().map(hydrate_workspace_session).collect())
+}
+
+pub fn start_workspace_session(
+    ship_dir: &Path,
+    branch: &str,
+    goal: Option<String>,
+    mode_id: Option<String>,
+    primary_provider: Option<String>,
+) -> Result<WorkspaceSession> {
+    let branch = ensure_branch_key(branch)?;
+    let mut workspace = get_workspace(ship_dir, branch)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
+
+    if workspace.status != WorkspaceStatus::Active {
+        workspace = activate_workspace(ship_dir, branch)?;
+    }
+
+    if let Some(mode_id) = mode_id.as_deref() {
+        workspace = set_workspace_active_mode(ship_dir, branch, Some(mode_id))?;
+    }
+
+    if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
+        return Err(anyhow::anyhow!(
+            "Workspace session '{}' is already active for '{}'",
+            active.id,
+            workspace.branch
+        ));
+    }
+
+    let mode_id = mode_id
+        .or(workspace.active_mode.clone())
+        .and_then(|value| normalize_optional_text(Some(value)));
+    let providers = resolve_session_providers(ship_dir, &workspace, mode_id.as_deref())?;
+    let primary_provider = if let Some(requested_provider) = primary_provider {
+        let normalized = normalize_provider_ref(&requested_provider)
+            .ok_or_else(|| anyhow!("Session provider cannot be empty"))?;
+        if !providers.iter().any(|provider| provider == &normalized) {
+            return Err(anyhow!(
+                "Provider '{}' is not allowed for workspace '{}' (allowed: {})",
+                normalized,
+                workspace.branch,
+                providers.join(", ")
+            ));
+        }
+        normalized
+    } else {
+        providers
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow!("No providers resolved for workspace '{}'", workspace.branch))?
+    };
+
+    crate::agents::export::export_to_with_mode_override(
+        ship_dir.to_path_buf(),
+        &primary_provider,
+        mode_id.as_deref(),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to compile provider '{}' for workspace session on '{}'",
+            primary_provider, workspace.branch
+        )
+    })?;
+
+    let now = Utc::now();
+    let session = WorkspaceSessionDb {
+        id: crate::gen_nanoid(),
+        workspace_id: workspace.id.clone(),
+        workspace_branch: workspace.branch.clone(),
+        status: WorkspaceSessionStatus::Active.to_string(),
+        started_at: now.to_rfc3339(),
+        ended_at: None,
+        mode_id,
+        primary_provider: Some(primary_provider),
+        goal: normalize_optional_text(goal),
+        summary: None,
+        updated_feature_ids: Vec::new(),
+        updated_spec_ids: Vec::new(),
+        compiled_at: Some(Utc::now().to_rfc3339()),
+        compile_error: None,
+        created_at: now.to_rfc3339(),
+        updated_at: now.to_rfc3339(),
+    };
+    insert_workspace_session_db(ship_dir, &session)?;
+    let created = get_workspace_session_db(ship_dir, &session.id)?
+        .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
+    Ok(hydrate_workspace_session(created))
+}
+
+pub fn end_workspace_session(
+    ship_dir: &Path,
+    branch: &str,
+    request: EndWorkspaceSessionRequest,
+) -> Result<WorkspaceSession> {
+    let branch = ensure_branch_key(branch)?;
+    let workspace = get_workspace(ship_dir, branch)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
+
+    let mut active = get_active_workspace_session_db(ship_dir, &workspace.id)?
+        .ok_or_else(|| anyhow::anyhow!("No active workspace session for '{}'", workspace.branch))?;
+
+    let now = Utc::now().to_rfc3339();
+    active.status = WorkspaceSessionStatus::Ended.to_string();
+    active.ended_at = Some(now.clone());
+    active.summary = normalize_optional_text(request.summary);
+    active.updated_feature_ids = request.updated_feature_ids;
+    active.updated_spec_ids = request.updated_spec_ids;
+    active.updated_at = now;
+
+    update_workspace_session_db(ship_dir, &active)?;
+
+    let ended = get_workspace_session_db(ship_dir, &active.id)?
+        .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;
+    Ok(hydrate_workspace_session(ended))
 }
 
 /// Create or update a workspace record without requiring a git checkout.
@@ -801,6 +1097,33 @@ mod tests {
             workspace.release_id.as_deref(),
             Some("release-from-feature")
         );
+        let stored_link = get_branch_link(&ship_dir, "feature/mixed")?;
+        assert_eq!(
+            stored_link,
+            Some(("feature".to_string(), "feat-mixed".to_string()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_never_persists_spec_as_branch_owner() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        crate::state_db::ensure_project_database(&ship_dir)?;
+
+        let workspace = create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "experiment/spec-context".to_string(),
+                workspace_type: Some(WorkspaceType::Experiment),
+                spec_id: Some("spec-only".to_string()),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+
+        assert_eq!(workspace.spec_id.as_deref(), Some("spec-only"));
+        assert!(get_branch_link(&ship_dir, "experiment/spec-context")?.is_none());
         Ok(())
     }
 
@@ -918,6 +1241,191 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Worktree workspace requires a worktree path")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_session_start_and_end_happy_path() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/session-flow".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let started = start_workspace_session(
+            &ship_dir,
+            "feature/session-flow",
+            Some("Implement parser".to_string()),
+            None,
+            None,
+        )?;
+        assert_eq!(started.status, WorkspaceSessionStatus::Active);
+        assert_eq!(started.goal.as_deref(), Some("Implement parser"));
+        assert_eq!(started.primary_provider.as_deref(), Some("claude"));
+        assert!(started.compiled_at.is_some());
+        assert!(started.compile_error.is_none());
+        assert!(started.ended_at.is_none());
+
+        let active = get_active_workspace_session(&ship_dir, "feature/session-flow")?
+            .ok_or_else(|| anyhow::anyhow!("active session not found"))?;
+        assert_eq!(active.id, started.id);
+
+        let ended = end_workspace_session(
+            &ship_dir,
+            "feature/session-flow",
+            EndWorkspaceSessionRequest {
+                summary: Some("Implemented parser + tests".to_string()),
+                updated_feature_ids: vec!["feat-parser".to_string()],
+                updated_spec_ids: vec!["spec-parser".to_string()],
+            },
+        )?;
+        assert_eq!(ended.status, WorkspaceSessionStatus::Ended);
+        assert!(ended.ended_at.is_some());
+        assert_eq!(ended.summary.as_deref(), Some("Implemented parser + tests"));
+        assert_eq!(ended.updated_feature_ids, vec!["feat-parser".to_string()]);
+        assert_eq!(ended.updated_spec_ids, vec!["spec-parser".to_string()]);
+        assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_session_start_rejects_duplicate_active_sessions() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/session-dupe".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let first = start_workspace_session(
+            &ship_dir,
+            "feature/session-dupe",
+            Some("one".into()),
+            None,
+            None,
+        )?;
+        let err = start_workspace_session(
+            &ship_dir,
+            "feature/session-dupe",
+            Some("two".into()),
+            None,
+            None,
+        )
+        .expect_err("second active session should be rejected");
+
+        assert!(err.to_string().contains(&first.id));
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_session_list_filters_by_branch_workspace() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/a".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/b".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let a = start_workspace_session(&ship_dir, "feature/a", None, None, None)?;
+        end_workspace_session(
+            &ship_dir,
+            "feature/a",
+            EndWorkspaceSessionRequest::default(),
+        )?;
+        let b = start_workspace_session(&ship_dir, "feature/b", None, None, None)?;
+
+        let all = list_workspace_sessions(&ship_dir, None, 10)?;
+        assert!(all.iter().any(|session| session.id == a.id));
+        assert!(all.iter().any(|session| session.id == b.id));
+
+        let only_a = list_workspace_sessions(&ship_dir, Some("feature/a"), 10)?;
+        assert!(
+            only_a
+                .iter()
+                .all(|session| session.workspace_branch == "feature/a")
+        );
+        assert_eq!(only_a.len(), 1);
+        assert_eq!(only_a[0].id, a.id);
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_session_start_allows_explicit_primary_provider() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/provider-ok".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let session = start_workspace_session(
+            &ship_dir,
+            "feature/provider-ok",
+            Some("Pin provider".to_string()),
+            None,
+            Some("claude".to_string()),
+        )?;
+        assert_eq!(session.primary_provider.as_deref(), Some("claude"));
+        assert!(session.compiled_at.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_session_start_rejects_provider_outside_allowed_targets() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/provider-deny".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let err = start_workspace_session(
+            &ship_dir,
+            "feature/provider-deny",
+            None,
+            None,
+            Some("gemini".to_string()),
+        )
+        .expect_err("provider outside allowed targets should be rejected");
+
+        assert!(
+            err.to_string()
+                .contains("Provider 'gemini' is not allowed for workspace")
         );
         Ok(())
     }

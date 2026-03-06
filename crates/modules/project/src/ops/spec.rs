@@ -6,16 +6,15 @@ pub fn create_spec(
     ship_dir: &Path,
     title: &str,
     body: &str,
-    feature_id: Option<String>,
-    release_id: Option<String>,
+    workspace_ref: Option<&str>,
 ) -> OpsResult<SpecEntry> {
     if title.trim().is_empty() {
         return Err(OpsError::Validation(
             "Spec title cannot be empty".to_string(),
         ));
     }
-    let entry = crate::spec::create_spec(ship_dir, title, body, feature_id, release_id)
-        .map_err(OpsError::from)?;
+    let entry =
+        crate::spec::create_spec(ship_dir, title, body, workspace_ref).map_err(OpsError::from)?;
     append_project_log(
         ship_dir,
         "spec create",
@@ -68,8 +67,8 @@ mod tests {
     fn create_spec_rejects_empty_title() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let err = create_spec(&project_dir, "   ", "", None, None)
-            .expect_err("expected validation failure");
+        let err =
+            create_spec(&project_dir, "   ", "", None).expect_err("expected validation failure");
         assert!(matches!(err, OpsError::Validation(_)));
         Ok(())
     }
@@ -78,7 +77,15 @@ mod tests {
     fn move_spec_happy_path_writes_project_log() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let created = create_spec(&project_dir, "ops-spec", "body", None, None)?;
+        runtime::create_workspace(
+            &project_dir,
+            runtime::CreateWorkspaceRequest {
+                branch: "feature/ops-spec".to_string(),
+                status: Some(runtime::WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+        let created = create_spec(&project_dir, "ops-spec", "body", None)?;
         let moved = move_spec(&project_dir, &created.id, SpecStatus::Active)?;
         assert_eq!(moved.status, SpecStatus::Active);
 

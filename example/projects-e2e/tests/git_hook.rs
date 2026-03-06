@@ -93,7 +93,7 @@ fn checkout_non_feature_branch_is_noop() {
 }
 
 #[test]
-fn claude_md_includes_open_issues() {
+fn claude_md_omits_issue_section() {
     let p = TestProject::with_git().unwrap();
     create_feature(
         p.ship_dir.clone(),
@@ -104,33 +104,10 @@ fn claude_md_includes_open_issues() {
         Some("feature/auth"),
     )
     .unwrap();
-    ship_module_project::create_issue(
-        &p.ship_dir,
-        "Handle login timeout",
-        "Need a retry strategy",
-        ship_module_project::IssueStatus::Backlog,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    ship_module_project::create_issue(
-        &p.ship_dir,
-        "Already shipped",
-        "Closed issue",
-        ship_module_project::IssueStatus::Done,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
 
     on_post_checkout(&p.ship_dir, "feature/auth", &p.root()).unwrap();
     let content = std::fs::read_to_string(p.root().join("CLAUDE.md")).unwrap();
-    assert!(content.contains("Handle login timeout"));
-    assert!(!content.contains("Already shipped"));
+    assert!(!content.contains("## Open Issues"));
 }
 
 #[test]
