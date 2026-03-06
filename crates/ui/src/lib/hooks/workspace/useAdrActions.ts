@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import { ADR, AdrEntry, AdrStatus } from '@/bindings';
 import {
   createNewAdrCmd,
@@ -38,7 +38,7 @@ export function useAdrActions({
   setError,
   refreshActivity,
 }: UseAdrActionsParams) {
-  const handleCreateAdr = async (
+  const handleCreateAdr = useCallback(async (
     title: string,
     context: string,
     decision: string,
@@ -93,9 +93,9 @@ export function useAdrActions({
       setError(String(error));
       return;
     }
-  };
+  }, [setAdrs, setShowNewAdr, setError, refreshActivity]);
 
-  const handleSelectAdr = async (entry: AdrEntry) => {
+  const handleSelectAdr = useCallback(async (entry: AdrEntry) => {
     if (!isTauriRuntime()) {
       setSelectedAdr(entry);
       return;
@@ -107,9 +107,9 @@ export function useAdrActions({
     } catch {
       setSelectedAdr(entry);
     }
-  };
+  }, [setSelectedAdr]);
 
-  const handleSaveAdr = async (id: string, adr: ADR) => {
+  const handleSaveAdr = useCallback(async (id: string, adr: ADR) => {
     if (!isTauriRuntime()) {
       setError('Saving ADRs is only available in Tauri runtime.');
       return;
@@ -123,9 +123,9 @@ export function useAdrActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setAdrs, setSelectedAdr, setError, refreshActivity]);
 
-  const handleMoveAdr = async (id: string, newStatus: AdrStatus) => {
+  const handleMoveAdr = useCallback(async (id: string, newStatus: AdrStatus) => {
     if (!isTauriRuntime()) {
       setError('Moving ADRs is only available in Tauri runtime.');
       return;
@@ -139,9 +139,9 @@ export function useAdrActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setAdrs, setSelectedAdr, setError, refreshActivity]);
 
-  const handleDeleteAdr = async (id: string) => {
+  const handleDeleteAdr = useCallback(async (id: string) => {
     if (!isTauriRuntime()) {
       setError('Deleting ADRs is only available in Tauri runtime.');
       return;
@@ -155,13 +155,13 @@ export function useAdrActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setAdrs, setSelectedAdr, setError, refreshActivity]);
 
-  return {
+  return useMemo(() => ({
     handleCreateAdr,
     handleSelectAdr,
     handleSaveAdr,
     handleMoveAdr,
     handleDeleteAdr,
-  };
+  }), [handleCreateAdr, handleSelectAdr, handleSaveAdr, handleMoveAdr, handleDeleteAdr]);
 }

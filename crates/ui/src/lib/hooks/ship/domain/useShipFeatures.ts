@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useState } from 'react';
+import { Dispatch, SetStateAction, useState, useMemo } from 'react';
 import { FeatureInfo, FeatureDocument } from '@/bindings';
 import { useFeatureActions } from '../../workspace/useFeatureActions';
 
@@ -21,11 +21,11 @@ export function useShipFeatures({
         refreshActivity,
     });
 
-    return {
+    return useMemo(() => ({
         features,
         setFeatures,
         selectedFeature,
         setSelectedFeature,
         ...actions,
-    };
+    }), [features, selectedFeature, actions]);
 }

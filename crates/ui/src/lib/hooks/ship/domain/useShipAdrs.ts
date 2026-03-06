@@ -43,7 +43,7 @@ export function useShipAdrs({
             .sort((a, b) => a.title.localeCompare(b.title));
     }, [adrs]);
 
-    return {
+    return useMemo(() => ({
         adrs,
         setAdrs,
         selectedAdr,
@@ -53,5 +53,5 @@ export function useShipAdrs({
         tagSuggestions,
         adrSuggestions,
         ...actions,
-    };
+    }), [adrs, selectedAdr, showNewAdr, tagSuggestions, adrSuggestions, actions]);
 }

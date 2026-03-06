@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import { Issue, IssueEntry } from '@/bindings';
 import {
   createNewIssueCmd,
@@ -27,7 +27,7 @@ export function useIssueActions({
   refreshActivity,
   refreshProjectInfo,
 }: UseIssueActionsParams) {
-  const handleCreateIssue = async (
+  const handleCreateIssue = useCallback(async (
     title: string,
     description: string,
     status: string,
@@ -66,9 +66,9 @@ export function useIssueActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setIssues, setShowNewIssue, setError, refreshActivity, refreshProjectInfo]);
 
-  const handleStatusChange = async (
+  const handleStatusChange = useCallback(async (
     file_name: string,
     from: string,
     to: string,
@@ -95,9 +95,9 @@ export function useIssueActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setIssues, setSelectedIssue, setError, refreshActivity]);
 
-  const handleSaveIssue = async (path: string, issue: Issue) => {
+  const handleSaveIssue = useCallback(async (path: string, issue: Issue) => {
     if (!isTauriRuntime()) {
       setError('Saving issues is only available in Tauri runtime.');
       return;
@@ -118,9 +118,9 @@ export function useIssueActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [issues, setIssues, setSelectedIssue, setError]);
 
-  const handleDeleteIssue = async (path: string) => {
+  const handleDeleteIssue = useCallback(async (path: string) => {
     if (!isTauriRuntime()) {
       setError('Deleting issues is only available in Tauri runtime.');
       return;
@@ -135,12 +135,12 @@ export function useIssueActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setIssues, setSelectedIssue, setError, refreshActivity, refreshProjectInfo]);
 
-  return {
+  return useMemo(() => ({
     handleCreateIssue,
     handleStatusChange,
     handleSaveIssue,
     handleDeleteIssue,
-  };
+  }), [handleCreateIssue, handleStatusChange, handleSaveIssue, handleDeleteIssue]);
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   EventRecord,
   ModeConfig,
@@ -64,18 +64,28 @@ export function useWorkspaceController() {
     globalAgentConfig?.ai?.model?.trim() ||
     null;
 
+  const refreshEvents = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    const entries = await listEventEntries(0, 200).catch(() => []);
+    setEventEntries(entries);
+  }, []);
+
+  const refreshActivity = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    await refreshEvents();
+  }, [refreshEvents]);
+
+  const refreshProjectInfo = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    const info = await getActiveProject().catch(() => null);
+    if (info) setActiveProject(projectFromInfo(info));
+  }, []);
+
   const ship = useShipEntities({
-    refreshActivity: async () => {
-      await refreshEvents();
-    },
-    refreshProjectInfo: async () => {
-      if (!isTauriRuntime()) return;
-      const info = await getActiveProject().catch(() => null);
-      if (info) setActiveProject(projectFromInfo(info));
-    },
+    refreshActivity,
+    refreshProjectInfo,
     setError,
   });
-
   const { loadProjectData, loadProjectConfig, refreshDetectedProject } = useWorkspaceLifecycle({
     activeProject,
     sidebarCollapsed,
@@ -91,25 +101,13 @@ export function useWorkspaceController() {
     onProjectDataChange: ship.loadShipData,
   });
 
-  const refreshEvents = async () => {
-    if (!isTauriRuntime()) return;
-    const entries = await listEventEntries(0, 200).catch(() => []);
-    setEventEntries(entries);
-  };
-
-  const refreshActivity = async () => {
-    if (!isTauriRuntime()) return;
-    await refreshEvents();
-  };
-
-  const ingestEvents = async () => {
+  const ingestEvents = useCallback(async () => {
     if (!isTauriRuntime()) return 0;
     const count = await ingestEventChanges().catch(() => 0);
     await loadProjectData();
     await refreshEvents();
     return count;
-  };
-
+  }, [loadProjectData, refreshEvents]);
 
   const {
     handleOpenProject,
@@ -131,7 +129,6 @@ export function useWorkspaceController() {
     loadProjectConfig,
   });
 
-
   const { handleSaveSettings, handleSaveProjectSettings, handleSaveGlobalAgentSettings } = useSettingsActions({
     setConfig,
     setProjectConfig,
@@ -139,7 +136,7 @@ export function useWorkspaceController() {
     setError,
   });
 
-  const handleSetActiveMode = async (modeId: string | null) => {
+  const handleSetActiveMode = useCallback(async (modeId: string | null) => {
     if (!projectConfig) return;
 
     if (!isTauriRuntime()) {
@@ -159,14 +156,18 @@ export function useWorkspaceController() {
     } finally {
       setSwitchingMode(false);
     }
-  };
+  }, [projectConfig, loadProjectConfig, refreshActivity, refreshEvents]);
 
   const noProject = !activeProject;
-
-
   const mcpEnabled = config.mcp_enabled !== false;
 
-  return {
+  const applyTheme = useCallback((theme?: 'light' | 'dark') => {
+    if (theme) {
+      handleSaveSettings({ ...config, theme });
+    }
+  }, [config, handleSaveSettings]);
+
+  return useMemo(() => ({
     activeProject,
     detectedProject,
     detectingProject,
@@ -205,12 +206,48 @@ export function useWorkspaceController() {
     handleSaveProjectSettings,
     handleSaveGlobalAgentSettings,
     handleSetActiveMode,
-    applyTheme: (theme?: 'light' | 'dark') => {
-      if (theme) {
-        handleSaveSettings({ ...config, theme });
-      }
-    },
-    // Layered Ship DSL data
+    applyTheme,
     ship,
-  };
+  }), [
+    activeProject,
+    detectedProject,
+    detectingProject,
+    creatingProject,
+    recentProjects,
+    eventEntries,
+    config,
+    projectConfig,
+    globalAgentConfig,
+    sidebarCollapsed,
+    error,
+    loading,
+    statuses,
+    modes,
+    activeMode,
+    activeModeId,
+    aiProvider,
+    aiModel,
+    switchingMode,
+    noProject,
+    mcpEnabled,
+    notesScope,
+    setNotesScope,
+    setSidebarCollapsed,
+    setError,
+    refreshDetectedProject,
+    handleOpenProject,
+    handleNewProject,
+    handlePickProjectDirectory,
+    handleCreateProjectFromForm,
+    handleSelectProject,
+    refreshActivity,
+    refreshEvents,
+    ingestEvents,
+    handleSaveSettings,
+    handleSaveProjectSettings,
+    handleSaveGlobalAgentSettings,
+    handleSetActiveMode,
+    applyTheme,
+    ship,
+  ]);
 }

@@ -137,7 +137,7 @@ export default function FeatureDetail({
   return (
     <div className="space-y-3">
       <Card size="sm" className="border-primary/20">
-        <CardContent className="space-y-2 py-3">
+        <CardContent className="space-y-1.5 py-2.5">
           <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onClose}>
@@ -146,7 +146,7 @@ export default function FeatureDetail({
               </Button>
             </div>
 
-            <h2 className="truncate px-2 text-center text-xl font-semibold tracking-tight">
+            <h2 className="truncate px-2 text-center text-lg font-semibold tracking-tight">
               {feature?.title}
             </h2>
 
@@ -166,7 +166,7 @@ export default function FeatureDetail({
             </div>
           </div>
 
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-1.5">
             <FeatureHeaderMetadata
               status={feature.status}
               releaseId={feature.release_id || undefined}

@@ -19,32 +19,28 @@ export function useEntityLink() {
         const lowerType = type.toLowerCase();
 
         if (lowerType === 'spec') {
-            const entry = ship.specs.find(s => s.file_name === target);
-            if (entry) {
-                // Spec selection is slightly different, it might need the full doc or just the entry
-                // For now we set it if we can find it. Spec hooks usually load detail on select.
-                ship.setSelectedSpec(entry as any);
-            }
+            const entry = ship.specs.find(s => s.file_name === target || s.id === target);
+            if (entry) ship.setSelectedSpec(entry);
             navigate({ to: '/project/specs' });
         } else if (lowerType === 'feature') {
-            const entry = ship.features.find(f => f.file_name === target);
+            const entry = ship.features.find(f => f.file_name === target || f.id === target);
             if (entry) ship.setSelectedFeature(entry);
             navigate({ to: '/project/features' });
         } else if (lowerType === 'release') {
-            const entry = ship.releases.find(r => r.file_name === target);
+            const entry = ship.releases.find(r => r.file_name === target || r.id === target);
             if (entry) ship.setSelectedRelease(entry);
             navigate({ to: '/project/releases' });
         } else if (lowerType === 'adr') {
-            const entry = ship.adrs.find(a => a.file_name === target);
+            const entry = ship.adrs.find(a => a.file_name === target || a.id === target);
             if (entry) ship.setSelectedAdr(entry);
             navigate({ to: '/project/adrs' });
         } else if (lowerType === 'note') {
-            const entry = ship.notes.find(n => n.file_name === target);
+            const entry = ship.notes.find(n => n.id === target);
             if (entry) ship.setSelectedNote(entry);
             navigate({ to: '/project/notes' });
         } else {
             // Default to issue
-            const entry = ship.issues.find(i => i.file_name === target);
+            const entry = ship.issues.find(i => i.file_name === target || i.id === target);
             if (entry) ship.setSelectedIssue(entry);
             navigate({ to: '/project/issues' });
         }

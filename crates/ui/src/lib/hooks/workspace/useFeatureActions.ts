@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import { FeatureInfo, FeatureDocument } from '@/bindings';
 import {
   createFeatureCmd,
@@ -20,7 +20,7 @@ export function useFeatureActions({
   setError,
   refreshActivity,
 }: UseFeatureActionsParams) {
-  const handleSelectFeature = async (entry: FeatureInfo) => {
+  const handleSelectFeature = useCallback(async (entry: FeatureInfo) => {
     if (!isTauriRuntime()) {
       // In non-tauri, we can't fetch the document, so we just set the info
       // but the types will complain. This is a fallback case.
@@ -38,9 +38,9 @@ export function useFeatureActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setSelectedFeature, setError]);
 
-  const handleCreateFeature = async (
+  const handleCreateFeature = useCallback(async (
     title: string,
     content: string,
     release?: string | null,
@@ -66,9 +66,9 @@ export function useFeatureActions({
       setError(String(error));
       throw error;
     }
-  };
+  }, [setFeatures, setSelectedFeature, setError, refreshActivity]);
 
-  const handleSaveFeature = async (fileName: string, content: string) => {
+  const handleSaveFeature = useCallback(async (fileName: string, content: string) => {
     if (!isTauriRuntime()) {
       setError('Saving features is only available in Tauri runtime.');
       return;
@@ -89,11 +89,11 @@ export function useFeatureActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setFeatures, setSelectedFeature, setError, refreshActivity]);
 
-  return {
+  return useMemo(() => ({
     handleSelectFeature,
     handleCreateFeature,
     handleSaveFeature,
-  };
+  }), [handleSelectFeature, handleCreateFeature, handleSaveFeature]);
 }

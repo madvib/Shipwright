@@ -1,5 +1,5 @@
-import { Dispatch, SetStateAction } from 'react';
-import { ReleaseEntry } from '@/bindings';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
+import { ReleaseInfo } from '@/bindings';
 import {
   createReleaseCmd,
   getReleaseCmd,
@@ -8,8 +8,8 @@ import {
 import { isTauriRuntime } from '../../platform/tauri/runtime';
 
 interface UseReleaseActionsParams {
-  setReleases: Dispatch<SetStateAction<ReleaseEntry[]>>;
-  setSelectedRelease: Dispatch<SetStateAction<ReleaseEntry | null>>;
+  setReleases: Dispatch<SetStateAction<ReleaseInfo[]>>;
+  setSelectedRelease: Dispatch<SetStateAction<ReleaseInfo | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   refreshActivity: () => Promise<void>;
 }
@@ -20,7 +20,7 @@ export function useReleaseActions({
   setError,
   refreshActivity,
 }: UseReleaseActionsParams) {
-  const handleSelectRelease = async (entry: ReleaseEntry) => {
+  const handleSelectRelease = useCallback(async (entry: ReleaseInfo) => {
     if (!isTauriRuntime()) {
       setSelectedRelease(entry);
       return;
@@ -29,16 +29,16 @@ export function useReleaseActions({
     try {
       const result = await getReleaseCmd(entry.file_name);
       if (result.status === 'ok') {
-        setSelectedRelease(result.data);
+        setSelectedRelease(result.data as unknown as ReleaseInfo);
       } else {
         setError(String(result.error));
       }
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setSelectedRelease, setError]);
 
-  const handleCreateRelease = async (version: string, content: string) => {
+  const handleCreateRelease = useCallback(async (version: string, content: string) => {
     if (!isTauriRuntime()) {
       setError('Release creation is only available in Tauri runtime.');
       return;
@@ -47,7 +47,7 @@ export function useReleaseActions({
     try {
       const result = await createReleaseCmd(version, content);
       if (result.status === 'ok') {
-        const created = result.data;
+        const created = result.data as unknown as ReleaseInfo;
         setReleases((prev) => [...prev, created]);
         setSelectedRelease(created);
         await refreshActivity();
@@ -59,9 +59,9 @@ export function useReleaseActions({
       setError(String(error));
       throw error;
     }
-  };
+  }, [setReleases, setSelectedRelease, setError, refreshActivity]);
 
-  const handleSaveRelease = async (fileName: string, content: string) => {
+  const handleSaveRelease = useCallback(async (fileName: string, content: string) => {
     if (!isTauriRuntime()) {
       setError('Saving releases is only available in Tauri runtime.');
       return;
@@ -70,7 +70,7 @@ export function useReleaseActions({
     try {
       const result = await updateReleaseCmd(fileName, content);
       if (result.status === 'ok') {
-        const updated = result.data;
+        const updated = result.data as unknown as ReleaseInfo;
         setReleases((prev) =>
           prev.map((entry) => (entry.file_name === updated.file_name ? updated : entry))
         );
@@ -82,11 +82,11 @@ export function useReleaseActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setReleases, setSelectedRelease, setError, refreshActivity]);
 
-  return {
+  return useMemo(() => ({
     handleSelectRelease,
     handleCreateRelease,
     handleSaveRelease,
-  };
+  }), [handleSelectRelease, handleCreateRelease, handleSaveRelease]);
 }

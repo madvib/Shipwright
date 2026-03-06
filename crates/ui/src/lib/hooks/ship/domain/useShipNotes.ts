@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useState } from 'react';
+import { Dispatch, SetStateAction, useState, useMemo } from 'react';
 import { NoteDocument, NoteInfo as NoteEntry } from '@/bindings';
 import { useNoteActions } from '../../workspace/useNoteActions';
 
@@ -21,11 +21,11 @@ export function useShipNotes({
         refreshActivity,
     });
 
-    return {
+    return useMemo(() => ({
         notes,
         setNotes,
         selectedNote,
         setSelectedNote,
         ...actions,
-    };
+    }), [notes, selectedNote, actions]);
 }

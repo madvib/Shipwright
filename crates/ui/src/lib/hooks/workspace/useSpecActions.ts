@@ -1,8 +1,6 @@
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 import {
-  SpecDocument,
-  SpecInfo as SpecEntry,
-  stubSpecDocument,
+  SpecInfo,
 } from '@/lib/types/spec';
 import {
   createSpecCmd,
@@ -13,8 +11,8 @@ import {
 import { isTauriRuntime } from '../../platform/tauri/runtime';
 
 interface UseSpecActionsParams {
-  setSpecs: Dispatch<SetStateAction<SpecEntry[]>>;
-  setSelectedSpec: Dispatch<SetStateAction<SpecDocument | null>>;
+  setSpecs: Dispatch<SetStateAction<SpecInfo[]>>;
+  setSelectedSpec: Dispatch<SetStateAction<SpecInfo | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   refreshActivity: () => Promise<void>;
 }
@@ -25,9 +23,9 @@ export function useSpecActions({
   setError,
   refreshActivity,
 }: UseSpecActionsParams) {
-  const handleSelectSpec = async (entry: SpecEntry) => {
+  const handleSelectSpec = useCallback(async (entry: SpecInfo) => {
     if (!isTauriRuntime()) {
-      setSelectedSpec(stubSpecDocument(entry, ''));
+      setSelectedSpec(entry);
       return;
     }
 
@@ -41,9 +39,9 @@ export function useSpecActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setSelectedSpec, setError]);
 
-  const handleCreateSpec = async (title: string, content: string) => {
+  const handleCreateSpec = useCallback(async (title: string, content: string) => {
     if (!isTauriRuntime()) {
       setError('Spec creation is only available in Tauri runtime.');
       return;
@@ -64,9 +62,9 @@ export function useSpecActions({
       setError(String(error));
       throw error;
     }
-  };
+  }, [setSpecs, setSelectedSpec, setError, refreshActivity]);
 
-  const handleSaveSpec = async (fileName: string, content: string) => {
+  const handleSaveSpec = useCallback(async (fileName: string, content: string) => {
     if (!isTauriRuntime()) {
       setError('Saving specs is only available in Tauri runtime.');
       return;
@@ -87,9 +85,9 @@ export function useSpecActions({
     } catch (error) {
       setError(String(error));
     }
-  };
+  }, [setSpecs, setSelectedSpec, setError, refreshActivity]);
 
-  const handleDeleteSpec = async (fileName: string) => {
+  const handleDeleteSpec = useCallback(async (fileName: string) => {
     if (!isTauriRuntime()) {
       setError('Deleting specs is only available in Tauri runtime.');
       return;
@@ -109,12 +107,12 @@ export function useSpecActions({
       setError(String(error));
       throw error;
     }
-  };
+  }, [setSpecs, setSelectedSpec, setError, refreshActivity]);
 
-  return {
+  return useMemo(() => ({
     handleSelectSpec,
     handleCreateSpec,
     handleSaveSpec,
     handleDeleteSpec,
-  };
+  }), [handleSelectSpec, handleCreateSpec, handleSaveSpec, handleDeleteSpec]);
 }

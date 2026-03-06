@@ -1,5 +1,5 @@
-import { Dispatch, SetStateAction, useState } from 'react';
-import { ReleaseEntry } from '@/bindings';
+import { Dispatch, SetStateAction, useState, useMemo } from 'react';
+import { ReleaseInfo, ReleaseDocument } from '@/bindings';
 import { useReleaseActions } from '../../workspace/useReleaseActions';
 
 interface UseShipReleasesParams {
@@ -11,8 +11,8 @@ export function useShipReleases({
     setError,
     refreshActivity,
 }: UseShipReleasesParams) {
-    const [releases, setReleases] = useState<ReleaseEntry[]>([]);
-    const [selectedRelease, setSelectedRelease] = useState<ReleaseEntry | null>(null);
+    const [releases, setReleases] = useState<ReleaseInfo[]>([]);
+    const [selectedRelease, setSelectedRelease] = useState<ReleaseDocument | null>(null);
 
     const actions = useReleaseActions({
         setReleases,
@@ -21,11 +21,11 @@ export function useShipReleases({
         refreshActivity,
     });
 
-    return {
+    return useMemo(() => ({
         releases,
         setReleases,
         selectedRelease,
         setSelectedRelease,
         ...actions,
-    };
+    }), [releases, selectedRelease, actions]);
 }

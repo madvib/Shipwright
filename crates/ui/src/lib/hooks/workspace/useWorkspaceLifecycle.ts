@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useEffect } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo } from 'react';
 import {
   EventRecord,
   ProjectDiscovery as Project,
@@ -235,9 +235,9 @@ export function useWorkspaceLifecycle({
     setRecentProjects,
   ]);
 
-  return {
+  return useMemo(() => ({
     loadProjectData,
     loadProjectConfig,
     refreshDetectedProject,
-  };
+  }), [loadProjectData, loadProjectConfig, refreshDetectedProject]);
 }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 type PageWidth = 'narrow' | 'default' | 'wide' | 'full';
@@ -48,12 +48,14 @@ export function PageChromeProvider({
   onUpdate?: (value: Partial<PageChromeContextValue>) => void;
   children: ReactNode;
 }) {
+  const setChrome = useCallback((updates: Partial<PageChromeContextValue>) => {
+    if (onUpdate) onUpdate(updates);
+  }, [onUpdate]);
+
   const contextValue = useMemo(() => ({
     ...value,
-    setChrome: (updates: Partial<PageChromeContextValue>) => {
-      if (onUpdate) onUpdate(updates);
-    }
-  }), [value, onUpdate]);
+    setChrome
+  }), [value, setChrome]);
 
   return <PageChromeContext.Provider value={contextValue}>{children}</PageChromeContext.Provider>;
 }

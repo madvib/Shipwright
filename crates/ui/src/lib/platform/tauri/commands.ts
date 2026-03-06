@@ -17,7 +17,7 @@ import {
   ProjectInfo,
   ProjectConfig,
   ReleaseDocument as Release,
-  ReleaseInfo as ReleaseEntry,
+  ReleaseInfo,
   Spec as RawSpecDocument,
   SpecEntry as RawSpecInfo,
   Workspace,
@@ -26,7 +26,7 @@ import {
 } from '@/bindings';
 import {
   SpecDocument,
-  SpecInfo as SpecEntry,
+  SpecInfo,
   toSpecDocument,
   toSpecInfo,
 } from '@/lib/types/spec';
@@ -51,9 +51,9 @@ const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> 
 
 export const listIssues = (): Promise<IssueEntry[]> => invoke('list_items');
 export const listAdrs = (): Promise<AdrEntry[]> => invoke('list_adrs_cmd');
-export const listSpecs = (): Promise<SpecEntry[]> =>
+export const listSpecs = (): Promise<SpecInfo[]> =>
   invoke<RawSpecInfo[]>('list_specs_cmd').then((entries) => entries.map(toSpecInfo));
-export const listReleases = (): Promise<ReleaseEntry[]> => invoke('list_releases_cmd');
+export const listReleases = (): Promise<ReleaseInfo[]> => invoke<ReleaseInfo[]>('list_releases_cmd');
 export const listFeatures = (): Promise<FeatureEntry[]> => invoke('list_features_cmd');
 export const listNotes = (scope: NotesScope = 'project'): Promise<NoteEntry[]> =>
   invoke('list_notes_cmd', { scope });
@@ -154,31 +154,31 @@ export const moveAdrCmd = (id: string, newStatus: AdrStatus): Promise<AdrEntry> 
 export const deleteAdrCmd = (id: string): Promise<void> =>
   unwrapResult(spectaCommands.deleteAdrCmd(id)).then(() => undefined);
 
-export const getSpecCmd = (id: string): Promise<Result<SpecDocument, string>> =>
+export const getSpecCmd = (id: string): Promise<Result<SpecInfo, string>> =>
   spectaCommands.getSpecCmd(id)
     .then((result) => {
       if (result.status === 'ok') {
-        return { status: 'ok', data: toSpecDocument(result.data.spec) } as Result<SpecDocument, string>;
+        return { status: 'ok', data: toSpecInfo(result.data) } as Result<SpecInfo, string>;
       }
-      return result as Result<SpecDocument, string>;
+      return result as unknown as Result<SpecInfo, string>;
     });
 
-export const createSpecCmd = (title: string, content: string): Promise<Result<SpecDocument, string>> =>
-  invoke<RawSpecDocument>('create_spec_cmd', { title, content })
-    .then((data) => ({ status: 'ok', data: toSpecDocument(data) } as Result<SpecDocument, string>))
+export const createSpecCmd = (title: string, content: string): Promise<Result<SpecInfo, string>> =>
+  invoke<RawSpecInfo>('create_spec_cmd', { title, content })
+    .then((data) => ({ status: 'ok', data: toSpecInfo(data) } as Result<SpecInfo, string>))
     .catch((error) => ({ status: 'error', error: String(error) }));
 
-export const updateSpecCmd = async (id: string, content: string): Promise<Result<SpecDocument, string>> => {
+export const updateSpecCmd = async (id: string, content: string): Promise<Result<SpecInfo, string>> => {
   const existing = await spectaCommands.getSpecCmd(id);
   if (existing.status === 'error') {
-    return existing as Result<SpecDocument, string>;
+    return existing as unknown as Result<SpecInfo, string>;
   }
   return spectaCommands.updateSpecCmd(id, { ...existing.data.spec, body: content })
     .then((result) => {
       if (result.status === 'ok') {
-        return { status: 'ok', data: toSpecDocument(result.data.spec) } as Result<SpecDocument, string>;
+        return { status: 'ok', data: toSpecInfo(result.data) } as Result<SpecInfo, string>;
       }
-      return result as Result<SpecDocument, string>;
+      return result as unknown as Result<SpecInfo, string>;
     });
 };
 

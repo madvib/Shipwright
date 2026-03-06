@@ -1,10 +1,17 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useCallback } from 'react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import AdrList from '@/features/planning/AdrList';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
+import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
 
 function AdrsRouteComponent() {
   const workspace = useWorkspace();
   const ship = useShip();
+  const navigate = useNavigate();
+
+  const onBack = useCallback(() => {
+    void navigate({ to: OVERVIEW_ROUTE });
+  }, [navigate]);
 
   return (
     <AdrList
@@ -19,6 +26,7 @@ function AdrsRouteComponent() {
       tagSuggestions={ship.tagSuggestions}
       adrSuggestions={ship.adrSuggestions}
       mcpEnabled={workspace.mcpEnabled}
+      onBackToGlobal={onBack}
     />
   );
 }

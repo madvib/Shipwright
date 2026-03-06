@@ -44,7 +44,7 @@ export function useShipIssues({
             .sort((a, b) => a.localeCompare(b));
     }, [issues]);
 
-    return {
+    return useMemo(() => ({
         issues,
         setIssues,
         selectedIssue,
@@ -54,5 +54,5 @@ export function useShipIssues({
         tagSuggestions,
         issueFileSuggestions,
         ...actions,
-    };
+    }), [issues, selectedIssue, showNewIssue, tagSuggestions, issueFileSuggestions, actions]);
 }

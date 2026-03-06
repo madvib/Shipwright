@@ -13,13 +13,12 @@ function FeaturesRouteComponent() {
       features={ship.features}
       releases={ship.releases}
       specs={ship.specs}
-      adrs={ship.adrs}
       selectedFeature={ship.selectedFeature}
       onCloseFeatureDetail={() => ship.setSelectedFeature(null)}
       onSelectFeature={ship.handleSelectFeature}
       onSelectReleaseFromFeature={(name) => {
         const release = ship.releases.find(
-          (entry) => entry.file_name === name || entry.release.metadata.version === name
+          (entry) => entry.file_name === name || entry.version === name
         );
         if (!release) return;
         ship.setSelectedFeature(null);

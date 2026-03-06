@@ -22,6 +22,7 @@ import {
     FrontmatterDelimiter,
     parseFrontmatterEntries,
     splitFrontmatterDocument,
+    stripAllFrontmatter,
 } from './frontmatter';
 
 type EditorMode = 'edit' | 'read';
@@ -346,8 +347,8 @@ export default function MarkdownEditor({
                             </section>
                         )}
 
-                        {model.body.trim() ? (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{model.body}</ReactMarkdown>
+                        {stripAllFrontmatter(model.body).trim() ? (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripAllFrontmatter(model.body)}</ReactMarkdown>
                         ) : (
                             <p className="text-muted-foreground text-sm">Nothing to preview yet.</p>
                         )}

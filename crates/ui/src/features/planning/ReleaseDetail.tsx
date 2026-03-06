@@ -19,7 +19,7 @@ import { Badge } from '@ship/ui';
 import { Button } from '@ship/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { Progress } from '@ship/ui';
-import { splitFrontmatterDocument } from '@ship/ui';
+import { splitFrontmatterDocument, stripAllFrontmatter } from '@ship/ui';
 import { featureStatusFallbackReadiness, formatStatusLabel } from '@/features/planning/hub/utils/featureMetrics';
 import { cn } from '@/lib/utils';
 
@@ -177,8 +177,8 @@ export default function ReleaseDetail({
   return (
     <div className="space-y-4">
       <Card size="sm" className="border-primary/20">
-        <CardContent className="space-y-4 py-4">
-          <div className="flex flex-col items-center gap-4">
+        <CardContent className="space-y-3 py-3">
+          <div className="flex flex-col items-center gap-3">
             <div className="flex w-full items-center justify-between">
               <div className="flex-1">
                 <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onClose}>
@@ -187,7 +187,7 @@ export default function ReleaseDetail({
                 </Button>
               </div>
 
-              <h2 className="px-4 text-center text-2xl font-bold tracking-tight text-foreground">
+              <h2 className="px-4 text-center text-xl font-bold tracking-tight text-foreground">
                 {summary.version || release.version}
               </h2>
 
@@ -280,8 +280,8 @@ export default function ReleaseDetail({
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-3">
               <article className="ship-markdown-preview rounded-md border bg-background px-4 py-3">
-                {documentModel.body.trim() ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{documentModel.body}</ReactMarkdown>
+                {stripAllFrontmatter(documentModel.body).trim() ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripAllFrontmatter(documentModel.body)}</ReactMarkdown>
                 ) : (
                   <p className="text-muted-foreground text-sm italic">No body content yet.</p>
                 )}

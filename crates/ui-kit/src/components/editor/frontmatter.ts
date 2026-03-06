@@ -21,7 +21,7 @@ export interface FrontmatterEntry {
 }
 
 const FRONTMATTER_RE =
-    /^\uFEFF?(?:[ \t]*\r?\n)*[ \t]*(\+\+\+|---)[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\1[ \t]*(?:\r?\n|$)/;
+    /^[\s\uFEFF\xA0]*(\+\+\+|---)[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\1[ \t]*(?:\r?\n|$)/;
 
 const TAGS_KEY = 'tags';
 const SPECS_KEY = 'specs';
@@ -116,14 +116,23 @@ export function splitFrontmatterDocument(markdown: string): FrontmatterModel {
             delimiter: null,
         };
     }
-
     const delimiter = match[1] as FrontmatterDelimiter;
     const frontmatter = match[2].trim();
     return {
         frontmatter: frontmatter || null,
-        body: markdown.slice(match[0].length),
+        body: stripAllFrontmatter(markdown.slice(match[0].length)),
         delimiter,
     };
+}
+
+export function stripAllFrontmatter(markdown: string): string {
+    let current = markdown;
+    while (true) {
+        const match = current.match(FRONTMATTER_RE);
+        if (!match) break;
+        current = current.slice(match[0].length).replace(/^\n+/, '');
+    }
+    return current;
 }
 
 export function composeFrontmatterDocument(

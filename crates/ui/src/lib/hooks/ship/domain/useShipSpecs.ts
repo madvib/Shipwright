@@ -12,7 +12,7 @@ export function useShipSpecs({
     refreshActivity,
 }: UseShipSpecsParams) {
     const [specs, setSpecs] = useState<SpecEntry[]>([]);
-    const [selectedSpec, setSelectedSpec] = useState<SpecDocument | null>(null);
+    const [selectedSpec, setSelectedSpec] = useState<SpecEntry | null>(null);
 
     const actions = useSpecActions({
         setSpecs,
@@ -31,12 +31,12 @@ export function useShipSpecs({
             .sort((a, b) => a.title.localeCompare(b.title));
     }, [specs]);
 
-    return {
+    return useMemo(() => ({
         specs,
         setSpecs,
         selectedSpec,
         setSelectedSpec,
         specSuggestions,
         ...actions,
-    };
+    }), [specs, selectedSpec, specSuggestions, actions]);
 }

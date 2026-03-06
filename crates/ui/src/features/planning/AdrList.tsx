@@ -1,4 +1,4 @@
-import { ComponentType, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ComponentType, useCallback, useContext, useEffect, useMemo, useState, ChangeEvent, MouseEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -20,13 +20,21 @@ import {
 import { ADR, AdrEntry, AdrStatus } from '@/bindings';
 import { PageFrame, PageHeader } from '@/components/app/PageFrame';
 import { StatusFilter } from '@/components/app/StatusFilter';
-import { Badge } from '@ship/ui';
-import { Button } from '@ship/ui';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
-import { EmptyState } from '@ship/ui';
-import { Input } from '@ship/ui';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -36,16 +44,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  AutocompleteInput,
 } from '@ship/ui';
 import { cn } from '@/lib/utils';
-import { getAdrStatusClasses } from '@/lib/workspace-ui';
+import { PageChromeContext } from '@/components/app/PageFrame';
 import { SPECS_ROUTE } from '@/lib/constants/routes';
+import { getAdrStatusClasses } from '@/lib/workspace-ui';
 import AdrEditor from './AdrEditor';
 import TemplateEditorButton from './TemplateEditorButton';
 import { AdrHeaderMetadata } from './AdrHeaderMetadata';
 import { AdrContextDialog } from './AdrContextDialog';
 import { deriveAdrDocTitle } from './adrTitle';
-import { PageChromeContext } from '@/components/app/PageFrame';
 
 interface AdrListProps {
   adrs: AdrEntry[];
@@ -69,6 +81,7 @@ interface AdrListProps {
   tagSuggestions: string[];
   adrSuggestions: { id: string; title: string }[];
   mcpEnabled: boolean;
+  onBackToGlobal?: () => void;
 }
 
 type AdrSort = 'newest' | 'oldest' | 'status' | 'title';
@@ -121,8 +134,6 @@ function createInitialAdrDraft(): ADR {
   };
 }
 
-
-
 export default function AdrList({
   adrs,
   selectedAdr,
@@ -135,6 +146,7 @@ export default function AdrList({
   tagSuggestions,
   adrSuggestions,
   mcpEnabled,
+  onBackToGlobal,
 }: AdrListProps) {
   const [sortBy, setSortBy] = useState<AdrSort>('newest');
   const [search, setSearch] = useState('');
@@ -154,8 +166,6 @@ export default function AdrList({
     if (!selectedAdr) return null;
     return adrs.find((entry) => entry.id === selectedAdr.id) ?? null;
   }, [adrs, selectedAdr]);
-
-
 
   const sortedAdrs = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -210,6 +220,29 @@ export default function AdrList({
 
   useEffect(() => {
     if (!selectedAdr && sortedAdrs.length > 0 && !creating) {
+      // #region agent log
+      fetch('http://127.0.0.1:7589/ingest/f85ceda4-335f-4e01-985d-67f8dc3ec941',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Debug-Session-Id':'25afe1'
+        },
+        body:JSON.stringify({
+          sessionId:'25afe1',
+          runId:'initial',
+          hypothesisId:'H1',
+          location:'AdrList.tsx:221',
+          message:'Default select ADR effect firing',
+          data:{
+            selectedAdrId:selectedAdr?.id ?? null,
+            firstAdrId:sortedAdrs[0]?.id ?? null,
+            sortedCount:sortedAdrs.length,
+            creating
+          },
+          timestamp:Date.now()
+        })
+      }).catch(()=>{});
+      // #endregion agent log
       void Promise.resolve(onSelectAdr(sortedAdrs[0]));
     }
   }, [creating, onSelectAdr, selectedAdr, sortedAdrs]);
@@ -231,19 +264,22 @@ export default function AdrList({
     setCreateError(null);
   }, [activeEntry?.id, creating]);
 
-  const handleMoveStatus = (entry: AdrEntry, next: string) => {
-    const nextStatus = next as AdrStatus;
-    if (nextStatus === entry.status || movingIds.has(entry.id)) return;
+  const handleMoveStatus = useCallback(
+    (entry: AdrEntry, next: string) => {
+      const nextStatus = next as AdrStatus;
+      if (nextStatus === entry.status || movingIds.has(entry.id)) return;
 
-    setMovingIds((current) => new Set(current).add(entry.id));
-    void Promise.resolve(onMoveAdr(entry.id, nextStatus)).finally(() => {
-      setMovingIds((current) => {
-        const updated = new Set(current);
-        updated.delete(entry.id);
-        return updated;
+      setMovingIds((current) => new Set(current).add(entry.id));
+      void Promise.resolve(onMoveAdr(entry.id, nextStatus)).finally(() => {
+        setMovingIds((current) => {
+          const updated = new Set(current);
+          updated.delete(entry.id);
+          return updated;
+        });
       });
-    });
-  };
+    },
+    [movingIds, onMoveAdr]
+  );
 
   const startCreating = () => {
     setCreating(true);
@@ -352,7 +388,7 @@ export default function AdrList({
         <div className="space-y-2 mb-3">
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setSearch(event.target.value)}
             placeholder="Filter decisions..."
             className="h-8 bg-background/50 text-xs"
           />
@@ -361,12 +397,14 @@ export default function AdrList({
               label="Status"
               options={ADR_STATUS_OPTIONS}
               selectedValues={selectedStatuses}
-              onSelect={setSelectedStatuses}
+              onSelect={(next: Set<string>) => setSelectedStatuses(next)}
               className="h-8 flex-1"
             />
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as AdrSort)}>
-              <SelectTrigger size="sm" className="h-8 w-8 p-0 flex items-center justify-center">
-                <ChevronDown className="size-4 opacity-50" />
+            <Select value={sortBy} onValueChange={(value: string | null) => value && setSortBy(value as AdrSort)}>
+              <SelectTrigger size="sm" className="h-8 w-[150px] px-2 text-xs justify-between">
+                <SelectValue>
+                  {ADR_SORT_OPTIONS.find((option) => option.value === sortBy)?.label}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {ADR_SORT_OPTIONS.map((option) => (
@@ -389,7 +427,29 @@ export default function AdrList({
                     ? 'border-primary/30 bg-primary/5 shadow-sm'
                     : 'border-transparent bg-transparent'
                 )}
-                onClick={() => void onSelectAdr(entry)}
+                onClick={() => {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7589/ingest/f85ceda4-335f-4e01-985d-67f8dc3ec941',{
+                    method:'POST',
+                    headers:{
+                      'Content-Type':'application/json',
+                      'X-Debug-Session-Id':'25afe1'
+                    },
+                    body:JSON.stringify({
+                      sessionId:'25afe1',
+                      runId:'initial',
+                      hypothesisId:'H3',
+                      location:'AdrList.tsx:402',
+                      message:'ADR list item clicked',
+                      data:{
+                        entryId:entry.id
+                      },
+                      timestamp:Date.now()
+                    })
+                  }).catch(()=>{});
+                  // #endregion agent log
+                  void onSelectAdr(entry);
+                }}
                 title={entry.path}
               >
                 <p className={cn(
@@ -409,30 +469,31 @@ export default function AdrList({
                   </Badge>
 
                   <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-0 border-none bg-transparent hover:opacity-80 transition-opacity"
-                        title="Edit Spec Link"
+                    <PopoverTrigger
+                      render={
+                        <button
+                          className="p-0 border-none bg-transparent hover:opacity-80 transition-opacity"
+                          title="Edit Spec Link"
+                        />
+                      }
+                    >
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "h-4.5 px-1.5 text-[9px] font-mono",
+                          entry.adr.metadata.spec_id ? "opacity-60" : "opacity-20 hover:opacity-100"
+                        )}
                       >
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "h-4.5 px-1.5 text-[9px] font-mono",
-                            entry.adr.metadata.spec_id ? "opacity-60" : "opacity-20 hover:opacity-100"
-                          )}
-                        >
-                          {entry.adr.metadata.spec_id || 'no spec'}
-                        </Badge>
-                      </button>
+                        {entry.adr.metadata.spec_id || 'no spec'}
+                      </Badge>
                     </PopoverTrigger>
-                    <PopoverContent className="w-72 p-3" onClick={(e) => e.stopPropagation()}>
+                    <PopoverContent className="w-72 p-3" onClick={(e: MouseEvent) => e.stopPropagation()}>
                       <div className="space-y-2">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Linked Specification</p>
                         <AutocompleteInput
                           value={entry.adr.metadata.spec_id || ''}
-                          onChange={(next) => void updateAdrMetadata(entry, { spec_id: next || null })}
-                          suggestions={specSuggestions.map(s => s.id)}
+                          onValueChange={(next: string) => void updateAdrMetadata(entry, { spec_id: next || null })}
+                          options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
                           placeholder="Search or enter spec ID..."
                           className="h-8 text-xs font-mono"
                         />
@@ -444,12 +505,12 @@ export default function AdrList({
               <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Select
                   value={entry.status}
-                  onValueChange={(next) => handleMoveStatus(entry, next)}
+                  onValueChange={(next) => next && handleMoveStatus(entry, next as AdrStatus)}
                 >
-                  <SelectTrigger size="sm" className="h-6 w-6 p-0 border-none bg-transparent hover:bg-muted/80" onClick={(e) => e.stopPropagation()}>
+                  <SelectTrigger size="sm" className="h-6 w-6 p-0 border-none bg-transparent hover:bg-muted/80" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     <Edit3 className="size-3 text-muted-foreground" />
                   </SelectTrigger>
-                  <SelectContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <SelectContent align="end" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     {ADR_STATUS_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
@@ -478,19 +539,40 @@ export default function AdrList({
     onSelectAdr,
     handleMoveStatus,
     updateAdrMetadata,
-    specSuggestions
+    specSuggestions,
+    tagSuggestions
   ]);
 
   const { setChrome } = useContext(PageChromeContext);
   useEffect(() => {
     if (showReadPane) {
+      // #region agent log
+      fetch('http://127.0.0.1:7589/ingest/f85ceda4-335f-4e01-985d-67f8dc3ec941',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Debug-Session-Id':'25afe1'
+        },
+        body:JSON.stringify({
+          sessionId:'25afe1',
+          runId:'initial',
+          hypothesisId:'H2',
+          location:'AdrList.tsx:497',
+          message:'setChrome effect updating sidebar',
+          data:{
+            showReadPane
+          },
+          timestamp:Date.now()
+        })
+      }).catch(()=>{});
+      // #endregion agent log
       setChrome({
         sidebar: RegisterContent,
-        onBack: undefined // Maybe later add a way to go back to global nav if needed
+        onBack: onBackToGlobal
       });
       return () => setChrome({ sidebar: undefined, onBack: undefined });
     }
-  }, [showReadPane, RegisterContent, setChrome]);
+  }, [showReadPane, RegisterContent, setChrome, onBackToGlobal]);
 
   return (
     <PageFrame width="full">
@@ -521,24 +603,20 @@ export default function AdrList({
           }
         />
       ) : (
-        <div className="flex-1 min-h-0">
-          <div
-            className={cn(
-              'h-full grid grid-cols-1 gap-4',
-              showReadPane && 'lg:h-[calc(100vh-10rem)]'
-            )}
-          >
-            <section className="h-full min-h-0">
+        <div className="flex-1 min-h-0 container max-w-[100rem] mx-auto">
+          <div className="h-full flex flex-col pt-2 pb-6">
+            <section className="flex-1 min-h-0">
               <Card size="sm" className="flex h-full flex-col border-none bg-transparent shadow-none">
-                <CardHeader className="gap-3 border-b pb-4 px-0">
-                  {!creating && !displayEntry ? (
-                    <div>
+                <CardHeader className="gap-3 border-b mb-6 pb-6 px-0 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
+                  {!displayEntry && (
+                    <div className="md:hidden">
                       <CardTitle>Decision Register</CardTitle>
                       <CardDescription>
                         Explore the architecture decisions made for this project.
                       </CardDescription>
                     </div>
-                  ) : (
+                  )}
+                  {displayEntry && (
                     <div className="flex flex-nowrap items-start justify-between gap-3 min-w-0">
                       <div className="min-w-0 flex-1 space-y-2.5 overflow-hidden text-left">
                         <div className="flex items-center gap-2">
@@ -558,15 +636,14 @@ export default function AdrList({
                         {draft && (
                           <AdrHeaderMetadata
                             adr={draft}
-                            onChange={(next) => {
+                            onChange={(next: ADR) => {
                               setDraft(next);
                               setDirty(true);
                             }}
                             specSuggestions={specSuggestions}
                             tagSuggestions={tagSuggestions}
                             adrSuggestions={adrSuggestions}
-                            isEditing={creating || editMode}
-                            onNavigate={(type, id) => {
+                            onNavigate={(type: string, id: string) => {
                               if (type === 'spec') {
                                 void navigate({ to: SPECS_ROUTE, search: { id } });
                               } else if (type === 'adr') {
@@ -580,7 +657,7 @@ export default function AdrList({
 
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         {creating ? (
-                          <Select value={createStatus} onValueChange={(next) => next && setCreateStatus(next as AdrStatus)}>
+                          <Select value={createStatus} onValueChange={(next: string | null) => next && setCreateStatus(next as AdrStatus)}>
                             <SelectTrigger size="sm" className="h-8 w-36">
                               <SelectValue />
                             </SelectTrigger>
@@ -595,8 +672,8 @@ export default function AdrList({
                         ) : displayEntry ? (
                           <Select
                             value={displayEntry.status}
-                            onValueChange={(next) => {
-                              if (next) handleMoveStatus(displayEntry, next);
+                            onValueChange={(next: string | null) => {
+                              if (next) handleMoveStatus(displayEntry, next as AdrStatus);
                             }}
                             disabled={movingIds.has(displayEntry.id)}
                           >
@@ -621,11 +698,11 @@ export default function AdrList({
                             className="h-8 gap-1.5 shrink-0"
                           >
                             <FileText className="size-4" />
-                            Context
+                            Decision context
                           </Button>
                         ) : null}
 
-                        {(creating || editMode) ? (
+                        {(creating || editMode || dirty) ? (
                           <>
                             <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving}>
                               <X className="size-4" />
@@ -681,20 +758,20 @@ export default function AdrList({
                   )}
                 </CardHeader>
 
-                <CardContent className="min-h-0 flex-1 overflow-hidden px-0 py-4">
+                <CardContent className="min-h-0 flex-1 overflow-auto px-0 py-8 no-scrollbar">
                   {createError && (
-                    <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <div className="mb-6 mx-auto max-w-4xl rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                       {createError}
                     </div>
                   )}
 
                   {creating || editMode ? (
                     draft ? (
-                      <div className="h-full min-h-0">
+                      <div className="h-full min-h-0 max-w-5xl mx-auto">
                         <AdrEditor
                           key={draft?.metadata.id || 'new'}
                           adr={draft}
-                          onChange={(next) => {
+                          onChange={(next: ADR) => {
                             setDraft(next);
                             setDirty(true);
                             setCreateError(null);
@@ -713,19 +790,41 @@ export default function AdrList({
                       />
                     )
                   ) : displayEntry ? (
-                    <div className="h-full overflow-auto pr-1">
-                      <div className="ship-markdown-preview max-w-4xl">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {displayEntry.adr.decision.trim() ? displayEntry.adr.decision : '_No decision recorded yet._'}
-                        </ReactMarkdown>
+                    <div className="h-full max-w-4xl mx-auto space-y-12 pb-16 px-4">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-px flex-1 bg-border/40" />
+                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/50">Decision Context</span>
+                          <div className="h-px flex-1 bg-border/40" />
+                        </div>
+                        <div className="ship-markdown-preview min-h-[50px]">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {displayEntry.adr.context.trim() ? displayEntry.adr.context : '_No context recorded yet._'}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-px flex-1 bg-border/40" />
+                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/50">The Decision</span>
+                          <div className="h-px flex-1 bg-border/40" />
+                        </div>
+                        <div className="ship-markdown-preview min-h-[100px]">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {displayEntry.adr.decision.trim() ? displayEntry.adr.decision : '_No decision recorded yet._'}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     </div>
                   ) : (
-                    <EmptyState
-                      icon={<Compass className="size-4" />}
-                      title="No ADR Selected"
-                      description="Pick a decision from the register to inspect context and decision markdown."
-                    />
+                    <div className="h-full flex items-center justify-center p-12">
+                      <EmptyState
+                        icon={<Compass className="size-8 opacity-20" />}
+                        title="Pick A Decision"
+                        description="Select an ADR from the register in the sidebar to view details."
+                      />
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -741,7 +840,7 @@ export default function AdrList({
             isOpen={contextOpen}
             onOpenChange={setContextOpen}
             context={draft.context}
-            onContextChange={(next) => {
+            onContextChange={(next: string) => {
               if (creating || editMode) {
                 setDraft({ ...draft, context: next });
                 setDirty(true);

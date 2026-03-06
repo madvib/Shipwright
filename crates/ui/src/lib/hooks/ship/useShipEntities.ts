@@ -66,7 +66,7 @@ export function useShipEntities({
         ).sort((a, b) => a.localeCompare(b));
     }, [issues.tagSuggestions, adrs.tagSuggestions]);
 
-    return {
+    return useMemo(() => ({
         ...issues,
         ...adrs,
         ...specs,
@@ -75,5 +75,5 @@ export function useShipEntities({
         ...notes,
         tagSuggestions,
         loadShipData,
-    };
+    }), [issues, adrs, specs, releases, features, notes, tagSuggestions, loadShipData]);
 }

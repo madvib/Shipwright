@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';
@@ -38,6 +38,11 @@ import {
 } from 'lucide-react';
 import { NavSection } from '@/lib/types/navigation';
 import { SHIP_NAV_SECTIONS } from '@/lib/modules/ship';
+import { cn } from '@/lib/utils';
+
+const DEFAULT_SIDEBAR_WIDTH = 340;
+const MIN_SIDEBAR_WIDTH = 260;
+const MAX_SIDEBAR_WIDTH = 480;
 
 export default function App() {
   useUpdateChecker();
@@ -46,6 +51,16 @@ export default function App() {
   const workspace = useWorkspace();
   const ship = useShip();
   const routePath = normalizePath(location.pathname) as AppRoutePath;
+
+  const [pageChrome, setPageChrome] = useState<Partial<PageChromeContextValue>>({});
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('sidebar-width');
+    if (!saved) return DEFAULT_SIDEBAR_WIDTH;
+    const parsed = parseInt(saved, 10);
+    if (Number.isNaN(parsed)) return DEFAULT_SIDEBAR_WIDTH;
+    return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, parsed));
+  });
+  const [isResizing, setIsResizing] = useState(false);
 
   const SHELL_SECTIONS: NavSection[] = [
     {
@@ -69,19 +84,13 @@ export default function App() {
   ];
 
   const COMBINED_SECTIONS = useMemo(() => {
-    // Start with a clone of shell sections to avoid accidental mutation
     const sectionsMap = new Map<string, NavSection>();
-
-    // Process ship modules first to establish primary section grouping
     SHIP_NAV_SECTIONS.forEach(shipSection => {
       sectionsMap.set(shipSection.id, { ...shipSection, items: [...shipSection.items] });
     });
-
-    // Merge shell sections into the map
     SHELL_SECTIONS.forEach(shellSection => {
       const existing = sectionsMap.get(shellSection.id);
       if (existing) {
-        // Merge items, deduplicating by ID
         const existingIds = new Set(existing.items.map(i => i.id));
         const newItems = shellSection.items.filter(i => !existingIds.has(i.id));
         existing.items = [...existing.items, ...newItems];
@@ -89,80 +98,17 @@ export default function App() {
         sectionsMap.set(shellSection.id, { ...shellSection, items: [...shellSection.items] });
       }
     });
-
     return Array.from(sectionsMap.values());
   }, [SHIP_NAV_SECTIONS, SHELL_SECTIONS]);
 
-  const navigateTo = (path: AppRoutePath) => {
+  const navigateTo = useCallback((path: AppRoutePath) => {
     if (path === NOTES_ROUTE) {
       workspace.setNotesScope('project');
     }
     if (normalizePath(location.pathname) !== path) {
       void navigate({ to: path });
     }
-  };
-
-  const openGlobalNotes = () => {
-    workspace.setNotesScope('global');
-    if (normalizePath(location.pathname) !== NOTES_ROUTE) {
-      void navigate({ to: NOTES_ROUTE });
-    }
-  };
-
-  const handleSelectProject = async (project: Parameters<typeof workspace.handleSelectProject>[0]) => {
-    const selected = await workspace.handleSelectProject(project);
-    if (selected) {
-      navigateTo(OVERVIEW_ROUTE);
-    }
-  };
-
-  const showProjectOnboarding =
-    workspace.noProject &&
-    !workspace.loading &&
-    routePath !== SETTINGS_ROUTE &&
-    routePath !== AGENTS_ROUTE &&
-    routePath !== AGENTS_PROVIDERS_ROUTE &&
-    routePath !== AGENTS_MCP_ROUTE &&
-    routePath !== AGENTS_SKILLS_ROUTE &&
-    routePath !== AGENTS_RULES_ROUTE &&
-    routePath !== AGENTS_PERMISSIONS_ROUTE;
-
-  if (workspace.loading) {
-    return (
-      <main className="main-content">
-        <div className="flex h-full items-center justify-center p-8">
-          <div className="text-muted-foreground text-sm">Loading workspace...</div>
-        </div>
-      </main>
-    );
-  }
-
-  if (showProjectOnboarding) {
-    return (
-      <main className="main-content">
-        {workspace.error && (
-          <div className="mx-auto mt-3 w-full max-w-[min(86vw,1560px)] rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {workspace.error}
-          </div>
-        )}
-        <ProjectOnboarding
-          detectedProject={workspace.detectedProject}
-          detectingProject={workspace.detectingProject}
-          creatingProject={workspace.creatingProject}
-          recentProjects={workspace.recentProjects}
-          globalConfig={workspace.config}
-          onRefreshDetection={workspace.refreshDetectedProject}
-          onOpenProject={workspace.handleOpenProject}
-          onCreateProject={workspace.handleCreateProjectFromForm}
-          onPickDirectory={workspace.handlePickProjectDirectory}
-          onSelectProject={handleSelectProject}
-          onOpenSettings={() => navigateTo(SETTINGS_ROUTE)}
-        />
-      </main>
-    );
-  }
-
-  const [pageChrome, setPageChrome] = useState<Partial<PageChromeContextValue>>({});
+  }, [location.pathname, navigate, workspace]);
 
   const defaultChrome = useMemo((): Partial<PageChromeContextValue> =>
   (!workspace.noProject || routePath === PROJECTS_ROUTE
@@ -201,16 +147,119 @@ export default function App() {
         </nav>
       ),
     }
-    : {}), [workspace.noProject, workspace.activeProject, routePath, PROJECTS_ROUTE, OVERVIEW_ROUTE, ROUTE_LABELS, navigateTo]);
+    : {}), [workspace.noProject, workspace.activeProject, routePath, navigateTo]);
 
   const activeChrome = useMemo(() => ({
     ...defaultChrome,
     ...pageChrome,
   }), [defaultChrome, pageChrome]);
 
-  const handleUpdateChrome = (updates: Partial<PageChromeContextValue>) => {
-    setPageChrome(prev => ({ ...prev, ...updates }));
+  const handleUpdateChrome = useCallback((updates: Partial<PageChromeContextValue>) => {
+    setPageChrome(prev => {
+      const hasChange = Object.entries(updates).some(([key, val]) => prev[key as keyof PageChromeContextValue] !== val);
+      if (!hasChange) return prev;
+      return { ...prev, ...updates };
+    });
+  }, []);
+
+  const openGlobalNotes = () => {
+    workspace.setNotesScope('global');
+    if (normalizePath(location.pathname) !== NOTES_ROUTE) {
+      void navigate({ to: NOTES_ROUTE });
+    }
   };
+
+  const handleSelectProject = async (project: Parameters<typeof workspace.handleSelectProject>[0]) => {
+    const selected = await workspace.handleSelectProject(project);
+    if (selected) {
+      navigateTo(OVERVIEW_ROUTE);
+    }
+  };
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if ((e.key === 'b' || e.key === 'B') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        workspace.setSidebarCollapsed((prev) => !prev);
+      }
+    };
+
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, [workspace.setSidebarCollapsed]);
+
+  // Resizing Logic
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const resize = useCallback((e: MouseEvent) => {
+    if (isResizing) {
+      const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, e.clientX));
+      setSidebarWidth(newWidth);
+      localStorage.setItem('sidebar-width', newWidth.toString());
+    }
+  }, [isResizing]);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', resize);
+    window.addEventListener('mouseup', stopResizing);
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [resize, stopResizing]);
+
+  const showProjectOnboarding =
+    workspace.noProject &&
+    !workspace.loading &&
+    routePath !== SETTINGS_ROUTE &&
+    routePath !== AGENTS_ROUTE &&
+    routePath !== AGENTS_PROVIDERS_ROUTE &&
+    routePath !== AGENTS_MCP_ROUTE &&
+    routePath !== AGENTS_SKILLS_ROUTE &&
+    routePath !== AGENTS_RULES_ROUTE &&
+    routePath !== AGENTS_PERMISSIONS_ROUTE;
+
+  if (workspace.loading) {
+    return (
+      <main className="main-content">
+        <div className="flex h-full items-center justify-center p-8">
+          <div className="text-muted-foreground text-sm">Loading workspace...</div>
+        </div>
+      </main>
+    );
+  }
+
+  if (showProjectOnboarding) {
+    return (
+      <main className="main-content">
+        {workspace.error && (
+          <div className="mx-auto mt-3 w-full max-w-[min(86vw,1560px)] rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {workspace.error}
+          </div>
+        )}
+        <ProjectOnboarding
+          detectedProject={workspace.detectedProject}
+          detectingProject={workspace.detectingProject}
+          creatingProject={workspace.creatingProject}
+          recentProjects={workspace.recentProjects}
+          onRefreshDetection={workspace.refreshDetectedProject}
+          onOpenProject={workspace.handleOpenProject}
+          onCreateProject={workspace.handleCreateProjectFromForm}
+          onPickDirectory={workspace.handlePickProjectDirectory}
+          onSelectProject={handleSelectProject}
+          onOpenSettings={() => navigateTo(SETTINGS_ROUTE)}
+        />
+      </main>
+    );
+  }
 
   return (
     <div
@@ -218,40 +267,58 @@ export default function App() {
       style={{
         gridTemplateColumns: workspace.sidebarCollapsed
           ? '4.5rem minmax(0, 1fr)'
-          : '16rem minmax(0, 1fr)',
+          : `${sidebarWidth}px minmax(0, 1fr)`,
       }}
     >
       <SearchModal />
-      <Sidebar
-        collapsed={workspace.sidebarCollapsed}
-        onToggleCollapse={() => workspace.setSidebarCollapsed((current) => !current)}
-        activePath={routePath}
-        onNavigate={navigateTo}
-        activeProject={workspace.activeProject}
-        recentProjects={workspace.recentProjects}
-        onOpenProject={workspace.handleOpenProject}
-        onNewProject={workspace.handleNewProject}
-        onSelectProject={handleSelectProject}
-        onOpenGlobalNotes={openGlobalNotes}
-        sections={COMBINED_SECTIONS}
-        theme={workspace.config.theme as 'light' | 'dark'}
-        onThemeChange={workspace.applyTheme}
-        contextualContent={activeChrome.sidebar}
-        onBackToGlobal={activeChrome.onBack}
-        agentControl={
-          !workspace.noProject ? (
-            <AgentModeControl
-              modes={workspace.modes}
-              activeModeId={workspace.activeModeId}
-              aiProvider={workspace.aiProvider}
-              aiModel={workspace.aiModel}
-              switchingMode={workspace.switchingMode}
-              onSetMode={workspace.handleSetActiveMode}
-              onOpenAgents={() => navigateTo(AGENTS_PROVIDERS_ROUTE)}
-            />
-          ) : null
-        }
-      />
+      <div className="relative h-full flex overflow-hidden">
+        <Sidebar
+          collapsed={workspace.sidebarCollapsed}
+          onToggleCollapse={() => workspace.setSidebarCollapsed((current) => !current)}
+          activePath={routePath}
+          onNavigate={navigateTo}
+          activeProject={workspace.activeProject}
+          recentProjects={workspace.recentProjects}
+          onOpenProject={workspace.handleOpenProject}
+          onNewProject={workspace.handleNewProject}
+          onSelectProject={handleSelectProject}
+          onOpenGlobalNotes={openGlobalNotes}
+          sections={COMBINED_SECTIONS}
+          theme={workspace.config.theme as 'light' | 'dark'}
+          onThemeChange={workspace.applyTheme}
+          contextualContent={activeChrome.sidebar}
+          onBackToGlobal={activeChrome.onBack}
+          agentControl={
+            !workspace.noProject ? (
+              <AgentModeControl
+                modes={workspace.modes}
+                activeModeId={workspace.activeModeId}
+                aiProvider={workspace.aiProvider}
+                aiModel={workspace.aiModel}
+                switchingMode={workspace.switchingMode}
+                onSetMode={workspace.handleSetActiveMode}
+                onOpenAgents={() => navigateTo(AGENTS_PROVIDERS_ROUTE)}
+              />
+            ) : null
+          }
+        />
+        {!workspace.sidebarCollapsed && (
+          <div
+            onMouseDown={startResizing}
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 transition-colors group",
+              isResizing ? "bg-primary" : "bg-transparent hover:bg-border/50"
+            )}
+          >
+            <div className={cn(
+              "absolute right-0 top-1/2 -translate-y-1/2 w-4 h-12 -mr-2 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity",
+              isResizing && "opacity-100"
+            )}>
+              <div className="w-1 h-6 bg-border rounded-full" />
+            </div>
+          </div>
+        )}
+      </div>
 
       <main className="main-content">
         {workspace.error && (
@@ -279,7 +346,7 @@ export default function App() {
           onDelete={ship.handleDeleteIssue}
           onSave={ship.handleSaveIssue}
           tagSuggestions={ship.tagSuggestions}
-          specSuggestions={ship.specSuggestions}
+          specSuggestions={ship.specSuggestions.map(s => s.id)}
           issueSuggestions={ship.issueFileSuggestions}
           mcpEnabled={workspace.mcpEnabled}
         />
@@ -289,7 +356,7 @@ export default function App() {
           onClose={() => ship.setShowNewIssue(false)}
           statuses={workspace.statuses}
           tagSuggestions={ship.tagSuggestions}
-          specSuggestions={ship.specSuggestions}
+          specSuggestions={ship.specSuggestions.map(s => s.id)}
           onSubmit={ship.handleCreateIssue}
           defaultStatus={workspace.config.default_status ?? workspace.statuses[0]?.id}
         />

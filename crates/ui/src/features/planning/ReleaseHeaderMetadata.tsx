@@ -110,8 +110,7 @@ export function ReleaseHeaderMetadata({
             <span className="text-muted-foreground/30 px-1">|</span>
 
             {/* Date Picker */}
-            <div className="flex items-center gap-1.5 shrink-0">
-                <CalendarIcon className="size-3.5" />
+            <div className="flex items-center shrink-0">
                 {isEditing ? (
                     <DatePicker
                         value={targetDate || ''}
@@ -119,7 +118,10 @@ export function ReleaseHeaderMetadata({
                         className="h-7 w-auto border-none bg-transparent p-0 hover:bg-accent/50 text-muted-foreground transition-colors"
                     />
                 ) : (
-                    <span>{targetDate ? formatDate(targetDate) : 'No target date'}</span>
+                    <>
+                        <CalendarIcon className="size-3.5 mr-1.5" />
+                        <span>{targetDate ? formatDate(targetDate) : 'No target date'}</span>
+                    </>
                 )}
             </div>
 

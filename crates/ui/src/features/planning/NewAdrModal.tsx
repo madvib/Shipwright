@@ -12,8 +12,8 @@ import { deriveAdrHeaderTitle } from './adrTitle';
 interface NewAdrModalProps {
   onClose: () => void;
   tagSuggestions: string[];
-  specSuggestions: string[];
-  adrSuggestions?: string[];
+  specSuggestions: { id: string; title: string }[];
+  adrSuggestions?: { id: string; title: string }[];
   onSubmit: (
     title: string,
     context: string,

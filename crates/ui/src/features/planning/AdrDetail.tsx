@@ -91,7 +91,7 @@ export default function AdrDetail({
         onClick={() => setContextOpen(true)}
         className="h-7 gap-1.5"
       >
-        Context
+        Decision context
       </Button>
 
       <AlertDialog>
