@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
+import { Outlet, useLocation, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';
 import { PageChromeProvider, PageChromeContextValue } from '@ship/ui';
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { SHIP_NAV_SECTIONS } from '@/lib/modules/ship';
 import { cn } from '@/lib/utils';
+import RouteLoadingOverlay from '@/components/app/RouteLoadingOverlay';
 
 const DEFAULT_SIDEBAR_WIDTH = 280;
 const MIN_SIDEBAR_WIDTH = 220;
@@ -37,6 +38,10 @@ export default function App() {
   const navigate = useNavigate();
   const workspace = useWorkspace();
   const routePath = normalizePath(location.pathname) as AppRoutePath;
+  const routerPending = useRouterState({
+    select: (state) =>
+      state.isLoading || state.matches.some((match) => match.status === 'pending'),
+  });
 
   const [pageChrome, setPageChrome] = useState<Partial<PageChromeContextValue>>({});
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -203,7 +208,18 @@ export default function App() {
     return (
       <main className="main-content">
         <div className="flex h-full items-center justify-center p-8">
-          <div className="text-muted-foreground text-sm">Loading workspace...</div>
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              <span className="absolute inset-0 rounded-full border border-primary/35 animate-ping" />
+              <span className="absolute inset-1 rounded-full border border-primary/45" />
+              <img
+                src="/logo.svg"
+                alt="Ship"
+                className="relative h-9 w-9 animate-[spin_1.8s_linear_infinite]"
+              />
+            </div>
+            <div className="text-muted-foreground text-sm">Loading workspace...</div>
+          </div>
         </div>
       </main>
     );
@@ -324,7 +340,7 @@ export default function App() {
         </header>
 
         <div className="flex flex-1 min-h-0">
-          <main className="main-content flex-1 min-w-0">
+          <main className="main-content relative flex-1 min-w-0">
             {workspace.error && (
               <div className="mx-auto mt-2 flex w-full max-w-[min(86vw,1560px)] items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <span>{workspace.error}</span>
@@ -333,6 +349,7 @@ export default function App() {
                 </Button>
               </div>
             )}
+            <RouteLoadingOverlay visible={routerPending} />
             <PageChromeProvider
               value={activeChrome}
               onUpdate={handleUpdateChrome}

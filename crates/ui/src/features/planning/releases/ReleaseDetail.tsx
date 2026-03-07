@@ -102,9 +102,12 @@ export default function ReleaseDetail({
   const linkedFeatures = useMemo(
     () =>
       features.filter(
-        (feature) => feature.release_id === release.file_name || feature.release_id === release.version
+        (feature) =>
+          feature.release_id === release.id ||
+          feature.release_id === release.file_name ||
+          feature.release_id === release.version
       ),
-    [features, release.file_name, release.version]
+    [features, release.file_name, release.id, release.version]
   );
 
   const linkedStatusSummary = useMemo(() => {

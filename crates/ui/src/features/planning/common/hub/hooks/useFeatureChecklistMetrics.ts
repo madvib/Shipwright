@@ -12,6 +12,13 @@ interface UseFeatureChecklistMetricsResult {
   loading: boolean;
 }
 
+const METRICS_CACHE = new Map<string, FeatureChecklistMetrics>();
+const MAX_CONCURRENT_LOADS = 6;
+
+function cacheKey(feature: FeatureEntry): string {
+  return `${feature.file_name}::${feature.updated}::${feature.status ?? ''}`;
+}
+
 export function useFeatureChecklistMetrics(
   features: FeatureEntry[]
 ): UseFeatureChecklistMetricsResult {
@@ -31,22 +38,37 @@ export function useFeatureChecklistMetrics(
 
     const loadFeatureMetrics = async () => {
       setLoading(true);
-      const pairs = await Promise.all(
-        features.map(async (feature) => {
-          try {
-            const result = await getFeatureCmd(feature.file_name);
-            if (result.status !== 'ok') {
+      const pairs: Array<readonly [string, FeatureChecklistMetrics | null]> = [];
+      const pending: FeatureEntry[] = [];
+
+      for (const feature of features) {
+        const cached = METRICS_CACHE.get(cacheKey(feature));
+        if (cached) {
+          pairs.push([feature.file_name, cached] as const);
+        } else {
+          pending.push(feature);
+        }
+      }
+
+      for (let i = 0; i < pending.length; i += MAX_CONCURRENT_LOADS) {
+        const chunk = pending.slice(i, i + MAX_CONCURRENT_LOADS);
+        const chunkPairs = await Promise.all(
+          chunk.map(async (feature) => {
+            try {
+              const result = await getFeatureCmd(feature.file_name);
+              if (result.status !== 'ok') {
+                return [feature.file_name, null] as const;
+              }
+              const metrics = deriveFeatureChecklistMetrics(result.data.content, feature.status);
+              METRICS_CACHE.set(cacheKey(feature), metrics);
+              return [feature.file_name, metrics] as const;
+            } catch {
               return [feature.file_name, null] as const;
             }
-            return [
-              feature.file_name,
-              deriveFeatureChecklistMetrics(result.data.content, feature.status),
-            ] as const;
-          } catch {
-            return [feature.file_name, null] as const;
-          }
-        })
-      );
+          })
+        );
+        pairs.push(...chunkPairs);
+      }
 
       if (cancelled) return;
       const next: Record<string, FeatureChecklistMetrics> = {};

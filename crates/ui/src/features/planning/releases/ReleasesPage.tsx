@@ -158,7 +158,12 @@ tags = []
     const summaries = new Map<string, ReleaseReadinessSummary>();
     for (const release of releases) {
       const linked = features
-        .filter((feature) => feature.release_id === release.file_name || feature.release_id === release.version)
+        .filter(
+          (feature) =>
+            feature.release_id === release.id ||
+            feature.release_id === release.file_name ||
+            feature.release_id === release.version
+        )
         .map((feature) => {
           const metrics = featureMetricsByFile[feature.file_name];
           const readiness = metrics?.readinessPercent ?? featureStatusFallbackReadiness(feature.status);
@@ -202,6 +207,9 @@ tags = []
     const active = releases.find((release) => release.status === 'active') ?? null;
     const shippedCount = releases.filter((release) => release.status === 'shipped').length;
     const linkedFeatureCount = features.filter((feature) => feature.release_id).length;
+    const linkedReleaseCount = Array.from(releaseSummaries.values()).filter(
+      (summary) => summary.linked.length > 0
+    ).length;
     const activeBlockers = active
       ? releaseSummaries.get(active.file_name)?.blockers ?? 0
       : Array.from(releaseSummaries.values()).reduce((sum, summary) => sum + summary.blockers, 0);
@@ -216,6 +224,7 @@ tags = []
       active,
       shippedCount,
       linkedFeatureCount,
+      linkedReleaseCount,
       activeBlockers,
       avgProgress,
     };
@@ -355,6 +364,7 @@ tags = []
         shippedCount={dashboard.shippedCount}
         totalReleases={releases.length}
         linkedFeatureCount={dashboard.linkedFeatureCount}
+        linkedReleaseCount={dashboard.linkedReleaseCount}
         avgProgress={dashboard.avgProgress}
       />
 
