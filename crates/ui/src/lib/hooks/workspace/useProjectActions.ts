@@ -8,7 +8,7 @@ import {
   StatusConfig,
 } from '@/bindings';
 import { SpecInfo } from '@/lib/types/spec';
-import { CreateProjectInput } from '@/features/planning/ProjectOnboarding';
+import { CreateProjectInput } from '@/features/planning/common/ProjectOnboarding';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import {
   CreateProjectPayload,

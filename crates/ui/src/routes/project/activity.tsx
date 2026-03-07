@@ -4,7 +4,7 @@ import { Clock3, RefreshCcw } from 'lucide-react';
 import { Button } from '@ship/ui';
 import { Badge } from '@ship/ui';
 import { Card, CardContent } from '@ship/ui';
-import { PageFrame, PageHeader } from '@/components/app/PageFrame';
+import { PageFrame, PageHeader, Tooltip, TooltipTrigger, TooltipContent } from '@ship/ui';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 
 const ENTITY_STYLES: Record<string, string> = {
@@ -122,13 +122,24 @@ function ActivityRouteComponent() {
         description={`Append-only runtime stream (${events.length} event${events.length === 1 ? '' : 's'})`}
         actions={
           <>
-            <Button size="xs" variant="outline" onClick={workspace.refreshEvents}>
-              <RefreshCcw className="size-4" />
-              Refresh
-            </Button>
-            <Button size="xs" variant="outline" onClick={() => void workspace.ingestEvents()}>
-              Ingest Filesystem
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="xs" variant="outline" onClick={workspace.refreshEvents}>
+                  <RefreshCcw className="size-4" />
+                  Refresh
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Refresh the activity log from the server.</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="xs" variant="outline" onClick={() => void workspace.ingestEvents()}>
+                  Ingest Filesystem
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Scan the filesystem for new events and append them.</TooltipContent>
+            </Tooltip>
           </>
         }
       />

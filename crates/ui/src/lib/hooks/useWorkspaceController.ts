@@ -49,6 +49,7 @@ export function useWorkspaceController() {
     if (stored === null) return true;
     return stored === '1';
   });
+  const [isWorkspaceFocusMode, setIsWorkspaceFocusMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -171,6 +172,7 @@ export function useWorkspaceController() {
     projectConfig,
     globalAgentConfig,
     sidebarCollapsed,
+    isWorkspaceFocusMode,
     error,
     loading,
     statuses,
@@ -185,6 +187,7 @@ export function useWorkspaceController() {
     notesScope,
     setNotesScope,
     setSidebarCollapsed,
+    setIsWorkspaceFocusMode,
     setError,
     refreshDetectedProject,
     handleOpenProject,
@@ -212,6 +215,7 @@ export function useWorkspaceController() {
     projectConfig,
     globalAgentConfig,
     sidebarCollapsed,
+    isWorkspaceFocusMode,
     error,
     loading,
     statuses,
@@ -226,6 +230,7 @@ export function useWorkspaceController() {
     notesScope,
     setNotesScope,
     setSidebarCollapsed,
+    setIsWorkspaceFocusMode,
     setError,
     refreshDetectedProject,
     handleOpenProject,

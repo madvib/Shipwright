@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import FeaturesPage from '@/features/planning/FeaturesPage';
+import FeaturesPage from '@/features/planning/features/FeaturesPage';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { RELEASES_ROUTE } from '@/lib/constants/routes';
 
@@ -16,7 +16,7 @@ function FeaturesRouteComponent() {
       selectedFeature={ship.selectedFeature}
       onCloseFeatureDetail={() => ship.setSelectedFeature(null)}
       onSelectFeature={ship.handleSelectFeature}
-      onSelectReleaseFromFeature={(name) => {
+      onSelectReleaseFromFeature={(name: string) => {
         const release = ship.releases.find(
           (entry) => entry.file_name === name || entry.version === name
         );
@@ -25,7 +25,7 @@ function FeaturesRouteComponent() {
         void navigate({ to: RELEASES_ROUTE });
         void ship.handleSelectRelease(release);
       }}
-      onSelectSpecFromFeature={(name) => {
+      onSelectSpecFromFeature={(name: string) => {
         const spec = ship.specs.find((entry) => entry.file_name === name);
         if (!spec) return;
         ship.setSelectedFeature(null);

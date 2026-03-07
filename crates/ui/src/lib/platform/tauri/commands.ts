@@ -16,6 +16,7 @@ import {
   ProjectConfig,
   ReleaseDocument as Release,
   ReleaseInfo,
+  ProviderInfo,
   SpecEntry as RawSpecInfo,
   Workspace,
   Result,
@@ -31,6 +32,71 @@ export interface CreateProjectPayload {
   name?: string;
   description?: string;
   config?: ProjectConfig;
+}
+
+export interface WorkspaceEditorInfo {
+  id: string;
+  name: string;
+  binary: string;
+}
+
+export interface WorkspaceFileChange {
+  status: string;
+  path: string;
+}
+
+export interface WorkspaceSessionInfo {
+  id: string;
+  workspace_id: string;
+  workspace_branch: string;
+  status: 'active' | 'ended';
+  started_at: string;
+  ended_at?: string | null;
+  mode_id?: string | null;
+  primary_provider?: string | null;
+  goal?: string | null;
+  summary?: string | null;
+  updated_feature_ids: string[];
+  updated_spec_ids: string[];
+  compiled_at?: string | null;
+  compile_error?: string | null;
+  config_generation_at_start?: number | null;
+  stale_context?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceTerminalSessionInfo {
+  session_id: string;
+  branch: string;
+  provider: string;
+  cwd: string;
+  cols: number;
+  rows: number;
+  activation_error?: string | null;
+}
+
+export interface WorkspaceProviderMatrix {
+  workspace_branch: string;
+  mode_id?: string | null;
+  source: 'workspace' | 'mode' | 'config' | 'default' | string;
+  allowed_providers: string[];
+  supported_providers: string[];
+  resolution_error?: string | null;
+}
+
+export interface WorkspaceRepairReport {
+  workspace_branch: string;
+  dry_run: boolean;
+  mode_id?: string | null;
+  status: string;
+  providers_expected: string[];
+  missing_provider_configs: string[];
+  had_compile_error: boolean;
+  needs_recompile: boolean;
+  reapplied_compile: boolean;
+  resolution_error?: string | null;
+  actions: string[];
 }
 
 export type TemplateKind = 'issue' | 'adr' | 'spec' | 'release' | 'feature' | 'vision';
@@ -59,8 +125,12 @@ export const listEventEntries = (
 export const ingestEventChanges = (): Promise<number> => invoke('ingest_events_cmd');
 export const getWorkspaceCmd = (branch: string): Promise<Result<Workspace | null, string>> =>
   invoke('get_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace | null, string>)).catch(error => ({ status: 'error', error }));
+export const listWorkspaceEditorsCmd = (): Promise<Result<WorkspaceEditorInfo[], string>> =>
+  invoke('list_workspace_editors_cmd').then(data => ({ status: 'ok', data } as Result<WorkspaceEditorInfo[], string>)).catch(error => ({ status: 'error', error }));
 export const listWorkspacesCmd = (): Promise<Result<Workspace[], string>> =>
   invoke('list_workspaces_cmd').then(data => ({ status: 'ok', data } as Result<Workspace[], string>)).catch(error => ({ status: 'error', error }));
+export const listProvidersCmd = (): Promise<Result<ProviderInfo[], string>> =>
+  spectaCommands.listProvidersCmd().catch(error => ({ status: 'error', error: String(error) }));
 export const syncWorkspaceCmd = (branch?: string | null): Promise<Result<Workspace, string>> =>
   invoke('sync_workspace_cmd', { branch: branch ?? null }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const createWorkspaceCmd = (
@@ -70,6 +140,7 @@ export const createWorkspaceCmd = (
     featureId?: string | null;
     specId?: string | null;
     releaseId?: string | null;
+    modeId?: string | null;
     activate?: boolean;
   }
 ): Promise<Result<Workspace, string>> =>
@@ -79,15 +150,144 @@ export const createWorkspaceCmd = (
     featureId: options?.featureId ?? null,
     specId: options?.specId ?? null,
     releaseId: options?.releaseId ?? null,
+    modeId: options?.modeId ?? null,
     activate: options?.activate ?? null,
   }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const activateWorkspaceCmd = (branch: string): Promise<Result<Workspace, string>> =>
   invoke('activate_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+export const setWorkspaceModeCmd = (
+  branch: string,
+  modeId: string | null
+): Promise<Result<Workspace, string>> =>
+  invoke('set_workspace_mode_cmd', { branch, modeId })
+    .then(data => ({ status: 'ok', data } as Result<Workspace, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const deleteWorkspaceCmd = (branch: string): Promise<Result<null, string>> =>
+  invoke('delete_workspace_cmd', { branch })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const getActiveWorkspaceSessionCmd = (
+  branch: string
+): Promise<Result<WorkspaceSessionInfo | null, string>> =>
+  invoke('get_active_workspace_session_cmd', { branch })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo | null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const listWorkspaceSessionsCmd = (
+  branch?: string | null,
+  limit?: number | null
+): Promise<Result<WorkspaceSessionInfo[], string>> =>
+  invoke('list_workspace_sessions_cmd', { branch: branch ?? null, limit: limit ?? null })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo[], string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const getWorkspaceProviderMatrixCmd = (
+  branch: string,
+  modeId?: string | null,
+): Promise<Result<WorkspaceProviderMatrix, string>> =>
+  invoke('get_workspace_provider_matrix_cmd', {
+    branch,
+    modeId: modeId ?? null,
+  })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceProviderMatrix, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const repairWorkspaceCmd = (
+  branch: string,
+  dryRun?: boolean | null,
+): Promise<Result<WorkspaceRepairReport, string>> =>
+  invoke('repair_workspace_cmd', {
+    branch,
+    dryRun: dryRun ?? null,
+  })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceRepairReport, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const startWorkspaceSessionCmd = (
+  branch: string,
+  goal?: string | null,
+  modeId?: string | null,
+  provider?: string | null,
+): Promise<Result<WorkspaceSessionInfo, string>> =>
+  invoke('start_workspace_session_cmd', {
+    branch,
+    goal: goal ?? null,
+    modeId: modeId ?? null,
+    provider: provider ?? null,
+  })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const endWorkspaceSessionCmd = (
+  branch: string,
+  summary?: string | null,
+  updatedFeatureIds?: string[] | null,
+  updatedSpecIds?: string[] | null,
+): Promise<Result<WorkspaceSessionInfo, string>> =>
+  invoke('end_workspace_session_cmd', {
+    branch,
+    summary: summary ?? null,
+    updatedFeatureIds: updatedFeatureIds ?? null,
+    updatedSpecIds: updatedSpecIds ?? null,
+  })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const listWorkspaceChangesCmd = (
+  branch: string
+): Promise<Result<WorkspaceFileChange[], string>> =>
+  invoke('list_workspace_changes_cmd', { branch })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceFileChange[], string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const openWorkspaceEditorCmd = (
+  branch: string,
+  editor: string
+): Promise<Result<null, string>> =>
+  invoke('open_workspace_editor_cmd', { branch, editor })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
 export const transitionWorkspaceCmd = (
   branch: string,
   status: string
 ): Promise<Result<Workspace, string>> =>
   invoke('transition_workspace_cmd', { branch, status }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+export const startWorkspaceTerminalCmd = (
+  branch: string,
+  provider?: string | null,
+  cols?: number | null,
+  rows?: number | null,
+): Promise<Result<WorkspaceTerminalSessionInfo, string>> =>
+  invoke('start_workspace_terminal_cmd', {
+    branch,
+    provider: provider ?? null,
+    cols: cols ?? null,
+    rows: rows ?? null,
+  }).then(data => ({ status: 'ok', data } as Result<WorkspaceTerminalSessionInfo, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const readWorkspaceTerminalCmd = (
+  sessionId: string,
+  maxBytes?: number | null,
+): Promise<Result<string, string>> =>
+  invoke('read_workspace_terminal_cmd', {
+    sessionId,
+    maxBytes: maxBytes ?? null,
+  }).then(data => ({ status: 'ok', data } as Result<string, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const writeWorkspaceTerminalCmd = (
+  sessionId: string,
+  input: string,
+): Promise<Result<null, string>> =>
+  invoke('write_workspace_terminal_cmd', { sessionId, input })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const resizeWorkspaceTerminalCmd = (
+  sessionId: string,
+  cols: number,
+  rows: number,
+): Promise<Result<null, string>> =>
+  invoke('resize_workspace_terminal_cmd', { sessionId, cols, rows })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const stopWorkspaceTerminalCmd = (
+  sessionId: string,
+): Promise<Result<null, string>> =>
+  invoke('stop_workspace_terminal_cmd', { sessionId })
+    .then(() => ({ status: 'ok', data: null } as Result<null, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
 export const getCurrentBranchCmd = (): Promise<string | null> =>
   invoke<string | null>('get_current_branch_cmd').catch(() => null);
 

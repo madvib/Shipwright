@@ -9,7 +9,7 @@ import { Button } from '@ship/ui';
 import { Card, CardContent } from '@ship/ui';
 import { Input } from '@ship/ui';
 import { Label } from '@ship/ui';
-import { PageFrame, PageHeader } from '@/components/app/PageFrame';
+import { PageFrame, PageHeader } from '@ship/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 import { Separator } from '@ship/ui';
 import { Textarea } from '@ship/ui';

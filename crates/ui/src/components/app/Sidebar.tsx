@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import {
-  ChevronDown,
   FileCog,
   FolderOpen,
   FolderPlus,
@@ -25,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@ship/ui';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@ship/ui';
 import {
   AppRoutePath,
   ACTIVITY_ROUTE as ACTIVITY_PATH,
@@ -82,13 +82,7 @@ export default function Sidebar({
   contextualContent,
   onBackToGlobal,
 }: SidebarProps) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
-    sections.reduce((acc, section) => ({ ...acc, [section.id]: true }), {})
-  );
-
-  const toggleSection = (id: string) => {
-    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const hasSingleSection = sections.length <= 1;
 
   const otherProjects = (recentProjects || [])
     .filter((project) => project.path !== activeProject?.path)
@@ -100,41 +94,46 @@ export default function Sidebar({
     const active = activePath === item.path;
     const secondary = item.priority === 'secondary';
     return (
-      <Button
-        key={item.id}
-        variant='ghost'
-        size={isCompact ? 'icon-sm' : 'sm'}
-        className={cn(
-          'relative w-full rounded-lg transition-all duration-200 group',
-          !isCompact && 'justify-start gap-2.5 px-3',
-          active
-            ? 'bg-sidebar-primary/10 text-sidebar-primary font-bold border border-sidebar-primary/25 shadow-sm hover:bg-sidebar-primary/20'
-            : secondary
-              ? 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
-              : 'text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 hover:scale-[1.02] active:scale-[0.98]'
-        )}
-        onClick={() => onNavigate(item.path as AppRoutePath)}
-        title={item.label}
-        aria-label={item.label}
-      >
-        <Icon
-          className={cn(
-            'size-4 shrink-0 transition-all duration-200',
-            active
-              ? 'text-sidebar-primary scale-110'
-              : secondary
-                ? 'text-sidebar-foreground/30'
-                : 'text-sidebar-foreground/50 group-hover:text-sidebar-primary/70 group-hover:scale-110'
-          )}
-        />
-        {!isCompact && <span className="text-[13px] font-medium tracking-tight">{item.label}</span>}
-        {!isCompact && active && (
-          <div className="ml-auto size-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
-        )}
-        {isCompact && active && (
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 h-5 w-1 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
-        )}
-      </Button>
+      <Tooltip key={item.id} delayDuration={300}>
+        <TooltipTrigger asChild>
+          <Button
+            variant='ghost'
+            size={isCompact ? 'icon-sm' : 'sm'}
+            className={cn(
+              'relative w-full rounded-lg transition-all duration-200 group',
+              !isCompact && 'justify-start gap-2.5 px-3',
+              active
+                ? 'bg-sidebar-primary/10 text-sidebar-primary font-bold border border-sidebar-primary/25 shadow-sm hover:bg-sidebar-primary/20'
+                : secondary
+                  ? 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                  : 'text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 hover:scale-[1.02] active:scale-[0.98]'
+            )}
+            onClick={() => onNavigate(item.path as AppRoutePath)}
+            aria-label={item.label}
+          >
+            <Icon
+              className={cn(
+                'size-4 shrink-0 transition-all duration-200',
+                active
+                  ? 'text-sidebar-primary scale-110'
+                  : secondary
+                    ? 'text-sidebar-foreground/30'
+                    : 'text-sidebar-foreground/50 group-hover:text-sidebar-primary/70 group-hover:scale-110'
+              )}
+            />
+            {!isCompact && <span className="text-[13px] font-medium tracking-tight">{item.label}</span>}
+            {!isCompact && active && (
+              <div className="ml-auto size-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
+            )}
+            {isCompact && active && (
+              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 h-5 w-1 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="font-bold text-[10px] uppercase tracking-widest">
+          {item.label}
+        </TooltipContent>
+      </Tooltip>
     );
   };
 
@@ -325,33 +324,27 @@ export default function Sidebar({
           sections.map((section, idx) => (
             <div key={section.id} className="w-full">
               <div className="w-full space-y-0.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start px-2 h-7 hover:bg-transparent cursor-default"
-                  onClick={() => toggleSection(section.id)}
-                >
-                  <span className="font-mono text-[9px] font-black text-sidebar-foreground/50 uppercase tracking-[0.2em]">
+                {!hasSingleSection && section.label.trim().length > 0 && (
+                  <p className="px-2 pt-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-sidebar-foreground/50">
                     {section.label}
-                  </span>
-                  <ChevronDown className={cn('ml-auto size-3 opacity-30 transition-transform text-sidebar-foreground', openSections[section.id] && 'rotate-180')} />
-                </Button>
-                {openSections[section.id] && (
-                  <div className="space-y-0.5 pb-1">
-                    {section.items.map((item) => renderNavButton(item))}
-                  </div>
+                  </p>
                 )}
+                <div className={cn("space-y-0.5", !hasSingleSection && "pb-1")}>
+                  {section.items.map((item) => renderNavButton(item))}
+                </div>
               </div>
-              {idx < sections.length - 1 && <Separator className="my-2 opacity-10 bg-sidebar-border" />}
+              {!hasSingleSection && idx < sections.length - 1 && <Separator className="my-2 opacity-10 bg-sidebar-border" />}
             </div>
           ))
         ) : (
           <div className="flex flex-col items-center gap-6 py-4">
             {sections.map((section, idx) => (
               <div key={section.id} className="group flex flex-col items-center gap-1.5">
-                <span className="text-[7px] font-black text-sidebar-foreground/50 uppercase tracking-[0.2em] transition-colors group-hover:text-sidebar-primary/70">
-                  {section.id.slice(0, 3).toUpperCase()}
-                </span>
+                {section.label.trim().length > 0 && (
+                  <span className="text-[7px] font-black text-sidebar-foreground/50 uppercase tracking-[0.2em] transition-colors group-hover:text-sidebar-primary/70">
+                    {section.label.slice(0, 3).toUpperCase()}
+                  </span>
+                )}
                 <div className="flex flex-col gap-1 w-full">
                   {section.items.map(item => renderNavButton(item, true))}
                 </div>

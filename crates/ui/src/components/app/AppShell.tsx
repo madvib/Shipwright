@@ -2,13 +2,15 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';
-import { PageChromeProvider, PageChromeContextValue } from '@/components/app/PageFrame';
-import ProjectOnboarding from '@/features/planning/ProjectOnboarding';
+import { PageChromeProvider, PageChromeContextValue } from '@ship/ui';
+import AgentModeControl from '@/features/agents/AgentModeControl.tsx';
+import ProjectOnboarding from '@/features/planning/common/ProjectOnboarding';
 import { SearchModal } from '@/components/app/SearchModal';
 import { Button } from '@ship/ui';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import {
   AppRoutePath,
+  AGENTS_PROVIDERS_ROUTE,
   NOTES_ROUTE,
   ROUTE_LABELS,
   SETTINGS_ROUTE,
@@ -20,9 +22,7 @@ import {
 import {
   MessageCircle,
   Search,
-  Workflow,
 } from 'lucide-react';
-import { NavSection } from '@/lib/types/navigation';
 import { SHIP_NAV_SECTIONS } from '@/lib/modules/ship';
 import { cn } from '@/lib/utils';
 
@@ -47,34 +47,6 @@ export default function App() {
     return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, parsed));
   });
   const [isResizing, setIsResizing] = useState(false);
-
-  const SHELL_SECTIONS: NavSection[] = [
-    {
-      id: 'workflow',
-      label: 'Workflow',
-      items: [
-        { id: 'workspaces', path: WORKFLOW_WORKSPACE_ROUTE, label: 'Workspaces', icon: Workflow },
-      ],
-    },
-  ];
-
-  const COMBINED_SECTIONS = useMemo(() => {
-    const sectionsMap = new Map<string, NavSection>();
-    SHIP_NAV_SECTIONS.forEach(shipSection => {
-      sectionsMap.set(shipSection.id, { ...shipSection, items: [...shipSection.items] });
-    });
-    SHELL_SECTIONS.forEach(shellSection => {
-      const existing = sectionsMap.get(shellSection.id);
-      if (existing) {
-        const existingIds = new Set(existing.items.map(i => i.id));
-        const newItems = shellSection.items.filter(i => !existingIds.has(i.id));
-        existing.items = [...existing.items, ...newItems];
-      } else {
-        sectionsMap.set(shellSection.id, { ...shellSection, items: [...shellSection.items] });
-      }
-    });
-    return Array.from(sectionsMap.values());
-  }, [SHIP_NAV_SECTIONS, SHELL_SECTIONS]);
 
   const navigateTo = useCallback((path: AppRoutePath) => {
     if (path === NOTES_ROUTE) {
@@ -107,7 +79,7 @@ export default function App() {
                 variant="ghost"
                 size="xs"
                 className="h-6 px-1.5 text-xs"
-                onClick={() => navigateTo(OVERVIEW_ROUTE)}
+                onClick={() => navigateTo(WORKFLOW_WORKSPACE_ROUTE)}
               >
                 {workspace.activeProject?.name ?? 'Project'}
               </Button>
@@ -162,19 +134,25 @@ export default function App() {
 
   const [chatOpen, setChatOpen] = useState(false);
 
-  // Auto-collapse sidebar on workspace route to maximize space
-  const isWorkspaceRoute = routePath === WORKFLOW_WORKSPACE_ROUTE;
-  const [sidebarBeforeWorkspace, setSidebarBeforeWorkspace] = useState<boolean | null>(null);
+  const agentControl = useMemo(() => {
+    if (workspace.noProject) return null;
 
-  useEffect(() => {
-    if (isWorkspaceRoute && !workspace.sidebarCollapsed) {
-      setSidebarBeforeWorkspace(false);
-      workspace.setSidebarCollapsed(true);
-    } else if (!isWorkspaceRoute && sidebarBeforeWorkspace === false) {
-      workspace.setSidebarCollapsed(false);
-      setSidebarBeforeWorkspace(null);
-    }
-  }, [isWorkspaceRoute]);
+    return (
+      <AgentModeControl
+        modes={workspace.modes}
+        activeModeId={workspace.activeModeId}
+        aiProvider={workspace.aiProvider}
+        aiModel={workspace.aiModel}
+        switchingMode={workspace.switchingMode}
+        onSetMode={(modeId: string | null) => {
+          void workspace.handleSetActiveMode(modeId);
+        }}
+        onOpenAgents={() => {
+          void navigate({ to: AGENTS_PROVIDERS_ROUTE });
+        }}
+      />
+    );
+  }, [workspace, navigate]);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -231,10 +209,10 @@ export default function App() {
     );
   }
 
-  // Settings: full-viewport with its own sidebar, skip main shell chrome
-  if (routePath === SETTINGS_ROUTE) {
+  // Settings or Focus Mode: full-viewport, skip main shell chrome
+  if (routePath === SETTINGS_ROUTE || workspace.isWorkspaceFocusMode) {
     return (
-      <div className="h-full">
+      <div className="h-full bg-background overflow-hidden">
         <SearchModal />
         <PageChromeProvider value={activeChrome} onUpdate={handleUpdateChrome}>
           <Outlet />
@@ -289,12 +267,12 @@ export default function App() {
           onNewProject={workspace.handleNewProject}
           onSelectProject={handleSelectProject}
           onOpenGlobalNotes={openGlobalNotes}
-          sections={COMBINED_SECTIONS}
+          sections={SHIP_NAV_SECTIONS}
           theme={workspace.config.theme as 'light' | 'dark'}
           onThemeChange={workspace.applyTheme}
           contextualContent={activeChrome.sidebar}
           onBackToGlobal={activeChrome.onBack}
-          agentControl={null}
+          agentControl={agentControl}
         />
         {!workspace.sidebarCollapsed && (
           <div

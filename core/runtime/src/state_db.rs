@@ -118,6 +118,12 @@ CREATE INDEX IF NOT EXISTS workspace_session_status_idx
   ON workspace_session(status, started_at DESC);
 "#;
 
+const PROJECT_SCHEMA_WORKSPACE_COMPILE_STATE: &str = r#"
+ALTER TABLE workspace ADD COLUMN config_generation INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workspace ADD COLUMN compiled_at TEXT;
+ALTER TABLE workspace ADD COLUMN compile_error TEXT;
+"#;
+
 const PROJECT_SCHEMA_AGENT_RUNTIME_SETTINGS: &str = r#"
 CREATE TABLE IF NOT EXISTS agent_runtime_settings (
   id             INTEGER PRIMARY KEY CHECK(id = 1),
@@ -323,6 +329,10 @@ const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
     ),
     ("0012_agent_catalog", PROJECT_SCHEMA_AGENT_CATALOG),
     ("0013_workspace_sessions", PROJECT_SCHEMA_WORKSPACE_SESSION),
+    (
+        "0014_workspace_compile_state",
+        PROJECT_SCHEMA_WORKSPACE_COMPILE_STATE,
+    ),
 ];
 const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_global_schema", GLOBAL_SCHEMA_V1),
@@ -353,6 +363,9 @@ pub type WorkspaceDbRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    i64,
+    Option<String>,
+    Option<String>,
 );
 
 pub type WorkspaceDbListRow = (
@@ -368,6 +381,9 @@ pub type WorkspaceDbListRow = (
     String,
     bool,
     Option<String>,
+    Option<String>,
+    Option<String>,
+    i64,
     Option<String>,
     Option<String>,
 );
@@ -387,6 +403,9 @@ pub struct WorkspaceUpsert<'a> {
     pub worktree_path: Option<&'a str>,
     pub last_activated_at: Option<&'a str>,
     pub context_hash: Option<&'a str>,
+    pub config_generation: i64,
+    pub compiled_at: Option<&'a str>,
+    pub compile_error: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -405,6 +424,7 @@ pub struct WorkspaceSessionDb {
     pub updated_spec_ids: Vec<String>,
     pub compiled_at: Option<String>,
     pub compile_error: Option<String>,
+    pub config_generation_at_start: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -1082,7 +1102,7 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT COALESCE(id, branch), workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash
+            "SELECT COALESCE(id, branch), workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace WHERE branch = ?",
         )
         .bind(branch)
@@ -1104,6 +1124,9 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
         let worktree_path: Option<String> = row.get(10);
         let last_activated_at: Option<String> = row.get(11);
         let context_hash: Option<String> = row.get(12);
+        let config_generation: i64 = row.get(13);
+        let compiled_at: Option<String> = row.get(14);
+        let compile_error: Option<String> = row.get(15);
         let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
         Ok(Some((
             id,
@@ -1119,6 +1142,9 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
             worktree_path,
             last_activated_at,
             context_hash,
+            config_generation,
+            compiled_at,
+            compile_error,
         )))
     } else {
         Ok(None)
@@ -1129,7 +1155,7 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
     let mut conn = open_project_db(ship_dir)?;
     let rows = block_on(async {
         sqlx::query(
-            "SELECT branch, COALESCE(id, branch), workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash
+            "SELECT branch, COALESCE(id, branch), workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace
              ORDER BY
                CASE status
@@ -1164,6 +1190,9 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
         let worktree_path: Option<String> = row.get(11);
         let last_activated_at: Option<String> = row.get(12);
         let context_hash: Option<String> = row.get(13);
+        let config_generation: i64 = row.get(14);
+        let compiled_at: Option<String> = row.get(15);
+        let compile_error: Option<String> = row.get(16);
         let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
 
         result.push((
@@ -1181,6 +1210,9 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
             worktree_path,
             last_activated_at,
             context_hash,
+            config_generation,
+            compiled_at,
+            compile_error,
         ));
     }
     Ok(result)
@@ -1193,8 +1225,8 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
         .with_context(|| "Failed to serialize workspace providers")?;
     block_on(async {
         sqlx::query(
-            "INSERT INTO workspace (branch, id, workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO workspace (branch, id, workspace_type, status, feature_id, spec_id, release_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, config_generation, compiled_at, compile_error)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(branch) DO UPDATE SET
                id            = excluded.id,
                workspace_type = excluded.workspace_type,
@@ -1208,7 +1240,10 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
                is_worktree   = excluded.is_worktree,
                worktree_path = excluded.worktree_path,
                last_activated_at = excluded.last_activated_at,
-               context_hash = excluded.context_hash",
+               context_hash = excluded.context_hash,
+               config_generation = excluded.config_generation,
+               compiled_at = excluded.compiled_at,
+               compile_error = excluded.compile_error",
         )
         .bind(record.branch)
         .bind(record.workspace_id)
@@ -1224,10 +1259,52 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
         .bind(record.worktree_path)
         .bind(record.last_activated_at)
         .bind(record.context_hash)
+        .bind(record.config_generation)
+        .bind(record.compiled_at)
+        .bind(record.compile_error)
         .execute(&mut conn)
         .await
     })?;
     Ok(())
+}
+
+/// Delete workspace state for a branch, including any session history.
+pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
+    let mut conn = open_project_db(ship_dir)?;
+    let workspace_id = block_on(async {
+        sqlx::query_scalar::<_, String>(
+            "SELECT COALESCE(id, branch) FROM workspace WHERE branch = ?",
+        )
+        .bind(branch)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+
+    let Some(workspace_id) = workspace_id else {
+        return Ok(false);
+    };
+
+    let deleted = block_on(async {
+        sqlx::query("DELETE FROM workspace_session WHERE workspace_id = ? OR workspace_branch = ?")
+            .bind(&workspace_id)
+            .bind(branch)
+            .execute(&mut conn)
+            .await?;
+
+        sqlx::query("UPDATE spec SET workspace_id = NULL WHERE workspace_id = ?")
+            .bind(&workspace_id)
+            .execute(&mut conn)
+            .await?;
+
+        let result = sqlx::query("DELETE FROM workspace WHERE branch = ?")
+            .bind(branch)
+            .execute(&mut conn)
+            .await?;
+
+        Ok::<bool, sqlx::Error>(result.rows_affected() > 0)
+    })?;
+
+    Ok(deleted)
 }
 
 /// Mark any currently active workspace as idle except `active_branch`.
@@ -1271,8 +1348,9 @@ fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessio
         updated_spec_ids,
         compiled_at: row.get(12),
         compile_error: row.get(13),
-        created_at: row.get(14),
-        updated_at: row.get(15),
+        config_generation_at_start: row.get(14),
+        created_at: row.get(15),
+        updated_at: row.get(16),
     }
 }
 
@@ -1283,7 +1361,7 @@ pub fn get_workspace_session_db(
     let mut conn = open_project_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, created_at, updated_at
+            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
              FROM workspace_session
              WHERE id = ?",
         )
@@ -1301,7 +1379,7 @@ pub fn get_active_workspace_session_db(
     let mut conn = open_project_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, created_at, updated_at
+            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
              FROM workspace_session
              WHERE workspace_id = ? AND status = 'active'
              ORDER BY started_at DESC
@@ -1320,11 +1398,11 @@ pub fn list_workspace_sessions_db(
     limit: usize,
 ) -> Result<Vec<WorkspaceSessionDb>> {
     let mut conn = open_project_db(ship_dir)?;
-    let clamped_limit = limit.max(1).min(500) as i64;
+    let clamped_limit = limit.clamp(1, 500) as i64;
     let rows = if let Some(workspace_id) = workspace_id {
         block_on(async {
             sqlx::query(
-                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, created_at, updated_at
+                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
                  FROM workspace_session
                  WHERE workspace_id = ?
                  ORDER BY started_at DESC
@@ -1338,7 +1416,7 @@ pub fn list_workspace_sessions_db(
     } else {
         block_on(async {
             sqlx::query(
-                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, created_at, updated_at
+                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
                  FROM workspace_session
                  ORDER BY started_at DESC
                  LIMIT ?",
@@ -1361,8 +1439,8 @@ pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
     block_on(async {
         sqlx::query(
             "INSERT INTO workspace_session
-             (id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             (id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, updated_spec_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&session.id)
         .bind(&session.workspace_id)
@@ -1378,6 +1456,7 @@ pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
         .bind(&updated_spec_ids_json)
         .bind(&session.compiled_at)
         .bind(&session.compile_error)
+        .bind(session.config_generation_at_start)
         .bind(&session.created_at)
         .bind(&session.updated_at)
         .execute(&mut conn)
@@ -1408,6 +1487,7 @@ pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
                  updated_spec_ids_json = ?,
                  compiled_at = ?,
                  compile_error = ?,
+                 config_generation_at_start = ?,
                  created_at = ?,
                  updated_at = ?
              WHERE id = ?",
@@ -1425,6 +1505,7 @@ pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
         .bind(&updated_spec_ids_json)
         .bind(&session.compiled_at)
         .bind(&session.compile_error)
+        .bind(session.config_generation_at_start)
         .bind(&session.created_at)
         .bind(&session.updated_at)
         .bind(&session.id)
@@ -1629,6 +1710,24 @@ fn ensure_project_schema_compat(connection: &mut SqliteConnection) -> Result<()>
     )?;
     ensure_column(
         connection,
+        "workspace",
+        "config_generation",
+        "ALTER TABLE workspace ADD COLUMN config_generation INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "compiled_at",
+        "ALTER TABLE workspace ADD COLUMN compiled_at TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "compile_error",
+        "ALTER TABLE workspace ADD COLUMN compile_error TEXT",
+    )?;
+    ensure_column(
+        connection,
         "workspace_session",
         "primary_provider",
         "ALTER TABLE workspace_session ADD COLUMN primary_provider TEXT",
@@ -1644,6 +1743,12 @@ fn ensure_project_schema_compat(connection: &mut SqliteConnection) -> Result<()>
         "workspace_session",
         "compile_error",
         "ALTER TABLE workspace_session ADD COLUMN compile_error TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "workspace_session",
+        "config_generation_at_start",
+        "ALTER TABLE workspace_session ADD COLUMN config_generation_at_start INTEGER",
     )?;
 
     if table_exists(connection, "workspace")? {

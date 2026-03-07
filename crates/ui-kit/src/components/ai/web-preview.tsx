@@ -14,7 +14,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "../ui/tooltip";
+} from "../tooltip";
 import { cn } from "../../lib/utils";
 import { ChevronDownIcon } from "lucide-react";
 import {

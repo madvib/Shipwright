@@ -1,10 +1,6 @@
 version = "1"
 name = "Shipwright"
 description = "AI native project management workspace"
-modes = []
-mcp_servers = []
-hooks = []
-providers = ["claude"]
 
 [[statuses]]
 id = "backlog"
@@ -46,11 +42,6 @@ commit = [
     "ship.toml",
     "agents",
 ]
-
-[agent]
-skills = []
-prompts = []
-context = []
 
 [[namespaces]]
 id = "project"

@@ -7,8 +7,8 @@ use runtime::{
     get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
     is_category_committed, list_mcp_servers, list_providers, list_workspace_sessions,
     list_workspaces, log_action, log_action_by, migrate_global_state, migrate_json_config_file,
-    migrate_project_state, remove_status, set_category_committed, start_workspace_session,
-    sync_workspace, transition_workspace_status,
+    migrate_project_state, remove_status, repair_workspace, set_category_committed,
+    start_workspace_session, sync_workspace, transition_workspace_status,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
@@ -24,13 +24,14 @@ use ship_module_project::ops::note::{
 use ship_module_project::ops::release::{
     create_release, get_release_by_id, list_releases, update_release,
 };
-use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs};
+use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
 use ship_module_project::{
     ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, import_adrs_from_files,
     import_features_from_files, import_issues_from_files, import_notes_from_files,
     import_releases_from_files, import_specs_from_files, init_demo_project, init_project,
     list_registered_projects, register_project, rename_project, unregister_project,
 };
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -778,6 +779,67 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         "Workspace archived: {} [{}]",
                         workspace.branch, workspace.status
                     );
+                }
+                WorkspaceCommands::Reconcile { apply } => {
+                    let report = reconcile_workspace_links(&project_dir, apply)?;
+                    println!(
+                        "Workspace link reconcile ({})",
+                        if apply { "applied" } else { "dry-run" }
+                    );
+                    println!("  workspace updates: {}", report.workspace_updates);
+                    println!("  spec metadata updates: {}", report.spec_updates);
+                    println!(
+                        "  ambiguous feature links: {}",
+                        report.ambiguous_feature_links
+                    );
+                    for detail in &report.ambiguous_feature_details {
+                        println!("    - {}", detail);
+                    }
+                    println!("  ambiguous spec links: {}", report.ambiguous_spec_links);
+                    for detail in &report.ambiguous_spec_details {
+                        println!("    - {}", detail);
+                    }
+                }
+                WorkspaceCommands::Repair { branch, dry_run } => {
+                    let branch = branch.unwrap_or(current_branch(&project_root)?);
+                    let report = repair_workspace(&project_dir, &branch, dry_run)?;
+                    println!(
+                        "Workspace repair ({}) branch={} status={}",
+                        if report.dry_run { "dry-run" } else { "applied" },
+                        report.workspace_branch,
+                        report.status
+                    );
+                    if let Some(mode_id) = report.mode_id.as_deref() {
+                        println!("  mode: {}", mode_id);
+                    }
+                    if let Some(error) = report.resolution_error.as_deref() {
+                        println!("  resolution_error: {}", error);
+                    }
+                    println!(
+                        "  providers_expected: {}",
+                        if report.providers_expected.is_empty() {
+                            "none".to_string()
+                        } else {
+                            report.providers_expected.join(",")
+                        }
+                    );
+                    println!(
+                        "  missing_provider_configs: {}",
+                        if report.missing_provider_configs.is_empty() {
+                            "none".to_string()
+                        } else {
+                            report.missing_provider_configs.join(",")
+                        }
+                    );
+                    println!("  had_compile_error: {}", report.had_compile_error);
+                    println!("  needs_recompile: {}", report.needs_recompile);
+                    println!("  reapplied_compile: {}", report.reapplied_compile);
+                    if !report.actions.is_empty() {
+                        println!("  actions:");
+                        for action in &report.actions {
+                            println!("    - {}", action);
+                        }
+                    }
                 }
                 WorkspaceCommands::Session { action } => match action {
                     WorkspaceSessionCommands::Start {
@@ -1718,6 +1780,13 @@ fn format_workspace_summary(workspace: &runtime::workspace::Workspace) -> String
             parts.push("worktree=true".to_string());
         }
     }
+    parts.push(format!("generation={}", workspace.config_generation));
+    if let Some(compiled_at) = workspace.compiled_at.as_ref() {
+        parts.push(format!("compiled_at={}", compiled_at));
+    }
+    if let Some(compile_error) = workspace.compile_error.as_deref() {
+        parts.push(format!("compile_error=\"{}\"", compile_error));
+    }
 
     parts.join(" ")
 }
@@ -1758,8 +1827,162 @@ fn format_workspace_session(session: &runtime::WorkspaceSession) -> String {
     if let Some(compile_error) = session.compile_error.as_deref() {
         parts.push(format!("compile_error=\"{}\"", compile_error));
     }
+    if let Some(generation) = session.config_generation_at_start {
+        parts.push(format!("generation_at_start={}", generation));
+    }
+    parts.push(format!("stale_context={}", session.stale_context));
+    if session.stale_context {
+        parts.push("restart_required=true".to_string());
+    }
 
     parts.join(" ")
+}
+
+#[derive(Default)]
+struct WorkspaceReconcileReport {
+    workspace_updates: usize,
+    spec_updates: usize,
+    ambiguous_feature_links: usize,
+    ambiguous_spec_links: usize,
+    ambiguous_feature_details: Vec<String>,
+    ambiguous_spec_details: Vec<String>,
+}
+
+fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<WorkspaceReconcileReport> {
+    let workspaces = list_workspaces(project_dir)?;
+    let features = list_features(project_dir)?;
+    let specs = list_specs(project_dir)?;
+
+    let workspace_by_branch: HashMap<String, runtime::Workspace> = workspaces
+        .iter()
+        .map(|workspace| (workspace.branch.clone(), workspace.clone()))
+        .collect();
+    let workspace_by_id: HashMap<String, runtime::Workspace> = workspaces
+        .iter()
+        .map(|workspace| (workspace.id.clone(), workspace.clone()))
+        .collect();
+
+    let mut report = WorkspaceReconcileReport::default();
+
+    for workspace in &workspaces {
+        let feature_by_branch = features
+            .iter()
+            .filter(|entry| entry.feature.metadata.branch.as_deref() == Some(workspace.branch.as_str()))
+            .collect::<Vec<_>>();
+
+        if workspace.feature_id.is_none() && feature_by_branch.len() > 1 {
+            report.ambiguous_feature_links += 1;
+            report.ambiguous_feature_details.push(format!(
+                "{} -> [{}]",
+                workspace.branch,
+                feature_by_branch
+                    .iter()
+                    .map(|entry| entry.id.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
+        let selected_feature = if let Some(feature_id) = workspace.feature_id.as_deref() {
+            features
+                .iter()
+                .find(|entry| entry.id == feature_id || entry.file_name == feature_id)
+        } else if feature_by_branch.len() == 1 {
+            feature_by_branch.first().copied()
+        } else {
+            None
+        };
+
+        let feature_candidate = if workspace.feature_id.is_none() {
+            selected_feature.map(|entry| entry.id.clone())
+        } else {
+            None
+        };
+
+        let release_candidate = if workspace.release_id.is_none() {
+            selected_feature.and_then(|entry| entry.feature.metadata.release_id.clone())
+        } else {
+            None
+        };
+
+        let branch_specs = specs
+            .iter()
+            .filter(|entry| entry.spec.metadata.branch.as_deref() == Some(workspace.branch.as_str()))
+            .collect::<Vec<_>>();
+
+        if workspace.spec_id.is_none() && branch_specs.len() > 1 {
+            report.ambiguous_spec_links += 1;
+            report.ambiguous_spec_details.push(format!(
+                "{} -> [{}]",
+                workspace.branch,
+                branch_specs
+                    .iter()
+                    .map(|entry| entry.id.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
+        let spec_candidate = if workspace.spec_id.is_none() {
+            selected_feature
+                .and_then(|entry| entry.feature.metadata.spec_id.clone())
+                .or_else(|| {
+                    if branch_specs.len() == 1 {
+                        branch_specs.first().map(|entry| entry.id.clone())
+                    } else {
+                        None
+                    }
+                })
+        } else {
+            None
+        };
+
+        if feature_candidate.is_some() || spec_candidate.is_some() || release_candidate.is_some() {
+            report.workspace_updates += 1;
+            if apply {
+                create_workspace(
+                    project_dir,
+                    CreateWorkspaceRequest {
+                        branch: workspace.branch.clone(),
+                        feature_id: feature_candidate,
+                        spec_id: spec_candidate,
+                        release_id: release_candidate,
+                        ..CreateWorkspaceRequest::default()
+                    },
+                )?;
+            }
+        }
+    }
+
+    for spec_entry in specs {
+        let mut spec = spec_entry.spec.clone();
+        let mut changed = false;
+
+        if spec.metadata.workspace_id.is_none()
+            && let Some(branch) = spec.metadata.branch.as_deref()
+            && let Some(workspace) = workspace_by_branch.get(branch)
+        {
+            spec.metadata.workspace_id = Some(workspace.id.clone());
+            changed = true;
+        }
+
+        if spec.metadata.branch.is_none()
+            && let Some(workspace_id) = spec.metadata.workspace_id.as_deref()
+            && let Some(workspace) = workspace_by_id.get(workspace_id)
+        {
+            spec.metadata.branch = Some(workspace.branch.clone());
+            changed = true;
+        }
+
+        if changed {
+            report.spec_updates += 1;
+            if apply {
+                update_spec(project_dir, &spec_entry.id, spec)?;
+            }
+        }
+    }
+
+    Ok(report)
 }
 
 fn render_workspace_home(project_dir: &Path) -> Result<String> {
@@ -1791,6 +2014,8 @@ fn render_workspace_home(project_dir: &Path) -> Result<String> {
         "  ship workspace session start --branch <branch> --goal \"<goal>\" --provider <id>\n",
     );
     out.push_str("  ship workspace session end --branch <branch> --summary \"<summary>\"\n");
+    out.push_str("  ship workspace reconcile [--apply]\n");
+    out.push_str("  ship workspace repair --branch <branch> [--dry-run]\n");
     out.push_str("  ship workspace sync --branch <branch>\n");
 
     Ok(out)
@@ -2173,6 +2398,44 @@ mod tests {
                 assert_eq!(goal.as_deref(), Some("Implement parser"));
                 assert_eq!(mode.as_deref(), Some("code"));
                 assert_eq!(provider.as_deref(), Some("claude"));
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_reconcile_apply() {
+        let cli = Cli::try_parse_from(["ship", "workspace", "reconcile", "--apply"])
+            .expect("workspace reconcile should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action: WorkspaceCommands::Reconcile { apply },
+            }) => {
+                assert!(apply);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_repair_dry_run() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "repair",
+            "--branch",
+            "feature/demo",
+            "--dry-run",
+        ])
+        .expect("workspace repair should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action: WorkspaceCommands::Repair { branch, dry_run },
+            }) => {
+                assert_eq!(branch.as_deref(), Some("feature/demo"));
+                assert!(dry_run);
             }
             other => panic!("unexpected parse result: {:?}", other),
         }

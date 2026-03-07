@@ -1,602 +1,614 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { Button, Alert, AlertDescription, AlertTitle } from '@ship/ui';
 import {
-  ExternalLink,
-  GitBranch,
-  GitFork,
-  Loader2,
-  Plus,
-  Search,
-  RefreshCw,
-  Settings2,
-  X,
-  Zap,
-} from 'lucide-react';
-import {
-  activateWorkspaceCmd,
   createWorkspaceCmd,
-  getCurrentBranchCmd,
-  listWorkspacesCmd,
+  deleteWorkspaceCmd,
+  openWorkspaceEditorCmd,
+  repairWorkspaceCmd,
+  setWorkspaceModeCmd,
+  startWorkspaceSessionCmd,
+  endWorkspaceSessionCmd,
   syncWorkspaceCmd,
+  activateWorkspaceCmd,
+  type WorkspaceRepairReport,
 } from '@/lib/platform/tauri/commands';
-import { Workspace } from '@/bindings';
-import { RuntimeWorkspace } from '@/lib/types/workspace';
-import { Badge } from '@ship/ui';
-import { Button } from '@ship/ui';
-import { Alert, AlertDescription, AlertTitle } from '@ship/ui';
-import { Input } from '@ship/ui';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
-import { FEATURES_ROUTE, SETTINGS_ROUTE } from '@/lib/constants/routes';
-import {
-  WorkspaceLifecycleGraph,
-  type WorkspaceGroupBy,
-  type WorkspaceGraphRow,
-  type WorkspaceGraphStatus,
-} from './components/WorkspaceLifecycleGraph';
+import { FEATURES_ROUTE, OVERVIEW_ROUTE } from '@/lib/constants/routes';
 
-const GROUP_BY_OPTIONS: Array<{ key: WorkspaceGroupBy; label: string }> = [
-  { key: 'status', label: 'Status' },
-  { key: 'type', label: 'Type' },
-  { key: 'release', label: 'Release' },
-];
+// Subcomponents
+import { WorkspaceSidebar } from './workspace/WorkspaceSidebar';
+import { WorkspaceHeader } from './workspace/WorkspaceHeader';
+import { WorkspaceDashboard } from './workspace/WorkspaceDashboard';
+import { WorkspaceTerminalTray } from './workspace/WorkspaceTerminalTray';
+import { WorkspaceHeaderActions } from './workspace/WorkspaceHeaderActions';
 
-interface WorkspaceRow extends WorkspaceGraphRow {
-  id: string;
-  branch: string;
-  resolvedAt: string;
-  worktreePath: string | null;
-  lastActivatedAt: string | null;
-  contextHash: string | null;
-}
+// Hooks
+import { useWorkspaceState } from './workspace/useWorkspaceState';
+import { useWorkspaceTerminal } from './workspace/useWorkspaceTerminal';
 
-function normalizeWorkspaceType(type: string | null | undefined): WorkspaceGraphRow['workspaceType'] {
-  switch (type) {
-    case 'feature':
-    case 'refactor':
-    case 'experiment':
-    case 'hotfix':
-      return type;
-    default:
-      return 'feature';
-  }
-}
+import { WorkspaceGraphStatus } from './components/WorkspaceLifecycleGraph';
+import { cn } from '@/lib/utils';
 
-function normalizeWorkspaceStatus(
-  status: string | null | undefined,
-): WorkspaceGraphStatus {
-  switch (status) {
-    case 'planned':
-    case 'active':
-    case 'idle':
-    case 'review':
-    case 'merged':
-    case 'archived':
-      return status;
-    default:
-      return 'idle';
-  }
-}
-
-function statusVariant(status: WorkspaceGraphStatus): 'default' | 'secondary' | 'outline' {
-  if (status === 'active') return 'default';
-  if (status === 'review') return 'secondary';
-  return 'outline';
-}
-
-function shortToken(value: string, size = 10): string {
-  return value.length <= size ? value : `${value.slice(0, size)}…`;
-}
+const NO_LINK_VALUE = '__none__';
+type SessionErrorSurface = 'alert' | 'silent';
 
 export default function WorkspacePanel() {
   const navigate = useNavigate();
   const workspaceUi = useWorkspace();
   const ship = useShip();
-  const [branch, setBranch] = useState<string | null>(null);
-  const [runtimeWorkspaces, setRuntimeWorkspaces] = useState<Workspace[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [activating, setActivating] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [workspaceKeyInput, setWorkspaceKeyInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [groupBy, setGroupBy] = useState<WorkspaceGroupBy>('status');
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const currentBranch = await getCurrentBranchCmd();
-      setBranch(currentBranch);
+  const [workspaceSidebarCollapsed, setWorkspaceSidebarCollapsed] = useState(false);
+  const [terminalMaximized, setTerminalMaximized] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(320);
+  const [repairingWorkspace, setRepairingWorkspace] = useState(false);
+  const [lastRepairReport, setLastRepairReport] = useState<WorkspaceRepairReport | null>(null);
+  const [sessionProvider, setSessionProvider] = useState<string | null>(null);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+  const [updatingWorkspaceMode, setUpdatingWorkspaceMode] = useState(false);
+  const [restartingSession, setRestartingSession] = useState(false);
+  const terminalResizerRef = useRef(false);
 
-      const result = await listWorkspacesCmd();
-      if (result.status === 'ok') {
-        setRuntimeWorkspaces(result.data);
-      } else {
-        setError(result.error || 'Failed to load workspaces.');
+  const state = useWorkspaceState(workspaceUi, ship);
+  const terminal = useWorkspaceTerminal(state.detail?.branch, workspaceUi.activeModeId, 'command');
+  const terminalReservedHeight = terminalMaximized ? 0 : Math.max(terminalHeight, 140);
+
+  const isDarkTheme = useMemo(() => {
+    if (workspaceUi.config.theme === 'dark') return true;
+    if (workspaceUi.config.theme === 'light') return false;
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark');
+    }
+    return false;
+  }, [workspaceUi.config.theme]);
+
+  const statusVariant = (status: WorkspaceGraphStatus): 'default' | 'secondary' | 'outline' => {
+    if (status === 'active') return 'default';
+    if (status === 'review') return 'secondary';
+    return 'outline';
+  };
+
+  const handleOpenEditor = async (targetBranch: string, editorId: string) => {
+    const result = await openWorkspaceEditorCmd(targetBranch, editorId);
+    if (result.status === 'error') {
+      state.setError(result.error || `Failed to open ${editorId}.`);
+    }
+  };
+
+  const startSessionInternal = async ({
+    preferredProvider,
+    errorSurface = 'alert',
+  }: {
+    preferredProvider?: string | null;
+    errorSurface?: SessionErrorSurface;
+  } = {}): Promise<{ ok: boolean; error: string | null; provider: string | null }> => {
+    if (!state.detail) {
+      return { ok: false, error: 'Select a workspace before starting a session.', provider: null };
+    }
+
+    const allowedProviders = state.providerMatrix?.allowed_providers ?? [];
+    let provider = preferredProvider ?? sessionProvider;
+    if (!provider || !allowedProviders.includes(provider)) {
+      provider = allowedProviders[0] ?? null;
+    }
+
+    if (!provider) {
+      const message =
+        `No allowed providers resolved for workspace session (${state.providerMatrix?.source ?? 'unknown source'}). ` +
+        'Open workspace settings and add at least one provider.';
+      if (errorSurface === 'alert') {
+        state.setError(message);
       }
-    } catch (err) {
-      setError(String(err));
+      return { ok: false, error: message, provider: null };
+    }
+
+    state.setStartingSession(true);
+    try {
+      const goal = state.sessionGoalInput.trim();
+      const res = await startWorkspaceSessionCmd(
+        state.detail.branch,
+        goal.length > 0 ? goal : null,
+        state.detail.activeMode ?? workspaceUi.activeModeId ?? null,
+        provider
+      );
+      if (res.status === 'ok') {
+        setSessionProvider(provider);
+        await state.load();
+        return { ok: true, error: null, provider };
+      } else {
+        const message = res.error || 'Failed to start workspace session.';
+        if (errorSurface === 'alert') {
+          state.setError(message);
+        }
+        return { ok: false, error: message, provider };
+      }
     } finally {
-      setLoading(false);
+      state.setStartingSession(false);
+    }
+  };
+
+  const handleStartSession = async () => {
+    await startSessionInternal();
+  };
+
+  const handleEndSession = async () => {
+    if (!state.detail || !state.activeSession) return;
+    state.setEndingSession(true);
+    try {
+      const summary = state.sessionSummaryInput.trim();
+      const updatedFeatureIds =
+        state.linkFeatureId && state.linkFeatureId !== NO_LINK_VALUE
+          ? [state.linkFeatureId]
+          : [];
+      const updatedSpecIds =
+        state.linkSpecId && state.linkSpecId !== NO_LINK_VALUE
+          ? [state.linkSpecId]
+          : [];
+      const res = await endWorkspaceSessionCmd(
+        state.detail.branch,
+        summary.length > 0 ? summary : null,
+        updatedFeatureIds,
+        updatedSpecIds
+      );
+      if (res.status === 'ok') {
+        if (terminal.terminalSession?.branch === state.detail.branch) {
+          await terminal.stopWorkspaceTerminal();
+        }
+        state.load();
+      } else {
+        state.setError(res.error || 'Failed to end workspace session.');
+      }
+    } finally {
+      state.setEndingSession(false);
+    }
+  };
+
+  const handleRestartSession = async () => {
+    if (!state.detail || !state.activeSession) return;
+    const detail = state.detail;
+    const activeSession = state.activeSession;
+    const hadTerminal = terminal.terminalSession?.branch === detail.branch;
+    const allowedProviders = state.providerMatrix?.allowed_providers ?? [];
+    const preferredProviders = [
+      activeSession.primary_provider ?? null,
+      sessionProvider,
+    ].filter((value): value is string => Boolean(value));
+    const restartProvider =
+      preferredProviders.find((candidate) =>
+        allowedProviders.includes(candidate)
+      ) ?? allowedProviders[0] ?? null;
+
+    if (!restartProvider) {
+      state.setError(
+        'Cannot restart session: no allowed providers resolved for this workspace.'
+      );
+      return;
+    }
+
+    setRestartingSession(true);
+    try {
+      const endRes = await endWorkspaceSessionCmd(
+        detail.branch,
+        'Session restarted to apply updated workspace context.',
+        state.linkFeatureId && state.linkFeatureId !== NO_LINK_VALUE
+          ? [state.linkFeatureId]
+          : [],
+        state.linkSpecId && state.linkSpecId !== NO_LINK_VALUE
+          ? [state.linkSpecId]
+          : []
+      );
+      if (endRes.status === 'error') {
+        state.setError(endRes.error || 'Failed to end current session for restart.');
+        return;
+      }
+
+      const activateRes = await activateWorkspaceCmd(detail.branch);
+      if (activateRes.status === 'error') {
+        state.setError(
+          activateRes.error || 'Failed to activate workspace before restart.'
+        );
+        return;
+      }
+
+      const startRes = await startWorkspaceSessionCmd(
+        detail.branch,
+        activeSession.goal ?? null,
+        detail.activeMode ?? workspaceUi.activeModeId ?? null,
+        restartProvider
+      );
+      if (startRes.status === 'error') {
+        state.setError(startRes.error || 'Failed to restart workspace session.');
+        return;
+      }
+
+      if (hadTerminal) {
+        if (terminal.terminalSession) {
+          await terminal.stopWorkspaceTerminal();
+        }
+        await terminal.startWorkspaceTerminal();
+      }
+
+      await state.load();
+    } finally {
+      setRestartingSession(false);
+    }
+  };
+
+  const handleApplyLinks = async () => {
+    if (!state.detail) return;
+    state.setUpdatingLinks(true);
+    try {
+      const featureId =
+        state.linkFeatureId === NO_LINK_VALUE ? null : state.linkFeatureId;
+      const specId = state.linkSpecId === NO_LINK_VALUE ? null : state.linkSpecId;
+      const res = await createWorkspaceCmd(state.detail.branch, {
+        workspaceType: state.detail.workspaceType,
+        featureId,
+        specId,
+        releaseId: state.detail.releaseId ?? null,
+        modeId: state.detail.activeMode ?? null,
+      });
+      if (res.status === 'error') {
+        state.setError(res.error || 'Failed to update workspace links.');
+        return;
+      }
+      state.load();
+    } finally {
+      state.setUpdatingLinks(false);
+    }
+  };
+
+  const handleSync = async () => {
+    if (!state.detail) return;
+    state.setSyncing(true);
+    try {
+      const result = await syncWorkspaceCmd(state.detail.branch);
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to sync workspace.');
+        return;
+      }
+      await state.load();
+    } finally {
+      state.setSyncing(false);
+    }
+  };
+
+  const handleActivate = async () => {
+    if (!state.detail) return;
+    state.setActivating(true);
+    try {
+      const result = await activateWorkspaceCmd(state.detail.branch);
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to activate workspace.');
+        return;
+      }
+      await state.load();
+    } finally {
+      state.setActivating(false);
+    }
+  };
+
+  const handleRepair = async () => {
+    if (!state.detail) return;
+    setRepairingWorkspace(true);
+    try {
+      const res = await repairWorkspaceCmd(state.detail.branch, false);
+      if (res.status === 'ok') {
+        setLastRepairReport(res.data);
+        state.load();
+      } else {
+        state.setError(res.error || 'Workspace repair failed.');
+      }
+    } finally {
+      setRepairingWorkspace(false);
+    }
+  };
+
+  const handleCreateWorkspace = async (input: {
+    branch: string;
+    workspaceType: 'feature' | 'refactor' | 'experiment' | 'hotfix';
+    modeId: string | null;
+  }) => {
+    setCreatingWorkspace(true);
+    try {
+      const result = await createWorkspaceCmd(input.branch, {
+        workspaceType: input.workspaceType,
+        modeId: input.modeId,
+        activate: true,
+      });
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to create workspace.');
+        return;
+      }
+      await state.load();
+      state.setSelectedBranch(input.branch);
+    } finally {
+      setCreatingWorkspace(false);
+    }
+  };
+
+  const handleDeleteWorkspace = async (branch: string) => {
+    setDeletingWorkspace(true);
+    try {
+      const result = await deleteWorkspaceCmd(branch);
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to delete workspace.');
+        return;
+      }
+      if (terminal.terminalSession?.branch === branch) {
+        await terminal.stopWorkspaceTerminal();
+      }
+      await state.load();
+    } finally {
+      setDeletingWorkspace(false);
+    }
+  };
+
+  const handleUpdateWorkspaceMode = async (modeId: string | null) => {
+    if (!state.detail) return;
+    setUpdatingWorkspaceMode(true);
+    try {
+      const result = await setWorkspaceModeCmd(state.detail.branch, modeId);
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to update workspace mode.');
+        return;
+      }
+      await state.load();
+    } finally {
+      setUpdatingWorkspaceMode(false);
     }
   };
 
   useEffect(() => {
-    void load();
-  }, []);
-
-  const rows = useMemo<WorkspaceRow[]>(() => {
-    const statusRank: Record<WorkspaceGraphStatus, number> = {
-      active: 0,
-      review: 1,
-      idle: 2,
-      planned: 3,
-      merged: 4,
-      archived: 5,
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!terminalResizerRef.current) return;
+      const height = window.innerHeight - e.clientY;
+      setTerminalHeight(Math.max(44, Math.min(height, window.innerHeight - 100)));
+    };
+    const handleMouseUp = () => {
+      terminalResizerRef.current = false;
+      document.body.style.cursor = 'default';
     };
 
-    return runtimeWorkspaces
-      .map((workspace) => {
-        const rw = workspace as RuntimeWorkspace;
-        const status = normalizeWorkspaceStatus(
-          rw.status ?? (workspace.branch === branch ? 'active' : 'idle'),
-        );
-        return {
-          id: workspace.branch || 'unknown',
-          branch: workspace.branch,
-          workspaceType: normalizeWorkspaceType(rw.workspace_type),
-          featureId: workspace.feature_id ?? null,
-          specId: workspace.spec_id ?? null,
-          releaseId: rw.release_id ?? null,
-          activeMode: workspace.active_mode ?? null,
-          providers: workspace.providers ?? [],
-          resolvedAt: workspace.resolved_at,
-          isWorktree: workspace.is_worktree,
-          worktreePath: workspace.worktree_path ?? null,
-          lastActivatedAt: rw.last_activated_at ?? null,
-          contextHash: rw.context_hash ?? null,
-          status,
-        };
-      })
-      .sort((a, b) => {
-        if (a.status !== b.status) return statusRank[a.status] - statusRank[b.status];
-        return b.resolvedAt.localeCompare(a.resolvedAt);
-      });
-  }, [runtimeWorkspaces, branch]);
-
-  const filteredRows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (!query) return true;
-
-      const haystack = [
-        row.branch,
-        row.featureId ?? '',
-        row.specId ?? '',
-        row.releaseId ?? '',
-        row.activeMode ?? '',
-        row.providers.join(' '),
-      ]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [rows, searchQuery]);
-
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   useEffect(() => {
-    if (filteredRows.length === 0) {
-      setSelectedBranch(null);
-      return;
+    if (!terminal.terminalSession && terminalMaximized) {
+      setTerminalMaximized(false);
     }
-    if (selectedBranch && filteredRows.some((entry) => entry.branch === selectedBranch)) return;
-    if (branch && filteredRows.some((entry) => entry.branch === branch)) {
-      setSelectedBranch(branch);
-      return;
-    }
-    setSelectedBranch(filteredRows[0].branch);
-  }, [filteredRows, selectedBranch, branch]);
+  }, [terminal.terminalSession, terminalMaximized]);
 
-  const detail = useMemo(() => {
-    if (!selectedBranch) return null;
-    return filteredRows.find((entry) => entry.branch === selectedBranch) ?? null;
-  }, [filteredRows, selectedBranch]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        setWorkspaceSidebarCollapsed((previous) => !previous);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const linkedFeature = useMemo(() => {
-    if (!detail) return null;
-    return (
-      ship.features.find((entry) => entry?.branch === detail.branch) ??
-      ship.features.find((entry) => entry?.file_name === detail.featureId) ??
-      null
-    );
-  }, [detail, ship.features]);
+    if (!state.detail) return null;
+    return ship.features.find((feature) => feature.id === state.detail?.featureId) || null;
+  }, [state.detail, ship.features]);
 
   const linkedSpec = useMemo(() => {
-    if (!detail) return null;
-    return (
-      ship.specs.find((entry) => entry.file_name === detail.specId) ??
-      ship.specs.find((entry) => entry.file_name === linkedFeature?.spec_id) ??
-      null
-    );
-  }, [detail, linkedFeature?.spec_id, ship.specs]);
+    if (!state.detail) return null;
+    return ship.specs.find((s: any) => s.id === state.detail?.specId) || null;
+  }, [state.detail, ship.specs]);
 
-  const syncCurrentWorkspace = async () => {
-    if (!branch) return;
-    setSyncing(true);
-    setError(null);
-    try {
-      const result = await syncWorkspaceCmd(branch);
-      if (result.status === 'ok') {
-        setSelectedBranch(result.data.branch);
-        await load();
-      } else {
-        setError(result.error || 'Failed to sync workspace.');
+  useEffect(() => {
+    const allowedProviders = state.providerMatrix?.allowed_providers ?? [];
+    setSessionProvider((previous) => {
+      if (allowedProviders.length === 0) {
+        return null;
       }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setSyncing(false);
+      if (previous && allowedProviders.includes(previous)) {
+        return previous;
+      }
+      return allowedProviders[0];
+    });
+  }, [state.providerMatrix]);
+
+  const handleOpenFeature = () => {
+    if (linkedFeature) {
+      void navigate({ to: FEATURES_ROUTE });
+      void ship.handleSelectFeature(linkedFeature);
     }
   };
 
-  const activateSelectedWorkspace = async () => {
-    if (!detail) return;
-    setActivating(true);
-    setError(null);
-    try {
-      const result = await activateWorkspaceCmd(detail.branch);
-      if (result.status === 'ok') {
-        setSelectedBranch(result.data.branch);
-        await load();
-      } else {
-        setError(result.error || 'Failed to activate workspace.');
-      }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setActivating(false);
-    }
-  };
-
-  const createWorkspaceFromInput = async () => {
-    const key = workspaceKeyInput.trim() || branch?.trim() || '';
-    if (!key) {
-      setError('Provide a workspace key (branch/id).');
+  const handleOpenSpec = () => {
+    if (!linkedSpec) return;
+    const relatedFeature =
+      ship.features.find(
+        (entry) =>
+          entry.spec_id === linkedSpec.id || entry.spec_id === linkedSpec.file_name
+      ) ?? null;
+    if (!relatedFeature) {
+      state.setError(
+        `Spec ${linkedSpec.id} is linked, but no feature currently references it.`
+      );
       return;
     }
+    void navigate({ to: FEATURES_ROUTE });
+    void ship.handleSelectFeature(relatedFeature);
+  };
 
-    setCreating(true);
-    setError(null);
-    try {
-      const linkedFeatureForBranch =
-        ship.features.find((entry) => entry?.branch === key) ?? null;
-      const result = await createWorkspaceCmd(key, {
-        activate: true,
-        featureId: linkedFeatureForBranch?.file_name ?? null,
-        specId: linkedFeatureForBranch?.spec_id ?? null,
-        releaseId: linkedFeatureForBranch?.release_id ?? null,
-      });
-      if (result.status === 'ok') {
-        setSelectedBranch(result.data.branch);
-        setWorkspaceKeyInput('');
-        await load();
+  const handleStartTerminal = async () => {
+    if (!state.detail) return;
+    terminal.setRuntimeError(null);
+    let sessionWarning: string | null = null;
+    if (!state.activeSession) {
+      if (terminal.terminalProvider === 'shell') {
+        sessionWarning =
+          'Console is running in shell mode without a tracked workspace session. Start a session to capture lifecycle metadata.';
       } else {
-        setError(result.error || 'Failed to create workspace.');
+        const sessionResult = await startSessionInternal({
+          preferredProvider: terminal.terminalProvider,
+          errorSurface: 'silent',
+        });
+        if (!sessionResult.ok) {
+          sessionWarning =
+            `Session tracking was not started: ${sessionResult.error ?? 'no allowed provider resolved'}`;
+        }
       }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setCreating(false);
+    }
+    await terminal.startWorkspaceTerminal();
+    if (sessionWarning) {
+      terminal.setRuntimeError(sessionWarning);
     }
   };
 
-  const clearFilters = () => {
-    setSearchQuery('');
-  };
-
-  const openFeature = () => {
-    if (!linkedFeature) return;
-    void navigate({ to: FEATURES_ROUTE });
-    void ship.handleSelectFeature(linkedFeature);
-  };
-
-  const openSpec = () => {
-    if (!linkedSpec) return;
-    void ship.handleSelectSpec(linkedSpec);
-  };
-
-  const openAgentProviders = () => {
-    void navigate({ to: SETTINGS_ROUTE, search: { tab: 'providers' } });
-  };
-
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center p-8">
-        <Alert variant="destructive" className="max-w-lg">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  if (rows.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-5 p-8">
-        <div className="flex size-16 items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/20">
-          <GitBranch className="size-7 text-muted-foreground/40" />
-        </div>
-        <div className="text-center">
-          <h3 className="text-lg font-semibold">No Workspaces Yet</h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Create a workspace to start context-aware agent execution.
-          </p>
-          {branch && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Current branch:{' '}
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{branch}</code>
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            value={workspaceKeyInput}
-            onChange={(event) => setWorkspaceKeyInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void createWorkspaceFromInput();
-              }
-            }}
-            placeholder={branch ? `key (default: ${branch})` : 'workspace key'}
-            className="h-9 w-56"
-          />
-          <Button onClick={() => void createWorkspaceFromInput()} disabled={creating}>
-            <Plus className="size-4" />
-            {creating ? 'Creating…' : 'Create Workspace'}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const hasActiveFilters = searchQuery.trim().length > 0;
+  useEffect(() => {
+    workspaceUi.setIsWorkspaceFocusMode(true);
+    return () => workspaceUi.setIsWorkspaceFocusMode(false);
+  }, [workspaceUi]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Toolbar */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-2">
-        <div className="relative h-7 min-w-[180px] flex-1 max-w-xs">
-          <Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search workspaces…"
-            className="h-7 pl-7 text-xs"
+    <div className="flex h-screen w-screen overflow-hidden bg-background">
+      <aside
+        className={cn(
+          'h-full shrink-0 overflow-hidden border-r border-border transition-[width,opacity] duration-200',
+          workspaceSidebarCollapsed
+            ? 'pointer-events-none w-0 opacity-0'
+            : 'w-[340px] opacity-100'
+        )}
+      >
+        <WorkspaceSidebar
+          filteredRows={state.filteredRows}
+          selectedBranch={state.selectedBranch}
+          onSelectBranch={state.setSelectedBranch}
+          availableEditors={state.availableEditors}
+          isDarkTheme={isDarkTheme}
+          onOpenEditor={handleOpenEditor}
+          searchQuery={state.searchQuery}
+          onSearchChange={state.setSearchQuery}
+          loading={state.loading}
+          onRefresh={state.load}
+          onHome={() => {
+            workspaceUi.setIsWorkspaceFocusMode(false);
+            void navigate({ to: OVERVIEW_ROUTE });
+          }}
+          onCollapse={() => setWorkspaceSidebarCollapsed(true)}
+          statusVariant={statusVariant}
+        />
+      </aside>
+
+      <main className="relative flex flex-1 flex-col overflow-hidden bg-muted/5">
+        <WorkspaceHeader
+          branch={state.detail?.branch ?? 'Select Workspace'}
+          sidebarCollapsed={workspaceSidebarCollapsed}
+          onHome={() => {
+            workspaceUi.setIsWorkspaceFocusMode(false);
+            void navigate({ to: OVERVIEW_ROUTE });
+          }}
+          onExpandSidebar={() => setWorkspaceSidebarCollapsed(false)}
+          actions={
+            <WorkspaceHeaderActions
+              detail={state.detail}
+              modeOptions={state.modeOptions}
+              creatingWorkspace={creatingWorkspace}
+              deletingWorkspace={deletingWorkspace}
+              updatingWorkspaceMode={updatingWorkspaceMode}
+              onCreateWorkspace={handleCreateWorkspace}
+              onDeleteWorkspace={handleDeleteWorkspace}
+              onUpdateWorkspaceMode={handleUpdateWorkspaceMode}
+            />
+          }
+        />
+
+        <div
+          className="flex-1 overflow-y-auto custom-scrollbar"
+          style={{ paddingBottom: terminalReservedHeight ? terminalReservedHeight + 8 : 0 }}
+        >
+          <WorkspaceDashboard
+            detail={state.detail}
+            statusVariant={statusVariant}
+            linkedFeature={linkedFeature}
+            linkedSpec={linkedSpec}
+            linkFeatureId={state.linkFeatureId}
+            setLinkFeatureId={state.setLinkFeatureId}
+            linkSpecId={state.linkSpecId}
+            setLinkSpecId={state.setLinkSpecId}
+            featureLinkOptions={ship.features}
+            specLinkOptions={ship.specs}
+            updatingLinks={state.updatingLinks}
+            onApplyLinks={handleApplyLinks}
+            onOpenFeature={handleOpenFeature}
+            onOpenSpec={handleOpenSpec}
+            activeSession={state.activeSession}
+            startingSession={state.startingSession}
+            endingSession={state.endingSession}
+            onStartSession={handleStartSession}
+            onEndSession={handleEndSession}
+            sessionGoalInput={state.sessionGoalInput}
+            setSessionGoalInput={state.setSessionGoalInput}
+            sessionSummaryInput={state.sessionSummaryInput}
+            setSessionSummaryInput={state.setSessionSummaryInput}
+            providerMatrix={state.providerMatrix}
+            providerInfos={state.providerInfos}
+            sessionProvider={sessionProvider}
+            setSessionProvider={setSessionProvider}
+            restartingSession={restartingSession}
+            onRestartSession={handleRestartSession}
+            NO_LINK_VALUE={NO_LINK_VALUE}
+            onSync={handleSync}
+            syncing={state.syncing}
+            onActivate={handleActivate}
+            activating={state.activating}
+            onRepair={handleRepair}
+            repairing={repairingWorkspace}
+            lastRepairReport={lastRepairReport}
+            loading={state.loading}
+            onRefreshProviders={() => void state.load()}
           />
         </div>
 
-        <div className="flex h-7 items-center gap-0.5 rounded-md border bg-muted/30 p-0.5">
-          {GROUP_BY_OPTIONS.map((option) => (
-            <Button
-              key={option.key}
-              type="button"
-              size="xs"
-              variant={groupBy === option.key ? 'secondary' : 'ghost'}
-              className="h-5 px-2 text-[10px]"
-              onClick={() => setGroupBy(option.key)}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
-
-        {hasActiveFilters && (
-          <Button variant="ghost" size="xs" onClick={clearFilters} className="h-7">
-            <X className="size-3" />
-          </Button>
+        {state.error && (
+          <div className="fixed bottom-16 right-6 z-50 w-80 animate-in fade-in slide-in-from-bottom-4">
+            <Alert variant="destructive" className="pointer-events-auto shadow-lg">
+              <AlertTitle>Action Error</AlertTitle>
+              <AlertDescription className="flex items-center justify-between gap-3">
+                <span>{state.error}</span>
+                <Button size="xs" variant="ghost" className="h-6 px-2" onClick={() => state.setError(null)}>
+                  Dismiss
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </div>
         )}
 
-        <div className="flex-1" />
-
-        <span className="text-[10px] text-muted-foreground">
-          {filteredRows.length} of {rows.length}
-        </span>
-
-        <div className="flex items-center gap-1">
-          <Input
-            value={workspaceKeyInput}
-            onChange={(event) => setWorkspaceKeyInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void createWorkspaceFromInput();
-              }
-            }}
-            placeholder={branch ? `new (default: ${branch})` : 'new workspace'}
-            className="h-7 w-40 text-xs"
-          />
-          <Button variant="outline" size="xs" className="h-7" onClick={() => void createWorkspaceFromInput()} disabled={creating}>
-            <Plus className={`size-3 ${creating ? 'animate-pulse' : ''}`} />
-          </Button>
-          <Button variant="outline" size="xs" className="h-7" onClick={() => void syncCurrentWorkspace()} disabled={!branch || syncing}>
-            <GitBranch className={`size-3 ${syncing ? 'animate-pulse' : ''}`} />
-          </Button>
-          <Button variant="outline" size="xs" className="h-7" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={`size-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Main split layout */}
-      <div className="flex flex-1 min-h-0">
-        {/* Kanban */}
-        <div className="flex-1 min-w-0 overflow-auto p-3">
-          <WorkspaceLifecycleGraph
-            rows={filteredRows}
-            selectedBranch={selectedBranch}
-            onSelectBranch={setSelectedBranch}
-            groupBy={groupBy}
-          />
-        </div>
-
-        {/* Detail Panel */}
-        {detail && (
-          <aside className="w-[380px] shrink-0 overflow-y-auto border-l border-border/50 bg-card/30">
-            {/* Detail Header */}
-            <div className="sticky top-0 z-10 border-b border-border/50 bg-card/80 backdrop-blur-sm px-4 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="truncate text-sm font-semibold">{detail.branch}</h3>
-                  <p className="text-[11px] text-muted-foreground">
-                    {detail.workspaceType} · {detail.isWorktree ? 'worktree' : 'checkout'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Badge variant={statusVariant(detail.status)} className="h-6 px-2 text-[11px]">
-                    {detail.status}
-                  </Badge>
-                  {detail.status !== 'active' && (
-                    <Button
-                      size="xs"
-                      onClick={() => void activateSelectedWorkspace()}
-                      disabled={activating}
-                    >
-                      {activating ? '…' : 'Activate'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              {branch === detail.branch && (
-                <Badge variant="default" className="mt-1.5 h-5 px-1.5 text-[10px]">
-                  current branch
-                </Badge>
-              )}
-            </div>
-
-            <div className="space-y-4 p-4">
-              {/* Linked Context */}
-              <section>
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Linked Context</p>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between rounded-md border bg-background/60 px-3 py-2">
-                    <span className="text-xs text-muted-foreground">Spec</span>
-                    {linkedSpec ? (
-                      <Button size="xs" variant="ghost" onClick={openSpec} className="h-6 gap-1 px-1.5">
-                        <span className="truncate max-w-[160px] text-xs">{linkedSpec.spec.metadata.title}</span>
-                        <ExternalLink className="size-3 shrink-0" />
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/50 italic">none</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between rounded-md border bg-background/60 px-3 py-2">
-                    <span className="text-xs text-muted-foreground">Feature</span>
-                    {linkedFeature ? (
-                      <Button size="xs" variant="ghost" onClick={openFeature} className="h-6 gap-1 px-1.5">
-                        <span className="truncate max-w-[160px] text-xs">{linkedFeature.title}</span>
-                        <ExternalLink className="size-3 shrink-0" />
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/50 italic">none</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between rounded-md border bg-background/60 px-3 py-2">
-                    <span className="text-xs text-muted-foreground">Release</span>
-                    <span className="truncate max-w-[160px] text-xs font-medium">
-                      {detail.releaseId || <span className="text-muted-foreground/50 italic font-normal">none</span>}
-                    </span>
-                  </div>
-                </div>
-              </section>
-
-              {/* Runtime */}
-              <section>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Runtime</p>
-                  <Button size="xs" variant="ghost" onClick={openAgentProviders} className="h-5 gap-1 px-1 text-[10px]">
-                    <Settings2 className="size-3" />
-                    Configure
-                  </Button>
-                </div>
-                <div className="rounded-lg border bg-gradient-to-br from-primary/5 to-transparent p-3 space-y-2.5">
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                      <Zap className="size-2.5 mr-0.5" />
-                      {detail.activeMode ?? workspaceUi.activeModeId ?? 'default'}
-                    </Badge>
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                      {detail.providers.length} provider{detail.providers.length === 1 ? '' : 's'}
-                    </Badge>
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                      <GitFork className="size-2.5 mr-0.5" />
-                      {detail.isWorktree ? 'worktree' : 'checkout'}
-                    </Badge>
-                  </div>
-                  {detail.providers.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {detail.providers.map((provider) => (
-                        <Badge key={provider} variant="secondary" className="h-5 px-1.5 text-[10px]">
-                          {provider}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {/* Details */}
-              <section>
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Details</p>
-                <div className="space-y-1 text-[11px]">
-                  <div className="flex justify-between py-1 border-b border-border/30">
-                    <span className="text-muted-foreground">Branch</span>
-                    <code className="font-mono text-[10px] truncate max-w-[180px]">{detail.branch}</code>
-                  </div>
-                  {detail.worktreePath && (
-                    <div className="flex justify-between py-1 border-b border-border/30">
-                      <span className="text-muted-foreground">Worktree</span>
-                      <code className="font-mono text-[10px] truncate max-w-[180px]">{detail.worktreePath}</code>
-                    </div>
-                  )}
-                  <div className="flex justify-between py-1 border-b border-border/30">
-                    <span className="text-muted-foreground">Resolved</span>
-                    <span className="text-muted-foreground">{new Date(detail.resolvedAt).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-border/30">
-                    <span className="text-muted-foreground">Last Active</span>
-                    <span className="text-muted-foreground">
-                      {detail.lastActivatedAt ? new Date(detail.lastActivatedAt).toLocaleDateString() : 'never'}
-                    </span>
-                  </div>
-                  {detail.contextHash && (
-                    <div className="flex justify-between py-1 border-b border-border/30">
-                      <span className="text-muted-foreground">Context Hash</span>
-                      <code className="font-mono text-[10px] truncate max-w-[120px]" title={detail.contextHash}>
-                        {shortToken(detail.contextHash, 12)}
-                      </code>
-                    </div>
-                  )}
-                  <div className="flex justify-between py-1">
-                    <span className="text-muted-foreground">ID</span>
-                    <code className="font-mono text-[10px] truncate max-w-[180px]">{detail.id}</code>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </aside>
-        )}
-      </div>
+        <WorkspaceTerminalTray
+          terminalSession={terminal.terminalSession}
+          terminalProvider={terminal.terminalProvider}
+          onProviderChange={terminal.setTerminalProvider}
+          startingTerminal={terminal.startingTerminal}
+          stoppingTerminal={terminal.stoppingTerminal}
+          onStart={handleStartTerminal}
+          onStop={terminal.stopWorkspaceTerminal}
+          onMaximizedChange={setTerminalMaximized}
+          maximized={terminalMaximized}
+          height={terminalHeight}
+          onResizerMouseDown={(_e) => {
+            terminalResizerRef.current = true;
+            document.body.style.cursor = 'ns-resize';
+          }}
+          terminalContainerRef={terminal.terminalContainerRef}
+          onSendSigInt={() => terminal.sendTerminalInput('\x03')}
+          activationError={terminal.terminalSession?.activation_error}
+          runtimeError={terminal.runtimeError}
+          hasActiveSession={state.activeSession?.status === 'active'}
+        />
+      </main>
     </div>
   );
 }

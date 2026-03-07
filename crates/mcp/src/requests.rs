@@ -376,6 +376,14 @@ pub struct GetWorkspaceRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct WorkspaceProviderMatrixRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+    /// Optional mode override to evaluate provider policy against.
+    pub mode_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct CreateWorkspaceToolRequest {
     /// Workspace branch/id.
     pub branch: String,
@@ -449,4 +457,12 @@ pub struct LogProgressRequest {
     pub note: String,
     /// Workspace branch/id. If omitted, resolves from current git branch.
     pub branch: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct RepairWorkspaceRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+    /// Preview repair without writing changes.
+    pub dry_run: Option<bool>,
 }

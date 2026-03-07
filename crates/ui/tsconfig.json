@@ -32,7 +32,7 @@
         "./src/*"
       ],
       "@ship/ui": [
-        "../ui-kit/src/index.ts"
+        "../ui-kit/src/index.tsx"
       ],
       "@ship/ui/*": [
         "../ui-kit/src/*"

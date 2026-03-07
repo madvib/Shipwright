@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import AdrList from '@/features/planning/AdrList';
+import AdrList from '@/features/planning/adrs/AdrList';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
-import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
+import { WORKFLOW_WORKSPACE_ROUTE } from '@/lib/constants/routes';
 
 function AdrsRouteComponent() {
   const workspace = useWorkspace();
@@ -10,7 +10,7 @@ function AdrsRouteComponent() {
   const navigate = useNavigate();
 
   const onBack = useCallback(() => {
-    void navigate({ to: OVERVIEW_ROUTE });
+    void navigate({ to: WORKFLOW_WORKSPACE_ROUTE });
   }, [navigate]);
 
   return (

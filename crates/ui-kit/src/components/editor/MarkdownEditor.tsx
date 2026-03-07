@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Maximize2, Minimize2, Sparkles, SquarePen, Wand2, Type, AlignLeft, CheckCircle } from 'lucide-react';
+import { Maximize2, Minimize2, Sparkles, Wand2, Type, AlignLeft, CheckCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,7 @@ import {
     DropdownMenuTrigger,
 } from '../dropdown-menu';
 import CustomMilkdownEditor from './CustomMilkdownEditor';
-import FrontmatterPanel from './FrontmatterPanel';
+// import FrontmatterPanel from './FrontmatterPanel';
 import {
     composeFrontmatterDocument,
     FrontmatterDelimiter,
@@ -55,7 +55,6 @@ export interface MarkdownEditorProps {
         onChange: (frontmatter: string | null, delimiter: FrontmatterDelimiter) => void;
     }) => ReactNode);
     showAiActions?: boolean;
-    specSuggestions?: { id: string; title: string }[];
     // This is a generic editor, so transform command should be passed in or handled via module slots
     onTransformText?: (instruction: string, text: string) => Promise<string>;
 }
@@ -87,7 +86,6 @@ export default function MarkdownEditor({
     showFrontmatter = true,
     frontmatterPanel,
     showAiActions = true,
-    specSuggestions = [],
     onTransformText,
 }: MarkdownEditorProps) {
     const onChangeRef = useRef(onChange);
@@ -132,13 +130,6 @@ export default function MarkdownEditor({
 
     const handleBodyChange = (body: string) => {
         handleEditorChange(composeFrontmatterDocument(model.frontmatter, body, activeDelimiter));
-    };
-
-    const handleFrontmatterChange = (
-        frontmatter: string | null,
-        delimiter: FrontmatterDelimiter = activeDelimiter
-    ) => {
-        handleEditorChange(composeFrontmatterDocument(frontmatter, model.body, delimiter));
     };
 
     const triggerSample = async () => {

@@ -10,4 +10,7 @@ export interface RuntimeWorkspace extends Workspace {
     release_id?: string | null;
     last_activated_at?: string | null;
     context_hash?: string | null;
+    config_generation?: number;
+    compiled_at?: string | null;
+    compile_error?: string | null;
 }

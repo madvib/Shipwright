@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import ProjectOnboarding from '@/features/planning/ProjectOnboarding';
+import ProjectOnboarding from '@/features/planning/common/ProjectOnboarding';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import { OVERVIEW_ROUTE, SETTINGS_ROUTE } from '@/lib/constants/routes';
 

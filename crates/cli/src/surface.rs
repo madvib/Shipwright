@@ -637,6 +637,21 @@ pub enum WorkspaceCommands {
     },
     /// Mark a workspace as archived
     Archive { branch: String },
+    /// Reconcile legacy feature/spec/workspace links (dry-run by default)
+    Reconcile {
+        /// Apply mutations (omit for dry-run preview)
+        #[arg(long, default_value_t = false)]
+        apply: bool,
+    },
+    /// Repair workspace compile/config drift
+    Repair {
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+        /// Preview repair actions without writing changes
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
 }
 
 /// Top-level session commands — delegates to workspace session internals.

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import ReleasesPage from '@/features/planning/ReleasesPage';
+import ReleasesPage from '@/features/planning/releases/ReleasesPage';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { FEATURES_ROUTE } from '@/lib/constants/routes';
 

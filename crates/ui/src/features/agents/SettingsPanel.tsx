@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship
 import { Checkbox } from '@ship/ui';
 import { Input } from '@ship/ui';
 import { Label } from '@ship/ui';
-import { PageFrame, PageHeader } from '@/components/app/PageFrame';
+import { PageFrame, PageHeader } from '@ship/ui';
 import { cn } from '@/lib/utils';
 import {
   Select,

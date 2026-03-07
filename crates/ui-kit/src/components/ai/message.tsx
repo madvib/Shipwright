@@ -8,13 +8,13 @@ import { Button } from "../button";
 import {
   ButtonGroup,
   ButtonGroupText,
-} from "../ui/button-group";
+} from "../button-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "../ui/tooltip";
+} from "../tooltip";
 import { cn } from "../../lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";

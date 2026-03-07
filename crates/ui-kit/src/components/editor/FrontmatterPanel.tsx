@@ -162,28 +162,30 @@ export default function FrontmatterPanel({
                         <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
                             Tags {summary.tags.length ? `(${summary.tags.length})` : ''}
                         </label>
-                        <FacetedFilter
-                            title="Add tag"
-                            options={[]}
-                            selectedValues={summary.tags}
-                            onSelectionChange={updateTags}
-                            allowNew
-                            onAddNew={(tag) => updateTags([...summary.tags, tag])}
-                            className="w-full"
-                        />
+                        <div className="w-full">
+                            <FacetedFilter
+                                title="Add tag"
+                                options={[]}
+                                selectedValues={summary.tags}
+                                onSelectionChange={updateTags}
+                                allowNew
+                                onAddNew={(tag) => updateTags([...summary.tags, tag])}
+                            />
+                        </div>
                     </div>
 
                     <div className="space-y-1">
                         <label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
                             Linked Specs {summary.specs.length ? `(${summary.specs.length})` : ''}
                         </label>
-                        <FacetedFilter
-                            title="Link spec"
-                            options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
-                            selectedValues={summary.specs}
-                            onSelectionChange={updateSpecs}
-                            className="w-full"
-                        />
+                        <div className="w-full">
+                            <FacetedFilter
+                                title="Link spec"
+                                options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
+                                selectedValues={summary.specs}
+                                onSelectionChange={updateSpecs}
+                            />
+                        </div>
                     </div>
 
                     <div className="space-y-1">

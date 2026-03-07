@@ -64,10 +64,8 @@ export default function CustomMilkdownEditor({
                 [CrepeFeature.Table]: true,
                 [CrepeFeature.ListItem]: true,
                 [CrepeFeature.ImageBlock]: true,
-                [CrepeFeature.CodeBlock]: true,
-                [CrepeFeature.Formatting]: true,
+                [CrepeFeature.CodeMirror]: true,
                 [CrepeFeature.Latex]: true,
-                [CrepeFeature.Video]: true,
             },
             featureConfigs: {
                 [CrepeFeature.Placeholder]: {

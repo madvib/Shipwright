@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, TerminalSquare } from 'lucide-react';
 import { Badge } from '@ship/ui';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 export type WorkspaceGraphStatus =
@@ -144,6 +149,8 @@ interface WorkspaceLifecycleGraphProps {
   selectedBranch: string | null;
   onSelectBranch: (branch: string) => void;
   groupBy?: WorkspaceGroupBy;
+  availableEditors?: Array<{ id: string; name: string }>;
+  onOpenEditor?: (branch: string, editorId: string) => void;
 }
 
 function shortToken(value: string, size = 8): string {
@@ -155,6 +162,8 @@ export function WorkspaceLifecycleGraph({
   selectedBranch,
   onSelectBranch,
   groupBy = 'status',
+  availableEditors = [],
+  onOpenEditor,
 }: WorkspaceLifecycleGraphProps) {
   const groupedByStatus = useMemo(() => {
     const grouped: Record<WorkspaceGraphStatus, WorkspaceGraphRow[]> = {
@@ -296,13 +305,13 @@ export function WorkspaceLifecycleGraph({
   };
 
   return (
-    <Card size="sm" className="min-w-0">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{title}</CardTitle>
-        <CardDescription className="text-xs">{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-stretch gap-2.5 overflow-x-auto pb-1">
+    <div className="min-w-0 space-y-2">
+      <div className="px-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className="text-[11px] text-muted-foreground/80">{description}</p>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
           {columns.map((column) => {
             const collapsed = isCollapsed(column.id, column.rows.length);
 
@@ -340,10 +349,10 @@ export function WorkspaceLifecycleGraph({
             }
 
             return (
-              <div key={column.id} className="flex min-w-[300px] flex-1 flex-col">
+              <div key={column.id} className="flex min-w-[320px] flex-1 flex-col">
                 <div
                   className={cn(
-                    'flex h-full min-h-[20rem] max-h-[calc(100vh-17rem)] flex-col rounded-lg border bg-muted/20',
+                    'flex h-full min-h-[26rem] flex-col rounded-lg border bg-muted/20',
                     column.isSelected && 'ring-1 ring-primary/35'
                   )}
                 >
@@ -384,10 +393,17 @@ export function WorkspaceLifecycleGraph({
                       column.rows.map((row) => {
                         const isSelected = row.branch === selectedBranch;
                         return (
-                          <button
+                          <div
                             key={row.branch}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => onSelectBranch(row.branch)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                onSelectBranch(row.branch);
+                              }
+                            }}
                             className={cn(
                               'relative w-full overflow-hidden rounded-lg border px-3 py-2.5 text-left transition-all',
                               isSelected
@@ -403,11 +419,41 @@ export function WorkspaceLifecycleGraph({
                             />
                             <div className="flex items-start justify-between gap-2 pl-1">
                               <p className="truncate text-[15px] font-semibold leading-tight">{row.branch}</p>
-                              {row.status === 'active' && (
-                                <Badge variant="default" className="h-5 px-1.5 text-[10px]">
-                                  live
-                                </Badge>
-                              )}
+                              <div className="flex items-center gap-1">
+                                {availableEditors.length > 0 && onOpenEditor && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                      className="inline-flex h-5 items-center gap-0.5 rounded-sm px-1 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                                      onClick={(event) => event.stopPropagation()}
+                                      title="Open in IDE"
+                                    >
+                                      <TerminalSquare className="size-3" />
+                                      <ChevronDown className="size-2.5" />
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent
+                                      align="end"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {availableEditors.map((editor) => (
+                                        <DropdownMenuItem
+                                          key={editor.id}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            onOpenEditor(row.branch, editor.id);
+                                          }}
+                                        >
+                                          {editor.name}
+                                        </DropdownMenuItem>
+                                      ))}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                                {row.status === 'active' && (
+                                  <Badge variant="default" className="h-5 px-1.5 text-[10px]">
+                                    live
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             <div className="mt-1.5 flex flex-wrap gap-1 pl-1">
                               <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
@@ -443,7 +489,7 @@ export function WorkspaceLifecycleGraph({
                             <p className="truncate pt-1 pl-1 text-[11px] text-muted-foreground">
                               {rowSubtitle(row)}
                             </p>
-                          </button>
+                          </div>
                         );
                       })
                     )}
@@ -469,7 +515,7 @@ export function WorkspaceLifecycleGraph({
             </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

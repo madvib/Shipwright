@@ -1,7 +1,7 @@
 "use client";
 
 // Local type definitions to avoid coupling to the `ai` npm package
-export type ChatStatus = 'idle' | 'loading' | 'streaming' | 'error';
+export type ChatStatus = 'idle' | 'loading' | 'submitted' | 'streaming' | 'error';
 export interface FileUIPart {
   type: 'file';
   filename?: string;
@@ -14,6 +14,7 @@ export interface SourceDocumentUIPart {
   url?: string;
   content?: string;
 }
+import * as React from "react";
 import type {
   ChangeEvent,
   ChangeEventHandler,
@@ -47,7 +48,7 @@ import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from "../ui/hover-card";
+} from "../hover-card";
 import {
   InputGroup,
   InputGroupAddon,
@@ -61,12 +62,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../select";
-import { Spinner } from "../ui/spinner";
+import { Spinner } from "../spinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "../ui/tooltip";
+} from "../tooltip";
 import { cn } from "../../lib/utils";
 import {
   CornerDownLeftIcon,
@@ -344,11 +345,9 @@ export const usePromptInputReferencedSources = () => {
   return ctx;
 };
 
-export type PromptInputActionAddAttachmentsProps = ComponentProps<
-  typeof DropdownMenuItem
-> & {
+export interface PromptInputActionAddAttachmentsProps extends Omit<React.HTMLAttributes<HTMLElement>, 'onSelect'> {
   label?: string;
-};
+}
 
 export const PromptInputActionAddAttachments = ({
   label = "Add photos or files",
@@ -365,7 +364,7 @@ export const PromptInputActionAddAttachments = ({
   );
 
   return (
-    <DropdownMenuItem {...props} onSelect={handleSelect}>
+    <DropdownMenuItem {...(props as any)} onSelect={handleSelect}>
       <ImageIcon className="mr-2 size-4" /> {label}
     </DropdownMenuItem>
   );
@@ -720,7 +719,7 @@ export const PromptInput = ({
         const array = Array.isArray(incoming) ? incoming : [incoming];
         setReferencedSources((prev) => [
           ...prev,
-          ...array.map((s) => ({ ...s, id: nanoid() })),
+          ...array.map((s) => ({ ...s, id: crypto.randomUUID() })),
         ]);
       },
       clear: clearReferencedSources,
@@ -893,7 +892,7 @@ export const PromptInputTextarea = ({
         attachments.files.length > 0
       ) {
         e.preventDefault();
-        const lastAttachment = attachments.files.at(-1);
+        const lastAttachment = attachments.files[attachments.files.length - 1];
         if (lastAttachment) {
           attachments.remove(lastAttachment.id);
         }
@@ -1069,7 +1068,7 @@ export const PromptInputActionMenuTrigger = ({
   children,
   ...props
 }: PromptInputActionMenuTriggerProps) => (
-  <DropdownMenuTrigger asChild>
+  <DropdownMenuTrigger>
     <PromptInputButton className={className} {...props}>
       {children ?? <PlusIcon className="size-4" />}
     </PromptInputButton>
@@ -1088,16 +1087,33 @@ export const PromptInputActionMenuContent = ({
 
 export type PromptInputActionMenuItemProps = ComponentProps<
   typeof DropdownMenuItem
->;
+> & {
+  status?: ChatStatus;
+  onSelect?: (status: ChatStatus) => void;
+};
 export const PromptInputActionMenuItem = ({
   className,
+  status,
+  onSelect,
   ...props
-}: PromptInputActionMenuItemProps) => (
-  <DropdownMenuItem className={cn(className)} {...props} />
-);
+}: PromptInputActionMenuItemProps) => {
+  return (
+    <DropdownMenuItem
+      className={cn(className)}
+      onSelect={onSelect ? () => onSelect(status as ChatStatus) : undefined}
+      {...(props as any)}
+    />
+  );
+};
 
 // Note: Actions that perform side-effects (like opening a file dialog)
 // are provided in opt-in modules (e.g., prompt-input-attachments).
+
+export interface PromptInputStatusItemProps {
+  status: ChatStatus;
+  onSelect: (status: ChatStatus) => void;
+  className?: string;
+}
 
 export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
   status?: ChatStatus;
@@ -1133,7 +1149,7 @@ export const PromptInputSubmit = ({
         onStop();
         return;
       }
-      onClick?.(e);
+      onClick?.(e as any);
     },
     [isGenerating, onStop, onClick]
   );
