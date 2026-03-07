@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import ShipMark from '@/components/app/ShipMark';
 
 interface RouteLoadingOverlayProps {
   visible: boolean;
@@ -21,15 +22,10 @@ export default function RouteLoadingOverlay({
         <div className="relative flex h-16 w-16 items-center justify-center">
           <span className="absolute inset-0 rounded-full border border-primary/35 animate-ping" />
           <span className="absolute inset-1 rounded-full border border-primary/45" />
-          <img
-            src="/logo.svg"
-            alt="Ship"
-            className="relative h-9 w-9 animate-[spin_1.8s_linear_infinite]"
-          />
+          <ShipMark className="relative h-9 w-9" spinning />
         </div>
         <p className="text-[11px] font-medium tracking-wide text-muted-foreground">{label}</p>
       </div>
     </div>
   );
 }
-

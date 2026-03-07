@@ -27,19 +27,19 @@ use runtime::{
         create_workspace as runtime_create_workspace,
         end_workspace_session as runtime_end_workspace_session,
         get_active_workspace_session as runtime_get_active_workspace_session,
-        get_workspace_provider_matrix as runtime_get_workspace_provider_matrix,
         get_workspace as runtime_get_workspace,
+        get_workspace_provider_matrix as runtime_get_workspace_provider_matrix,
         list_workspace_sessions as runtime_list_workspace_sessions,
-        list_workspaces as runtime_list_workspaces, set_workspace_active_mode,
-        repair_workspace as runtime_repair_workspace,
-        start_workspace_session as runtime_start_workspace_session,
+        list_workspaces as runtime_list_workspaces, repair_workspace as runtime_repair_workspace,
+        set_workspace_active_mode, start_workspace_session as runtime_start_workspace_session,
         sync_workspace as runtime_sync_workspace,
     },
 };
 use ship_module_git::{install_hooks, on_post_checkout};
 use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs};
 use ship_module_project::ops::feature::{
-    create_feature, get_feature_by_id, list_features, update_feature_content,
+    create_feature, get_feature_by_id, list_features, sync_feature_docs_after_session,
+    update_feature_content,
 };
 use ship_module_project::ops::issue::{
     create_issue, delete_issue, get_issue_by_id, list_issues, move_issue_with_from, update_issue,
@@ -1520,8 +1520,17 @@ impl ShipServer {
             updated_spec_ids: req.updated_spec_ids.unwrap_or_default(),
         };
         match runtime_end_workspace_session(&project_dir, &branch, end_req) {
-            Ok(session) => serde_json::to_string_pretty(&session)
-                .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e)),
+            Ok(session) => {
+                if !session.updated_feature_ids.is_empty() {
+                    let _ = sync_feature_docs_after_session(
+                        &project_dir,
+                        &session.updated_feature_ids,
+                        session.summary.as_deref(),
+                    );
+                }
+                serde_json::to_string_pretty(&session)
+                    .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e))
+            }
             Err(err) => format!("Error: {}", err),
         }
     }

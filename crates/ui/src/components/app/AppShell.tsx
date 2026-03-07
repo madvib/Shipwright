@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState, useEffect, useCallback } from 'react
 import { Outlet, useLocation, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';
+import ShipMark from '@/components/app/ShipMark';
 import { PageChromeProvider, PageChromeContextValue } from '@ship/ui';
 import AgentModeControl from '@/features/agents/AgentModeControl.tsx';
 import { SearchModal } from '@/components/app/SearchModal';
@@ -214,11 +215,7 @@ export default function App() {
             <div className="relative flex h-16 w-16 items-center justify-center">
               <span className="absolute inset-0 rounded-full border border-primary/35 animate-ping" />
               <span className="absolute inset-1 rounded-full border border-primary/45" />
-              <img
-                src="/logo.svg"
-                alt="Ship"
-                className="relative h-9 w-9 animate-[spin_1.8s_linear_infinite]"
-              />
+              <ShipMark className="relative h-9 w-9" spinning />
             </div>
             <div className="text-muted-foreground text-sm">Loading workspace...</div>
           </div>

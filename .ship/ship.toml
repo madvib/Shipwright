@@ -32,13 +32,13 @@ ignore = [
     "events.ndjson",
     "issues",
     "notes",
-]
-commit = [
     "releases",
     "features",
     "specs",
     "adrs",
     "templates",
+]
+commit = [
     "ship.toml",
     "agents",
 ]
