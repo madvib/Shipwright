@@ -104,6 +104,19 @@ pub enum Commands {
         #[command(subcommand)]
         action: ModeCommands,
     },
+    /// Manage the active session (shortcut for `workspace session`)
+    Session {
+        #[command(subcommand)]
+        action: SessionCommands,
+    },
+    /// Log a progress note to the active session
+    Log {
+        /// Note to record
+        note: String,
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+    },
     /// Manage MCP servers registered in .ship/agents/mcp.toml. Runs the server if no subcommand is provided.
     Mcp {
         #[command(subcommand)]
@@ -624,6 +637,48 @@ pub enum WorkspaceCommands {
     },
     /// Mark a workspace as archived
     Archive { branch: String },
+}
+
+/// Top-level session commands — delegates to workspace session internals.
+#[derive(Subcommand, Debug)]
+pub enum SessionCommands {
+    /// Start a new session (defaults to current workspace branch)
+    Start {
+        #[arg(long)]
+        branch: Option<String>,
+        /// Session goal/intention
+        #[arg(long)]
+        goal: Option<String>,
+        /// Optional mode override
+        #[arg(long)]
+        mode: Option<String>,
+        /// Primary provider
+        #[arg(long)]
+        provider: Option<String>,
+    },
+    /// End the active session
+    End {
+        #[arg(long)]
+        branch: Option<String>,
+        #[arg(long)]
+        summary: Option<String>,
+        #[arg(long = "updated-feature")]
+        updated_feature: Vec<String>,
+        #[arg(long = "updated-spec")]
+        updated_spec: Vec<String>,
+    },
+    /// Show the active session status
+    Status {
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// List recent sessions
+    List {
+        #[arg(long)]
+        branch: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand, Debug)]

@@ -60,10 +60,10 @@ pub struct SearchIssuesRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct CreateAdrRequest {
+pub struct LogDecisionRequest {
     /// Title of the architecture decision
     pub title: String,
-    /// The decision content / reasoning
+    /// The decision content / reasoning — what was decided and why
     pub decision: String,
 }
 
@@ -412,7 +412,7 @@ pub struct SyncWorkspaceRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct WorkspaceSessionStartRequest {
+pub struct StartSessionRequest {
     /// Workspace branch/id. If omitted, resolves from current git branch.
     pub branch: Option<String>,
     /// Optional goal for this session.
@@ -424,10 +424,10 @@ pub struct WorkspaceSessionStartRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct WorkspaceSessionEndRequest {
+pub struct EndSessionRequest {
     /// Workspace branch/id. If omitted, resolves from current git branch.
     pub branch: Option<String>,
-    /// Optional end-of-session summary.
+    /// End-of-session summary — what was accomplished, what changed.
     pub summary: Option<String>,
     /// Feature IDs updated during this session.
     pub updated_feature_ids: Option<Vec<String>>,
@@ -436,9 +436,17 @@ pub struct WorkspaceSessionEndRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct WorkspaceSessionsRequest {
+pub struct ListSessionsRequest {
     /// Optional workspace branch/id filter.
     pub branch: Option<String>,
     /// Optional max number of sessions to return.
     pub limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct LogProgressRequest {
+    /// Progress note — what you did, decided, or got blocked on.
+    pub note: String,
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
 }

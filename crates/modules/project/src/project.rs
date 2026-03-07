@@ -498,6 +498,11 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         runtime::config::generate_gitignore(&ship_path, &default_git)?;
     }
 
+    // Seed the project-manager workspace ("ship") so it's ready on first use.
+    if let Err(e) = runtime::workspace::seed_project_workspace(&ship_path) {
+        eprintln!("[ship] warning: could not seed project workspace: {}", e);
+    }
+
     let _ = append_event(
         &ship_path,
         "logic",
@@ -766,12 +771,16 @@ Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release
 
 fn seed_builtin_user_skills(user_skills_root: &Path) -> Result<()> {
     fs::create_dir_all(user_skills_root)?;
-    let ship_workflow_path = user_skills_root.join("ship-workflow").join("SKILL.md");
-    write_if_missing(
-        &ship_workflow_path,
+
+    // Builtins always overwrite — they're owned by Ship and update with each release.
+    let ship_workflow_dir = user_skills_root.join("ship-workflow");
+    fs::create_dir_all(&ship_workflow_dir)?;
+    fs::write(
+        ship_workflow_dir.join("SKILL.md"),
         include_str!("../../../../core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
     )?;
 
+    // skill-creator is a multi-file skill; only seed if missing.
     let skill_creator_root = user_skills_root.join("skill-creator");
     if !skill_creator_root.exists() {
         seed_skill_creator_template(&skill_creator_root)?;

@@ -1,6 +1,13 @@
 ---
 name: ship-workflow
-description: Run delivery through Ship entities with verified state transitions, linkage integrity, and completion gates.
+description: >
+  Guide for working with Ship — the project intelligence layer. Use this skill whenever
+  you're starting a work session, planning features, making architectural decisions, logging
+  progress, or wrapping up a session. Covers all three stages: Planning (features, decisions,
+  notes), Workspace activation (context compilation, mode selection), and Sessions (start,
+  log, end with feedback into docs). Always use this when the user says "start a session",
+  "let's plan", "log what we did", or "wrap up" — and proactively consult it at the beginning
+  of any interaction with a Ship-managed project.
 metadata:
   display_name: Ship Workflow
   source: builtin
@@ -8,82 +15,178 @@ metadata:
 
 # Ship Workflow
 
-Use this skill for work that changes project state, not just source code.
+Ship is a project intelligence layer — it keeps your agent, your team, and your codebase in
+sync around what's being built and why. This skill guides you through the three-stage workflow.
 
-## When To Apply
+---
 
-Apply this skill when a task touches any of:
+## Stage 1 — Planning
 
-- release scope, release readiness, or release status
-- feature lifecycle, acceptance criteria, or delivery TODOs
-- spec creation/update/activation/archive
-- issue creation, movement, closure, or dependency changes
-- ADR creation for architecture-impacting decisions
-- workspace, branch, or worktree linkage to active work
+Use planning tools when the work is about *what* to build, *why*, or *how*. You're shaping
+intent, not executing code.
 
-## System Of Record Contract
+### Starting a planning session
 
-- Ship entities are the canonical record for lifecycle status.
-- Prefer Ship CLI or Ship MCP tools for state mutations.
-- Do not manually move files between workflow folders unless explicitly doing recovery work.
-- After each mutation, re-read state and verify expected delta.
+1. Call `get_project_info` first. Always. It gives you active workspaces, recent features,
+   open decisions, and log entries. Don't assume you know the state — read it.
+2. Orient the user: summarize what's in flight and ask what they want to focus on.
 
-## Required Execution Loop
+### Features — the primary planning artifact
 
-For each state-changing action:
+Features are living documents, not tickets. They evolve from rough intent into documentation
+as the work gets done. Every feature should have two sections:
 
-1. Read current state and collect the relevant entity IDs.
-2. Perform one mutation (single intent).
-3. Re-read state and confirm the mutation landed.
-4. Record linkage integrity (release <-> feature <-> spec <-> issue).
+```markdown
+## Intent
+What this feature is, why it exists, how it should behave from the user's perspective.
+This is the planning north star — keep it stable even as implementation details change.
 
-Do not batch unrelated mutations into one blind operation.
+## Documentation
+How it actually works once built. Code structure, usage, configuration, edge cases.
+This section starts empty and fills in during and after the session.
+```
 
-## Canonical Delivery Sequence
+- Use `create_feature` to capture a new feature idea. Don't wait until it's fully defined.
+- Use `update_feature` to refine — iterating on intent is expected and encouraged.
+- Use `get_feature` to read a feature before updating it so you don't overwrite sections.
 
-1. Align release intent:
-Ensure a target release exists for scoped delivery.
-2. Align feature contract:
-Create or attach the feature that owns the work.
-3. Align specification:
-Use a spec for non-trivial behavior, architecture, data, or API changes.
-4. Execute with issues:
-Track implementation tasks as issues linked to feature/spec.
-5. Close with evidence:
-Only close entities after tests and acceptance checks pass.
+### Decisions — log them while they're fresh
 
-## Link Integrity Rules
+When you commit to a technical approach, trade-off, or design choice:
 
-- Keep release, feature, spec, and issue links coherent at all times.
-- Do not close a feature while linked issues remain open.
-- Do not close a release with open in-scope features unless explicitly deferred and documented.
-- Move architecture-level decisions into ADRs, not issue comments.
+- Use `log_decision` with a clear title and the reasoning. Future contributors (including you)
+  will need to understand *why*, not just *what*.
+- Don't log every micro-decision — only ones that would surprise someone reading the code later.
 
-## Workspace And Branch Discipline
+### Quick capture
 
-- Keep active branch/workspace mapped to active feature/spec.
-- Treat worktrees as execution contexts for one project, not separate projects.
-- If branch linkage is stale or incorrect, correct linkage before coding.
+Use `create_note` for thoughts that aren't ready to be features or decisions: ideas,
+observations, questions, things to revisit. Notes are cheap — capture first, refine later.
 
-## Verification Gates
+---
 
-Before marking done:
+## Stage 2 — Workspace Activation
 
-- run tests for touched behavior
-- cover happy path and at least one meaningful failure path
-- verify sync/import/migration actions are idempotent where applicable
-- confirm docs/spec/ADR updates for changed behavior or decisions
+A workspace is the execution context for a feature, refactor, or experiment. Activating
+one compiles the right CLAUDE.md and .mcp.json for your AI provider.
 
-## Completion Output
+### Activating a workspace
 
-On completion, report:
+1. Call `list_workspaces` to see what's available.
+2. Call `activate_workspace` with the branch name. This recompiles provider context — the
+   agent immediately has the right tools and instructions for that workspace's mode and scope.
+3. Optionally call `set_mode` if you want to shift the tool surface (e.g., enable extended
+   CRUD tools for an issue triage session).
 
-- entities changed (IDs and final statuses)
-- verification evidence (tests/checks run)
-- open risks, follow-ups, or deferred decisions
+### Workspace types
+
+- **project**: the project-manager workspace (`ship` branch). Always present. Activating it
+  unlocks the full PM surface — issues, specs, releases, sessions history — without needing a
+  mode. Use this for planning, triage, release prep, and cross-workspace coordination.
+- **feature**: tied to a feature document, inherits feature's mode/provider config
+- **refactor**: code-only, no feature link required
+- **experiment**: exploratory, no delivery expectation
+- **hotfix**: urgent, minimal scope
+
+**The project workspace is the home base.** If the user wants to triage issues, prep a release,
+or work across multiple features, activate it first:
+
+```
+activate_workspace(branch="ship")
+```
+
+This compiles a bird's-eye CLAUDE.md (all features, issues, active sessions, upcoming release)
+and expands the available tools to the full PM surface automatically.
+
+### Modes shape the tool surface
+
+By default (non-project workspace, no mode), only core workflow tools are visible. Two ways
+to expand the surface:
+
+1. **Activate the project workspace** (`ship`) — auto-unlocks PM tools (issues, specs, releases)
+2. **Set a mode** with `active_tools` configured — fine-grained control for any workspace type
+
+```
+active_tools: []          # unlocks everything
+active_tools: ["create_issue", "move_issue", "search_issues"]   # just issue tools
+```
+
+If the user wants to work on issues, specs, or releases from a feature workspace, check
+`list_modes` and activate an appropriate mode, or suggest switching to the project workspace.
+
+---
+
+## Stage 3 — Session Loop
+
+Sessions are focused work blocks. They record what was attempted, what changed, and feed
+that back into the feature documentation.
+
+### Starting a session
+
+```
+start_session(goal="<clear one-line goal>")
+```
+
+Always pass a goal. "implement workspace activate" is better than nothing. The goal becomes
+part of the session record and helps the end-of-session doc pass.
+
+### During a session — log_progress
+
+Use `log_progress` at natural checkpoints — not obsessively, but when something significant
+happens:
+
+- A decision was made mid-session
+- A blocker was hit (and what you tried)
+- A significant piece of work completed
+- The approach changed from the original goal
+
+Progress notes appear in the project log and surface in `get_project_info`. They're the
+breadcrumbs that make session summaries meaningful.
+
+### Ending a session — the feedback loop
+
+This is the most important part. When calling `end_session`:
+
+1. **Provide a summary**: what actually happened, not what was planned. Be honest about
+   partial progress, pivots, or blockers.
+
+2. **List updated_feature_ids**: every feature that was touched — even if just the intent
+   was clarified. Ship will bump their timestamps so they surface as recently active.
+
+3. **Review docs before closing**: call `get_feature` for each updated feature and check
+   the `## Documentation` section. If it's empty or stale compared to what was built this
+   session, update it with `update_feature`. Do this before calling end_session so the
+   feature record is accurate.
+   - Propose the documentation update to the user before writing.
+   - Keep it factual: what the code does, not what you intended.
+
+4. **For non-feature workspaces** (refactor, hotfix, experiment): just provide a summary.
+   No feature doc update required, but a progress note before ending is still useful.
+
+### End-session checklist
+
+```
+[ ] get_feature for each updated feature — is ## Documentation current?
+[ ] update_feature if docs are stale (with user approval)
+[ ] end_session with: summary, updated_feature_ids
+[ ] Confirm session ended and features show updated timestamps
+```
+
+---
+
+## System of Record Rules
+
+- Ship entities are the source of truth for project state. Don't track work in ad-hoc chat.
+- After each state-changing tool call, verify the result. Read back what you wrote.
+- Keep feature intent stable — only change it if the actual goal changed, not just the
+  implementation approach.
+- Log decisions as ADRs, not as comments in features or issues. They're easier to find.
+- Don't close features or sessions based on memory — read state first.
 
 ## Anti-Patterns
 
-- closing entities based on chat memory without state verification
-- bypassing entity links and tracking work in ad-hoc notes
-- marking done in code while workflow state remains stale
+- Starting work without `get_project_info` — you'll miss active context
+- Skipping `start_session` — progress won't be tracked and `log_progress` will fail
+- Calling `end_session` without updating feature docs — documentation debt accumulates fast
+- Using `create_note` when a feature or decision is more appropriate — notes are ephemeral
+- Logging every micro-step with `log_progress` — signal drowns in noise

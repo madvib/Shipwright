@@ -6,7 +6,7 @@ use runtime::{
     activate_workspace, add_status, autodetect_providers, create_workspace, end_workspace_session,
     get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
     is_category_committed, list_mcp_servers, list_providers, list_workspace_sessions,
-    list_workspaces, log_action, migrate_global_state, migrate_json_config_file,
+    list_workspaces, log_action, log_action_by, migrate_global_state, migrate_json_config_file,
     migrate_project_state, remove_status, set_category_committed, start_workspace_session,
     sync_workspace, transition_workspace_status,
 };
@@ -1225,6 +1225,73 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 handle_migrate_command(force)?;
             }
         },
+        Some(Commands::Session { action }) => {
+            let project_dir = get_project_dir_cli()?;
+            let project_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+            match action {
+                SessionCommands::Start { branch, goal, mode, provider } => {
+                    let branch = branch.unwrap_or(current_branch(&project_root)?);
+                    let session = start_workspace_session(&project_dir, &branch, goal, mode, provider)?;
+                    println!(
+                        "Session started: {} [{}] branch={}{}{}{}",
+                        session.id,
+                        session.status,
+                        session.workspace_branch,
+                        session.mode_id.as_ref().map(|m| format!(" mode={}", m)).unwrap_or_default(),
+                        session.primary_provider.as_ref().map(|p| format!(" provider={}", p)).unwrap_or_default(),
+                        session.goal.as_ref().map(|g| format!(" goal=\"{}\"", g)).unwrap_or_default(),
+                    );
+                }
+                SessionCommands::End { branch, summary, updated_feature, updated_spec } => {
+                    let branch = branch.unwrap_or(current_branch(&project_root)?);
+                    let session = end_workspace_session(
+                        &project_dir,
+                        &branch,
+                        EndWorkspaceSessionRequest {
+                            summary,
+                            updated_feature_ids: updated_feature,
+                            updated_spec_ids: updated_spec,
+                        },
+                    )?;
+                    println!(
+                        "Session ended: {} [{}] branch={}{}",
+                        session.id,
+                        session.status,
+                        session.workspace_branch,
+                        session.summary.as_ref().map(|s| format!(" summary=\"{}\"", s)).unwrap_or_default(),
+                    );
+                }
+                SessionCommands::Status { branch } => {
+                    let branch = branch.unwrap_or(current_branch(&project_root)?);
+                    match get_active_workspace_session(&project_dir, &branch)? {
+                        Some(session) => println!("{}", format_workspace_session(&session)),
+                        None => println!("No active session for workspace '{}'.", branch),
+                    }
+                }
+                SessionCommands::List { branch, limit } => {
+                    let sessions = list_workspace_sessions(&project_dir, branch.as_deref(), limit)?;
+                    if sessions.is_empty() {
+                        println!("No sessions found.");
+                    } else {
+                        for session in sessions {
+                            println!("{}", format_workspace_session(&session));
+                        }
+                    }
+                }
+            }
+        }
+        Some(Commands::Log { note, branch }) => {
+            let project_dir = get_project_dir_cli()?;
+            let project_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+            let branch = branch.unwrap_or(current_branch(&project_root)?);
+            match get_active_workspace_session(&project_dir, &branch)? {
+                None => anyhow::bail!("No active session for '{}'. Run `ship session start` first.", branch),
+                Some(_) => {
+                    log_action_by(&project_dir, "agent", "session.progress", &note)?;
+                    println!("Logged: {}", note);
+                }
+            }
+        }
         None => match get_project_dir(None) {
             Ok(project_dir) => {
                 println!("{}", render_workspace_home(&project_dir)?);

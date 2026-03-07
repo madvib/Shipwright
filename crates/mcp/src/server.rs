@@ -31,7 +31,6 @@ use runtime::{
         list_workspace_sessions as runtime_list_workspace_sessions,
         list_workspaces as runtime_list_workspaces, set_workspace_active_mode,
         start_workspace_session as runtime_start_workspace_session,
-        sync_workspace as runtime_sync_workspace,
     },
 };
 use ship_module_git::{install_hooks, on_post_checkout};
@@ -122,23 +121,56 @@ impl ShipServer {
         normalized
     }
 
-    fn is_mode_control_tool(tool_name: &str) -> bool {
-        const ALWAYS_ALLOWED: &[&str] = &[
+    fn is_core_tool(tool_name: &str) -> bool {
+        // Core workflow tools always available regardless of active mode.
+        // These cover the three-stage Ship workflow: Planning → Workspace → Session.
+        // Extended tools (issues, specs, releases, etc.) require a mode OR a project workspace.
+        const CORE_TOOLS: &[&str] = &[
+            // Project context
             "open_project",
             "get_project_info",
-            "list_modes",
-            "set_mode",
+            // Planning
+            "create_note",
+            "create_feature",
+            "get_feature",
+            "update_feature",
+            "log_decision",
+            // Workspace
             "list_workspaces",
             "get_workspace",
             "activate_workspace",
-            "sync_workspace",
-            "start_workspace_session",
-            "end_workspace_session",
-            "get_workspace_session_status",
-            "list_workspace_sessions",
+            "create_workspace_tool",
+            "list_modes",
+            "set_mode",
+            // Session
+            "start_session",
+            "end_session",
+            "get_session_status",
+            "log_progress",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
-        ALWAYS_ALLOWED.contains(&normalized.as_str())
+        CORE_TOOLS.contains(&normalized.as_str())
+    }
+
+    fn is_project_workspace_tool(tool_name: &str) -> bool {
+        // Tools auto-unlocked when the active workspace is type=project.
+        // These cover the PM layer: issues, specs, releases, session history, log.
+        const PROJECT_TOOLS: &[&str] = &[
+            "create_issue",
+            "update_issue",
+            "move_issue",
+            "delete_issue",
+            "search_issues",
+            "create_spec",
+            "update_spec",
+            "create_release",
+            "get_release",
+            "update_release",
+            "list_sessions",
+            "get_log",
+        ];
+        let normalized = Self::normalize_mode_tool_id(tool_name);
+        PROJECT_TOOLS.contains(&normalized.as_str())
     }
 
     fn mode_allows_tool(tool_name: &str, active_tools: &[String]) -> bool {
@@ -154,28 +186,44 @@ impl ShipServer {
     }
 
     fn enforce_mode_tool_gate(project_dir: &PathBuf, tool_name: &str) -> Result<(), String> {
-        if Self::is_mode_control_tool(tool_name) {
+        if Self::is_core_tool(tool_name) {
             return Ok(());
         }
 
-        let Some(active_mode) =
-            get_active_mode(Some(project_dir.clone())).map_err(|e| e.to_string())?
-        else {
-            return Ok(());
-        };
-
-        if Self::mode_allows_tool(tool_name, &active_mode.active_tools) {
-            return Ok(());
+        // Project workspace auto-unlocks the PM tool surface without needing a mode.
+        if Self::is_project_workspace_tool(tool_name) {
+            let active_type =
+                runtime::workspace::get_active_workspace_type(project_dir).unwrap_or(None);
+            if matches!(active_type, Some(runtime::WorkspaceType::Project)) {
+                return Ok(());
+            }
         }
 
-        let allowed = if active_mode.active_tools.is_empty() {
-            "all tools".to_string()
-        } else {
-            active_mode.active_tools.join(", ")
-        };
+        let active_mode = get_active_mode(Some(project_dir.clone())).map_err(|e| e.to_string())?;
+
+        if let Some(ref mode) = active_mode {
+            if Self::mode_allows_tool(tool_name, &mode.active_tools) {
+                return Ok(());
+            }
+            let allowed = if mode.active_tools.is_empty() {
+                "all tools".to_string()
+            } else {
+                mode.active_tools.join(", ")
+            };
+            return Err(format!(
+                "Tool '{}' blocked by active mode '{}' (allowed: {}).",
+                tool_name, mode.id, allowed
+            ));
+        }
+
+        // No mode active: only core tools are available.
+        // Activate a project workspace (ship workspace activate ship) to unlock PM tools,
+        // or create a mode with active_tools set to unlock specific tools.
         Err(format!(
-            "Tool '{}' blocked by active mode '{}' (allowed: {}).",
-            tool_name, active_mode.id, allowed
+            "Tool '{}' is not in the core workflow surface. \
+             Activate the project workspace ('ship') or a mode with this tool in its \
+             active_tools list to use it.",
+            tool_name
         ))
     }
 
@@ -223,7 +271,9 @@ impl ShipServer {
 
     /// Get full project context for an agent starting a new session
     #[tool(
-        description = "Get full project context: name, statuses, open issues, releases, features, specs, ADRs, recent log, and recent events. Call this at the start of a session to understand the project without being told what exists."
+        description = "Get full project context: active workspace, active session, mode, features, \
+        releases, specs, ADRs, and recent activity. Call this at the start of every session to \
+        understand the current state before taking any action."
     )]
     async fn get_project_info(&self) -> String {
         let project_dir = match self.get_effective_project_dir().await {
@@ -243,25 +293,60 @@ impl ShipServer {
 
         let mut out = format!("# Project: {}\n\n", name);
 
-        // Agent mode / workflow context
-        out.push_str("## Agent Mode\n");
-        if let Some(active_id) = config.active_mode.as_deref() {
-            if let Some(mode) = config.modes.iter().find(|m| m.id == active_id) {
-                out.push_str(&format!("- Active: {} ({})\n", mode.name, mode.id));
-            } else {
-                out.push_str(&format!(
-                    "- Active: {} (not found in mode registry)\n",
-                    active_id
-                ));
+        // ── Active workspace & session ────────────────────────────────────────
+        out.push_str("## Current Context\n");
+        let workspaces = runtime_list_workspaces(&project_dir).unwrap_or_default();
+        let active_workspace = workspaces.iter().find(|w| {
+            matches!(
+                w.status,
+                runtime::WorkspaceStatus::Active
+            )
+        });
+        if let Some(ws) = active_workspace {
+            out.push_str(&format!(
+                "- Workspace: {} [{:?}]",
+                ws.branch, ws.workspace_type
+            ));
+            if let Some(ref mode) = ws.active_mode {
+                out.push_str(&format!(" mode={}", mode));
+            }
+            if let Some(ref fid) = ws.feature_id {
+                out.push_str(&format!(" feature={}", fid));
+            }
+            out.push('\n');
+
+            // Active session for this workspace
+            match runtime_get_active_workspace_session(&project_dir, &ws.branch) {
+                Ok(Some(session)) => {
+                    out.push_str(&format!(
+                        "- Session: ACTIVE (id: {})",
+                        session.id
+                    ));
+                    if let Some(ref goal) = session.goal {
+                        out.push_str(&format!(" — goal: {}", goal));
+                    }
+                    if let Some(ref provider) = session.primary_provider {
+                        out.push_str(&format!(" [{}]", provider));
+                    }
+                    out.push('\n');
+                }
+                Ok(None) => out.push_str("- Session: none (call start_session to begin)\n"),
+                Err(_) => {}
             }
         } else {
-            out.push_str("- Active: none\n");
+            out.push_str("- Workspace: none active (call activate_workspace to begin)\n");
         }
-        if !config.modes.is_empty() {
-            out.push_str("- Available:\n");
-            for mode in &config.modes {
-                out.push_str(&format!("  - {} ({})\n", mode.name, mode.id));
+
+        // Agent mode
+        if let Some(active_id) = config.active_mode.as_deref() {
+            if let Some(mode) = config.modes.iter().find(|m| m.id == active_id) {
+                out.push_str(&format!("- Mode: {} ({})\n", mode.name, mode.id));
             }
+        } else if !config.modes.is_empty() {
+            out.push_str("- Mode: none (available: ");
+            let names: Vec<_> = config.modes.iter().map(|m| m.id.as_str()).collect();
+            out.push_str(&names.join(", "));
+            out.push_str(")\n");
         }
 
         // Issue summary
@@ -303,9 +388,11 @@ impl ShipServer {
             out.push_str("No features.\n");
         } else {
             for f in &features {
+                let has_docs = f.feature.body.contains("## Documentation");
+                let docs_flag = if !has_docs { " ⚠ missing ## Documentation" } else { "" };
                 out.push_str(&format!(
-                    "- [{}] {} ({})\n",
-                    f.status, f.feature.metadata.title, f.id
+                    "- [{}] {} ({}){}\n",
+                    f.status, f.feature.metadata.title, f.id, docs_flag
                 ));
             }
         }
@@ -664,16 +751,20 @@ impl ShipServer {
 
     // ─── ADR Tools ────────────────────────────────────────────────────────────
 
-    /// Create a new ADR
-    #[tool(description = "Create a new Architecture Decision Record")]
-    async fn create_adr(&self, Parameters(req): Parameters<CreateAdrRequest>) -> String {
+    /// Log an architectural decision
+    #[tool(
+        description = "Log an architectural decision (ADR). Use when committing to a technical \
+        approach, trade-off, or design choice that future contributors need to understand. \
+        Captures the decision and reasoning in the project record."
+    )]
+    async fn log_decision(&self, Parameters(req): Parameters<LogDecisionRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
         };
         match create_adr(&project_dir, &req.title, "", &req.decision, "proposed") {
             Ok(entry) => format!(
-                "Created ADR '{}' (id: {})",
+                "Logged decision '{}' (id: {})",
                 entry.adr.metadata.title, entry.id
             ),
             Err(e) => format!("Error: {}", e),
@@ -772,7 +863,13 @@ impl ShipServer {
     // ─── Feature Tools ────────────────────────────────────────────────────────
 
     /// Create a new feature
-    #[tool(description = "Create a new feature document in the active project")]
+    #[tool(
+        description = "Create a new feature document. Features are the primary planning artifact — \
+        they capture intent and evolve into living documentation. Structure the body with \
+        '## Intent' (what this is, why it exists, how it should behave) and \
+        '## Documentation' (how it actually works once built). \
+        Link to a release, spec, or branch as needed."
+    )]
     async fn create_feature(&self, Parameters(req): Parameters<CreateFeatureRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -812,7 +909,12 @@ impl ShipServer {
     }
 
     /// Update a feature's content
-    #[tool(description = "Update the content of an existing feature")]
+    #[tool(
+        description = "Update the content of an existing feature. Use this to refine intent, \
+        add implementation notes, or update the '## Documentation' section as the feature is built. \
+        Features should always have '## Intent' (planning north star) and \
+        '## Documentation' (how it works) sections. Pass the full replacement body."
+    )]
     async fn update_feature(&self, Parameters(req): Parameters<UpdateFeatureRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -1398,32 +1500,16 @@ impl ShipServer {
             .unwrap_or_else(|e| format!("Error serializing workspace: {}", e))
     }
 
-    /// Sync workspace state with current branch context
-    #[tool(description = "Sync the workspace for a branch/id (or current git branch if omitted).")]
-    async fn sync_workspace(&self, Parameters(req): Parameters<SyncWorkspaceRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_sync_workspace(&project_dir, &branch) {
-            Ok(workspace) => serde_json::to_string_pretty(&workspace)
-                .unwrap_or_else(|e| format!("Error serializing workspace: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    /// Start a workspace session (compiles provider context)
+    /// Start a session on the active workspace (compiles provider context)
     #[tool(
-        description = "Start a workspace session and compile provider context for the selected provider."
+        description = "Start a workspace session. Activates the workspace if needed, compiles \
+        provider context (CLAUDE.md / .mcp.json), and records the session goal. \
+        Call this at the start of a focused work block. Optionally pass a goal describing \
+        what you plan to accomplish."
     )]
-    async fn start_workspace_session(
+    async fn start_session(
         &self,
-        Parameters(req): Parameters<WorkspaceSessionStartRequest>,
+        Parameters(req): Parameters<StartSessionRequest>,
     ) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(project_dir) => project_dir,
@@ -1447,11 +1533,16 @@ impl ShipServer {
         }
     }
 
-    /// End the active workspace session for a branch
-    #[tool(description = "End the active workspace session for a branch/id.")]
-    async fn end_workspace_session(
+    /// End the active session, record what was accomplished, and update feature metadata
+    #[tool(
+        description = "End the active workspace session. Provide a summary of what was accomplished \
+        and the IDs of any features that were updated. This emits a session-end event visible in \
+        get_project_info, bumps updated timestamps on touched features, and records the session \
+        history. Call this when work is complete or paused for the day."
+    )]
+    async fn end_session(
         &self,
-        Parameters(req): Parameters<WorkspaceSessionEndRequest>,
+        Parameters(req): Parameters<EndSessionRequest>,
     ) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(project_dir) => project_dir,
@@ -1462,23 +1553,56 @@ impl ShipServer {
                 Ok(branch) => branch,
                 Err(err) => return format!("Error: {}", err),
             };
+
+        let updated_feature_ids = req.updated_feature_ids.unwrap_or_default();
+        let summary = req.summary.clone().unwrap_or_default();
+
         let end_req = RuntimeEndWorkspaceSessionRequest {
             summary: req.summary,
-            updated_feature_ids: req.updated_feature_ids.unwrap_or_default(),
+            updated_feature_ids: updated_feature_ids.clone(),
             updated_spec_ids: req.updated_spec_ids.unwrap_or_default(),
         };
-        match runtime_end_workspace_session(&project_dir, &branch, end_req) {
-            Ok(session) => serde_json::to_string_pretty(&session)
-                .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e)),
-            Err(err) => format!("Error: {}", err),
+        let session = match runtime_end_workspace_session(&project_dir, &branch, end_req) {
+            Ok(session) => session,
+            Err(err) => return format!("Error: {}", err),
+        };
+
+        // Emit a log event so this surfaces in get_project_info immediately.
+        let log_line = format!("session ended [{}]: {}", branch, summary);
+        if let Err(e) = log_action_by(&project_dir, "agent", "session.end", &log_line) {
+            eprintln!("[ship] warning: failed to log session end: {}", e);
         }
+
+        // Touch feature timestamps for all updated features.
+        for feature_id in &updated_feature_ids {
+            match get_feature_by_id(&project_dir, feature_id) {
+                Ok(entry) => {
+                    if let Err(e) =
+                        update_feature_content(&project_dir, feature_id, &entry.feature.body)
+                    {
+                        eprintln!(
+                            "[ship] warning: failed to touch feature '{}': {}",
+                            feature_id, e
+                        );
+                    }
+                }
+                Err(e) => eprintln!(
+                    "[ship] warning: error reading feature '{}': {}",
+                    feature_id, e
+                ),
+            }
+        }
+
+        serde_json::to_string_pretty(&session)
+            .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e))
     }
 
-    /// Return active workspace session (if any) for a branch
+    /// Return active session (if any) for a branch
     #[tool(
-        description = "Get active workspace session status for a branch/id (or current git branch)."
+        description = "Get the active session status for a workspace branch (or current git branch). \
+        Returns session details including goal, mode, provider, and when it started."
     )]
-    async fn get_workspace_session_status(
+    async fn get_session_status(
         &self,
         Parameters(req): Parameters<GetWorkspaceRequest>,
     ) -> String {
@@ -1499,11 +1623,43 @@ impl ShipServer {
         }
     }
 
-    /// List workspace sessions, optionally filtered by branch
-    #[tool(description = "List workspace sessions, optionally filtered by workspace branch/id.")]
-    async fn list_workspace_sessions(
+    /// Log a progress note within the active session
+    #[tool(
+        description = "Record a progress note for the active session. Use mid-session to log \
+        what you did, decisions made, or blockers encountered. Notes appear in the project log \
+        and surface in get_project_info. Requires an active session (call start_session first)."
+    )]
+    async fn log_progress(&self, Parameters(req): Parameters<LogProgressRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(project_dir) => project_dir,
+            Err(err) => return err,
+        };
+        let branch =
+            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
+                Ok(branch) => branch,
+                Err(err) => return format!("Error: {}", err),
+            };
+        match runtime_get_active_workspace_session(&project_dir, &branch) {
+            Ok(None) => {
+                return format!(
+                    "No active session for '{}'. Call start_session first.",
+                    branch
+                )
+            }
+            Err(err) => return format!("Error checking session: {}", err),
+            Ok(Some(_)) => {}
+        }
+        match log_action_by(&project_dir, "agent", "session.progress", &req.note) {
+            Ok(()) => format!("Progress logged for session on '{}'.", branch),
+            Err(e) => format!("Error logging progress: {}", e),
+        }
+    }
+
+    /// List sessions, optionally filtered by branch
+    #[tool(description = "List past workspace sessions, optionally filtered by workspace branch/id.")]
+    async fn list_sessions(
         &self,
-        Parameters(req): Parameters<WorkspaceSessionsRequest>,
+        Parameters(req): Parameters<ListSessionsRequest>,
     ) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(project_dir) => project_dir,
@@ -1839,9 +1995,14 @@ impl ServerHandler for ShipServer {
                 ..Default::default()
             },
             instructions: Some(
-                "Tools for managing Ship project issues, releases, features, specs, ADRs, \
-                 event stream, and time tracking. Call open_project first if the project is \
-                 not auto-detected. Use resources (ship://) to read documents without consuming tool calls."
+                "Ship project intelligence — three-stage workflow:\n\n\
+                 PLANNING: get_project_info → create_note / create_feature / update_feature / log_decision\n\
+                 WORKSPACE: list_workspaces → activate_workspace → set_mode\n\
+                 SESSION: start_session → (work) → log_progress → end_session\n\n\
+                 By default only core workflow tools are visible. To access extended tools \
+                 (issues, specs, releases, time tracking, etc.), activate a mode that includes \
+                 them in its active_tools list. Call open_project first if the project is not \
+                 auto-detected. Use resources (ship://) to read documents without a tool call."
                     .into(),
             ),
         }
@@ -1870,7 +2031,42 @@ impl ServerHandler for ShipServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(self.tool_router.list_all()))
+        let all_tools = self.tool_router.list_all();
+
+        // Filter tool list to match what enforce_mode_tool_gate allows.
+        // Agents should only see tools they can actually call.
+        let visible = if let Ok(project_dir) = self.get_effective_project_dir().await {
+            let active_mode = get_active_mode(Some(project_dir.clone())).unwrap_or(None);
+            let in_project_workspace = matches!(
+                runtime::workspace::get_active_workspace_type(&project_dir).unwrap_or(None),
+                Some(runtime::WorkspaceType::Project)
+            );
+            all_tools
+                .into_iter()
+                .filter(|tool| {
+                    let name = tool.name.as_ref();
+                    if Self::is_core_tool(name) {
+                        return true;
+                    }
+                    if in_project_workspace && Self::is_project_workspace_tool(name) {
+                        return true;
+                    }
+                    if let Some(ref mode) = active_mode {
+                        Self::mode_allows_tool(name, &mode.active_tools)
+                    } else {
+                        false
+                    }
+                })
+                .collect()
+        } else {
+            // No project resolved — show core tools only.
+            all_tools
+                .into_iter()
+                .filter(|tool| Self::is_core_tool(tool.name.as_ref()))
+                .collect()
+        };
+
+        Ok(ListToolsResult::with_all_items(visible))
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -2222,7 +2418,7 @@ mod tests {
         );
 
         let sessions_before = server
-            .list_workspace_sessions(Parameters(WorkspaceSessionsRequest {
+            .list_sessions(Parameters(ListSessionsRequest {
                 branch: Some("feature/mode-control-plane".to_string()),
                 limit: Some(10),
             }))

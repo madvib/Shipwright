@@ -23,6 +23,9 @@ pub enum WorkspaceType {
     Refactor,
     Experiment,
     Hotfix,
+    /// Project-manager workspace: planning, triage, releases, specs. Not tied
+    /// to a single feature branch. Automatically unlocks the full PM tool surface.
+    Project,
 }
 
 impl std::fmt::Display for WorkspaceType {
@@ -32,6 +35,7 @@ impl std::fmt::Display for WorkspaceType {
             WorkspaceType::Refactor => write!(f, "refactor"),
             WorkspaceType::Experiment => write!(f, "experiment"),
             WorkspaceType::Hotfix => write!(f, "hotfix"),
+            WorkspaceType::Project => write!(f, "project"),
         }
     }
 }
@@ -45,6 +49,7 @@ impl std::str::FromStr for WorkspaceType {
             "refactor" => Ok(WorkspaceType::Refactor),
             "experiment" => Ok(WorkspaceType::Experiment),
             "hotfix" => Ok(WorkspaceType::Hotfix),
+            "project" => Ok(WorkspaceType::Project),
             _ => Err(anyhow::anyhow!("Invalid workspace type: {}", value)),
         }
     }
@@ -453,7 +458,16 @@ fn lifecycle_allows_transition(from: WorkspaceStatus, to: WorkspaceStatus) -> bo
 }
 
 fn type_allows_status(workspace_type: WorkspaceType, status: WorkspaceStatus) -> bool {
-    !(workspace_type == WorkspaceType::Experiment && status == WorkspaceStatus::Merged)
+    if workspace_type == WorkspaceType::Experiment && status == WorkspaceStatus::Merged {
+        return false;
+    }
+    // Project workspace has no lifecycle end — it doesn't get merged or reviewed.
+    if workspace_type == WorkspaceType::Project
+        && matches!(status, WorkspaceStatus::Merged | WorkspaceStatus::Review)
+    {
+        return false;
+    }
+    true
 }
 
 pub fn validate_workspace_transition(
@@ -876,6 +890,17 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
     upsert_workspace(ship_dir, &workspace)?;
+
+    if let Err(error) = crate::agents::export::sync_active_mode_with_override(
+        ship_dir,
+        workspace.active_mode.as_deref(),
+    ) {
+        eprintln!(
+            "[ship] warning: context recompile failed for workspace '{}': {}",
+            workspace.branch, error
+        );
+    }
+
     Ok(workspace)
 }
 
@@ -912,6 +937,43 @@ pub fn set_workspace_active_mode(
 /// Reconcile the current branch into an active workspace record.
 pub fn sync_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     activate_workspace(ship_dir, branch)
+}
+
+/// Returns the type of the currently active workspace, or `None` if no workspace is active.
+pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<WorkspaceType>> {
+    let workspaces = list_workspaces(ship_dir)?;
+    Ok(workspaces
+        .iter()
+        .find(|w| w.status == WorkspaceStatus::Active)
+        .map(|w| w.workspace_type))
+}
+
+/// Create the project-manager workspace ("ship") if it doesn't already exist.
+/// Called from `init_project`. The workspace starts Active so it's immediately
+/// usable, and uses the branch name "ship".
+pub fn seed_project_workspace(ship_dir: &Path) -> Result<()> {
+    const PROJECT_BRANCH: &str = "ship";
+
+    // Don't re-seed if any project workspace already exists.
+    let existing = list_workspaces(ship_dir)?;
+    if existing
+        .iter()
+        .any(|w| w.workspace_type == WorkspaceType::Project)
+    {
+        return Ok(());
+    }
+
+    let now = Utc::now();
+    let mut workspace = new_workspace(PROJECT_BRANCH, now);
+    workspace.workspace_type = WorkspaceType::Project;
+    workspace.status = WorkspaceStatus::Active;
+    workspace.last_activated_at = Some(now);
+
+    // Demote any currently active workspace before seeding.
+    demote_other_active_workspaces_db(ship_dir, PROJECT_BRANCH, &now.to_rfc3339())?;
+    upsert_workspace(ship_dir, &workspace)?;
+
+    Ok(())
 }
 
 #[cfg(test)]
