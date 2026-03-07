@@ -20,6 +20,7 @@ interface WorkspaceTerminalTrayProps {
     onSendSigInt: () => void;
     activationError?: string | null;
     runtimeError?: string | null;
+    hasActiveSession: boolean;
 }
 
 export function WorkspaceTerminalTray({
@@ -38,6 +39,7 @@ export function WorkspaceTerminalTray({
     onSendSigInt,
     activationError,
     runtimeError,
+    hasActiveSession,
 }: WorkspaceTerminalTrayProps) {
     const resolvedHeight = Math.max(height, 140);
     return (
@@ -74,6 +76,11 @@ export function WorkspaceTerminalTray({
                             {terminalSession.provider.toUpperCase()} · READY
                         </Badge>
                     )}
+                    {hasActiveSession && (
+                        <Badge variant="outline" className="h-4 px-1.5 text-[8px] font-black uppercase tracking-wide">
+                            session tracked
+                        </Badge>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -102,10 +109,12 @@ export function WorkspaceTerminalTray({
                                         ) : (
                                             <Square className="size-3" />
                                         )}
-                                        Stop
+                                        Stop Console
                                     </Button>
                                 </TooltipTrigger>
-                                <TooltipContent side="top">Stop current console session</TooltipContent>
+                                <TooltipContent side="top">
+                                    Stop terminal process only. Use End Session to close tracked workspace session.
+                                </TooltipContent>
                             </Tooltip>
                         ) : (
                             <Tooltip>

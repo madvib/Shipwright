@@ -16,6 +16,7 @@ import {
   ProjectConfig,
   ReleaseDocument as Release,
   ReleaseInfo,
+  ProviderInfo,
   SpecEntry as RawSpecInfo,
   Workspace,
   Result,
@@ -128,6 +129,8 @@ export const listWorkspaceEditorsCmd = (): Promise<Result<WorkspaceEditorInfo[],
   invoke('list_workspace_editors_cmd').then(data => ({ status: 'ok', data } as Result<WorkspaceEditorInfo[], string>)).catch(error => ({ status: 'error', error }));
 export const listWorkspacesCmd = (): Promise<Result<Workspace[], string>> =>
   invoke('list_workspaces_cmd').then(data => ({ status: 'ok', data } as Result<Workspace[], string>)).catch(error => ({ status: 'error', error }));
+export const listProvidersCmd = (): Promise<Result<ProviderInfo[], string>> =>
+  spectaCommands.listProvidersCmd().catch(error => ({ status: 'error', error: String(error) }));
 export const syncWorkspaceCmd = (branch?: string | null): Promise<Result<Workspace, string>> =>
   invoke('sync_workspace_cmd', { branch: branch ?? null }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const createWorkspaceCmd = (

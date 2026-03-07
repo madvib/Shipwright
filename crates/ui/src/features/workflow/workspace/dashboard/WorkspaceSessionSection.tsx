@@ -179,20 +179,6 @@ export function WorkspaceSessionSection({
                   <p className="text-[10px] text-amber-700">
                     Session context is stale. Restart to align with latest workspace compile.
                   </p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    className="h-6 gap-1 border-amber-600/40 text-[10px] font-bold text-amber-700 hover:bg-amber-500/10"
-                    onClick={onRestartSession}
-                    disabled={restartingSession}
-                  >
-                    {restartingSession ? (
-                      <RefreshCw className="size-3 animate-spin" />
-                    ) : (
-                      <RefreshCw className="size-3" />
-                    )}
-                    Restart
-                  </Button>
                 </div>
               )}
               <Tooltip>
@@ -210,20 +196,36 @@ export function WorkspaceSessionSection({
                 </TooltipContent>
               </Tooltip>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5"
-              onClick={onEndSession}
-              disabled={endingSession}
-            >
-              {endingSession ? (
-                <RefreshCw className="size-3 animate-spin" />
-              ) : (
-                <Square className="size-3 fill-current" />
-              )}
-              End Session
-            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5"
+                onClick={onRestartSession}
+                disabled={restartingSession || endingSession}
+              >
+                {restartingSession ? (
+                  <RefreshCw className="size-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3" />
+                )}
+                Sync + Restart
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5"
+                onClick={onEndSession}
+                disabled={endingSession || restartingSession}
+              >
+                {endingSession ? (
+                  <RefreshCw className="size-3 animate-spin" />
+                ) : (
+                  <Square className="size-3 fill-current" />
+                )}
+                End Session
+              </Button>
+            </div>
           </div>
         )}
       </div>

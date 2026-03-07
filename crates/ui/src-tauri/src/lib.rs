@@ -12,9 +12,9 @@ use runtime::{
     AgentConfig, CatalogEntry, CatalogKind, CreateWorkspaceRequest, EndWorkspaceSessionRequest,
     EventRecord, LogEntry, ModelInfo, ProviderInfo, Skill, Workspace, WorkspaceProviderMatrix,
     WorkspaceRepairReport, WorkspaceSession, WorkspaceStatus, WorkspaceType, activate_workspace,
-    create_skill, create_user_skill, create_workspace, delete_skill, delete_user_skill,
-    delete_workspace, end_workspace_session, get_active_workspace_session, get_effective_skill,
-    get_skill, get_user_skill, get_workspace, get_workspace_provider_matrix,
+    autodetect_providers, create_skill, create_user_skill, create_workspace, delete_skill,
+    delete_user_skill, delete_workspace, end_workspace_session, get_active_workspace_session,
+    get_effective_skill, get_skill, get_user_skill, get_workspace, get_workspace_provider_matrix,
     ingest_external_events, list_catalog, list_catalog_by_kind, list_effective_skills,
     list_events_since, list_models, list_providers, list_skills, list_user_skills,
     list_workspace_sessions, list_workspaces, log_action, read_log_entries, repair_workspace,
@@ -375,6 +375,17 @@ fn selected_base_dir(path: &Path) -> PathBuf {
         path.parent().unwrap_or(path).to_path_buf()
     } else {
         path.to_path_buf()
+    }
+}
+
+fn detect_project_providers_non_blocking(ship_path: &Path) {
+    let project_root = ship_path.parent().unwrap_or(ship_path);
+    if let Err(err) = autodetect_providers(project_root) {
+        eprintln!(
+            "[ship-ui] warning: provider autodetect failed for {}: {}",
+            project_root.display(),
+            err
+        );
     }
 }
 
@@ -801,11 +812,15 @@ async fn pick_and_open_project(
     };
     let base_dir = selected_base_dir(&selected_dir);
     let ship_path = ensure_ship_path(&selected_dir);
-    let final_ship_path = if ship_path.exists() {
-        ship_path
-    } else {
+    let initialized = !ship_path.exists();
+    let final_ship_path = if initialized {
         init_project(base_dir).map_err(|e| e.to_string())?
+    } else {
+        ship_path
     };
+    if initialized {
+        detect_project_providers_non_blocking(&final_ship_path);
+    }
 
     let issues = list_issues(&final_ship_path).unwrap_or_default();
     let display_name = project_display_name(&final_ship_path);
@@ -901,11 +916,15 @@ async fn create_new_project(
     let existing_ship = ensure_ship_path(&selected_dir);
 
     // Initialize the project unless it already points to a .ship directory.
-    let ship_path = if existing_ship.exists() {
-        existing_ship
-    } else {
+    let initialized = !existing_ship.exists();
+    let ship_path = if initialized {
         init_project(base_dir.clone()).map_err(|e| e.to_string())?
+    } else {
+        existing_ship
     };
+    if initialized {
+        detect_project_providers_non_blocking(&ship_path);
+    }
 
     let issues = list_issues(&ship_path).unwrap_or_default();
     let display_name = project_display_name(&ship_path);
@@ -954,11 +973,15 @@ fn create_project_with_options(
     let base_dir = selected_base_dir(&selected_dir);
     let existing_ship = ensure_ship_path(&selected_dir);
 
-    let ship_path = if existing_ship.exists() {
-        existing_ship
-    } else {
+    let initialized = !existing_ship.exists();
+    let ship_path = if initialized {
         init_project(base_dir.clone()).map_err(|e| e.to_string())?
+    } else {
+        existing_ship
     };
+    if initialized {
+        detect_project_providers_non_blocking(&ship_path);
+    }
 
     let mut final_config =
         config.unwrap_or_else(|| get_config(Some(ship_path.clone())).unwrap_or_default());

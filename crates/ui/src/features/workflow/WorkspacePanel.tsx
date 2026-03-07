@@ -555,6 +555,7 @@ export default function WorkspacePanel() {
             sessionSummaryInput={state.sessionSummaryInput}
             setSessionSummaryInput={state.setSessionSummaryInput}
             providerMatrix={state.providerMatrix}
+            providerInfos={state.providerInfos}
             sessionProvider={sessionProvider}
             setSessionProvider={setSessionProvider}
             restartingSession={restartingSession}
@@ -567,6 +568,8 @@ export default function WorkspacePanel() {
             onRepair={handleRepair}
             repairing={repairingWorkspace}
             lastRepairReport={lastRepairReport}
+            loading={state.loading}
+            onRefreshProviders={() => void state.load()}
           />
         </div>
 
@@ -603,6 +606,7 @@ export default function WorkspacePanel() {
           onSendSigInt={() => terminal.sendTerminalInput('\x03')}
           activationError={terminal.terminalSession?.activation_error}
           runtimeError={terminal.runtimeError}
+          hasActiveSession={state.activeSession?.status === 'active'}
         />
       </main>
     </div>

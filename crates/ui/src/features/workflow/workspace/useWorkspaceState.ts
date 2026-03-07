@@ -4,6 +4,7 @@ import {
     listWorkspacesCmd,
     listWorkspaceEditorsCmd,
     listModesCmd,
+    listProvidersCmd,
     getActiveWorkspaceSessionCmd,
     listWorkspaceSessionsCmd,
     getWorkspaceProviderMatrixCmd,
@@ -12,7 +13,7 @@ import {
     type WorkspaceEditorInfo
 } from '@/lib/platform/tauri/commands';
 import { Workspace } from '@/bindings';
-import { ModeConfig } from '@/bindings';
+import { ModeConfig, ProviderInfo } from '@/bindings';
 import { RuntimeWorkspace } from '@/lib/types/workspace';
 import { WorkspaceRow, WorkspaceGroupBy } from './types';
 import { WorkspaceGraphStatus, WorkspaceGraphRow } from '../components/WorkspaceLifecycleGraph';
@@ -24,6 +25,7 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     const [runtimeWorkspaces, setRuntimeWorkspaces] = useState<Workspace[]>([]);
     const [modeOptions, setModeOptions] = useState<ModeConfig[]>([]);
     const [availableEditors, setAvailableEditors] = useState<WorkspaceEditorInfo[]>([]);
+    const [providerInfos, setProviderInfos] = useState<ProviderInfo[]>([]);
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -83,6 +85,13 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
         }
     };
 
+    const loadProviders = async () => {
+        const result = await listProvidersCmd();
+        if (result.status === 'ok') {
+            setProviderInfos(result.data);
+        }
+    };
+
     const fetchSessionSnapshot = async (targetBranch: string) => {
         const [activeRes, listRes] = await Promise.all([
             getActiveWorkspaceSessionCmd(targetBranch),
@@ -136,7 +145,7 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
 
     const detail = useMemo(() => filteredRows.find((r) => r.branch === selectedBranch) ?? null, [filteredRows, selectedBranch]);
 
-    useEffect(() => { load(); loadEditors(); loadModes(); }, []);
+    useEffect(() => { load(); loadEditors(); loadModes(); loadProviders(); }, []);
 
     useEffect(() => {
         if (!detail) {
@@ -174,6 +183,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
         endingSession, setEndingSession, sessionGoalInput, setSessionGoalInput,
         sessionSummaryInput, setSessionSummaryInput, syncing, setSyncing, activating, setActivating,
         updatingLinks, setUpdatingLinks, linkFeatureId, setLinkFeatureId, linkSpecId, setLinkSpecId,
-        rows, filteredRows, detail, load, fetchSessionSnapshot
+        rows, filteredRows, detail, providerInfos, load, fetchSessionSnapshot
     };
 }

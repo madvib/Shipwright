@@ -2,9 +2,11 @@ import { Clock3 } from 'lucide-react';
 import { type WorkspaceProviderMatrix, type WorkspaceRepairReport, type WorkspaceSessionInfo } from '@/lib/platform/tauri/commands';
 import { WorkspaceGraphStatus } from '../components/WorkspaceLifecycleGraph';
 import { WorkspaceLinksSection } from './dashboard/WorkspaceLinksSection.tsx';
+import { WorkspaceProviderPreflightSection } from './dashboard/WorkspaceProviderPreflightSection.tsx';
 import { WorkspaceSessionSection } from './dashboard/WorkspaceSessionSection.tsx';
 import { WorkspaceStatusCard } from './dashboard/WorkspaceStatusCard.tsx';
 import { WorkspaceRow } from './types';
+import { ProviderInfo } from '@/bindings';
 
 interface WorkspaceDashboardProps {
   detail: WorkspaceRow | null;
@@ -33,6 +35,7 @@ interface WorkspaceDashboardProps {
   sessionSummaryInput: string;
   setSessionSummaryInput: (val: string) => void;
   providerMatrix: WorkspaceProviderMatrix | null;
+  providerInfos: ProviderInfo[];
   sessionProvider: string | null;
   setSessionProvider: (provider: string | null) => void;
   NO_LINK_VALUE: string;
@@ -43,6 +46,8 @@ interface WorkspaceDashboardProps {
   onRepair: () => void;
   repairing: boolean;
   lastRepairReport: WorkspaceRepairReport | null;
+  loading: boolean;
+  onRefreshProviders: () => void;
 }
 
 export function WorkspaceDashboard({
@@ -72,6 +77,7 @@ export function WorkspaceDashboard({
   sessionSummaryInput,
   setSessionSummaryInput,
   providerMatrix,
+  providerInfos,
   sessionProvider,
   setSessionProvider,
   NO_LINK_VALUE,
@@ -82,6 +88,8 @@ export function WorkspaceDashboard({
   onRepair,
   repairing,
   lastRepairReport,
+  loading,
+  onRefreshProviders,
 }: WorkspaceDashboardProps) {
   if (!detail) {
     return (
@@ -129,6 +137,13 @@ export function WorkspaceDashboard({
         linkSpecId={linkSpecId}
         noLinkValue={NO_LINK_VALUE}
         currentConfigGeneration={detail.configGeneration}
+      />
+
+      <WorkspaceProviderPreflightSection
+        providerMatrix={providerMatrix}
+        providerInfos={providerInfos}
+        loading={loading}
+        onRefresh={onRefreshProviders}
       />
 
       <WorkspaceLinksSection
