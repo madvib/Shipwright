@@ -70,7 +70,10 @@ export default function WorkspacePanel() {
   };
 
   const handleOpenEditor = async (targetBranch: string, editorId: string) => {
-    await openWorkspaceEditorCmd(targetBranch, editorId);
+    const result = await openWorkspaceEditorCmd(targetBranch, editorId);
+    if (result.status === 'error') {
+      state.setError(result.error || `Failed to open ${editorId}.`);
+    }
   };
 
   const startSessionInternal = async ({
@@ -260,8 +263,12 @@ export default function WorkspacePanel() {
     if (!state.detail) return;
     state.setSyncing(true);
     try {
-      await syncWorkspaceCmd(state.detail.branch);
-      state.load();
+      const result = await syncWorkspaceCmd(state.detail.branch);
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to sync workspace.');
+        return;
+      }
+      await state.load();
     } finally {
       state.setSyncing(false);
     }
@@ -271,8 +278,12 @@ export default function WorkspacePanel() {
     if (!state.detail) return;
     state.setActivating(true);
     try {
-      await activateWorkspaceCmd(state.detail.branch);
-      state.load();
+      const result = await activateWorkspaceCmd(state.detail.branch);
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to activate workspace.');
+        return;
+      }
+      await state.load();
     } finally {
       state.setActivating(false);
     }
