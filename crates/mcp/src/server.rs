@@ -32,6 +32,7 @@ use runtime::{
         list_workspace_sessions as runtime_list_workspace_sessions,
         list_workspaces as runtime_list_workspaces, set_workspace_active_mode,
         repair_workspace as runtime_repair_workspace,
+        sync_workspace as runtime_sync_workspace,
         start_workspace_session as runtime_start_workspace_session,
     },
 };
