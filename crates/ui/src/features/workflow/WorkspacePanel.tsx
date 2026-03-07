@@ -31,6 +31,7 @@ import { WorkspaceGraphStatus } from './components/WorkspaceLifecycleGraph';
 import { cn } from '@/lib/utils';
 
 const NO_LINK_VALUE = '__none__';
+type SessionErrorSurface = 'alert' | 'silent';
 
 export default function WorkspacePanel() {
   const navigate = useNavigate();
@@ -72,32 +73,60 @@ export default function WorkspacePanel() {
     await openWorkspaceEditorCmd(targetBranch, editorId);
   };
 
-  const handleStartSession = async () => {
-    if (!state.detail) return;
-    const allowedProviders = state.providerMatrix?.allowed_providers ?? [];
-    if (!sessionProvider || !allowedProviders.includes(sessionProvider)) {
-      state.setError(
-        `No allowed providers resolved for workspace session (${state.providerMatrix?.source ?? 'unknown source'}). Open workspace settings and add at least one provider.`
-      );
-      return;
+  const startSessionInternal = async ({
+    preferredProvider,
+    errorSurface = 'alert',
+  }: {
+    preferredProvider?: string | null;
+    errorSurface?: SessionErrorSurface;
+  } = {}): Promise<{ ok: boolean; error: string | null; provider: string | null }> => {
+    if (!state.detail) {
+      return { ok: false, error: 'Select a workspace before starting a session.', provider: null };
     }
+
+    const allowedProviders = state.providerMatrix?.allowed_providers ?? [];
+    let provider = preferredProvider ?? sessionProvider;
+    if (!provider || !allowedProviders.includes(provider)) {
+      provider = allowedProviders[0] ?? null;
+    }
+
+    if (!provider) {
+      const message =
+        `No allowed providers resolved for workspace session (${state.providerMatrix?.source ?? 'unknown source'}). ` +
+        'Open workspace settings and add at least one provider.';
+      if (errorSurface === 'alert') {
+        state.setError(message);
+      }
+      return { ok: false, error: message, provider: null };
+    }
+
     state.setStartingSession(true);
     try {
       const goal = state.sessionGoalInput.trim();
       const res = await startWorkspaceSessionCmd(
         state.detail.branch,
         goal.length > 0 ? goal : null,
-        workspaceUi.activeModeId ?? null,
-        sessionProvider
+        state.detail.activeMode ?? workspaceUi.activeModeId ?? null,
+        provider
       );
       if (res.status === 'ok') {
-        state.load();
+        setSessionProvider(provider);
+        await state.load();
+        return { ok: true, error: null, provider };
       } else {
-        state.setError(res.error || 'Failed to start workspace session.');
+        const message = res.error || 'Failed to start workspace session.';
+        if (errorSurface === 'alert') {
+          state.setError(message);
+        }
+        return { ok: false, error: message, provider };
       }
     } finally {
       state.setStartingSession(false);
     }
+  };
+
+  const handleStartSession = async () => {
+    await startSessionInternal();
   };
 
   const handleEndSession = async () => {
@@ -182,7 +211,7 @@ export default function WorkspacePanel() {
       const startRes = await startWorkspaceSessionCmd(
         detail.branch,
         activeSession.goal ?? null,
-        workspaceUi.activeModeId ?? detail.activeMode ?? null,
+        detail.activeMode ?? workspaceUi.activeModeId ?? null,
         restartProvider
       );
       if (startRes.status === 'error') {
@@ -405,10 +434,27 @@ export default function WorkspacePanel() {
 
   const handleStartTerminal = async () => {
     if (!state.detail) return;
+    terminal.setRuntimeError(null);
+    let sessionWarning: string | null = null;
     if (!state.activeSession) {
-      await handleStartSession();
+      if (terminal.terminalProvider === 'shell') {
+        sessionWarning =
+          'Console is running in shell mode without a tracked workspace session. Start a session to capture lifecycle metadata.';
+      } else {
+        const sessionResult = await startSessionInternal({
+          preferredProvider: terminal.terminalProvider,
+          errorSurface: 'silent',
+        });
+        if (!sessionResult.ok) {
+          sessionWarning =
+            `Session tracking was not started: ${sessionResult.error ?? 'no allowed provider resolved'}`;
+        }
+      }
     }
     await terminal.startWorkspaceTerminal();
+    if (sessionWarning) {
+      terminal.setRuntimeError(sessionWarning);
+    }
   };
 
   useEffect(() => {

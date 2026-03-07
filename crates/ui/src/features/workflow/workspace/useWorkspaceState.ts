@@ -159,7 +159,8 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
             if (cancelled) return;
             setActiveSession(snapshot.active); setRecentSessions(snapshot.sessions);
 
-            const matrixRes = await getWorkspaceProviderMatrixCmd(detail.branch, workspaceUi.activeModeId ?? null);
+            const modeForMatrix = detail.activeMode ?? workspaceUi.activeModeId ?? null;
+            const matrixRes = await getWorkspaceProviderMatrixCmd(detail.branch, modeForMatrix);
             if (!cancelled && matrixRes.status === 'ok') setProviderMatrix(matrixRes.data);
         };
         void loadContext();

@@ -174,6 +174,21 @@ export function WorkspaceTerminalTray({
                 </div>
             </div>
 
+            {(activationError || runtimeError) && (
+                <div className="border-b border-border bg-muted/20 px-4 py-2">
+                    {activationError && (
+                        <p className="text-[10px] text-amber-700">
+                            activation warning: {activationError}
+                        </p>
+                    )}
+                    {runtimeError && (
+                        <p className="text-[10px] text-status-red">
+                            provider status: {runtimeError}
+                        </p>
+                    )}
+                </div>
+            )}
+
             {/* Output Console */}
             <div className="relative flex-1 overflow-hidden">
                 <div

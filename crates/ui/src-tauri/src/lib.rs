@@ -1,36 +1,36 @@
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use runtime::config::{
-    add_mcp_server, add_mode, generate_gitignore, get_active_mode, get_config,
-    get_effective_config, list_mcp_servers, remove_mcp_server, remove_mode, save_config,
-    set_active_mode, AiConfig, McpServerConfig, ModeConfig, ProjectConfig, ProjectDiscovery,
+    AiConfig, McpServerConfig, ModeConfig, ProjectConfig, ProjectDiscovery, add_mcp_server,
+    add_mode, generate_gitignore, get_active_mode, get_config, get_effective_config,
+    list_mcp_servers, remove_mcp_server, remove_mode, save_config, set_active_mode,
 };
 use runtime::project::{
-    adrs_dir, features_dir, get_active_project_global, get_project_dir, issues_dir, releases_dir,
-    resolve_project_ship_dir, set_active_project_global, specs_dir, SHIP_DIR_NAME,
+    SHIP_DIR_NAME, adrs_dir, features_dir, get_active_project_global, get_project_dir, issues_dir,
+    releases_dir, resolve_project_ship_dir, set_active_project_global, specs_dir,
 };
 use runtime::{
-    activate_workspace, create_skill, create_user_skill, create_workspace, delete_skill,
-    delete_user_skill, delete_workspace, end_workspace_session, get_active_workspace_session,
-    get_effective_skill, get_skill, get_user_skill, get_workspace, get_workspace_provider_matrix,
+    AgentConfig, CatalogEntry, CatalogKind, CreateWorkspaceRequest, EndWorkspaceSessionRequest,
+    EventRecord, LogEntry, ModelInfo, ProviderInfo, Skill, Workspace, WorkspaceProviderMatrix,
+    WorkspaceRepairReport, WorkspaceSession, WorkspaceStatus, WorkspaceType, activate_workspace,
+    create_skill, create_user_skill, create_workspace, delete_skill, delete_user_skill,
+    delete_workspace, end_workspace_session, get_active_workspace_session, get_effective_skill,
+    get_skill, get_user_skill, get_workspace, get_workspace_provider_matrix,
     ingest_external_events, list_catalog, list_catalog_by_kind, list_effective_skills,
     list_events_since, list_models, list_providers, list_skills, list_user_skills,
     list_workspace_sessions, list_workspaces, log_action, read_log_entries, repair_workspace,
     resolve_agent_config, search_catalog, set_workspace_active_mode, start_workspace_session,
-    sync_workspace, transition_workspace_status, update_skill, update_user_skill, AgentConfig,
-    CatalogEntry, CatalogKind, CreateWorkspaceRequest, EndWorkspaceSessionRequest, EventRecord,
-    LogEntry, ModelInfo, ProviderInfo, Skill, Workspace, WorkspaceProviderMatrix,
-    WorkspaceRepairReport, WorkspaceSession, WorkspaceStatus, WorkspaceType,
+    sync_workspace, transition_workspace_status, update_skill, update_user_skill,
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
-    create_adr, create_feature, create_issue, create_note, create_release, create_spec, delete_adr,
-    delete_issue, delete_spec, get_adr_by_id, get_feature_by_id, get_issue_by_id, get_note_by_id,
-    get_project_name, get_release_by_id, get_spec_by_id, init_project, list_adrs, list_features,
-    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
-    move_issue, read_template, register_project, rename_project, update_adr, update_feature,
-    update_issue, update_note_content, update_release, update_spec, AdrEntry, AdrStatus,
-    FeatureEntry as ProjectFeatureEntry, Issue, IssueEntry, IssueStatus, NoteScope,
-    ReleaseEntry as ProjectReleaseEntry, Spec, SpecEntry, ADR,
+    ADR, AdrEntry, AdrStatus, FeatureEntry as ProjectFeatureEntry, Issue, IssueEntry, IssueStatus,
+    NoteScope, ReleaseEntry as ProjectReleaseEntry, Spec, SpecEntry, create_adr, create_feature,
+    create_issue, create_note, create_release, create_spec, delete_adr, delete_issue, delete_spec,
+    get_adr_by_id, get_feature_by_id, get_issue_by_id, get_note_by_id, get_project_name,
+    get_release_by_id, get_spec_by_id, init_project, list_adrs, list_features, list_issues,
+    list_notes, list_registered_projects, list_releases, list_specs, move_adr, move_issue,
+    read_template, register_project, rename_project, update_adr, update_feature, update_issue,
+    update_note_content, update_release, update_spec,
 };
 use specta::Type;
 use std::collections::{HashMap, HashSet};
@@ -1981,6 +1981,23 @@ fn resolve_terminal_command(provider: &str) -> String {
     }
 }
 
+fn friendly_terminal_spawn_error(provider: &str, command: &str, raw_error: &str) -> String {
+    let normalized = raw_error.to_ascii_lowercase();
+    if normalized.contains("no such file")
+        || normalized.contains("not found")
+        || normalized.contains("cannot find")
+    {
+        return format!(
+            "Terminal provider '{}' is not installed or not on PATH (command: '{}').",
+            provider, command
+        );
+    }
+    format!(
+        "Failed to start terminal provider '{}' (command: '{}'): {}",
+        provider, command, raw_error
+    )
+}
+
 fn load_terminal_session(
     state: &State<'_, AppState>,
     session_id: &str,
@@ -2416,12 +2433,11 @@ async fn start_workspace_terminal_cmd(
                 .map_err(|e| e.to_string())?;
 
             let command = resolve_terminal_command(&provider_for_spawn);
-            let mut cmd = CommandBuilder::new(command);
+            let mut cmd = CommandBuilder::new(command.as_str());
             cmd.cwd(&target_dir);
-            let child = pty_pair
-                .slave
-                .spawn_command(cmd)
-                .map_err(|e| e.to_string())?;
+            let child = pty_pair.slave.spawn_command(cmd).map_err(|e| {
+                friendly_terminal_spawn_error(&provider_for_spawn, command.as_str(), &e.to_string())
+            })?;
             let mut reader = pty_pair
                 .master
                 .try_clone_reader()
@@ -3252,6 +3268,13 @@ mod tests {
 
         let shell = resolve_terminal_command("shell");
         assert!(!shell.trim().is_empty());
+    }
+
+    #[test]
+    fn terminal_spawn_error_is_human_readable_for_missing_binary() {
+        let message = friendly_terminal_spawn_error("codex", "codex", "No such file or directory");
+        assert!(message.contains("not installed or not on PATH"));
+        assert!(message.contains("codex"));
     }
 
     #[test]
