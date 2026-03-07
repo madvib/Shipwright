@@ -37,7 +37,6 @@ export function useFeatureChecklistMetrics(
     }
 
     const loadFeatureMetrics = async () => {
-      setLoading(true);
       const pairs: Array<readonly [string, FeatureChecklistMetrics | null]> = [];
       const pending: FeatureEntry[] = [];
 
@@ -49,6 +48,8 @@ export function useFeatureChecklistMetrics(
           pending.push(feature);
         }
       }
+
+      setLoading(pending.length > 0);
 
       for (let i = 0; i < pending.length; i += MAX_CONCURRENT_LOADS) {
         const chunk = pending.slice(i, i + MAX_CONCURRENT_LOADS);
