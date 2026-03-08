@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "WV9uuDCJ"
 title = "Architecture Decision Records"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.199224187+00:00"
+updated = "2026-03-07T21:48:10.301557+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,26 +18,25 @@ skills = []
 
 ## Why
 
-Architecture decisions that affect the whole project are expensive to revisit and easy to forget. ADRs give every decision a permanent home — context, rationale, and consequences captured at the moment the decision was made. Shipwright makes ADRs a first-class primitive so they're written, linked to specs, and surfaced to agents automatically rather than buried in Slack threads or commit messages.
+ADRs capture durable architecture decisions with rationale, tradeoffs, and replacement history so teams and agents can reason from explicit decisions instead of tribal knowledge.
 
 ## Acceptance Criteria
 
-- [ ] ADR CRUD: create, list, get, update via CLI and MCP tools
-- [ ] Status managed via directory: `proposed/`, `accepted/`, `rejected/`, `superseded/`, `deprecated/`
-- [ ] `spec_id` cross-reference links ADR to the spec that motivated it
-- [ ] `supersedes_id` links replacement ADRs
-- [ ] ADRs surfaced in CLAUDE.md generation for linked features
-- [ ] `ship adr list` shows status, title, date
-- [ ] UI: ADR list with status filter and detail view
+- [x] ADR CRUD and status transitions are available in CLI/MCP/backend surfaces
+- [x] ADR records persist in SQLite with status, date, and relationship fields
+- [x] ADRs support links to motivating specs and superseded decisions
+- [x] ADR list/detail workflows are available in the desktop planning area
 
 ## Delivery Todos
 
-- [ ] Confirm `adr.rs` CRUD handles all status directories
-- [ ] `ship adr new` CLI with optional `--spec` flag
-- [ ] MCP: `list_adrs`, `get_adr`, `create_adr`, `generate_adr` (AI-assisted from problem statement)
-- [ ] Inject relevant ADR content into CLAUDE.md for linked branches
-- [ ] UI ADR list and detail views
+- [x] Migrate ADR persistence and status handling to SQLite-backed operations
+- [x] Keep ADR markdown import/export compatibility for project artifacts
+- [x] Wire ADR operations through desktop backend commands
 
-## Notes
+## Current Behavior
 
-ADR filename: `{slug}.md` — no date prefix, date is in `date` frontmatter field. Status is the directory, not a frontmatter field. The `generate_adr` MCP tool uses AI to draft Context/Decision/Consequences from a problem statement prompt.
+ADR capability is operational and integrated.
+
+## Follow-ups
+
+- Expand decision support UX for option comparison and review workflows.

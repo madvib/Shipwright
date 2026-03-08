@@ -10,11 +10,14 @@ interface ReleaseHubLinkedFeature {
   feature: FeatureEntry;
   readiness: number;
   blocking: boolean;
+  isActiveTarget?: boolean;
 }
 
 interface ReleaseHubRowProps {
   release: ReleaseEntry;
   linked: ReleaseHubLinkedFeature[];
+  activeTargetCount: number;
+  linkedCount: number;
   progress: number;
   blockers: number;
   todosDone: number;
@@ -27,6 +30,8 @@ interface ReleaseHubRowProps {
 export default function ReleaseHubRow({
   release,
   linked,
+  activeTargetCount,
+  linkedCount,
   progress,
   blockers,
   todosDone,
@@ -48,7 +53,8 @@ export default function ReleaseHubRow({
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold">{release.version}</p>
             <Badge variant="outline">{formatStatusLabel(release.status)}</Badge>
-            <Badge variant="secondary">{linked.length} linked features</Badge>
+            <Badge variant="secondary">{activeTargetCount} active targets</Badge>
+            <Badge variant="secondary">{linkedCount} linked features</Badge>
             {blockers > 0 && <Badge variant="secondary">{blockers} blockers</Badge>}
           </div>
           <div className="space-y-1">

@@ -39,6 +39,39 @@ fn release_update_path(ship_dir: &Path, version: &str) -> PathBuf {
     primary
 }
 
+fn find_release_file_by_id(ship_dir: &Path, id: &str) -> Option<PathBuf> {
+    let releases_dir = runtime::project::releases_dir(ship_dir);
+    if !releases_dir.exists() {
+        return None;
+    }
+    let legacy_marker = format!("id = \"{}\"", id);
+    let generated_marker = format!("ship:release id={}", id);
+    for entry in std::fs::read_dir(&releases_dir).ok()?.flatten() {
+        let path = entry.path();
+        if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if content.contains(&legacy_marker) || content.contains(&generated_marker) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn load_release_body_from_file(ship_dir: &Path, id: &str, version: &str) -> Option<String> {
+    let path = find_release_file_by_id(ship_dir, id)
+        .unwrap_or_else(|| release_update_path(ship_dir, version));
+    if !path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(path).ok()?;
+    let release = Release::from_markdown(&content).ok()?;
+    Some(release.body)
+}
+
 fn resolve_release_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
     let reference = reference.trim();
     if reference.is_empty() {
@@ -184,7 +217,14 @@ pub fn create_release(ship_dir: &Path, version: &str, body: &str) -> Result<Rele
 
 pub fn get_release_by_id(ship_dir: &Path, id: &str) -> Result<ReleaseEntry> {
     let resolved_id = require_release_id(ship_dir, id)?;
-    get_release_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Release not found: {}", id))
+    let mut entry =
+        get_release_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Release not found: {}", id))?;
+    if entry.release.body.trim().is_empty()
+        && let Some(body) = load_release_body_from_file(ship_dir, &resolved_id, &entry.version)
+    {
+        entry.release.body = body;
+    }
+    Ok(entry)
 }
 
 pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result<ReleaseEntry> {
@@ -192,6 +232,12 @@ pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result
     let existing = get_release_db(ship_dir, &resolved_id)?
         .ok_or_else(|| anyhow!("Release not found: {}", id))?;
     release.metadata.updated = Utc::now().to_rfc3339();
+    if release.body.trim().is_empty()
+        && let Some(body) =
+            load_release_body_from_file(ship_dir, &resolved_id, &release.metadata.version)
+    {
+        release.body = body;
+    }
 
     upsert_release_db(ship_dir, &release, &existing.status)?;
     let path = release_update_path(ship_dir, &release.metadata.version);

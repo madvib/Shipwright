@@ -4,23 +4,19 @@ use chrono::Utc;
 
 impl Feature {
     pub fn to_markdown(&self) -> Result<String> {
-        let toml_str = toml::to_string(&self.metadata)
-            .context("Failed to serialise feature metadata as TOML")?;
-
-        let out = format!("+++\n{}+++\n\n{}", toml_str, self.body);
-
-        // Append structured sections if they have data but weren't in the body
-        // Note: In the future, we might want to ensure the body doesn't already contain these.
-        // For now, let's assume the body contains the narrative and we might append these if they're missing.
-
-        Ok(out)
+        let body = self.body.trim_start_matches('\n');
+        Ok(format!(
+            "<!-- ship:feature id={} -->\n\n{}",
+            self.metadata.id, body
+        ))
     }
 
     pub fn from_markdown(content: &str) -> Result<Self> {
         if content.starts_with("+++\n") {
             Self::from_toml_markdown(content)
         } else {
-            let title = content
+            let (header_id, body_content) = parse_generated_feature_header(content);
+            let title = body_content
                 .lines()
                 .find(|l| l.starts_with("# "))
                 .map(|l| l.trim_start_matches("# ").trim().to_string())
@@ -28,18 +24,19 @@ impl Feature {
             let now = Utc::now().to_rfc3339();
             Ok(Feature {
                 metadata: FeatureMetadata {
-                    id: String::new(),
+                    id: header_id.unwrap_or_default(),
                     title,
                     description: None,
                     created: now.clone(),
                     updated: now,
                     release_id: None,
+                    active_target_id: None,
                     spec_id: None,
                     branch: None,
                     agent: None,
                     tags: Vec::new(),
                 },
-                body: content.to_string(),
+                body: body_content,
                 todos: Vec::new(),
                 criteria: Vec::new(),
             })
@@ -73,6 +70,25 @@ impl Feature {
         self.todos = parse_checklist(&self.body, "Delivery Todos");
         self.criteria = parse_checklist(&self.body, "Acceptance Criteria");
     }
+}
+
+fn parse_generated_feature_header(content: &str) -> (Option<String>, String) {
+    let mut lines = content.lines();
+    if let Some(first) = lines.next() {
+        let trimmed = first.trim();
+        if trimmed.starts_with("<!-- ship:feature ")
+            && trimmed.ends_with("-->")
+        {
+            let id = trimmed
+                .split_whitespace()
+                .find_map(|part| part.strip_prefix("id="))
+                .map(|value| value.trim_end_matches("-->").trim().to_string());
+            let mut body = lines.collect::<Vec<_>>().join("\n");
+            body = body.trim_start_matches('\n').to_string();
+            return (id, body);
+        }
+    }
+    (None, content.to_string())
 }
 
 fn parse_checklist<T: ChecklistItem>(body: &str, section_name: &str) -> Vec<T> {

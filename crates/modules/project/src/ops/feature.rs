@@ -1,5 +1,8 @@
 use super::{OpsError, OpsResult, append_project_log};
-use crate::{Feature, FeatureEntry, FeatureStatus};
+use crate::{
+    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureStatus,
+    record_feature_session_update,
+};
 use std::path::Path;
 
 pub fn create_feature(
@@ -37,6 +40,14 @@ pub fn get_feature_by_id(ship_dir: &Path, id: &str) -> OpsResult<FeatureEntry> {
     crate::feature::get_feature_by_id(ship_dir, id).map_err(OpsError::from)
 }
 
+pub fn ensure_feature_documentation(ship_dir: &Path, id: &str) -> OpsResult<FeatureDocumentation> {
+    crate::feature::ensure_feature_documentation(ship_dir, id).map_err(OpsError::from)
+}
+
+pub fn get_feature_documentation(ship_dir: &Path, id: &str) -> OpsResult<FeatureDocumentation> {
+    crate::feature::get_feature_documentation(ship_dir, id).map_err(OpsError::from)
+}
+
 pub fn update_feature(ship_dir: &Path, id: &str, feature: Feature) -> OpsResult<FeatureEntry> {
     if feature.metadata.title.trim().is_empty() {
         return Err(OpsError::Validation(
@@ -61,6 +72,18 @@ pub fn update_feature_content(ship_dir: &Path, id: &str, content: &str) -> OpsRe
         &format!("Updated feature: {}", entry.id),
     )?;
     Ok(entry)
+}
+
+pub fn update_feature_documentation(
+    ship_dir: &Path,
+    id: &str,
+    content: String,
+    status: Option<FeatureDocStatus>,
+    verify_now: bool,
+    actor: Option<&str>,
+) -> OpsResult<FeatureDocumentation> {
+    crate::feature::update_feature_documentation(ship_dir, id, content, status, verify_now, actor)
+        .map_err(OpsError::from)
 }
 
 pub fn feature_start(ship_dir: &Path, id: &str) -> OpsResult<FeatureEntry> {
@@ -96,6 +119,19 @@ pub fn feature_done(ship_dir: &Path, id: &str) -> OpsResult<FeatureEntry> {
             "Feature must have a branch before marking done".to_string(),
         ));
     }
+
+    let docs = get_feature_documentation(ship_dir, &existing.id).map_err(OpsError::from)?;
+    if docs.status == FeatureDocStatus::NotStarted {
+        return Err(OpsError::Validation(
+            "Feature documentation must be started before marking done".to_string(),
+        ));
+    }
+    if docs.content.trim().is_empty() {
+        return Err(OpsError::Validation(
+            "Feature documentation cannot be empty before marking done".to_string(),
+        ));
+    }
+
     let entry = crate::feature::feature_done(ship_dir, id).map_err(OpsError::from)?;
     append_project_log(
         ship_dir,
@@ -105,10 +141,47 @@ pub fn feature_done(ship_dir: &Path, id: &str) -> OpsResult<FeatureEntry> {
     Ok(entry)
 }
 
+pub fn delete_feature(ship_dir: &Path, id: &str) -> OpsResult<()> {
+    // Resolve first so logs include canonical ID.
+    let existing = crate::feature::get_feature_by_id(ship_dir, id).map_err(OpsError::from)?;
+    crate::feature::delete_feature(ship_dir, id).map_err(OpsError::from)?;
+    append_project_log(
+        ship_dir,
+        "feature delete",
+        &format!("Deleted feature: {}", existing.id),
+    )?;
+    Ok(())
+}
+
+pub fn sync_feature_docs_after_session(
+    ship_dir: &Path,
+    feature_ids: &[String],
+    summary: Option<&str>,
+) -> OpsResult<Vec<FeatureDocumentation>> {
+    let mut updated = Vec::new();
+    for feature_id in feature_ids {
+        let feature_id = feature_id.trim();
+        if feature_id.is_empty() {
+            continue;
+        }
+        let doc = record_feature_session_update(ship_dir, feature_id, summary, Some("session"))
+            .map_err(OpsError::from)?;
+        updated.push(doc);
+    }
+    if !updated.is_empty() {
+        append_project_log(
+            ship_dir,
+            "feature docs sync",
+            &format!("Updated docs for {} feature(s)", updated.len()),
+        )?;
+    }
+    Ok(updated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{init_project, update_feature};
+    use crate::{FeatureDocStatus, init_project, update_feature};
     use runtime::read_log_entries;
     use tempfile::tempdir;
 
@@ -172,6 +245,83 @@ mod tests {
             logs.iter()
                 .any(|entry| entry.action == "feature done" && entry.details.contains(&done.id))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn feature_create_scaffolds_documentation() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let created = create_feature(
+            &project_dir,
+            "docs-scaffold",
+            "",
+            None,
+            None,
+            Some("feature/docs-scaffold"),
+        )?;
+
+        let docs = get_feature_documentation(&project_dir, &created.id)?;
+        assert_eq!(docs.feature_id, created.id);
+        assert_eq!(docs.status, FeatureDocStatus::NotStarted);
+        assert!(docs.content.contains("## Capability Summary"));
+        Ok(())
+    }
+
+    #[test]
+    fn sync_feature_docs_after_session_appends_summary() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let created = create_feature(
+            &project_dir,
+            "session-doc-sync",
+            "",
+            None,
+            None,
+            Some("feature/session-doc-sync"),
+        )?;
+
+        let updated = sync_feature_docs_after_session(
+            &project_dir,
+            std::slice::from_ref(&created.id),
+            Some("Implemented auth guard for token refresh."),
+        )?;
+        assert_eq!(updated.len(), 1);
+        assert!(
+            updated[0]
+                .content
+                .contains("Implemented auth guard for token refresh.")
+        );
+        assert_eq!(updated[0].status, FeatureDocStatus::Draft);
+        Ok(())
+    }
+
+    #[test]
+    fn feature_done_requires_started_documentation() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let created = create_feature(
+            &project_dir,
+            "done-doc-gate",
+            "",
+            None,
+            None,
+            Some("feature/done-doc-gate"),
+        )?;
+        let _ = feature_start(&project_dir, &created.id)?;
+
+        let docs = get_feature_documentation(&project_dir, &created.id)?;
+        let _ = update_feature_documentation(
+            &project_dir,
+            &created.id,
+            docs.content,
+            Some(FeatureDocStatus::NotStarted),
+            false,
+            Some("test"),
+        )?;
+
+        let err = feature_done(&project_dir, &created.id).expect_err("expected docs gate");
+        assert!(matches!(err, OpsError::Validation(_)));
         Ok(())
     }
 }

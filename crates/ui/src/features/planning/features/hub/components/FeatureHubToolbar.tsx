@@ -28,7 +28,7 @@ export default function FeatureHubToolbar({
   onSortByChange,
 }: FeatureHubToolbarProps) {
   return (
-    <div className="flex w-full flex-nowrap items-center justify-end gap-2 overflow-x-auto pb-0.5">
+    <div className="flex w-full flex-nowrap items-center justify-end gap-2 overflow-x-auto px-0.5 pb-0.5">
       <Tooltip>
         <TooltipTrigger asChild>
           <div className="relative h-8 w-[220px] min-w-[180px] shrink-0">

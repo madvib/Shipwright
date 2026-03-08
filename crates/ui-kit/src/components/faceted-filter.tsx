@@ -76,10 +76,8 @@ export function FacetedFilter({
     }
   }
 
-  const filteredOptions = options.filter(
-    (option) =>
-      option.label.toLowerCase().includes(inputValue.toLowerCase()) &&
-      !selectedSet.has(option.value)
+  const filteredOptions = options.filter((option) =>
+    option.label.toLowerCase().includes(inputValue.toLowerCase())
   )
 
   const showAddNew = allowNew && inputValue.trim() && !options.some((o) => o.value === inputValue.trim())

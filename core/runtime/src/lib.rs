@@ -164,17 +164,18 @@ mod tests {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
-        // Default config keeps issues local and commits delivery artifacts.
+        // Default config keeps project docs local unless explicitly included.
         assert!(gitignore.contains("workflow/issues"));
         assert!(gitignore.contains("generated/"));
+        assert!(gitignore.contains(".tmp-global/"));
+        assert!(gitignore.contains("project/releases"));
+        assert!(gitignore.contains("project/features"));
+        assert!(gitignore.contains("workflow/specs"));
+        assert!(gitignore.contains("project/adrs"));
+        assert!(gitignore.contains("project/notes"));
         // DB is now at ~/.ship/state/<slug>/ship.db — not inside .ship/
         assert!(!gitignore.contains("ship.db"));
         assert!(!gitignore.contains("log.md"));
-        assert!(!gitignore.contains("project/releases"));
-        assert!(!gitignore.contains("project/features"));
-        assert!(!gitignore.contains("workflow/specs"));
-        assert!(!gitignore.contains("project/adrs"));
-        assert!(!gitignore.contains("project/notes"));
         assert!(!gitignore.contains("agents"));
         Ok(())
     }

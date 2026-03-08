@@ -2,41 +2,42 @@
 id = "ydmqCLwp"
 title = "Workspace model — types and lifecycle"
 created = "2026-03-02T17:11:20.834710028Z"
-updated = "2026-03-03T04:33:27.134103+00:00"
+updated = "2026-03-07T21:41:04.069510+00:00"
 release_id = "v0.1.0-alpha"
-adr_ids = []
+active_target_id = "v0.1.0-alpha"
+branch = "feature/workspace-model-types-and-lifecycle"
 tags = []
 +++
 
 ## Why
 
-The current feature/branch model is flat — every branch is treated identically. Workspace types (feature, refactor, experiment, hotfix) give meaningful structure to different kinds of work. Lifecycle states (planned -> active -> idle -> review -> merged -> archived) make branch status visible and actionable without reading git.
-
-Workspace is a core runtime concern and should remain in runtime, not moved into a workflow module. Git integration remains modular: hooks and git-specific reconciliation belong in modules.
+Workspace types and lifecycle state make execution status explicit across feature, refactor, hotfix, and experiment branches. This allows Ship to coordinate branch intent, activation semantics, and UI orchestration without relying on implicit git-only state.
 
 ## Acceptance Criteria
 
-- [x] Architecture direction locked: workspace lifecycle/state lives in runtime as a first-class concern
-- [x] Git integration remains modular (hooks + checkout/worktree reconciliation in modules)
-- [ ] WorkspaceType gates valid lifecycle transitions (experiment never reaches merged)
-- [ ] Status transitions wired to git hooks (post-checkout sets active, post-merge sets merged)
-- [ ] `ship workspace create/switch/list/sync/archive` commands working
-- [ ] 1:1 Feature-to-Workspace relationship enforced
-- [ ] Refactor/experiment/hotfix workspaces work without a linked feature
-- [ ] Workspace activation recompiles agent context only when context_hash is stale
-- [ ] Workspace suite UI uses register + detail layout with dense status indicators
+- [x] WorkspaceType supports `feature | refactor | experiment | hotfix`
+- [x] WorkspaceStatus supports lifecycle states used by runtime/UI
+- [x] Transition validation enforces allowed state changes by workspace type
+- [x] Core CLI flows (`create/switch/list/sync/archive`) operate on lifecycle state
+- [x] Non-feature workspaces can run without a linked feature
+- [ ] 1:1 feature-to-workspace enforcement finalized for feature workspaces
+- [ ] Hook-driven lifecycle automation (checkout/merge -> status transitions) fully enforced
+- [ ] Activation cache policy based on context hash finalized and documented
 
 ## Delivery Todos
 
-- [ ] WorkspaceType enum: feature | refactor | experiment | hotfix
-- [ ] WorkspaceStatus enum: planned | active | idle | review | merged | archived
-- [ ] Transition validation matrix per workspace type
-- [ ] Runtime workspace service: list/get/create/activate/sync/archive
-- [ ] Wire post-checkout and sync paths to workspace state transitions
-- [ ] Add activation timing telemetry and cached compile path (<800ms target)
-- [ ] Add workspace-first command palette switcher with activation action
-- [ ] Show workspace status chips in Feature/Release hubs (quick activate only)
+- [x] Add WorkspaceType and WorkspaceStatus enums to runtime model
+- [x] Implement transition validation and runtime transition API
+- [x] Expose workspace lifecycle in CLI and Tauri surfaces
+- [x] Integrate workspace status indicators in workspace command-center views
+- [ ] Finalize feature workspace ownership constraints
+- [ ] Finalize automated status transitions from git hook events
+- [ ] Add lifecycle audit telemetry for transition analytics
+
+## Current Behavior
+
+Lifecycle modeling is active and used throughout runtime/CLI/UI. Remaining work focuses on stronger ownership constraints and automatic lifecycle transitions from git events.
 
 ## Notes
 
-Specs are first-class work units inside workspaces (closer to commit-sized execution slices). Issues are intentionally de-emphasized for now and should not drive page IA decisions.
+This feature remains in-progress because policy enforcement and automation hardening are not complete yet.

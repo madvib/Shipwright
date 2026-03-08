@@ -1,9 +1,27 @@
-+++
-id = "gQXeeJkA"
-title = "MCP Apps with UI Components"
-created = "2026-03-03T06:03:37.011561072+00:00"
-updated = "2026-03-03T06:03:37.011561072+00:00"
-tags = []
-+++
+<!-- ship:feature id=gQXeeJkA -->
 
-UI component protocol layered on the MCP spec (modelcontextprotocol.io/extensions/apps). MCP servers declare UI components that render natively in the Ship desktop app. Enables rich integrations — GitHub PRs, Jira tickets, CI runs — with native-feeling UI rather than raw tool output. Ship acts as the host runtime for MCP app components.
+# MCP Apps with UI Components
+
+## Why
+
+Ship should eventually support richer MCP-native app experiences that can render structured UI components beyond plain tool IO.
+
+## Acceptance Criteria
+
+- [ ] Ship can register and invoke MCP apps that expose UI component payloads
+- [ ] UI can render supported component schemas safely and predictably
+- [ ] Permission model governs component/tool execution boundaries
+
+## Delivery Todos
+
+- [ ] Define component contract and runtime integration model
+- [ ] Implement proof-of-concept renderer in desktop surface
+- [ ] Add guardrails for untrusted component payloads
+
+## Current Behavior
+
+Planned capability; not part of current alpha-critical path.
+
+## Follow-ups
+
+- Coordinate with marketplace/security roadmap before implementation.

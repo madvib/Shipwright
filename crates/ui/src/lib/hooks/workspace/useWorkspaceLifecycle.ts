@@ -120,22 +120,72 @@ export function useWorkspaceLifecycle({
   useEffect(() => {
     if (!activeProject || !isTauriRuntime()) return;
 
-    let issueTimer: number | undefined;
+    let projectDataTimer: number | undefined;
     let configTimer: number | undefined;
     let eventTimer: number | undefined;
     let disposed = false;
     let cleanup: (() => void) | null = null;
+    let projectDataInFlight = false;
+    let projectDataQueued = false;
 
     const debounce = (timer: number | undefined, action: () => void): number => {
       if (timer) window.clearTimeout(timer);
       return window.setTimeout(action, 200);
     };
 
+    const runProjectDataReload = async () => {
+      if (projectDataInFlight) {
+        projectDataQueued = true;
+        return;
+      }
+      projectDataInFlight = true;
+      try {
+        await loadProjectData();
+      } finally {
+        projectDataInFlight = false;
+        if (projectDataQueued && !disposed) {
+          projectDataQueued = false;
+          void runProjectDataReload();
+        }
+      }
+    };
+
+    const scheduleProjectDataReload = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        projectDataQueued = true;
+        return;
+      }
+      projectDataTimer = debounce(projectDataTimer, () => {
+        void runProjectDataReload();
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && projectDataQueued) {
+        projectDataQueued = false;
+        void runProjectDataReload();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     void subscribeProjectEvents({
       onIssuesChanged: () => {
-        issueTimer = debounce(issueTimer, () => {
-          void loadProjectData();
-        });
+        scheduleProjectDataReload();
+      },
+      onSpecsChanged: () => {
+        scheduleProjectDataReload();
+      },
+      onAdrsChanged: () => {
+        scheduleProjectDataReload();
+      },
+      onFeaturesChanged: () => {
+        scheduleProjectDataReload();
+      },
+      onReleasesChanged: () => {
+        scheduleProjectDataReload();
+      },
+      onNotesChanged: () => {
+        scheduleProjectDataReload();
       },
       onLogChanged: () => {
         eventTimer = debounce(eventTimer, () => {
@@ -154,7 +204,6 @@ export function useWorkspaceLifecycle({
           void listEventEntries(0, 200)
             .then(setEventEntries)
             .catch(() => []);
-          void loadProjectData();
         });
       },
     })
@@ -171,9 +220,10 @@ export function useWorkspaceLifecycle({
 
     return () => {
       disposed = true;
-      if (issueTimer) window.clearTimeout(issueTimer);
+      if (projectDataTimer) window.clearTimeout(projectDataTimer);
       if (configTimer) window.clearTimeout(configTimer);
       if (eventTimer) window.clearTimeout(eventTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       cleanup?.();
     };
   }, [activeProject, loadProjectConfig, loadProjectData, setEventEntries]);

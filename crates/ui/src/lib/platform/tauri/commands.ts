@@ -99,6 +99,29 @@ export interface WorkspaceRepairReport {
   actions: string[];
 }
 
+export interface RuntimePerfSnapshot {
+  terminal_start_calls: number;
+  terminal_start_errors: number;
+  terminal_start_last_micros: number;
+  terminal_read_calls: number;
+  terminal_read_bytes: number;
+  terminal_read_errors: number;
+  terminal_last_read_micros: number;
+  terminal_write_calls: number;
+  terminal_write_errors: number;
+  terminal_write_last_micros: number;
+  terminal_resize_calls: number;
+  terminal_resize_errors: number;
+  terminal_resize_last_micros: number;
+  terminal_stop_calls: number;
+  terminal_stop_errors: number;
+  terminal_stop_last_micros: number;
+  watcher_fs_events: number;
+  watcher_flushes: number;
+  watcher_ingest_runs: number;
+  watcher_last_ingest_micros: number;
+}
+
 export type TemplateKind = 'issue' | 'adr' | 'spec' | 'release' | 'feature' | 'vision';
 export type NotesScope = 'project' | 'global';
 
@@ -123,6 +146,10 @@ export const listEventEntries = (
   limit?: number
 ): Promise<EventRecord[]> => invoke('list_events_cmd', { since, limit });
 export const ingestEventChanges = (): Promise<number> => invoke('ingest_events_cmd');
+export const getRuntimePerfCmd = (): Promise<Result<RuntimePerfSnapshot, string>> =>
+  invoke('get_runtime_perf_cmd')
+    .then((data) => ({ status: 'ok', data } as Result<RuntimePerfSnapshot, string>))
+    .catch((error) => ({ status: 'error', error: String(error) }));
 export const getWorkspaceCmd = (branch: string): Promise<Result<Workspace | null, string>> =>
   invoke('get_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace | null, string>)).catch(error => ({ status: 'error', error }));
 export const listWorkspaceEditorsCmd = (): Promise<Result<WorkspaceEditorInfo[], string>> =>

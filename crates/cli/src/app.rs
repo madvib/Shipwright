@@ -13,7 +13,9 @@ use runtime::{
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
 use ship_module_project::ops::feature::{
-    create_feature, feature_done, feature_start, get_feature_by_id, list_features, update_feature,
+    create_feature, delete_feature, ensure_feature_documentation, feature_done, feature_start,
+    get_feature_by_id, get_feature_documentation, list_features, sync_feature_docs_after_session,
+    update_feature, update_feature_documentation,
 };
 use ship_module_project::ops::issue::{
     create_issue, get_issue_by_id, list_issues, move_issue_with_from,
@@ -26,10 +28,11 @@ use ship_module_project::ops::release::{
 };
 use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
 use ship_module_project::{
-    ADR, AdrStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope, import_adrs_from_files,
-    import_features_from_files, import_issues_from_files, import_notes_from_files,
-    import_releases_from_files, import_specs_from_files, init_demo_project, init_project,
-    list_registered_projects, register_project, rename_project, unregister_project,
+    ADR, AdrStatus, FeatureDocStatus, FeatureStatus, ISSUE_STATUSES, IssueStatus, NoteScope,
+    import_adrs_from_files, import_features_from_files, import_issues_from_files,
+    import_notes_from_files, import_releases_from_files, import_specs_from_files,
+    init_demo_project, init_project, list_registered_projects, register_project, rename_project,
+    unregister_project,
 };
 use std::collections::HashMap;
 use std::env;
@@ -553,6 +556,62 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     feature_done(&project_dir, &id)?;
                     println!("Feature marked as implemented: {}", id);
                 }
+                FeatureCommands::Delete { id } => {
+                    delete_feature(&project_dir, &id)?;
+                    println!("Feature deleted: {}", id);
+                }
+                FeatureCommands::Docs { action } => match action {
+                    FeatureDocCommands::EnsureAll => {
+                        let features = list_features(&project_dir)?;
+                        let mut ensured = 0usize;
+                        for feature in features {
+                            ensure_feature_documentation(&project_dir, &feature.id)?;
+                            ensured += 1;
+                        }
+                        println!("Ensured documentation for {} feature(s).", ensured);
+                    }
+                    FeatureDocCommands::Get { id } => {
+                        let doc = get_feature_documentation(&project_dir, &id)?;
+                        println!("{}", doc.content);
+                    }
+                    FeatureDocCommands::Update {
+                        id,
+                        content,
+                        status,
+                        verify,
+                    } => {
+                        let parsed_status = status
+                            .as_deref()
+                            .map(|value| value.parse::<FeatureDocStatus>())
+                            .transpose()?;
+                        let updated = update_feature_documentation(
+                            &project_dir,
+                            &id,
+                            content,
+                            parsed_status,
+                            verify,
+                            Some("cli"),
+                        )?;
+                        println!(
+                            "Feature docs updated: {} status={} revision={}",
+                            updated.feature_id, updated.status, updated.revision
+                        );
+                    }
+                    FeatureDocCommands::Status { id } => {
+                        let doc = get_feature_documentation(&project_dir, &id)?;
+                        println!(
+                            "feature={} status={} revision={} updated={}{}",
+                            doc.feature_id,
+                            doc.status,
+                            doc.revision,
+                            doc.updated_at,
+                            doc.last_verified_at
+                                .as_ref()
+                                .map(|value| format!(" verified={}", value))
+                                .unwrap_or_default()
+                        );
+                    }
+                },
             }
         }
         Some(Commands::Workspace { action }) => {
@@ -880,6 +939,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         updated_spec,
                     } => {
                         let branch = branch.unwrap_or(current_branch(&project_root)?);
+                        let summary_for_docs = summary.clone();
                         let session = end_workspace_session(
                             &project_dir,
                             &branch,
@@ -889,6 +949,19 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                                 updated_spec_ids: updated_spec,
                             },
                         )?;
+                        if !session.updated_feature_ids.is_empty() {
+                            let updated_docs = sync_feature_docs_after_session(
+                                &project_dir,
+                                &session.updated_feature_ids,
+                                summary_for_docs.as_deref(),
+                            )?;
+                            if !updated_docs.is_empty() {
+                                println!(
+                                    "Feature docs synced for {} feature(s).",
+                                    updated_docs.len()
+                                );
+                            }
+                        }
                         println!(
                             "Session ended: {} [{}] branch={}{}",
                             session.id,
@@ -1282,6 +1355,13 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             };
             cli_framework::handle_provider_action(action, &project_dir)?;
         }
+        Some(Commands::Ui {
+            dev,
+            watch,
+            release,
+        }) => {
+            launch_ui_command(dev, watch, release)?;
+        }
         Some(Commands::Dev { action }) => match action {
             DevCommands::Migrate { force } => {
                 handle_migrate_command(force)?;
@@ -1417,6 +1497,110 @@ fn handle_migrate_command(force: bool) -> Result<()> {
         },
     );
     Ok(())
+}
+
+fn launch_ui_command(dev: bool, watch: bool, release: bool) -> Result<()> {
+    if dev || watch || release {
+        return launch_ui_dev_command(watch, release);
+    }
+
+    let cwd = env::current_dir()?;
+    let repo_root = find_repo_root_with_ui(&cwd);
+    launch_ui_executable(repo_root.as_deref())
+}
+
+fn launch_ui_dev_command(watch: bool, release: bool) -> Result<()> {
+    let cwd = env::current_dir()?;
+    let repo_root = find_repo_root_with_ui(&cwd).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Could not find Ship source checkout from {}. Run this command from the Ship repo.",
+            cwd.display()
+        )
+    })?;
+    let ui_dir = repo_root.join("crates/ui");
+
+    let mut command = ProcessCommand::new("pnpm");
+    command.arg("--dir").arg(&ui_dir).arg("tauri").arg("dev");
+    if !watch {
+        command.arg("--no-watch");
+    }
+    if release {
+        command.arg("--release");
+    }
+
+    let status = command.status()?;
+    if !status.success() {
+        anyhow::bail!("UI process exited with status {}", status);
+    }
+    Ok(())
+}
+
+fn launch_ui_executable(repo_root: Option<&Path>) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(root) = repo_root {
+            let candidates = [
+                root.join("target/release/bundle/macos/Shipwright.app"),
+                root.join("target/debug/bundle/macos/Shipwright.app"),
+                root.join("crates/ui/src-tauri/target/release/bundle/macos/Shipwright.app"),
+                root.join("crates/ui/src-tauri/target/debug/bundle/macos/Shipwright.app"),
+            ];
+            for bundled_app in candidates {
+                if bundled_app.exists() {
+                    let status = ProcessCommand::new("open").arg(&bundled_app).status()?;
+                    if status.success() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        let status = ProcessCommand::new("open")
+            .args(["-a", "Shipwright"])
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let status = ProcessCommand::new("shipwright").status();
+        if let Ok(status) = status {
+            if status.success() {
+                return Ok(());
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let status = ProcessCommand::new("cmd")
+            .args(["/C", "start", "", "Shipwright.exe"])
+            .status();
+        if let Ok(status) = status {
+            if status.success() {
+                return Ok(());
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "Could not launch Shipwright executable. Build/install the desktop app, or run `ship ui --dev` from the Ship repository."
+    )
+}
+
+fn find_repo_root_with_ui(start: &Path) -> Option<PathBuf> {
+    let mut current = Some(start);
+    while let Some(dir) = current {
+        if dir.join("crates/ui/package.json").is_file()
+            && dir.join("crates/ui/src-tauri/tauri.conf.json").is_file()
+        {
+            return Some(dir.to_path_buf());
+        }
+        current = dir.parent();
+    }
+    None
 }
 
 fn current_branch(project_root: &std::path::Path) -> Result<String> {
@@ -1867,7 +2051,9 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
     for workspace in &workspaces {
         let feature_by_branch = features
             .iter()
-            .filter(|entry| entry.feature.metadata.branch.as_deref() == Some(workspace.branch.as_str()))
+            .filter(|entry| {
+                entry.feature.metadata.branch.as_deref() == Some(workspace.branch.as_str())
+            })
             .collect::<Vec<_>>();
 
         if workspace.feature_id.is_none() && feature_by_branch.len() > 1 {
@@ -1907,7 +2093,9 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
 
         let branch_specs = specs
             .iter()
-            .filter(|entry| entry.spec.metadata.branch.as_deref() == Some(workspace.branch.as_str()))
+            .filter(|entry| {
+                entry.spec.metadata.branch.as_deref() == Some(workspace.branch.as_str())
+            })
             .collect::<Vec<_>>();
 
         if workspace.spec_id.is_none() && branch_specs.len() > 1 {
@@ -2326,6 +2514,60 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_feature_docs_update_with_status_and_verify() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "feature",
+            "docs",
+            "update",
+            "feat-auth",
+            "--content",
+            "Updated capability docs",
+            "--status",
+            "reviewed",
+            "--verify",
+        ])
+        .expect("feature docs update should parse");
+
+        match cli.command {
+            Some(Commands::Feature {
+                action:
+                    FeatureCommands::Docs {
+                        action:
+                            FeatureDocCommands::Update {
+                                id,
+                                content,
+                                status,
+                                verify,
+                            },
+                    },
+            }) => {
+                assert_eq!(id, "feat-auth");
+                assert_eq!(content, "Updated capability docs");
+                assert_eq!(status.as_deref(), Some("reviewed"));
+                assert!(verify);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_feature_docs_ensure_all() {
+        let cli = Cli::try_parse_from(["ship", "feature", "docs", "ensure-all"])
+            .expect("feature docs ensure-all should parse");
+
+        match cli.command {
+            Some(Commands::Feature {
+                action:
+                    FeatureCommands::Docs {
+                        action: FeatureDocCommands::EnsureAll,
+                    },
+            }) => {}
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
     fn cli_parses_workspace_create_with_feature_title() {
         let cli = Cli::try_parse_from([
             "ship",
@@ -2615,6 +2857,41 @@ mod tests {
             Some(Commands::Dev {
                 action: DevCommands::Migrate { force },
             }) => assert!(force),
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_ui_subcommand() {
+        let cli = Cli::try_parse_from(["ship", "ui"]).expect("ui should parse");
+        match cli.command {
+            Some(Commands::Ui {
+                dev,
+                watch,
+                release,
+            }) => {
+                assert!(!dev);
+                assert!(!watch);
+                assert!(!release);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_ui_subcommand_with_flags() {
+        let cli = Cli::try_parse_from(["ship", "ui", "--dev", "--watch", "--release"])
+            .expect("ui flags should parse");
+        match cli.command {
+            Some(Commands::Ui {
+                dev,
+                watch,
+                release,
+            }) => {
+                assert!(dev);
+                assert!(watch);
+                assert!(release);
+            }
             other => panic!("unexpected parse result: {:?}", other),
         }
     }

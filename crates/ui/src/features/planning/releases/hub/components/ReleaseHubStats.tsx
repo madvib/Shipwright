@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Gauge, Link2, Rocket } from 'lucide-react';
 import { ReleaseInfo as ReleaseEntry } from '@/bindings';
-import { Badge } from '@ship/ui';
+import { Badge, Tooltip, TooltipContent, TooltipTrigger } from '@ship/ui';
 import { cn } from '@/lib/utils';
 
 interface ReleaseHubStatsProps {
@@ -9,7 +9,8 @@ interface ReleaseHubStatsProps {
   activeBlockers: number;
   shippedCount: number;
   totalReleases: number;
-  linkedFeatureCount: number;
+  activeTargetFeatureCount: number;
+  activeTargetReleaseCount: number;
   avgProgress: number;
 }
 
@@ -19,10 +20,11 @@ interface StatChipProps {
   hint?: string;
   icon?: ReactNode;
   tone?: 'default' | 'warning' | 'success';
+  tooltip?: string;
 }
 
-function StatChip({ label, value, hint, icon, tone = 'default' }: StatChipProps) {
-  return (
+function StatChip({ label, value, hint, icon, tone = 'default', tooltip }: StatChipProps) {
+  const chip = (
     <div
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs',
@@ -36,6 +38,14 @@ function StatChip({ label, value, hint, icon, tone = 'default' }: StatChipProps)
       {hint && <span className="text-muted-foreground">· {hint}</span>}
     </div>
   );
+
+  if (!tooltip) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipContent side="top">{tooltip}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export default function ReleaseHubStats({
@@ -43,7 +53,8 @@ export default function ReleaseHubStats({
   activeBlockers,
   shippedCount,
   totalReleases,
-  linkedFeatureCount,
+  activeTargetFeatureCount,
+  activeTargetReleaseCount,
   avgProgress,
 }: ReleaseHubStatsProps) {
   const activeReleaseLabel = activeRelease?.version ?? 'None';
@@ -57,6 +68,7 @@ export default function ReleaseHubStats({
         label="Active"
         value={activeReleaseLabel}
         hint={activeRelease ? `${activeBlockers} blockers` : 'No active release'}
+        tooltip="Current active release and blocker count across linked features."
         icon={
           <AlertTriangle
             className={cn(
@@ -71,23 +83,27 @@ export default function ReleaseHubStats({
         label="Shipped"
         value={`${shippedCount}`}
         hint={`${totalReleases} total`}
+        tooltip="How many release records are marked shipped."
         icon={<CheckCircle2 className="size-4 text-emerald-500" />}
         tone={shippedCount > 0 ? 'success' : 'default'}
       />
       <StatChip
-        label="Linked Features"
-        value={`${linkedFeatureCount}`}
+        label="Active Targets"
+        value={`${activeTargetFeatureCount}`}
+        tooltip="Total features currently targeted to a release."
         icon={<Rocket className="size-4 text-sky-500" />}
       />
       <StatChip
         label="Avg Progress"
         value={`${avgProgress}%`}
+        tooltip="Average launch readiness across release records."
         icon={<Gauge className="size-4 text-emerald-500/70" />}
       />
       <StatChip
         label="Coverage"
-        value={`${linkedFeatureCount}/${Math.max(totalReleases, 1)}`}
-        hint="feature links/release count"
+        value={`${activeTargetReleaseCount}/${Math.max(totalReleases, 1)}`}
+        hint="targets covered"
+        tooltip="Releases that have at least one active target."
         icon={<Link2 className="size-3.5 text-primary" />}
       />
     </div>

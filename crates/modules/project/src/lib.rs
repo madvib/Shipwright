@@ -15,10 +15,12 @@ pub use adr::{
 };
 pub use demo::init_demo_project;
 pub use feature::{
-    Feature, FeatureAgentConfig, FeatureCriterion, FeatureEntry, FeatureMetadata, FeatureStatus,
-    FeatureTodo, create_feature, delete_feature, feature_done, feature_start, get_feature_by_id,
-    import_features_from_files, list_features, move_feature, update_feature,
-    update_feature_content,
+    Feature, FeatureAgentConfig, FeatureCriterion, FeatureDocStatus, FeatureDocumentation,
+    FeatureEntry, FeatureMetadata, FeatureStatus, FeatureTodo, create_feature, delete_feature,
+    ensure_feature_documentation, feature_done, feature_start, get_feature_by_id,
+    get_feature_documentation, import_features_from_files, list_features, move_feature,
+    record_feature_session_update, update_feature, update_feature_content,
+    update_feature_documentation,
 };
 pub use issue::{
     Issue, IssueEntry, IssueMetadata, IssuePriority, IssueStatus, create_issue, delete_issue,

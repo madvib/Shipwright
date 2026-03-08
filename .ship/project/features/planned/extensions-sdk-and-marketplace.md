@@ -1,9 +1,30 @@
-+++
-id = "4fRXWgVQ"
-title = "Extensions SDK and Marketplace"
-created = "2026-03-03T06:03:09.961236690+00:00"
-updated = "2026-03-03T06:03:09.961236690+00:00"
-tags = []
-+++
+<!-- ship:feature id=4fRXWgVQ -->
 
-Deno/V8 runtime embedded in the Shipwright core for extension execution. Extensions written in TypeScript/JavaScript — no second language required for builders. Marketplace for discovering and installing extensions (skills, MCP servers, UI components, themes). Agent config as part of extension manifest so installing an extension auto-configures the agent environment.
+# Extensions SDK and Marketplace
+
+## Why
+
+Ship needs a safe and scalable distribution model for reusable capabilities (skills, MCP definitions, templates, future app packs) without forcing manual copy/paste configuration.
+
+## Acceptance Criteria
+
+- [ ] Extension package format is defined with identity, provenance, and compatibility metadata
+- [ ] Install flow supports trusted registry + explicit untrusted-source warnings
+- [ ] Capabilities can be installed to user or project scope with deterministic registration
+- [ ] Permission model gates script/tool execution in third-party extensions
+- [ ] Marketplace listing surface supports search, provenance, and version awareness
+
+## Delivery Todos
+
+- [ ] Define extension manifest and package layout
+- [ ] Implement package install/update/remove lifecycle APIs
+- [ ] Add trust-policy enforcement for scripts/commands/assets
+- [ ] Expose marketplace browsing/install surfaces in CLI/UI
+
+## Current Behavior
+
+Partially prepped: skill install/import flows exist, but no full extension package standard or marketplace runtime.
+
+## Follow-ups
+
+- Align extension packaging with security model and cloud sync roadmap.

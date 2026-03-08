@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "2uemcUp4"
 title = "Release Planning and Documentation"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.316788741+00:00"
+updated = "2026-03-07T21:48:08.709381+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,28 +18,26 @@ skills = []
 
 ## Why
 
-Releases give coherence to a collection of features. Without a release container, features float unanchored and there's no clear answer to "what's in the next version." Shipwright treats releases as first-class documents — versioned by semver, linked to features and ADRs, and moving through a clear lifecycle from planned to shipped.
+Releases are planning containers that communicate what is shipping, what remains, and how feature work maps to a concrete milestone.
 
 ## Acceptance Criteria
 
-- [ ] Release CRUD: create, list, get, update via CLI and MCP
-- [ ] Version format enforced: `v{major}.{minor}.{patch}[-{pre-release}]` (semver with `v` prefix)
-- [ ] Release ID = version string (`v0.1.0-alpha`) — not a short nanoid
-- [ ] Filename: `v0.1.0-alpha.md` (version string is the filename)
-- [ ] Status: `planned | active | shipped | archived` (directory-based or frontmatter field?)
-- [ ] `feature_ids` and `adr_ids` cross-references in release frontmatter
-- [ ] `ship release new v0.2.0` validates version format
-- [ ] `ship release list` shows status, version, feature count
-- [ ] UI: release detail showing linked features and ADRs
+- [x] Release CRUD is available across CLI, MCP, and UI backend surfaces
+- [x] Release identity is version-based and stable
+- [x] Release status and metadata are persisted in SQLite
+- [x] Features can link to release targets via release IDs
+- [x] Release hub and release detail views are available in UI
 
 ## Delivery Todos
 
-- [ ] Implement semver validation in `create_release`
-- [ ] Confirm release status handling (directory vs frontmatter field — align with ADR)
-- [ ] `ship release` CLI subcommand (new, list, show)
-- [ ] MCP: `list_releases`, `get_release`, `create_release`, `update_release`
-- [ ] UI release detail view with linked features
+- [x] Migrate release persistence to SQLite-backed module APIs
+- [x] Keep release markdown export/import flow aligned with DB state
+- [x] Wire release list/detail/update operations in desktop backend
 
-## Notes
+## Current Behavior
 
-Release ID is the version string — not a nanoid. This is the intentional exception to the short ID convention because release version IS the identity and IS immutable. Renaming a release (e.g., v0.1.0-alpha → v0.1.0) is a legitimate operation but requires updating all `release_id` cross-references. A `ship release rename` command should handle this atomically.
+Release planning is operational and integrated with features.
+
+## Follow-ups
+
+- Finalize target-based UX (release as one target type) without adding user-facing complexity.

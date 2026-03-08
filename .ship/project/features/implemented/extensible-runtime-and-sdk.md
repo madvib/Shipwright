@@ -1,43 +1,32 @@
-+++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
-id = "A5nhFQVq"
-title = "Extensible Runtime and SDK"
-created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:54.593440909+00:00"
-release_id = "v0.1.0-alpha"
-spec_id = ""
-branch = ""
-adr_ids = []
-tags = []
+<!-- ship:feature id=A5nhFQVq -->
 
-[agent]
-model = "claude"
-max_cost_per_session = 10.0
-mcp_servers = []
-skills = []
-+++
+# Extensible Runtime and SDK
 
 ## Why
 
-Shipwright's value grows with the document types and workflows it understands. A monolithic design means every new primitive requires touching core code. A module system lets first-party and eventually third-party modules register document types, MCP tools, CLI commands, and UI contributions — making Shipwright extensible without forking. First-party modules are compiled in for alpha; the module trait is the extension point for later.
+Ship needs a reusable foundation so multiple product surfaces (CLI, MCP, desktop) and future apps can share one runtime model instead of duplicating orchestration logic.
 
 ## Acceptance Criteria
 
-- [ ] `crates/modules/` structure: `project/`, `workflow/`, `agents/`, `git/` sub-crates
-- [ ] Each module compiles into the runtime and registers its document types, CRUD functions, and CLI commands
-- [ ] `crates/runtime` is the pure foundation — types, I/O, state — with no module-specific logic
-- [ ] Module trait defined (even if not yet dynamically dispatched)
-- [ ] Git module wired: hook install, post-checkout handler, CLAUDE.md + .mcp.json generation
-- [ ] No plugin loading at runtime for alpha (compile-time only)
+- [x] Core runtime lives in `core/runtime` and is consumed by application crates
+- [x] CLI and MCP framework crates exist (`core/cli-framework`, `core/mcp-framework`) and are used by Ship binaries
+- [x] Compile-time plugin/namespace extension points exist for first-party modules
+- [x] Ship CLI/MCP run through framework metadata + core command hooks
+- [ ] Runtime state model is fully app-agnostic (Ship-specific schemas still leak into core state DB)
 
 ## Delivery Todos
 
-- [ ] Finalize `crates/modules/` scaffold (backlog issue: `scaffold-crates-modules`)
-- [ ] Define module trait in `crates/runtime` or a shared crate
-- [ ] Migrate git hook logic fully into `crates/modules/git`
-- [ ] Document the module contribution model for V1 third-party extension
-- [ ] Verify all modules compile cleanly after `crate-restructure` ADR
+- [x] Split shared framework crates for CLI and MCP surfaces
+- [x] Route Ship CLI through framework command lifecycle and core primitives
+- [x] Route Ship MCP through framework wrapper
+- [ ] Move Ship-specific planning schemas out of core runtime state layer
+- [ ] Define stable public app-extension contract for non-Ship apps
 
-## Notes
+## Current Behavior
 
-Premium modules (GitHub Sync, Agent Runner, Team Sync) are compiled in and entitlement-gated — not runtime loaded. This is deliberate: single binary, instant unlock on license purchase, no installation complexity. Third-party dynamic modules are a V2+ concern once the module trait has scar tissue from real use.
+The platform now has a working layered architecture: runtime foundation + CLI/MCP frameworks + Ship application modules. Extensibility is compile-time and first-party focused today.
+
+## Follow-ups
+
+- Continue reducing Ship-specific assumptions inside `core/runtime`.
+- Publish extension contracts once schema boundaries are cleaned up.

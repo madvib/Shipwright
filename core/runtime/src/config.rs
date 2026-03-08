@@ -40,17 +40,12 @@ pub struct GitConfig {
 
 impl Default for GitConfig {
     fn default() -> Self {
-        // Opinionated alpha default:
-        // - Keep delivery/context artifacts in git.
-        // - Keep volatile issue execution data local unless explicitly included.
+        // Default:
+        // - Keep generated planning/docs local by default.
+        // - Let teams opt in explicitly via `ship git include <category>`.
         Self {
             ignore: Vec::new(),
             commit: vec![
-                "releases".to_string(),
-                "features".to_string(),
-                "specs".to_string(),
-                "adrs".to_string(),
-                "notes".to_string(),
                 "agents".to_string(),
                 "ship.toml".to_string(),
                 "templates".to_string(),
@@ -1064,9 +1059,12 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
             lines.push(path.to_string());
         }
     }
-    // Generated tool outputs are always runtime-managed and local-only.
+    // Runtime-managed local artifacts are always ignored.
     if !lines.iter().any(|line| line == "generated/") {
         lines.push("generated/".to_string());
+    }
+    if !lines.iter().any(|line| line == ".tmp-global/") {
+        lines.push(".tmp-global/".to_string());
     }
     let content = lines.join("\n") + "\n";
     write_atomic(&ship_dir.join(".gitignore"), content)?;

@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "FqLNtSDx"
 title = "Unified Agent Configuration Standard"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.369185731+00:00"
+updated = "2026-03-07T22:33:19.736754+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,27 +18,27 @@ skills = []
 
 ## Why
 
-Agent configuration (skills, MCP servers, model, cost limits, permissions) is currently split across feature frontmatter `[agent]` blocks, mode files, and project defaults with no single schema tying them together. This makes validation impossible and the resolution order unclear. `AgentConfig` is the canonical struct that every configuration surface conforms to — modes are named `AgentConfig` presets, the `[agent]` block is a partial `AgentConfig` override, and the resolved Workspace is a fully computed `AgentConfig`.
+Ship needs one canonical agent configuration model so modes, workspace context, provider exports, and feature overrides all compose predictably.
 
 ## Acceptance Criteria
 
-- [ ] `AgentConfig` struct is the single schema for: skills, mcp_servers, model, max_cost, max_turns, permissions, rules
-- [ ] Mode files (`agents/modes/*.toml`) parse into `AgentConfig`
-- [ ] Feature `[agent]` block is a partial `AgentConfig` (missing fields inherit from mode)
-- [ ] Resolution chain: project defaults → active mode → feature `[agent]` → resolved Workspace
-- [ ] `resolve_agent_config(ship_dir, feature_agent_config)` returns fully resolved config
-- [ ] Schema documented and validated at CLI/MCP write time
-- [ ] No `model = "claude"` string — model must be a valid model ID or omitted
+- [x] Canonical `AgentConfig` schema is used across runtime config surfaces
+- [x] Mode configuration resolves into the same model used for provider exports
+- [x] Feature agent overrides are merged with deterministic precedence
+- [x] Resolved config generation is available for workspace/session operations
+- [x] Config write paths validate schema shape and normalize provider IDs
 
 ## Delivery Todos
 
-- [ ] Finalize `AgentConfig` struct in `agent_config.rs`
-- [ ] Parse mode files and integrate into resolution chain
-- [ ] Update feature `[agent]` parsing to use partial `AgentConfig`
-- [ ] Remove `model = "claude"` and `max_cost_per_session` from FEATURE.md template (done)
-- [ ] Wire resolved config into CLAUDE.md / .mcp.json generation
-- [ ] MCP: `get_agent_config` returns resolved config for current branch
+- [x] Consolidate config resolution logic in runtime agent config module
+- [x] Wire mode + feature override merge behavior into export/activation flows
+- [x] Add tests for provider/mode/filter merge edge cases
+- [x] Remove stale duplicated config definitions in legacy paths
 
-## Notes
+## Current Behavior
 
-This feature is the schema half of Scoped Workspaces. Workspace owns the runtime session and SQLite state; this feature owns the config schema and resolution logic. They are sister features and should ship together. See also: Pre-defined Agent Modes (the user-facing preset layer built on top of this schema).
+Unified config resolution is active and powers workspace activation, provider export, and mode switching.
+
+## Follow-ups
+
+- Expand policy-level validation messages for invalid mode/provider combinations.

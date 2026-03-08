@@ -28,7 +28,7 @@ export default function FeatureHubRow({
   return (
     <button
       type="button"
-      className="hover:bg-muted/35 grid w-full gap-2 rounded-md border p-3 text-left transition-colors md:grid-cols-[1fr_auto] md:items-start"
+      className="grid w-full gap-2 rounded-md border border-border p-3 text-left transition-colors hover:border-primary/45 hover:bg-muted/35 hover:shadow-sm md:grid-cols-[1fr_auto] md:items-start"
       title={feature.path}
       onClick={() => onSelect(feature)}
     >
@@ -36,6 +36,9 @@ export default function FeatureHubRow({
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-semibold">{feature.title}</p>
           <Badge variant="outline">{formatStatusLabel(feature.status)}</Badge>
+          {feature.docs_status && (
+            <Badge variant="outline">Docs: {feature.docs_status}</Badge>
+          )}
           {isBlocking && <Badge variant="secondary">Blocking</Badge>}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">

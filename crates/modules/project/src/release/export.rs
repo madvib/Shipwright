@@ -4,24 +4,30 @@ use chrono::Utc;
 
 impl Release {
     pub fn to_markdown(&self) -> Result<String> {
-        let toml_str = toml::to_string(&self.metadata)
-            .context("Failed to serialise release metadata as TOML")?;
-        Ok(format!("+++\n{}+++\n\n{}", toml_str, self.body))
+        let body = self.body.trim_start_matches('\n');
+        Ok(format!(
+            "<!-- ship:release id={} version={} -->\n\n{}",
+            self.metadata.id, self.metadata.version, body
+        ))
     }
 
     pub fn from_markdown(content: &str) -> Result<Self> {
         if content.starts_with("+++\n") {
             Self::from_toml_markdown(content)
         } else {
-            let version = content
-                .lines()
-                .find(|l| l.starts_with("# "))
-                .map(|l| l.trim_start_matches("# ").trim().to_string())
-                .unwrap_or_default();
+            let (header_id, header_version, body_content) = parse_generated_release_header(content);
+            let version = header_version.unwrap_or_else(|| {
+                body_content
+                    .lines()
+                    .find(|l| l.starts_with("# "))
+                    .map(|l| l.trim_start_matches("# ").trim().to_string())
+                    .unwrap_or_default()
+            });
+            let id = header_id.unwrap_or_else(|| version.clone());
             let now = Utc::now().to_rfc3339();
             Ok(Release {
                 metadata: ReleaseMetadata {
-                    id: version.clone(),
+                    id,
                     version,
                     status: ReleaseStatus::default(),
                     created: now.clone(),
@@ -30,7 +36,7 @@ impl Release {
                     target_date: None,
                     tags: Vec::new(),
                 },
-                body: content.to_string(),
+                body: body_content,
                 breaking_changes: Vec::new(),
             })
         }
@@ -84,4 +90,27 @@ impl Release {
         }
         self.breaking_changes = items;
     }
+}
+
+fn parse_generated_release_header(content: &str) -> (Option<String>, Option<String>, String) {
+    let mut lines = content.lines();
+    if let Some(first) = lines.next() {
+        let trimmed = first.trim();
+        if trimmed.starts_with("<!-- ship:release ")
+            && trimmed.ends_with("-->")
+        {
+            let id = trimmed
+                .split_whitespace()
+                .find_map(|part| part.strip_prefix("id="))
+                .map(|value| value.trim().to_string());
+            let version = trimmed
+                .split_whitespace()
+                .find_map(|part| part.strip_prefix("version="))
+                .map(|value| value.trim_end_matches("-->").trim().to_string());
+            let mut body = lines.collect::<Vec<_>>().join("\n");
+            body = body.trim_start_matches('\n').to_string();
+            return (id, version, body);
+        }
+    }
+    (None, None, content.to_string())
 }

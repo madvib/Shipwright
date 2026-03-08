@@ -42,6 +42,45 @@ impl std::str::FromStr for FeatureStatus {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum FeatureDocStatus {
+    NotStarted,
+    Draft,
+    Reviewed,
+    Published,
+}
+
+impl Default for FeatureDocStatus {
+    fn default() -> Self {
+        FeatureDocStatus::NotStarted
+    }
+}
+
+impl std::fmt::Display for FeatureDocStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FeatureDocStatus::NotStarted => write!(f, "not-started"),
+            FeatureDocStatus::Draft => write!(f, "draft"),
+            FeatureDocStatus::Reviewed => write!(f, "reviewed"),
+            FeatureDocStatus::Published => write!(f, "published"),
+        }
+    }
+}
+
+impl std::str::FromStr for FeatureDocStatus {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "not-started" => Ok(FeatureDocStatus::NotStarted),
+            "draft" => Ok(FeatureDocStatus::Draft),
+            "reviewed" => Ok(FeatureDocStatus::Reviewed),
+            "published" => Ok(FeatureDocStatus::Published),
+            _ => Err(anyhow::anyhow!("Invalid feature doc status: {}", s)),
+        }
+    }
+}
+
 // ─── Core types ───────────────────────────────────────────────────────────────
 
 pub use runtime::agents::config::FeatureAgentConfig;
@@ -56,6 +95,8 @@ pub struct FeatureMetadata {
     pub updated: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub release_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_target_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,4 +138,16 @@ pub struct FeatureEntry {
     pub path: String,
     pub status: FeatureStatus,
     pub feature: Feature,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureDocumentation {
+    pub feature_id: String,
+    pub status: FeatureDocStatus,
+    pub content: String,
+    pub revision: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_verified_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }

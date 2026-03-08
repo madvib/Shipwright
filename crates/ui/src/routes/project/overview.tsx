@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import ProjectOverview from '@/features/planning/common/ProjectOverview';
+import { Suspense, lazy } from 'react';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
 import { AppRoutePath } from '@/lib/constants/routes';
+import RouteFallback from '@/components/app/RouteFallback';
+
+const ProjectOverview = lazy(() => import('@/features/planning/common/ProjectOverview'));
 
 function OverviewRouteComponent() {
   const workspace = useWorkspace();
@@ -17,16 +20,18 @@ function OverviewRouteComponent() {
   };
 
   return (
-    <ProjectOverview
-      project={workspace.activeProject}
-      specs={ship.specs}
-      adrs={ship.adrs}
-      releases={ship.releases}
-      features={ship.features}
-      notes={ship.notes}
-      events={workspace.eventEntries}
-      onNavigate={handleNavigate}
-    />
+    <Suspense fallback={<RouteFallback label="Loading overview..." />}>
+      <ProjectOverview
+        project={workspace.activeProject}
+        specs={ship.specs}
+        adrs={ship.adrs}
+        releases={ship.releases}
+        features={ship.features}
+        notes={ship.notes}
+        events={workspace.eventEntries}
+        onNavigate={handleNavigate}
+      />
+    </Suspense>
   );
 }
 

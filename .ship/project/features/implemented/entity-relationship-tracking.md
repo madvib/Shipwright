@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "E5Tf2KNN"
 title = "Entity Relationship Tracking"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.263988530+00:00"
+updated = "2026-03-07T21:48:11.143096+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,27 +18,25 @@ skills = []
 
 ## Why
 
-Shipwright documents don't exist in isolation — a spec belongs to a feature, a feature belongs to a release, an ADR is motivated by a spec. These relationships need to be stable, machine-readable, and resolve correctly even when files are renamed or moved. Cross-references via short IDs (not filenames) provide this guarantee and enable Shipwright to surface the right context automatically.
+Ship's planning model depends on stable relationships between entities (feature/spec/release/ADR/workspace/session). Relationship integrity is required for trustworthy context compilation and auditability.
 
 ## Acceptance Criteria
 
-- [ ] All cross-references use short ID (8-char nanoid), never filename or title
-- [ ] Feature: `release_id`, `spec_id`, `adr_ids`
-- [ ] Spec: `feature_id`, `release_id`
-- [ ] ADR: `spec_id`, `supersedes_id`
-- [ ] Issue: `spec_id`, `feature_id`
-- [ ] Release: `feature_ids`, `adr_ids`
-- [ ] `get_project_info` resolves all relationships and returns a linked object graph
-- [ ] Broken references (ID with no matching file) are reported, not silently ignored
+- [x] Entity records include stable IDs and link fields across planning objects
+- [x] Workspace and spec flows carry feature/release linkage when available
+- [x] Runtime and module operations resolve entities by ID/reference robustly
+- [x] UI surfaces linked IDs/metadata for planning navigation
 
 ## Delivery Todos
 
-- [ ] Audit all entity structs to confirm ID-based refs (no filename strings)
-- [ ] Implement reference resolution in `project.rs` or a dedicated `relations.rs`
-- [ ] `get_project_info` returns fully resolved graph (already partially implemented — verify)
-- [ ] CLI `ship feature show` resolves and displays linked spec/release
-- [ ] Broken reference detection and reporting
+- [x] Normalize ID-driven relationships across feature/release/spec/ADR/workspace entities
+- [x] Add reference resolution helpers in CRUD/service layers
+- [x] Maintain linkage through migration/import/update paths
 
-## Notes
+## Current Behavior
 
-Direction of reference: Feature points to Release and Spec. Release points to Features. This is deliberate — the higher-level document knows what it contains; the lower-level document knows what it belongs to. Bidirectional is not required; resolution builds it on demand.
+Core relationship tracking is working and used in day-to-day planning flows.
+
+## Follow-ups
+
+- Add first-class relationship integrity diagnostics and graph-oriented introspection APIs.

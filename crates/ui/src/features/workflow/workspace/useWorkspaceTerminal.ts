@@ -144,30 +144,68 @@ export function useWorkspaceTerminal(
         };
     }, [resizeActiveTerminal, writeTerminalInput]);
 
-    // Stream reader
+    // Stream reader (adaptive polling + no overlapping IPC reads)
     useEffect(() => {
         if (!terminalSession) return;
         let cancelled = false;
-        const interval = window.setInterval(async () => {
-            const result = await readWorkspaceTerminalCmd(terminalSession.session_id, 65_536);
+        let timer: number | null = null;
+        let idleReads = 0;
+
+        const schedule = (delayMs: number) => {
             if (cancelled) return;
-            if (result.status === 'ok' && result.data) {
-                if (xtermRef.current) {
-                    xtermRef.current.write(result.data);
-                } else {
-                    terminalBacklogRef.current += result.data;
+            timer = window.setTimeout(() => {
+                void pollOnce();
+            }, delayMs);
+        };
+
+        const pollOnce = async () => {
+            if (cancelled) return;
+            const hidden =
+                typeof document !== 'undefined' && document.visibilityState === 'hidden';
+            const maxBytes = hidden ? 16_384 : 65_536;
+            const result = await readWorkspaceTerminalCmd(terminalSession.session_id, maxBytes);
+            if (cancelled) return;
+
+            if (result.status === 'ok') {
+                const chunk = result.data ?? '';
+                if (chunk.length > 0) {
+                    idleReads = 0;
+                    if (xtermRef.current) {
+                        xtermRef.current.write(chunk);
+                    } else {
+                        terminalBacklogRef.current += chunk;
+                    }
+                    schedule(24);
+                    return;
                 }
-            } else if (result.status === 'error') {
-                if (isTerminalClosedError(result.error)) {
-                    setTerminalSession(null);
-                } else {
-                    setRuntimeError(result.error || 'Terminal stream failed.');
+
+                idleReads += 1;
+                if (hidden) {
+                    schedule(700);
+                    return;
                 }
+                if (idleReads < 5) {
+                    schedule(120);
+                    return;
+                }
+                schedule(300);
+                return;
             }
-        }, 200);
+
+            if (isTerminalClosedError(result.error)) {
+                setTerminalSession(null);
+                return;
+            }
+            setRuntimeError(result.error || 'Terminal stream failed.');
+            schedule(500);
+        };
+
+        schedule(0);
         return () => {
             cancelled = true;
-            window.clearInterval(interval);
+            if (timer !== null) {
+                window.clearTimeout(timer);
+            }
         };
     }, [terminalSession?.session_id]);
 

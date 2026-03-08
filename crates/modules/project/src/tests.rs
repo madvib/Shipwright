@@ -5,8 +5,8 @@ mod tests {
         create_release, create_spec, delete_issue, delete_spec, get_feature_by_id, get_issue_by_id,
         get_release_by_id, get_spec_by_id, import_features_from_files, import_releases_from_files,
         init_demo_project, init_project, list_adrs, list_features, list_issues, list_releases,
-        list_specs, move_issue, move_spec, update_feature_content, update_issue,
-        update_release_content, update_spec,
+        list_specs, move_feature, move_issue, move_spec, update_feature, update_feature_content,
+        update_issue, update_release, update_release_content, update_spec,
     };
     use std::path::Path;
     use tempfile::tempdir;
@@ -34,7 +34,7 @@ mod tests {
         let path = std::path::PathBuf::from(&entry.path);
         assert!(path.exists());
         let content = std::fs::read_to_string(&path)?;
-        assert!(content.contains("version = \"v0.1.0-alpha\""));
+        assert!(content.contains("ship:release id=v0.1.0-alpha"));
         Ok(())
     }
 
@@ -64,6 +64,24 @@ mod tests {
         let content = std::fs::read_to_string(&canonical_path)?;
         assert!(content.contains("updated"));
         assert!(!suffixed_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_release_metadata_preserves_body() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let created = create_release(&project_dir, "v0.4.0-alpha", "release-body")?;
+
+        let mut release = get_release_by_id(&project_dir, &created.id)?.release;
+        release.metadata.target_date = Some("2026-03-31".to_string());
+        // Simulate callers that hydrate from DB-only metadata and pass no body.
+        release.body.clear();
+        update_release(&project_dir, &created.id, release)?;
+
+        let path = runtime::project::releases_dir(&project_dir).join("v0.4.0-alpha.md");
+        let content = std::fs::read_to_string(path)?;
+        assert!(content.contains("release-body"));
         Ok(())
     }
 
@@ -144,6 +162,26 @@ mod tests {
     }
 
     #[test]
+    fn test_update_feature_metadata_preserves_body() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let created = create_feature(&project_dir, "Feature Body Preserve", "feature-body", None, None, None)?;
+
+        let mut feature = get_feature_by_id(&project_dir, &created.id)?.feature;
+        feature.metadata.description = Some("updated description".to_string());
+        // Simulate callers that hydrate from DB-only metadata and pass no body.
+        feature.body.clear();
+        update_feature(&project_dir, &created.id, feature)?;
+
+        let path = runtime::project::features_dir(&project_dir)
+            .join("planned")
+            .join("feature-body-preserve.md");
+        let content = std::fs::read_to_string(path)?;
+        assert!(content.contains("feature-body"));
+        Ok(())
+    }
+
+    #[test]
     fn test_update_feature_content_rewrites_in_place_without_suffix_files() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
@@ -173,6 +211,21 @@ mod tests {
         assert!(!suffixed_path.exists());
         let content = std::fs::read_to_string(&canonical_path)?;
         assert!(content.contains("updated"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_feature_preserves_body() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let created = create_feature(&project_dir, "Move Preserve", "move-body", None, None, None)?;
+
+        move_feature(&project_dir, &created.id, FeatureStatus::InProgress)?;
+        let moved_path = runtime::project::features_dir(&project_dir)
+            .join("in-progress")
+            .join("move-preserve.md");
+        let moved_content = std::fs::read_to_string(moved_path)?;
+        assert!(moved_content.contains("move-body"));
         Ok(())
     }
 

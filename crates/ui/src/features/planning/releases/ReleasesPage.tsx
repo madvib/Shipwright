@@ -61,11 +61,14 @@ interface ReleaseFeatureReadiness {
   metrics?: FeatureChecklistMetrics;
   readiness: number;
   blocking: boolean;
+  isActiveTarget: boolean;
 }
 
 interface ReleaseReadinessSummary {
   release: ReleaseInfo;
+  scope: ReleaseFeatureReadiness[];
   linked: ReleaseFeatureReadiness[];
+  activeTargets: ReleaseFeatureReadiness[];
   progressPercent: number;
   blockers: number;
   todosDone: number;
@@ -98,10 +101,15 @@ export default function ReleasesPage({
   const [sortBy, setSortBy] = useState<ReleaseSort>('newest');
   const [search, setSearch] = useState('');
   const [viewFilter, setViewFilter] = useState<ReleaseView>('all');
+  const [activeTargetsOnly, setActiveTargetsOnly] = useState(false);
   const { metricsByFile: featureMetricsByFile } = useFeatureChecklistMetrics(features);
 
+  const matchesReleaseReference = (reference: string | null | undefined, release: ReleaseInfo) =>
+    Boolean(reference) &&
+    (reference === release.id || reference === release.file_name || reference === release.version);
+
   const createInitialReleaseDocument = () => {
-    return `++ +
+    return `+++
   version = "v0.1.0-alpha"
 status = "planned"
 supported = false
@@ -158,34 +166,51 @@ tags = []
     const summaries = new Map<string, ReleaseReadinessSummary>();
     for (const release of releases) {
       const linked = features
-        .filter((feature) => feature.release_id === release.file_name || feature.release_id === release.version)
+        .filter((feature) => matchesReleaseReference(feature.release_id, release))
         .map((feature) => {
           const metrics = featureMetricsByFile[feature.file_name];
           const readiness = metrics?.readinessPercent ?? featureStatusFallbackReadiness(feature.status);
           const blocking =
             metrics?.blocking ?? (feature.status !== 'implemented' && feature.status !== 'deprecated');
-          return { feature, metrics, readiness, blocking };
+          return { feature, metrics, readiness, blocking, isActiveTarget: false };
         });
 
-      const blockers = linked.filter((entry) => entry.blocking).length;
-      const todosDone = linked.reduce((sum, entry) => sum + (entry.metrics?.todos.done ?? 0), 0);
-      const todosTotal = linked.reduce((sum, entry) => sum + (entry.metrics?.todos.total ?? 0), 0);
-      const acceptanceDone = linked.reduce((sum, entry) => sum + (entry.metrics?.acceptance.done ?? 0), 0);
-      const acceptanceTotal = linked.reduce((sum, entry) => sum + (entry.metrics?.acceptance.total ?? 0), 0);
+      const activeTargets = features
+        .filter((feature) => {
+          const effectiveActiveTarget = feature.active_target_id ?? feature.release_id;
+          return matchesReleaseReference(effectiveActiveTarget, release);
+        })
+        .map((feature) => {
+          const metrics = featureMetricsByFile[feature.file_name];
+          const readiness = metrics?.readinessPercent ?? featureStatusFallbackReadiness(feature.status);
+          const blocking =
+            metrics?.blocking ?? (feature.status !== 'implemented' && feature.status !== 'deprecated');
+          return { feature, metrics, readiness, blocking, isActiveTarget: true };
+        });
+
+      const scope = activeTargets.length > 0 ? activeTargets : linked;
+
+      const blockers = scope.filter((entry) => entry.blocking).length;
+      const todosDone = scope.reduce((sum, entry) => sum + (entry.metrics?.todos.done ?? 0), 0);
+      const todosTotal = scope.reduce((sum, entry) => sum + (entry.metrics?.todos.total ?? 0), 0);
+      const acceptanceDone = scope.reduce((sum, entry) => sum + (entry.metrics?.acceptance.done ?? 0), 0);
+      const acceptanceTotal = scope.reduce((sum, entry) => sum + (entry.metrics?.acceptance.total ?? 0), 0);
 
       const statusWeightedProgress =
-        linked.length > 0
+        scope.length > 0
           ? Math.round(
-            linked.reduce((sum, entry) => sum + entry.readiness, 0) / linked.length
+            scope.reduce((sum, entry) => sum + entry.readiness, 0) / scope.length
           )
           : 0;
       const progressPercent =
         todosTotal > 0 ? Math.round((todosDone / todosTotal) * 100) : statusWeightedProgress;
-      const ready = linked.length > 0 && blockers === 0 && progressPercent >= 90;
+      const ready = scope.length > 0 && blockers === 0 && progressPercent >= 90;
 
       summaries.set(release.file_name, {
         release,
+        scope,
         linked,
+        activeTargets,
         progressPercent,
         blockers,
         todosDone,
@@ -201,7 +226,6 @@ tags = []
   const dashboard = useMemo(() => {
     const active = releases.find((release) => release.status === 'active') ?? null;
     const shippedCount = releases.filter((release) => release.status === 'shipped').length;
-    const linkedFeatureCount = features.filter((feature) => feature.release_id).length;
     const activeBlockers = active
       ? releaseSummaries.get(active.file_name)?.blockers ?? 0
       : Array.from(releaseSummaries.values()).reduce((sum, summary) => sum + summary.blockers, 0);
@@ -215,7 +239,12 @@ tags = []
     return {
       active,
       shippedCount,
-      linkedFeatureCount,
+      activeTargetFeatureCount: features.filter(
+        (feature) => (feature.active_target_id ?? feature.release_id)
+      ).length,
+      activeTargetReleaseCount: Array.from(releaseSummaries.values()).filter(
+        (summary) => summary.activeTargets.length > 0
+      ).length,
       activeBlockers,
       avgProgress,
     };
@@ -238,6 +267,7 @@ tags = []
     const viewFiltered = next.filter((release) => {
       const summary = releaseSummaries.get(release.file_name);
       if (!summary) return viewFilter === 'all';
+      if (activeTargetsOnly && summary.activeTargets.length === 0) return false;
       if (viewFilter === 'blocking') return summary.blockers > 0;
       if (viewFilter === 'ready') return summary.ready;
       return true;
@@ -260,7 +290,7 @@ tags = []
       }
     });
     return viewFiltered;
-  }, [releaseSummaries, releases, search, sortBy, viewFilter]);
+  }, [activeTargetsOnly, releaseSummaries, releases, search, sortBy, viewFilter]);
 
   const submitCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -354,7 +384,8 @@ tags = []
         activeBlockers={dashboard.activeBlockers}
         shippedCount={dashboard.shippedCount}
         totalReleases={releases.length}
-        linkedFeatureCount={dashboard.linkedFeatureCount}
+        activeTargetFeatureCount={dashboard.activeTargetFeatureCount}
+        activeTargetReleaseCount={dashboard.activeTargetReleaseCount}
         avgProgress={dashboard.avgProgress}
       />
 
@@ -380,6 +411,8 @@ tags = []
                   onSearchChange={setSearch}
                   viewFilter={viewFilter}
                   onViewFilterChange={setViewFilter}
+                  activeTargetsOnly={activeTargetsOnly}
+                  onActiveTargetsOnlyChange={setActiveTargetsOnly}
                   sortBy={sortBy}
                   sortOptions={RELEASE_SORT_OPTIONS}
                   onSortByChange={(value) => setSortBy(value as ReleaseSort)}
@@ -396,7 +429,7 @@ tags = []
 
             {sortedReleases.map((release) => {
               const summary = releaseSummaries.get(release.file_name);
-              const linked = summary?.linked ?? [];
+              const linked = summary?.scope ?? [];
               const progress = summary?.progressPercent ?? 0;
               const blockers = summary?.blockers ?? 0;
 
@@ -405,6 +438,8 @@ tags = []
                   key={release.path}
                   release={release}
                   linked={linked}
+                  activeTargetCount={summary?.activeTargets.length ?? 0}
+                  linkedCount={summary?.linked.length ?? 0}
                   progress={progress}
                   blockers={blockers}
                   todosDone={summary?.todosDone ?? 0}

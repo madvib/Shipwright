@@ -1,9 +1,27 @@
-+++
-id = "d5pyhwA3"
-title = "Deep Editor Integrations with LSP"
-created = "2026-03-03T06:03:32.284318981+00:00"
-updated = "2026-03-03T06:03:32.284318981+00:00"
-tags = []
-+++
+<!-- ship:feature id=d5pyhwA3 -->
 
-Language Server Protocol implementation linking code symbols to Ship entities. Hover on functions/types shows linked issues and specs. Go-to-definition for Ship entity references in comments. Diagnostics for TODO/FIXME that surface ghost issues inline. Works across VSCode, Neovim, Zed, and any LSP-compatible editor.
+# Deep Editor Integrations with LSP
+
+## Why
+
+Ship should expose deeper editor integrations to reduce context-switch overhead and bring workflow controls directly into developer environments.
+
+## Acceptance Criteria
+
+- [ ] Editor integrations can consume workspace/mode/context state from Ship
+- [ ] Navigation and action affordances are available from editor commands
+- [ ] Integration supports diagnostics/LSP-aware workflows where applicable
+
+## Delivery Todos
+
+- [ ] Define cross-editor integration contract
+- [ ] Implement first deep integration path (likely VS Code)
+- [ ] Validate LSP signal usage and performance impact
+
+## Current Behavior
+
+Planned capability; no deep LSP-linked integration shipped yet.
+
+## Follow-ups
+
+- Keep this aligned with extension strategy and runtime API boundaries.

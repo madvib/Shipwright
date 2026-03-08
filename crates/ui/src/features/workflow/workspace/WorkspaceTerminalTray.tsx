@@ -2,7 +2,7 @@ import { RefObject } from 'react';
 import { TerminalSquare, RefreshCw, Maximize2, Minimize2, X, Info, Play, Square } from 'lucide-react';
 import { Badge, Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent } from '@ship/ui';
 import { cn } from '@/lib/utils';
-import { type WorkspaceTerminalSessionInfo } from '@/lib/platform/tauri/commands';
+import { type RuntimePerfSnapshot, type WorkspaceTerminalSessionInfo } from '@/lib/platform/tauri/commands';
 
 interface WorkspaceTerminalTrayProps {
     terminalSession: WorkspaceTerminalSessionInfo | null;
@@ -21,6 +21,7 @@ interface WorkspaceTerminalTrayProps {
     activationError?: string | null;
     runtimeError?: string | null;
     hasActiveSession: boolean;
+    runtimePerf?: RuntimePerfSnapshot | null;
 }
 
 export function WorkspaceTerminalTray({
@@ -40,6 +41,7 @@ export function WorkspaceTerminalTray({
     activationError,
     runtimeError,
     hasActiveSession,
+    runtimePerf,
 }: WorkspaceTerminalTrayProps) {
     const resolvedHeight = Math.max(height, 140);
     return (
@@ -182,6 +184,12 @@ export function WorkspaceTerminalTray({
                     </Tooltip>
                 </div>
             </div>
+
+            {runtimePerf && (
+                <div className="border-b border-border bg-muted/20 px-4 py-1 text-[10px] text-muted-foreground">
+                    perf: start {runtimePerf.terminal_start_last_micros}us · read {runtimePerf.terminal_last_read_micros}us · write {runtimePerf.terminal_write_last_micros}us · resize {runtimePerf.terminal_resize_last_micros}us · watcher events {runtimePerf.watcher_fs_events} / flushes {runtimePerf.watcher_flushes}
+                </div>
+            )}
 
             {(activationError || runtimeError) && (
                 <div className="border-b border-border bg-muted/20 px-4 py-2">

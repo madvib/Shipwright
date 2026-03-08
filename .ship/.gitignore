@@ -1,11 +1,11 @@
 # Managed by Ship — edit via `ship git include/exclude`
 
-workflow/issues
-project/notes
-events.ndjson
+workflow/**
+project/**
+!project/VISION.md
+!project/vision.md
+**/TEMPLATE.md
 generated/
+.tmp-global/
 
-# Runtime — never commit
-ship.db
-ship.db-shm
-ship.db-wal
+.tmp-global/

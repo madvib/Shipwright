@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "U7xtfX7R"
 title = "Lightweight Note Capture"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-02-28T15:56:07Z"
-branch = ""
+updated = "2026-03-07T21:46:36.304677+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
-adr_ids = []
+branch = "feature/lightweight-note-capture"
 tags = []
 
 [agent]
@@ -19,32 +18,29 @@ skills = []
 
 ## Why
 
-Not every thought needs a spec or a feature. Developers need a frictionless place to drop a link, a rough idea, or a session summary without committing to structure. Notes are Shipwright's scratch space — freeform markdown, local-only by default, indexed but not enforced. They feed into context generation when relevant and get promoted to specs or features when they mature.
+Notes provide low-friction capture for ideas, findings, and session context that does not yet belong in a feature/spec/ADR. They protect momentum without forcing premature structure.
 
 ## Acceptance Criteria
 
-- [ ] Note CRUD: create, list, get, update via CLI and MCP
-- [ ] Notes live in `.ship/project/notes/` — gitignored by default
-- [ ] No mandatory frontmatter beyond `title` (ID generated, `created`/`updated` stamped automatically)
-- [ ] `ship note new "<title>"` opens editor or accepts stdin
-- [ ] MCP: `list_notes`, `get_note`, `create_note`, `update_note`
-- [ ] UI: note list with search; simple editor
-- [ ] Notes can be scoped: `project` (default) or `user` (global, in `~/.ship/notes/`)
+- [x] Note CRUD is available in CLI/MCP/backend surfaces
+- [x] Project-scoped notes are persisted and visible in desktop UI
+- [x] User-scoped (global) note support exists in backend APIs
+- [x] Note scope is explicit (`project` vs `user`) and enforced by operations
+- [ ] Add higher-quality search and filtering across note content
+- [ ] Add note-to-spec/feature promotion flow
 
 ## Delivery Todos
 
-- [ ] Confirm `note.rs` CRUD works correctly (already implemented — verify)
-- [ ] `ship note` CLI subcommand (new, list, show, edit)
-- [ ] User-scoped notes at `~/.ship/notes/` (deferred to V1 or implement now?)
-- [ ] UI note list and editor
-- [ ] Note search by title and content
+- [x] Implement scoped note persistence and operations
+- [x] Wire notes into desktop planning views
+- [x] Add tests for project/user note scope behavior
+- [ ] Add note promotion and structured conversion helpers
+- [ ] Improve content search ergonomics in UI
 
-## Current State
+## Current Behavior
 
-Backend: `note.rs` CRUD fully implemented. MCP tools working: `list_notes`, `get_note`, `create_note`, `update_note`. CLI `ship note` subcommand exists. Notes route exists in the UI (Notes page in Project module). Notes gitignored by default — local-only.
-
-Not yet done: user-scoped notes at `~/.ship/notes/` (deferred to v0.2.0). Note search by content. Note promotion to spec (CLI).
+Notes are functional and persisted in DB-backed state. Remaining work is around discovery/promotion workflows to move valuable notes into structured planning entities.
 
 ## Notes
 
-Notes are the lowest-friction primitive. No ID required in the filename — slug is sufficient. The `create_note` MCP tool already exists. Filename: `{slug}.md`, no date prefix.
+Notes should stay fast and lightweight; promotion into specs/features should be optional but easy.

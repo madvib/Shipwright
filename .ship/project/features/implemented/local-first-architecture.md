@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "WZJa9Cdj"
 title = "Local-First Architecture"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.303508336+00:00"
+updated = "2026-03-07T21:49:47.787492+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,24 +18,25 @@ skills = []
 
 ## Why
 
-Developer tools that require accounts and internet connections create friction, lock-in, and failure modes. Shipwright is a tool developers trust with their project structure — it must work offline, on private networks, and without ever sending data to a server. Local-first is not a feature; it's the architecture. Cloud is additive, not foundational.
+Local-first is the baseline operating model for Ship: planning, execution, and agent context should work without cloud dependencies.
 
 ## Acceptance Criteria
 
-- [ ] `ship init` works with zero network access
-- [ ] All core operations (CRUD, hook, CLAUDE.md generation) work fully offline
-- [ ] No account required for any alpha feature
-- [ ] Data never leaves the machine without explicit user action
-- [ ] Works in air-gapped environments
-- [ ] Cloud/sync is opt-in and additive — removing it doesn't break local operation
+- [x] Core workflows run without network access (`init`, planning CRUD, workspace/session operations)
+- [x] No account is required for v0.1.0-alpha local usage
+- [x] Project/runtime state remains local unless user explicitly enables sync/export
+- [x] MCP and CLI surfaces operate against local state by default
 
 ## Delivery Todos
 
-- [ ] Audit all runtime paths for accidental network calls
-- [ ] Confirm MCP server operates purely over stdio (no HTTP endpoints in alpha)
-- [ ] Document data residency guarantees in ship.toml or README
-- [ ] Ensure catalog (community skills / official servers) degrades gracefully offline (embedded static list)
+- [x] Keep runtime dependencies local-only for alpha core paths
+- [x] Validate local initialization + planning flows in offline/dev scenarios
+- [x] Ensure cloud-oriented features remain optional extensions
 
-## Notes
+## Current Behavior
 
-The free tier is a complete product, not a trial. Local-first is permanent, not a stepping stone to SaaS. Cloud v2 design: event log is the replication unit; SQLite is the read model; frontmatter files are the git export. All three are local by default; cloud sync pushes the event log selectively.
+Ship is operational as a local-first desktop/CLI/MCP tool. Planned sync/cloud capabilities are additive and not required for the core loop.
+
+## Follow-ups
+
+- Add explicit offline-mode diagnostics in `doctor` and UI health views.

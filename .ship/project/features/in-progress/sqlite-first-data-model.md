@@ -1,12 +1,11 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "beUJ4VtG"
 title = "SQLite-first data model"
-status = "planned"
 created = "2026-03-02T17:11:10.062517276Z"
-updated = "2026-03-02T17:11:10.062517276Z"
+updated = "2026-03-07T21:49:49.075937+00:00"
 release_id = "v0.1.0-alpha"
-adr_ids = []
+active_target_id = "v0.1.0-alpha"
+branch = "feature/sqlite-first-data-model"
 tags = []
 
 [agent]
@@ -16,33 +15,29 @@ skills = []
 
 ## Why
 
-Markdown as source of truth breaks down for rich UI, cloud sync, and relational queries. SQLite becomes the canonical store. Markdown is a generated export for agents — a role it already plays well via CLAUDE.md generation.
+As Ship grows, markdown-only planning state becomes brittle. SQLite-first modeling makes relationships, analytics, sync, and UI behavior deterministic while preserving markdown exports where needed.
 
 ## Acceptance Criteria
 
-- [ ] Features, specs, releases, workspaces stored as structured SQLite rows
-- [ ] FeatureTodo and FeatureAcceptanceCriteria as separate tables (not markdown checkboxes)
-- [ ] WorkspaceType enum: feature | refactor | experiment | hotfix
-- [ ] WorkspaceStatus enum: planned | active | idle | review | merged | archived
-- [ ] Narrative content (Why, Notes) stored as text columns, not markdown files
-- [ ] Events stay as SQLite rows — NDJSON sync role removed
-- [ ] DB lives at ~/.ship/projects/{projectId}.db (not in repo)
-- [ ] Markdown export regenerated for agents on demand (existing pattern)
-- [ ] Git commits: ship.toml, agents/ (rules, skills, permissions, mcp.toml), vision.md only
+- [x] Core planning entities (features/specs/releases/ADRs/notes) are persisted in SQLite-backed flows
+- [x] Structured checklist state for features is stored and consumed from DB tables
+- [x] Workspace/session lifecycle state is persisted in runtime DB
+- [x] Markdown read views are derived/exported artifacts rather than sole source of truth
+- [ ] Complete removal of legacy markdown-dependent write paths
+- [ ] Finalize canonical storage policy per entity (DB text vs generated markdown)
 
 ## Delivery Todos
 
-- [ ] Design and write SQLite migrations for new schema
-- [ ] FeatureTodo table: id, feature_id, text, completed, completed_at, ord
-- [ ] FeatureAcceptanceCriteria table: id, feature_id, text, met, ord
-- [ ] WorkspaceType + WorkspaceStatus enums in Rust
-- [ ] Workspace table: id, type, status, branch, worktree_path, feature_id, release_id, last_activated_at, context_hash
-- [ ] Migrate narrative fields (description, notes) to text columns on Feature
-- [ ] Update agent export to generate markdown from SQLite (not read from .md files)
-- [ ] Update MCP tools to read/write SQLite
-- [ ] Update Tauri commands to use new schema
-- [ ] Migration path for existing .ship markdown files → SQLite
+- [x] Migrate major planning/runtime entities to SQLite-backed operations
+- [x] Add regression coverage for DB/file reconciliation bugs
+- [x] Shift feature checklist rendering to DB-backed structured fields
+- [ ] Eliminate remaining dual-write edge cases and legacy assumptions
+- [ ] Document final canonical storage matrix for launch docs
+
+## Current Behavior
+
+Ship is mostly SQLite-first for runtime and planning operations. Remaining work is hardening and final cleanup of residual markdown-era assumptions.
 
 ## Notes
 
-Cloud sync (Rivet) slots in later without schema changes — sync layer is transport, not storage. Design the schema now as if sync already exists.
+This feature stays in-progress until storage semantics are fully consistent across all surfaces.

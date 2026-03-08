@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "pUccKNoA"
 title = "Global and Project Configuration"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.291053936+00:00"
+updated = "2026-03-07T22:33:20.559999+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,26 +18,25 @@ skills = []
 
 ## Why
 
-Shipwright has two configuration scopes: project-level (committed to git, shared with the team) and user-level (local to the machine, personal preferences). Without a clear separation, users either over-commit personal config or lose settings on clone. `ship.toml` is the project config; `~/.ship/config.toml` is the user config. Both have defined schemas and are managed through `ship config` commands.
+Agent control-plane behavior depends on clean separation between project-shared config and user-local preferences.
 
 ## Acceptance Criteria
 
-- [ ] `ship.toml` at project root covers: project name, git policy, providers, active mode defaults
-- [ ] `~/.ship/config.toml` covers: user preferences, default editor, global provider settings
-- [ ] `ship config get <key>` / `ship config set <key> <value>` for both scopes
-- [ ] `ship config list` shows all config with scope indicators
-- [ ] Providers declared in `ship.toml [[providers]]` — only declared providers get config generated
-- [ ] MCP: `get_config`, `set_config` tools (project-scoped)
-- [ ] Config schema validated on write; unknown keys are rejected with a helpful error
+- [x] Project scope config and user scope config are both supported
+- [x] Scope-aware config read/write flows are available across surfaces
+- [x] Provider declarations and mode defaults are consumed from canonical config paths
+- [x] Runtime config APIs provide deterministic effective config resolution
 
 ## Delivery Todos
 
-- [ ] Confirm `config.rs` handles both project and user scope
-- [ ] `ship config` CLI subcommand (get, set, list)
-- [ ] Validate provider entries in `ship.toml` against the provider registry
-- [ ] User config path: `~/.ship/config.toml` (or platform-appropriate config dir)
-- [ ] UI settings panel for project and user config
+- [x] Keep project/user config scope explicit in runtime config APIs
+- [x] Ensure CLI/UI/MCP surfaces use the same config read/write backend
+- [x] Normalize provider/mode settings before export/activation
 
-## Notes
+## Current Behavior
 
-The key design decision: provider declarations in `ship.toml` control which agent tool configs get generated. If `[[providers]]` doesn't include `gemini`, no `.gemini/` directory is created on branch checkout. This prevents config clutter for tools the team doesn't use. MCP server registry lives in `agents/mcp.toml`, not `ship.toml`.
+Global/project config separation is operational and used by agent export, workspace activation, and planning surfaces.
+
+## Follow-ups
+
+- Improve config UX for scoped overrides and conflict explanation.

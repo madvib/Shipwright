@@ -5,7 +5,9 @@ import {
   ArrowLeft,
   CheckCircle2,
   Edit3,
+  FileText,
   GitBranch,
+  Info,
   Save,
   X,
 } from 'lucide-react';
@@ -13,18 +15,18 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MarkdownEditor from '@/components/editor';
 import { FeatureHeaderMetadata } from './FeatureHeaderMetadata';
+import { FeatureChecklistSection } from './FeatureChecklistSection';
 import { Button } from '@ship/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
 import { Progress } from '@ship/ui';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ship/ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@ship/ui';
 import {
   readFrontmatterStringListField,
   splitFrontmatterDocument,
   setFrontmatterStringField,
   setFrontmatterStringListField,
 } from '@ship/ui';
-import {
-  deriveFeatureChecklistMetrics,
-} from '@/features/planning/common/hub/utils/featureMetrics';
 import { cn } from '@/lib/utils';
 
 interface FeatureDetailProps {
@@ -54,12 +56,14 @@ export default function FeatureDetail({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'feature' | 'docs'>('feature');
 
   useEffect(() => {
     setContent(feature.content ?? '');
     setDirty(false);
     setSaving(false);
     setEditing(false);
+    setActiveTab('feature');
   }, [feature]);
 
   const saveFeature = useCallback(async () => {
@@ -81,14 +85,51 @@ export default function FeatureDetail({
   }, [feature.content]);
 
   const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
-  const readiness = useMemo(
-    () => deriveFeatureChecklistMetrics(content, feature.status),
-    [content, feature.status]
+  const todoItems = useMemo(
+    () => (feature.todos ?? []).map((todo) => ({ ...todo, done: todo.completed })),
+    [feature.todos]
   );
+  const acceptanceItems = useMemo(
+    () =>
+      (feature.acceptance_criteria ?? []).map((criterion) => ({
+        id: criterion.id,
+        text: criterion.text,
+        done: criterion.met,
+      })),
+    [feature.acceptance_criteria]
+  );
+  const readiness = useMemo(() => {
+    const todosTotal = todoItems.length;
+    const todosDone = todoItems.filter((item) => item.done).length;
+    const todosOpen = Math.max(todosTotal - todosDone, 0);
+    const acceptanceTotal = acceptanceItems.length;
+    const acceptanceDone = acceptanceItems.filter((item) => item.done).length;
+    const acceptanceOpen = Math.max(acceptanceTotal - acceptanceDone, 0);
+    const hasChecklistCoverage = todosTotal > 0 || acceptanceTotal > 0;
+    const todosPercent = todosTotal === 0 ? 0 : Math.round((todosDone / todosTotal) * 100);
+    const acceptancePercent =
+      acceptanceTotal === 0 ? 0 : Math.round((acceptanceDone / acceptanceTotal) * 100);
+    const readinessPercent = hasChecklistCoverage
+      ? Math.round(todosPercent * 0.6 + acceptancePercent * 0.4)
+      : 0;
+    const blocking =
+      hasChecklistCoverage &&
+      (acceptanceTotal > 0 ? acceptanceOpen > 0 : todosOpen > 0);
+
+    return {
+      todos: { total: todosTotal, done: todosDone, open: todosOpen },
+      acceptance: { total: acceptanceTotal, done: acceptanceDone, open: acceptanceOpen },
+      hasChecklistCoverage,
+      readinessPercent,
+      blocking,
+    };
+  }, [acceptanceItems, todoItems]);
+  const hasChecklistCoverage = readiness.hasChecklistCoverage;
   const tags = useMemo(
     () => readFrontmatterStringListField(documentModel.frontmatter, 'tags'),
     [documentModel.frontmatter]
   );
+  const docsContent = useMemo(() => feature.docs_content?.trim() ?? '', [feature.docs_content]);
 
   const handleMetadataUpdate = useCallback((updates: {
     status?: string;
@@ -214,92 +255,182 @@ export default function FeatureDetail({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid min-h-0 gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="space-y-3">
-            <Card size="sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Delivery Readiness</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-3">
+            <div className="space-y-1.5 rounded-md border bg-card px-2.5 py-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Readiness</span>
                   <span className="font-semibold">{readiness.readinessPercent}%</span>
                 </div>
                 <Progress
                   value={readiness.readinessPercent}
-                  indicatorClassName={cn(readiness.blocking ? 'bg-amber-500' : 'bg-emerald-500')}
+                  indicatorClassName={cn(
+                    !hasChecklistCoverage
+                      ? 'bg-muted-foreground/40'
+                      : readiness.blocking
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                  )}
                 />
-                <div className="text-muted-foreground space-y-1 text-xs">
-                  <p>
-                    Todos: {readiness.todos.done}/{readiness.todos.total}
-                  </p>
-                  <p>
-                    Acceptance: {readiness.acceptance.done}/{readiness.acceptance.total}
-                  </p>
+                <div className="text-muted-foreground flex flex-wrap gap-3 text-xs">
+                  <span>Todos {readiness.todos.done}/{readiness.todos.total}</span>
+                  <span>Acceptance {readiness.acceptance.done}/{readiness.acceptance.total}</span>
                 </div>
-              </CardContent>
-            </Card>
-
-            {feature.branch && (
-              <Card size="sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">VCS Context</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-                    <GitBranch className="size-3.5" />
-                    {feature?.branch}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </aside>
-
-          <Card size="sm" className="flex min-h-[calc(100vh-15.5rem)] flex-col">
-            <CardHeader className="border-b pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <CardTitle className="text-sm">Feature Document</CardTitle>
-                  <CardDescription>
-                    Read-first view. Use Edit Full Screen when you need to update markdown or metadata.
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  className="border-primary/30 text-primary/80 hover:text-primary"
-                  onClick={() => setEditing(true)}
-                  title="Edit Full Screen"
-                  aria-label="Edit Full Screen"
-                >
-                  <Edit3 className="size-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-auto p-3">
-              <article className="ship-markdown-preview rounded-md border bg-background px-4 py-3">
-                {documentModel.body.trim() ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{documentModel.body}</ReactMarkdown>
-                ) : (
-                  <p className="text-muted-foreground text-sm italic">
-                    No body content yet.
+                {!hasChecklistCoverage && (
+                  <p className="text-muted-foreground text-xs italic">
+                    No checklist coverage yet.
                   </p>
                 )}
-              </article>
-              {readiness.blocking && (
-                <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-amber-600">
-                  <AlertTriangle className="size-3.5" />
-                  Acceptance criteria still have open items.
+            </div>
+
+            <div className="space-y-1.5 rounded-md border bg-card px-2.5 py-2">
+                <p className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+                  <FileText className="size-3.5" />
+                  Docs: <span className="font-medium text-foreground">{feature.docs_status ?? 'not-started'}</span>
                 </p>
-              )}
-              {!readiness.blocking && (
-                <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-emerald-600">
-                  <CheckCircle2 className="size-3.5" />
-                  Acceptance criteria currently satisfy readiness checks.
+                <p className="text-muted-foreground text-xs">
+                  Revision: <span className="font-medium text-foreground">{feature.docs_revision ?? 0}</span>
                 </p>
-              )}
-            </CardContent>
-          </Card>
+                {feature.docs_updated_at && (
+                  <p className="text-muted-foreground text-xs">
+                    Updated: <span className="font-medium text-foreground">{new Date(feature.docs_updated_at).toLocaleString()}</span>
+                  </p>
+                )}
+                {!docsContent && (
+                  <p className="text-muted-foreground text-xs italic">
+                    No docs content yet.
+                  </p>
+                )}
+            </div>
+
+            <div className="space-y-1.5 rounded-md border bg-card px-2.5 py-2">
+                <p className="text-muted-foreground text-xs">Execution Context</p>
+                {feature.branch ? (
+                  <p className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+                    <GitBranch className="size-3.5" />
+                    {feature.branch}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs italic">No branch linked yet.</p>
+                )}
+            </div>
+          </div>
+
+          <section className="flex min-h-[calc(100vh-15.5rem)] flex-col rounded-lg border bg-card">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as 'feature' | 'docs')}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="border-b px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold">
+                      {activeTab === 'feature' ? 'Feature Document' : 'Feature Documentation'}
+                    </h3>
+                    <p className="text-muted-foreground inline-flex items-center gap-1.5 text-sm">
+                      {activeTab === 'feature'
+                        ? 'Read-first feature markdown with full-screen editing when needed.'
+                        : 'Feature documentation linked to this feature.'}
+                      {activeTab === 'docs' && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground inline-flex"
+                              aria-label="Documentation storage details"
+                            >
+                              <Info className="size-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            Feature docs are stored in Ship state and tracked by revision.
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </p>
+                  </div>
+                  {activeTab === 'feature' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-primary/30 text-primary/80 hover:text-primary"
+                      onClick={() => setEditing(true)}
+                      title="Edit"
+                      aria-label="Edit"
+                    >
+                      <Edit3 className="size-4" />
+                      Edit
+                    </Button>
+                  )}
+                </div>
+                <TabsList className="h-8 w-fit">
+                  <TabsTrigger value="feature" className="h-6 px-3 text-xs">Feature</TabsTrigger>
+                  <TabsTrigger value="docs" className="h-6 px-3 text-xs">Documentation</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-hidden p-3">
+                <TabsContent value="feature" className="mt-0 h-full">
+                  <div className="flex h-full flex-col gap-3">
+                    <article className="ship-markdown-preview rounded-md bg-background px-4 py-3">
+                      {documentModel.body.trim() ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{documentModel.body}</ReactMarkdown>
+                      ) : (
+                        <p className="text-muted-foreground text-sm italic">
+                          No body content yet.
+                        </p>
+                      )}
+                    </article>
+
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <FeatureChecklistSection
+                        title="Delivery Todos"
+                        items={todoItems}
+                        emptyLabel="No delivery todos defined."
+                      />
+                      <FeatureChecklistSection
+                        title="Acceptance Criteria"
+                        items={acceptanceItems}
+                        emptyLabel="No acceptance criteria defined."
+                      />
+                    </div>
+
+                    {hasChecklistCoverage && readiness.blocking && (
+                      <p className="inline-flex items-center gap-1.5 text-xs text-amber-600">
+                        <AlertTriangle className="size-3.5" />
+                        Acceptance criteria still have open items.
+                      </p>
+                    )}
+                    {hasChecklistCoverage && !readiness.blocking && (
+                      <p className="inline-flex items-center gap-1.5 text-xs text-emerald-600">
+                        <CheckCircle2 className="size-3.5" />
+                        Acceptance criteria currently satisfy readiness checks.
+                      </p>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="docs" className="mt-0 h-full overflow-auto">
+                  <div className="space-y-3">
+                    <div className="text-muted-foreground flex flex-wrap gap-4 text-xs">
+                      <span>Status: <span className="font-medium text-foreground">{feature.docs_status ?? 'not-started'}</span></span>
+                      <span>Revision: <span className="font-medium text-foreground">{feature.docs_revision ?? 0}</span></span>
+                    </div>
+                    <article className="ship-markdown-preview rounded-md bg-background px-4 py-3">
+                      {docsContent ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{docsContent}</ReactMarkdown>
+                      ) : (
+                        <p className="text-muted-foreground text-sm italic">
+                          No feature documentation content yet.
+                        </p>
+                      )}
+                    </article>
+                  </div>
+                </TabsContent>
+              </div>
+            </Tabs>
+          </section>
         </div>
       )}
     </div>

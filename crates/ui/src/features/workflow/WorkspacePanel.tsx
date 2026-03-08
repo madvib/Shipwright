@@ -26,6 +26,7 @@ import { WorkspaceHeaderActions } from './workspace/WorkspaceHeaderActions';
 // Hooks
 import { useWorkspaceState } from './workspace/useWorkspaceState';
 import { useWorkspaceTerminal } from './workspace/useWorkspaceTerminal';
+import { useRuntimePerf } from './workspace/useRuntimePerf';
 
 import { WorkspaceGraphStatus } from './components/WorkspaceLifecycleGraph';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,7 @@ export default function WorkspacePanel() {
 
   const state = useWorkspaceState(workspaceUi, ship);
   const terminal = useWorkspaceTerminal(state.detail?.branch, workspaceUi.activeModeId, 'command');
+  const runtimePerf = useRuntimePerf(import.meta.env.DEV);
   const terminalReservedHeight = terminalMaximized ? 0 : Math.max(terminalHeight, 140);
 
   const isDarkTheme = useMemo(() => {
@@ -607,6 +609,7 @@ export default function WorkspacePanel() {
           activationError={terminal.terminalSession?.activation_error}
           runtimeError={terminal.runtimeError}
           hasActiveSession={state.activeSession?.status === 'active'}
+          runtimePerf={runtimePerf}
         />
       </main>
     </div>

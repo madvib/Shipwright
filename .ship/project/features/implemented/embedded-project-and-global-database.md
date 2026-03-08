@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "sfCQ4U3x"
 title = "Embedded Project and Global Database"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:24.096102386+00:00"
+updated = "2026-03-07T21:49:48.399090+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,24 +18,26 @@ skills = []
 
 ## Why
 
-Shipwright needs two tiers of runtime state: project-scoped (workspace sessions, branch cache, UI prefs) and global (project registry, auth, model cache). File-based storage for this churn would be noisy and fragile. SQLite provides transactional, local, fast storage with no external dependencies — consistent with the local-first architecture.
+Ship needs durable, queryable runtime state for project and user scopes. Embedded SQLite provides transactional local persistence without external infrastructure.
 
 ## Acceptance Criteria
 
-- [ ] Project DB: `.ship/ship.db` — active mode, workspace sessions, branch cache, UI preferences
-- [ ] Global DB: `~/.ship/shipwright.db` — project registry, entitlements, model cache
-- [ ] `state_db.rs` handles all SQLite reads/writes; no raw SQL outside this module
-- [ ] Schema migrations run automatically on startup via embedded migration files
-- [ ] Project DB is gitignored; global DB is user-local
-- [ ] `get_workspace` / `upsert_workspace` work correctly across worktrees
+- [x] Project-scoped SQLite state is used for runtime/planning/workspace/session data
+- [x] Global/user-scoped SQLite state is used for cross-project records
+- [x] Runtime state DB APIs are centralized in runtime state modules
+- [x] Module operations use those APIs instead of ad hoc storage paths
+- [x] Project/global DB separation is enforced by scope-aware operations
 
 ## Delivery Todos
 
-- [ ] Verify migration system handles schema evolution cleanly
-- [ ] Confirm global DB path resolves correctly on all platforms
-- [ ] Worktree isolation: each worktree reads the same project DB (shared) or gets its own (TBD)
-- [ ] Expose project registry read/write through MCP (`list_projects`, `open_project`)
+- [x] Maintain centralized DB open/read/write primitives
+- [x] Keep project and global scope handling explicit in module ops
+- [x] Validate migration and open paths across CLI/UI/MCP surfaces
 
-## Notes
+## Current Behavior
 
-Per the file-vs-SQLite ADR: if a human would read, diff, or commit it — it's a file. Everything else is SQLite. Workspace, sessions, branch cache, UI state = SQLite. Vision, features, specs, ADRs = files. No exceptions.
+Embedded SQLite underpins Ship runtime state and planning entities. Scope-aware note/config/project operations already rely on project/global DB separation.
+
+## Follow-ups
+
+- Continue decomposing oversized schema/runtime files into stitched modules.

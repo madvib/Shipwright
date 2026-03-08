@@ -27,19 +27,19 @@ use runtime::{
         create_workspace as runtime_create_workspace,
         end_workspace_session as runtime_end_workspace_session,
         get_active_workspace_session as runtime_get_active_workspace_session,
-        get_workspace_provider_matrix as runtime_get_workspace_provider_matrix,
         get_workspace as runtime_get_workspace,
+        get_workspace_provider_matrix as runtime_get_workspace_provider_matrix,
         list_workspace_sessions as runtime_list_workspace_sessions,
-        list_workspaces as runtime_list_workspaces, set_workspace_active_mode,
-        repair_workspace as runtime_repair_workspace,
+        list_workspaces as runtime_list_workspaces, repair_workspace as runtime_repair_workspace,
+        set_workspace_active_mode, start_workspace_session as runtime_start_workspace_session,
         sync_workspace as runtime_sync_workspace,
-        start_workspace_session as runtime_start_workspace_session,
     },
 };
 use ship_module_git::{install_hooks, on_post_checkout};
 use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs};
 use ship_module_project::ops::feature::{
-    create_feature, get_feature_by_id, list_features, update_feature_content,
+    create_feature, get_feature_by_id, list_features, sync_feature_docs_after_session,
+    update_feature_content,
 };
 use ship_module_project::ops::issue::{
     create_issue, delete_issue, get_issue_by_id, list_issues, move_issue_with_from, update_issue,
@@ -1625,11 +1625,10 @@ impl ShipServer {
             };
 
         let updated_feature_ids = req.updated_feature_ids.unwrap_or_default();
-        let summary = req.summary.clone().unwrap_or_default();
 
         let end_req = RuntimeEndWorkspaceSessionRequest {
             summary: req.summary,
-            updated_feature_ids: updated_feature_ids.clone(),
+            updated_feature_ids,
             updated_spec_ids: req.updated_spec_ids.unwrap_or_default(),
         };
         let session = match runtime_end_workspace_session(&project_dir, &branch, end_req) {
@@ -1637,14 +1636,23 @@ impl ShipServer {
             Err(err) => return format!("Error: {}", err),
         };
 
+        if !session.updated_feature_ids.is_empty() {
+            let _ = sync_feature_docs_after_session(
+                &project_dir,
+                &session.updated_feature_ids,
+                session.summary.as_deref(),
+            );
+        }
+
         // Emit a log event so this surfaces in get_project_info immediately.
+        let summary = session.summary.as_deref().unwrap_or_default();
         let log_line = format!("session ended [{}]: {}", branch, summary);
         if let Err(e) = log_action_by(&project_dir, "agent", "session.end", &log_line) {
             eprintln!("[ship] warning: failed to log session end: {}", e);
         }
 
         // Touch feature timestamps for all updated features.
-        for feature_id in &updated_feature_ids {
+        for feature_id in &session.updated_feature_ids {
             match get_feature_by_id(&project_dir, feature_id) {
                 Ok(entry) => {
                     if let Err(e) =

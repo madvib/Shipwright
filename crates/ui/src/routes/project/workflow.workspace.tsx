@@ -1,6 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
-import WorkspacePanel from '@/features/workflow/WorkspacePanel';
+import { Suspense, lazy } from 'react';
+import RouteFallback from '@/components/app/RouteFallback';
+
+const WorkspacePanel = lazy(() => import('@/features/workflow/WorkspacePanel'));
 
 export const Route = createFileRoute('/project/workflow/workspace')({
-    component: WorkspacePanel,
+    component: () => (
+      <Suspense fallback={<RouteFallback label="Loading workspaces..." />}>
+        <WorkspacePanel />
+      </Suspense>
+    ),
 });

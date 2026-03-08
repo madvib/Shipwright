@@ -2,6 +2,11 @@ import { isTauriRuntime } from './runtime';
 
 interface ProjectEventHandlers {
   onIssuesChanged?: () => void;
+  onSpecsChanged?: () => void;
+  onAdrsChanged?: () => void;
+  onFeaturesChanged?: () => void;
+  onReleasesChanged?: () => void;
+  onNotesChanged?: () => void;
   onLogChanged?: () => void;
   onConfigChanged?: () => void;
   onEventsChanged?: () => void;
@@ -22,6 +27,41 @@ export async function subscribeProjectEvents(
   if (handlers.onIssuesChanged) {
     const unlisten = await listen('ship://issues-changed', () => {
       handlers.onIssuesChanged?.();
+    });
+    unlistenFns.push(unlisten);
+  }
+
+  if (handlers.onSpecsChanged) {
+    const unlisten = await listen('ship://specs-changed', () => {
+      handlers.onSpecsChanged?.();
+    });
+    unlistenFns.push(unlisten);
+  }
+
+  if (handlers.onAdrsChanged) {
+    const unlisten = await listen('ship://adrs-changed', () => {
+      handlers.onAdrsChanged?.();
+    });
+    unlistenFns.push(unlisten);
+  }
+
+  if (handlers.onFeaturesChanged) {
+    const unlisten = await listen('ship://features-changed', () => {
+      handlers.onFeaturesChanged?.();
+    });
+    unlistenFns.push(unlisten);
+  }
+
+  if (handlers.onReleasesChanged) {
+    const unlisten = await listen('ship://releases-changed', () => {
+      handlers.onReleasesChanged?.();
+    });
+    unlistenFns.push(unlisten);
+  }
+
+  if (handlers.onNotesChanged) {
+    const unlisten = await listen('ship://notes-changed', () => {
+      handlers.onNotesChanged?.();
     });
     unlistenFns.push(unlisten);
   }

@@ -1,7 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { Suspense, lazy } from 'react';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import { WORKFLOW_WORKSPACE_ROUTE } from '@/lib/constants/routes';
-import SettingsLayout, { type SettingsSection } from '@/features/settings/SettingsLayout';
+import type { SettingsSection } from '@/features/settings/SettingsLayout';
+import RouteFallback from '@/components/app/RouteFallback';
+
+const SettingsLayout = lazy(() => import('@/features/settings/SettingsLayout'));
 
 function SettingsRouteComponent() {
   const workspace = useWorkspace();
@@ -11,28 +15,30 @@ function SettingsRouteComponent() {
   const activeSection = (tab as SettingsSection) || 'global';
 
   return (
-    <SettingsLayout
-      config={workspace.config}
-      projectConfig={workspace.projectConfig}
-      globalAgentConfig={workspace.globalAgentConfig}
-      activeSection={activeSection}
-      onSectionChange={(section) => {
-        void navigate({ to: '/project/settings', search: { tab: section } });
-      }}
-      onThemePreview={workspace.applyTheme}
-      onSave={async (config) => {
-        await workspace.handleSaveSettings(config);
-      }}
-      onSaveProject={async (config) => {
-        await workspace.handleSaveProjectSettings(config);
-      }}
-      onSaveGlobalAgentConfig={async (config) => {
-        await workspace.handleSaveGlobalAgentSettings(config);
-      }}
-      onDone={() => {
-        void navigate({ to: WORKFLOW_WORKSPACE_ROUTE });
-      }}
-    />
+    <Suspense fallback={<RouteFallback label="Loading settings..." />}>
+      <SettingsLayout
+        config={workspace.config}
+        projectConfig={workspace.projectConfig}
+        globalAgentConfig={workspace.globalAgentConfig}
+        activeSection={activeSection}
+        onSectionChange={(section) => {
+          void navigate({ to: '/project/settings', search: { tab: section } });
+        }}
+        onThemePreview={workspace.applyTheme}
+        onSave={async (config) => {
+          await workspace.handleSaveSettings(config);
+        }}
+        onSaveProject={async (config) => {
+          await workspace.handleSaveProjectSettings(config);
+        }}
+        onSaveGlobalAgentConfig={async (config) => {
+          await workspace.handleSaveGlobalAgentSettings(config);
+        }}
+        onDone={() => {
+          void navigate({ to: WORKFLOW_WORKSPACE_ROUTE });
+        }}
+      />
+    </Suspense>
   );
 }
 

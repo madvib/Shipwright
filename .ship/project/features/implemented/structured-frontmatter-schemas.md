@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "5JTT5zEB"
 title = "Structured Frontmatter Schemas"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.353273768+00:00"
+updated = "2026-03-07T21:37:57.426835+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]

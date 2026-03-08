@@ -1,9 +1,29 @@
-+++
-id = "WYuFL87v"
-title = "Site Generator"
-created = "2026-03-03T06:00:59.714266149+00:00"
-updated = "2026-03-03T06:00:59.714266149+00:00"
-tags = []
-+++
+<!-- ship:feature id=WYuFL87v -->
 
-Generate static sites from Ship project data. Two modes: marketing site (vision, features, releases as a public product page) and documentation site (specs, ADRs, feature docs as versioned docs). Pluggable themes, exportable to Vercel/Netlify/GitHub Pages.
+# Site Generator
+
+## Why
+
+Ship should support publishing project intelligence (feature docs, decisions, release narratives) as structured external documentation without manual copy workflows.
+
+## Acceptance Criteria
+
+- [ ] Generator can produce docs output from canonical project records
+- [ ] Output profiles support internal docs and public-facing release/docs sites
+- [ ] Build process supports stable identifiers and incremental regeneration
+- [ ] Generated output can be deployed to standard static hosts
+
+## Delivery Todos
+
+- [ ] Define generator input model from Ship canonical data
+- [ ] Implement baseline static output profile
+- [ ] Add deploy-ready adapters/templates for common hosts
+- [ ] Add link integrity/versioning checks in generation pipeline
+
+## Current Behavior
+
+Planned capability; no generator pipeline is shipped in alpha.
+
+## Follow-ups
+
+- Coordinate with docs data model evolution and future cloud publish flow.

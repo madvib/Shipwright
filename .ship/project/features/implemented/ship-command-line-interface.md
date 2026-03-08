@@ -1,48 +1,30 @@
-+++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
-id = "fahbueRy"
-title = "Ship Command Line Interface"
-created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:24.071887407+00:00"
-release_id = "v0.1.0-alpha"
-spec_id = ""
-branch = ""
-adr_ids = []
-tags = []
+<!-- ship:feature id=fahbueRy -->
 
-[agent]
-model = "claude"
-max_cost_per_session = 10.0
-mcp_servers = []
-skills = []
-+++
+# Ship Command Line Interface
 
 ## Why
 
-The CLI is the primary interface for developers who live in the terminal. It must cover all alpha primitives (features, specs, releases, issues, ADRs, notes, skills), project management (`init`, `projects`), and agent tooling (`git`, `mode`, `mcp`, `config`). Every MCP tool should have a CLI equivalent — the two surfaces should be symmetric.
+Ship needs a deterministic, scriptable interface for every core workflow so users can bootstrap, operate, and recover projects without relying on the desktop UI.
 
 ## Acceptance Criteria
 
-- [ ] Binary name: `ship` (not `cli`)
-- [ ] Commands: `init`, `feature`, `spec`, `release`, `issue`, `adr`, `note`, `skill`, `event`, `projects`, `git`, `config`, `mode`, `mcp`, `catalog`
-- [ ] Each entity command has: `new`, `list`, `show`, `edit` subcommands
-- [ ] Lifecycle commands: `feature start`, `feature done`, `spec start`, `spec done`
-- [ ] `ship git sync` regenerates CLAUDE.md + .mcp.json for current branch
-- [ ] `ship init` installs git hooks automatically
-- [ ] `ship mode list` / `ship mode set <name>`
-- [ ] `ship mcp list` / `ship mcp add` / `ship mcp remove`
-- [ ] All commands work without a UI or MCP server running
+- [x] CLI supports init, planning entities, workspace lifecycle, sessions, modes, providers, and diagnostics
+- [x] Workspace operations (create/sync/activate/repair/start/end/open) are available and exercised in real workflows
+- [x] CLI can manage and inspect agent configuration, MCP registration, and project/global state
+- [ ] Product-facing command set is fully separated from internal migration/dev-only operations
 
 ## Delivery Todos
 
-- [ ] `ship feature start/switch` — encapsulate branch creation (backlog issue filed)
-- [ ] `ship mode` subcommand (list, set)
-- [ ] `ship catalog` subcommand (list, search)
-- [ ] `ship config` subcommand (get, set, list)
-- [ ] `ship spec start/done` lifecycle commands (backlog issue filed)
-- [ ] `ship workspace` subcommand (show, link)
-- [ ] Verify `ship init` runs hook install
+- [x] Consolidate primary workflow commands under workspace-first model
+- [x] Add `ship ui` and doctor/version/product-surface commands for operational clarity
+- [x] Harden feature/release/spec/workspace commands and context sync wiring
+- [ ] Final pass on command ergonomics and help text for launch polish
 
-## Notes
+## Current Behavior
 
-CLI and MCP should be symmetric — every MCP tool has a CLI equivalent. The reverse is not required (some CLI operations like `ship init` don't need an MCP surface). Hidden commands (ghost, time, demo, migrate) still work but are not documented in `--help` for alpha.
+The CLI is production-capable for daily use and underpins UI/MCP workflows. It remains the most complete operational interface, with some command-surface cleanup still pending.
+
+## Follow-ups
+
+- Split framework vs Ship-app specific surfaces where appropriate.
+- Keep docs aligned with final launch command taxonomy.

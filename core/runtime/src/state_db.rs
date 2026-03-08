@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS feature (
   description     TEXT,
   status          TEXT NOT NULL DEFAULT 'planned',
   release_id      TEXT,
+  active_target_id TEXT,
   spec_id         TEXT,
   branch          TEXT,
   agent_json      TEXT,
@@ -219,6 +220,7 @@ CREATE TABLE IF NOT EXISTS feature (
 );
 CREATE INDEX IF NOT EXISTS feature_status_idx ON feature(status);
 CREATE INDEX IF NOT EXISTS feature_release_idx ON feature(release_id);
+CREATE INDEX IF NOT EXISTS feature_active_target_idx ON feature(active_target_id);
 
 CREATE TABLE IF NOT EXISTS feature_todo (
   id              TEXT PRIMARY KEY,
@@ -253,6 +255,30 @@ CREATE TABLE IF NOT EXISTS release_breaking_change (
   text            TEXT NOT NULL,
   ord             INTEGER NOT NULL DEFAULT 0
 );
+"#;
+
+const PROJECT_SCHEMA_FEATURE_DOCS: &str = r#"
+CREATE TABLE IF NOT EXISTS feature_doc (
+  feature_id         TEXT PRIMARY KEY REFERENCES feature(id) ON DELETE CASCADE,
+  status             TEXT NOT NULL DEFAULT 'not-started',
+  content            TEXT NOT NULL DEFAULT '',
+  revision           INTEGER NOT NULL DEFAULT 1,
+  last_verified_at   TEXT,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feature_doc_revision (
+  id              TEXT PRIMARY KEY,
+  feature_id      TEXT NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
+  revision        INTEGER NOT NULL,
+  status          TEXT NOT NULL,
+  content         TEXT NOT NULL,
+  actor           TEXT NOT NULL DEFAULT 'ship',
+  created_at      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS feature_doc_revision_feature_idx
+  ON feature_doc_revision(feature_id, revision);
 "#;
 
 const PROJECT_SCHEMA_ISSUES_SPECS: &str = r#"
@@ -333,6 +359,7 @@ const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
         "0014_workspace_compile_state",
         PROJECT_SCHEMA_WORKSPACE_COMPILE_STATE,
     ),
+    ("0015_feature_docs", PROJECT_SCHEMA_FEATURE_DOCS),
 ];
 const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_global_schema", GLOBAL_SCHEMA_V1),
@@ -1606,6 +1633,37 @@ fn ensure_project_schema_compat(connection: &mut SqliteConnection) -> Result<()>
         "tags_json",
         "ALTER TABLE feature ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
     )?;
+    let added_feature_active_target = ensure_column(
+        connection,
+        "feature",
+        "active_target_id",
+        "ALTER TABLE feature ADD COLUMN active_target_id TEXT",
+    )?;
+    if table_exists(connection, "feature")? && column_exists(connection, "feature", "active_target_id")? {
+        block_on(async {
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS feature_active_target_idx ON feature(active_target_id)",
+            )
+            .execute(&mut *connection)
+            .await
+        })?;
+    }
+    if added_feature_active_target
+        && table_exists(connection, "feature")?
+        && column_exists(connection, "feature", "release_id")?
+    {
+        block_on(async {
+            sqlx::query(
+                "UPDATE feature
+                 SET active_target_id = release_id
+                 WHERE (active_target_id IS NULL OR active_target_id = '')
+                   AND release_id IS NOT NULL
+                   AND release_id != ''",
+            )
+            .execute(&mut *connection)
+            .await
+        })?;
+    }
     ensure_column(
         connection,
         "release",

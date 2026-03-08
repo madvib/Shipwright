@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "jGtadbvi"
 title = "Event Log and Action History"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.389964703+00:00"
+updated = "2026-03-07T21:49:49.761358+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,27 +18,26 @@ skills = []
 
 ## Why
 
-Every action in Shipwright — creating an issue, moving a feature, triggering a hook — should leave a trace. The event log is the audit trail that answers "what happened and when" without querying multiple tables. It also provides the foundation for cloud sync in later versions: the event stream is the replication unit. Human-readable log views derive from it.
+An append-only event trail is required for auditability, debugging, and future replication/sync layers.
 
 ## Acceptance Criteria
 
-- [ ] All CRUD operations append typed events to SQLite `events` table
-- [ ] Events have: `seq`, `entity_id` (UUID), `entity_type`, `action`, `payload` (JSON), `created_at`
-- [ ] `ship event list` shows recent events in human-readable format
-- [ ] MCP: `list_events` with `since` cursor parameter for incremental reads
-- [ ] `ingest_events` MCP tool detects out-of-band file edits and emits synthetic events
-- [ ] NDJSON export for portability (`events.ndjson` — gitignored, local-only)
-- [ ] UI: activity log / history view derived from event stream
+- [x] Runtime and planning operations append structured events
+- [x] Event listing is available through CLI and backend/UI surfaces
+- [x] Event ingest/sync support exists for external filesystem changes
+- [x] Event history is queryable by cursor/sequence semantics
+- [x] Activity views are derived from the event stream
 
 ## Delivery Todos
 
-- [ ] Confirm event schema in `state_db.rs` covers all entity types
-- [ ] Typed `ShipEvent` enum for Tauri (IssuesChanged, FeaturesChanged, etc.)
-- [ ] `ship event list` CLI command
-- [ ] MCP `list_events` + `ingest_events` tools (already implemented — verify)
-- [ ] UI activity log view
-- [ ] NDJSON export command
+- [x] Keep event append paths integrated in core CRUD/lifecycle operations
+- [x] Expose list/ingest/event history APIs across surfaces
+- [x] Maintain typed event entity/action semantics
 
-## Notes
+## Current Behavior
 
-Events are append-only. The `events` table is SQLite (project DB). NDJSON is export-only — it is not the primary store. Event model must stay compatible with future global aggregation across projects. `entity_id` is the short ID (8-char nanoid) of the affected document.
+Event log and action history are operational and used as runtime audit infrastructure.
+
+## Follow-ups
+
+- Expand event diagnostics and conflict signaling for multi-session coordination.

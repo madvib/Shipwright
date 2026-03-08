@@ -1,60 +1,32 @@
-+++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
-id = "SjS4tQUW"
-title = "Desktop User Interface"
-created = "2026-02-28T15:56:07Z"
-updated = "2026-02-28T15:56:07Z"
-branch = ""
-release_id = "v0.1.0-alpha"
-spec_id = "ship-ui-alpha-gaps.md"
-adr_ids = []
-tags = []
+<!-- ship:feature id=SjS4tQUW -->
 
-[agent]
-mcp_servers = []
-skills = []
-+++
+# Desktop User Interface
 
 ## Why
 
-While CLI and MCP are the primary surfaces for agents and power users, a visual interface dramatically lowers the bar for exploring project state, managing issues, and configuring agent context. The Tauri desktop app gives Shipwright a native home that works alongside the terminal — not instead of it. For alpha, the UI is a companion to the CLI, not a replacement.
+Ship needs a workspace-first desktop command center that makes planning, execution, and agent operations visible in one place.
 
 ## Acceptance Criteria
 
-- [ ] Views: Issues (Kanban), Features list, Specs list, ADRs list, Notes list, Vision, Settings
-- [ ] Issue Kanban: drag-to-move between backlog/in-progress/done columns
-- [ ] Feature detail: full content editor, linked spec/release display
-- [ ] Settings: project config, provider detection, git policy
-- [ ] Workspace panel: current branch, active mode, resolved agent config
-- [ ] Activity log derived from event stream
-- [ ] All data via Tauri commands (Rust backend) — no direct file access from frontend
-- [ ] Typed Specta bindings: `ShipEvent` enum for real-time updates
+- [x] Desktop app provides project home, workspace command center, planning hubs, and agent config surfaces
+- [x] Workspace detail supports session lifecycle controls and embedded terminal sessions
+- [x] Users can activate/sync/repair workspaces and launch supported editors from the workspace surface
+- [ ] Loading/error states are polished across all heavy views and provider failures are always actionable
+- [ ] Workspace UI supports full feature/spec linking and safe delete/archive flows without CLI fallback
 
 ## Delivery Todos
 
-- [ ] Fix project auto-detection (currently broken — hardcoded path issues)
-- [ ] Implement Issues Kanban with drag-and-drop
-- [ ] Features, Specs, ADRs views with correct status directory reading
-- [ ] Notes list and editor (currently missing — alpha blocker)
-- [ ] Vision view and editor
-- [ ] Workspace panel component
-- [ ] Settings panel: providers, config, git policy
-- [ ] Fix type misalignment between Rust enums and TypeScript (use Specta throughout)
+- [x] Ship Tauri shell and React UI architecture for core pages
+- [x] Workspace-centric layout with command and detail views
+- [x] Integrated terminal/session surface for provider and shell sessions
+- [ ] Complete workspace action affordances (linking, lifecycle edits, deletion) end-to-end in UI
+- [ ] Finish UX hardening for responsive layouts, tooltips, and failure recovery paths
 
-## Current State
+## Current Behavior
 
-Backend: ~70 Tauri commands exposed via Specta. ShipEvent typed enum for real-time updates. Vision, Notes, Rules, Workspace, Skills, Permissions, Modes all have backend commands.
+Desktop UI is the primary execution surface. Workspace and planning pages are live, with significant coverage of session operations and config controls. Remaining work is mostly UX hardening, error handling polish, and final workflow completeness.
 
-UI routes that exist and work: Issues (Kanban), Features list, Specs list, Releases list, ADRs list, Agents panel (partial), Settings, Activity log, Overview.
+## Follow-ups
 
-UI routes missing (alpha blockers): `notes.tsx`, `vision.tsx`, `rules.tsx`.
-
-Agents panel: MCP Servers tab works. Skills tab is read-only — CRUD not wired. Modes tab and Permissions tab not implemented.
-
-Workspace panel: not yet in sidebar.
-
-Build constraint: does not build in WSL. Use Windows host or native Linux for UI work.
-
-## Notes
-
-Tauri + React + TanStack Router + React Query + shadcn/ui. Specta auto-generates `src/bindings.ts` — never edit manually. Full implementation guide for missing views in `.ship/workflow/specs/draft/ship-ui-alpha-gaps.md`.
+- Add docs-dirty indicators and context drift warnings tied to workspace file changes.
+- Expand session telemetry panels (changed files, provider diagnostics, restart guidance).

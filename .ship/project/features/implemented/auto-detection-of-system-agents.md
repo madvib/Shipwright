@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "TyEDHXCL"
 title = "Auto-Detection of System Agents"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:11.237285046+00:00"
+updated = "2026-03-07T22:33:22.043399+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,25 +18,25 @@ skills = []
 
 ## Why
 
-Shipwright generates agent configs (CLAUDE.md, .mcp.json, .gemini/, .codex/) for the agents the developer actually has installed. Without detection, it generates configs for tools the user doesn't have, clutters their environment, or silently produces useless files. Detection also lets the UI show which providers are available and guide configuration accordingly.
+Automatic provider detection keeps the control plane aligned with what is actually installed and executable on the machine.
 
 ## Acceptance Criteria
 
-- [ ] Detect presence of: `claude`, `gemini`, `codex` binaries via PATH
-- [ ] Read installed version for each detected agent
-- [ ] `ProviderInfo` includes `installed: bool` and `version: Option<String>`
-- [ ] Config generation skips providers that are not installed (unless explicitly configured)
-- [ ] `ship config list-providers` shows detection results
-- [ ] UI settings panel shows detected providers with install status and version
+- [x] Provider detection reports installed status and available CLI/provider metadata
+- [x] Detection results are consumable by settings/workspace/session surfaces
+- [x] Provider selection gracefully handles missing providers with explicit feedback
+- [x] Detection does not require network access
 
 ## Delivery Todos
 
-- [ ] `detect_binary(binary)` and `detect_version(binary)` already implemented — verify correctness
-- [ ] Wire detection into `export_agent_config` to skip uninstalled providers
-- [ ] `ship config list-providers` CLI command
-- [ ] MCP: `list_providers` tool (already partially in `agent_export.rs`)
-- [ ] UI provider status display in settings
+- [x] Keep provider discovery in runtime and expose through UI/CLI APIs
+- [x] Normalize provider IDs to shared runtime enum/model
+- [x] Surface provider availability in workspace/session launch paths
 
-## Notes
+## Current Behavior
 
-Detection is best-effort — we check PATH, not system package managers. If a binary exists but fails version check, `installed = true`, `version = None`. The user can always override detection by explicitly listing providers in `ship.toml`. Multi-provider dispatch is already implemented in the `providers` field — this feature wires detection to make the default smarter.
+Provider detection is active and integrated into workspace/session control-plane behavior.
+
+## Follow-ups
+
+- Add explicit remediation UX when expected providers are missing or misconfigured.

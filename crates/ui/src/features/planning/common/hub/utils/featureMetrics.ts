@@ -10,6 +10,17 @@ export interface FeatureChecklistMetrics {
   acceptance: ChecklistSummary;
   readinessPercent: number;
   blocking: boolean;
+  hasChecklistCoverage: boolean;
+}
+
+export interface ChecklistItem {
+  text: string;
+  done: boolean;
+}
+
+export interface FeatureChecklistSections {
+  todos: ChecklistItem[];
+  acceptance: ChecklistItem[];
 }
 
 function normalizeHeading(value: string): string {
@@ -61,20 +72,26 @@ function findSectionBody(markdown: string, headings: string[]): string {
 }
 
 function summarizeChecklist(markdown: string): ChecklistSummary {
-  const lines = markdown.split(/\r?\n/);
-  let total = 0;
-  let done = 0;
-  for (const line of lines) {
-    const item = line.match(/^\s*[-*]\s+\[( |x|X)\]\s+/);
-    if (!item) continue;
-    total += 1;
-    if (item[1].toLowerCase() === 'x') {
-      done += 1;
-    }
-  }
+  const items = parseChecklistItems(markdown);
+  const total = items.length;
+  const done = items.filter((item) => item.done).length;
   const open = Math.max(total - done, 0);
   const percent = total === 0 ? 0 : Math.round((done / total) * 100);
   return { total, done, open, percent };
+}
+
+function parseChecklistItems(markdown: string): ChecklistItem[] {
+  const lines = markdown.split(/\r?\n/);
+  const items: ChecklistItem[] = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.+?)\s*$/);
+    if (!match) continue;
+    items.push({
+      done: match[1].toLowerCase() === 'x',
+      text: match[2].trim(),
+    });
+  }
+  return items;
 }
 
 export function featureStatusFallbackReadiness(status: string): number {
@@ -107,20 +124,35 @@ export function deriveFeatureChecklistMetrics(markdown: string, status: string):
   const acceptance = summarizeChecklist(acceptanceSection);
 
   const resolvedTodos = todos.total > 0 ? todos : fallback;
-  const baseReadiness =
-    resolvedTodos.total > 0 ? resolvedTodos.percent : featureStatusFallbackReadiness(status);
-  const acceptanceReadiness =
-    acceptance.total > 0 ? acceptance.percent : featureStatusFallbackReadiness(status);
-  const readinessPercent = Math.round(baseReadiness * 0.6 + acceptanceReadiness * 0.4);
+  const hasChecklistCoverage = resolvedTodos.total > 0 || acceptance.total > 0;
+  const baseReadiness = resolvedTodos.total > 0 ? resolvedTodos.percent : 0;
+  const acceptanceReadiness = acceptance.total > 0 ? acceptance.percent : 0;
+  const readinessPercent = hasChecklistCoverage
+    ? Math.round(baseReadiness * 0.6 + acceptanceReadiness * 0.4)
+    : 0;
 
   const blocking =
     status !== 'deprecated' &&
-    (acceptance.total > 0 ? acceptance.open > 0 : status !== 'implemented');
+    (acceptance.total > 0
+      ? acceptance.open > 0
+      : resolvedTodos.total > 0
+        ? resolvedTodos.open > 0
+        : false);
 
   return {
     todos: resolvedTodos,
     acceptance,
     readinessPercent,
     blocking,
+    hasChecklistCoverage,
+  };
+}
+
+export function deriveFeatureChecklistSections(markdown: string): FeatureChecklistSections {
+  const todosSection = findSectionBody(markdown, ['delivery todos', 'todos', 'delivery']);
+  const acceptanceSection = findSectionBody(markdown, ['acceptance criteria']);
+  return {
+    todos: parseChecklistItems(todosSection),
+    acceptance: parseChecklistItems(acceptanceSection),
   };
 }

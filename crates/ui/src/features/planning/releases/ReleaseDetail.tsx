@@ -102,9 +102,12 @@ export default function ReleaseDetail({
   const linkedFeatures = useMemo(
     () =>
       features.filter(
-        (feature) => feature.release_id === release.file_name || feature.release_id === release.version
+        (feature) =>
+          feature.release_id === release.id ||
+          feature.release_id === release.file_name ||
+          feature.release_id === release.version
       ),
-    [features, release.file_name, release.version]
+    [features, release.file_name, release.id, release.version]
   );
 
   const linkedStatusSummary = useMemo(() => {
@@ -200,7 +203,7 @@ export default function ReleaseDetail({
                     onClick={() => setEditing(true)}
                   >
                     <Edit3 className="size-4" />
-                    Edit Full Screen
+                    Edit
                   </Button>
                 ) : (
                   <>
@@ -263,19 +266,9 @@ export default function ReleaseDetail({
                 <div>
                   <CardTitle className="text-sm">Release Document</CardTitle>
                   <CardDescription>
-                    Read-first view. Use Edit Full Screen when you need to update markdown or metadata.
+                    Read-first view. Use Edit when you need to update markdown or metadata.
                   </CardDescription>
                 </div>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  className="border-primary/30 text-primary/80 hover:text-primary"
-                  onClick={() => setEditing(true)}
-                  title="Edit Full Screen"
-                  aria-label="Edit Full Screen"
-                >
-                  <Edit3 className="size-4" />
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-3">

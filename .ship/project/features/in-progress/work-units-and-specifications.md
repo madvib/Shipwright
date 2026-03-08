@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "9dSBptkS"
 title = "Work Units and Specifications"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-02-28T15:56:07Z"
-branch = ""
+updated = "2026-03-07T21:46:14.226272+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
-adr_ids = []
+branch = "feature/work-units-and-specifications"
 tags = []
 
 [agent]
@@ -19,34 +18,30 @@ skills = []
 
 ## Why
 
-Specs and issues are sibling execution primitives under a feature — not a hierarchy. A spec is targeted context for a unit of work (the contract: scope, goals, approach). An issue is a discrete task (the execution: what to do, who does it). Both live inside the feature hub. Neither is a child of the other.
+Specs are execution-grade work units linked to active workspaces and features. They provide scoped implementation context that sits between feature intent and session-level execution.
 
 ## Acceptance Criteria
 
-- [ ] Spec CRUD fully working via CLI, MCP, and UI
-- [ ] Specs displayed as siblings of issues inside the feature hub (not a separate top-level page)
-- [ ] Spec status: draft → active → archived (directory-based, same pattern as features)
-- [ ] `ship spec start` / `ship spec done` lifecycle commands
-- [ ] Active spec narrows agent context injection (only that spec's content in CLAUDE.md)
-- [ ] Issues can reference a spec (soft link, not required)
-- [ ] UI: spec list with status chips inside feature hub Specs tab
+- [x] Spec CRUD is available across CLI, MCP, and desktop backend
+- [x] Spec records are persisted in SQLite with workspace/feature/release linkage
+- [x] Spec creation can inherit context from the active workspace
+- [x] Spec list/detail UI is available
+- [ ] Add explicit spec lifecycle commands (`start/done`) where needed
+- [ ] Tighten spec visibility so it is centered in feature/workspace flows (not stray top-level UX)
+- [ ] Add stronger session-to-spec foldback automation
 
 ## Delivery Todos
 
-- [ ] Confirm `spec.rs` CRUD handles draft/active/archived directories
-- [ ] `ship spec start` / `ship spec done` commands
-- [ ] Link spec to feature at create time
-- [ ] Active spec scoping in CLAUDE.md generation
-- [ ] Issue → spec soft link (optional `spec_id` on issue)
-- [ ] Feature hub Specs tab (part of feature-hub-ui feature)
-- [ ] Remove specs from top-level nav — surface only inside feature context
+- [x] Implement and test workspace-aware spec creation behavior
+- [x] Migrate spec entity to SQLite-backed persistence
+- [x] Expose spec operations through desktop backend bindings
+- [ ] Complete spec lifecycle command ergonomics and UI affordances
+- [ ] Enforce execution loop: spec updates after workspace session end
 
-## Current State
+## Current Behavior
 
-Backend: `spec.rs` CRUD fully implemented — `create_spec`, `list_specs`, `get_spec`, `update_spec`. Directory-based status (draft/active/archived) working. MCP tools exposed: `list_specs`, `get_spec`, `create_spec`, `update_spec`. `ship spec` CLI subcommand exists with basic operations.
-
-Not yet done: `ship spec start` / `ship spec done` lifecycle commands. Active spec scoping in CLAUDE.md (currently the whole feature spec is injected, not narrowed). Feature hub UI Specs tab (blocked on feature-hub-ui). Specs still appear in top-level nav — should surface only inside feature context.
+Specs are working as a DB-backed entity with workspace-linked context inheritance. Remaining work is lifecycle ergonomics and making spec usage more central to the core workspace loop.
 
 ## Notes
 
-One feature can have multiple specs — each representing a distinct unit of implementation work. Activating a spec narrows the agent's context to just that spec's symbols and files, reducing token cost on large features.
+Specs are long-lived enough to preserve decision history but small enough to map to concrete implementation passes.

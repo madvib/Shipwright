@@ -127,6 +127,18 @@ pub enum Commands {
         #[command(subcommand)]
         action: ProviderCommands,
     },
+    /// Launch the Ship desktop UI (installed app by default)
+    Ui {
+        /// Run via Tauri dev tooling from source checkout
+        #[arg(long, default_value_t = false)]
+        dev: bool,
+        /// Enable file watching and automatic restarts
+        #[arg(long, default_value_t = false)]
+        watch: bool,
+        /// In dev mode, build and run the Rust side in release mode
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
     /// Run diagnostics on the Ship environment
     Doctor,
     /// Show version information
@@ -565,6 +577,46 @@ pub enum FeatureCommands {
     },
     /// Mark a feature as implemented (done)
     Done {
+        /// Feature ID
+        id: String,
+    },
+    /// Delete a feature record (DB + exported markdown)
+    Delete {
+        /// Feature ID
+        id: String,
+    },
+    /// Manage feature documentation (DB-canonical)
+    Docs {
+        #[command(subcommand)]
+        action: FeatureDocCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum FeatureDocCommands {
+    /// Ensure every feature has a documentation record scaffolded
+    EnsureAll,
+    /// Print feature documentation content
+    Get {
+        /// Feature ID
+        id: String,
+    },
+    /// Replace feature documentation content/status
+    Update {
+        /// Feature ID
+        id: String,
+        /// Full replacement content
+        #[arg(short, long)]
+        content: String,
+        /// Optional status: not-started, draft, reviewed, published
+        #[arg(long)]
+        status: Option<String>,
+        /// Mark this update as verified now
+        #[arg(long)]
+        verify: bool,
+    },
+    /// Show current feature documentation status metadata
+    Status {
         /// Feature ID
         id: String,
     },

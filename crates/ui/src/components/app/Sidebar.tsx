@@ -103,7 +103,9 @@ export default function Sidebar({
               'relative w-full rounded-lg transition-all duration-200 group',
               !isCompact && 'justify-start gap-2.5 px-3',
               active
-                ? 'bg-sidebar-primary/10 text-sidebar-primary font-bold border border-sidebar-primary/25 shadow-sm hover:bg-sidebar-primary/20'
+                ? isCompact
+                  ? 'text-sidebar-primary hover:bg-sidebar-accent/50'
+                  : 'bg-sidebar-primary/10 text-sidebar-primary font-bold border border-sidebar-primary/25 shadow-sm hover:bg-sidebar-primary/20'
                 : secondary
                   ? 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
                   : 'text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 hover:scale-[1.02] active:scale-[0.98]'
@@ -124,9 +126,6 @@ export default function Sidebar({
             {!isCompact && <span className="text-[13px] font-medium tracking-tight">{item.label}</span>}
             {!isCompact && active && (
               <div className="ml-auto size-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
-            )}
-            {isCompact && active && (
-              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 h-5 w-1 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
             )}
           </Button>
         </TooltipTrigger>

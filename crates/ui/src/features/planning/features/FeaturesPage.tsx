@@ -28,6 +28,8 @@ import FeatureHubRow from '@/features/planning/features/hub/components/FeatureHu
 import { featureHubStats } from '@/features/planning/features/hub/utils/featureHubStats';
 import FeatureDetail from './FeatureDetail';
 import TemplateEditorButton from '../common/TemplateEditorButton';
+import { useFeatureChecklistMetrics } from '@/features/planning/common/hub/hooks/useFeatureChecklistMetrics';
+import { formatStatusLabel } from '@/features/planning/common/hub/utils/featureMetrics';
 
 
 interface FeaturesPageProps {
@@ -62,6 +64,8 @@ export default function FeaturesPage({
   onSelectFeature,
   onSaveFeature,
   onCreateFeature,
+  onSelectReleaseFromFeature,
+  onSelectSpecFromFeature,
   mcpEnabled = true,
 }: FeaturesPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -73,8 +77,25 @@ export default function FeaturesPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<FeatureSort>('newest');
+  const [viewFilter, setViewFilter] = useState<'all' | 'blocking' | 'ready'>('all');
+  const { metricsByFile: featureMetricsByFile } = useFeatureChecklistMetrics(features);
 
   const stats = useMemo(() => featureHubStats(features), [features]);
+
+  const statusOptions = useMemo(() => {
+    const canonical = ['planned', 'in-progress', 'implemented', 'deprecated'];
+    const seen = features
+      .map((feature) => feature.status)
+      .filter((status): status is string => Boolean(status));
+    const ordered = [...canonical, ...seen].filter(
+      (status, index, arr) => arr.indexOf(status) === index
+    );
+
+    return ordered.map((status) => ({
+      value: status,
+      label: formatStatusLabel(status),
+    }));
+  }, [features]);
 
   const filteredFeatures = useMemo(() => {
     return features
@@ -84,7 +105,17 @@ export default function FeaturesPage({
           f.file_name.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus =
           statusFilter.length === 0 || statusFilter.includes(f.status || 'draft');
-        return matchesSearch && matchesStatus;
+        const metrics = featureMetricsByFile[f.file_name];
+        const blocking =
+          metrics?.blocking ?? (f.status !== 'implemented' && f.status !== 'deprecated');
+        const readiness =
+          metrics?.readinessPercent ?? featureStatusFallbackReadiness(f.status || 'draft');
+        const matchesView =
+          viewFilter === 'all' ||
+          (viewFilter === 'blocking' && blocking) ||
+          (viewFilter === 'ready' && !blocking && readiness >= 90);
+
+        return matchesSearch && matchesStatus && matchesView;
       })
       .sort((a, b) => {
         if (sortBy === 'newest') {
@@ -107,7 +138,7 @@ export default function FeaturesPage({
         }
         return 0;
       });
-  }, [features, searchQuery, statusFilter, sortBy]);
+  }, [featureMetricsByFile, features, searchQuery, sortBy, statusFilter, viewFilter]);
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -129,79 +160,108 @@ export default function FeaturesPage({
 
   return (
     <PageFrame width="wide">
-      <PageHeader
-        title="Features Hub"
-        description="Design and track functional capabilities"
-        actions={
-          <div className="flex items-center gap-2">
-            <TemplateEditorButton kind="feature" />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={() => setCreateOpen(true)} size="sm" className="h-8">
-                  <Plus className="mr-1.5 size-3.5" />
-                  New Feature
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Create a new feature specification</TooltipContent>
-            </Tooltip>
-          </div>
-        }
-      />
-
-      <div className="space-y-6">
-        <FeatureHubStats metrics={stats} />
-
-        <div className="space-y-4">
-          <FeatureHubToolbar
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            viewFilter="all"
-            onViewFilterChange={() => { }}
-            statusOptions={[]}
-            selectedStatuses={new Set(statusFilter)}
-            onSelectedStatusesChange={(next) => setStatusFilter(Array.from(next))}
-            sortBy={sortBy}
-            sortOptions={FEATURE_SORT_OPTIONS}
-            onSortByChange={(next) => setSortBy(next as FeatureSort)}
+      {!selectedFeature ? (
+        <>
+          <PageHeader
+            title="Features Hub"
+            description="Design and track functional capabilities"
+            actions={
+              <div className="flex items-center gap-2">
+                <TemplateEditorButton kind="feature" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={() => setCreateOpen(true)} size="sm" className="h-8">
+                      <Plus className="mr-1.5 size-3.5" />
+                      New Feature
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Create a new feature specification</TooltipContent>
+                </Tooltip>
+              </div>
+            }
           />
 
-          {filteredFeatures.length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredFeatures.map((feature) => {
-                const release = releases.find(r => r.id === feature.release_id) ?? null;
-                const spec = specs.find(s => s.id === feature.spec_id) ?? null;
-                const readiness = featureStatusFallbackReadiness(feature.status || 'draft');
+          <div className="space-y-6">
+            <FeatureHubStats metrics={stats} />
 
-                return (
-                  <FeatureHubRow
-                    key={feature.file_name}
-                    feature={feature}
-                    release={release}
-                    spec={spec}
-                    readiness={readiness}
-                    isBlocking={feature.status !== 'implemented' && feature.status !== 'deprecated'}
-                    onSelect={() => onSelectFeature(feature)}
-                  />
-                );
-              })}
+            <div className="space-y-4">
+              <FeatureHubToolbar
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                viewFilter={viewFilter}
+                onViewFilterChange={setViewFilter}
+                statusOptions={statusOptions}
+                selectedStatuses={new Set(statusFilter)}
+                onSelectedStatusesChange={(next) => setStatusFilter(Array.from(next))}
+                sortBy={sortBy}
+                sortOptions={FEATURE_SORT_OPTIONS}
+                onSortByChange={(next) => setSortBy(next as FeatureSort)}
+              />
+
+              {filteredFeatures.length > 0 ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredFeatures.map((feature) => {
+                    const release = releases.find(r => r.id === feature.release_id) ?? null;
+                    const spec = specs.find(s => s.id === feature.spec_id) ?? null;
+                    const metrics = featureMetricsByFile[feature.file_name];
+                    const readiness =
+                      metrics?.readinessPercent ??
+                      featureStatusFallbackReadiness(feature.status || 'draft');
+                    const isBlocking =
+                      metrics?.blocking ??
+                      (feature.status !== 'implemented' && feature.status !== 'deprecated');
+
+                    return (
+                      <FeatureHubRow
+                        key={feature.file_name}
+                        feature={feature}
+                        release={release}
+                        spec={spec}
+                        readiness={readiness}
+                        isBlocking={isBlocking}
+                        onSelect={() => onSelectFeature(feature)}
+                      />
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Flag />}
+                  title="No features found"
+                  description="Refine your search or create a new feature to get started."
+                  action={
+                    <Button variant="outline" onClick={() => {
+                      setSearchQuery('');
+                      setStatusFilter([]);
+                    }}>
+                      Clear Filters
+                    </Button>
+                  }
+                />
+              )}
             </div>
-          ) : (
-            <EmptyState
-              icon={<Flag />}
-              title="No features found"
-              description="Refine your search or create a new feature to get started."
-              action={
-                <Button variant="outline" onClick={() => {
-                  setSearchQuery('');
-                  setStatusFilter([]);
-                }}>
-                  Clear Filters
-                </Button>
-              }
-            />
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      ) : (
+        <FeatureDetail
+          feature={selectedFeature}
+          onClose={onCloseFeatureDetail}
+          onSave={onSaveFeature}
+          onSelectRelease={(name) => {
+            if (onSelectReleaseFromFeature) {
+              onSelectReleaseFromFeature(name);
+            }
+          }}
+          onSelectSpec={(name) => {
+            if (onSelectSpecFromFeature) {
+              onSelectSpecFromFeature(name);
+            }
+          }}
+          releaseSuggestions={releases.map(r => r.version)}
+          specSuggestions={specs.map(s => s.file_name)}
+          mcpEnabled={mcpEnabled}
+        />
+      )}
 
       {createOpen && (
         <DetailSheet
@@ -252,22 +312,6 @@ export default function FeaturesPage({
         </DetailSheet>
       )}
 
-      {selectedFeature && (
-        <FeatureDetail
-          feature={selectedFeature}
-          onClose={onCloseFeatureDetail}
-          onSave={onSaveFeature}
-          onSelectRelease={() => {
-            // Logic to handle navigation could go here or through parent
-          }}
-          onSelectSpec={() => {
-            // Logic to handle navigation
-          }}
-          releaseSuggestions={releases.map(r => r.version)}
-          specSuggestions={specs.map(s => s.file_name)}
-          mcpEnabled={mcpEnabled}
-        />
-      )}
     </PageFrame>
   );
 }

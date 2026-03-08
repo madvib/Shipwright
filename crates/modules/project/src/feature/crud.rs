@@ -1,5 +1,10 @@
-use super::db::{delete_feature_db, get_feature_db, list_features_db, upsert_feature_db};
-use super::types::{Feature, FeatureEntry, FeatureMetadata, FeatureStatus};
+use super::db::{
+    delete_feature_db, get_feature_db, get_feature_doc_db, list_features_db, upsert_feature_db,
+    upsert_feature_doc_db,
+};
+use super::types::{
+    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureMetadata, FeatureStatus,
+};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use std::path::{Path, PathBuf};
@@ -22,6 +27,49 @@ fn feature_file_path(ship_dir: &Path, status: &FeatureStatus, title: &str) -> Pa
         }
         n += 1;
     }
+}
+
+fn find_feature_file_by_id(ship_dir: &Path, id: &str) -> Option<PathBuf> {
+    let features_dir = runtime::project::features_dir(ship_dir);
+    let mut scan_dirs = vec![features_dir.clone()];
+    for status in &["planned", "in-progress", "implemented", "deprecated"] {
+        scan_dirs.push(features_dir.join(status));
+    }
+
+    for dir in scan_dirs {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            if file_name == "README.md" || file_name == "TEMPLATE.md" {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(_) => continue,
+            };
+            let legacy_marker = format!("id = \"{}\"", id);
+            let generated_marker = format!("ship:feature id={}", id);
+            if content.contains(&legacy_marker) || content.contains(&generated_marker) {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+fn load_feature_body_from_file(ship_dir: &Path, id: &str) -> Option<String> {
+    let path = find_feature_file_by_id(ship_dir, id)?;
+    let content = std::fs::read_to_string(path).ok()?;
+    let feature = Feature::from_markdown(&content).ok()?;
+    Some(feature.body)
 }
 
 fn resolve_feature_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
@@ -75,6 +123,101 @@ pub fn write_feature_file(
     let content = feature.to_markdown()?;
     runtime::fs_util::write_atomic(&path, content)?;
     Ok(path)
+}
+
+fn default_feature_doc_content(feature: &Feature) -> String {
+    format!(
+        "# {} Documentation\n\n## Capability Summary\n\nDescribe what this feature does in production terms.\n\n## User Workflows\n\n- Primary flow:\n- Edge cases:\n\n## Implementation Notes\n\nKey technical decisions and integration points.\n\n## Validation\n\nHow this capability is validated (tests, checks, manual QA).\n\n## Session Updates\n\n- _Use session summaries to keep this section current._\n",
+        feature.metadata.title
+    )
+}
+
+pub fn ensure_feature_documentation(
+    ship_dir: &Path,
+    feature_id: &str,
+) -> Result<FeatureDocumentation> {
+    let entry = get_feature_by_id(ship_dir, feature_id)?;
+    if let Some(existing) = get_feature_doc_db(ship_dir, &entry.id)? {
+        return Ok(existing);
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let doc = FeatureDocumentation {
+        feature_id: entry.id.clone(),
+        status: FeatureDocStatus::NotStarted,
+        content: default_feature_doc_content(&entry.feature),
+        revision: 1,
+        last_verified_at: None,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    upsert_feature_doc_db(ship_dir, &doc, Some("ship"))
+}
+
+pub fn get_feature_documentation(
+    ship_dir: &Path,
+    feature_id: &str,
+) -> Result<FeatureDocumentation> {
+    ensure_feature_documentation(ship_dir, feature_id)
+}
+
+pub fn update_feature_documentation(
+    ship_dir: &Path,
+    feature_id: &str,
+    content: String,
+    status: Option<FeatureDocStatus>,
+    verify_now: bool,
+    actor: Option<&str>,
+) -> Result<FeatureDocumentation> {
+    let mut doc = ensure_feature_documentation(ship_dir, feature_id)?;
+    doc.content = content;
+    if let Some(next_status) = status {
+        doc.status = next_status;
+    } else if doc.status == FeatureDocStatus::NotStarted {
+        doc.status = FeatureDocStatus::Draft;
+    }
+    if verify_now {
+        let now = Utc::now().to_rfc3339();
+        doc.last_verified_at = Some(now.clone());
+        if doc.status == FeatureDocStatus::Draft {
+            doc.status = FeatureDocStatus::Reviewed;
+        }
+    }
+
+    let updated = upsert_feature_doc_db(ship_dir, &doc, actor)?;
+    runtime::append_event(
+        ship_dir,
+        actor.unwrap_or("logic"),
+        runtime::EventEntity::Feature,
+        runtime::EventAction::Update,
+        feature_id.to_string(),
+        Some("feature-doc-update".to_string()),
+    )?;
+    Ok(updated)
+}
+
+pub fn record_feature_session_update(
+    ship_dir: &Path,
+    feature_id: &str,
+    session_summary: Option<&str>,
+    actor: Option<&str>,
+) -> Result<FeatureDocumentation> {
+    let mut doc = ensure_feature_documentation(ship_dir, feature_id)?;
+    let summary = session_summary
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Session completed.");
+    let timestamp = Utc::now().to_rfc3339();
+    let mut content = doc.content.trim_end().to_string();
+    if !content.contains("## Session Updates") {
+        content.push_str("\n\n## Session Updates\n");
+    }
+    content.push_str(&format!("\n- {} — {}", timestamp, summary));
+    doc.content = content;
+    if doc.status == FeatureDocStatus::NotStarted {
+        doc.status = FeatureDocStatus::Draft;
+    }
+    upsert_feature_doc_db(ship_dir, &doc, actor)
 }
 
 pub fn remove_feature_files(ship_dir: &Path, id: &str, title: &str) {
@@ -134,6 +277,7 @@ pub fn create_feature(
             created: now.clone(),
             updated: now,
             release_id: release_id.map(|s| s.to_string()),
+            active_target_id: release_id.map(|s| s.to_string()),
             spec_id: spec_id.map(|s| s.to_string()),
             branch: branch.map(|s| s.to_string()),
             agent: None,
@@ -148,6 +292,7 @@ pub fn create_feature(
 
     let status = FeatureStatus::Planned;
     upsert_feature_db(ship_dir, &feature, &status)?;
+    let _ = ensure_feature_documentation(ship_dir, &id);
     let file_path = write_feature_file(ship_dir, &feature, &status)?;
 
     runtime::append_event(
@@ -174,7 +319,14 @@ pub fn create_feature(
 
 pub fn get_feature_by_id(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
     let resolved_id = require_feature_id(ship_dir, id)?;
-    get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))
+    let mut entry =
+        get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
+    if entry.feature.body.trim().is_empty()
+        && let Some(body) = load_feature_body_from_file(ship_dir, &resolved_id)
+    {
+        entry.feature.body = body;
+    }
+    Ok(entry)
 }
 
 pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result<FeatureEntry> {
@@ -182,6 +334,12 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
     let existing = get_feature_db(ship_dir, &resolved_id)?
         .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
     feature.metadata.updated = Utc::now().to_rfc3339();
+    if feature.body.trim().is_empty() {
+        if let Some(body) = load_feature_body_from_file(ship_dir, &resolved_id) {
+            feature.body = body;
+        }
+    }
+    feature.extract_structured_data();
 
     upsert_feature_db(ship_dir, &feature, &existing.status)?;
     // Ensure updates replace the existing exported markdown file instead of
@@ -217,9 +375,16 @@ pub fn move_feature(ship_dir: &Path, id: &str, new_status: FeatureStatus) -> Res
     let existing = get_feature_db(ship_dir, &resolved_id)?
         .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
 
-    upsert_feature_db(ship_dir, &existing.feature, &new_status)?;
+    let mut feature = existing.feature.clone();
+    if feature.body.trim().is_empty() {
+        if let Some(body) = load_feature_body_from_file(ship_dir, &resolved_id) {
+            feature.body = body;
+        }
+    }
+    feature.extract_structured_data();
+    upsert_feature_db(ship_dir, &feature, &new_status)?;
     remove_feature_files(ship_dir, &resolved_id, &existing.feature.metadata.title);
-    write_feature_file(ship_dir, &existing.feature, &new_status)?;
+    write_feature_file(ship_dir, &feature, &new_status)?;
 
     runtime::append_event(
         ship_dir,
@@ -252,7 +417,19 @@ pub fn delete_feature(ship_dir: &Path, id: &str) -> Result<()> {
 }
 
 pub fn feature_start(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
-    move_feature(ship_dir, id, FeatureStatus::InProgress)
+    let entry = move_feature(ship_dir, id, FeatureStatus::InProgress)?;
+    let doc = ensure_feature_documentation(ship_dir, &entry.id)?;
+    if doc.status == FeatureDocStatus::NotStarted {
+        let _ = update_feature_documentation(
+            ship_dir,
+            &entry.id,
+            doc.content,
+            Some(FeatureDocStatus::Draft),
+            false,
+            Some("ship"),
+        )?;
+    }
+    Ok(entry)
 }
 
 pub fn feature_done(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {

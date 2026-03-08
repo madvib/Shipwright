@@ -1,13 +1,12 @@
 +++
-# GENERATED FILE - DO NOT EDIT MANUALLY. SOURCE OF TRUTH IS SQLITE. NO 2-WAY SYNC.
 id = "KLrvRWB8"
 title = "Scoped Workspaces"
 created = "2026-02-28T15:56:07Z"
-updated = "2026-03-02T17:30:54.569112120+00:00"
+updated = "2026-03-07T21:40:41.298868+00:00"
 release_id = "v0.1.0-alpha"
+active_target_id = "v0.1.0-alpha"
 spec_id = ""
 branch = ""
-adr_ids = []
 tags = []
 
 [agent]
@@ -19,32 +18,30 @@ skills = []
 
 ## Why
 
-When a developer checks out a branch, Shipwright needs to know exactly what work is happening and configure the agent environment for it. A Workspace is the resolved, branch-scoped agent context — linking the branch to a feature/spec/release and computing the full agent configuration (skills, MCP servers, model, permissions) that applies to this session. Without this, agents start every session blind and users manage tool config manually.
+Workspaces are the runtime execution boundary for Ship. They bind a branch to planning context and agent configuration so the same branch can be resumed, inspected, and operated without redoing setup every session.
 
 ## Acceptance Criteria
 
-- [ ] `ship workspace` CLI command shows resolved context for current branch
-- [ ] Checkout hook creates/updates workspace record in SQLite automatically
-- [ ] Workspace links branch → feature/spec/release via ID
-- [ ] Workspace resolves full agent config (mode defaults + feature [agent] overrides)
-- [ ] UI workspace panel shows inherited vs overridden config fields clearly
-- [ ] `ship workspace --feature <id>` links an existing feature to current branch atomically (branch + link + config generation)
-- [ ] Worktree workspaces are tracked separately from main branch
+- [x] Workspace records persist in SQLite with branch identity, type, status, and timestamps
+- [x] Workspace records can link to feature/spec/release IDs
+- [x] `ship workspace create/list/switch/sync/archive` flows are available in CLI
+- [x] Workspace mode override and active mode inheritance are supported
+- [x] Worktree path support is available for branch-scoped execution environments
+- [x] Workspace state is visible in the desktop command-center view
 
 ## Delivery Todos
 
-- [ ] Implement `ship workspace` CLI subcommand (show current, link document)
-- [ ] Expose workspace resolution in MCP (`get_workspace` tool)
-- [ ] UI panel: resolved agent config with inheritance labels
-- [ ] Encapsulate branch creation in `ship workspace start` (atomic: branch + link + hook trigger)
-- [ ] Define environment layer on Workspace struct (worktree_path already exists; add container, env_vars for future remote)
+- [x] Persist workspace model in runtime state DB
+- [x] Add CLI workspace surface for create/list/switch/sync/archive
+- [x] Add Tauri/UI bindings for workspace state and activation
+- [x] Add workspace mode override plumbing end-to-end
+- [x] Add worktree-aware workspace creation/open behavior
 
-## Notes
+## Current Behavior
 
-**Resolution chain:** project defaults → active mode → feature `[agent]` block → resolved Workspace
+Ship treats workspace as the long-lived execution context for a branch. Sessions are short-lived runs inside that workspace. Activation and sync use workspace state as the source of truth for provider config generation.
 
-Workspace is SQLite-only — not a markdown file. The file-based representation is CLAUDE.md + .mcp.json, written by the post-checkout hook. No `workspace.md` needed.
+## Follow-ups
 
-Modes and workspace configs share the same schema (`AgentConfig`). A Mode is a named, pre-configured workspace preset. The `[agent]` block in feature frontmatter is a partial `AgentConfig` override applied on top of the active mode. This unification means the schema is defined once and the `[agent]` block fields are validated against it.
-
-For remote/container use: the Workspace struct has an environment layer slot (worktree_path today, container image + env vars + ports eventually). This is the dev container spec for the branch — same concept, different runtime target.
+- Improve lifecycle analytics and audit visualization in UI
+- Add stronger cross-workspace conflict signaling for overlapping file edits
