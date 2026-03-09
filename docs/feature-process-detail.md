@@ -512,7 +512,7 @@ resolution: workspace mode override → project active mode → no filter (all t
 They appear as slash commands in Claude (`.claude/commands/{id}.md`) and as inline context
 in `CLAUDE.md`.
 
-**Storage:** `~/.ship/projects/{project-slug}/skills/{id}/SKILL.md` (project-scoped) or `~/.ship/skills/{id}/SKILL.md`
+**Storage:** `.ship/skills/{id}/SKILL.md` (project-scoped) or `~/.ship/skills/{id}/SKILL.md`
 (user-scoped). No DB entry — filesystem only.
 
 **Install from git:** `skill install` fetches a `.md` file from a git URL and writes it to

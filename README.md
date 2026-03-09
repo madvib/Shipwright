@@ -99,18 +99,21 @@ Forty-plus tools including `get_project_info` (full context in one call), `creat
 Reusable agent instructions, scoped to project or user:
 
 ```markdown
-# agents/skills/task-policy.md
+# .ship/skills/task-policy/SKILL.md
 
 ---
-
-id: task-policy
-name: Shipwright Workflow Policy
-
+name: task-policy
+description: Ship workflow policy and execution guardrails for daily delivery.
+metadata:
+  display_name: Shipwright Workflow Policy
+  source: builtin
 ---
 
 Always start from a feature document. File issues for every gap found.
 Run tests before closing feature todos.
 ```
+
+User-scoped shared skills live in `~/.ship/skills/<id>/SKILL.md`.
 
 Rules in `agents/rules/*.md` are always-on — inlined into every provider's context file on every checkout.
 
