@@ -8,9 +8,13 @@ import {
     getActiveWorkspaceSessionCmd,
     listWorkspaceSessionsCmd,
     getWorkspaceProviderMatrixCmd,
+    listWorkspaceChangesCmd,
+    getWorkspaceGitStatusCmd,
     type WorkspaceSessionInfo,
     type WorkspaceProviderMatrix,
-    type WorkspaceEditorInfo
+    type WorkspaceEditorInfo,
+    type WorkspaceFileChange,
+    type WorkspaceGitStatusSummary,
 } from '@/lib/platform/tauri/commands';
 import { Workspace } from '@/bindings';
 import { ModeConfig, ProviderInfo } from '@/bindings';
@@ -34,6 +38,8 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     const [activeSession, setActiveSession] = useState<WorkspaceSessionInfo | null>(null);
     const [recentSessions, setRecentSessions] = useState<WorkspaceSessionInfo[]>([]);
     const [providerMatrix, setProviderMatrix] = useState<WorkspaceProviderMatrix | null>(null);
+    const [workspaceChanges, setWorkspaceChanges] = useState<WorkspaceFileChange[]>([]);
+    const [workspaceGitSummary, setWorkspaceGitSummary] = useState<WorkspaceGitStatusSummary | null>(null);
     const [startingSession, setStartingSession] = useState(false);
     const [endingSession, setEndingSession] = useState(false);
     const [sessionGoalInput, setSessionGoalInput] = useState('');
@@ -43,6 +49,7 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     const [updatingLinks, setUpdatingLinks] = useState(false);
     const [linkFeatureId, setLinkFeatureId] = useState<string>(NO_LINK_VALUE);
     const [linkSpecId, setLinkSpecId] = useState<string>(NO_LINK_VALUE);
+    const [linkReleaseId, setLinkReleaseId] = useState<string>(NO_LINK_VALUE);
 
     const load = async () => {
         setLoading(true);
@@ -104,24 +111,29 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     };
 
     const normalizeWorkspaceType = (type: string | null | undefined): WorkspaceGraphRow['workspaceType'] => {
-        if (['feature', 'refactor', 'experiment', 'hotfix'].includes(type as any)) return type as any;
+        if (!type) return 'feature';
+        const normalized = type.trim().toLowerCase();
+        if (['feature', 'patch', 'service'].includes(normalized)) {
+            return normalized as WorkspaceGraphRow['workspaceType'];
+        }
         return 'feature';
     };
 
     const normalizeWorkspaceStatus = (status: string | null | undefined): WorkspaceGraphStatus => {
-        if (['planned', 'active', 'idle', 'review', 'merged', 'archived'].includes(status as any)) return status as any;
-        return 'idle';
+        if (status === 'active' || status === 'archived') return status;
+        return 'archived';
     };
 
     const rows = useMemo<WorkspaceRow[]>(() => {
-        const statusRank: Record<WorkspaceGraphStatus, number> = { active: 0, review: 1, idle: 2, planned: 3, merged: 4, archived: 5 };
+        const statusRank: Record<WorkspaceGraphStatus, number> = { active: 0, archived: 1 };
         return runtimeWorkspaces
             .map((w) => {
                 const rw = w as RuntimeWorkspace;
-                const s = normalizeWorkspaceStatus(rw.status ?? (w.branch === branch ? 'active' : 'idle'));
+                const s = normalizeWorkspaceStatus(rw.status ?? (w.branch === branch ? 'active' : 'archived'));
                 return {
                     id: w.branch, branch: w.branch, workspaceType: normalizeWorkspaceType(rw.workspace_type),
                     featureId: w.feature_id ?? null, specId: w.spec_id ?? null, releaseId: rw.release_id ?? null,
+                    environmentId: rw.environment_id ?? null,
                     activeMode: w.active_mode ?? null, providers: w.providers ?? [], resolvedAt: w.resolved_at,
                     isWorktree: w.is_worktree, worktreePath: w.worktree_path ?? null, lastActivatedAt: rw.last_activated_at ?? null,
                     contextHash: rw.context_hash ?? null,
@@ -151,26 +163,39 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
         if (!detail) {
             setLinkFeatureId(NO_LINK_VALUE);
             setLinkSpecId(NO_LINK_VALUE);
+            setLinkReleaseId(NO_LINK_VALUE);
             return;
         }
         setLinkFeatureId(detail.featureId ?? NO_LINK_VALUE);
         setLinkSpecId(detail.specId ?? NO_LINK_VALUE);
-    }, [detail?.branch, detail?.featureId, detail?.specId]);
+        setLinkReleaseId(detail.releaseId ?? NO_LINK_VALUE);
+    }, [detail?.branch, detail?.featureId, detail?.specId, detail?.releaseId]);
 
     useEffect(() => {
         if (!detail) {
-            setActiveSession(null); setRecentSessions([]); setProviderMatrix(null);
+            setActiveSession(null);
+            setRecentSessions([]);
+            setProviderMatrix(null);
+            setWorkspaceChanges([]);
+            setWorkspaceGitSummary(null);
             return;
         }
         let cancelled = false;
         const loadContext = async () => {
-            const snapshot = await fetchSessionSnapshot(detail.branch);
-            if (cancelled) return;
-            setActiveSession(snapshot.active); setRecentSessions(snapshot.sessions);
-
             const modeForMatrix = detail.activeMode ?? workspaceUi.activeModeId ?? null;
-            const matrixRes = await getWorkspaceProviderMatrixCmd(detail.branch, modeForMatrix);
-            if (!cancelled && matrixRes.status === 'ok') setProviderMatrix(matrixRes.data);
+            const [snapshot, matrixRes, changesRes, gitSummaryRes] = await Promise.all([
+                fetchSessionSnapshot(detail.branch),
+                getWorkspaceProviderMatrixCmd(detail.branch, modeForMatrix),
+                listWorkspaceChangesCmd(detail.branch),
+                getWorkspaceGitStatusCmd(detail.branch),
+            ]);
+            if (cancelled) return;
+            setActiveSession(snapshot.active);
+            setRecentSessions(snapshot.sessions);
+            setProviderMatrix(matrixRes.status === 'ok' ? matrixRes.data : null);
+            setWorkspaceChanges(changesRes.status === 'ok' ? changesRes.data : []);
+            setWorkspaceGitSummary(gitSummaryRes.status === 'ok' ? gitSummaryRes.data : null);
+
         };
         void loadContext();
         return () => { cancelled = true; };
@@ -183,6 +208,7 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
         endingSession, setEndingSession, sessionGoalInput, setSessionGoalInput,
         sessionSummaryInput, setSessionSummaryInput, syncing, setSyncing, activating, setActivating,
         updatingLinks, setUpdatingLinks, linkFeatureId, setLinkFeatureId, linkSpecId, setLinkSpecId,
+        linkReleaseId, setLinkReleaseId, workspaceChanges, workspaceGitSummary,
         rows, filteredRows, detail, providerInfos, load, fetchSessionSnapshot
     };
 }

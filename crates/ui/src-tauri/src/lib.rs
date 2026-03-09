@@ -1,12 +1,17 @@
+use notify::{
+    Config as NotifyConfig, Event as NotifyEvent, EventKind as NotifyEventKind, RecommendedWatcher,
+    RecursiveMode, Watcher,
+};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use runtime::config::{
     add_mcp_server, add_mode, generate_gitignore, get_active_mode, get_config,
     get_effective_config, list_mcp_servers, remove_mcp_server, remove_mode, save_config,
-    set_active_mode, AiConfig, McpServerConfig, ModeConfig, ProjectConfig, ProjectDiscovery,
+    set_active_mode, AiConfig, McpServerConfig, McpServerType, ModeConfig, ProjectConfig,
+    ProjectDiscovery,
 };
 use runtime::project::{
-    adrs_dir, features_dir, get_active_project_global, get_project_dir, issues_dir, notes_dir,
-    releases_dir, resolve_project_ship_dir, set_active_project_global, specs_dir, SHIP_DIR_NAME,
+    features_dir, get_active_project_global, get_project_dir, releases_dir,
+    resolve_project_ship_dir, set_active_project_global, SHIP_DIR_NAME,
 };
 use runtime::{
     activate_workspace, autodetect_providers, create_skill, create_user_skill, create_workspace,
@@ -18,35 +23,35 @@ use runtime::{
     repair_workspace, resolve_agent_config, search_catalog, set_workspace_active_mode,
     start_workspace_session, sync_workspace, transition_workspace_status, update_skill,
     update_user_skill, AgentConfig, CatalogEntry, CatalogKind, CreateWorkspaceRequest,
-    EndWorkspaceSessionRequest, EventRecord, LogEntry, ModelInfo, ProviderInfo, Skill, Workspace,
-    WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession, WorkspaceStatus,
-    WorkspaceType,
+    EndWorkspaceSessionRequest, EventRecord, LogEntry, ModelInfo, ProviderInfo, ShipWorkspaceKind,
+    Skill, SkillInstallScope, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport,
+    WorkspaceSession, WorkspaceStatus, install_skill_from_source,
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
-    create_adr, create_feature, create_issue, create_note, create_release, create_spec, delete_adr,
-    delete_issue, delete_spec, get_adr_by_id, get_feature_by_id, get_feature_documentation,
-    get_issue_by_id, get_note_by_id, get_project_name, get_release_by_id, get_spec_by_id,
-    init_project, list_adrs, list_features, list_issues, list_notes, list_registered_projects,
-    list_releases, list_specs, move_adr, move_issue, read_template, register_project,
-    rename_project, update_adr, update_issue, update_note_content, update_release, update_spec,
-    update_feature_content, AdrEntry, AdrStatus, FeatureEntry as ProjectFeatureEntry, Issue,
-    IssueEntry, IssueStatus, NoteScope, ReleaseEntry as ProjectReleaseEntry, Spec, SpecEntry, ADR,
+    create_adr, create_feature, create_issue, create_note, create_release_with_metadata,
+    create_spec, delete_adr, delete_issue, delete_spec, feature_done, feature_start, get_adr_by_id,
+    get_feature_by_id, get_feature_documentation, get_issue_by_id, get_note_by_id,
+    get_project_name, get_release_by_id, get_spec_by_id, init_project, list_adrs, list_features,
+    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
+    move_issue, move_spec, read_template, register_project, rename_project, update_adr,
+    update_feature_content, update_feature_documentation, update_issue, update_note_content,
+    update_release, update_spec, AdrEntry, AdrStatus, FeatureDocStatus,
+    FeatureEntry as ProjectFeatureEntry, Issue, IssueEntry, IssueStatus, NoteScope,
+    ReleaseEntry as ProjectReleaseEntry, ReleaseStatus as ProjectReleaseStatus, Spec, SpecEntry,
+    SpecStatus, ADR,
 };
 use specta::Type;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use notify::{
-    Config as NotifyConfig, Event as NotifyEvent, EventKind as NotifyEventKind,
-    RecommendedWatcher, RecursiveMode, Watcher,
-};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 use tauri_specta::Event;
@@ -129,6 +134,29 @@ pub struct RuntimePerfSnapshot {
     pub watcher_flushes: u64,
     pub watcher_ingest_runs: u64,
     pub watcher_last_ingest_micros: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpValidationIssue {
+    pub level: String,
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpValidationReport {
+    pub ok: bool,
+    pub checked_servers: usize,
+    pub checked_provider_configs: usize,
+    pub issues: Vec<McpValidationIssue>,
 }
 
 struct PtySession {
@@ -402,6 +430,18 @@ pub struct WorkspaceFileChange {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct WorkspaceGitStatusSummary {
+    pub branch: String,
+    pub touched_files: usize,
+    pub insertions: u64,
+    pub deletions: u64,
+    pub ahead: u64,
+    pub behind: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct WorkspaceTerminalSessionInfo {
     pub session_id: String,
     pub branch: String,
@@ -561,7 +601,11 @@ fn strip_generated_export_header(content: String) -> String {
     if let Some(first) = lines.next() {
         let trimmed = first.trim();
         if trimmed.starts_with("<!-- ship:feature ") || trimmed.starts_with("<!-- ship:release ") {
-            return lines.collect::<Vec<_>>().join("\n").trim_start_matches('\n').to_string();
+            return lines
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim_start_matches('\n')
+                .to_string();
         }
     }
     if let Some(stripped) = strip_legacy_toml_frontmatter(&content) {
@@ -721,7 +765,7 @@ fn map_release_info(project_dir: &Path, entry: &ProjectReleaseEntry) -> ReleaseI
         id: entry.id.clone(),
         file_name: entry.file_name.clone(),
         version: entry.version.clone(),
-        status: entry.status.to_string(),
+        status: map_release_status_to_ui(entry.status).to_string(),
         path: path.to_string_lossy().to_string(),
         updated: entry.release.metadata.updated.clone(),
     }
@@ -742,6 +786,33 @@ fn map_release_document(project_dir: &Path, entry: &ProjectReleaseEntry) -> Rele
         updated: info.updated,
         content,
     }
+}
+
+fn map_release_status_to_ui(status: ProjectReleaseStatus) -> &'static str {
+    match status {
+        ProjectReleaseStatus::Upcoming => "planned",
+        ProjectReleaseStatus::Active => "active",
+        ProjectReleaseStatus::Deprecated => "shipped",
+    }
+}
+
+fn map_release_status_from_ui(
+    status: Option<&str>,
+) -> Result<Option<ProjectReleaseStatus>, String> {
+    let Some(value) = status else {
+        return Ok(None);
+    };
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+    let mapped = match normalized.as_str() {
+        "planned" | "upcoming" => ProjectReleaseStatus::Upcoming,
+        "active" => ProjectReleaseStatus::Active,
+        "shipped" | "archived" | "deprecated" => ProjectReleaseStatus::Deprecated,
+        _ => return Err(format!("Invalid release status: {}", value)),
+    };
+    Ok(Some(mapped))
 }
 
 // ─── AI helper ────────────────────────────────────────────────────────────────
@@ -1414,7 +1485,8 @@ fn create_new_adr(
     state: State<AppState>,
 ) -> Result<AdrEntry, String> {
     let project_dir = get_active_dir(&state)?;
-    let entry = create_adr(&project_dir, &title, &context, &decision, "proposed").map_err(|e| e.to_string())?;
+    let entry = create_adr(&project_dir, &title, &context, &decision, "proposed")
+        .map_err(|e| e.to_string())?;
     let _ = ShipEvent::AdrsChanged.emit(&app_handle);
     Ok(entry)
 }
@@ -1428,7 +1500,12 @@ fn get_adr_cmd(id: String, state: State<AppState>) -> Result<AdrEntry, String> {
 
 #[tauri::command]
 #[specta::specta]
-fn update_adr_cmd(app_handle: tauri::AppHandle, id: String, adr: ADR, state: State<AppState>) -> Result<AdrEntry, String> {
+fn update_adr_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    adr: ADR,
+    state: State<AppState>,
+) -> Result<AdrEntry, String> {
     let project_dir = get_active_dir(&state)?;
     let entry = update_adr(&project_dir, &id, adr).map_err(|e| e.to_string())?;
     let _ = ShipEvent::AdrsChanged.emit(&app_handle);
@@ -1454,7 +1531,11 @@ fn move_adr_cmd(
 
 #[tauri::command]
 #[specta::specta]
-fn delete_adr_cmd(app_handle: tauri::AppHandle, id: String, state: State<AppState>) -> Result<(), String> {
+fn delete_adr_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     let project_dir = get_active_dir(&state)?;
     delete_adr(&project_dir, &id).map_err(|e| e.to_string())?;
     let _ = ShipEvent::AdrsChanged.emit(&app_handle);
@@ -1499,7 +1580,12 @@ fn create_spec_cmd(
 
 #[tauri::command]
 #[specta::specta]
-fn update_spec_cmd(app_handle: tauri::AppHandle, id: String, spec: Spec, state: State<AppState>) -> Result<SpecEntry, String> {
+fn update_spec_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    spec: Spec,
+    state: State<AppState>,
+) -> Result<SpecEntry, String> {
     let project_dir = get_active_dir(&state)?;
     let entry = update_spec(&project_dir, &id, spec).map_err(|e| e.to_string())?;
     log_action(
@@ -1514,7 +1600,28 @@ fn update_spec_cmd(app_handle: tauri::AppHandle, id: String, spec: Spec, state: 
 
 #[tauri::command]
 #[specta::specta]
-fn delete_spec_cmd(app_handle: tauri::AppHandle, id: String, state: State<AppState>) -> Result<(), String> {
+fn move_spec_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    new_status: String,
+    state: State<AppState>,
+) -> Result<SpecEntry, String> {
+    let project_dir = get_active_dir(&state)?;
+    let status = new_status
+        .parse::<SpecStatus>()
+        .map_err(|_| format!("Invalid spec status: {}", new_status))?;
+    let entry = move_spec(&project_dir, &id, status).map_err(|e| e.to_string())?;
+    let _ = ShipEvent::SpecsChanged.emit(&app_handle);
+    Ok(entry)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn delete_spec_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     let project_dir = get_active_dir(&state)?;
     delete_spec(&project_dir, &id).map_err(|e| e.to_string())?;
     log_action(
@@ -1555,10 +1662,38 @@ fn create_release_cmd(
     app_handle: tauri::AppHandle,
     version: String,
     content: String,
+    status: Option<String>,
+    target_date: Option<String>,
+    supported: Option<bool>,
+    tags: Option<Vec<String>>,
     state: State<AppState>,
 ) -> Result<ReleaseDocument, String> {
     let project_dir = get_active_dir(&state)?;
-    let entry = create_release(&project_dir, &version, &content).map_err(|e| e.to_string())?;
+    let mapped_status = map_release_status_from_ui(status.as_deref())?;
+    let normalized_target_date = target_date.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+    let normalized_tags = tags
+        .unwrap_or_default()
+        .into_iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect::<Vec<_>>();
+    let entry = create_release_with_metadata(
+        &project_dir,
+        &version,
+        &content,
+        mapped_status,
+        normalized_target_date,
+        supported,
+        normalized_tags,
+    )
+    .map_err(|e| e.to_string())?;
     log_action(
         &project_dir,
         "release create",
@@ -1575,13 +1710,48 @@ fn update_release_cmd(
     app_handle: tauri::AppHandle,
     file_name: String,
     content: String,
+    version: Option<String>,
+    status: Option<String>,
+    target_date: Option<String>,
+    supported: Option<bool>,
+    tags: Option<Vec<String>>,
     state: State<AppState>,
 ) -> Result<ReleaseDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let id = file_name.trim_end_matches(".md");
     let release_entry = get_release_by_id(&project_dir, id).map_err(|e| e.to_string())?;
-    let entry =
-        update_release(&project_dir, id, release_entry.release).map_err(|e| e.to_string())?;
+    let mut release = release_entry.release;
+
+    if let Some(next_version) = version {
+        let trimmed = next_version.trim();
+        if !trimmed.is_empty() {
+            release.metadata.version = trimmed.to_string();
+        }
+    }
+    if let Some(next_status) = map_release_status_from_ui(status.as_deref())? {
+        release.metadata.status = next_status;
+    }
+    if let Some(next_target_date) = target_date {
+        let trimmed = next_target_date.trim();
+        release.metadata.target_date = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+    }
+    if let Some(next_supported) = supported {
+        release.metadata.supported = Some(next_supported);
+    }
+    if let Some(next_tags) = tags {
+        release.metadata.tags = next_tags
+            .into_iter()
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty())
+            .collect();
+    }
+    release.body = content.clone();
+
+    let entry = update_release(&project_dir, id, release).map_err(|e| e.to_string())?;
     let path = resolve_release_markdown_path(&project_dir, &entry)
         .unwrap_or_else(|| releases_dir(&project_dir).join(&file_name));
     fs::write(&path, &content).map_err(|e| e.to_string())?;
@@ -1629,6 +1799,7 @@ fn create_feature_cmd(
     content: String,
     release: Option<String>,
     spec: Option<String>,
+    branch: Option<String>,
     state: State<AppState>,
 ) -> Result<FeatureDocument, String> {
     let project_dir = get_active_dir(&state)?;
@@ -1638,7 +1809,7 @@ fn create_feature_cmd(
         &content,
         release.as_deref(),
         spec.as_deref(),
-        None,
+        branch.as_deref(),
     )
     .map_err(|e| e.to_string())?;
     log_action(
@@ -1675,6 +1846,70 @@ fn update_feature_cmd(
 
 #[tauri::command]
 #[specta::specta]
+fn feature_start_cmd(
+    app_handle: tauri::AppHandle,
+    file_name: String,
+    state: State<AppState>,
+) -> Result<FeatureDocument, String> {
+    let project_dir = get_active_dir(&state)?;
+    let id = file_name.trim_end_matches(".md");
+    feature_start(&project_dir, id).map_err(|e| e.to_string())?;
+    let _ = ShipEvent::FeaturesChanged.emit(&app_handle);
+    let refreshed = get_feature_by_id(&project_dir, id).map_err(|e| e.to_string())?;
+    Ok(map_feature_document(&project_dir, &refreshed))
+}
+
+#[tauri::command]
+#[specta::specta]
+fn feature_done_cmd(
+    app_handle: tauri::AppHandle,
+    file_name: String,
+    state: State<AppState>,
+) -> Result<FeatureDocument, String> {
+    let project_dir = get_active_dir(&state)?;
+    let id = file_name.trim_end_matches(".md");
+    feature_done(&project_dir, id).map_err(|e| e.to_string())?;
+    let _ = ShipEvent::FeaturesChanged.emit(&app_handle);
+    let refreshed = get_feature_by_id(&project_dir, id).map_err(|e| e.to_string())?;
+    Ok(map_feature_document(&project_dir, &refreshed))
+}
+
+#[tauri::command]
+#[specta::specta]
+fn update_feature_documentation_cmd(
+    app_handle: tauri::AppHandle,
+    file_name: String,
+    content: String,
+    status: Option<String>,
+    verify_now: Option<bool>,
+    state: State<AppState>,
+) -> Result<FeatureDocument, String> {
+    let project_dir = get_active_dir(&state)?;
+    let id = file_name.trim_end_matches(".md");
+    let docs_status = match status.filter(|value| !value.trim().is_empty()) {
+        Some(value) => Some(
+            value
+                .parse::<FeatureDocStatus>()
+                .map_err(|_| format!("Invalid feature docs status: {}", value))?,
+        ),
+        None => None,
+    };
+    update_feature_documentation(
+        &project_dir,
+        id,
+        content,
+        docs_status,
+        verify_now.unwrap_or(false),
+        Some("ui"),
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = ShipEvent::FeaturesChanged.emit(&app_handle);
+    let refreshed = get_feature_by_id(&project_dir, id).map_err(|e| e.to_string())?;
+    Ok(map_feature_document(&project_dir, &refreshed))
+}
+
+#[tauri::command]
+#[specta::specta]
 fn get_template_cmd(kind: String, state: State<AppState>) -> Result<String, String> {
     let project_dir = get_active_dir(&state)?;
     read_template(&project_dir, &kind).map_err(|e| e.to_string())
@@ -1693,7 +1928,11 @@ fn get_vision_cmd(state: State<AppState>) -> Result<VisionDocument, String> {
 
 #[tauri::command]
 #[specta::specta]
-fn update_vision_cmd(app_handle: tauri::AppHandle, content: String, state: State<AppState>) -> Result<VisionDocument, String> {
+fn update_vision_cmd(
+    app_handle: tauri::AppHandle,
+    content: String,
+    state: State<AppState>,
+) -> Result<VisionDocument, String> {
     let project_dir = get_active_dir(&state)?;
     let vision_path = runtime::project::project_ns(&project_dir).join("vision.md");
     if let Some(parent) = vision_path.parent() {
@@ -1836,7 +2075,8 @@ fn create_rule_cmd(
     state: State<AppState>,
 ) -> Result<runtime::rule::Rule, String> {
     let project_dir = get_active_dir(&state)?;
-    let rule = runtime::create_rule(project_dir, &file_name, &content).map_err(|e| e.to_string())?;
+    let rule =
+        runtime::create_rule(project_dir, &file_name, &content).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
     Ok(rule)
 }
@@ -1850,14 +2090,19 @@ fn update_rule_cmd(
     state: State<AppState>,
 ) -> Result<runtime::rule::Rule, String> {
     let project_dir = get_active_dir(&state)?;
-    let rule = runtime::update_rule(project_dir, &file_name, &content).map_err(|e| e.to_string())?;
+    let rule =
+        runtime::update_rule(project_dir, &file_name, &content).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
     Ok(rule)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn delete_rule_cmd(app_handle: tauri::AppHandle, file_name: String, state: State<AppState>) -> Result<(), String> {
+fn delete_rule_cmd(
+    app_handle: tauri::AppHandle,
+    file_name: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     let project_dir = get_active_dir(&state)?;
     runtime::delete_rule(project_dir, &file_name).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
@@ -2304,6 +2549,7 @@ async fn sync_workspace_cmd(
 async fn create_workspace_cmd(
     branch: String,
     workspace_type: Option<String>,
+    environment_id: Option<String>,
     feature_id: Option<String>,
     spec_id: Option<String>,
     release_id: Option<String>,
@@ -2315,7 +2561,7 @@ async fn create_workspace_cmd(
     tauri::async_runtime::spawn_blocking(move || {
         let parsed_workspace_type = workspace_type
             .as_deref()
-            .map(|value| value.parse::<WorkspaceType>())
+            .map(|value| value.parse::<ShipWorkspaceKind>())
             .transpose()
             .map_err(|e| e.to_string())?;
 
@@ -2331,6 +2577,7 @@ async fn create_workspace_cmd(
                 branch,
                 workspace_type: parsed_workspace_type,
                 status,
+                environment_id,
                 feature_id,
                 spec_id,
                 release_id,
@@ -2511,45 +2758,164 @@ async fn list_workspace_changes_cmd(
     tauri::async_runtime::spawn_blocking(move || {
         let workspace = get_workspace(&project_dir, &branch).map_err(|e| e.to_string())?;
         let target_dir = resolve_workspace_target_dir(&project_dir, workspace.as_ref());
+        collect_workspace_changes(&target_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn collect_workspace_changes(target_dir: &Path) -> Result<Vec<WorkspaceFileChange>, String> {
+    let output = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(target_dir)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err("Failed to resolve workspace file changes".to_string());
+    }
+
+    let parsed = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            let status = line.get(0..2)?.trim().to_string();
+            let raw_path = line.get(3..)?.trim();
+            if raw_path.is_empty() {
+                return None;
+            }
+            let normalized_path = raw_path
+                .rsplit(" -> ")
+                .next()
+                .unwrap_or(raw_path)
+                .trim()
+                .to_string();
+
+            Some(WorkspaceFileChange {
+                status,
+                path: normalized_path,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(parsed)
+}
+
+fn collect_workspace_loc_delta(target_dir: &Path) -> Result<(u64, u64), String> {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--numstat", "HEAD"])
+        .current_dir(target_dir)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Ok((0, 0));
+    }
+
+    let mut insertions = 0_u64;
+    let mut deletions = 0_u64;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut parts = line.split('\t');
+        let added = parts.next().unwrap_or("0");
+        let removed = parts.next().unwrap_or("0");
+        if let Ok(value) = added.parse::<u64>() {
+            insertions += value;
+        }
+        if let Ok(value) = removed.parse::<u64>() {
+            deletions += value;
+        }
+    }
+
+    Ok((insertions, deletions))
+}
+
+fn collect_workspace_ahead_behind(target_dir: &Path) -> (Option<String>, u64, u64) {
+    let upstream_output = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+        .current_dir(target_dir)
+        .output();
+
+    let upstream = match upstream_output {
+        Ok(output) if output.status.success() => {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if value.is_empty() {
+                None
+            } else {
+                Some(value)
+            }
+        }
+        _ => None,
+    };
+
+    let Some(upstream_ref) = upstream.clone() else {
+        return (None, 0, 0);
+    };
+
+    let graph = format!("{upstream_ref}...HEAD");
+    let counts_output = std::process::Command::new("git")
+        .args(["rev-list", "--left-right", "--count", &graph])
+        .current_dir(target_dir)
+        .output();
+
+    let Ok(output) = counts_output else {
+        return (upstream, 0, 0);
+    };
+    if !output.status.success() {
+        return (upstream, 0, 0);
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let mut parts = raw.split_whitespace();
+    let behind = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let ahead = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    (upstream, ahead, behind)
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_workspace_git_status_cmd(
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<WorkspaceGitStatusSummary, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let workspace = get_workspace(&project_dir, &branch).map_err(|e| e.to_string())?;
+        let target_dir = resolve_workspace_target_dir(&project_dir, workspace.as_ref());
 
         let output = std::process::Command::new("git")
-            .args(["status", "--porcelain"])
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(&target_dir)
             .output()
             .map_err(|e| e.to_string())?;
+        let resolved_branch = if output.status.success() {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        } else {
+            branch
+        };
 
-        if !output.status.success() {
-            return Err("Failed to resolve workspace file changes".to_string());
-        }
+        let changes = collect_workspace_changes(&target_dir)?;
+        let (insertions, deletions) = collect_workspace_loc_delta(&target_dir)?;
+        let (upstream, ahead, behind) = collect_workspace_ahead_behind(&target_dir);
 
-        let parsed = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    return None;
-                }
-
-                let status = line.get(0..2)?.trim().to_string();
-                let raw_path = line.get(3..)?.trim();
-                if raw_path.is_empty() {
-                    return None;
-                }
-                let normalized_path = raw_path
-                    .rsplit(" -> ")
-                    .next()
-                    .unwrap_or(raw_path)
-                    .trim()
-                    .to_string();
-
-                Some(WorkspaceFileChange {
-                    status,
-                    path: normalized_path,
-                })
-            })
-            .collect::<Vec<_>>();
-
-        Ok(parsed)
+        Ok(WorkspaceGitStatusSummary {
+            branch: resolved_branch,
+            touched_files: changes.len(),
+            insertions,
+            deletions,
+            ahead,
+            behind,
+            upstream,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2608,7 +2974,10 @@ async fn start_workspace_terminal_cmd(
     rows: Option<u16>,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceTerminalSessionInfo, String> {
-    state.perf.terminal_start_calls.fetch_add(1, Ordering::Relaxed);
+    state
+        .perf
+        .terminal_start_calls
+        .fetch_add(1, Ordering::Relaxed);
     let started = Instant::now();
     let result: Result<WorkspaceTerminalSessionInfo, String> = async {
         let project_dir = get_active_dir(&state)?;
@@ -2626,9 +2995,10 @@ async fn start_workspace_terminal_cmd(
                 let target_dir =
                     resolve_workspace_target_dir(&project_dir_for_spawn, workspace.as_ref());
 
-                let activation_error = activate_workspace(&project_dir_for_spawn, &branch_for_spawn)
-                    .err()
-                    .map(|e| e.to_string());
+                let activation_error =
+                    activate_workspace(&project_dir_for_spawn, &branch_for_spawn)
+                        .err()
+                        .map(|e| e.to_string());
 
                 let pty_system = native_pty_system();
                 let pty_pair = pty_system
@@ -2754,7 +3124,10 @@ async fn start_workspace_terminal_cmd(
         Ordering::Relaxed,
     );
     if result.is_err() {
-        state.perf.terminal_start_errors.fetch_add(1, Ordering::Relaxed);
+        state
+            .perf
+            .terminal_start_errors
+            .fetch_add(1, Ordering::Relaxed);
     }
     result
 }
@@ -2766,7 +3139,10 @@ fn read_workspace_terminal_cmd(
     max_bytes: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    state.perf.terminal_read_calls.fetch_add(1, Ordering::Relaxed);
+    state
+        .perf
+        .terminal_read_calls
+        .fetch_add(1, Ordering::Relaxed);
     let started = Instant::now();
     let session = load_terminal_session(&state, &session_id)?;
     let _ = session.refresh_exit_state();
@@ -2781,7 +3157,10 @@ fn read_workspace_terminal_cmd(
     );
 
     if session.is_closed() && output.is_empty() {
-        state.perf.terminal_read_errors.fetch_add(1, Ordering::Relaxed);
+        state
+            .perf
+            .terminal_read_errors
+            .fetch_add(1, Ordering::Relaxed);
         let removed = {
             let mut sessions = state
                 .terminal_sessions
@@ -2811,7 +3190,10 @@ fn write_workspace_terminal_cmd(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.perf.terminal_write_calls.fetch_add(1, Ordering::Relaxed);
+    state
+        .perf
+        .terminal_write_calls
+        .fetch_add(1, Ordering::Relaxed);
     let started = Instant::now();
     let result = (|| -> Result<(), String> {
         let session = load_terminal_session(&state, &session_id)?;
@@ -2832,7 +3214,10 @@ fn write_workspace_terminal_cmd(
         Ordering::Relaxed,
     );
     if result.is_err() {
-        state.perf.terminal_write_errors.fetch_add(1, Ordering::Relaxed);
+        state
+            .perf
+            .terminal_write_errors
+            .fetch_add(1, Ordering::Relaxed);
     }
     result
 }
@@ -2883,7 +3268,10 @@ fn stop_workspace_terminal_cmd(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.perf.terminal_stop_calls.fetch_add(1, Ordering::Relaxed);
+    state
+        .perf
+        .terminal_stop_calls
+        .fetch_add(1, Ordering::Relaxed);
     let started = Instant::now();
     let result = (|| -> Result<(), String> {
         let session = {
@@ -2902,7 +3290,10 @@ fn stop_workspace_terminal_cmd(
         Ordering::Relaxed,
     );
     if result.is_err() {
-        state.perf.terminal_stop_errors.fetch_add(1, Ordering::Relaxed);
+        state
+            .perf
+            .terminal_stop_errors
+            .fetch_add(1, Ordering::Relaxed);
     }
     result
 }
@@ -3010,7 +3401,10 @@ fn get_runtime_perf_cmd(state: State<AppState>) -> Result<RuntimePerfSnapshot, S
         watcher_fs_events: state.perf.watcher_fs_events.load(Ordering::Relaxed),
         watcher_flushes: state.perf.watcher_flushes.load(Ordering::Relaxed),
         watcher_ingest_runs: state.perf.watcher_ingest_runs.load(Ordering::Relaxed),
-        watcher_last_ingest_micros: state.perf.watcher_last_ingest_micros.load(Ordering::Relaxed),
+        watcher_last_ingest_micros: state
+            .perf
+            .watcher_last_ingest_micros
+            .load(Ordering::Relaxed),
     })
 }
 
@@ -3023,7 +3417,11 @@ fn get_project_config(state: State<AppState>) -> Result<ProjectConfig, String> {
 
 #[tauri::command]
 #[specta::specta]
-fn save_project_config(app_handle: tauri::AppHandle, config: ProjectConfig, state: State<AppState>) -> Result<(), String> {
+fn save_project_config(
+    app_handle: tauri::AppHandle,
+    config: ProjectConfig,
+    state: State<AppState>,
+) -> Result<(), String> {
     let project_dir = get_active_dir(&state)?;
     save_config(&config, Some(project_dir)).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
@@ -3058,7 +3456,11 @@ fn list_modes_cmd(state: State<AppState>) -> Result<Vec<ModeConfig>, String> {
 
 #[tauri::command]
 #[specta::specta]
-fn add_mode_cmd(app_handle: tauri::AppHandle, mode: ModeConfig, state: State<AppState>) -> Result<(), String> {
+fn add_mode_cmd(
+    app_handle: tauri::AppHandle,
+    mode: ModeConfig,
+    state: State<AppState>,
+) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     add_mode(Some(dir), mode).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
@@ -3067,7 +3469,11 @@ fn add_mode_cmd(app_handle: tauri::AppHandle, mode: ModeConfig, state: State<App
 
 #[tauri::command]
 #[specta::specta]
-fn remove_mode_cmd(app_handle: tauri::AppHandle, id: String, state: State<AppState>) -> Result<(), String> {
+fn remove_mode_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     remove_mode(Some(dir), &id).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
@@ -3076,7 +3482,11 @@ fn remove_mode_cmd(app_handle: tauri::AppHandle, id: String, state: State<AppSta
 
 #[tauri::command]
 #[specta::specta]
-fn set_active_mode_cmd(app_handle: tauri::AppHandle, id: Option<String>, state: State<AppState>) -> Result<(), String> {
+fn set_active_mode_cmd(
+    app_handle: tauri::AppHandle,
+    id: Option<String>,
+    state: State<AppState>,
+) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     set_active_mode(Some(dir), id.as_deref()).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
@@ -3101,7 +3511,11 @@ fn list_mcp_servers_cmd(state: State<AppState>) -> Result<Vec<McpServerConfig>, 
 
 #[tauri::command]
 #[specta::specta]
-fn add_mcp_server_cmd(app_handle: tauri::AppHandle, server: McpServerConfig, state: State<AppState>) -> Result<(), String> {
+fn add_mcp_server_cmd(
+    app_handle: tauri::AppHandle,
+    server: McpServerConfig,
+    state: State<AppState>,
+) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     add_mcp_server(Some(dir), server).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
@@ -3110,11 +3524,506 @@ fn add_mcp_server_cmd(app_handle: tauri::AppHandle, server: McpServerConfig, sta
 
 #[tauri::command]
 #[specta::specta]
-fn remove_mcp_server_cmd(app_handle: tauri::AppHandle, id: String, state: State<AppState>) -> Result<(), String> {
+fn remove_mcp_server_cmd(
+    app_handle: tauri::AppHandle,
+    id: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     let dir = get_active_dir(&state)?;
     remove_mcp_server(Some(dir), &id).map_err(|e| e.to_string())?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
     Ok(())
+}
+
+fn is_upper_snake_case(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_uppercase() || first == '_') {
+        return false;
+    }
+    chars.all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+}
+
+fn command_resolves(command: &str) -> bool {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let command_name = trimmed.split_whitespace().next().unwrap_or(trimmed);
+    if command_name.contains('/') || command_name.contains('\\') {
+        Path::new(command_name).exists()
+    } else {
+        runtime::agent_export::detect_binary(command_name)
+    }
+}
+
+fn parse_http_host_port(raw_url: &str) -> Option<(String, u16)> {
+    let trimmed = raw_url.trim();
+    let (scheme, rest) = trimmed.split_once("://")?;
+    let default_port = match scheme.to_ascii_lowercase().as_str() {
+        "http" => 80,
+        "https" => 443,
+        _ => return None,
+    };
+    let authority = rest
+        .split('/')
+        .next()
+        .unwrap_or(rest)
+        .split('?')
+        .next()
+        .unwrap_or(rest)
+        .split('#')
+        .next()
+        .unwrap_or(rest);
+    let host_port = authority.rsplit('@').next().unwrap_or(authority).trim();
+    if host_port.is_empty() {
+        return None;
+    }
+    if let Some(stripped) = host_port.strip_prefix('[') {
+        let end = stripped.find(']')?;
+        let host = stripped[..end].trim();
+        if host.is_empty() {
+            return None;
+        }
+        let remainder = &stripped[end + 1..];
+        let port = if let Some(port_str) = remainder.strip_prefix(':') {
+            port_str.parse::<u16>().ok()?
+        } else {
+            default_port
+        };
+        return Some((host.to_string(), port));
+    }
+    let mut split = host_port.splitn(2, ':');
+    let host = split.next().unwrap_or("").trim();
+    if host.is_empty() {
+        return None;
+    }
+    let port = split
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(default_port);
+    Some((host.to_string(), port))
+}
+
+fn validate_provider_configs(
+    project_dir: Option<&Path>,
+    issues: &mut Vec<McpValidationIssue>,
+) -> usize {
+    let Some(project_dir) = project_dir else {
+        return 0;
+    };
+
+    let project_root = project_dir.parent().unwrap_or(project_dir);
+    let home_dir = dirs::home_dir();
+    let mut checked = 0usize;
+
+    for provider in runtime::agent_export::PROVIDERS {
+        let mut candidate_paths = Vec::new();
+        candidate_paths.push(project_root.join(provider.project_config));
+        if let Some(home) = home_dir.as_ref() {
+            candidate_paths.push(home.join(provider.global_config));
+        }
+
+        let mut seen = HashSet::new();
+        for path in candidate_paths {
+            if !seen.insert(path.clone()) || !path.exists() {
+                continue;
+            }
+            checked += 1;
+            let raw = match fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(err) => {
+                    issues.push(McpValidationIssue {
+                        level: "error".to_string(),
+                        code: "provider-config-read".to_string(),
+                        message: format!("Could not read provider config: {}", err),
+                        hint: Some("Check file permissions and path validity.".to_string()),
+                        server_id: None,
+                        provider_id: Some(provider.id.to_string()),
+                        source_path: Some(path.to_string_lossy().to_string()),
+                    });
+                    continue;
+                }
+            };
+
+            match provider.config_format {
+                runtime::agent_export::ConfigFormat::Json => {
+                    let root = match serde_json::from_str::<serde_json::Value>(&raw) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            issues.push(McpValidationIssue {
+                                level: "error".to_string(),
+                                code: "provider-config-json".to_string(),
+                                message: format!("Invalid JSON: {}", err),
+                                hint: Some("Fix JSON syntax before export/sync.".to_string()),
+                                server_id: None,
+                                provider_id: Some(provider.id.to_string()),
+                                source_path: Some(path.to_string_lossy().to_string()),
+                            });
+                            continue;
+                        }
+                    };
+
+                    if !root.is_object() {
+                        issues.push(McpValidationIssue {
+                            level: "warning".to_string(),
+                            code: "provider-config-root".to_string(),
+                            message: "JSON root is not an object.".to_string(),
+                            hint: Some("Provider settings should be a JSON object.".to_string()),
+                            server_id: None,
+                            provider_id: Some(provider.id.to_string()),
+                            source_path: Some(path.to_string_lossy().to_string()),
+                        });
+                        continue;
+                    }
+
+                    if let Some(mcp_value) = root.get(provider.mcp_key) {
+                        if !mcp_value.is_object() {
+                            issues.push(McpValidationIssue {
+                                level: "warning".to_string(),
+                                code: "provider-config-mcp-key".to_string(),
+                                message: format!(
+                                    "'{}' is present but not an object.",
+                                    provider.mcp_key
+                                ),
+                                hint: Some(
+                                    "Set MCP server collection to a JSON object keyed by server id."
+                                        .to_string(),
+                                ),
+                                server_id: None,
+                                provider_id: Some(provider.id.to_string()),
+                                source_path: Some(path.to_string_lossy().to_string()),
+                            });
+                        }
+                    }
+                }
+                runtime::agent_export::ConfigFormat::Toml => {
+                    let root = match toml::from_str::<toml::Value>(&raw) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            issues.push(McpValidationIssue {
+                                level: "error".to_string(),
+                                code: "provider-config-toml".to_string(),
+                                message: format!("Invalid TOML: {}", err),
+                                hint: Some(
+                                    "For Codex, ensure MCP section uses 'mcp_servers' (underscore)."
+                                        .to_string(),
+                                ),
+                                server_id: None,
+                                provider_id: Some(provider.id.to_string()),
+                                source_path: Some(path.to_string_lossy().to_string()),
+                            });
+                            continue;
+                        }
+                    };
+
+                    let Some(table) = root.as_table() else {
+                        issues.push(McpValidationIssue {
+                            level: "warning".to_string(),
+                            code: "provider-config-root".to_string(),
+                            message: "TOML root is not a table.".to_string(),
+                            hint: Some("Provider settings should be a TOML table.".to_string()),
+                            server_id: None,
+                            provider_id: Some(provider.id.to_string()),
+                            source_path: Some(path.to_string_lossy().to_string()),
+                        });
+                        continue;
+                    };
+                    if let Some(mcp_value) = table.get(provider.mcp_key) {
+                        if !mcp_value.is_table() {
+                            issues.push(McpValidationIssue {
+                                level: "warning".to_string(),
+                                code: "provider-config-mcp-key".to_string(),
+                                message: format!(
+                                    "'{}' is present but not a table.",
+                                    provider.mcp_key
+                                ),
+                                hint: Some(
+                                    "Set MCP servers as TOML tables keyed by server id.".to_string(),
+                                ),
+                                server_id: None,
+                                provider_id: Some(provider.id.to_string()),
+                                source_path: Some(path.to_string_lossy().to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    checked
+}
+
+#[tauri::command]
+#[specta::specta]
+fn validate_mcp_servers_cmd(
+    servers: Vec<McpServerConfig>,
+    state: State<AppState>,
+) -> Result<McpValidationReport, String> {
+    let project_dir = get_active_dir(&state).ok();
+    let mut issues: Vec<McpValidationIssue> = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    for (index, server) in servers.iter().enumerate() {
+        let trimmed_id = server.id.trim();
+        let resolved_id = if trimmed_id.is_empty() {
+            format!("server-{}", index + 1)
+        } else {
+            trimmed_id.to_string()
+        };
+
+        if trimmed_id.is_empty() {
+            issues.push(McpValidationIssue {
+                level: "error".to_string(),
+                code: "server-id-missing".to_string(),
+                message: "Server id is missing.".to_string(),
+                hint: Some("Set a stable id (slug) for permission and mode references.".to_string()),
+                server_id: Some(resolved_id.clone()),
+                provider_id: None,
+                source_path: None,
+            });
+        } else if !seen_ids.insert(trimmed_id.to_string()) {
+            issues.push(McpValidationIssue {
+                level: "warning".to_string(),
+                code: "server-id-duplicate".to_string(),
+                message: "Duplicate MCP server id detected.".to_string(),
+                hint: Some("Use unique ids so exports and modes resolve correctly.".to_string()),
+                server_id: Some(resolved_id.clone()),
+                provider_id: None,
+                source_path: None,
+            });
+        }
+
+        if !matches!(server.scope.as_str(), "global" | "project" | "mode") {
+            issues.push(McpValidationIssue {
+                level: "warning".to_string(),
+                code: "server-scope-unknown".to_string(),
+                message: format!("Unexpected scope '{}'.", server.scope),
+                hint: Some("Use one of: global, project, mode.".to_string()),
+                server_id: Some(resolved_id.clone()),
+                provider_id: None,
+                source_path: None,
+            });
+        }
+
+        if server.disabled {
+            issues.push(McpValidationIssue {
+                level: "info".to_string(),
+                code: "server-disabled".to_string(),
+                message: "Server is disabled and will not be started.".to_string(),
+                hint: None,
+                server_id: Some(resolved_id.clone()),
+                provider_id: None,
+                source_path: None,
+            });
+        }
+
+        let bad_env = server
+            .env
+            .keys()
+            .filter(|key| !is_upper_snake_case(key))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !bad_env.is_empty() {
+            issues.push(McpValidationIssue {
+                level: "warning".to_string(),
+                code: "server-env-key-format".to_string(),
+                message: format!(
+                    "Env keys should be uppercase snake_case: {}",
+                    bad_env.join(", ")
+                ),
+                hint: None,
+                server_id: Some(resolved_id.clone()),
+                provider_id: None,
+                source_path: None,
+            });
+        }
+
+        let empty_secret_env = server
+            .env
+            .iter()
+            .filter(|(key, value)| {
+                (key.contains("TOKEN")
+                    || key.contains("KEY")
+                    || key.contains("SECRET")
+                    || key.contains("PASSWORD"))
+                    && value.trim().is_empty()
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        if !empty_secret_env.is_empty() {
+            issues.push(McpValidationIssue {
+                level: "info".to_string(),
+                code: "server-env-secret-empty".to_string(),
+                message: format!(
+                    "Secret env vars are empty: {}",
+                    empty_secret_env.join(", ")
+                ),
+                hint: Some("Set values before starting/exporting this server.".to_string()),
+                server_id: Some(resolved_id.clone()),
+                provider_id: None,
+                source_path: None,
+            });
+        }
+
+        match server.server_type {
+            McpServerType::Stdio => {
+                let command = server.command.trim();
+                if command.is_empty() {
+                    issues.push(McpValidationIssue {
+                        level: "error".to_string(),
+                        code: "server-command-missing".to_string(),
+                        message: "Command is required for stdio transport.".to_string(),
+                        hint: None,
+                        server_id: Some(resolved_id.clone()),
+                        provider_id: None,
+                        source_path: None,
+                    });
+                } else {
+                    let has_shell_operators = command.contains("&&")
+                        || command.contains("||")
+                        || command.contains(';')
+                        || (command.contains('|') && !command.contains("://"));
+                    if has_shell_operators {
+                        issues.push(McpValidationIssue {
+                            level: "warning".to_string(),
+                            code: "server-command-shell-operators".to_string(),
+                            message: "Command includes shell operators.".to_string(),
+                            hint: Some(
+                                "Split command and args to avoid parser/runtime issues."
+                                    .to_string(),
+                            ),
+                            server_id: Some(resolved_id.clone()),
+                            provider_id: None,
+                            source_path: None,
+                        });
+                    }
+                    if command.contains(' ') && server.args.is_empty() {
+                        issues.push(McpValidationIssue {
+                            level: "info".to_string(),
+                            code: "server-command-split".to_string(),
+                            message: "Command contains spaces and no args.".to_string(),
+                            hint: Some("Prefer command as binary + separate args array.".to_string()),
+                            server_id: Some(resolved_id.clone()),
+                            provider_id: None,
+                            source_path: None,
+                        });
+                    }
+                    if !command_resolves(command) {
+                        issues.push(McpValidationIssue {
+                            level: "warning".to_string(),
+                            code: "server-command-not-found".to_string(),
+                            message: format!("Command '{}' is not currently resolvable.", command),
+                            hint: Some("Install the binary or update command/path.".to_string()),
+                            server_id: Some(resolved_id.clone()),
+                            provider_id: None,
+                            source_path: None,
+                        });
+                    }
+                }
+
+                let unresolved_args = server
+                    .args
+                    .iter()
+                    .filter(|arg| arg.starts_with('{') && arg.ends_with('}'))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !unresolved_args.is_empty() {
+                    issues.push(McpValidationIssue {
+                        level: "info".to_string(),
+                        code: "server-args-placeholder".to_string(),
+                        message: format!(
+                            "Argument placeholders must be replaced: {}",
+                            unresolved_args.join(", ")
+                        ),
+                        hint: None,
+                        server_id: Some(resolved_id.clone()),
+                        provider_id: None,
+                        source_path: None,
+                    });
+                }
+            }
+            McpServerType::Sse | McpServerType::Http => {
+                let Some(url) = server.url.as_deref().map(str::trim).filter(|v| !v.is_empty()) else {
+                    issues.push(McpValidationIssue {
+                        level: "error".to_string(),
+                        code: "server-url-missing".to_string(),
+                        message: "URL is required for HTTP/SSE transport.".to_string(),
+                        hint: None,
+                        server_id: Some(resolved_id.clone()),
+                        provider_id: None,
+                        source_path: None,
+                    });
+                    continue;
+                };
+
+                let Some((host, port)) = parse_http_host_port(url) else {
+                    issues.push(McpValidationIssue {
+                        level: "error".to_string(),
+                        code: "server-url-invalid".to_string(),
+                        message: format!("URL appears invalid: '{}'", url),
+                        hint: Some(
+                            "Use a fully-qualified http:// or https:// URL with host."
+                                .to_string(),
+                        ),
+                        server_id: Some(resolved_id.clone()),
+                        provider_id: None,
+                        source_path: None,
+                    });
+                    continue;
+                };
+
+                let address = format!("{}:{}", host, port);
+                match address.to_socket_addrs() {
+                    Ok(mut addrs) => {
+                        if let Some(first) = addrs.next() {
+                            let reachable =
+                                TcpStream::connect_timeout(&first, Duration::from_millis(900))
+                                    .is_ok();
+                            if !reachable {
+                                issues.push(McpValidationIssue {
+                                    level: "warning".to_string(),
+                                    code: "server-url-unreachable".to_string(),
+                                    message: format!("Endpoint is not reachable at {}.", address),
+                                    hint: Some(
+                                        "Ensure the server is running and network/firewall rules allow access."
+                                            .to_string(),
+                                    ),
+                                    server_id: Some(resolved_id.clone()),
+                                    provider_id: None,
+                                    source_path: None,
+                                });
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        issues.push(McpValidationIssue {
+                            level: "warning".to_string(),
+                            code: "server-url-resolve-failed".to_string(),
+                            message: format!("Host could not be resolved for {}.", address),
+                            hint: Some("Check DNS/hostname and URL spelling.".to_string()),
+                            server_id: Some(resolved_id.clone()),
+                            provider_id: None,
+                            source_path: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let checked_provider_configs = validate_provider_configs(project_dir.as_deref(), &mut issues);
+    let ok = !issues.iter().any(|issue| issue.level == "error");
+
+    Ok(McpValidationReport {
+        ok,
+        checked_servers: servers.len(),
+        checked_provider_configs,
+        issues,
+    })
 }
 
 // ─── Commands: Skills ─────────────────────────────────────────────────────────
@@ -3175,14 +4084,13 @@ fn update_skill_cmd(
     state: State<AppState>,
 ) -> Result<Skill, String> {
     let dir = get_active_dir(&state)?;
-    let skill = match scope.as_deref() {
-        Some("user") => {
-            update_user_skill(&id, name.as_deref(), content.as_deref()).map_err(|e| e.to_string())
-        }
-        _ => {
-            update_skill(&dir, &id, name.as_deref(), content.as_deref()).map_err(|e| e.to_string())
-        }
-    }?;
+    let skill =
+        match scope.as_deref() {
+            Some("user") => update_user_skill(&id, name.as_deref(), content.as_deref())
+                .map_err(|e| e.to_string()),
+            _ => update_skill(&dir, &id, name.as_deref(), content.as_deref())
+                .map_err(|e| e.to_string()),
+        }?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
     Ok(skill)
 }
@@ -3202,6 +4110,40 @@ fn delete_skill_cmd(
     }?;
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn install_skill_from_source_cmd(
+    app_handle: tauri::AppHandle,
+    source: String,
+    skill_id: String,
+    git_ref: Option<String>,
+    repo_path: Option<String>,
+    scope: Option<String>,
+    force: Option<bool>,
+    state: State<AppState>,
+) -> Result<Skill, String> {
+    let active_dir = get_active_dir(&state).ok();
+    let install_scope = match scope.as_deref() {
+        Some("user") => SkillInstallScope::User,
+        _ => SkillInstallScope::Project,
+    };
+    if matches!(install_scope, SkillInstallScope::Project) && active_dir.is_none() {
+        return Err("Project scope install requires an active Ship project".to_string());
+    }
+    let installed = install_skill_from_source(
+        active_dir.as_deref(),
+        &source,
+        &skill_id,
+        git_ref.as_deref(),
+        repo_path.as_deref(),
+        install_scope,
+        force.unwrap_or(false),
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = ShipEvent::ConfigChanged.emit(&app_handle);
+    Ok(installed)
 }
 
 // ─── Commands: Agents / Providers ─────────────────────────────────────────────
@@ -3397,6 +4339,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             get_spec_cmd,
             create_spec_cmd,
             update_spec_cmd,
+            move_spec_cmd,
             delete_spec_cmd,
             // Releases
             list_releases_cmd,
@@ -3408,6 +4351,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             get_feature_cmd,
             create_feature_cmd,
             update_feature_cmd,
+            feature_start_cmd,
+            feature_done_cmd,
+            update_feature_documentation_cmd,
             get_template_cmd,
             // Vision
             get_vision_cmd,
@@ -3443,6 +4389,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             start_workspace_session_cmd,
             end_workspace_session_cmd,
             list_workspace_changes_cmd,
+            get_workspace_git_status_cmd,
             open_workspace_editor_cmd,
             start_workspace_terminal_cmd,
             read_workspace_terminal_cmd,
@@ -3471,12 +4418,14 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             list_mcp_servers_cmd,
             add_mcp_server_cmd,
             remove_mcp_server_cmd,
+            validate_mcp_servers_cmd,
             // Skills
             list_skills_cmd,
             get_skill_cmd,
             create_skill_cmd,
             update_skill_cmd,
             delete_skill_cmd,
+            install_skill_from_source_cmd,
             // Agents / Providers
             list_providers_cmd,
             list_models_cmd,
@@ -3619,8 +4568,9 @@ mod tests {
         let workspace = Workspace {
             id: "ws_123".to_string(),
             branch: "feature/test".to_string(),
-            workspace_type: WorkspaceType::Feature,
+            workspace_type: ShipWorkspaceKind::Feature,
             status: WorkspaceStatus::Active,
+            environment_id: None,
             feature_id: None,
             spec_id: None,
             release_id: None,

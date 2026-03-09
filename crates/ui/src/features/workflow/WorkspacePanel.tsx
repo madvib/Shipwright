@@ -8,13 +8,14 @@ import {
   repairWorkspaceCmd,
   setWorkspaceModeCmd,
   startWorkspaceSessionCmd,
+  transitionWorkspaceCmd,
   endWorkspaceSessionCmd,
   syncWorkspaceCmd,
   activateWorkspaceCmd,
   type WorkspaceRepairReport,
 } from '@/lib/platform/tauri/commands';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
-import { FEATURES_ROUTE, OVERVIEW_ROUTE } from '@/lib/constants/routes';
+import { FEATURES_ROUTE, OVERVIEW_ROUTE, RELEASES_ROUTE } from '@/lib/constants/routes';
 
 // Subcomponents
 import { WorkspaceSidebar } from './workspace/WorkspaceSidebar';
@@ -49,6 +50,7 @@ export default function WorkspacePanel() {
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [updatingWorkspaceMode, setUpdatingWorkspaceMode] = useState(false);
   const [restartingSession, setRestartingSession] = useState(false);
+  const [archivingWorkspace, setArchivingWorkspace] = useState(false);
   const terminalResizerRef = useRef(false);
 
   const state = useWorkspaceState(workspaceUi, ship);
@@ -67,7 +69,7 @@ export default function WorkspacePanel() {
 
   const statusVariant = (status: WorkspaceGraphStatus): 'default' | 'secondary' | 'outline' => {
     if (status === 'active') return 'default';
-    if (status === 'review') return 'secondary';
+    if (status === 'archived') return 'secondary';
     return 'outline';
   };
 
@@ -244,18 +246,29 @@ export default function WorkspacePanel() {
       const featureId =
         state.linkFeatureId === NO_LINK_VALUE ? null : state.linkFeatureId;
       const specId = state.linkSpecId === NO_LINK_VALUE ? null : state.linkSpecId;
+      const releaseRef =
+        state.linkReleaseId === NO_LINK_VALUE ? null : state.linkReleaseId;
+      const releaseId = releaseRef
+        ? ship.releases.find(
+            (release) =>
+              release.id === releaseRef ||
+              release.file_name === releaseRef ||
+              release.version === releaseRef
+          )?.id ?? releaseRef
+        : null;
       const res = await createWorkspaceCmd(state.detail.branch, {
         workspaceType: state.detail.workspaceType,
+        environmentId: state.detail.environmentId,
         featureId,
         specId,
-        releaseId: state.detail.releaseId ?? null,
+        releaseId,
         modeId: state.detail.activeMode ?? null,
       });
       if (res.status === 'error') {
         state.setError(res.error || 'Failed to update workspace links.');
         return;
       }
-      state.load();
+      await state.load();
     } finally {
       state.setUpdatingLinks(false);
     }
@@ -291,6 +304,24 @@ export default function WorkspacePanel() {
     }
   };
 
+  const handleArchive = async () => {
+    if (!state.detail) return;
+    setArchivingWorkspace(true);
+    try {
+      const result = await transitionWorkspaceCmd(state.detail.branch, 'archived');
+      if (result.status === 'error') {
+        state.setError(result.error || 'Failed to archive workspace.');
+        return;
+      }
+      if (terminal.terminalSession?.branch === state.detail.branch) {
+        await terminal.stopWorkspaceTerminal();
+      }
+      await state.load();
+    } finally {
+      setArchivingWorkspace(false);
+    }
+  };
+
   const handleRepair = async () => {
     if (!state.detail) return;
     setRepairingWorkspace(true);
@@ -309,13 +340,21 @@ export default function WorkspacePanel() {
 
   const handleCreateWorkspace = async (input: {
     branch: string;
-    workspaceType: 'feature' | 'refactor' | 'experiment' | 'hotfix';
+    workspaceType: 'feature' | 'patch' | 'service';
+    environmentId: string | null;
     modeId: string | null;
+    featureId: string | null;
+    specId: string | null;
+    releaseId: string | null;
   }) => {
     setCreatingWorkspace(true);
     try {
       const result = await createWorkspaceCmd(input.branch, {
         workspaceType: input.workspaceType,
+        environmentId: input.environmentId,
+        featureId: input.featureId,
+        specId: input.specId,
+        releaseId: input.releaseId,
         modeId: input.modeId,
         activate: true,
       });
@@ -408,6 +447,22 @@ export default function WorkspacePanel() {
     return ship.specs.find((s: any) => s.id === state.detail?.specId) || null;
   }, [state.detail, ship.specs]);
 
+  const linkedRelease = useMemo(() => {
+    const releaseRef =
+      state.linkReleaseId !== NO_LINK_VALUE
+        ? state.linkReleaseId
+        : state.detail?.releaseId ?? null;
+    if (!releaseRef) return null;
+    return (
+      ship.releases.find(
+        (release) =>
+          release.id === releaseRef ||
+          release.file_name === releaseRef ||
+          release.version === releaseRef
+      ) || null
+    );
+  }, [state.detail?.releaseId, state.linkReleaseId, ship.releases]);
+
   useEffect(() => {
     const allowedProviders = state.providerMatrix?.allowed_providers ?? [];
     setSessionProvider((previous) => {
@@ -443,6 +498,12 @@ export default function WorkspacePanel() {
     }
     void navigate({ to: FEATURES_ROUTE });
     void ship.handleSelectFeature(relatedFeature);
+  };
+
+  const handleOpenRelease = () => {
+    if (!linkedRelease) return;
+    void navigate({ to: RELEASES_ROUTE });
+    void ship.handleSelectRelease(linkedRelease);
   };
 
   const handleStartTerminal = async () => {
@@ -521,6 +582,25 @@ export default function WorkspacePanel() {
               creatingWorkspace={creatingWorkspace}
               deletingWorkspace={deletingWorkspace}
               updatingWorkspaceMode={updatingWorkspaceMode}
+              environmentOptions={Array.from(
+                new Set(
+                  state.rows
+                    .map((row) => row.environmentId)
+                    .filter((value): value is string => Boolean(value))
+                )
+              ).map((id) => ({ id, label: id }))}
+              featureOptions={ship.features.map((feature) => ({
+                id: feature.id,
+                label: feature.title,
+              }))}
+              specOptions={ship.specs.map((spec) => ({
+                id: spec.id,
+                label: spec.spec.metadata.title,
+              }))}
+              releaseOptions={ship.releases.map((release) => ({
+                id: release.id,
+                label: release.version,
+              }))}
               onCreateWorkspace={handleCreateWorkspace}
               onDeleteWorkspace={handleDeleteWorkspace}
               onUpdateWorkspaceMode={handleUpdateWorkspaceMode}
@@ -537,17 +617,23 @@ export default function WorkspacePanel() {
             statusVariant={statusVariant}
             linkedFeature={linkedFeature}
             linkedSpec={linkedSpec}
+            linkedRelease={linkedRelease}
             linkFeatureId={state.linkFeatureId}
             setLinkFeatureId={state.setLinkFeatureId}
             linkSpecId={state.linkSpecId}
             setLinkSpecId={state.setLinkSpecId}
+            linkReleaseId={state.linkReleaseId}
+            setLinkReleaseId={state.setLinkReleaseId}
             featureLinkOptions={ship.features}
             specLinkOptions={ship.specs}
+            releaseLinkOptions={ship.releases}
             updatingLinks={state.updatingLinks}
             onApplyLinks={handleApplyLinks}
             onOpenFeature={handleOpenFeature}
             onOpenSpec={handleOpenSpec}
+            onOpenRelease={handleOpenRelease}
             activeSession={state.activeSession}
+            recentSessions={state.recentSessions}
             startingSession={state.startingSession}
             endingSession={state.endingSession}
             onStartSession={handleStartSession}
@@ -558,6 +644,8 @@ export default function WorkspacePanel() {
             setSessionSummaryInput={state.setSessionSummaryInput}
             providerMatrix={state.providerMatrix}
             providerInfos={state.providerInfos}
+            workspaceChanges={state.workspaceChanges}
+            workspaceGitSummary={state.workspaceGitSummary}
             sessionProvider={sessionProvider}
             setSessionProvider={setSessionProvider}
             restartingSession={restartingSession}
@@ -567,6 +655,8 @@ export default function WorkspacePanel() {
             syncing={state.syncing}
             onActivate={handleActivate}
             activating={state.activating}
+            onArchive={handleArchive}
+            archiving={archivingWorkspace}
             onRepair={handleRepair}
             repairing={repairingWorkspace}
             lastRepairReport={lastRepairReport}

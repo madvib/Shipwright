@@ -19,6 +19,7 @@ import {
 
 interface WorkspaceSessionSectionProps {
   activeSession: WorkspaceSessionInfo | null;
+  recentSessions: WorkspaceSessionInfo[];
   startingSession: boolean;
   endingSession: boolean;
   restartingSession: boolean;
@@ -34,12 +35,14 @@ interface WorkspaceSessionSectionProps {
   setSessionProvider: (provider: string | null) => void;
   linkFeatureId: string;
   linkSpecId: string;
+  linkReleaseId: string;
   noLinkValue: string;
   currentConfigGeneration: number;
 }
 
 export function WorkspaceSessionSection({
   activeSession,
+  recentSessions,
   startingSession,
   endingSession,
   restartingSession,
@@ -55,11 +58,15 @@ export function WorkspaceSessionSection({
   setSessionProvider,
   linkFeatureId,
   linkSpecId,
+  linkReleaseId,
   noLinkValue,
   currentConfigGeneration,
 }: WorkspaceSessionSectionProps) {
   const hasActiveSession = activeSession?.status === 'active';
   const hasSessionProviders = (providerMatrix?.allowed_providers.length ?? 0) > 0;
+  const sessionNotes = recentSessions
+    .filter((session) => Boolean(session.summary) || Boolean(session.goal))
+    .slice(0, 3);
 
   return (
     <section className="space-y-3 rounded-lg border bg-card p-3">
@@ -92,13 +99,17 @@ export function WorkspaceSessionSection({
                 className="h-8 text-[11px]"
               />
               <p className="text-[10px] text-muted-foreground">
-                Linked artifacts on end: feature{' '}
+                Workspace context links: feature{' '}
                 <code className="rounded bg-muted px-1">
                   {linkFeatureId === noLinkValue ? 'none' : linkFeatureId}
                 </code>{' '}
                 · spec{' '}
                 <code className="rounded bg-muted px-1">
                   {linkSpecId === noLinkValue ? 'none' : linkSpecId}
+                </code>
+                {' '}· release{' '}
+                <code className="rounded bg-muted px-1">
+                  {linkReleaseId === noLinkValue ? 'none' : linkReleaseId}
                 </code>
               </p>
               <p className="text-[10px] text-muted-foreground">
@@ -229,6 +240,33 @@ export function WorkspaceSessionSection({
           </div>
         )}
       </div>
+
+      {sessionNotes.length > 0 && (
+        <div className="rounded-md border bg-muted/10 p-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Recent Session Notes
+          </p>
+          <div className="space-y-2">
+            {sessionNotes.map((session) => (
+              <div key={session.id} className="rounded border bg-background/80 p-2">
+                <p className="text-[10px] text-muted-foreground">
+                  {new Date(session.updated_at).toLocaleString()} · <code>{session.id.slice(0, 8)}</code>
+                </p>
+                {session.summary && (
+                  <p className="mt-1 text-[11px] text-foreground">
+                    {session.summary}
+                  </p>
+                )}
+                {!session.summary && session.goal && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Goal: {session.goal}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

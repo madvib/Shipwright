@@ -45,6 +45,16 @@ export interface WorkspaceFileChange {
   path: string;
 }
 
+export interface WorkspaceGitStatusSummary {
+  branch: string;
+  touched_files: number;
+  insertions: number;
+  deletions: number;
+  ahead: number;
+  behind: number;
+  upstream?: string | null;
+}
+
 export interface WorkspaceSessionInfo {
   id: string;
   workspace_id: string;
@@ -164,6 +174,7 @@ export const createWorkspaceCmd = (
   branch: string,
   options?: {
     workspaceType?: string | null;
+    environmentId?: string | null;
     featureId?: string | null;
     specId?: string | null;
     releaseId?: string | null;
@@ -174,6 +185,7 @@ export const createWorkspaceCmd = (
   invoke('create_workspace_cmd', {
     branch,
     workspaceType: options?.workspaceType ?? null,
+    environmentId: options?.environmentId ?? null,
     featureId: options?.featureId ?? null,
     specId: options?.specId ?? null,
     releaseId: options?.releaseId ?? null,
@@ -259,6 +271,12 @@ export const listWorkspaceChangesCmd = (
 ): Promise<Result<WorkspaceFileChange[], string>> =>
   invoke('list_workspace_changes_cmd', { branch })
     .then(data => ({ status: 'ok', data } as Result<WorkspaceFileChange[], string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const getWorkspaceGitStatusCmd = (
+  branch: string
+): Promise<Result<WorkspaceGitStatusSummary, string>> =>
+  invoke('get_workspace_git_status_cmd', { branch })
+    .then(data => ({ status: 'ok', data } as Result<WorkspaceGitStatusSummary, string>))
     .catch(error => ({ status: 'error', error: String(error) }));
 export const openWorkspaceEditorCmd = (
   branch: string,
@@ -384,17 +402,53 @@ export const updateSpecCmd = async (id: string, content: string): Promise<Result
     });
 };
 
+export const moveSpecCmd = (id: string, newStatus: string): Promise<Result<SpecInfo, string>> =>
+  invoke<RawSpecInfo>('move_spec_cmd', { id, newStatus })
+    .then((data) => ({ status: 'ok', data: toSpecInfo(data) } as Result<SpecInfo, string>))
+    .catch((error) => ({ status: 'error', error: String(error) }));
+
 export const deleteSpecCmd = (id: string): Promise<Result<null, string>> =>
   spectaCommands.deleteSpecCmd(id);
 
 export const getReleaseCmd = (fileName: string): Promise<Result<Release, string>> =>
   invoke('get_release_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
-export const createReleaseCmd = (version: string, content: string): Promise<Result<Release, string>> =>
-  invoke('create_release_cmd', { version, content }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export interface ReleaseMetadataUpdate {
+  version?: string | null;
+  status?: string | null;
+  supported?: boolean | null;
+  targetDate?: string | null;
+  tags?: string[] | null;
+}
 
-export const updateReleaseCmd = (fileName: string, content: string): Promise<Result<Release, string>> =>
-  invoke('update_release_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
+export const createReleaseCmd = (
+  version: string,
+  content: string,
+  metadata: ReleaseMetadataUpdate = {},
+): Promise<Result<Release, string>> =>
+  invoke('create_release_cmd', {
+    version,
+    content,
+    status: metadata.status ?? null,
+    targetDate: metadata.targetDate ?? null,
+    supported: metadata.supported ?? null,
+    tags: metadata.tags ?? null,
+  }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
+
+export const updateReleaseCmd = (
+  fileName: string,
+  content: string,
+  metadata: ReleaseMetadataUpdate = {},
+): Promise<Result<Release, string>> =>
+  invoke('update_release_cmd', {
+    fileName,
+    content,
+    version: metadata.version ?? null,
+    status: metadata.status ?? null,
+    targetDate: metadata.targetDate ?? null,
+    supported: metadata.supported ?? null,
+    tags: metadata.tags ?? null,
+  }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
 export const getFeatureCmd = (fileName: string): Promise<Result<Feature, string>> =>
   invoke('get_feature_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
@@ -403,11 +457,31 @@ export const createFeatureCmd = (
   title: string,
   content: string,
   release?: string | null,
-  spec?: string | null
-): Promise<Result<Feature, string>> => invoke('create_feature_cmd', { title, content, release, spec }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
+  spec?: string | null,
+  branch?: string | null,
+): Promise<Result<Feature, string>> => invoke('create_feature_cmd', { title, content, release, spec, branch }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
 export const updateFeatureCmd = (fileName: string, content: string): Promise<Result<Feature, string>> =>
   invoke('update_feature_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
+
+export const featureStartCmd = (fileName: string): Promise<Result<Feature, string>> =>
+  invoke('feature_start_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
+
+export const featureDoneCmd = (fileName: string): Promise<Result<Feature, string>> =>
+  invoke('feature_done_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
+
+export const updateFeatureDocumentationCmd = (
+  fileName: string,
+  content: string,
+  status?: string | null,
+  verifyNow?: boolean
+): Promise<Result<Feature, string>> =>
+  invoke('update_feature_documentation_cmd', {
+    fileName,
+    content,
+    status: status ?? null,
+    verifyNow: verifyNow ?? null,
+  }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
 export const getNoteCmd = (id: string, scope: NotesScope = 'project'): Promise<NoteDocument> =>
   invoke('get_note_cmd', { id, scope });
