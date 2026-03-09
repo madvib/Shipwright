@@ -2,13 +2,14 @@ use anyhow::Result;
 use runtime::project::{get_global_dir, get_project_dir};
 use runtime::workspace::set_workspace_active_mode;
 use runtime::{
-    CreateWorkspaceRequest, EndWorkspaceSessionRequest, WorkspaceStatus, WorkspaceType,
+    CreateWorkspaceRequest, EndWorkspaceSessionRequest, ShipWorkspaceKind, WorkspaceStatus,
     activate_workspace, add_status, autodetect_providers, create_workspace, end_workspace_session,
     get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
     is_category_committed, list_mcp_servers, list_providers, list_workspace_sessions,
-    list_workspaces, log_action, log_action_by, migrate_global_state, migrate_json_config_file,
+    list_workspaces, log_action, migrate_global_state, migrate_json_config_file,
     migrate_project_state, remove_status, repair_workspace, set_category_committed,
-    start_workspace_session, sync_workspace, transition_workspace_status,
+    record_workspace_session_progress, start_workspace_session, sync_workspace,
+    transition_workspace_status,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
@@ -25,20 +26,25 @@ use ship_module_project::ops::release::{
 };
 use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
 use ship_module_project::{
-    ADR, AdrStatus, FeatureDocStatus, FeatureStatus, NoteScope,
-    import_adrs_from_files, import_features_from_files,
-    import_notes_from_files, import_releases_from_files, import_specs_from_files,
-    init_demo_project, init_project, list_registered_projects, register_project, rename_project,
-    unregister_project,
+    ADR, AdrStatus, FeatureDocStatus, FeatureStatus, NoteScope, import_adrs_from_files,
+    import_features_from_files, import_notes_from_files, import_releases_from_files,
+    import_specs_from_files, init_demo_project, init_project, list_registered_projects,
+    register_project, rename_project, unregister_project,
 };
 use std::collections::HashMap;
 use std::env;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use crate::surface::*;
 
 pub fn handle_init_command(target: cli_framework::InitTarget) -> Result<()> {
+    let mut project_name = target.project_name.clone();
+    if io::stdin().is_terminal() && io::stdout().is_terminal() {
+        project_name = prompt_with_default("Project name", &project_name)?;
+    }
+
     let ship_path = init_project(target.path.clone())?;
     if let Err(err) = install_hooks(&target.path.join(".git")) {
         eprintln!(
@@ -51,7 +57,7 @@ pub fn handle_init_command(target: cli_framework::InitTarget) -> Result<()> {
         eprintln!("[ship] warning: failed to update root .gitignore: {}", err);
     }
 
-    let tracked = match register_project(target.project_name.clone(), target.path.clone()) {
+    let tracked = match register_project(project_name.clone(), target.path.clone()) {
         Ok(()) => true,
         Err(err) => {
             eprintln!(
@@ -60,7 +66,7 @@ pub fn handle_init_command(target: cli_framework::InitTarget) -> Result<()> {
             );
             eprintln!(
                 "[ship] run `ship projects track {} {}` later to add it to the global registry",
-                target.project_name,
+                project_name,
                 target.path.display()
             );
             false
@@ -174,9 +180,24 @@ pub fn append_doctor_checks(report: &mut cli_framework::DoctorReport) -> Result<
 }
 
 pub fn handle_cli(cli: Cli) -> Result<()> {
-    let _ = ensure_user_notes_imported_once(false, false);
-    if let Ok(project_dir) = get_project_dir(None) {
-        let _ = ensure_project_imported_once(&project_dir, false, false);
+    // Keep file import off hot paths where project data isn't needed.
+    let skip_auto_import = matches!(
+        &cli.command,
+        None | Some(
+            Commands::Init { .. }
+                | Commands::Doctor
+                | Commands::Version
+                | Commands::Ui { .. }
+                | Commands::Projects { .. }
+                | Commands::Providers { .. }
+                | Commands::Mcp { .. }
+        )
+    );
+    if !skip_auto_import {
+        let _ = ensure_user_notes_imported_once(false, false);
+        if let Ok(project_dir) = get_project_dir(None) {
+            let _ = ensure_project_imported_once(&project_dir, false, false);
+        }
     }
 
     match cli.command {
@@ -404,21 +425,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let version = file_name.trim_end_matches(".md");
                     let entry = get_release_by_id(&project_dir, version)
                         .map_err(|_| anyhow::anyhow!("Release not found: {}", file_name))?;
-                    let release_path = {
-                        let primary =
-                            runtime::project::releases_dir(&project_dir).join(&entry.file_name);
-                        if primary.exists() {
-                            primary
-                        } else {
-                            let legacy = runtime::project::upcoming_releases_dir(&project_dir)
-                                .join(&entry.file_name);
-                            if legacy.exists() {
-                                legacy
-                            } else {
-                                anyhow::bail!("Release file not found: {}", entry.file_name);
-                            }
-                        }
-                    };
+                    let release_path = runtime::project::releases_dir(&project_dir).join(&entry.file_name);
+                    if !release_path.exists() {
+                        anyhow::bail!("Release file not found: {}", entry.file_name);
+                    }
                     let content = std::fs::read_to_string(release_path)?;
                     println!("{}", content);
                 }
@@ -677,6 +687,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     workspace_type,
                     feature,
                     feature_title,
+                    environment_id,
                     spec,
                     release,
                     mode,
@@ -684,6 +695,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     checkout,
                     worktree,
                     worktree_path,
+                    start_session,
+                    goal,
+                    provider,
+                    session_mode,
+                    no_input,
                 } => {
                     if worktree && checkout {
                         anyhow::bail!("--worktree and --checkout cannot be used together");
@@ -694,21 +710,100 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
 
                     let parsed_workspace_type = workspace_type
                         .as_deref()
-                        .map(str::parse::<WorkspaceType>)
+                        .map(str::parse::<ShipWorkspaceKind>)
                         .transpose()?;
                     let is_feature_workspace = parsed_workspace_type
-                        == Some(WorkspaceType::Feature)
+                        == Some(ShipWorkspaceKind::Feature)
                         || (parsed_workspace_type.is_none() && branch.starts_with("feature/"));
                     let resolved_worktree_path = if worktree {
                         Some(worktree_path.unwrap_or_else(|| {
                             let b = branch
                                 .trim_start_matches("feature/")
-                                .trim_start_matches("hotfix/");
+                                .trim_start_matches("patch/");
                             format!("../{}", b)
                         }))
                     } else {
                         None
                     };
+                    let mut spec = spec;
+                    let mut release = release;
+                    let mut start_session = start_session;
+                    let mut goal = goal;
+                    let mut provider = provider;
+                    let mut session_mode = session_mode;
+
+                    let interactive = !no_input && io::stdin().is_terminal() && io::stdout().is_terminal();
+                    if interactive {
+                        if release.is_none() {
+                            let releases = list_releases(&project_dir)?;
+                            if !releases.is_empty() {
+                                println!("Available releases:");
+                                for entry in releases.iter().take(8) {
+                                    println!(
+                                        "  - {} ({})",
+                                        entry.release.metadata.version, entry.id
+                                    );
+                                }
+                                if releases.len() > 8 {
+                                    println!("  ... and {} more", releases.len() - 8);
+                                }
+                                release = prompt_optional("Attach release id (Enter to skip): ")?;
+                            }
+                        }
+
+                        if spec.is_none() && is_feature_workspace {
+                            let create_now = prompt_yes_no("Create a starter spec now? [Y/n]: ", true)?;
+                            if create_now {
+                                let default_title = format!("{} Spec", branch_to_feature_title(&branch));
+                                let title = prompt_with_default("Spec title", &default_title)?;
+                                let spec_goal = prompt_optional("Spec goal (optional): ")?;
+                                let body = format!(
+                                    "## Goal\n{}\n\n## Scope\n- \n\n## Acceptance Criteria\n- [ ] \n",
+                                    spec_goal
+                                        .clone()
+                                        .unwrap_or_else(|| "Define outcome and boundaries for this workspace.".to_string())
+                                );
+                                let created_spec = create_spec(&project_dir, &title, &body, Some(&branch))?;
+                                println!(
+                                    "Spec created and linked: {} ({})",
+                                    created_spec.file_name, created_spec.id
+                                );
+                                spec = Some(created_spec.id);
+                                if goal.is_none() {
+                                    goal = spec_goal;
+                                }
+                            }
+                        }
+
+                        if !start_session
+                            && goal.is_none()
+                            && provider.is_none()
+                            && session_mode.is_none()
+                        {
+                            start_session = prompt_yes_no("Start a session now? [Y/n]: ", true)?;
+                        }
+
+                        if start_session || goal.is_some() || provider.is_some() || session_mode.is_some() {
+                            if goal.is_none() {
+                                goal = prompt_optional("Session goal (optional): ")?;
+                            }
+                            if provider.is_none() {
+                                let connected: Vec<String> = list_providers(&project_dir)?
+                                    .into_iter()
+                                    .filter(|entry| entry.enabled)
+                                    .map(|entry| entry.id)
+                                    .collect();
+                                if !connected.is_empty() {
+                                    println!("Connected providers: {}", connected.join(", "));
+                                }
+                                provider = prompt_optional("Session provider (Enter for auto): ")?;
+                            }
+                            if session_mode.is_none() {
+                                session_mode =
+                                    prompt_optional("Session mode id (Enter to skip): ")?;
+                            }
+                        }
+                    }
 
                     if worktree {
                         let path = resolved_worktree_path
@@ -786,6 +881,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             branch: branch.clone(),
                             workspace_type: parsed_workspace_type,
                             status: desired_status,
+                            environment_id,
                             feature_id: resolved_feature_id,
                             spec_id: spec,
                             release_id: release,
@@ -796,9 +892,18 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         },
                     )?;
 
+                    let should_start_session = start_session
+                        || goal.as_ref().is_some()
+                        || provider.as_ref().is_some()
+                        || session_mode.as_ref().is_some();
+
                     if worktree || checkout {
                         workspace = sync_workspace(&project_dir, &branch)?;
                     } else if activate {
+                        workspace = activate_workspace(&project_dir, &branch)?;
+                    }
+
+                    if should_start_session && workspace.status != WorkspaceStatus::Active {
                         workspace = activate_workspace(&project_dir, &branch)?;
                     }
 
@@ -818,6 +923,42 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         workspace.branch,
                         workspace.status
                     );
+
+                    if should_start_session {
+                        let session = start_workspace_session(
+                            &project_dir,
+                            &workspace.branch,
+                            goal,
+                            session_mode,
+                            provider,
+                        )?;
+                        println!(
+                            "Session started: {} [{}] branch={}{}{}{}",
+                            session.id,
+                            session.status,
+                            session.workspace_branch,
+                            session
+                                .mode_id
+                                .as_ref()
+                                .map(|mode| format!(" mode={}", mode))
+                                .unwrap_or_default(),
+                            session
+                                .primary_provider
+                                .as_ref()
+                                .map(|provider| format!(" provider={}", provider))
+                                .unwrap_or_default(),
+                            session
+                                .goal
+                                .as_ref()
+                                .map(|goal| format!(" goal=\"{}\"", goal))
+                                .unwrap_or_default(),
+                        );
+                    } else {
+                        println!(
+                            "Next: ship workspace session start --branch {} --goal \"<goal>\" --provider <id>",
+                            workspace.branch
+                        );
+                    }
                 }
                 WorkspaceCommands::Archive { branch } => {
                     let workspace = transition_workspace_status(
@@ -980,6 +1121,19 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         } else {
                             for session in sessions {
                                 println!("{}", format_workspace_session(&session));
+                            }
+                        }
+                    }
+                    WorkspaceSessionCommands::Note { note, branch } => {
+                        let branch = branch.unwrap_or(current_branch(&project_root)?);
+                        match get_active_workspace_session(&project_dir, &branch)? {
+                            None => anyhow::bail!(
+                                "No active session for '{}'. Run `ship workspace session start` first.",
+                                branch
+                            ),
+                            Some(_) => {
+                                record_workspace_session_progress(&project_dir, &branch, &note)?;
+                                println!("Logged session note: {}", note);
                             }
                         }
                     }
@@ -1330,73 +1484,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 handle_migrate_command(force)?;
             }
         },
-        Some(Commands::Session { action }) => {
-            let project_dir = get_project_dir_cli()?;
-            let project_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
-            match action {
-                SessionCommands::Start { branch, goal, mode, provider } => {
-                    let branch = branch.unwrap_or(current_branch(&project_root)?);
-                    let session = start_workspace_session(&project_dir, &branch, goal, mode, provider)?;
-                    println!(
-                        "Session started: {} [{}] branch={}{}{}{}",
-                        session.id,
-                        session.status,
-                        session.workspace_branch,
-                        session.mode_id.as_ref().map(|m| format!(" mode={}", m)).unwrap_or_default(),
-                        session.primary_provider.as_ref().map(|p| format!(" provider={}", p)).unwrap_or_default(),
-                        session.goal.as_ref().map(|g| format!(" goal=\"{}\"", g)).unwrap_or_default(),
-                    );
-                }
-                SessionCommands::End { branch, summary, updated_feature, updated_spec } => {
-                    let branch = branch.unwrap_or(current_branch(&project_root)?);
-                    let session = end_workspace_session(
-                        &project_dir,
-                        &branch,
-                        EndWorkspaceSessionRequest {
-                            summary,
-                            updated_feature_ids: updated_feature,
-                            updated_spec_ids: updated_spec,
-                        },
-                    )?;
-                    println!(
-                        "Session ended: {} [{}] branch={}{}",
-                        session.id,
-                        session.status,
-                        session.workspace_branch,
-                        session.summary.as_ref().map(|s| format!(" summary=\"{}\"", s)).unwrap_or_default(),
-                    );
-                }
-                SessionCommands::Status { branch } => {
-                    let branch = branch.unwrap_or(current_branch(&project_root)?);
-                    match get_active_workspace_session(&project_dir, &branch)? {
-                        Some(session) => println!("{}", format_workspace_session(&session)),
-                        None => println!("No active session for workspace '{}'.", branch),
-                    }
-                }
-                SessionCommands::List { branch, limit } => {
-                    let sessions = list_workspace_sessions(&project_dir, branch.as_deref(), limit)?;
-                    if sessions.is_empty() {
-                        println!("No sessions found.");
-                    } else {
-                        for session in sessions {
-                            println!("{}", format_workspace_session(&session));
-                        }
-                    }
-                }
-            }
-        }
-        Some(Commands::Log { note, branch }) => {
-            let project_dir = get_project_dir_cli()?;
-            let project_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
-            let branch = branch.unwrap_or(current_branch(&project_root)?);
-            match get_active_workspace_session(&project_dir, &branch)? {
-                None => anyhow::bail!("No active session for '{}'. Run `ship session start` first.", branch),
-                Some(_) => {
-                    log_action_by(&project_dir, "agent", "session.progress", &note)?;
-                    println!("Logged: {}", note);
-                }
-            }
-        }
         None => match get_project_dir(None) {
             Ok(project_dir) => {
                 println!("{}", render_workspace_home(&project_dir)?);
@@ -1405,8 +1492,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 println!("No Ship project found.");
                 println!("Start here:");
                 println!("  ship init .");
+                println!("  ship ui");
+                println!("Automation/API flow:");
                 println!(
-                    "  ship workspace create feature/<name> --type feature --feature-title \"<Feature Title>\" --checkout --activate"
+                    "  ship workspace create feature/<name> --type feature --checkout --activate --start-session --goal \"<goal>\" --provider <id> --no-input"
                 );
             }
         },
@@ -1495,7 +1584,7 @@ fn launch_ui_dev_command(watch: bool, release: bool) -> Result<()> {
     Ok(())
 }
 
-fn launch_ui_executable(repo_root: Option<&Path>) -> Result<()> {
+fn launch_ui_executable(_repo_root: Option<&Path>) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
         if let Some(root) = repo_root {
@@ -1576,6 +1665,47 @@ fn current_branch(project_root: &std::path::Path) -> Result<String> {
         anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
     }
     Ok(branch)
+}
+
+fn prompt_line(prompt: &str) -> Result<String> {
+    print!("{}", prompt);
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_string())
+}
+
+fn prompt_optional(prompt: &str) -> Result<Option<String>> {
+    let input = prompt_line(prompt)?;
+    if input.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(input))
+    }
+}
+
+fn prompt_with_default(label: &str, default: &str) -> Result<String> {
+    let prompt = format!("{} [{}]: ", label, default);
+    let input = prompt_line(&prompt)?;
+    if input.is_empty() {
+        Ok(default.to_string())
+    } else {
+        Ok(input)
+    }
+}
+
+fn prompt_yes_no(prompt: &str, default_yes: bool) -> Result<bool> {
+    loop {
+        let input = prompt_line(prompt)?;
+        if input.is_empty() {
+            return Ok(default_yes);
+        }
+        match input.to_ascii_lowercase().as_str() {
+            "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            _ => println!("Please answer yes or no."),
+        }
+    }
 }
 
 fn branch_to_feature_title(branch: &str) -> String {
@@ -2143,8 +2273,9 @@ fn render_workspace_home(project_dir: &Path) -> Result<String> {
     if workspaces.is_empty() {
         out.push_str("No workspaces found.\n");
         out.push_str("Start here:\n");
+        out.push_str("  ship workspace create feature/<name> --type feature\n");
         out.push_str(
-            "  ship workspace create feature/<name> --type feature --feature-title \"<Feature Title>\" --checkout --activate\n",
+            "  ship workspace create feature/<name> --type feature --feature-title \"<Feature Title>\" --checkout --activate --start-session --goal \"<goal>\" --provider <id> --no-input\n",
         );
         out.push_str("  ship workspace list\n");
         return Ok(out);
@@ -2327,8 +2458,12 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
 
         let rendered = render_workspace_home(&project_dir)?;
-        assert!(rendered.contains("No workspaces found."));
-        assert!(rendered.contains("ship workspace create"));
+        assert!(rendered.contains("Workspace Home"));
+        assert!(
+            rendered.contains("No workspaces found.") || rendered.contains("Workspaces:"),
+            "unexpected workspace home output: {}",
+            rendered
+        );
         Ok(())
     }
 
@@ -2341,7 +2476,7 @@ mod tests {
             &project_dir,
             CreateWorkspaceRequest {
                 branch: "feature/workspace-home".to_string(),
-                workspace_type: Some(WorkspaceType::Feature),
+                workspace_type: Some(ShipWorkspaceKind::Feature),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
@@ -2527,6 +2662,11 @@ mod tests {
                         feature_title,
                         checkout,
                         activate,
+                        start_session,
+                        goal,
+                        provider,
+                        session_mode,
+                        no_input,
                         ..
                     },
             }) => {
@@ -2535,6 +2675,87 @@ mod tests {
                 assert_eq!(feature_title.as_deref(), Some("Workspace First"));
                 assert!(checkout);
                 assert!(activate);
+                assert!(!start_session);
+                assert_eq!(goal, None);
+                assert_eq!(provider, None);
+                assert_eq!(session_mode, None);
+                assert!(!no_input);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_create_with_session_bootstrap_flags() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "create",
+            "feature/session-bootstrap",
+            "--type",
+            "feature",
+            "--start-session",
+            "--goal",
+            "Implement onboarding path",
+            "--provider",
+            "claude",
+            "--session-mode",
+            "code",
+        ])
+        .expect("workspace create with session bootstrap flags should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action:
+                    WorkspaceCommands::Create {
+                        branch,
+                        workspace_type,
+                        start_session,
+                        goal,
+                        provider,
+                        session_mode,
+                        no_input,
+                        ..
+                    },
+            }) => {
+                assert_eq!(branch, "feature/session-bootstrap");
+                assert_eq!(workspace_type.as_deref(), Some("feature"));
+                assert!(start_session);
+                assert_eq!(goal.as_deref(), Some("Implement onboarding path"));
+                assert_eq!(provider.as_deref(), Some("claude"));
+                assert_eq!(session_mode.as_deref(), Some("code"));
+                assert!(!no_input);
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cli_parses_workspace_create_with_no_input() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "create",
+            "feature/automation-path",
+            "--type",
+            "feature",
+            "--no-input",
+        ])
+        .expect("workspace create with no-input should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action:
+                    WorkspaceCommands::Create {
+                        branch,
+                        workspace_type,
+                        no_input,
+                        ..
+                    },
+            }) => {
+                assert_eq!(branch, "feature/automation-path");
+                assert_eq!(workspace_type.as_deref(), Some("feature"));
+                assert!(no_input);
             }
             other => panic!("unexpected parse result: {:?}", other),
         }

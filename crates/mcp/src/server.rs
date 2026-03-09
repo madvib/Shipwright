@@ -1,28 +1,25 @@
 use anyhow::{Result, anyhow};
-use ghost_issues;
 use rmcp::transport::stdio;
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters},
     model::{
-        AnnotateAble, CallToolRequestParams, CallToolResult, Content, CreateMessageRequestParams,
+        AnnotateAble, CallToolRequestParams, CallToolResult, Content,
         Implementation, ListResourceTemplatesResult, ListResourcesResult, ListToolsResult,
         PaginatedRequestParams, ProtocolVersion, RawResource, RawResourceTemplate,
-        ReadResourceRequestParams, ReadResourceResult, ResourceContents, SamplingMessage,
-        ServerCapabilities, ServerInfo, Tool,
+        ReadResourceRequestParams, ReadResourceResult, ResourceContents, ServerCapabilities,
+        ServerInfo, Tool,
     },
-    service::{Peer, RequestContext},
+    service::RequestContext,
     tool, tool_router,
 };
 use runtime::project::{get_active_project_global, get_project_dir, set_active_project_global};
 use runtime::{
-    autodetect_providers, create_user_skill, delete_skill, delete_user_skill,
-    disable_provider, enable_provider, get_active_mode, get_config, get_effective_skill,
-    list_effective_skills, list_events_since, list_models, list_providers, log_action_by, read_log,
-    set_active_mode, set_category_committed, update_skill, update_user_skill,
+    get_active_mode, get_config, get_effective_skill, list_effective_skills, list_events_since,
+    list_models, list_providers, read_log, set_active_mode,
     workspace::{
         CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest,
-        EndWorkspaceSessionRequest as RuntimeEndWorkspaceSessionRequest, WorkspaceType,
+        EndWorkspaceSessionRequest as RuntimeEndWorkspaceSessionRequest, ShipWorkspaceKind,
         activate_workspace as runtime_activate_workspace,
         create_workspace as runtime_create_workspace,
         end_workspace_session as runtime_end_workspace_session,
@@ -30,12 +27,12 @@ use runtime::{
         get_workspace as runtime_get_workspace,
         get_workspace_provider_matrix as runtime_get_workspace_provider_matrix,
         list_workspace_sessions as runtime_list_workspace_sessions,
+        record_workspace_session_progress as runtime_record_workspace_session_progress,
         list_workspaces as runtime_list_workspaces, repair_workspace as runtime_repair_workspace,
         set_workspace_active_mode, start_workspace_session as runtime_start_workspace_session,
         sync_workspace as runtime_sync_workspace,
     },
 };
-use ship_module_git::{install_hooks, on_post_checkout};
 use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs};
 use ship_module_project::ops::feature::{
     create_feature, get_feature_by_id, list_features, sync_feature_docs_after_session,
@@ -48,9 +45,7 @@ use ship_module_project::ops::release::{
     create_release, get_release_by_id, list_releases, update_release_content,
 };
 use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
-use ship_module_project::{
-    NoteScope, get_project_name, list_registered_projects,
-};
+use ship_module_project::{NoteScope, get_project_name, list_registered_projects};
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
@@ -124,31 +119,24 @@ impl ShipServer {
     fn is_core_tool(tool_name: &str) -> bool {
         // Core workflow tools always available regardless of active mode.
         // These cover the three-stage Ship workflow: Planning → Workspace → Session.
-        // Extended tools (issues, specs, releases, etc.) require a mode OR a project workspace.
+        // Extended tools (issues, specs, releases, etc.) require a mode OR a service workspace.
         const CORE_TOOLS: &[&str] = &[
             // Project context
             "open_project",
-            "get_project_info",
             // Planning
             "create_note",
             "create_feature",
-            "get_feature",
             "update_feature",
             "create_adr",
             // Workspace
-            "list_workspaces",
-            "get_workspace",
-            "get_workspace_provider_matrix",
             "activate_workspace",
-            "create_workspace_tool",
-            "list_modes",
+            "create_workspace",
             "set_mode",
             "sync_workspace",
             "repair_workspace",
             // Session
             "start_session",
             "end_session",
-            "get_session_status",
             "log_progress",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
@@ -156,16 +144,13 @@ impl ShipServer {
     }
 
     fn is_project_workspace_tool(tool_name: &str) -> bool {
-        // Tools auto-unlocked when the active workspace is type=project.
-        // These cover the PM layer: specs, releases, session history, log.
+        // Tools auto-unlocked when the active workspace is type=service.
+        // These cover PM mutation flows (read surfaces should prefer resources).
         const PROJECT_TOOLS: &[&str] = &[
             "create_spec",
             "update_spec",
             "create_release",
-            "get_release",
             "update_release",
-            "list_sessions",
-            "get_log",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         PROJECT_TOOLS.contains(&normalized.as_str())
@@ -188,11 +173,11 @@ impl ShipServer {
             return Ok(());
         }
 
-        // Project workspace auto-unlocks the PM tool surface without needing a mode.
+        // Service workspace auto-unlocks the PM tool surface without needing a mode.
         if Self::is_project_workspace_tool(tool_name) {
             let active_type =
                 runtime::workspace::get_active_workspace_type(project_dir).unwrap_or(None);
-            if matches!(active_type, Some(runtime::WorkspaceType::Project)) {
+            if matches!(active_type, Some(runtime::ShipWorkspaceKind::Service)) {
                 return Ok(());
             }
         }
@@ -215,11 +200,11 @@ impl ShipServer {
         }
 
         // No mode active: only core tools are available.
-        // Activate a project workspace (ship workspace activate ship) to unlock PM tools,
+        // Activate a service workspace (`ship` branch) to unlock PM tools,
         // or create a mode with active_tools set to unlock specific tools.
         Err(format!(
             "Tool '{}' is not in the core workflow surface. \
-             Activate the project workspace ('ship') or a mode with this tool in its \
+             Activate the service workspace ('ship') or a mode with this tool in its \
              active_tools list to use it.",
             tool_name
         ))
@@ -267,12 +252,7 @@ impl ShipServer {
         }
     }
 
-    /// Get full project context for an agent starting a new session
-    #[tool(
-        description = "Get full project context: active workspace, active session, mode, features, \
-        releases, specs, ADRs, and recent activity. Call this at the start of every session to \
-        understand the current state before taking any action."
-    )]
+    /// Build full project context snapshot used by resources.
     async fn get_project_info(&self) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -292,12 +272,9 @@ impl ShipServer {
         // ── Active workspace & session ────────────────────────────────────────
         out.push_str("## Current Context\n");
         let workspaces = runtime_list_workspaces(&project_dir).unwrap_or_default();
-        let active_workspace = workspaces.iter().find(|w| {
-            matches!(
-                w.status,
-                runtime::WorkspaceStatus::Active
-            )
-        });
+        let active_workspace = workspaces
+            .iter()
+            .find(|w| matches!(w.status, runtime::WorkspaceStatus::Active));
         if let Some(ws) = active_workspace {
             out.push_str(&format!(
                 "- Workspace: {} [{:?}]",
@@ -314,10 +291,7 @@ impl ShipServer {
             // Active session for this workspace
             match runtime_get_active_workspace_session(&project_dir, &ws.branch) {
                 Ok(Some(session)) => {
-                    out.push_str(&format!(
-                        "- Session: ACTIVE (id: {})",
-                        session.id
-                    ));
+                    out.push_str(&format!("- Session: ACTIVE (id: {})", session.id));
                     if let Some(ref goal) = session.goal {
                         out.push_str(&format!(" — goal: {}", goal));
                     }
@@ -362,7 +336,11 @@ impl ShipServer {
         } else {
             for f in &features {
                 let has_docs = f.feature.body.contains("## Documentation");
-                let docs_flag = if !has_docs { " ⚠ missing ## Documentation" } else { "" };
+                let docs_flag = if !has_docs {
+                    " ⚠ missing ## Documentation"
+                } else {
+                    ""
+                };
                 out.push_str(&format!(
                     "- [{}] {} ({}){}\n",
                     f.status, f.feature.metadata.title, f.id, docs_flag
@@ -481,120 +459,6 @@ impl ShipServer {
         }
     }
 
-    /// Create a skill
-    #[tool(
-        description = "Create a skill. Scope can be 'project' (default) or 'user' for global/core skills."
-    )]
-    async fn create_skill(&self, Parameters(req): Parameters<CreateSkillRequest>) -> String {
-        let scope = match parse_skill_write_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        let created = match scope {
-            SkillWriteScope::Project => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match runtime::create_skill(&project_dir, &req.id, &req.name, &req.content) {
-                    Ok(skill) => {
-                        log_action_by(
-                            &project_dir,
-                            "agent",
-                            "skill create",
-                            &format!("{} ({})", skill.id, skill.name),
-                        )
-                        .ok();
-                        skill
-                    }
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-            SkillWriteScope::User => match create_user_skill(&req.id, &req.name, &req.content) {
-                Ok(skill) => skill,
-                Err(err) => return format!("Error: {}", err),
-            },
-        };
-
-        format!("Created skill: {} ({})", created.id, created.name)
-    }
-
-    /// Update an existing skill
-    #[tool(description = "Update a skill name/content in 'project' (default) or 'user' scope.")]
-    async fn update_skill(&self, Parameters(req): Parameters<UpdateSkillRequest>) -> String {
-        let scope = match parse_skill_write_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        let updated = match scope {
-            SkillWriteScope::Project => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match update_skill(
-                    &project_dir,
-                    &req.id,
-                    req.name.as_deref(),
-                    req.content.as_deref(),
-                ) {
-                    Ok(skill) => {
-                        log_action_by(
-                            &project_dir,
-                            "agent",
-                            "skill update",
-                            &format!("{} ({})", skill.id, skill.name),
-                        )
-                        .ok();
-                        skill
-                    }
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-            SkillWriteScope::User => {
-                match update_user_skill(&req.id, req.name.as_deref(), req.content.as_deref()) {
-                    Ok(skill) => skill,
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-        };
-
-        format!("Updated skill: {} ({})", updated.id, updated.name)
-    }
-
-    /// Delete a skill
-    #[tool(description = "Delete a skill in 'project' (default) or 'user' scope.")]
-    async fn delete_skill(&self, Parameters(req): Parameters<DeleteSkillRequest>) -> String {
-        let scope = match parse_skill_write_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        match scope {
-            SkillWriteScope::Project => {
-                let project_dir = match self.get_effective_project_dir().await {
-                    Ok(project_dir) => project_dir,
-                    Err(err) => return err,
-                };
-                match delete_skill(&project_dir, &req.id) {
-                    Ok(()) => {
-                        log_action_by(&project_dir, "agent", "skill delete", &req.id).ok();
-                    }
-                    Err(err) => return format!("Error: {}", err),
-                }
-            }
-            SkillWriteScope::User => {
-                if let Err(err) = delete_user_skill(&req.id) {
-                    return format!("Error: {}", err);
-                }
-            }
-        }
-
-        format!("Deleted skill: {}", req.id)
-    }
-
     // ─── ADR Tools ────────────────────────────────────────────────────────────
 
     /// Create a new Architecture Decision Record
@@ -674,22 +538,6 @@ impl ShipServer {
         }
     }
 
-    /// Get a release's details
-    #[tool(description = "Get the details and content of a release by ID")]
-    async fn get_release(&self, Parameters(req): Parameters<GetReleaseRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match get_release_by_id(&project_dir, &req.id) {
-            Ok(release) => match serde_json::to_string_pretty(&release) {
-                Ok(json) => json,
-                Err(e) => format!("Error serializing release: {}", e),
-            },
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     /// Update a release's content
     #[tool(description = "Update the content of an existing release")]
     async fn update_release(&self, Parameters(req): Parameters<UpdateReleaseRequest>) -> String {
@@ -738,22 +586,6 @@ impl ShipServer {
         }
     }
 
-    /// Get a feature's details
-    #[tool(description = "Get the details and content of a feature by ID")]
-    async fn get_feature(&self, Parameters(req): Parameters<GetFeatureRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match get_feature_by_id(&project_dir, &req.id) {
-            Ok(feature) => match serde_json::to_string_pretty(&feature) {
-                Ok(json) => json,
-                Err(e) => format!("Error serializing feature: {}", e),
-            },
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     /// Update a feature's content
     #[tool(
         description = "Update the content of an existing feature. Use this to refine intent, \
@@ -775,349 +607,7 @@ impl ShipServer {
         }
     }
 
-    // ─── ADR / Log Tools ──────────────────────────────────────────────────────
-
-    /// Get recent project log entries
-    #[tool(description = "Get the recent action log for the active project")]
-    async fn get_log(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match read_log(&project_dir) {
-            Ok(content) => {
-                if content.trim().is_empty() || content.trim() == "# Project Log" {
-                    "No log entries yet.".to_string()
-                } else {
-                    content
-                }
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// List events from the append-only event stream
-    #[tool(
-        description = "List events from the append-only project event stream. Supports cursor-style reads via the since sequence."
-    )]
-    async fn list_events(&self, Parameters(req): Parameters<ListEventsRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let since = req.since.unwrap_or(0);
-        let limit = req.limit.unwrap_or(100);
-        match list_events_since(&project_dir, since, Some(limit)) {
-            Ok(events) => {
-                if events.is_empty() {
-                    return "No events found.".to_string();
-                }
-                let mut out = String::from("Events:\n");
-                for e in events {
-                    let details = e
-                        .details
-                        .as_ref()
-                        .map(|d| format!(" — {}", d))
-                        .unwrap_or_default();
-                    out.push_str(&format!(
-                        "- #{} {} [{}] {:?}.{:?} {}{}\n",
-                        e.seq,
-                        e.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                        e.actor,
-                        e.entity,
-                        e.action,
-                        e.subject,
-                        details
-                    ));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    // ─── Ghost Issues Tools ───────────────────────────────────────────────────
-
-    /// Scan the codebase for TODO/FIXME/HACK/BUG comments
-    #[tool(
-        description = "Scan the project codebase for TODO, FIXME, HACK, and BUG comments and return a summary"
-    )]
-    async fn ghost_scan(&self, Parameters(req): Parameters<GhostScanRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        let root = req
-            .dir
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| project_dir.parent().unwrap_or(&project_dir).to_path_buf());
-
-        match ghost_issues::scan(&project_dir, &root) {
-            Ok(result) => {
-                let unpromoted: Vec<_> = result.issues.iter().filter(|g| !g.promoted).collect();
-                if unpromoted.is_empty() {
-                    return "No ghost issues found.".to_string();
-                }
-                let mut out = format!(
-                    "Found {} ghost issue{}:\n\n",
-                    unpromoted.len(),
-                    if unpromoted.len() == 1 { "" } else { "s" }
-                );
-                for g in &unpromoted {
-                    out.push_str(&format!("- {}\n", g.display()));
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Promote a ghost issue to a real tracked issue
-    #[tool(
-        description = "Promote a ghost issue (TODO/FIXME comment) to a real tracked issue in the backlog"
-    )]
-    async fn ghost_promote(&self, Parameters(req): Parameters<GhostPromoteRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        match ghost_issues::mark_promoted(&project_dir, &req.file, req.line) {
-            Ok(true) => "Marked as promoted.".to_string(),
-            Ok(false) => format!(
-                "Ghost issue not found at {}:{}. Run ghost_scan first.",
-                req.file, req.line
-            ),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    // ─── AI Generation Tools ─────────────────────────────────────────────────
-
-    /// Generate an Architecture Decision Record from a problem statement
-    #[tool(
-        description = "Generate an ADR (Architecture Decision Record) from a problem statement using AI"
-    )]
-    async fn generate_adr(
-        &self,
-        peer: Peer<RoleServer>,
-        Parameters(req): Parameters<GenerateAdrRequest>,
-    ) -> String {
-        let system = "You are a software architect. Generate a concise Architecture Decision Record. Format: state the context, decision, and consequences. Be direct and practical. Use markdown.";
-        let prompt = match &req.constraints {
-            Some(c) => format!(
-                "Generate an ADR for:\n\nProblem: {}\n\nConstraints/Options: {}",
-                req.problem, c
-            ),
-            None => format!("Generate an ADR for:\n\nProblem: {}", req.problem),
-        };
-        self.generate_with_sampling(peer, system, &prompt, 1000)
-            .await
-    }
-
-    // ─── Git Config Tools ─────────────────────────────────────────────────────
-
-    /// Update git commit settings for the active project
-    #[tool(
-        description = "Set whether a category (issues/releases/features/specs/adrs/notes/agents/ship.toml/templates) is committed to git or kept local. Updates .ship/.gitignore automatically."
-    )]
-    async fn git_config_set(&self, Parameters(req): Parameters<GitIncludeRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let known = [
-            "issues",
-            "releases",
-            "features",
-            "adrs",
-            "specs",
-            "notes",
-            "agents",
-            "ship.toml",
-            "templates",
-        ];
-        if !known.contains(&req.category.as_str()) {
-            return format!(
-                "Unknown category '{}'. Use: {}",
-                req.category,
-                known.join(", ")
-            );
-        }
-        match set_category_committed(&project_dir, &req.category, req.commit) {
-            Ok(_) => format!(
-                "{} is now {}",
-                req.category,
-                if req.commit {
-                    "committed to git"
-                } else {
-                    "local only"
-                }
-            ),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Install Ship git hooks in this repository
-    #[tool(
-        description = "Install Ship's git hooks (including post-checkout) in the active project's repository"
-    )]
-    async fn git_hooks_install(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let Some(project_root) = project_dir.parent() else {
-            return "Error: Could not resolve project root".to_string();
-        };
-        let git_dir = project_root.join(".git");
-        if !git_dir.exists() {
-            return format!("Error: No git repository found at {}", git_dir.display());
-        }
-        match install_hooks(&git_dir) {
-            Ok(_) => format!("Installed git hooks in {}", git_dir.join("hooks").display()),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    /// Regenerate feature-aware context files for a branch
-    #[tool(description = "Regenerate branch-scoped CLAUDE.md and .mcp.json for a feature branch")]
-    async fn git_feature_sync(&self, Parameters(req): Parameters<GitFeatureSyncRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let Some(project_root) = project_dir.parent() else {
-            return "Error: Could not resolve project root".to_string();
-        };
-        let branch = match req.branch {
-            Some(branch) if !branch.trim().is_empty() => branch,
-            _ => match current_branch(project_root) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            },
-        };
-        match on_post_checkout(&project_dir, &branch, project_root) {
-            Ok(_) => format!("Synced feature context for branch {}", branch),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    // ─── Provider Tools ───────────────────────────────────────────────────────
-
-    /// List all known AI providers and their installed/connected status
-    #[tool(
-        description = "List all known AI agent providers with installed (in PATH) and connected (enabled in project) status, version, and available models"
-    )]
-    async fn list_providers_tool(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match list_providers(&project_dir) {
-            Ok(providers) => match serde_json::to_string_pretty(&providers) {
-                Ok(json) => json,
-                Err(e) => format!("Error serialising providers: {}", e),
-            },
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Connect (enable) an AI provider for this project
-    #[tool(
-        description = "Connect (enable) an AI provider for this project by updating runtime settings in SQLite. Provider ID must be one of: claude, gemini, codex"
-    )]
-    async fn connect_provider(
-        &self,
-        Parameters(req): Parameters<ConnectProviderRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match enable_provider(&project_dir, &req.provider_id) {
-            Ok(true) => format!("Connected provider: {}", req.provider_id),
-            Ok(false) => format!("Provider '{}' is already connected.", req.provider_id),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Disconnect (disable) an AI provider from this project
-    #[tool(
-        description = "Disconnect (disable) an AI provider from this project by updating runtime settings in SQLite"
-    )]
-    async fn disconnect_provider(
-        &self,
-        Parameters(req): Parameters<DisconnectProviderRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match disable_provider(&project_dir, &req.provider_id) {
-            Ok(true) => format!("Disconnected provider: {}", req.provider_id),
-            Ok(false) => format!("Provider '{}' was not connected.", req.provider_id),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Detect installed providers in PATH and auto-connect them
-    #[tool(
-        description = "Detect which AI providers are installed in PATH and automatically connect them to this project"
-    )]
-    async fn detect_providers(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match autodetect_providers(&project_dir) {
-            Ok(found) if found.is_empty() => "No new providers detected.".to_string(),
-            Ok(found) => format!("Detected and connected: {}", found.join(", ")),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// List available models for a provider
-    #[tool(
-        description = "List available models for a provider with context window sizes and recommended model. Use for UI autocomplete and model selection."
-    )]
-    async fn list_models_tool(&self, Parameters(req): Parameters<ListModelsRequest>) -> String {
-        match list_models(&req.provider_id) {
-            Ok(models) => match serde_json::to_string_pretty(&models) {
-                Ok(json) => json,
-                Err(e) => format!("Error serialising models: {}", e),
-            },
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
     // ─── Mode / Workspace Control Plane Tools ──────────────────────────────
-
-    /// List available modes plus active mode selection
-    #[tool(
-        description = "List available modes and the active mode. Modes are the control plane for tool/provider context."
-    )]
-    async fn list_modes(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        match get_config(Some(project_dir)) {
-            Ok(config) => {
-                let payload = serde_json::json!({
-                    "active_mode": config.active_mode,
-                    "modes": config.modes,
-                });
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|e| format!("Error: {}", e))
-            }
-            Err(err) => format!("Error: {}", err),
-        }
-    }
 
     /// Activate a mode or clear active mode
     #[tool(
@@ -1137,70 +627,8 @@ impl ShipServer {
         }
     }
 
-    /// List all workspaces in the project runtime
-    #[tool(description = "List all workspaces in this project.")]
-    async fn list_workspaces(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        match runtime_list_workspaces(&project_dir) {
-            Ok(workspaces) => serde_json::to_string_pretty(&workspaces)
-                .unwrap_or_else(|e| format!("Error serializing workspaces: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    /// Get one workspace by branch/id (defaults to current git branch)
-    #[tool(
-        description = "Get one workspace by branch/id. If branch is omitted, resolves from current git branch."
-    )]
-    async fn get_workspace(&self, Parameters(req): Parameters<GetWorkspaceRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_get_workspace(&project_dir, &branch) {
-            Ok(Some(workspace)) => serde_json::to_string_pretty(&workspace)
-                .unwrap_or_else(|e| format!("Error serializing workspace: {}", e)),
-            Ok(None) => format!("Workspace '{}' not found", branch),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    /// Resolve provider policy matrix for a workspace/mode combination
-    #[tool(
-        description = "Resolve provider policy for a workspace (allowed providers, source, and resolution errors)."
-    )]
-    async fn get_workspace_provider_matrix(
-        &self,
-        Parameters(req): Parameters<WorkspaceProviderMatrixRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_get_workspace_provider_matrix(&project_dir, &branch, req.mode_id.as_deref()) {
-            Ok(matrix) => serde_json::to_string_pretty(&matrix)
-                .unwrap_or_else(|e| format!("Error serializing provider matrix: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
     /// Create or update a workspace record
-    #[tool(
-        description = "Create or update a workspace runtime record (feature/refactor/experiment/hotfix)."
-    )]
+    #[tool(description = "Create or update a workspace runtime record (feature/patch/service).")]
     async fn create_workspace_tool(
         &self,
         Parameters(req): Parameters<CreateWorkspaceToolRequest>,
@@ -1211,7 +639,7 @@ impl ShipServer {
         };
 
         let parsed_workspace_type = match req.workspace_type {
-            Some(workspace_type) => match workspace_type.parse::<WorkspaceType>() {
+            Some(workspace_type) => match workspace_type.parse::<ShipWorkspaceKind>() {
                 Ok(parsed) => Some(parsed),
                 Err(err) => return format!("Error: {}", err),
             },
@@ -1222,6 +650,7 @@ impl ShipServer {
             branch: req.branch.clone(),
             workspace_type: parsed_workspace_type,
             status: None,
+            environment_id: req.environment_id,
             feature_id: req.feature_id,
             spec_id: req.spec_id,
             release_id: req.release_id,
@@ -1321,10 +750,7 @@ impl ShipServer {
     #[tool(
         description = "Start a workspace session for the active compiled context and selected provider."
     )]
-    async fn start_session(
-        &self,
-        Parameters(req): Parameters<StartSessionRequest>,
-    ) -> String {
+    async fn start_session(&self, Parameters(req): Parameters<StartSessionRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(project_dir) => project_dir,
             Err(err) => return err,
@@ -1351,13 +777,10 @@ impl ShipServer {
     #[tool(
         description = "End the active workspace session. Provide a summary of what was accomplished \
         and the IDs of any features that were updated. This emits a session-end event visible in \
-        get_project_info, bumps updated timestamps on touched features, and records the session \
+        get_project_info and records the session \
         history. Call this when work is complete or paused for the day."
     )]
-    async fn end_session(
-        &self,
-        Parameters(req): Parameters<EndSessionRequest>,
-    ) -> String {
+    async fn end_session(&self, Parameters(req): Parameters<EndSessionRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(project_dir) => project_dir,
             Err(err) => return err,
@@ -1388,68 +811,15 @@ impl ShipServer {
             );
         }
 
-        // Emit a log event so this surfaces in get_project_info immediately.
-        let summary = session.summary.as_deref().unwrap_or_default();
-        let log_line = format!("session ended [{}]: {}", branch, summary);
-        if let Err(e) = log_action_by(&project_dir, "agent", "session.end", &log_line) {
-            eprintln!("[ship] warning: failed to log session end: {}", e);
-        }
-
-        // Touch feature timestamps for all updated features.
-        for feature_id in &session.updated_feature_ids {
-            match get_feature_by_id(&project_dir, feature_id) {
-                Ok(entry) => {
-                    if let Err(e) =
-                        update_feature_content(&project_dir, feature_id, &entry.feature.body)
-                    {
-                        eprintln!(
-                            "[ship] warning: failed to touch feature '{}': {}",
-                            feature_id, e
-                        );
-                    }
-                }
-                Err(e) => eprintln!(
-                    "[ship] warning: error reading feature '{}': {}",
-                    feature_id, e
-                ),
-            }
-        }
-
         serde_json::to_string_pretty(&session)
             .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e))
-    }
-
-    /// Return active session (if any) for a branch
-    #[tool(
-        description = "Get the active session status for a workspace branch (or current git branch). \
-        Returns session details including goal, mode, provider, and when it started."
-    )]
-    async fn get_session_status(
-        &self,
-        Parameters(req): Parameters<GetWorkspaceRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_get_active_workspace_session(&project_dir, &branch) {
-            Ok(Some(session)) => serde_json::to_string_pretty(&session)
-                .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e)),
-            Ok(None) => format!("No active workspace session for '{}'", branch),
-            Err(err) => format!("Error: {}", err),
-        }
     }
 
     /// Log a progress note within the active session
     #[tool(
         description = "Record a progress note for the active session. Use mid-session to log \
-        what you did, decisions made, or blockers encountered. Notes appear in the project log \
-        and surface in get_project_info. Requires an active session (call start_session first)."
+        what you did, decisions made, or blockers encountered. Notes are recorded in the unified \
+        workspace session event stream. Requires an active session (call start_session first)."
     )]
     async fn log_progress(&self, Parameters(req): Parameters<LogProgressRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
@@ -1466,131 +836,25 @@ impl ShipServer {
                 return format!(
                     "No active session for '{}'. Call start_session first.",
                     branch
-                )
+                );
             }
             Err(err) => return format!("Error checking session: {}", err),
             Ok(Some(_)) => {}
         }
-        match log_action_by(&project_dir, "agent", "session.progress", &req.note) {
+        match runtime_record_workspace_session_progress(&project_dir, &branch, &req.note) {
             Ok(()) => format!("Progress logged for session on '{}'.", branch),
             Err(e) => format!("Error logging progress: {}", e),
-        }
-    }
-
-    /// List sessions, optionally filtered by branch
-    #[tool(description = "List past workspace sessions, optionally filtered by workspace branch/id.")]
-    async fn list_sessions(
-        &self,
-        Parameters(req): Parameters<ListSessionsRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let limit = req.limit.unwrap_or(50);
-        let branch = req
-            .branch
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        match runtime_list_workspace_sessions(&project_dir, branch, limit) {
-            Ok(sessions) => serde_json::to_string_pretty(&sessions)
-                .unwrap_or_else(|e| format!("Error serializing workspace sessions: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    // ─── Time Tracking Tools ─────────────────────────────────────────────────
-
-    /// Start a timer for an issue
-    #[tool(description = "Start a time tracking timer for an issue")]
-    async fn time_start(&self, Parameters(req): Parameters<TimeStartRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        let issue_title = req.issue_file.clone();
-        match time_tracker::start_timer(&project_dir, &req.issue_file, &issue_title, req.note) {
-            Ok(t) => format!(
-                "Timer started: {} at {}",
-                t.issue_title,
-                t.started_at.format("%H:%M")
-            ),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Stop the running timer
-    #[tool(description = "Stop the currently running time tracking timer")]
-    async fn time_stop(&self, Parameters(req): Parameters<TimeStopRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        if let Err(e) = ensure_builtin_plugin_namespaces(&project_dir) {
-            return format!("Error: {}", e);
-        }
-        match time_tracker::stop_timer(&project_dir, req.note) {
-            Ok(e) => format!(
-                "Timer stopped: {} — {}",
-                e.issue_title,
-                time_tracker::format_duration(e.duration_minutes)
-            ),
-            Err(err) => format!("Error: {}", err),
         }
     }
 }
 
 impl ShipServer {
-    /// Generate text via MCP sampling (peer.create_message).
-    /// Requires the MCP client to support sampling (e.g. Claude Code).
-    /// Returns an error message string if sampling is unavailable.
-    async fn generate_with_sampling(
-        &self,
-        peer: Peer<RoleServer>,
-        system: &str,
-        prompt: &str,
-        max_tokens: u32,
-    ) -> String {
-        if peer
-            .peer_info()
-            .map_or(false, |info| info.capabilities.sampling.is_some())
-        {
-            let params = CreateMessageRequestParams {
-                messages: vec![SamplingMessage::user_text(prompt)],
-                system_prompt: Some(system.to_string()),
-                max_tokens,
-                model_preferences: None,
-                include_context: None,
-                temperature: None,
-                stop_sequences: None,
-                metadata: None,
-                tools: None,
-                tool_choice: None,
-                meta: None,
-                task: None,
-            };
-            match peer.create_message(params).await {
-                Ok(result) => {
-                    return result
-                        .message
-                        .content
-                        .first()
-                        .and_then(|c| c.as_text())
-                        .map(|t| t.text.clone())
-                        .unwrap_or_else(|| "No content returned from sampling.".to_string());
-                }
-                Err(e) => return format!("Sampling failed: {}", e),
-            }
-        }
-        "AI generation unavailable: the connected MCP client does not support sampling. Use Claude Code or another sampling-capable client.".to_string()
-    }
-
     /// Resolve a `ship://` URI to its text content, or `None` if not found.
     async fn resolve_resource_uri(&self, uri: &str, dir: &PathBuf) -> Option<String> {
+        // ship://project_info
+        if uri == "ship://project_info" {
+            return Some(self.get_project_info().await);
+        }
         // ship://features
         if uri == "ship://features" {
             let entries = list_features(&dir).ok()?;
@@ -1713,6 +977,104 @@ impl ShipServer {
         if let Some(id) = uri.strip_prefix("ship://skills/") {
             return get_effective_skill(dir, id).ok().map(|s| s.content);
         }
+        // ship://log
+        if uri == "ship://log" {
+            return match read_log(dir) {
+                Ok(content) if content.trim().is_empty() || content.trim() == "# Project Log" => {
+                    Some("No log entries yet.".to_string())
+                }
+                Ok(content) => Some(content),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://events
+        if uri == "ship://events" {
+            return render_events_resource(dir, 0, 100);
+        }
+        // ship://events/{since}
+        if let Some(since) = uri.strip_prefix("ship://events/") {
+            let Ok(since) = since.parse::<u64>() else {
+                return Some(format!("Error: invalid event sequence '{}'", since));
+            };
+            return render_events_resource(dir, since, 100);
+        }
+        // ship://workspaces
+        if uri == "ship://workspaces" {
+            return match runtime_list_workspaces(dir) {
+                Ok(workspaces) => serde_json::to_string_pretty(&workspaces).ok(),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://workspaces/{branch}/provider-matrix
+        if let Some(rest) = uri.strip_prefix("ship://workspaces/")
+            && let Some(branch) = rest.strip_suffix("/provider-matrix")
+        {
+            return match runtime_get_workspace_provider_matrix(dir, branch, None) {
+                Ok(matrix) => serde_json::to_string_pretty(&matrix).ok(),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://workspaces/{branch}/session
+        if let Some(rest) = uri.strip_prefix("ship://workspaces/")
+            && let Some(branch) = rest.strip_suffix("/session")
+        {
+            return match runtime_get_active_workspace_session(dir, branch) {
+                Ok(Some(session)) => serde_json::to_string_pretty(&session).ok(),
+                Ok(None) => Some(format!("No active workspace session for '{}'", branch)),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://workspaces/{branch}
+        if let Some(branch) = uri.strip_prefix("ship://workspaces/") {
+            return match runtime_get_workspace(dir, branch) {
+                Ok(Some(workspace)) => serde_json::to_string_pretty(&workspace).ok(),
+                Ok(None) => Some(format!("Workspace '{}' not found", branch)),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://sessions
+        if uri == "ship://sessions" {
+            return match runtime_list_workspace_sessions(dir, None, 50) {
+                Ok(sessions) => serde_json::to_string_pretty(&sessions).ok(),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://sessions/{workspace}
+        if let Some(workspace) = uri.strip_prefix("ship://sessions/") {
+            return match runtime_list_workspace_sessions(dir, Some(workspace), 50) {
+                Ok(sessions) => serde_json::to_string_pretty(&sessions).ok(),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://modes
+        if uri == "ship://modes" {
+            return match get_config(Some(dir.clone())) {
+                Ok(config) => {
+                    let payload = serde_json::json!({
+                        "active_mode": config.active_mode,
+                        "modes": config.modes,
+                    });
+                    serde_json::to_string_pretty(&payload).ok()
+                }
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://providers
+        if uri == "ship://providers" {
+            return match list_providers(dir) {
+                Ok(providers) => serde_json::to_string_pretty(&providers).ok(),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
+        // ship://providers/{id}/models
+        if let Some(rest) = uri.strip_prefix("ship://providers/")
+            && let Some(provider_id) = rest.strip_suffix("/models")
+        {
+            return match list_models(provider_id) {
+                Ok(models) => serde_json::to_string_pretty(&models).ok(),
+                Err(err) => Some(format!("Error: {}", err)),
+            };
+        }
         None
     }
 }
@@ -1736,32 +1098,34 @@ fn parse_note_scope(raw: Option<&str>) -> Result<NoteScope> {
     raw.unwrap_or("project").parse::<NoteScope>()
 }
 
-enum SkillWriteScope {
-    Project,
-    User,
-}
-
-fn parse_skill_write_scope(raw: Option<&str>) -> Result<SkillWriteScope> {
-    match raw
-        .unwrap_or("project")
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "project" => Ok(SkillWriteScope::Project),
-        "user" | "global" => Ok(SkillWriteScope::User),
-        other => Err(anyhow!(
-            "Invalid skill scope '{}'. Expected one of: project, user",
-            other
-        )),
+fn render_events_resource(project_dir: &PathBuf, since: u64, limit: usize) -> Option<String> {
+    match list_events_since(project_dir, since, Some(limit)) {
+        Ok(events) => {
+            if events.is_empty() {
+                return Some("No events found.".to_string());
+            }
+            let mut out = String::from("Events:\n");
+            for e in events {
+                let details = e
+                    .details
+                    .as_ref()
+                    .map(|d| format!(" — {}", d))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "- #{} {} [{}] {:?}.{:?} {}{}\n",
+                    e.seq,
+                    e.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                    e.actor,
+                    e.entity,
+                    e.action,
+                    e.subject,
+                    details
+                ));
+            }
+            Some(out)
+        }
+        Err(err) => Some(format!("Error: {}", err)),
     }
-}
-
-fn ensure_builtin_plugin_namespaces(project_dir: &PathBuf) -> Result<()> {
-    let mut registry = runtime::PluginRegistry::new();
-    registry.register_with_project(project_dir, Box::new(ghost_issues::GhostIssues))?;
-    registry.register_with_project(project_dir, Box::new(time_tracker::TimeTracker))?;
-    Ok(())
 }
 
 impl ServerHandler for ShipServer {
@@ -1783,9 +1147,9 @@ impl ServerHandler for ShipServer {
                  WORKSPACE: list_workspaces → activate_workspace → set_mode\n\
                  SESSION: start_session → (work) → log_progress → end_session\n\n\
                  By default only core workflow tools are visible. To access extended tools \
-                 (issues, specs, releases, time tracking, etc.), activate a mode that includes \
+                 (specs, releases, etc.), activate a mode that includes \
                  them in its active_tools list. Call open_project first if the project is not \
-                 auto-detected. Use resources (ship://) to read documents without a tool call."
+                 auto-detected. Use resources (ship://) for read-heavy workflows."
                     .into(),
             ),
         }
@@ -1822,7 +1186,7 @@ impl ServerHandler for ShipServer {
             let active_mode = get_active_mode(Some(project_dir.clone())).unwrap_or(None);
             let in_project_workspace = matches!(
                 runtime::workspace::get_active_workspace_type(&project_dir).unwrap_or(None),
-                Some(runtime::WorkspaceType::Project)
+                Some(runtime::ShipWorkspaceKind::Service)
             );
             all_tools
                 .into_iter()
@@ -1862,12 +1226,19 @@ impl ServerHandler for ShipServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         Ok(ListResourcesResult::with_all_items(vec![
+            RawResource::new("ship://project_info", "Project Info").no_annotation(),
             RawResource::new("ship://features", "Features").no_annotation(),
             RawResource::new("ship://releases", "Releases").no_annotation(),
             RawResource::new("ship://specs", "Specs").no_annotation(),
             RawResource::new("ship://adrs", "ADRs").no_annotation(),
             RawResource::new("ship://notes", "Project Notes").no_annotation(),
             RawResource::new("ship://skills", "Skills").no_annotation(),
+            RawResource::new("ship://workspaces", "Workspaces").no_annotation(),
+            RawResource::new("ship://sessions", "Workspace Sessions").no_annotation(),
+            RawResource::new("ship://modes", "Modes").no_annotation(),
+            RawResource::new("ship://providers", "Providers").no_annotation(),
+            RawResource::new("ship://log", "Project Log").no_annotation(),
+            RawResource::new("ship://events", "Event Stream").no_annotation(),
         ]))
     }
 
@@ -1878,7 +1249,7 @@ impl ServerHandler for ShipServer {
     ) -> Result<ListResourceTemplatesResult, ErrorData> {
         Ok(ListResourceTemplatesResult::with_all_items(vec![
             RawResourceTemplate {
-                uri_template: "ship://features/{file}".to_string(),
+                uri_template: "ship://features/{id}".to_string(),
                 name: "Feature".to_string(),
                 title: None,
                 description: None,
@@ -1887,7 +1258,7 @@ impl ServerHandler for ShipServer {
             }
             .no_annotation(),
             RawResourceTemplate {
-                uri_template: "ship://releases/{file}".to_string(),
+                uri_template: "ship://releases/{id}".to_string(),
                 name: "Release".to_string(),
                 title: None,
                 description: None,
@@ -1896,7 +1267,7 @@ impl ServerHandler for ShipServer {
             }
             .no_annotation(),
             RawResourceTemplate {
-                uri_template: "ship://specs/{file}".to_string(),
+                uri_template: "ship://specs/{id}".to_string(),
                 name: "Spec".to_string(),
                 title: None,
                 description: None,
@@ -1905,7 +1276,7 @@ impl ServerHandler for ShipServer {
             }
             .no_annotation(),
             RawResourceTemplate {
-                uri_template: "ship://adrs/{file}".to_string(),
+                uri_template: "ship://adrs/{id}".to_string(),
                 name: "ADR".to_string(),
                 title: None,
                 description: None,
@@ -1914,11 +1285,65 @@ impl ServerHandler for ShipServer {
             }
             .no_annotation(),
             RawResourceTemplate {
-                uri_template: "ship://notes/{file}".to_string(),
+                uri_template: "ship://notes/{id}".to_string(),
                 name: "Note".to_string(),
                 title: None,
                 description: None,
                 mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://workspaces/{branch}".to_string(),
+                name: "Workspace".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("application/json".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://workspaces/{branch}/provider-matrix".to_string(),
+                name: "Workspace Provider Matrix".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("application/json".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://workspaces/{branch}/session".to_string(),
+                name: "Workspace Active Session".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("application/json".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://sessions/{workspace}".to_string(),
+                name: "Workspace Sessions".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("application/json".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://providers/{id}/models".to_string(),
+                name: "Provider Models".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("application/json".to_string()),
+                icons: None,
+            }
+            .no_annotation(),
+            RawResourceTemplate {
+                uri_template: "ship://events/{since}".to_string(),
+                name: "Event Stream Since Seq".to_string(),
+                title: None,
+                description: None,
+                mime_type: Some("text/plain".to_string()),
                 icons: None,
             }
             .no_annotation(),
@@ -2041,46 +1466,6 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn mcp_git_feature_sync_writes_context_files() {
-        let tmp = tempdir().expect("tempdir");
-        let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
-
-        let server = ShipServer::new();
-        *server.active_project.lock().await = Some(project_dir.clone());
-
-        let feature_result = server
-            .create_feature(Parameters(CreateFeatureRequest {
-                title: "Auth flow".to_string(),
-                content: Some("Ship auth.".to_string()),
-                release_id: None,
-                spec_id: None,
-                branch: Some("feature/auth".to_string()),
-            }))
-            .await;
-        assert!(
-            feature_result.contains("Created feature:"),
-            "unexpected feature response: {}",
-            feature_result
-        );
-
-        let sync_result = server
-            .git_feature_sync(Parameters(GitFeatureSyncRequest {
-                branch: Some("feature/auth".to_string()),
-            }))
-            .await;
-        assert!(
-            sync_result.contains("Synced feature context"),
-            "unexpected sync response: {}",
-            sync_result
-        );
-
-        let claude_md = tmp.path().join("CLAUDE.md");
-        let mcp_json = tmp.path().join(".mcp.json");
-        assert!(claude_md.exists(), "CLAUDE.md should be written");
-        assert!(mcp_json.exists(), ".mcp.json should be written");
-    }
-
     #[test]
     fn mode_gate_normalizes_and_blocks_disallowed_tools() {
         let tmp = tempdir().expect("tempdir");
@@ -2102,13 +1487,13 @@ mod tests {
         ShipServer::enforce_mode_tool_gate(&project_dir, "list_notes").expect("list_notes allowed");
         ShipServer::enforce_mode_tool_gate(&project_dir, "ship_list_notes_tool")
             .expect("prefixed note tool allowed");
-        ShipServer::enforce_mode_tool_gate(&project_dir, "get_workspace_provider_matrix")
-            .expect("workspace provider matrix must remain control-plane allowed");
+        ShipServer::enforce_mode_tool_gate(&project_dir, "create_workspace_tool")
+            .expect("create workspace must remain control-plane allowed");
         ShipServer::enforce_mode_tool_gate(&project_dir, "repair_workspace")
             .expect("workspace repair must remain control-plane allowed");
 
-        let blocked = ShipServer::enforce_mode_tool_gate(&project_dir, "create_spec")
-            .expect_err("create_spec should be blocked");
+        let blocked = ShipServer::enforce_mode_tool_gate(&project_dir, "update_note")
+            .expect_err("update_note should be blocked");
         assert!(
             blocked.contains("blocked by active mode"),
             "unexpected mode gate message: {}",
@@ -2128,6 +1513,7 @@ mod tests {
             .create_workspace_tool(Parameters(CreateWorkspaceToolRequest {
                 branch: "feature/mode-control-plane".to_string(),
                 workspace_type: Some("feature".to_string()),
+                environment_id: None,
                 feature_id: None,
                 spec_id: None,
                 release_id: None,
@@ -2144,10 +1530,9 @@ mod tests {
         );
 
         let fetched = server
-            .get_workspace(Parameters(GetWorkspaceRequest {
-                branch: Some("feature/mode-control-plane".to_string()),
-            }))
-            .await;
+            .resolve_resource_uri("ship://workspaces/feature/mode-control-plane", &project_dir)
+            .await
+            .expect("workspace resource");
         assert!(
             fetched.contains("\"id\": \"feature-mode-control-plane\""),
             "unexpected get workspace response: {}",
@@ -2155,11 +1540,9 @@ mod tests {
         );
 
         let sessions_before = server
-            .list_sessions(Parameters(ListSessionsRequest {
-                branch: Some("feature/mode-control-plane".to_string()),
-                limit: Some(10),
-            }))
+            .resolve_resource_uri("ship://sessions/feature/mode-control-plane", &project_dir)
             .await;
+        let sessions_before = sessions_before.expect("sessions resource");
         assert_eq!(
             sessions_before.trim(),
             "[]",

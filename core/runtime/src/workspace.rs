@@ -1,4 +1,5 @@
 use crate::project::sanitize_file_name;
+use crate::events::{EventAction, EventEntity, append_event};
 use crate::state_db::{
     WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, delete_workspace_db,
     demote_other_active_workspaces_db, get_active_workspace_session_db, get_workspace_db,
@@ -18,64 +19,71 @@ use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "kebab-case")]
-pub enum WorkspaceType {
+pub enum ShipWorkspaceKind {
     #[default]
     Feature,
-    Refactor,
-    Experiment,
-    Hotfix,
-    /// Project-manager workspace: planning, triage, releases, specs. Not tied
-    /// to a single feature branch. Automatically unlocks the full PM tool surface.
-    Project,
+    Patch,
+    Service,
 }
 
-impl std::fmt::Display for WorkspaceType {
+impl std::fmt::Display for ShipWorkspaceKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WorkspaceType::Feature => write!(f, "feature"),
-            WorkspaceType::Refactor => write!(f, "refactor"),
-            WorkspaceType::Experiment => write!(f, "experiment"),
-            WorkspaceType::Hotfix => write!(f, "hotfix"),
-            WorkspaceType::Project => write!(f, "project"),
+            ShipWorkspaceKind::Feature => write!(f, "feature"),
+            ShipWorkspaceKind::Patch => write!(f, "patch"),
+            ShipWorkspaceKind::Service => write!(f, "service"),
         }
     }
 }
 
-impl std::str::FromStr for WorkspaceType {
+impl std::str::FromStr for ShipWorkspaceKind {
     type Err = anyhow::Error;
 
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        match value.to_lowercase().as_str() {
-            "feature" => Ok(WorkspaceType::Feature),
-            "refactor" => Ok(WorkspaceType::Refactor),
-            "experiment" => Ok(WorkspaceType::Experiment),
-            "hotfix" => Ok(WorkspaceType::Hotfix),
-            "project" => Ok(WorkspaceType::Project),
-            _ => Err(anyhow::anyhow!("Invalid workspace type: {}", value)),
-        }
+        parse_workspace_kind(value)
+            .ok_or_else(|| anyhow::anyhow!("Invalid workspace type: {}", value))
     }
+}
+
+fn parse_workspace_kind(value: &str) -> Option<ShipWorkspaceKind> {
+    match value.trim().to_lowercase().as_str() {
+        "feature" => Some(ShipWorkspaceKind::Feature),
+        "patch" => Some(ShipWorkspaceKind::Patch),
+        "service" => Some(ShipWorkspaceKind::Service),
+        "hotfix" => Some(ShipWorkspaceKind::Patch),
+        "refactor" | "experiment" => Some(ShipWorkspaceKind::Feature),
+        _ => None,
+    }
+}
+
+fn normalize_workspace_type(value: &str) -> ShipWorkspaceKind {
+    parse_workspace_kind(value).unwrap_or_default()
+}
+
+fn parse_workspace_status(value: &str) -> Option<WorkspaceStatus> {
+    match value.trim().to_lowercase().as_str() {
+        "active" => Some(WorkspaceStatus::Active),
+        "archived" => Some(WorkspaceStatus::Archived),
+        _ => None,
+    }
+}
+
+fn normalize_workspace_status(value: &str) -> WorkspaceStatus {
+    parse_workspace_status(value).unwrap_or_default()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceStatus {
     #[default]
-    Planned,
     Active,
-    Idle,
-    Review,
-    Merged,
     Archived,
 }
 
 impl std::fmt::Display for WorkspaceStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WorkspaceStatus::Planned => write!(f, "planned"),
             WorkspaceStatus::Active => write!(f, "active"),
-            WorkspaceStatus::Idle => write!(f, "idle"),
-            WorkspaceStatus::Review => write!(f, "review"),
-            WorkspaceStatus::Merged => write!(f, "merged"),
             WorkspaceStatus::Archived => write!(f, "archived"),
         }
     }
@@ -86,11 +94,7 @@ impl std::str::FromStr for WorkspaceStatus {
 
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
         match value.to_lowercase().as_str() {
-            "planned" => Ok(WorkspaceStatus::Planned),
             "active" => Ok(WorkspaceStatus::Active),
-            "idle" => Ok(WorkspaceStatus::Idle),
-            "review" => Ok(WorkspaceStatus::Review),
-            "merged" => Ok(WorkspaceStatus::Merged),
             "archived" => Ok(WorkspaceStatus::Archived),
             _ => Err(anyhow::anyhow!("Invalid workspace status: {}", value)),
         }
@@ -105,9 +109,11 @@ pub struct Workspace {
     pub id: String,
     pub branch: String,
     #[serde(default)]
-    pub workspace_type: WorkspaceType,
+    pub workspace_type: ShipWorkspaceKind,
     #[serde(default)]
     pub status: WorkspaceStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub feature_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,6 +137,79 @@ pub struct Workspace {
     pub compiled_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct Environment {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub tools: Vec<String>,
+    #[serde(default)]
+    pub rules: Vec<String>,
+    pub permissions_json: String,
+    #[serde(default)]
+    pub providers: Vec<String>,
+    pub hooks_json: String,
+    #[serde(default)]
+    pub mcp_servers: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProcessStatus {
+    #[default]
+    Running,
+    Paused,
+    Completed,
+    Error,
+    Interrupted,
+}
+
+impl std::fmt::Display for ProcessStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProcessStatus::Running => write!(f, "running"),
+            ProcessStatus::Paused => write!(f, "paused"),
+            ProcessStatus::Completed => write!(f, "completed"),
+            ProcessStatus::Error => write!(f, "error"),
+            ProcessStatus::Interrupted => write!(f, "interrupted"),
+        }
+    }
+}
+
+impl std::str::FromStr for ProcessStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
+            "running" => Ok(ProcessStatus::Running),
+            "paused" => Ok(ProcessStatus::Paused),
+            "completed" => Ok(ProcessStatus::Completed),
+            "error" => Ok(ProcessStatus::Error),
+            "interrupted" => Ok(ProcessStatus::Interrupted),
+            _ => Err(anyhow::anyhow!("Invalid process status: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct Process {
+    pub id: String,
+    pub workspace_id: String,
+    pub status: ProcessStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability: Option<String>,
+    pub started_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
@@ -238,8 +317,9 @@ pub struct WorkspaceRepairReport {
 #[derive(Debug, Clone, Default)]
 pub struct CreateWorkspaceRequest {
     pub branch: String,
-    pub workspace_type: Option<WorkspaceType>,
+    pub workspace_type: Option<ShipWorkspaceKind>,
     pub status: Option<WorkspaceStatus>,
+    pub environment_id: Option<String>,
     pub feature_id: Option<String>,
     pub spec_id: Option<String>,
     pub release_id: Option<String>,
@@ -308,20 +388,14 @@ fn annotate_session_stale_state(
         .unwrap_or(false);
 }
 
-fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> WorkspaceType {
+fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> ShipWorkspaceKind {
     if feature_id.is_some() {
-        return WorkspaceType::Feature;
+        return ShipWorkspaceKind::Feature;
     }
-    if branch.starts_with("refactor/") {
-        return WorkspaceType::Refactor;
+    if branch.starts_with("patch/") {
+        return ShipWorkspaceKind::Patch;
     }
-    if branch.starts_with("experiment/") {
-        return WorkspaceType::Experiment;
-    }
-    if branch.starts_with("hotfix/") {
-        return WorkspaceType::Hotfix;
-    }
-    WorkspaceType::Feature
+    ShipWorkspaceKind::Feature
 }
 
 fn workspace_id_from_branch(branch: &str) -> String {
@@ -614,8 +688,9 @@ fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
     Workspace {
         id: workspace_id_from_branch(branch),
         branch: branch.to_string(),
-        workspace_type: WorkspaceType::Feature,
-        status: WorkspaceStatus::Planned,
+        workspace_type: ShipWorkspaceKind::Feature,
+        status: WorkspaceStatus::Active,
+        environment_id: None,
         feature_id: None,
         spec_id: None,
         release_id: None,
@@ -691,48 +766,22 @@ fn persist_branch_link_from_workspace(ship_dir: &Path, workspace: &Workspace) ->
 }
 
 fn lifecycle_allows_transition(from: WorkspaceStatus, to: WorkspaceStatus) -> bool {
-    if from == to {
-        return true;
-    }
-
-    match from {
-        WorkspaceStatus::Planned => {
-            matches!(to, WorkspaceStatus::Active | WorkspaceStatus::Archived)
-        }
-        WorkspaceStatus::Active => matches!(
-            to,
-            WorkspaceStatus::Idle | WorkspaceStatus::Review | WorkspaceStatus::Merged
-        ),
-        WorkspaceStatus::Idle => matches!(
-            to,
-            WorkspaceStatus::Active | WorkspaceStatus::Review | WorkspaceStatus::Archived
-        ),
-        WorkspaceStatus::Review => matches!(
-            to,
-            WorkspaceStatus::Active | WorkspaceStatus::Merged | WorkspaceStatus::Archived
-        ),
-        WorkspaceStatus::Merged => {
-            matches!(to, WorkspaceStatus::Archived | WorkspaceStatus::Active)
-        }
-        WorkspaceStatus::Archived => matches!(to, WorkspaceStatus::Active),
-    }
+    from == to
+        || matches!(
+            (from, to),
+            (WorkspaceStatus::Active, WorkspaceStatus::Archived)
+                | (WorkspaceStatus::Archived, WorkspaceStatus::Active)
+        )
 }
 
-fn type_allows_status(workspace_type: WorkspaceType, status: WorkspaceStatus) -> bool {
-    if workspace_type == WorkspaceType::Experiment && status == WorkspaceStatus::Merged {
-        return false;
-    }
-    // Project workspace has no lifecycle end — it doesn't get merged or reviewed.
-    if workspace_type == WorkspaceType::Project
-        && matches!(status, WorkspaceStatus::Merged | WorkspaceStatus::Review)
-    {
-        return false;
-    }
+fn type_allows_status(workspace_type: ShipWorkspaceKind, status: WorkspaceStatus) -> bool {
+    let _ = workspace_type;
+    let _ = status;
     true
 }
 
 pub fn validate_workspace_transition(
-    workspace_type: WorkspaceType,
+    workspace_type: ShipWorkspaceKind,
     from: WorkspaceStatus,
     to: WorkspaceStatus,
 ) -> Result<()> {
@@ -762,6 +811,7 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
             id,
             workspace_type,
             status,
+            environment_id,
             feature_id,
             spec_id,
             release_id,
@@ -780,8 +830,9 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
             Workspace {
                 id,
                 branch: branch.to_string(),
-                workspace_type: workspace_type.parse().unwrap_or_default(),
-                status: status.parse().unwrap_or_default(),
+                workspace_type: normalize_workspace_type(&workspace_type),
+                status: normalize_workspace_status(&status),
+                environment_id,
                 feature_id,
                 spec_id,
                 release_id,
@@ -808,6 +859,7 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         id,
         workspace_type,
         status,
+        environment_id,
         feature_id,
         spec_id,
         release_id,
@@ -826,8 +878,9 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         workspaces.push(Workspace {
             id,
             branch,
-            workspace_type: workspace_type.parse().unwrap_or_default(),
-            status: status.parse().unwrap_or_default(),
+            workspace_type: normalize_workspace_type(&workspace_type),
+            status: normalize_workspace_status(&status),
+            environment_id,
             feature_id,
             spec_id,
             release_id,
@@ -876,6 +929,7 @@ pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
             workspace_id: &workspace_id,
             workspace_type: &workspace_type,
             status: &status,
+            environment_id: workspace.environment_id.as_deref(),
             feature_id: workspace.feature_id.as_deref(),
             spec_id: workspace.spec_id.as_deref(),
             release_id: workspace.release_id.as_deref(),
@@ -943,6 +997,29 @@ pub fn list_workspace_sessions(
         annotate_session_stale_state(session, &workspace_generation_by_branch);
     }
     Ok(sessions)
+}
+
+pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &str) -> Result<()> {
+    let branch = ensure_branch_key(branch)?;
+    let workspace = get_workspace(ship_dir, branch)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
+    let active = get_active_workspace_session_db(ship_dir, &workspace.id)?
+        .ok_or_else(|| anyhow::anyhow!("No active workspace session for '{}'", workspace.branch))?;
+
+    let normalized_note = note.trim();
+    if normalized_note.is_empty() {
+        return Err(anyhow!("Session note cannot be empty"));
+    }
+
+    append_event(
+        ship_dir,
+        "agent",
+        EventEntity::Session,
+        EventAction::Note,
+        active.id,
+        Some(format!("branch={} {}", workspace.branch, normalized_note)),
+    )?;
+    Ok(())
 }
 
 pub fn start_workspace_session(
@@ -1022,7 +1099,28 @@ pub fn start_workspace_session(
     insert_workspace_session_db(ship_dir, &session)?;
     let created = get_workspace_session_db(ship_dir, &session.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
-    Ok(hydrate_workspace_session(created))
+    let started = hydrate_workspace_session(created);
+
+    let mut details = vec![format!("branch={}", started.workspace_branch)];
+    if let Some(provider) = started.primary_provider.as_deref() {
+        details.push(format!("provider={provider}"));
+    }
+    if let Some(mode_id) = started.mode_id.as_deref() {
+        details.push(format!("mode={mode_id}"));
+    }
+    if let Some(goal) = started.goal.as_deref() {
+        details.push(format!("goal={goal}"));
+    }
+    append_event(
+        ship_dir,
+        "ship",
+        EventEntity::Session,
+        EventAction::Start,
+        started.id.clone(),
+        Some(details.join(" ")),
+    )?;
+
+    Ok(started)
 }
 
 pub fn end_workspace_session(
@@ -1049,7 +1147,28 @@ pub fn end_workspace_session(
 
     let ended = get_workspace_session_db(ship_dir, &active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;
-    Ok(hydrate_workspace_session(ended))
+    let ended = hydrate_workspace_session(ended);
+
+    let mut details = vec![format!("branch={}", ended.workspace_branch)];
+    if let Some(summary) = ended.summary.as_deref() {
+        details.push(format!("summary={summary}"));
+    }
+    if !ended.updated_feature_ids.is_empty() {
+        details.push(format!("updated_features={}", ended.updated_feature_ids.join(",")));
+    }
+    if !ended.updated_spec_ids.is_empty() {
+        details.push(format!("updated_specs={}", ended.updated_spec_ids.join(",")));
+    }
+    append_event(
+        ship_dir,
+        "ship",
+        EventEntity::Session,
+        EventAction::Stop,
+        ended.id.clone(),
+        Some(details.join(" ")),
+    )?;
+
+    Ok(ended)
 }
 
 /// Create or update a workspace record without requiring a git checkout.
@@ -1065,6 +1184,9 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
 
     if let Some(feature_id) = request.feature_id {
         workspace.feature_id = Some(feature_id);
+    }
+    if let Some(environment_id) = request.environment_id {
+        workspace.environment_id = normalize_optional_text(Some(environment_id));
     }
     if let Some(spec_id) = request.spec_id {
         workspace.spec_id = Some(spec_id);
@@ -1117,7 +1239,7 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     let base_status = existing
         .as_ref()
         .map(|entry| entry.status)
-        .unwrap_or(WorkspaceStatus::Planned);
+        .unwrap_or(WorkspaceStatus::Active);
     let next_status = request.status.unwrap_or(base_status);
 
     validate_workspace_transition(workspace.workspace_type, base_status, next_status)?;
@@ -1171,7 +1293,7 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 
     workspace.id = workspace_id_from_branch(branch);
     workspace.branch = branch.to_string();
-    if workspace.workspace_type == WorkspaceType::Feature {
+    if workspace.workspace_type == ShipWorkspaceKind::Feature {
         workspace.workspace_type = infer_workspace_type(branch, workspace.feature_id.as_deref());
     }
 
@@ -1222,7 +1344,7 @@ pub fn sync_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 }
 
 /// Returns the type of the currently active workspace, or `None` if no workspace is active.
-pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<WorkspaceType>> {
+pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<ShipWorkspaceKind>> {
     let workspaces = list_workspaces(ship_dir)?;
     Ok(workspaces
         .iter()
@@ -1230,24 +1352,24 @@ pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<WorkspaceType
         .map(|w| w.workspace_type))
 }
 
-/// Create the project-manager workspace ("ship") if it doesn't already exist.
+/// Create the default service workspace ("ship") if it doesn't already exist.
 /// Called from `init_project`. The workspace starts Active so it's immediately
 /// usable, and uses the branch name "ship".
-pub fn seed_project_workspace(ship_dir: &Path) -> Result<()> {
+pub fn seed_service_workspace(ship_dir: &Path) -> Result<()> {
     const PROJECT_BRANCH: &str = "ship";
 
-    // Don't re-seed if any project workspace already exists.
+    // Don't re-seed if any service workspace already exists.
     let existing = list_workspaces(ship_dir)?;
     if existing
         .iter()
-        .any(|w| w.workspace_type == WorkspaceType::Project)
+        .any(|w| w.workspace_type == ShipWorkspaceKind::Service)
     {
         return Ok(());
     }
 
     let now = Utc::now();
     let mut workspace = new_workspace(PROJECT_BRANCH, now);
-    workspace.workspace_type = WorkspaceType::Project;
+    workspace.workspace_type = ShipWorkspaceKind::Service;
     workspace.status = WorkspaceStatus::Active;
     workspace.last_activated_at = Some(now);
 
@@ -1300,32 +1422,32 @@ mod tests {
     fn lifecycle_transition_matrix_covers_expected_paths() {
         assert!(
             validate_workspace_transition(
-                WorkspaceType::Feature,
-                WorkspaceStatus::Planned,
+                ShipWorkspaceKind::Feature,
+                WorkspaceStatus::Archived,
                 WorkspaceStatus::Active
             )
             .is_ok()
         );
         assert!(
             validate_workspace_transition(
-                WorkspaceType::Feature,
+                ShipWorkspaceKind::Feature,
                 WorkspaceStatus::Active,
-                WorkspaceStatus::Review
+                WorkspaceStatus::Archived
             )
             .is_ok()
         );
         assert!(
             validate_workspace_transition(
-                WorkspaceType::Feature,
-                WorkspaceStatus::Review,
-                WorkspaceStatus::Merged
+                ShipWorkspaceKind::Feature,
+                WorkspaceStatus::Archived,
+                WorkspaceStatus::Archived
             )
             .is_ok()
         );
         assert!(
             validate_workspace_transition(
-                WorkspaceType::Feature,
-                WorkspaceStatus::Merged,
+                ShipWorkspaceKind::Feature,
+                WorkspaceStatus::Archived,
                 WorkspaceStatus::Archived
             )
             .is_ok()
@@ -1333,30 +1455,66 @@ mod tests {
     }
 
     #[test]
-    fn invalid_transitions_are_rejected() {
-        let err = validate_workspace_transition(
-            WorkspaceType::Feature,
-            WorkspaceStatus::Planned,
-            WorkspaceStatus::Review,
-        )
-        .unwrap_err();
+    fn runtime_status_transitions_cover_active_archived() {
         assert!(
-            err.to_string()
-                .contains("Invalid workspace transition: planned -> review")
+            validate_workspace_transition(
+                ShipWorkspaceKind::Feature,
+                WorkspaceStatus::Archived,
+                WorkspaceStatus::Archived,
+            )
+            .is_ok()
         );
     }
 
     #[test]
-    fn experiment_workspace_can_never_merge() {
-        let err = validate_workspace_transition(
-            WorkspaceType::Experiment,
-            WorkspaceStatus::Review,
-            WorkspaceStatus::Merged,
-        )
-        .unwrap_err();
+    fn workspace_kind_does_not_restrict_runtime_status() {
         assert!(
-            err.to_string()
-                .contains("Workspace type 'experiment' cannot enter status 'merged'")
+            validate_workspace_transition(
+                ShipWorkspaceKind::Service,
+                WorkspaceStatus::Active,
+                WorkspaceStatus::Archived,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn workspace_kind_from_str_accepts_legacy_aliases() {
+        assert_eq!(
+            ShipWorkspaceKind::from_str("feature").unwrap(),
+            ShipWorkspaceKind::Feature
+        );
+        assert_eq!(
+            ShipWorkspaceKind::from_str("patch").unwrap(),
+            ShipWorkspaceKind::Patch
+        );
+        assert_eq!(
+            ShipWorkspaceKind::from_str("service").unwrap(),
+            ShipWorkspaceKind::Service
+        );
+        assert_eq!(
+            ShipWorkspaceKind::from_str("hotfix").unwrap(),
+            ShipWorkspaceKind::Patch
+        );
+        assert_eq!(
+            ShipWorkspaceKind::from_str("refactor").unwrap(),
+            ShipWorkspaceKind::Feature
+        );
+        assert_eq!(
+            ShipWorkspaceKind::from_str("experiment").unwrap(),
+            ShipWorkspaceKind::Feature
+        );
+    }
+
+    #[test]
+    fn workspace_read_models_normalize_unknown_values() {
+        assert_eq!(
+            normalize_workspace_type("weird-type"),
+            ShipWorkspaceKind::Feature
+        );
+        assert_eq!(
+            normalize_workspace_status("in-progress"),
+            WorkspaceStatus::Active
         );
     }
 
@@ -1373,24 +1531,22 @@ mod tests {
     fn inferred_workspace_type_prefers_feature_links_then_prefixes() {
         assert_eq!(
             infer_workspace_type("sandbox/personal", Some("auth-redesign")),
-            WorkspaceType::Feature
+            ShipWorkspaceKind::Feature
         );
         assert_eq!(
-            infer_workspace_type("experiment/agent-lab", None),
-            WorkspaceType::Experiment
+            infer_workspace_type("service/agent-lab", None),
+            ShipWorkspaceKind::Feature
         );
         assert_eq!(
-            infer_workspace_type("hotfix/token", None),
-            WorkspaceType::Hotfix
+            infer_workspace_type("patch/token", None),
+            ShipWorkspaceKind::Patch
         );
     }
 
     #[test]
     fn create_workspace_hydrates_feature_link_from_branch_context() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
         crate::state_db::set_branch_link(
             &ship_dir,
             "feature/auth-redesign",
@@ -1414,9 +1570,7 @@ mod tests {
     fn create_workspace_mixed_branch_links_preserve_spec_context_and_hydrate_feature_release()
     -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         insert_feature_for_branch(
             &ship_dir,
@@ -1452,31 +1606,27 @@ mod tests {
     #[test]
     fn workspace_never_persists_spec_as_branch_owner() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let workspace = create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
-                branch: "experiment/spec-context".to_string(),
-                workspace_type: Some(WorkspaceType::Experiment),
+                branch: "service/spec-context".to_string(),
+                workspace_type: Some(ShipWorkspaceKind::Feature),
                 spec_id: Some("spec-only".to_string()),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
 
         assert_eq!(workspace.spec_id.as_deref(), Some("spec-only"));
-        assert!(get_branch_link(&ship_dir, "experiment/spec-context")?.is_none());
+        assert!(get_branch_link(&ship_dir, "service/spec-context")?.is_none());
         Ok(())
     }
 
     #[test]
     fn activating_workspace_demotes_other_active_workspace() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let first = create_workspace(
             &ship_dir,
@@ -1504,7 +1654,7 @@ mod tests {
             .ok_or_else(|| anyhow::anyhow!("feature/alpha workspace missing"))?;
         let second_after = get_workspace(&ship_dir, "feature/beta")?
             .ok_or_else(|| anyhow::anyhow!("feature/beta workspace missing"))?;
-        assert_eq!(first_after.status, WorkspaceStatus::Idle);
+        assert_eq!(first_after.status, WorkspaceStatus::Archived);
         assert_eq!(second_after.status, WorkspaceStatus::Active);
         assert!(second_after.last_activated_at.is_some());
         Ok(())
@@ -1513,9 +1663,7 @@ mod tests {
     #[test]
     fn activate_workspace_main_branch_stays_unlinked() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let workspace = activate_workspace(&ship_dir, "main")?;
         assert_eq!(workspace.status, WorkspaceStatus::Active);
@@ -1528,9 +1676,7 @@ mod tests {
     #[test]
     fn delete_workspace_removes_workspace_links_and_sessions() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let workspace = create_workspace(
             &ship_dir,
@@ -1578,9 +1724,7 @@ mod tests {
     #[test]
     fn create_workspace_clears_worktree_metadata_when_switched_to_non_worktree() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let branch = "feature/worktree-cleanup";
         let initial = create_workspace(
@@ -1619,9 +1763,7 @@ mod tests {
     #[test]
     fn create_workspace_requires_path_for_worktree_records() -> Result<()> {
         let tmp = tempdir()?;
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        crate::state_db::ensure_project_database(&ship_dir)?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let err = create_workspace(
             &ship_dir,
@@ -1689,6 +1831,18 @@ mod tests {
         assert_eq!(ended.updated_feature_ids, vec!["feat-parser".to_string()]);
         assert_eq!(ended.updated_spec_ids, vec!["spec-parser".to_string()]);
         assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
+
+        let events = crate::events::read_events(&ship_dir)?;
+        assert!(events.iter().any(|event| {
+            event.entity == crate::events::EventEntity::Session
+                && event.action == crate::events::EventAction::Start
+                && event.subject == started.id
+        }));
+        assert!(events.iter().any(|event| {
+            event.entity == crate::events::EventEntity::Session
+                && event.action == crate::events::EventAction::Stop
+                && event.subject == ended.id
+        }));
         Ok(())
     }
 
@@ -2001,7 +2155,7 @@ mod tests {
                 ..Default::default()
             },
         )?;
-        transition_workspace_status(&ship_dir, "feature/repair-idle", WorkspaceStatus::Idle)?;
+        transition_workspace_status(&ship_dir, "feature/repair-idle", WorkspaceStatus::Archived)?;
 
         let report = repair_workspace(&ship_dir, "feature/repair-idle", false)?;
         assert!(report.needs_recompile);

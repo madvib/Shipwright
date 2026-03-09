@@ -50,7 +50,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: FeatureCommands,
     },
-    /// Manage workspace lifecycle state
+    /// Manage core workspace lifecycle state (create, activate, session, archive)
     Workspace {
         #[command(subcommand)]
         action: WorkspaceCommands,
@@ -98,19 +98,6 @@ pub enum Commands {
     Mode {
         #[command(subcommand)]
         action: ModeCommands,
-    },
-    /// Manage the active session (shortcut for `workspace session`)
-    Session {
-        #[command(subcommand)]
-        action: SessionCommands,
-    },
-    /// Log a progress note to the active session
-    Log {
-        /// Note to record
-        note: String,
-        /// Branch workspace key (defaults to current git branch)
-        #[arg(long)]
-        branch: Option<String>,
     },
     /// Manage MCP servers registered in .ship/agents/mcp.toml. Runs the server if no subcommand is provided.
     Mcp {
@@ -627,10 +614,10 @@ pub enum WorkspaceCommands {
         #[arg(long)]
         mode: Option<String>,
     },
-    /// Create/update a workspace runtime record (git checkout optional)
+    /// Create/update a workspace runtime record (git checkout optional, session bootstrap supported)
     Create {
         branch: String,
-        /// Optional workspace type: feature | refactor | experiment | hotfix
+        /// Optional workspace type: feature | patch | service
         #[arg(long = "type")]
         workspace_type: Option<String>,
         /// Link this workspace to a feature id
@@ -639,6 +626,9 @@ pub enum WorkspaceCommands {
         /// Title for an auto-created feature when --type feature is used without --feature
         #[arg(long)]
         feature_title: Option<String>,
+        /// Optional profile preset id used to seed workspace configuration
+        #[arg(long = "environment-id", alias = "profile")]
+        environment_id: Option<String>,
         /// Link this workspace to a spec id
         #[arg(long)]
         spec: Option<String>,
@@ -660,6 +650,21 @@ pub enum WorkspaceCommands {
         /// Path for the worktree (defaults to ../{branch})
         #[arg(long)]
         worktree_path: Option<String>,
+        /// Start a session immediately after workspace setup
+        #[arg(long, default_value_t = false)]
+        start_session: bool,
+        /// Session goal/intention for immediate start
+        #[arg(long)]
+        goal: Option<String>,
+        /// Primary provider for immediate session start
+        #[arg(long)]
+        provider: Option<String>,
+        /// Optional mode override for immediate session start
+        #[arg(long = "session-mode")]
+        session_mode: Option<String>,
+        /// Disable interactive follow-up prompts (recommended for scripts/agents)
+        #[arg(long, default_value_t = false)]
+        no_input: bool,
     },
     /// Manage execution sessions within a long-lived workspace
     Session {
@@ -677,7 +682,7 @@ pub enum WorkspaceCommands {
     },
     /// Mark a workspace as archived
     Archive { branch: String },
-    /// Reconcile legacy feature/spec/workspace links (dry-run by default)
+    /// Reconcile feature/spec/workspace links (dry-run by default)
     Reconcile {
         /// Apply mutations (omit for dry-run preview)
         #[arg(long, default_value_t = false)]
@@ -691,48 +696,6 @@ pub enum WorkspaceCommands {
         /// Preview repair actions without writing changes
         #[arg(long, default_value_t = false)]
         dry_run: bool,
-    },
-}
-
-/// Top-level session commands — delegates to workspace session internals.
-#[derive(Subcommand, Debug)]
-pub enum SessionCommands {
-    /// Start a new session (defaults to current workspace branch)
-    Start {
-        #[arg(long)]
-        branch: Option<String>,
-        /// Session goal/intention
-        #[arg(long)]
-        goal: Option<String>,
-        /// Optional mode override
-        #[arg(long)]
-        mode: Option<String>,
-        /// Primary provider
-        #[arg(long)]
-        provider: Option<String>,
-    },
-    /// End the active session
-    End {
-        #[arg(long)]
-        branch: Option<String>,
-        #[arg(long)]
-        summary: Option<String>,
-        #[arg(long = "updated-feature")]
-        updated_feature: Vec<String>,
-        #[arg(long = "updated-spec")]
-        updated_spec: Vec<String>,
-    },
-    /// Show the active session status
-    Status {
-        #[arg(long)]
-        branch: Option<String>,
-    },
-    /// List recent sessions
-    List {
-        #[arg(long)]
-        branch: Option<String>,
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
     },
 }
 
@@ -783,6 +746,14 @@ pub enum WorkspaceSessionCommands {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
+    /// Record a progress note for the active session in this workspace
+    Note {
+        /// Progress note
+        note: String,
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -820,7 +791,7 @@ pub enum ProjectCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum DevCommands {
-    /// Migrate legacy YAML issues and JSON config to TOML
+    /// Migrate YAML issues and JSON config to TOML
     Migrate {
         /// Re-run startup markdown imports even if already marked complete
         #[arg(long, default_value_t = false)]

@@ -37,8 +37,8 @@ pub use config::{
 
 pub use events::{
     EVENTS_FILE_NAME, EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
-    event_log_path, export_events_ndjson, ingest_external_events, latest_event_seq,
-    list_events_since, read_events, sync_event_snapshot,
+    export_events_ndjson, ingest_external_events, latest_event_seq, list_events_since, read_events,
+    sync_event_snapshot,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
@@ -69,13 +69,14 @@ pub use state_db::{
     upsert_workspace_db,
 };
 pub use workspace::{
-    CreateWorkspaceRequest, EndWorkspaceSessionRequest, Workspace, WorkspaceProviderMatrix,
-    WorkspaceRepairReport, WorkspaceSession, WorkspaceSessionStatus, WorkspaceStatus,
-    WorkspaceType, activate_workspace, create_workspace, delete_workspace, end_workspace_session,
-    get_active_workspace_session, get_workspace, get_workspace_provider_matrix,
-    list_workspace_sessions, list_workspaces, repair_workspace, set_workspace_active_mode,
-    start_workspace_session, sync_workspace, transition_workspace_status, upsert_workspace,
-    validate_workspace_transition,
+    CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,
+    ShipWorkspaceKind, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
+    WorkspaceSessionStatus, WorkspaceStatus, activate_workspace, create_workspace,
+    delete_workspace, end_workspace_session, get_active_workspace_session, get_workspace,
+    get_workspace_provider_matrix, list_workspace_sessions, list_workspaces, repair_workspace,
+    record_workspace_session_progress,
+    set_workspace_active_mode, start_workspace_session, sync_workspace,
+    transition_workspace_status, upsert_workspace, validate_workspace_transition,
 };
 
 pub fn gen_nanoid() -> String {
@@ -231,8 +232,6 @@ mod tests {
         let ship_path = init_project(tmp.path().to_path_buf())?;
         assert!(ship_path.exists());
         // workflow/ namespace
-        assert!(ship_path.join("workflow/issues/backlog").is_dir());
-        assert!(ship_path.join("workflow/issues/in-progress").is_dir());
         assert!(ship_path.join("workflow/specs").is_dir());
         assert!(ship_path.join("project/features").is_dir());
         // project/ namespace

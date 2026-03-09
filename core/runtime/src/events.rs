@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use sqlx::{Row, SqliteConnection};
+use sqlx::Row;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,15 +18,14 @@ const TRACKED_DIRS: &[&str] = &[
     "project/notes",
     "project/adrs",
 ];
-const TRACKED_FILES: &[&str] = &[
-    crate::config::PRIMARY_CONFIG_FILE,
-    crate::config::LEGACY_CONFIG_FILE,
-];
+const TRACKED_FILES: &[&str] = &[crate::config::PRIMARY_CONFIG_FILE];
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EventEntity {
     Project,
+    Workspace,
+    Session,
     Issue,
     Note,
     Spec,
@@ -47,6 +46,8 @@ impl EventEntity {
     fn as_db(&self) -> &'static str {
         match self {
             EventEntity::Project => "project",
+            EventEntity::Workspace => "workspace",
+            EventEntity::Session => "session",
             EventEntity::Issue => "issue",
             EventEntity::Note => "note",
             EventEntity::Spec => "spec",
@@ -67,6 +68,8 @@ impl EventEntity {
     fn from_db(value: &str) -> Result<Self> {
         match value {
             "project" => Ok(EventEntity::Project),
+            "workspace" => Ok(EventEntity::Workspace),
+            "session" => Ok(EventEntity::Session),
             "issue" => Ok(EventEntity::Issue),
             "note" => Ok(EventEntity::Note),
             "spec" => Ok(EventEntity::Spec),
@@ -175,91 +178,12 @@ struct EventSnapshot {
     files: HashMap<String, FileFingerprint>,
 }
 
-pub fn event_log_path(project_dir: &Path) -> PathBuf {
-    project_dir.join(EVENTS_FILE_NAME)
-}
-
 fn event_index_path(project_dir: &Path) -> PathBuf {
     project_dir.join(EVENT_INDEX_FILE)
 }
 
-fn read_events_from_path(path: &Path) -> Result<Vec<EventRecord>> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read event log: {}", path.display()))?;
-    let mut events = Vec::new();
-    for (idx, line) in content.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let event: EventRecord = serde_json::from_str(line).map_err(|e| {
-            anyhow!(
-                "Failed to parse event log {} line {}: {}",
-                path.display(),
-                idx + 1,
-                e
-            )
-        })?;
-        events.push(event);
-    }
-    Ok(events)
-}
-
-fn import_legacy_events_file(conn: &mut SqliteConnection, legacy_path: &Path) -> Result<()> {
-    if !legacy_path.exists() {
-        return Ok(());
-    }
-    let records = match read_events_from_path(legacy_path) {
-        Ok(records) => records,
-        Err(_) => return Ok(()),
-    };
-
-    for record in records {
-        let timestamp = record.timestamp.to_rfc3339();
-        crate::state_db::block_on(async {
-            sqlx::query(
-                "INSERT INTO event_log (timestamp, actor, entity, action, subject, details)
-                 VALUES (?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&timestamp)
-            .bind(&record.actor)
-            .bind(record.entity.as_db())
-            .bind(record.action.as_db())
-            .bind(&record.subject)
-            .bind(&record.details)
-            .execute(&mut *conn)
-            .await?;
-            Ok(())
-        })?;
-    }
-
-    fs::remove_file(legacy_path).with_context(|| {
-        format!(
-            "Failed to remove legacy event stream after import: {}",
-            legacy_path.display()
-        )
-    })?;
-    Ok(())
-}
-
 pub fn ensure_event_log(project_dir: &Path) -> Result<()> {
-    let mut conn = crate::state_db::open_project_connection(project_dir)?;
-    import_legacy_events_file(
-        &mut conn,
-        &project_dir.join("workflow").join(EVENTS_FILE_NAME),
-    )?;
-
-    let row = crate::state_db::block_on(async {
-        sqlx::query("SELECT COUNT(*) FROM event_log")
-            .fetch_one(&mut conn)
-            .await
-    })?;
-    let count: i64 = row.get(0);
-    if count == 0 {
-        import_legacy_events_file(&mut conn, &event_log_path(project_dir))?;
-    }
+    let _conn = crate::state_db::open_project_connection(project_dir)?;
     Ok(())
 }
 
