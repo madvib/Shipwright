@@ -1,0 +1,6 @@
+version: 1
+display_name: Provider Integration Hardening
+short_description: Ship provider integration audit and implementation workflow
+default_prompt: >-
+  Run the provider-integration-hardening workflow for <provider-id>: audit docs,
+  implement hook/model/settings updates, add tests, and update dogfood docs.
