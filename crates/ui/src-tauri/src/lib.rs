@@ -10,7 +10,7 @@ use runtime::config::{
     ProjectDiscovery,
 };
 use runtime::project::{
-    features_dir, get_active_project_global, get_project_dir, releases_dir,
+    features_dir, get_active_project_global, get_project_dir, releases_dir, sanitize_file_name,
     resolve_project_ship_dir, set_active_project_global, SHIP_DIR_NAME,
 };
 use runtime::{
@@ -424,6 +424,18 @@ pub struct WorkspaceEditorInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub current: bool,
+    pub base_branch: String,
+    pub ahead: u64,
+    pub behind: u64,
+    pub touched_files: usize,
+    pub insertions: u64,
+    pub deletions: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct WorkspaceFileChange {
     pub status: String,
     pub path: String,
@@ -439,6 +451,27 @@ pub struct WorkspaceGitStatusSummary {
     pub behind: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct BranchFileChange {
+    pub status: String,
+    pub path: String,
+    pub insertions: u64,
+    pub deletions: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct BranchDetailSummary {
+    pub branch: String,
+    pub base_branch: String,
+    pub ahead: u64,
+    pub behind: u64,
+    pub touched_files: usize,
+    pub insertions: u64,
+    pub deletions: u64,
+    pub has_workspace: bool,
+    pub changes: Vec<BranchFileChange>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -1317,20 +1350,27 @@ fn start_project_watcher(
 
             match event_rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(Ok(event)) => {
-                    perf.watcher_fs_events.fetch_add(1, Ordering::Relaxed);
                     if matches!(event.kind, NotifyEventKind::Access(_)) {
                         continue;
                     }
+
+                    let mut saw_relevant_change = false;
                     for path in event.paths {
                         if path == config_file {
                             pending.config = true;
+                            saw_relevant_change = true;
                             continue;
                         }
                         if let Some(events_db) = events_db.as_ref() {
                             if path == *events_db {
                                 pending.events_db = true;
+                                saw_relevant_change = true;
                             }
                         }
+                    }
+
+                    if saw_relevant_change {
+                        perf.watcher_fs_events.fetch_add(1, Ordering::Relaxed);
                     }
                 }
                 Ok(Err(error)) => {
@@ -1634,6 +1674,59 @@ fn delete_spec_cmd(
     Ok(())
 }
 
+fn normalize_optional_branch(value: Option<&str>) -> Option<String> {
+    value.and_then(|entry| {
+        let trimmed = entry.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn default_feature_workspace_branch(title: &str) -> String {
+    let slug = sanitize_file_name(title);
+    if slug.is_empty() {
+        "feature/workspace".to_string()
+    } else {
+        format!("feature/{slug}")
+    }
+}
+
+fn default_release_workspace_branch(version: &str) -> String {
+    let slug = sanitize_file_name(version);
+    if slug.is_empty() {
+        "release/workspace".to_string()
+    } else {
+        format!("release/{slug}")
+    }
+}
+
+fn auto_provision_workspace(
+    project_dir: &Path,
+    branch: &str,
+    workspace_type: Option<ShipWorkspaceKind>,
+    feature_id: Option<String>,
+    release_id: Option<String>,
+) -> Result<Workspace, String> {
+    let git_root = project_dir.parent().unwrap_or(project_dir);
+    let worktree_path = detect_existing_worktree_path(git_root, branch);
+    create_workspace(
+        project_dir,
+        CreateWorkspaceRequest {
+            branch: branch.to_string(),
+            workspace_type,
+            feature_id,
+            release_id,
+            is_worktree: Some(true),
+            worktree_path,
+            ..CreateWorkspaceRequest::default()
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
 // ─── Commands: Releases ──────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1694,6 +1787,19 @@ fn create_release_cmd(
         normalized_tags,
     )
     .map_err(|e| e.to_string())?;
+    let workspace_branch = default_release_workspace_branch(&entry.version);
+    if let Err(err) = auto_provision_workspace(
+        &project_dir,
+        &workspace_branch,
+        Some(ShipWorkspaceKind::Feature),
+        None,
+        Some(entry.id.clone()),
+    ) {
+        eprintln!(
+            "[ship-ui] warning: release workspace auto-provision failed for {}: {}",
+            workspace_branch, err
+        );
+    }
     log_action(
         &project_dir,
         "release create",
@@ -1803,15 +1909,29 @@ fn create_feature_cmd(
     state: State<AppState>,
 ) -> Result<FeatureDocument, String> {
     let project_dir = get_active_dir(&state)?;
+    let workspace_branch = normalize_optional_branch(branch.as_deref())
+        .unwrap_or_else(|| default_feature_workspace_branch(&title));
     let entry = create_feature(
         &project_dir,
         &title,
         &content,
         release.as_deref(),
         spec.as_deref(),
-        branch.as_deref(),
+        Some(workspace_branch.as_str()),
     )
     .map_err(|e| e.to_string())?;
+    if let Err(err) = auto_provision_workspace(
+        &project_dir,
+        &workspace_branch,
+        Some(ShipWorkspaceKind::Feature),
+        Some(entry.id.clone()),
+        entry.feature.metadata.release_id.clone(),
+    ) {
+        eprintln!(
+            "[ship-ui] warning: feature workspace auto-provision failed for {}: {}",
+            workspace_branch, err
+        );
+    }
     log_action(
         &project_dir,
         "feature create",
@@ -2411,12 +2531,37 @@ fn normalize_terminal_provider(provider: Option<String>) -> String {
         .to_ascii_lowercase()
 }
 
+#[cfg(windows)]
+fn resolve_shell_command() -> String {
+    if let Ok(explicit) = std::env::var("SHIP_TERMINAL_SHELL") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    if let Some(path) = resolve_command_in_path("pwsh") {
+        return path.to_string_lossy().to_string();
+    }
+
+    if let Some(path) = resolve_command_in_path("powershell") {
+        return path.to_string_lossy().to_string();
+    }
+
+    std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+}
+
+#[cfg(not(windows))]
+fn resolve_shell_command() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
+}
+
 fn resolve_terminal_command(provider: &str) -> String {
     match provider {
         "claude" => "claude".to_string(),
         "codex" => "codex".to_string(),
         "gemini" => "gemini".to_string(),
-        "shell" => std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string()),
+        "shell" => resolve_shell_command(),
         other => other.to_string(),
     }
 }
@@ -2554,7 +2699,8 @@ async fn create_workspace_cmd(
     spec_id: Option<String>,
     release_id: Option<String>,
     mode_id: Option<String>,
-    activate: Option<bool>,
+    is_worktree: Option<bool>,
+    worktree_path: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Workspace, String> {
     let project_dir = get_active_dir(&state)?;
@@ -2565,8 +2711,19 @@ async fn create_workspace_cmd(
             .transpose()
             .map_err(|e| e.to_string())?;
 
-        let status = if activate.unwrap_or(false) {
-            Some(WorkspaceStatus::Active)
+        let git_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+        let branch_key = branch.trim().to_string();
+        let resolved_worktree_path = if is_worktree.unwrap_or(false) {
+            let explicit = worktree_path.and_then(|value| {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            });
+
+            explicit.or_else(|| detect_existing_worktree_path(&git_root, &branch_key))
         } else {
             None
         };
@@ -2574,14 +2731,15 @@ async fn create_workspace_cmd(
         create_workspace(
             &project_dir,
             CreateWorkspaceRequest {
-                branch,
+                branch: branch_key,
                 workspace_type: parsed_workspace_type,
-                status,
                 environment_id,
                 feature_id,
                 spec_id,
                 release_id,
                 active_mode: mode_id,
+                is_worktree,
+                worktree_path: resolved_worktree_path,
                 ..CreateWorkspaceRequest::default()
             },
         )
@@ -2878,7 +3036,182 @@ fn collect_workspace_ahead_behind(target_dir: &Path) -> (Option<String>, u64, u6
         .next()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
+
     (upstream, ahead, behind)
+}
+
+fn normalize_diff_path(raw: &str) -> String {
+    raw.rsplit(" -> ")
+        .next()
+        .unwrap_or(raw)
+        .trim()
+        .trim_matches('"')
+        .to_string()
+}
+
+fn parse_branch_name_status(line: &str) -> Option<(String, String)> {
+    let mut parts = line.split('\t');
+    let raw_status = parts.next()?.trim();
+    let status = raw_status.chars().next()?.to_string();
+    let path = parts.last()?.trim();
+    if path.is_empty() {
+        return None;
+    }
+    Some((status, normalize_diff_path(path)))
+}
+
+fn collect_branch_change_stats(
+    git_root: &Path,
+    base_branch: &str,
+    branch: &str,
+) -> Vec<BranchFileChange> {
+    if branch == base_branch {
+        return Vec::new();
+    }
+
+    let range = format!("{base_branch}...{branch}");
+    let mut changes: HashMap<String, BranchFileChange> = HashMap::new();
+
+    let numstat_output = std::process::Command::new("git")
+        .args(["diff", "--numstat", "--find-renames", range.as_str()])
+        .current_dir(git_root)
+        .output();
+
+    if let Ok(output) = numstat_output {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let mut parts = line.split('\t');
+                let added = parts.next().unwrap_or("0");
+                let removed = parts.next().unwrap_or("0");
+                let path_raw = parts.next().unwrap_or("").trim();
+                if path_raw.is_empty() {
+                    continue;
+                }
+
+                let path = normalize_diff_path(path_raw);
+                let insertions = added.parse::<u64>().unwrap_or(0);
+                let deletions = removed.parse::<u64>().unwrap_or(0);
+                changes
+                    .entry(path.clone())
+                    .and_modify(|entry| {
+                        entry.insertions = entry.insertions.saturating_add(insertions);
+                        entry.deletions = entry.deletions.saturating_add(deletions);
+                    })
+                    .or_insert(BranchFileChange {
+                        status: "M".to_string(),
+                        path,
+                        insertions,
+                        deletions,
+                    });
+            }
+        }
+    }
+
+    let status_output = std::process::Command::new("git")
+        .args(["diff", "--name-status", "--find-renames", range.as_str()])
+        .current_dir(git_root)
+        .output();
+
+    if let Ok(output) = status_output {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Some((status, path)) = parse_branch_name_status(line) {
+                    changes
+                        .entry(path.clone())
+                        .and_modify(|entry| entry.status = status.clone())
+                        .or_insert(BranchFileChange {
+                            status,
+                            path,
+                            insertions: 0,
+                            deletions: 0,
+                        });
+                }
+            }
+        }
+    }
+
+    let mut entries = changes.into_values().collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.path.cmp(&right.path));
+    entries
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_branch_detail_cmd(
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<BranchDetailSummary, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let branch = branch.trim().to_string();
+        if branch.is_empty() {
+            return Err("Branch is required".to_string());
+        }
+
+        let git_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+        let base_branch =
+            resolve_default_compare_branch(&git_root).unwrap_or_else(|| "main".to_string());
+        let (ahead, behind) = collect_branch_ahead_behind(&git_root, &base_branch, &branch);
+        let (touched_files, insertions, deletions) =
+            collect_branch_diff_totals(&git_root, &base_branch, &branch);
+        let changes = collect_branch_change_stats(&git_root, &base_branch, &branch);
+        let has_workspace = get_workspace(&project_dir, &branch)
+            .map_err(|e| e.to_string())?
+            .is_some();
+
+        Ok(BranchDetailSummary {
+            branch,
+            base_branch,
+            ahead,
+            behind,
+            touched_files,
+            insertions,
+            deletions,
+            has_workspace,
+            changes,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_branch_file_diff_cmd(
+    branch: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let branch = branch.trim().to_string();
+        let file_path = path.trim().to_string();
+        if branch.is_empty() {
+            return Err("Branch is required".to_string());
+        }
+        if file_path.is_empty() {
+            return Err("Path is required".to_string());
+        }
+
+        let git_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+        let base_branch =
+            resolve_default_compare_branch(&git_root).unwrap_or_else(|| "main".to_string());
+        let range = format!("{base_branch}...{branch}");
+
+        let output = std::process::Command::new("git")
+            .args(["diff", "--no-color", range.as_str(), "--", file_path.as_str()])
+            .current_dir(&git_root)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            return Err("Failed to load branch file diff".to_string());
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -3309,6 +3642,225 @@ async fn transition_workspace_cmd(
     let next_status: WorkspaceStatus = status.parse().map_err(|e: anyhow::Error| e.to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         transition_workspace_status(&project_dir, &branch, next_status).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn resolve_default_compare_branch(git_root: &Path) -> Option<String> {
+    let origin_head = std::process::Command::new("git")
+        .args(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+        .current_dir(git_root)
+        .output()
+        .ok();
+
+    if let Some(output) = origin_head {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Some(branch) = raw.strip_prefix("refs/remotes/origin/") {
+                let trimmed = branch.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    for candidate in ["main", "master"] {
+        let verify_ref = format!("refs/heads/{candidate}");
+        let status = std::process::Command::new("git")
+            .args(["show-ref", "--verify", "--quiet", verify_ref.as_str()])
+            .current_dir(git_root)
+            .status();
+        if let Ok(exit) = status {
+            if exit.success() {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+
+    let current = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(git_root)
+        .output()
+        .ok()?;
+    if !current.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8_lossy(&current.stdout).trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+fn collect_branch_ahead_behind(git_root: &Path, base: &str, branch: &str) -> (u64, u64) {
+    if branch == base {
+        return (0, 0);
+    }
+
+    let graph = format!("{base}...{branch}");
+    let output = std::process::Command::new("git")
+        .args(["rev-list", "--left-right", "--count", graph.as_str()])
+        .current_dir(git_root)
+        .output();
+
+    let Ok(output) = output else {
+        return (0, 0);
+    };
+    if !output.status.success() {
+        return (0, 0);
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let mut parts = raw.split_whitespace();
+    let behind = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let ahead = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    (ahead, behind)
+}
+
+fn collect_branch_diff_totals(git_root: &Path, base: &str, branch: &str) -> (usize, u64, u64) {
+    if branch == base {
+        return (0, 0, 0);
+    }
+
+    let range = format!("{base}...{branch}");
+    let output = std::process::Command::new("git")
+        .args(["diff", "--numstat", range.as_str()])
+        .current_dir(git_root)
+        .output();
+
+    let Ok(output) = output else {
+        return (0, 0, 0);
+    };
+    if !output.status.success() {
+        return (0, 0, 0);
+    }
+
+    let mut touched_files = 0usize;
+    let mut insertions = 0u64;
+    let mut deletions = 0u64;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut parts = line.split('\t');
+        let added = parts.next().unwrap_or("0");
+        let removed = parts.next().unwrap_or("0");
+        let path = parts.next().unwrap_or("");
+        if path.trim().is_empty() {
+            continue;
+        }
+
+        touched_files = touched_files.saturating_add(1);
+        if let Ok(value) = added.parse::<u64>() {
+            insertions = insertions.saturating_add(value);
+        }
+        if let Ok(value) = removed.parse::<u64>() {
+            deletions = deletions.saturating_add(value);
+        }
+    }
+
+    (touched_files, insertions, deletions)
+}
+
+fn detect_existing_worktree_path(git_root: &Path, branch: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(git_root)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let mut current_path: Option<String> = None;
+    let mut current_branch: Option<String> = None;
+
+    for line in String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .chain(std::iter::once(""))
+    {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if current_branch.as_deref() == Some(branch) {
+                return current_path;
+            }
+            current_path = None;
+            current_branch = None;
+            continue;
+        }
+
+        if let Some(path) = trimmed.strip_prefix("worktree ") {
+            current_path = Some(path.trim().to_string());
+            continue;
+        }
+
+        if let Some(value) = trimmed.strip_prefix("branch ") {
+            let normalized = value.trim().trim_start_matches("refs/heads/").to_string();
+            current_branch = Some(normalized);
+        }
+    }
+
+    None
+}
+#[tauri::command]
+#[specta::specta]
+async fn list_git_branches_cmd(state: State<'_, AppState>) -> Result<Vec<GitBranchInfo>, String> {
+    let project_dir = get_active_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let git_root = project_dir.parent().unwrap_or(&project_dir).to_path_buf();
+        let base_branch =
+            resolve_default_compare_branch(&git_root).unwrap_or_else(|| "main".to_string());
+        let output = std::process::Command::new("git")
+            .args([
+                "for-each-ref",
+                "--sort=-committerdate",
+                "--format=%(refname:short)|%(HEAD)",
+                "refs/heads",
+            ])
+            .current_dir(&git_root)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            return Err("Failed to list git branches".to_string());
+        }
+
+        let mut branches = Vec::new();
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let mut parts = line.splitn(2, '|');
+            let Some(name_raw) = parts.next() else {
+                continue;
+            };
+            let name = name_raw.trim();
+            if name.is_empty() {
+                continue;
+            }
+            let head_marker = parts.next().unwrap_or("").trim();
+            let (ahead, behind) = collect_branch_ahead_behind(&git_root, &base_branch, name);
+            let (touched_files, insertions, deletions) =
+                collect_branch_diff_totals(&git_root, &base_branch, name);
+            branches.push(GitBranchInfo {
+                name: name.to_string(),
+                current: head_marker == "*",
+                base_branch: base_branch.clone(),
+                ahead,
+                behind,
+                touched_files,
+                insertions,
+                deletions,
+            });
+        }
+
+        Ok(branches)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -4375,6 +4927,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             save_permissions_cmd,
             // Workspace
             list_workspace_editors_cmd,
+            list_git_branches_cmd,
             get_workspace_cmd,
             list_workspaces_cmd,
             sync_workspace_cmd,
@@ -4390,6 +4943,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             end_workspace_session_cmd,
             list_workspace_changes_cmd,
             get_workspace_git_status_cmd,
+            get_branch_detail_cmd,
+            get_branch_file_diff_cmd,
             open_workspace_editor_cmd,
             start_workspace_terminal_cmd,
             read_workspace_terminal_cmd,
