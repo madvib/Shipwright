@@ -104,6 +104,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<McpCommands>,
     },
+    /// Internal hook runtime used by provider hook commands.
+    #[command(hide = true)]
+    Hooks {
+        #[command(subcommand)]
+        action: HooksCommands,
+    },
     /// Manage AI agent providers (detect, connect, disconnect)
     Providers {
         #[command(subcommand)]
@@ -288,6 +294,16 @@ pub enum ProviderCommands {
     Import {
         /// Provider ID (claude, gemini, codex). If omitted, imports all connected providers.
         id: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HooksCommands {
+    /// Process a single hook payload from stdin.
+    Run {
+        /// Optional provider hint (claude or gemini) for diagnostics.
+        #[arg(long)]
+        provider: Option<String>,
     },
 }
 

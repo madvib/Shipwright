@@ -110,12 +110,17 @@ fn export_to_inner(
     // Provider-native hooks + permissions.
     match target {
         "claude" => {
-            if !payload.hooks.is_empty() || has_claude_permission_overrides(&payload.permissions) {
-                export_claude_settings(&payload.hooks, &payload.permissions)?;
+            write_hook_runtime_artifacts(project_root, &payload)?;
+            let provider_hooks = hooks_for_provider("claude", &payload.hooks);
+            if !provider_hooks.is_empty() || has_claude_permission_overrides(&payload.permissions)
+            {
+                export_claude_settings(&provider_hooks, &payload.permissions)?;
             }
         }
         "gemini" => {
-            export_gemini_settings(project_root, &payload.hooks)?;
+            write_hook_runtime_artifacts(project_root, &payload)?;
+            let provider_hooks = hooks_for_provider("gemini", &payload.hooks);
+            export_gemini_settings(project_root, &provider_hooks)?;
             export_gemini_workspace_policy(project_root, &payload.permissions)?;
         }
         _ => {}
@@ -371,26 +376,28 @@ fn provider_import_paths(desc: &ProviderDescriptor, project_dir: &Path) -> Resul
         .parent()
         .map(|project_root| project_root.join(desc.project_config));
     let global_path = home()?.join(desc.global_config);
-
     if let Some(project_path) = project_path_opt.as_ref()
         && project_path.exists()
     {
+        // Prefer project config when present. Ship users typically commit to project-scoped
+        // config ownership, so mixing in global provider state here is surprising.
         return Ok(vec![project_path.clone()]);
     }
 
     if global_path.exists() {
-        if let Some(project_path) = project_path_opt
-            && project_path == global_path
-        {
-            return Ok(vec![project_path]);
-        }
-        return Ok(vec![global_path]);
+        return Ok(vec![global_path.clone()]);
     }
 
+    // No files found yet; return candidate paths (project first, then global) for
+    // callers that want to surface diagnostics or future file creation guidance.
+    let mut candidates = Vec::new();
     if let Some(project_path) = project_path_opt {
-        return Ok(vec![project_path, global_path]);
+        candidates.push(project_path);
     }
-    Ok(vec![global_path])
+    if !candidates.iter().any(|path| path == &global_path) {
+        candidates.push(global_path);
+    }
+    Ok(candidates)
 }
 
 fn import_mcp_servers_from_json(

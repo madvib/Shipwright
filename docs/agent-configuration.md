@@ -268,8 +268,8 @@ never touched.
 ### 6. Write hooks and native permissions
 
 **Claude — `~/.claude/settings.json`:**
-Written only if hooks are non-empty or tool permissions differ from default (`["*"]` allow,
-empty deny). Merges into existing settings, preserving user entries.
+Written when managed Ship hooks are enabled (default) or tool permissions differ from
+default (`["*"]` allow, empty deny). Merges into existing settings, preserving user entries.
 
 ```json
 {
@@ -284,7 +284,7 @@ empty deny). Merges into existing settings, preserving user entries.
         "hooks": [
           {
             "type": "command",
-            "command": "$SHIP_HOOKS_BIN",
+            "command": "ship hooks run",
             "timeout": 2000,
             "description": "policy gate"
           }
@@ -302,7 +302,7 @@ Hook trigger keys supported by export include:
 `SubagentStop`, `Stop`, `PreCompact`
 
 **Gemini — `.gemini/settings.json` hooks:**
-When hooks are configured, Ship writes Gemini-compatible grouped hook entries under
+When managed hooks are enabled or custom hooks are configured, Ship writes Gemini-compatible grouped hook entries under
 `hooks.<Event>[]` in `.gemini/settings.json` (in addition to MCP server export).
 Example event keys include: `BeforeTool`, `AfterTool`, `BeforeAgent`, `AfterAgent`,
 `SessionStart`, `SessionEnd`, `PreCompress`, `BeforeModel`, `AfterModel`,
@@ -543,6 +543,11 @@ Stale directories (managed header, ID no longer in active set) are removed on ne
 Defined in `ship.toml` under `[[hooks]]` or per-mode under `[[modes.hooks]]`.
 Mode hooks are appended to project hooks (not replaced).
 
+Ship also synthesizes a managed baseline for Claude/Gemini at export time (unless
+`SHIP_MANAGED_HOOKS=0`), using `ship hooks run` as the default hook command
+(`$SHIP_HOOKS_BIN` overrides this command). Managed baseline entries append
+`--provider <id>` for provider-specific runtime output contracts.
+
 ```toml
 [[hooks]]
 id = "log-tool-use"
@@ -565,6 +570,15 @@ command = "echo 'running bash'"
 
 **Codex assessment:** Codex currently has no native hooks section in config schema,
 so Ship keeps hooks provider-agnostic and skips Codex hook export.
+
+**Runtime hook artifacts (Ship-managed):**
+At export time for Claude/Gemini, Ship writes runtime hook artifacts to:
+- `.ship/agents/runtime/hook-context.md`
+- `.ship/agents/runtime/envelope.json`
+- `~/.ship/state/telemetry/hooks/events.ndjson` (internal telemetry appended by `ship hooks run`; not user-facing project config)
+
+`ship hooks run` now evaluates pre-tool/permission events against `envelope.json`
+and emits provider-native allow/ask/deny decisions for Claude/Gemini.
 
 ---
 
@@ -589,13 +603,13 @@ so Ship keeps hooks provider-agnostic and skips Codex hook export.
 | `.mcp.json` | Every sync | MCP server registry (JSON) |
 | `CLAUDE.md` | Every sync | Feature context, skills, rules inlined |
 | `.claude/skills/<id>/SKILL.md` | Every sync | One file per active skill |
-| `~/.claude/settings.json` | When hooks or non-default permissions exist | Hooks + tool permissions |
+| `~/.claude/settings.json` | Every sync when managed hooks are enabled (default), otherwise when hooks/non-default permissions exist | Hooks + tool permissions |
 
 ### Gemini
 
 | File | When written | Content |
 |---|---|---|
-| `.gemini/settings.json` | Every sync (hooks included when configured) | MCP server registry + hook lifecycle config |
+| `.gemini/settings.json` | Every sync (hooks included by managed baseline/custom config) | MCP server registry + hook lifecycle config |
 | `GEMINI.md` | When mode has `prompt_id` skill | Mode instruction skill content |
 | `.gemini/skills/<id>/SKILL.md` | Every sync | One file per active skill |
 | `.gemini/policies/ship-permissions.toml` | When non-default permissions | Policy rules (TOML) |

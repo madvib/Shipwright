@@ -37,6 +37,335 @@ fn has_gemini_policy_overrides(permissions: &Permissions) -> bool {
         || !permissions.agent.require_confirmation.is_empty()
 }
 
+fn managed_hooks_enabled() -> bool {
+    match std::env::var("SHIP_MANAGED_HOOKS") {
+        Ok(raw) => !matches!(
+            raw.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "off" | "no"
+        ),
+        Err(_) => true,
+    }
+}
+
+fn managed_hooks_command() -> String {
+    std::env::var("SHIP_HOOKS_BIN")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "ship hooks run".to_string())
+}
+
+fn managed_hooks_command_for_provider(provider_id: &str) -> String {
+    let base = managed_hooks_command();
+    if base.contains("--provider") {
+        return base;
+    }
+    if base.trim_start().starts_with("ship hooks run") {
+        return format!("{base} --provider {provider_id}");
+    }
+    base
+}
+
+fn managed_hook(
+    id: &str,
+    trigger: HookTrigger,
+    matcher: Option<&str>,
+    timeout_ms: Option<u64>,
+    description: &str,
+    command: &str,
+) -> HookConfig {
+    HookConfig {
+        id: id.to_string(),
+        trigger,
+        matcher: matcher.map(str::to_string),
+        timeout_ms,
+        description: Some(description.to_string()),
+        command: command.to_string(),
+    }
+}
+
+fn managed_hooks_for_provider(provider_id: &str) -> Vec<HookConfig> {
+    let command = managed_hooks_command_for_provider(provider_id);
+    match provider_id {
+        "claude" => vec![
+            managed_hook(
+                "ship-session-start",
+                HookTrigger::SessionStart,
+                None,
+                None,
+                "Inject Ship workspace context before first prompt.",
+                &command,
+            ),
+            managed_hook(
+                "ship-user-prompt",
+                HookTrigger::UserPromptSubmit,
+                None,
+                None,
+                "Augment prompts with current Ship workspace scope.",
+                &command,
+            ),
+            managed_hook(
+                "ship-pre-tool-guard",
+                HookTrigger::PreToolUse,
+                Some("Bash"),
+                Some(2000),
+                "Apply Ship shell-command policy envelope (decompose, validate, enforce).",
+                &command,
+            ),
+            managed_hook(
+                "ship-permission-request",
+                HookTrigger::PermissionRequest,
+                None,
+                Some(2000),
+                "Resolve approvals using Ship permission envelope hints.",
+                &command,
+            ),
+            managed_hook(
+                "ship-post-tool-log",
+                HookTrigger::PostToolUse,
+                Some("Bash"),
+                Some(1500),
+                "Log tool execution for policy hardening and conflict analysis.",
+                &command,
+            ),
+            managed_hook(
+                "ship-notification-stream",
+                HookTrigger::Notification,
+                None,
+                None,
+                "Stream agent lifecycle updates to Ship runtime telemetry.",
+                &command,
+            ),
+            managed_hook(
+                "ship-stop-close-loop",
+                HookTrigger::Stop,
+                None,
+                None,
+                "Trigger session close-loop checks and documentation updates.",
+                &command,
+            ),
+            managed_hook(
+                "ship-subagent-stop",
+                HookTrigger::SubagentStop,
+                None,
+                None,
+                "Coordinate multi-agent completion signals through Ship runtime.",
+                &command,
+            ),
+        ],
+        "gemini" => vec![
+            managed_hook(
+                "ship-session-start",
+                HookTrigger::SessionStart,
+                None,
+                None,
+                "Inject Ship workspace context at Gemini session start.",
+                &command,
+            ),
+            managed_hook(
+                "ship-before-tool-guard",
+                HookTrigger::BeforeTool,
+                Some("run_shell_command"),
+                Some(2000),
+                "Apply Ship shell-command policy envelope (decompose, validate, enforce).",
+                &command,
+            ),
+            managed_hook(
+                "ship-after-tool-log",
+                HookTrigger::AfterTool,
+                Some("run_shell_command"),
+                Some(1500),
+                "Log tool execution for policy hardening and conflict analysis.",
+                &command,
+            ),
+            managed_hook(
+                "ship-notification-stream",
+                HookTrigger::Notification,
+                None,
+                None,
+                "Stream agent lifecycle updates to Ship runtime telemetry.",
+                &command,
+            ),
+            managed_hook(
+                "ship-session-end-close-loop",
+                HookTrigger::SessionEnd,
+                None,
+                None,
+                "Trigger session close-loop checks and documentation updates.",
+                &command,
+            ),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn hooks_for_provider(provider_id: &str, hooks: &[HookConfig]) -> Vec<HookConfig> {
+    let mut merged = hooks.to_vec();
+    if !managed_hooks_enabled() {
+        return merged;
+    }
+
+    let existing_ids: HashSet<String> = merged.iter().map(|hook| hook.id.clone()).collect();
+    for managed in managed_hooks_for_provider(provider_id) {
+        if !existing_ids.contains(&managed.id) {
+            merged.push(managed);
+        }
+    }
+    merged
+}
+
+fn network_allowed(policy: &crate::permissions::NetworkPolicy) -> bool {
+    !matches!(policy, crate::permissions::NetworkPolicy::None)
+}
+
+fn command_installs_allowed(allow_patterns: &[String]) -> bool {
+    allow_patterns.iter().any(|pattern| {
+        let normalized = pattern.trim().to_ascii_lowercase();
+        normalized.starts_with("npm install")
+            || normalized.starts_with("pnpm add")
+            || normalized.starts_with("yarn add")
+            || normalized.starts_with("pip install")
+            || normalized.starts_with("uv pip install")
+            || normalized.starts_with("cargo add")
+            || normalized.starts_with("go get")
+            || normalized.starts_with("brew install")
+    })
+}
+
+fn dedupe_patterns(values: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    values.retain(|value| seen.insert(value.clone()));
+}
+
+fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> Result<()> {
+    let runtime_dir = project_root.join(".ship").join("agents").join("runtime");
+    fs::create_dir_all(&runtime_dir)?;
+
+    let generated_at = chrono::Utc::now().to_rfc3339();
+    let mut auto_approve_patterns = vec![
+        "find *".to_string(),
+        "grep *".to_string(),
+        "rg *".to_string(),
+        "cat *".to_string(),
+        "ls *".to_string(),
+        "git status*".to_string(),
+        "git log*".to_string(),
+        "git diff*".to_string(),
+    ];
+    auto_approve_patterns.extend(payload.permissions.commands.allow.clone());
+    dedupe_patterns(&mut auto_approve_patterns);
+
+    let mut always_block_patterns = vec![
+        "rm -rf *".to_string(),
+        "git push --force*".to_string(),
+        "npm publish*".to_string(),
+        "cargo publish*".to_string(),
+    ];
+    always_block_patterns.extend(payload.permissions.commands.deny.clone());
+    dedupe_patterns(&mut always_block_patterns);
+
+    let mut allowed_paths = payload.permissions.filesystem.allow.clone();
+    if allowed_paths.is_empty() {
+        allowed_paths.push(".".to_string());
+    }
+
+    let servers = payload
+        .servers
+        .iter()
+        .filter(|server| !server.disabled)
+        .map(|server| {
+            serde_json::json!({
+                "id": server.id,
+                "name": server.name,
+                "transport": match server.server_type {
+                    McpServerType::Stdio => "stdio",
+                    McpServerType::Sse => "sse",
+                    McpServerType::Http => "http",
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let envelope = serde_json::json!({
+        "_ship": {
+            "managed": true,
+            "version": 1,
+            "generated_at": generated_at,
+        },
+        "ship_first": true,
+        "workspace_root": project_root.to_string_lossy().to_string(),
+        "active_mode": payload.active_mode_id,
+        "allowed_paths": allowed_paths,
+        "allow_network": network_allowed(&payload.permissions.network.policy),
+        "allow_installs": command_installs_allowed(&payload.permissions.commands.allow),
+        "auto_approve_patterns": auto_approve_patterns,
+        "always_block_patterns": always_block_patterns,
+        "require_confirmation": payload.permissions.agent.require_confirmation.clone(),
+        "tools_allow": payload.permissions.tools.allow.clone(),
+        "tools_deny": payload.permissions.tools.deny.clone(),
+        "mcp_servers": servers,
+    });
+
+    crate::fs_util::write_atomic(
+        &runtime_dir.join("envelope.json"),
+        serde_json::to_string_pretty(&envelope)?,
+    )?;
+
+    let context = format!(
+        "# Ship Hook Context\n\n\
+         - Generated: `{}`\n\
+         - Active mode: `{}`\n\
+         - MCP servers: `{}`\n\
+         - Network access: `{}`\n\
+         - Package installs: `{}`\n\n\
+         ## Execution Policy\n\
+         - Use `mcp__ship__*` tools first for workspace-aware operations.\n\
+         - Prefer structured MCP actions over raw shell commands whenever possible.\n\
+         - Treat direct shell usage as fallback and stay within declared scope.\n\n\
+         ## File Scope\n\
+         {}\n\n\
+         ## Command Policy\n\
+         - Allow patterns: `{}`\n\
+         - Deny patterns: `{}`\n\
+         - Require confirmation: `{}`\n",
+        generated_at,
+        payload
+            .active_mode_id
+            .as_deref()
+            .unwrap_or("default"),
+        payload
+            .servers
+            .iter()
+            .filter(|server| !server.disabled)
+            .map(|server| server.id.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
+        if network_allowed(&payload.permissions.network.policy) {
+            "enabled"
+        } else {
+            "disabled"
+        },
+        if command_installs_allowed(&payload.permissions.commands.allow) {
+            "allowed"
+        } else {
+            "blocked"
+        },
+        payload
+            .permissions
+            .filesystem
+            .allow
+            .iter()
+            .map(|path| format!("- `{}`", path))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        payload.permissions.commands.allow.join(", "),
+        payload.permissions.commands.deny.join(", "),
+        payload.permissions.agent.require_confirmation.join(", "),
+    );
+    crate::fs_util::write_atomic(&runtime_dir.join("hook-context.md"), context)?;
+    Ok(())
+}
+
 fn export_claude_settings(hooks: &[HookConfig], permissions: &Permissions) -> Result<()> {
     let path = home()?.join(".claude").join("settings.json");
     if let Some(parent) = path.parent() {

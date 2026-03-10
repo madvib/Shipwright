@@ -14,6 +14,7 @@ mod tests {
     use tempfile::tempdir;
 
     static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+    static HOOK_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct HomeEnvGuard<'a> {
         _lock: MutexGuard<'a, ()>,
@@ -43,6 +44,44 @@ mod tests {
         HomeEnvGuard {
             _lock: lock,
             previous_home,
+        }
+    }
+
+    struct EnvVarGuard<'a> {
+        _lock: MutexGuard<'a, ()>,
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl Drop for EnvVarGuard<'_> {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.take() {
+                unsafe {
+                    std::env::set_var(self.key, value);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
+    fn lock_env_var_for_test(key: &'static str, value: Option<&str>) -> EnvVarGuard<'static> {
+        let lock = HOOK_ENV_LOCK.lock().expect("hook env lock poisoned");
+        let previous = std::env::var_os(key);
+        match value {
+            Some(next) => unsafe {
+                std::env::set_var(key, next);
+            },
+            None => unsafe {
+                std::env::remove_var(key);
+            },
+        }
+        EnvVarGuard {
+            _lock: lock,
+            key,
+            previous,
         }
     }
 
@@ -607,6 +646,7 @@ mod tests {
         let (_tmp, project_dir) = project_with_servers(vec![]);
         let home = tempdir().unwrap();
         let _home_guard = lock_home_for_test(home.path());
+        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
 
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.hooks = vec![
@@ -649,6 +689,27 @@ mod tests {
             pre_tool_group["hooks"][0]["description"].as_str(),
             Some("Validate command scope")
         );
+    }
+
+    #[test]
+    fn claude_exports_ship_managed_hooks_baseline_when_no_custom_hooks() {
+        let (_tmp, project_dir) = project_with_servers(vec![]);
+        let home = tempdir().unwrap();
+        let _home_guard = lock_home_for_test(home.path());
+        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
+
+        export_to(project_dir, "claude").unwrap();
+        let settings_path = home.path().join(".claude").join("settings.json");
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
+
+        let session_start = &val["hooks"]["SessionStart"][0]["hooks"][0];
+        assert_eq!(
+            session_start["command"].as_str(),
+            Some("ship hooks run --provider claude")
+        );
+        let pre_tool = &val["hooks"]["PreToolUse"][0];
+        assert_eq!(pre_tool["matcher"].as_str(), Some("Bash"));
     }
 
     // ── Gemini ─────────────────────────────────────────────────────────────────
@@ -748,6 +809,7 @@ mod tests {
     #[test]
     fn gemini_exports_hooks_to_settings_json() {
         let (tmp, project_dir) = project_with_servers(vec![]);
+        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.hooks = vec![HookConfig {
             id: "before-tool-guard".to_string(),
@@ -776,6 +838,64 @@ mod tests {
             hook["description"].as_str(),
             Some("Decompose chained shell command")
         );
+    }
+
+    #[test]
+    fn gemini_exports_ship_managed_hook_commands_with_provider_hint() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
+
+        export_to(project_dir, "gemini").unwrap();
+        let settings_path = tmp.path().join(".gemini").join("settings.json");
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
+
+        let session_start = &val["hooks"]["SessionStart"][0]["hooks"][0];
+        assert_eq!(
+            session_start["command"].as_str(),
+            Some("ship hooks run --provider gemini")
+        );
+        let before_tool = &val["hooks"]["BeforeTool"][0]["hooks"][0];
+        assert_eq!(
+            before_tool["command"].as_str(),
+            Some("ship hooks run --provider gemini")
+        );
+    }
+
+    #[test]
+    fn export_writes_hook_runtime_artifacts() {
+        let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
+        save_permissions(
+            project_dir.clone(),
+            &Permissions {
+                filesystem: crate::permissions::FsPermissions {
+                    allow: vec!["src/auth/**".to_string()],
+                    deny: vec![],
+                },
+                commands: crate::permissions::CommandPermissions {
+                    allow: vec!["git status*".to_string()],
+                    deny: vec!["rm -rf *".to_string()],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        export_to(project_dir, "gemini").unwrap();
+
+        let runtime_dir = tmp.path().join(".ship").join("agents").join("runtime");
+        let envelope_path = runtime_dir.join("envelope.json");
+        let context_path = runtime_dir.join("hook-context.md");
+        assert!(envelope_path.exists(), "expected hook envelope file");
+        assert!(context_path.exists(), "expected hook context file");
+
+        let envelope: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(envelope_path).unwrap()).unwrap();
+        let expected_root = tmp.path().to_string_lossy().to_string();
+        assert_eq!(envelope["workspace_root"].as_str(), Some(expected_root.as_str()));
+        assert!(envelope["auto_approve_patterns"].is_array());
+        assert!(envelope["always_block_patterns"].is_array());
     }
 
     #[test]

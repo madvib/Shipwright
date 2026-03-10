@@ -1,5 +1,5 @@
 use anyhow::Result;
-use runtime::project::{get_global_dir, get_project_dir};
+use runtime::project::{get_global_dir, get_project_dir, ship_dir_from_path};
 use runtime::workspace::set_workspace_active_mode;
 use runtime::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, ShipWorkspaceKind, WorkspaceStatus,
@@ -7,9 +7,8 @@ use runtime::{
     get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
     is_category_committed, list_mcp_servers, list_providers, list_workspace_sessions,
     list_workspaces, log_action, migrate_global_state, migrate_json_config_file,
-    migrate_project_state, remove_status, repair_workspace, set_category_committed,
-    record_workspace_session_progress, start_workspace_session, sync_workspace,
-    transition_workspace_status,
+    migrate_project_state, record_workspace_session_progress, remove_status, repair_workspace,
+    set_category_committed, start_workspace_session, sync_workspace, transition_workspace_status,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
@@ -33,7 +32,7 @@ use ship_module_project::{
 };
 use std::collections::HashMap;
 use std::env;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
@@ -191,6 +190,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 | Commands::Projects { .. }
                 | Commands::Providers { .. }
                 | Commands::Mcp { .. }
+                | Commands::Hooks { .. }
         )
     );
     if !skip_auto_import {
@@ -425,7 +425,8 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let version = file_name.trim_end_matches(".md");
                     let entry = get_release_by_id(&project_dir, version)
                         .map_err(|_| anyhow::anyhow!("Release not found: {}", file_name))?;
-                    let release_path = runtime::project::releases_dir(&project_dir).join(&entry.file_name);
+                    let release_path =
+                        runtime::project::releases_dir(&project_dir).join(&entry.file_name);
                     if !release_path.exists() {
                         anyhow::bail!("Release file not found: {}", entry.file_name);
                     }
@@ -732,7 +733,8 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let mut provider = provider;
                     let mut session_mode = session_mode;
 
-                    let interactive = !no_input && io::stdin().is_terminal() && io::stdout().is_terminal();
+                    let interactive =
+                        !no_input && io::stdin().is_terminal() && io::stdout().is_terminal();
                     if interactive {
                         if release.is_none() {
                             let releases = list_releases(&project_dir)?;
@@ -752,18 +754,22 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         }
 
                         if spec.is_none() && is_feature_workspace {
-                            let create_now = prompt_yes_no("Create a starter spec now? [Y/n]: ", true)?;
+                            let create_now =
+                                prompt_yes_no("Create a starter spec now? [Y/n]: ", true)?;
                             if create_now {
-                                let default_title = format!("{} Spec", branch_to_feature_title(&branch));
+                                let default_title =
+                                    format!("{} Spec", branch_to_feature_title(&branch));
                                 let title = prompt_with_default("Spec title", &default_title)?;
                                 let spec_goal = prompt_optional("Spec goal (optional): ")?;
                                 let body = format!(
                                     "## Goal\n{}\n\n## Scope\n- \n\n## Acceptance Criteria\n- [ ] \n",
-                                    spec_goal
-                                        .clone()
-                                        .unwrap_or_else(|| "Define outcome and boundaries for this workspace.".to_string())
+                                    spec_goal.clone().unwrap_or_else(|| {
+                                        "Define outcome and boundaries for this workspace."
+                                            .to_string()
+                                    })
                                 );
-                                let created_spec = create_spec(&project_dir, &title, &body, Some(&branch))?;
+                                let created_spec =
+                                    create_spec(&project_dir, &title, &body, Some(&branch))?;
                                 println!(
                                     "Spec created and linked: {} ({})",
                                     created_spec.file_name, created_spec.id
@@ -783,7 +789,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             start_session = prompt_yes_no("Start a session now? [Y/n]: ", true)?;
                         }
 
-                        if start_session || goal.is_some() || provider.is_some() || session_mode.is_some() {
+                        if start_session
+                            || goal.is_some()
+                            || provider.is_some()
+                            || session_mode.is_some()
+                        {
                             if goal.is_none() {
                                 goal = prompt_optional("Session goal (optional): ")?;
                             }
@@ -1458,6 +1468,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Some(Commands::Hooks { action }) => match action {
+            HooksCommands::Run { provider } => {
+                run_hooks_runtime(provider)?;
+            }
+        },
         Some(Commands::Providers { action }) => {
             let project_dir = get_project_dir_cli()?;
             let action = match action {
@@ -1502,6 +1517,965 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_hooks_runtime(provider_hint: Option<String>) -> Result<()> {
+    let mut raw = String::new();
+    if io::stdin().read_to_string(&mut raw).is_err() {
+        return Ok(());
+    }
+
+    let payload = serde_json::from_str::<serde_json::Value>(&raw)
+        .unwrap_or_else(|_| serde_json::json!({ "raw": raw.trim() }));
+    let event = extract_hook_event_name(&payload);
+    let cwd = payload
+        .get("cwd")
+        .and_then(|value| value.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    let ship_dir = resolve_ship_dir_for_hook_runtime(&cwd);
+    let provider = detect_hook_provider(provider_hint.as_deref(), &event, &payload);
+    let hook_response = build_hook_response(provider, &event, &payload, ship_dir.as_deref());
+
+    append_hook_event_log(
+        provider.as_str(),
+        ship_dir.as_deref(),
+        &cwd,
+        &event,
+        &payload,
+        hook_response.as_ref(),
+    );
+
+    if let Some(response) = hook_response {
+        print!("{}", serde_json::to_string(&response)?);
+    }
+
+    Ok(())
+}
+
+fn extract_hook_event_name(payload: &serde_json::Value) -> String {
+    payload
+        .get("hook_event_name")
+        .and_then(|value| value.as_str())
+        .or_else(|| payload.get("event").and_then(|value| value.as_str()))
+        .or_else(|| payload.get("hook").and_then(|value| value.as_str()))
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn resolve_ship_dir_for_hook_runtime(cwd: &Path) -> Option<PathBuf> {
+    if cwd
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == ".ship")
+    {
+        return Some(cwd.to_path_buf());
+    }
+    if cwd.join(".ship").is_dir() {
+        return Some(cwd.join(".ship"));
+    }
+    ship_dir_from_path(cwd)
+}
+
+fn append_hook_event_log(
+    provider_hint: Option<&str>,
+    ship_dir: Option<&Path>,
+    cwd: &Path,
+    event: &str,
+    payload: &serde_json::Value,
+    response: Option<&serde_json::Value>,
+) {
+    let Some(log_path) = hook_telemetry_log_path() else {
+        return;
+    };
+    let Some(parent) = log_path.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let mut file = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        Ok(file) => file,
+        Err(_) => return,
+    };
+
+    let line = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339(),
+        "event": event,
+        "provider": provider_hint,
+        "cwd": cwd.to_string_lossy(),
+        "ship_dir": ship_dir.map(|path| path.to_string_lossy().to_string()),
+        "payload": payload,
+        "response": response,
+        "decision": response.and_then(extract_hook_decision),
+    });
+    let _ = writeln!(file, "{}", line);
+}
+
+fn hook_telemetry_log_path() -> Option<PathBuf> {
+    let global_dir = get_global_dir().ok()?;
+    Some(
+        global_dir
+            .join("state")
+            .join("telemetry")
+            .join("hooks")
+            .join("events.ndjson"),
+    )
+}
+
+fn read_hook_context(ship_dir: &Path) -> Option<String> {
+    let path = ship_dir
+        .join("agents")
+        .join("runtime")
+        .join("hook-context.md");
+    let content = std::fs::read_to_string(path).ok()?;
+    if content.trim().is_empty() {
+        None
+    } else {
+        Some(content)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookProvider {
+    Claude,
+    Gemini,
+    Unknown,
+}
+
+impl HookProvider {
+    fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some("claude"),
+            Self::Gemini => Some("gemini"),
+            Self::Unknown => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookDecision {
+    Allow,
+    Ask,
+    Deny,
+    None,
+}
+
+impl Default for HookDecision {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct HookPolicyOutcome {
+    decision: HookDecision,
+    reason: Option<String>,
+    updated_input: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone)]
+struct HookEnvelope {
+    workspace_root: Option<PathBuf>,
+    allowed_paths: Vec<String>,
+    allow_network: bool,
+    allow_installs: bool,
+    auto_approve_patterns: Vec<String>,
+    always_block_patterns: Vec<String>,
+    require_confirmation_patterns: Vec<String>,
+    tool_allow_patterns: Vec<String>,
+    tool_deny_patterns: Vec<String>,
+}
+
+impl Default for HookEnvelope {
+    fn default() -> Self {
+        Self {
+            workspace_root: None,
+            allowed_paths: vec![".".to_string()],
+            allow_network: false,
+            allow_installs: false,
+            auto_approve_patterns: vec![
+                "find *".to_string(),
+                "grep *".to_string(),
+                "rg *".to_string(),
+                "cat *".to_string(),
+                "ls *".to_string(),
+                "git status*".to_string(),
+                "git log*".to_string(),
+                "git diff*".to_string(),
+            ],
+            always_block_patterns: vec![
+                "rm -rf *".to_string(),
+                "git push --force*".to_string(),
+                "npm publish*".to_string(),
+                "cargo publish*".to_string(),
+            ],
+            require_confirmation_patterns: vec![],
+            tool_allow_patterns: vec!["*".to_string()],
+            tool_deny_patterns: vec![],
+        }
+    }
+}
+
+fn detect_hook_provider(
+    provider_hint: Option<&str>,
+    event: &str,
+    payload: &serde_json::Value,
+) -> HookProvider {
+    if let Some(provider) = provider_hint {
+        return match provider.trim().to_ascii_lowercase().as_str() {
+            "claude" => HookProvider::Claude,
+            "gemini" => HookProvider::Gemini,
+            _ => HookProvider::Unknown,
+        };
+    }
+
+    let normalized = normalize_hook_event(event);
+    match normalized.as_str() {
+        "userpromptsubmit" | "pretooluse" | "permissionrequest" | "posttoolusefailure"
+        | "subagentstart" | "subagentstop" | "precompact" => return HookProvider::Claude,
+        "beforetool"
+        | "aftertool"
+        | "beforeagent"
+        | "afteragent"
+        | "sessionend"
+        | "beforemodel"
+        | "aftermodel"
+        | "precompress"
+        | "beforetoolselection" => return HookProvider::Gemini,
+        _ => {}
+    }
+
+    if payload.get("permission_mode").is_some() {
+        return HookProvider::Claude;
+    }
+
+    if payload
+        .get("tool_name")
+        .and_then(|value| value.as_str())
+        .is_some_and(|tool| tool.eq_ignore_ascii_case("run_shell_command"))
+    {
+        return HookProvider::Gemini;
+    }
+
+    HookProvider::Unknown
+}
+
+fn normalize_hook_event(event: &str) -> String {
+    event
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+fn build_hook_response(
+    provider: HookProvider,
+    event: &str,
+    payload: &serde_json::Value,
+    ship_dir: Option<&Path>,
+) -> Option<serde_json::Value> {
+    let normalized_event = normalize_hook_event(event);
+
+    if (normalized_event == "sessionstart" || normalized_event == "userpromptsubmit")
+        && let Some(ship_dir) = ship_dir
+        && let Some(context) = read_hook_context(ship_dir)
+    {
+        return Some(match provider {
+            HookProvider::Gemini => {
+                serde_json::json!({ "hookSpecificOutput": { "additionalContext": context } })
+            }
+            HookProvider::Claude | HookProvider::Unknown => serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": if normalized_event == "userpromptsubmit" { "UserPromptSubmit" } else { "SessionStart" },
+                    "additionalContext": context
+                }
+            }),
+        });
+    }
+
+    let envelope = load_hook_envelope(ship_dir);
+    match normalized_event.as_str() {
+        "pretooluse" | "beforetool" => {
+            let outcome = evaluate_pre_tool_policy(provider, payload, &envelope);
+            map_pre_tool_outcome(provider, outcome)
+        }
+        "permissionrequest" => {
+            let outcome = evaluate_permission_request_policy(payload, &envelope);
+            map_permission_request_outcome(outcome)
+        }
+        _ => None,
+    }
+}
+
+fn load_hook_envelope(ship_dir: Option<&Path>) -> HookEnvelope {
+    let mut envelope = HookEnvelope::default();
+    let Some(ship_dir) = ship_dir else {
+        return envelope;
+    };
+    let path = ship_dir
+        .join("agents")
+        .join("runtime")
+        .join("envelope.json");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return envelope;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return envelope;
+    };
+    let Some(obj) = value.as_object() else {
+        return envelope;
+    };
+
+    envelope.workspace_root = obj
+        .get("workspace_root")
+        .and_then(|value| value.as_str())
+        .map(PathBuf::from);
+    if let Some(values) = obj.get("allowed_paths").and_then(as_string_array) {
+        envelope.allowed_paths = values;
+    }
+    envelope.allow_network = obj
+        .get("allow_network")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    envelope.allow_installs = obj
+        .get("allow_installs")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    if let Some(values) = obj.get("auto_approve_patterns").and_then(as_string_array) {
+        envelope.auto_approve_patterns = values;
+    }
+    if let Some(values) = obj.get("always_block_patterns").and_then(as_string_array) {
+        envelope.always_block_patterns = values;
+    }
+    if let Some(values) = obj.get("require_confirmation").and_then(as_string_array) {
+        envelope.require_confirmation_patterns = values;
+    }
+    if let Some(values) = obj.get("tools_allow").and_then(as_string_array) {
+        envelope.tool_allow_patterns = values;
+    }
+    if let Some(values) = obj.get("tools_deny").and_then(as_string_array) {
+        envelope.tool_deny_patterns = values;
+    }
+    envelope
+}
+
+fn as_string_array(value: &serde_json::Value) -> Option<Vec<String>> {
+    value.as_array().map(|items| {
+        items
+            .iter()
+            .filter_map(|item| item.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>()
+    })
+}
+
+fn evaluate_pre_tool_policy(
+    provider: HookProvider,
+    payload: &serde_json::Value,
+    envelope: &HookEnvelope,
+) -> HookPolicyOutcome {
+    let tool_name = payload
+        .get("tool_name")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let tool_input = payload
+        .get("tool_input")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if tool_name.is_empty() {
+        return HookPolicyOutcome::default();
+    }
+
+    if tool_denied(tool_name, envelope) {
+        return HookPolicyOutcome {
+            decision: HookDecision::Deny,
+            reason: Some(format!(
+                "Tool '{}' is disabled by Ship permission policy.",
+                tool_name
+            )),
+            updated_input: None,
+        };
+    }
+
+    if is_shell_tool(provider, tool_name)
+        && let Some(command) = extract_shell_command(&tool_input)
+    {
+        let outcome = evaluate_shell_command(provider, command, envelope);
+        if outcome.decision != HookDecision::None {
+            return outcome;
+        }
+        if tool_requires_confirmation(tool_name, envelope) && provider == HookProvider::Claude {
+            return HookPolicyOutcome {
+                decision: HookDecision::Ask,
+                reason: Some(format!(
+                    "Tool '{}' requires explicit confirmation in this workspace.",
+                    tool_name
+                )),
+                updated_input: None,
+            };
+        }
+        return HookPolicyOutcome::default();
+    }
+
+    if tool_requires_confirmation(tool_name, envelope) && provider == HookProvider::Claude {
+        return HookPolicyOutcome {
+            decision: HookDecision::Ask,
+            reason: Some(format!(
+                "Tool '{}' requires explicit confirmation in this workspace.",
+                tool_name
+            )),
+            updated_input: None,
+        };
+    }
+
+    if is_write_like_tool(tool_name) {
+        let paths = extract_target_paths(&tool_input);
+        if let Some(off_scope) = paths
+            .iter()
+            .find(|path| !is_path_in_allowed_scope(path, envelope))
+        {
+            return HookPolicyOutcome {
+                decision: HookDecision::Deny,
+                reason: Some(format!(
+                    "Path '{}' is outside allowed workspace scope.",
+                    off_scope
+                )),
+                updated_input: None,
+            };
+        }
+    }
+
+    HookPolicyOutcome::default()
+}
+
+fn evaluate_permission_request_policy(
+    payload: &serde_json::Value,
+    envelope: &HookEnvelope,
+) -> HookPolicyOutcome {
+    let tool_name = payload
+        .get("tool_name")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let tool_input = payload
+        .get("tool_input")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if tool_name.is_empty() {
+        return HookPolicyOutcome::default();
+    }
+
+    if tool_denied(tool_name, envelope) {
+        return HookPolicyOutcome {
+            decision: HookDecision::Deny,
+            reason: Some(format!("Ship policy blocks tool '{}'.", tool_name)),
+            updated_input: None,
+        };
+    }
+
+    if tool_name.eq_ignore_ascii_case("bash")
+        && let Some(command) = extract_shell_command(&tool_input)
+    {
+        let mut outcome = evaluate_shell_command(HookProvider::Claude, command, envelope);
+        if outcome.decision == HookDecision::Ask {
+            outcome.decision = HookDecision::None;
+            outcome.reason = None;
+        }
+        return outcome;
+    }
+
+    HookPolicyOutcome::default()
+}
+
+fn tool_denied(tool_name: &str, envelope: &HookEnvelope) -> bool {
+    envelope
+        .tool_deny_patterns
+        .iter()
+        .any(|pattern| wildcard_match_case_insensitive(pattern, tool_name))
+}
+
+fn tool_requires_confirmation(tool_name: &str, envelope: &HookEnvelope) -> bool {
+    envelope
+        .require_confirmation_patterns
+        .iter()
+        .any(|pattern| wildcard_match_case_insensitive(pattern, tool_name))
+}
+
+fn is_shell_tool(provider: HookProvider, tool_name: &str) -> bool {
+    match provider {
+        HookProvider::Gemini => tool_name.eq_ignore_ascii_case("run_shell_command"),
+        HookProvider::Claude | HookProvider::Unknown => tool_name.eq_ignore_ascii_case("bash"),
+    }
+}
+
+fn extract_shell_command(tool_input: &serde_json::Value) -> Option<&str> {
+    tool_input
+        .get("command")
+        .and_then(|value| value.as_str())
+        .or_else(|| tool_input.get("cmd").and_then(|value| value.as_str()))
+}
+
+fn evaluate_shell_command(
+    provider: HookProvider,
+    command: &str,
+    envelope: &HookEnvelope,
+) -> HookPolicyOutcome {
+    let parts = split_command_chain(command);
+    if parts.is_empty() {
+        return HookPolicyOutcome::default();
+    }
+
+    let mut saw_unknown = false;
+    let mut saw_confirmation = false;
+    let mut saw_safe = false;
+
+    for raw_part in parts {
+        let part = strip_env_prefix(&raw_part);
+        if part.is_empty() {
+            continue;
+        }
+
+        if command_matches_patterns(&part, &envelope.always_block_patterns) {
+            return HookPolicyOutcome {
+                decision: HookDecision::Deny,
+                reason: Some(format!("Command '{}' is blocked by Ship policy.", part)),
+                updated_input: None,
+            };
+        }
+
+        if !envelope.allow_network && looks_like_network_command(&part) {
+            return HookPolicyOutcome {
+                decision: HookDecision::Deny,
+                reason: Some(format!(
+                    "Network command '{}' is not allowed in this workspace.",
+                    part
+                )),
+                updated_input: None,
+            };
+        }
+
+        if !envelope.allow_installs && looks_like_install_command(&part) {
+            return HookPolicyOutcome {
+                decision: HookDecision::Deny,
+                reason: Some(format!(
+                    "Install command '{}' is blocked in this workspace.",
+                    part
+                )),
+                updated_input: None,
+            };
+        }
+
+        if command_matches_patterns(&part, &envelope.require_confirmation_patterns) {
+            saw_confirmation = true;
+            continue;
+        }
+
+        if command_matches_patterns(&part, &envelope.auto_approve_patterns)
+            || looks_like_safe_read_command(&part)
+        {
+            saw_safe = true;
+            continue;
+        }
+
+        saw_unknown = true;
+    }
+
+    if saw_confirmation && provider == HookProvider::Claude {
+        return HookPolicyOutcome {
+            decision: HookDecision::Ask,
+            reason: Some("Command requires confirmation by Ship policy.".to_string()),
+            updated_input: None,
+        };
+    }
+
+    if saw_unknown {
+        return HookPolicyOutcome::default();
+    }
+
+    if saw_safe {
+        return HookPolicyOutcome {
+            decision: HookDecision::Allow,
+            reason: Some("Approved by Ship safe-command policy.".to_string()),
+            updated_input: None,
+        };
+    }
+
+    HookPolicyOutcome::default()
+}
+
+fn split_command_chain(command: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut chars = command.chars().peekable();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+
+    while let Some(ch) = chars.next() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+
+        if ch == '\\' {
+            escaped = true;
+            current.push(ch);
+            continue;
+        }
+
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+            current.push(ch);
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+            current.push(ch);
+            continue;
+        }
+
+        if !in_single && !in_double {
+            if ch == ';' || ch == '\n' {
+                push_part(&mut parts, &mut current);
+                continue;
+            }
+            if ch == '&' && chars.peek() == Some(&'&') {
+                let _ = chars.next();
+                push_part(&mut parts, &mut current);
+                continue;
+            }
+            if ch == '|' {
+                if chars.peek() == Some(&'|') {
+                    let _ = chars.next();
+                }
+                push_part(&mut parts, &mut current);
+                continue;
+            }
+        }
+
+        current.push(ch);
+    }
+
+    push_part(&mut parts, &mut current);
+    parts
+}
+
+fn push_part(parts: &mut Vec<String>, current: &mut String) {
+    let trimmed = current.trim();
+    if !trimmed.is_empty() {
+        parts.push(trimmed.to_string());
+    }
+    current.clear();
+}
+
+fn strip_env_prefix(part: &str) -> String {
+    let mut tokens = part.split_whitespace().peekable();
+    let mut command_tokens = Vec::new();
+
+    while let Some(token) = tokens.next() {
+        if command_tokens.is_empty() && is_env_assignment(token) {
+            continue;
+        }
+
+        command_tokens.push(token.to_string());
+        command_tokens.extend(tokens.map(|tail| tail.to_string()));
+        break;
+    }
+
+    command_tokens.join(" ")
+}
+
+fn is_env_assignment(token: &str) -> bool {
+    let Some((name, value)) = token.split_once('=') else {
+        return false;
+    };
+    if name.is_empty() || value.is_empty() {
+        return false;
+    }
+    name.chars()
+        .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+}
+
+fn command_matches_patterns(command: &str, patterns: &[String]) -> bool {
+    patterns
+        .iter()
+        .any(|pattern| command_pattern_matches(pattern, command))
+}
+
+fn command_pattern_matches(pattern: &str, command: &str) -> bool {
+    let pattern = normalize_command(pattern);
+    if pattern.is_empty() {
+        return false;
+    }
+    let command = normalize_command(command);
+    if pattern == "*" {
+        return true;
+    }
+    if pattern.contains('*') {
+        return wildcard_match_case_insensitive(&pattern, &command);
+    }
+    command == pattern || command.starts_with(&format!("{} ", pattern))
+}
+
+fn normalize_command(command: &str) -> String {
+    command.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn wildcard_match_case_insensitive(pattern: &str, value: &str) -> bool {
+    wildcard_match(&pattern.to_ascii_lowercase(), &value.to_ascii_lowercase())
+}
+
+fn wildcard_match(pattern: &str, value: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+
+    let starts_with_wildcard = pattern.starts_with('*');
+    let ends_with_wildcard = pattern.ends_with('*');
+    let segments: Vec<&str> = pattern
+        .split('*')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.is_empty() {
+        return true;
+    }
+
+    let mut cursor = 0usize;
+    for (index, segment) in segments.iter().enumerate() {
+        if index == 0 && !starts_with_wildcard {
+            if !value[cursor..].starts_with(segment) {
+                return false;
+            }
+            cursor += segment.len();
+            continue;
+        }
+
+        if let Some(found) = value[cursor..].find(segment) {
+            cursor += found + segment.len();
+        } else {
+            return false;
+        }
+    }
+
+    if !ends_with_wildcard {
+        if let Some(last) = segments.last() {
+            return value.ends_with(last);
+        }
+    }
+    true
+}
+
+fn looks_like_safe_read_command(command: &str) -> bool {
+    let normalized = command.to_ascii_lowercase();
+    normalized.starts_with("ls")
+        || normalized.starts_with("cat ")
+        || normalized.starts_with("pwd")
+        || normalized.starts_with("rg ")
+        || normalized.starts_with("grep ")
+        || normalized.starts_with("find ")
+        || normalized.starts_with("git status")
+        || normalized.starts_with("git diff")
+        || normalized.starts_with("git log")
+}
+
+fn looks_like_network_command(command: &str) -> bool {
+    let normalized = command.to_ascii_lowercase();
+    normalized.starts_with("curl ")
+        || normalized.starts_with("wget ")
+        || normalized.starts_with("nc ")
+        || normalized.starts_with("ssh ")
+        || normalized.starts_with("scp ")
+}
+
+fn looks_like_install_command(command: &str) -> bool {
+    let normalized = command.to_ascii_lowercase();
+    normalized.starts_with("npm install")
+        || normalized.starts_with("pnpm add")
+        || normalized.starts_with("yarn add")
+        || normalized.starts_with("pip install")
+        || normalized.starts_with("uv pip install")
+        || normalized.starts_with("cargo add")
+        || normalized.starts_with("go get")
+        || normalized.starts_with("brew install")
+}
+
+fn is_write_like_tool(tool_name: &str) -> bool {
+    let normalized = tool_name.to_ascii_lowercase();
+    normalized.contains("write")
+        || normalized.contains("edit")
+        || normalized.contains("replace")
+        || normalized.contains("delete")
+}
+
+fn extract_target_paths(tool_input: &serde_json::Value) -> Vec<String> {
+    let Some(obj) = tool_input.as_object() else {
+        return Vec::new();
+    };
+
+    let mut paths = Vec::new();
+    for key in [
+        "file_path",
+        "path",
+        "target_path",
+        "destination_path",
+        "absolute_path",
+    ] {
+        if let Some(path) = obj.get(key).and_then(|value| value.as_str()) {
+            paths.push(path.to_string());
+        }
+    }
+
+    if let Some(items) = obj.get("paths").and_then(|value| value.as_array()) {
+        for item in items {
+            if let Some(path) = item.as_str() {
+                paths.push(path.to_string());
+            }
+        }
+    }
+    paths
+}
+
+fn is_path_in_allowed_scope(path: &str, envelope: &HookEnvelope) -> bool {
+    if envelope.allowed_paths.is_empty() {
+        return true;
+    }
+
+    let input_path = PathBuf::from(path);
+    let absolute = if input_path.is_absolute() {
+        input_path
+    } else if let Some(root) = &envelope.workspace_root {
+        root.join(input_path)
+    } else {
+        input_path
+    };
+
+    let relative = envelope
+        .workspace_root
+        .as_ref()
+        .and_then(|root| absolute.strip_prefix(root).ok())
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| absolute.to_string_lossy().replace('\\', "/"));
+
+    envelope.allowed_paths.iter().any(|pattern| {
+        let normalized = pattern.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+        if normalized == "." || normalized == "**/*" || normalized == "*" {
+            return true;
+        }
+        if normalized.contains('*') {
+            return wildcard_match_case_insensitive(normalized, &relative);
+        }
+        let normalized = normalized.trim_start_matches("./");
+        relative == normalized || relative.starts_with(&format!("{}/", normalized))
+    })
+}
+
+fn map_pre_tool_outcome(
+    provider: HookProvider,
+    outcome: HookPolicyOutcome,
+) -> Option<serde_json::Value> {
+    match provider {
+        HookProvider::Claude | HookProvider::Unknown => match outcome.decision {
+            HookDecision::Allow | HookDecision::Ask | HookDecision::Deny => {
+                let decision = match outcome.decision {
+                    HookDecision::Allow => "allow",
+                    HookDecision::Ask => "ask",
+                    HookDecision::Deny => "deny",
+                    HookDecision::None => return None,
+                };
+                let mut payload = serde_json::json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": decision
+                    }
+                });
+                if let Some(reason) = outcome.reason {
+                    payload["hookSpecificOutput"]["permissionDecisionReason"] =
+                        serde_json::json!(reason);
+                }
+                if let Some(updated) = outcome.updated_input {
+                    payload["hookSpecificOutput"]["updatedInput"] = updated;
+                }
+                Some(payload)
+            }
+            HookDecision::None => None,
+        },
+        HookProvider::Gemini => match outcome.decision {
+            HookDecision::Deny => Some(serde_json::json!({
+                "decision": "deny",
+                "reason": outcome.reason.unwrap_or_else(|| "Blocked by Ship policy.".to_string()),
+            })),
+            HookDecision::Allow => {
+                let mut payload = serde_json::json!({ "decision": "allow" });
+                if let Some(updated) = outcome.updated_input {
+                    payload["hookSpecificOutput"] = serde_json::json!({ "tool_input": updated });
+                }
+                Some(payload)
+            }
+            HookDecision::Ask | HookDecision::None => None,
+        },
+    }
+}
+
+fn map_permission_request_outcome(outcome: HookPolicyOutcome) -> Option<serde_json::Value> {
+    match outcome.decision {
+        HookDecision::Allow => {
+            let mut decision = serde_json::json!({
+                "behavior": "allow",
+            });
+            if let Some(updated) = outcome.updated_input {
+                decision["updatedInput"] = updated;
+            }
+            Some(serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": decision
+                }
+            }))
+        }
+        HookDecision::Deny => Some(serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {
+                    "behavior": "deny",
+                    "message": outcome.reason.unwrap_or_else(|| "Blocked by Ship permission policy.".to_string()),
+                    "interrupt": false
+                }
+            }
+        })),
+        HookDecision::Ask | HookDecision::None => None,
+    }
+}
+
+fn extract_hook_decision(response: &serde_json::Value) -> Option<String> {
+    response
+        .get("decision")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+        .or_else(|| {
+            response
+                .get("hookSpecificOutput")
+                .and_then(|value| value.get("permissionDecision"))
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        })
+        .or_else(|| {
+            response
+                .get("hookSpecificOutput")
+                .and_then(|value| value.get("decision"))
+                .and_then(|value| value.get("behavior"))
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        })
 }
 
 fn handle_migrate_command(force: bool) -> Result<()> {
@@ -2901,6 +3875,179 @@ mod tests {
             }
             other => panic!("unexpected parse result: {:?}", other),
         }
+    }
+
+    #[test]
+    fn cli_parses_hooks_run_command() {
+        let cli = Cli::try_parse_from(["ship", "hooks", "run", "--provider", "claude"])
+            .expect("hooks run should parse");
+
+        match cli.command {
+            Some(Commands::Hooks {
+                action: HooksCommands::Run { provider },
+            }) => {
+                assert_eq!(provider.as_deref(), Some("claude"));
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    fn write_hook_runtime_artifacts_for_test(
+        ship_dir: &Path,
+        envelope: serde_json::Value,
+        context: Option<&str>,
+    ) -> Result<()> {
+        let runtime_dir = ship_dir.join("agents").join("runtime");
+        std::fs::create_dir_all(&runtime_dir)?;
+        std::fs::write(
+            runtime_dir.join("envelope.json"),
+            serde_json::to_string_pretty(&envelope)?,
+        )?;
+        if let Some(context) = context {
+            std::fs::write(runtime_dir.join("hook-context.md"), context)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn claude_pre_tool_use_blocks_dangerous_shell_command() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = init_project(tmp.path().to_path_buf())?;
+        write_hook_runtime_artifacts_for_test(
+            &ship_dir,
+            serde_json::json!({
+                "workspace_root": tmp.path().to_string_lossy().to_string(),
+                "allow_network": false,
+                "allow_installs": false,
+                "allowed_paths": ["."],
+                "auto_approve_patterns": ["git status*", "git diff*"],
+                "always_block_patterns": ["rm -rf *"],
+                "require_confirmation": [],
+                "tools_allow": ["*"],
+                "tools_deny": []
+            }),
+            None,
+        )?;
+
+        let payload = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "git status && rm -rf /tmp/x"
+            }
+        });
+        let response = build_hook_response(
+            HookProvider::Claude,
+            "PreToolUse",
+            &payload,
+            Some(ship_dir.as_path()),
+        )
+        .expect("expected deny response");
+        assert_eq!(
+            response["hookSpecificOutput"]["permissionDecision"].as_str(),
+            Some("deny")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn claude_pre_tool_use_auto_allows_safe_split_commands() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = init_project(tmp.path().to_path_buf())?;
+        write_hook_runtime_artifacts_for_test(
+            &ship_dir,
+            serde_json::json!({
+                "workspace_root": tmp.path().to_string_lossy().to_string(),
+                "allow_network": false,
+                "allow_installs": false,
+                "allowed_paths": ["."],
+                "auto_approve_patterns": ["git status*", "git diff*"],
+                "always_block_patterns": ["rm -rf *"],
+                "require_confirmation": [],
+                "tools_allow": ["*"],
+                "tools_deny": []
+            }),
+            None,
+        )?;
+
+        let payload = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "FOO=1 git status && BAR=2 git diff --stat"
+            }
+        });
+        let response = build_hook_response(
+            HookProvider::Claude,
+            "PreToolUse",
+            &payload,
+            Some(ship_dir.as_path()),
+        )
+        .expect("expected allow response");
+        assert_eq!(
+            response["hookSpecificOutput"]["permissionDecision"].as_str(),
+            Some("allow")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gemini_before_tool_denies_network_when_disabled() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = init_project(tmp.path().to_path_buf())?;
+        write_hook_runtime_artifacts_for_test(
+            &ship_dir,
+            serde_json::json!({
+                "workspace_root": tmp.path().to_string_lossy().to_string(),
+                "allow_network": false,
+                "allow_installs": false,
+                "allowed_paths": ["."],
+                "auto_approve_patterns": ["git status*"],
+                "always_block_patterns": [],
+                "require_confirmation": [],
+                "tools_allow": ["*"],
+                "tools_deny": []
+            }),
+            None,
+        )?;
+
+        let payload = serde_json::json!({
+            "tool_name": "run_shell_command",
+            "tool_input": {
+                "command": "curl https://example.com"
+            }
+        });
+        let response = build_hook_response(
+            HookProvider::Gemini,
+            "BeforeTool",
+            &payload,
+            Some(ship_dir.as_path()),
+        )
+        .expect("expected deny response");
+        assert_eq!(response["decision"].as_str(), Some("deny"));
+        Ok(())
+    }
+
+    #[test]
+    fn session_start_emits_context_via_json_output() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = init_project(tmp.path().to_path_buf())?;
+        write_hook_runtime_artifacts_for_test(
+            &ship_dir,
+            serde_json::json!({}),
+            Some("# Hook Context\n\nShip-first instructions."),
+        )?;
+
+        let response = build_hook_response(
+            HookProvider::Gemini,
+            "SessionStart",
+            &serde_json::json!({}),
+            Some(ship_dir.as_path()),
+        )
+        .expect("expected context response");
+        assert_eq!(
+            response["hookSpecificOutput"]["additionalContext"].as_str(),
+            Some("# Hook Context\n\nShip-first instructions.")
+        );
+        Ok(())
     }
 
     #[test]

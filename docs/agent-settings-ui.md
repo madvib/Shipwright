@@ -1,6 +1,6 @@
 # Agent Settings UI Reference
 
-> User-facing reference for the Agent Settings pages in Studio (`Providers`, `MCP`, `Skills`, `Rules`, `Hooks`, `Permissions`).
+> User-facing reference for the Agent Settings pages in Studio (`Providers`, `MCP`, `Skills`, `Rules`, `Permissions`).
 > Complements backend/export details in `docs/agent-configuration.md`.
 
 ---
@@ -12,7 +12,11 @@ All agent settings are edited in one of two scopes:
 - `Global`: defaults for all projects on this machine.
 - `Project`: overrides for the active workspace only.
 
-The scope toggle now includes tooltips explaining exactly where changes are persisted.
+Scope behavior:
+
+- if no project is active, UI stays in `Global` and shows an inline warning
+- when a project becomes available, scope auto-switches to `Project` once
+- project toggle tooltip explains why project scope is unavailable when no project is selected
 
 ---
 
@@ -22,35 +26,52 @@ The scope toggle now includes tooltips explaining exactly where changes are pers
 
 Per-provider row controls:
 
-- enable/disable provider in Ship config
+- `Sync On` / `Sync Off` (include provider in export set for this scope)
+- lightning selector for which provider powers in-app Ship AI features
+- import provider-native config into Ship (project scope only)
 - export Ship config to provider-native files
 - install status badge (`installed` or `not found`)
+- one provider sync-health status badge: `Ready`, `Needs attention`, or `Drift detected`
+- per-provider advanced accordion (Claude first) for diagnostics + model/path controls
 
 Tooltips explain:
 
-- what enable/disable changes in exports
+- what `Sync On/Off` changes in exports
+- that import writes into project Ship config (and is disabled outside project scope)
 - what Export does
 - why a provider is unavailable (`binary not found on PATH`)
+- what sync health means:
+  - `Ready`: current config can be synced
+  - `Needs attention`: blocking issues were detected
+  - `Drift detected`: provider config shape diverges from Ship-managed expectations
 
-### Ship Generation
+Provider rendering behavior:
 
-Fields:
+- supported providers always render immediately (`Claude`, `Gemini`, `Codex`)
+- install/version status updates asynchronously from provider detection
+- provider health checks run from live MCP/provider preflight data (`Run checks`)
+- on detection failure, UI shows a retry action and keeps supported rows visible
 
-- `Provider`: which installed client Ship uses for generation features
-- `Model`: optional model ID (blank = provider default)
+Advanced accordion fields:
+
+- `Config Paths`: expected project path + expected global path + detected config file paths from diagnostics
+- `In-App AI Model`: optional model ID for selected Ship AI provider (autocomplete from detected models)
 - `CLI Path Override`: optional absolute binary path (blank = resolve from `PATH`)
+- `Hook Surface`: native hook events available for that provider
+- provider-scoped diagnostics list (`error`/`warning`/`info`)
 
 ### Modes
 
 Mode controls include:
 
-- create mode from a name (mode ID inferred automatically)
-- set active mode
+- start from built-in templates (`Frontend React`, `Rust Expert`, `Documentation Expert`)
+- create custom template from name (mode ID inferred automatically)
+- set active template
 - link skill as system prompt
-- select MCP servers available in mode
-- delete mode
+- select MCP servers available in template
+- delete template
 
-Tooltips are attached to mode actions and key mode fields.
+Templates include concrete tool-policy defaults and auto-link matching installed skills/MCP servers based on template hints.
 
 ---
 
@@ -59,11 +80,20 @@ Tooltips are attached to mode actions and key mode fields.
 ### Top Actions
 
 - `Search MCP library templates`
+- `Search official MCP Registry` (live remote discovery)
 - `Use Template`
 - `Validate MCP`
+- `Probe Tools`
 - `Add MCP Server`
 
 Tooltips explain what each action does and when to use it.
+
+Registry discovery behavior:
+
+- queries official MCP Registry API (`/v0.1/servers`, latest versions)
+- shows installable matches inline with one-click install
+- pre-fills transport/command/url/env placeholders into server config
+- flags entries that require headers so users can finish setup manually
 
 ### Preflight Validation (`Validate MCP`)
 
@@ -77,6 +107,39 @@ Output includes:
 - readiness status (`ready` / `needs attention`)
 - issue level (`error`, `warning`, `info`)
 - message, optional hint, and source path when available
+
+### Runtime Capability Probe (`Probe Tools`)
+
+Probe behavior:
+
+- starts each configured, non-disabled MCP server
+- for `stdio` servers: performs MCP `initialize` + `tools/list` and captures discovered tool names
+- for `http`/`sse` servers: performs endpoint reachability check (tool enumeration is currently stdio-only)
+
+Output includes:
+
+- per-server status (`ready`, `partial`, `needs-attention`, `disabled`)
+- reachability/tool discovery counts
+- probe duration
+- first warning/error excerpt when available
+
+Persistence:
+
+- probe-discovered MCP tools are cached to disk (not memory-only)
+- project scope cache: `.ship/agents/discovery-cache.json`
+- global scope cache: `~/.ship/agents/discovery-cache.json`
+- permissions autocomplete reads cached discoveries even after app restart
+
+### Tool Audit + Policy Controls
+
+On each MCP server row:
+
+- runtime status badge from the latest probe
+- discovered tool chips (when available)
+- one-click `Block All` / `All Blocked` toggle for `mcp__<server>__*`
+- one-click per-tool toggle (blocked/allowed) for `mcp__<server>__<tool>`
+
+These controls write directly into canonical `permissions.tools.deny` and are exported to provider-native policy surfaces at sync time.
 
 ### MCP Server Form
 
@@ -94,6 +157,7 @@ Inference/default behavior:
 - server ID inferred from ID/name/command if omitted
 - catalog templates default to `scope = "project"`
 - common command/env suggestions are auto-populated from catalog + existing servers
+- permission/autocomplete suggestions include discovered MCP tool patterns after probe
 
 ---
 
@@ -106,6 +170,7 @@ Capabilities:
 - create/edit/delete skills
 - install from curated library
 - install from URL/repo path with inferred skill ID
+- install accepts GitHub `tree/blob` URLs and infers `git_ref` + `repo_path` automatically
 - studio folder-audit view via file-tree
 
 Tooltips now cover:
@@ -126,9 +191,10 @@ Rules are global instructions applied across sessions; they share the same edito
 
 ---
 
-## Hooks Page
+## Hooks (Managed Runtime)
 
-Hooks are provider-agnostic in Ship config and exported where supported.
+Hooks remain provider-agnostic in Ship config and are exported where supported, but there is currently no standalone Hooks settings page in Studio.
+Hook policy is Ship-managed from provider export/runtime.
 
 Provider status:
 
@@ -136,22 +202,13 @@ Provider status:
 - `Gemini`: native hooks supported
 - `Codex`: no native hook surface yet (stored in Ship config, not exported natively)
 
-Each hook row now has field-level tooltips for:
+Managed runtime artifacts are written to:
+- `.ship/agents/runtime/hook-context.md`
+- `.ship/agents/runtime/envelope.json`
+- `~/.ship/state/telemetry/hooks/events.ndjson` (internal telemetry)
 
-- `Hook ID`
-- `Event`
-- `Command`
-- `Description`
-- `Timeout`
-- `Matcher`
-- delete hook action
-
-Defaults when adding a hook:
-
-- `trigger`: first provider-supported event (fallback `PreToolUse`)
-- `command`: `$SHIP_HOOKS_BIN`
-- `matcher`: empty
-- `timeout_ms`: empty
+Default managed hook command:
+- `ship hooks run --provider <id>` (or `$SHIP_HOOKS_BIN` when set)
 
 ---
 
@@ -172,13 +229,18 @@ Applying a preset overwrites current permissions; tooltip warns about this.
 Tabs:
 
 - `Tools`: allow/deny glob patterns
+- `Commands`: allow/deny/require-confirmation command patterns with CLI autocomplete
 - `Filesystem`: allow/deny path globs
 - `Limits`: max cost and max turns
 
 Autocomplete suggestions are inferred from:
 
 - configured MCP server IDs
+- probe-discovered MCP tool IDs (persisted cache)
 - MCP catalog IDs
+- skill `allowed-tools` frontmatter hints
+- discovered shell/CLI binaries (`ship`, `gh`, `git`, etc.)
+- discovered workspace filesystem paths (persisted cache)
 - seeded safe pattern/path templates
 
 ---
@@ -189,7 +251,7 @@ From current config normalization/runtime behavior:
 
 - providers default: `['claude']`
 - AI defaults: `provider='claude'`, `model=null`, `cli_path=null`
-- modes default: none
+- modes default: none pre-created (preset templates are available in UI)
 - MCP servers default: none
 - hooks default: none
 - agent layer defaults: empty `skills/prompts/context/rules`
@@ -203,5 +265,9 @@ Permissions are managed in `agents/permissions.toml` and can be seeded via prese
 - `Save Global Agent Config`: persists global defaults.
 - `Save Project Agent Config`: persists project overrides.
 - provider `Export`: writes provider-native files from Ship's unified config.
+- provider `Import`: reads provider-native files and merges into project Ship config (`.ship/ship.toml` + permissions file when available).
 
-Save buttons now include tooltips clarifying persistence scope.
+Immediate-save provider actions:
+
+- `Sync On/Off` persists immediately for active scope
+- Ship AI provider selection (lightning) persists immediately for active scope

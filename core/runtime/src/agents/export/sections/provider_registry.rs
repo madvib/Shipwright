@@ -140,6 +140,7 @@ pub struct ProviderInfo {
     pub name: String,
     pub binary: String,
     pub project_config: String,
+    pub global_config: String,
     pub config_format: String,
     pub prompt_output: String,
     pub skills_output: String,
@@ -202,6 +203,7 @@ fn provider_info(d: &ProviderDescriptor, enabled: bool, project_dir: Option<&Pat
         name: d.name.to_string(),
         binary: d.binary.to_string(),
         project_config: d.project_config.to_string(),
+        global_config: d.global_config.to_string(),
         config_format: match d.config_format {
             ConfigFormat::Json => "json".to_string(),
             ConfigFormat::Toml => "toml".to_string(),
