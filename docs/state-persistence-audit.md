@@ -205,6 +205,15 @@ Root `.gitignore` excludes generated client artifacts (`CLAUDE.md`, `.mcp.json`,
 
 Note: `seq` ordering now reflects insertion order, not strict timestamp order, after merging two event streams.
 
+### Remaining irregularity (not auto-merged)
+
+- `~/.ship/state/C-Users-Micah-Desktop-Dev-Ship/ship.db` still has rows not present in canonical:
+  - `event_log`: 59 unique rows
+  - `feature`: 2 rows (includes `Authentication System` and one blank-title row)
+  - `spec`: 1 row (`Ship Workspace: Project Manager Layer`)
+  - `workspace`: 1 row (`claude/wonderful-villani`)
+- This file was backed up as `windows-path.db` and intentionally left out of automatic canonical merge to avoid silently importing probable experiment/test state.
+
 ## 10) Cross-Platform Sync Policy (Immediate)
 
 Use one project DB as canonical per project ID and avoid syncing machine-local global UI state.
