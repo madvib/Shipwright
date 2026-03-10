@@ -29,7 +29,6 @@ import {
 } from '@ship/ui';
 import {
     ADRS_ROUTE,
-    AGENTS_HOOKS_ROUTE,
     AGENTS_MCP_ROUTE,
     AGENTS_PERMISSIONS_ROUTE,
     AGENTS_PROVIDERS_ROUTE,
@@ -161,13 +160,12 @@ export function SearchModal() {
         await ship.handleSelectSpec(spec);
     }, [navigate, ship]);
 
-    const openSettingsSection = React.useCallback((section: 'providers' | 'mcp' | 'skills' | 'rules' | 'hooks' | 'permissions') => {
+    const openSettingsSection = React.useCallback((section: 'providers' | 'mcp' | 'skills' | 'rules' | 'permissions') => {
         const routeBySection = {
             providers: AGENTS_PROVIDERS_ROUTE,
             mcp: AGENTS_MCP_ROUTE,
             skills: AGENTS_SKILLS_ROUTE,
             rules: AGENTS_RULES_ROUTE,
-            hooks: AGENTS_HOOKS_ROUTE,
             permissions: AGENTS_PERMISSIONS_ROUTE,
         } as const;
         void navigate({ to: routeBySection[section] });

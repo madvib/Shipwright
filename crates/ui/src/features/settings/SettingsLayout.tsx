@@ -8,10 +8,10 @@ import {
   Globe2,
   Package,
   Settings,
-  Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@ship/ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@ship/ui';
 import SettingsPanel from '@/features/agents/SettingsPanel';
 import AgentsPanel, { type AgentSection } from '@/features/agents/AgentsPanel';
 import { ProjectConfig } from '@/bindings';
@@ -25,7 +25,6 @@ export type SettingsSection =
   | 'mcp'
   | 'skills'
   | 'rules'
-  | 'hooks'
   | 'permissions';
 
 interface SettingsSidebarItem {
@@ -42,11 +41,10 @@ const SETTINGS_ITEMS: SettingsSidebarItem[] = [
   { id: 'mcp', label: 'MCP Servers', icon: Package, group: 'agents' },
   { id: 'skills', label: 'Skills', icon: FileStack, group: 'agents' },
   { id: 'rules', label: 'Rules', icon: FileCode2, group: 'agents' },
-  { id: 'hooks', label: 'Hooks', icon: Terminal, group: 'agents' },
   { id: 'permissions', label: 'Permissions', icon: FileCog, group: 'agents' },
 ];
 
-const AGENT_SECTIONS: SettingsSection[] = ['providers', 'mcp', 'skills', 'rules', 'hooks', 'permissions'];
+const AGENT_SECTIONS: SettingsSection[] = ['providers', 'mcp', 'skills', 'rules', 'permissions'];
 
 interface SettingsLayoutProps {
   config: Config;
@@ -99,7 +97,7 @@ export default function SettingsLayout({
                 const Icon = item.icon;
                 const isActive = activeSection === item.id;
                 const isDisabled = item.id === 'project' && !projectConfig;
-                return (
+                const button = (
                   <button
                     key={item.id}
                     disabled={isDisabled}
@@ -115,6 +113,17 @@ export default function SettingsLayout({
                     <Icon className="size-3.5" />
                     {item.label}
                   </button>
+                );
+                if (!isDisabled) return button;
+                return (
+                  <Tooltip key={item.id}>
+                    <TooltipTrigger asChild>
+                      <span>{button}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Open or create a project to edit project settings.
+                    </TooltipContent>
+                  </Tooltip>
                 );
               })}
             </div>

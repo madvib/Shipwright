@@ -6,13 +6,25 @@ import type { SettingsSection } from '@/features/settings/SettingsLayout';
 import RouteFallback from '@/components/app/RouteFallback';
 
 const SettingsLayout = lazy(() => import('@/features/settings/SettingsLayout'));
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = [
+  'global',
+  'project',
+  'appearance',
+  'providers',
+  'mcp',
+  'skills',
+  'rules',
+  'permissions',
+];
 
 function SettingsRouteComponent() {
   const workspace = useWorkspace();
   const navigate = useNavigate();
   const { tab } = Route.useSearch();
 
-  const activeSection = (tab as SettingsSection) || 'global';
+  const activeSection = VALID_SETTINGS_SECTIONS.includes(tab as SettingsSection)
+    ? (tab as SettingsSection)
+    : 'global';
 
   return (
     <Suspense fallback={<RouteFallback label="Loading settings..." />}>

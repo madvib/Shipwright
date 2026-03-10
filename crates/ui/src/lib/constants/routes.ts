@@ -12,7 +12,6 @@ export const AGENTS_PROVIDERS_ROUTE = '/project/agents/providers' as const;
 export const AGENTS_MCP_ROUTE = '/project/agents/mcp' as const;
 export const AGENTS_SKILLS_ROUTE = '/project/agents/skills' as const;
 export const AGENTS_RULES_ROUTE = '/project/agents/rules' as const;
-export const AGENTS_HOOKS_ROUTE = '/project/agents/hooks' as const;
 export const AGENTS_PERMISSIONS_ROUTE = '/project/agents/permissions' as const;
 export const AGENTS_PROMPTS_ROUTE = '/project/agents/prompts' as const;
 export const AGENTS_V0_ROUTE = '/project/agents/v0' as const;
@@ -33,7 +32,6 @@ export type AppRoutePath =
   | typeof AGENTS_MCP_ROUTE
   | typeof AGENTS_SKILLS_ROUTE
   | typeof AGENTS_RULES_ROUTE
-  | typeof AGENTS_HOOKS_ROUTE
   | typeof AGENTS_PERMISSIONS_ROUTE
   | typeof AGENTS_V0_ROUTE
   | typeof SETTINGS_ROUTE;
@@ -53,7 +51,6 @@ export const ROUTE_LABELS: Record<AppRoutePath, string> = {
   [AGENTS_MCP_ROUTE]: 'Agents / MCP Servers',
   [AGENTS_SKILLS_ROUTE]: 'Agents / Skills',
   [AGENTS_RULES_ROUTE]: 'Agents / Rules',
-  [AGENTS_HOOKS_ROUTE]: 'Agents / Hooks',
   [AGENTS_PERMISSIONS_ROUTE]: 'Agents / Permissions',
   [AGENTS_V0_ROUTE]: 'AI Studio',
   [SETTINGS_ROUTE]: 'Settings',

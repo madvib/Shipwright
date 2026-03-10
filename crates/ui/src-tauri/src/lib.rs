@@ -15,17 +15,17 @@ use runtime::project::{
 };
 use runtime::{
     activate_workspace, autodetect_providers, create_skill, create_user_skill, create_workspace,
-    delete_skill, delete_user_skill, delete_workspace, end_workspace_session,
-    get_active_workspace_session, get_effective_skill, get_skill, get_user_skill, get_workspace,
-    get_workspace_provider_matrix, ingest_external_events, list_catalog, list_catalog_by_kind,
-    list_effective_skills, list_events_since, list_models, list_providers, list_skills,
-    list_user_skills, list_workspace_sessions, list_workspaces, log_action, read_log_entries,
-    repair_workspace, resolve_agent_config, search_catalog, set_workspace_active_mode,
-    start_workspace_session, sync_workspace, transition_workspace_status, update_skill,
-    update_user_skill, AgentConfig, CatalogEntry, CatalogKind, CreateWorkspaceRequest,
-    EndWorkspaceSessionRequest, EventRecord, LogEntry, ModelInfo, ProviderInfo, ShipWorkspaceKind,
-    Skill, SkillInstallScope, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport,
-    WorkspaceSession, WorkspaceStatus, install_skill_from_source,
+    delete_skill, delete_user_skill, delete_workspace, detect_binary, detect_version,
+    end_workspace_session, get_active_workspace_session, get_effective_skill, get_skill,
+    get_user_skill, get_workspace, get_workspace_provider_matrix, ingest_external_events,
+    install_skill_from_source, list_catalog, list_catalog_by_kind, list_effective_skills,
+    list_events_since, list_models, list_providers, list_skills, list_user_skills,
+    list_workspace_sessions, list_workspaces, log_action, read_log_entries, repair_workspace,
+    resolve_agent_config, search_catalog, set_workspace_active_mode, start_workspace_session,
+    sync_workspace, transition_workspace_status, update_skill, update_user_skill, AgentConfig,
+    CatalogEntry, CatalogKind, CreateWorkspaceRequest, EndWorkspaceSessionRequest, EventRecord,
+    LogEntry, ModelInfo, ProviderInfo, ShipWorkspaceKind, Skill, SkillInstallScope, Workspace,
+    WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession, WorkspaceStatus,
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
@@ -44,14 +44,17 @@ use ship_module_project::{
 use specta::Type;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 use tauri_specta::Event;
@@ -157,6 +160,82 @@ pub struct McpValidationReport {
     pub checked_servers: usize,
     pub checked_provider_configs: usize,
     pub issues: Vec<McpValidationIssue>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct ProviderImportReport {
+    pub imported_mcp_servers: usize,
+    pub imported_permissions: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpRegistryEntry {
+    pub id: String,
+    pub server_name: String,
+    pub title: String,
+    pub description: String,
+    pub version: String,
+    /// "stdio" | "http" | "sse"
+    pub transport: String,
+    pub command: Option<String>,
+    pub args: Vec<String>,
+    pub url: Option<String>,
+    pub required_env: Vec<String>,
+    pub required_headers: Vec<String>,
+    pub source_url: Option<String>,
+    pub website_url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpDiscoveredTool {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpProbeServerReport {
+    pub server_id: String,
+    pub server_name: String,
+    /// "stdio" | "http" | "sse"
+    pub transport: String,
+    pub ok: bool,
+    /// "ready" | "needs-attention" | "disabled" | "partial"
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discovered_tools: Vec<McpDiscoveredTool>,
+    pub duration_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct McpProbeReport {
+    /// Unix epoch seconds.
+    pub generated_at: String,
+    pub checked_servers: usize,
+    pub reachable_servers: usize,
+    pub discovered_tools: usize,
+    pub results: Vec<McpProbeServerReport>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct SkillToolHint {
+    pub id: String,
+    pub name: String,
+    pub allowed_tools: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct AgentDiscoveryCache {
+    pub version: u32,
+    /// Unix epoch seconds as string.
+    pub updated_at: String,
+    pub mcp_tools: HashMap<String, Vec<McpDiscoveredTool>>,
+    pub shell_commands: Vec<String>,
+    pub filesystem_paths: Vec<String>,
 }
 
 struct PtySession {
@@ -2835,7 +2914,12 @@ fn collect_workspace_loc_delta(target_dir: &Path) -> Result<(u64, u64), String> 
 
 fn collect_workspace_ahead_behind(target_dir: &Path) -> (Option<String>, u64, u64) {
     let upstream_output = std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+        .args([
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ])
         .current_dir(target_dir)
         .output();
 
@@ -3607,6 +3691,672 @@ fn parse_http_host_port(raw_url: &str) -> Option<(String, u16)> {
     Some((host.to_string(), port))
 }
 
+fn now_epoch_secs_string() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn normalize_scope(scope: Option<&str>) -> &str {
+    match scope.map(str::trim).map(str::to_ascii_lowercase) {
+        Some(value) if value == "project" => "project",
+        _ => "global",
+    }
+}
+
+fn default_discovery_cache() -> AgentDiscoveryCache {
+    AgentDiscoveryCache {
+        version: 1,
+        updated_at: now_epoch_secs_string(),
+        mcp_tools: HashMap::new(),
+        shell_commands: Vec::new(),
+        filesystem_paths: Vec::new(),
+    }
+}
+
+fn discovery_cache_path(
+    scope: Option<&str>,
+    project_dir: Option<&Path>,
+) -> Result<PathBuf, String> {
+    match normalize_scope(scope) {
+        "project" => {
+            let Some(project) = project_dir else {
+                return Err("Project scope discovery requires an active project.".to_string());
+            };
+            Ok(project.join("agents").join("discovery-cache.json"))
+        }
+        _ => {
+            let global = runtime::project::get_global_dir().map_err(|err| err.to_string())?;
+            Ok(global.join("agents").join("discovery-cache.json"))
+        }
+    }
+}
+
+fn load_discovery_cache(path: &Path) -> AgentDiscoveryCache {
+    let Ok(content) = fs::read_to_string(path) else {
+        return default_discovery_cache();
+    };
+    serde_json::from_str::<AgentDiscoveryCache>(&content)
+        .unwrap_or_else(|_| default_discovery_cache())
+}
+
+fn save_discovery_cache(path: &Path, cache: &AgentDiscoveryCache) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    let content = serde_json::to_string_pretty(cache).map_err(|err| err.to_string())?;
+    fs::write(path, content).map_err(|err| err.to_string())
+}
+
+fn discover_shell_commands(limit: usize) -> Vec<String> {
+    let seeded = [
+        "ship",
+        "gh",
+        "git",
+        "bash",
+        "sh",
+        "zsh",
+        "fish",
+        "ls",
+        "cat",
+        "rg",
+        "sed",
+        "awk",
+        "find",
+        "xargs",
+        "curl",
+        "wget",
+        "jq",
+        "node",
+        "pnpm",
+        "npm",
+        "yarn",
+        "python",
+        "python3",
+        "pip",
+        "uv",
+        "uvx",
+        "cargo",
+        "rustc",
+        "go",
+        "docker",
+        "kubectl",
+        "terraform",
+        "claude",
+        "gemini",
+        "codex",
+    ];
+    let mut commands = HashSet::<String>::new();
+    for item in seeded {
+        commands.insert(item.to_string());
+    }
+
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            if !dir.exists() || !dir.is_dir() {
+                continue;
+            }
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                if commands.len() >= limit {
+                    break;
+                }
+                let Ok(metadata) = entry.metadata() else {
+                    continue;
+                };
+                if !metadata.is_file() {
+                    continue;
+                }
+                #[cfg(unix)]
+                if metadata.permissions().mode() & 0o111 == 0 {
+                    continue;
+                }
+                let file_name = entry.file_name();
+                let Some(name) = file_name.to_str().map(str::trim) else {
+                    continue;
+                };
+                if name.is_empty() || name.starts_with('.') || name.contains(char::is_whitespace) {
+                    continue;
+                }
+                commands.insert(name.to_string());
+            }
+            if commands.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    let mut sorted: Vec<String> = commands.into_iter().collect();
+    sorted.sort_unstable();
+    sorted.truncate(limit);
+    sorted
+}
+
+fn discover_filesystem_paths(base: &Path, limit: usize) -> Vec<String> {
+    let mut paths = HashSet::<String>::new();
+    let seeded = [
+        ".ship/**",
+        "src/**",
+        "docs/**",
+        "tests/**",
+        "scripts/**",
+        ".github/**",
+        "crates/**",
+        "apps/**",
+    ];
+    for item in seeded {
+        paths.insert(item.to_string());
+    }
+
+    if base.exists() && base.is_dir() {
+        if let Ok(entries) = fs::read_dir(base) {
+            for entry in entries.flatten() {
+                if paths.len() >= limit {
+                    break;
+                }
+                let Ok(metadata) = entry.metadata() else {
+                    continue;
+                };
+                let file_name = entry.file_name();
+                let Some(name) = file_name.to_str().map(str::trim) else {
+                    continue;
+                };
+                if name.is_empty() {
+                    continue;
+                }
+                if metadata.is_dir() {
+                    paths.insert(format!("{}/**", name));
+                } else {
+                    paths.insert(name.to_string());
+                }
+            }
+        }
+    }
+
+    let mut sorted: Vec<String> = paths.into_iter().collect();
+    sorted.sort_unstable();
+    sorted.truncate(limit);
+    sorted
+}
+
+fn refresh_discovery_cache_data(cache: &mut AgentDiscoveryCache, base: &Path) {
+    cache.version = 1;
+    cache.updated_at = now_epoch_secs_string();
+    cache.shell_commands = discover_shell_commands(500);
+    cache.filesystem_paths = discover_filesystem_paths(base, 300);
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct SkillFrontmatterHints {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(rename = "allowed-tools", default)]
+    allowed_tools: Option<Vec<String>>,
+}
+
+fn parse_skill_tool_hint(skill_dir: &Path) -> Option<SkillToolHint> {
+    let id = skill_dir.file_name()?.to_str()?.to_string();
+    let path = skill_dir.join("SKILL.md");
+    let raw = fs::read_to_string(path).ok()?;
+    if !raw.starts_with("---\n") {
+        return None;
+    }
+    let rest = &raw[4..];
+    let end = rest.find("\n---")?;
+    let yaml = &rest[..end];
+    let hints = serde_yaml::from_str::<SkillFrontmatterHints>(yaml).ok()?;
+    let allowed_tools = hints.allowed_tools.unwrap_or_default();
+    if allowed_tools.is_empty() {
+        return None;
+    }
+    Some(SkillToolHint {
+        id: id.clone(),
+        name: hints.name.unwrap_or(id),
+        allowed_tools,
+    })
+}
+
+fn list_skill_tool_hints_from_dir(root: &Path) -> Vec<SkillToolHint> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_dir() {
+                return None;
+            }
+            parse_skill_tool_hint(&path)
+        })
+        .collect()
+}
+
+fn infer_probe_server_id(server: &McpServerConfig, index: usize) -> String {
+    let trimmed = server.id.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    let fallback_name = server.name.trim();
+    if !fallback_name.is_empty() {
+        let mut out = String::with_capacity(fallback_name.len());
+        let mut prev_dash = false;
+        for ch in fallback_name.to_ascii_lowercase().chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch);
+                prev_dash = false;
+            } else if !prev_dash {
+                out.push('-');
+                prev_dash = true;
+            }
+        }
+        let slug = out.trim_matches('-').to_string();
+        if !slug.is_empty() {
+            return slug;
+        }
+    }
+    format!("server-{}", index + 1)
+}
+
+fn summarize_mcp_stderr(raw: &str) -> Option<String> {
+    let compact = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = compact.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let excerpt: String = trimmed.chars().take(220).collect();
+    if trimmed.chars().count() > excerpt.chars().count() {
+        Some(format!("{}…", excerpt))
+    } else {
+        Some(excerpt)
+    }
+}
+
+fn write_mcp_frame(writer: &mut impl Write, value: &serde_json::Value) -> Result<(), String> {
+    let body = serde_json::to_vec(value).map_err(|err| err.to_string())?;
+    let header = format!("Content-Length: {}\r\n\r\n", body.len());
+    writer
+        .write_all(header.as_bytes())
+        .map_err(|err| err.to_string())?;
+    writer.write_all(&body).map_err(|err| err.to_string())?;
+    writer.flush().map_err(|err| err.to_string())
+}
+
+fn read_mcp_frame(reader: &mut impl BufRead) -> Result<Option<serde_json::Value>, String> {
+    let mut line = String::new();
+    let mut content_length: Option<usize> = None;
+    loop {
+        line.clear();
+        let read = reader.read_line(&mut line).map_err(|err| err.to_string())?;
+        if read == 0 {
+            return Ok(None);
+        }
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.is_empty() {
+            if content_length.is_some() {
+                break;
+            }
+            continue;
+        }
+        if let Some((name, value)) = trimmed.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse::<usize>().ok();
+            }
+        }
+    }
+
+    let Some(length) = content_length else {
+        return Err("Missing Content-Length header in MCP frame.".to_string());
+    };
+    let mut payload = vec![0u8; length];
+    reader
+        .read_exact(&mut payload)
+        .map_err(|err| err.to_string())?;
+    serde_json::from_slice::<serde_json::Value>(&payload)
+        .map(Some)
+        .map_err(|err| err.to_string())
+}
+
+fn wait_for_mcp_response(
+    rx: &mpsc::Receiver<Result<serde_json::Value, String>>,
+    request_id: i64,
+    timeout: Duration,
+) -> Result<serde_json::Value, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "Timed out waiting for MCP response id {}.",
+                request_id
+            ));
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        let next = rx
+            .recv_timeout(remaining)
+            .map_err(|_| format!("Timed out waiting for MCP response id {}.", request_id))?;
+        let value = next?;
+        let matched_id = value
+            .get("id")
+            .and_then(|v| v.as_i64())
+            .is_some_and(|id| id == request_id);
+        if matched_id {
+            return Ok(value);
+        }
+    }
+}
+
+fn probe_mcp_stdio_server(
+    server: &McpServerConfig,
+    server_id: &str,
+    cwd: Option<&Path>,
+) -> McpProbeServerReport {
+    let start = Instant::now();
+    let mut warnings: Vec<String> = Vec::new();
+
+    let command_value = server.command.trim().to_string();
+    if command_value.is_empty() {
+        return McpProbeServerReport {
+            server_id: server_id.to_string(),
+            server_name: server.name.clone(),
+            transport: "stdio".to_string(),
+            ok: false,
+            status: "needs-attention".to_string(),
+            message: Some("Command is required for stdio MCP probing.".to_string()),
+            warnings,
+            discovered_tools: Vec::new(),
+            duration_ms: start.elapsed().as_millis() as u64,
+        };
+    }
+
+    let mut program = command_value.clone();
+    let mut args = server.args.clone();
+    if args.is_empty() {
+        let split: Vec<String> = command_value
+            .split_whitespace()
+            .map(|part| part.to_string())
+            .collect();
+        if split.len() > 1 {
+            program = split[0].clone();
+            args = split[1..].to_vec();
+            warnings.push(
+                "Command includes inline args. Probe split this into binary + args.".to_string(),
+            );
+        }
+    }
+
+    let mut command = ProcessCommand::new(&program);
+    command
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    for (key, value) in &server.env {
+        if value.trim().is_empty() {
+            continue;
+        }
+        command.env(key, value);
+    }
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            return McpProbeServerReport {
+                server_id: server_id.to_string(),
+                server_name: server.name.clone(),
+                transport: "stdio".to_string(),
+                ok: false,
+                status: "needs-attention".to_string(),
+                message: Some(format!("Failed to start '{}': {}", program, err)),
+                warnings,
+                discovered_tools: Vec::new(),
+                duration_ms: start.elapsed().as_millis() as u64,
+            };
+        }
+    };
+
+    let stderr_handle = child.stderr.take().map(|mut stderr| {
+        thread::spawn(move || {
+            let mut output = String::new();
+            let _ = stderr.read_to_string(&mut output);
+            output
+        })
+    });
+    let (frame_tx, frame_rx) = mpsc::channel::<Result<serde_json::Value, String>>();
+    let frame_reader_handle = child.stdout.take().map(|stdout| {
+        thread::spawn(move || {
+            let mut reader = std::io::BufReader::new(stdout);
+            loop {
+                match read_mcp_frame(&mut reader) {
+                    Ok(Some(frame)) => {
+                        if frame_tx.send(Ok(frame)).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(err) => {
+                        let _ = frame_tx.send(Err(err));
+                        break;
+                    }
+                }
+            }
+        })
+    });
+
+    let timeout_secs = server.timeout_secs.unwrap_or(8).clamp(2, 30);
+    let timeout = Duration::from_secs(timeout_secs as u64);
+
+    let mut outcome = McpProbeServerReport {
+        server_id: server_id.to_string(),
+        server_name: server.name.clone(),
+        transport: "stdio".to_string(),
+        ok: false,
+        status: "needs-attention".to_string(),
+        message: None,
+        warnings,
+        discovered_tools: Vec::new(),
+        duration_ms: 0,
+    };
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        let init_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "ship",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }
+        });
+        if let Err(err) = write_mcp_frame(stdin, &init_request) {
+            outcome.message = Some(format!("Failed to send initialize request: {}", err));
+        } else {
+            match wait_for_mcp_response(&frame_rx, 1, timeout) {
+                Ok(init_response) => {
+                    if let Some(error) = init_response.get("error") {
+                        let message = error
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown initialize error");
+                        outcome.message =
+                            Some(format!("MCP initialize failed: {}", message.trim()));
+                    } else {
+                        let initialized = serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "method": "notifications/initialized",
+                            "params": {}
+                        });
+                        let tools_list = serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": 2,
+                            "method": "tools/list",
+                            "params": {}
+                        });
+                        if let Err(err) = write_mcp_frame(stdin, &initialized) {
+                            outcome.message =
+                                Some(format!("Failed to send initialized notification: {}", err));
+                        } else if let Err(err) = write_mcp_frame(stdin, &tools_list) {
+                            outcome.message =
+                                Some(format!("Failed to request tools/list: {}", err));
+                        } else {
+                            match wait_for_mcp_response(&frame_rx, 2, timeout) {
+                                Ok(tool_response) => {
+                                    if let Some(error) = tool_response.get("error") {
+                                        let message = error
+                                            .get("message")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Unknown tools/list error");
+                                        outcome.status = "partial".to_string();
+                                        outcome.ok = false;
+                                        outcome.message = Some(format!(
+                                            "tools/list not available: {}",
+                                            message.trim()
+                                        ));
+                                    } else {
+                                        let discovered = tool_response
+                                            .get("result")
+                                            .and_then(|result| result.get("tools"))
+                                            .and_then(|tools| tools.as_array())
+                                            .map(|tools| {
+                                                tools
+                                                    .iter()
+                                                    .filter_map(|tool| {
+                                                        let name = tool
+                                                            .get("name")
+                                                            .and_then(|value| value.as_str())
+                                                            .map(str::trim)
+                                                            .filter(|value| !value.is_empty())?
+                                                            .to_string();
+                                                        let description = tool
+                                                            .get("description")
+                                                            .and_then(|value| value.as_str())
+                                                            .map(str::trim)
+                                                            .filter(|value| !value.is_empty())
+                                                            .map(str::to_string);
+                                                        Some(McpDiscoveredTool {
+                                                            name,
+                                                            description,
+                                                        })
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                            })
+                                            .unwrap_or_default();
+                                        outcome.discovered_tools = discovered;
+                                        outcome.ok = true;
+                                        outcome.status = "ready".to_string();
+                                        outcome.message = Some(format!(
+                                            "Discovered {} tool{} via runtime probe.",
+                                            outcome.discovered_tools.len(),
+                                            if outcome.discovered_tools.len() == 1 {
+                                                ""
+                                            } else {
+                                                "s"
+                                            }
+                                        ));
+                                    }
+                                }
+                                Err(err) => {
+                                    outcome.message = Some(err);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    outcome.message = Some(err);
+                }
+            }
+        }
+    } else {
+        outcome.message = Some("MCP process stdin is unavailable.".to_string());
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+    if let Some(handle) = frame_reader_handle {
+        let _ = handle.join();
+    }
+    if let Some(handle) = stderr_handle {
+        if let Ok(stderr_output) = handle.join() {
+            if let Some(stderr_excerpt) = summarize_mcp_stderr(&stderr_output) {
+                outcome.warnings.push(format!("stderr: {}", stderr_excerpt));
+            }
+        }
+    }
+
+    outcome.duration_ms = start.elapsed().as_millis() as u64;
+    outcome
+}
+
+fn probe_mcp_network_server(
+    server: &McpServerConfig,
+    server_id: &str,
+    transport: &str,
+) -> McpProbeServerReport {
+    let start = Instant::now();
+    let mut report = McpProbeServerReport {
+        server_id: server_id.to_string(),
+        server_name: server.name.clone(),
+        transport: transport.to_string(),
+        ok: false,
+        status: "needs-attention".to_string(),
+        message: None,
+        warnings: Vec::new(),
+        discovered_tools: Vec::new(),
+        duration_ms: 0,
+    };
+    let Some(url) = server
+        .url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+    else {
+        report.message = Some("URL is required for network MCP transports.".to_string());
+        report.duration_ms = start.elapsed().as_millis() as u64;
+        return report;
+    };
+
+    let Some((host, port)) = parse_http_host_port(url) else {
+        report.message = Some(format!("URL appears invalid: {}", url));
+        report.duration_ms = start.elapsed().as_millis() as u64;
+        return report;
+    };
+    let address = format!("{}:{}", host, port);
+    match address.to_socket_addrs() {
+        Ok(mut addresses) => {
+            if let Some(addr) = addresses.next() {
+                if TcpStream::connect_timeout(&addr, Duration::from_millis(900)).is_ok() {
+                    report.ok = true;
+                    report.status = "partial".to_string();
+                    report.message = Some(
+                        "Endpoint is reachable. Runtime tool discovery currently supports stdio servers."
+                            .to_string(),
+                    );
+                } else {
+                    report.message = Some(format!("Endpoint is not reachable at {}.", address));
+                }
+            } else {
+                report.message = Some(format!("No socket address resolved for {}.", address));
+            }
+        }
+        Err(_) => {
+            report.message = Some(format!("Host could not be resolved for {}.", address));
+        }
+    }
+    report.duration_ms = start.elapsed().as_millis() as u64;
+    report
+}
+
 fn validate_provider_configs(
     project_dir: Option<&Path>,
     issues: &mut Vec<McpValidationIssue>,
@@ -3741,7 +4491,8 @@ fn validate_provider_configs(
                                     provider.mcp_key
                                 ),
                                 hint: Some(
-                                    "Set MCP servers as TOML tables keyed by server id.".to_string(),
+                                    "Set MCP servers as TOML tables keyed by server id."
+                                        .to_string(),
                                 ),
                                 server_id: None,
                                 provider_id: Some(provider.id.to_string()),
@@ -3780,7 +4531,9 @@ fn validate_mcp_servers_cmd(
                 level: "error".to_string(),
                 code: "server-id-missing".to_string(),
                 message: "Server id is missing.".to_string(),
-                hint: Some("Set a stable id (slug) for permission and mode references.".to_string()),
+                hint: Some(
+                    "Set a stable id (slug) for permission and mode references.".to_string(),
+                ),
                 server_id: Some(resolved_id.clone()),
                 provider_id: None,
                 source_path: None,
@@ -3858,10 +4611,7 @@ fn validate_mcp_servers_cmd(
             issues.push(McpValidationIssue {
                 level: "info".to_string(),
                 code: "server-env-secret-empty".to_string(),
-                message: format!(
-                    "Secret env vars are empty: {}",
-                    empty_secret_env.join(", ")
-                ),
+                message: format!("Secret env vars are empty: {}", empty_secret_env.join(", ")),
                 hint: Some("Set values before starting/exporting this server.".to_string()),
                 server_id: Some(resolved_id.clone()),
                 provider_id: None,
@@ -3906,7 +4656,9 @@ fn validate_mcp_servers_cmd(
                             level: "info".to_string(),
                             code: "server-command-split".to_string(),
                             message: "Command contains spaces and no args.".to_string(),
-                            hint: Some("Prefer command as binary + separate args array.".to_string()),
+                            hint: Some(
+                                "Prefer command as binary + separate args array.".to_string(),
+                            ),
                             server_id: Some(resolved_id.clone()),
                             provider_id: None,
                             source_path: None,
@@ -3947,7 +4699,12 @@ fn validate_mcp_servers_cmd(
                 }
             }
             McpServerType::Sse | McpServerType::Http => {
-                let Some(url) = server.url.as_deref().map(str::trim).filter(|v| !v.is_empty()) else {
+                let Some(url) = server
+                    .url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                else {
                     issues.push(McpValidationIssue {
                         level: "error".to_string(),
                         code: "server-url-missing".to_string(),
@@ -3966,8 +4723,7 @@ fn validate_mcp_servers_cmd(
                         code: "server-url-invalid".to_string(),
                         message: format!("URL appears invalid: '{}'", url),
                         hint: Some(
-                            "Use a fully-qualified http:// or https:// URL with host."
-                                .to_string(),
+                            "Use a fully-qualified http:// or https:// URL with host.".to_string(),
                         ),
                         server_id: Some(resolved_id.clone()),
                         provider_id: None,
@@ -4024,6 +4780,464 @@ fn validate_mcp_servers_cmd(
         checked_provider_configs,
         issues,
     })
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn probe_mcp_servers_cmd(
+    servers: Vec<McpServerConfig>,
+    scope: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<McpProbeReport, String> {
+    let active_dir = get_active_dir(&state).ok();
+    tokio::task::spawn_blocking(move || {
+        let cwd = active_dir.as_ref().map(PathBuf::as_path);
+        let mut results = Vec::with_capacity(servers.len());
+        for (index, server) in servers.iter().enumerate() {
+            let server_id = infer_probe_server_id(server, index);
+            if server.disabled {
+                results.push(McpProbeServerReport {
+                    server_id: server_id.clone(),
+                    server_name: server.name.clone(),
+                    transport: match server.server_type {
+                        McpServerType::Stdio => "stdio".to_string(),
+                        McpServerType::Sse => "sse".to_string(),
+                        McpServerType::Http => "http".to_string(),
+                    },
+                    ok: false,
+                    status: "disabled".to_string(),
+                    message: Some("Server is disabled in current config.".to_string()),
+                    warnings: Vec::new(),
+                    discovered_tools: Vec::new(),
+                    duration_ms: 0,
+                });
+                continue;
+            }
+
+            let report = match server.server_type {
+                McpServerType::Stdio => probe_mcp_stdio_server(server, &server_id, cwd),
+                McpServerType::Sse => probe_mcp_network_server(server, &server_id, "sse"),
+                McpServerType::Http => probe_mcp_network_server(server, &server_id, "http"),
+            };
+            results.push(report);
+        }
+
+        let reachable_servers = results.iter().filter(|row| row.ok).count();
+        let discovered_tools = results
+            .iter()
+            .map(|row| row.discovered_tools.len())
+            .sum::<usize>();
+        let generated_at = now_epoch_secs_string();
+
+        if let Ok(cache_path) = discovery_cache_path(scope.as_deref(), active_dir.as_deref()) {
+            let mut cache = load_discovery_cache(&cache_path);
+            for row in &results {
+                if !row.discovered_tools.is_empty() {
+                    cache
+                        .mcp_tools
+                        .insert(row.server_id.clone(), row.discovered_tools.clone());
+                } else if row.status == "ready" {
+                    cache.mcp_tools.insert(row.server_id.clone(), Vec::new());
+                }
+            }
+            cache.updated_at = generated_at.clone();
+            let _ = save_discovery_cache(&cache_path, &cache);
+        }
+
+        Ok(McpProbeReport {
+            generated_at,
+            checked_servers: servers.len(),
+            reachable_servers,
+            discovered_tools,
+            results,
+        })
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_agent_discovery_cache_cmd(
+    scope: Option<String>,
+    state: State<AppState>,
+) -> Result<AgentDiscoveryCache, String> {
+    let active_dir = get_active_dir(&state).ok();
+    let path = discovery_cache_path(scope.as_deref(), active_dir.as_deref())?;
+    Ok(load_discovery_cache(&path))
+}
+
+#[tauri::command]
+#[specta::specta]
+fn refresh_agent_discovery_cache_cmd(
+    scope: Option<String>,
+    state: State<AppState>,
+) -> Result<AgentDiscoveryCache, String> {
+    let active_dir = get_active_dir(&state).ok();
+    let normalized_scope = normalize_scope(scope.as_deref()).to_string();
+    let cache_path = discovery_cache_path(Some(&normalized_scope), active_dir.as_deref())?;
+    let mut cache = load_discovery_cache(&cache_path);
+
+    let base = if normalized_scope == "project" {
+        let Some(dir) = active_dir.as_ref() else {
+            return Err("Project scope discovery requires an active project.".to_string());
+        };
+        dir.parent().unwrap_or(dir).to_path_buf()
+    } else {
+        dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
+    };
+    refresh_discovery_cache_data(&mut cache, &base);
+    save_discovery_cache(&cache_path, &cache)?;
+    Ok(cache)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn list_skill_tool_hints_cmd(
+    scope: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<SkillToolHint>, String> {
+    let active_dir = get_active_dir(&state).ok();
+    let scope_value = scope
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("effective")
+        .to_ascii_lowercase();
+
+    let mut roots: Vec<PathBuf> = Vec::new();
+    match scope_value.as_str() {
+        "project" => {
+            let Some(project_dir) = active_dir.as_ref() else {
+                return Err("Project scope skill hints require an active project.".to_string());
+            };
+            roots.push(runtime::project::skills_dir(project_dir));
+        }
+        "user" | "global" => {
+            roots.push(runtime::project::user_skills_dir());
+        }
+        _ => {
+            if let Some(project_dir) = active_dir.as_ref() {
+                roots.push(runtime::project::skills_dir(project_dir));
+            }
+            roots.push(runtime::project::user_skills_dir());
+        }
+    }
+
+    let mut by_id = HashMap::<String, SkillToolHint>::new();
+    for root in roots {
+        for hint in list_skill_tool_hints_from_dir(&root) {
+            by_id.entry(hint.id.clone()).or_insert(hint);
+        }
+    }
+    let mut hints: Vec<SkillToolHint> = by_id.into_values().collect();
+    hints.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(hints)
+}
+
+fn slugify_registry_server_id(input: &str) -> String {
+    let tail = input.rsplit('/').next().unwrap_or(input);
+    let mut out = String::with_capacity(tail.len());
+    let mut prev_dash = false;
+    for ch in tail.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    while out.starts_with('-') {
+        out.remove(0);
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.is_empty() {
+        "mcp-server".to_string()
+    } else {
+        out
+    }
+}
+
+fn parse_registry_arg_values(args: Option<&Vec<serde_json::Value>>) -> Vec<String> {
+    let Some(args) = args else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    for arg in args {
+        let Some(arg_obj) = arg.as_object() else {
+            continue;
+        };
+        if let Some(value) = arg_obj
+            .get("value")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            values.push(value.to_string());
+            continue;
+        }
+        if let Some(name) = arg_obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            values.push(name.to_string());
+        }
+    }
+    values
+}
+
+fn parse_required_key_values(values: Option<&Vec<serde_json::Value>>) -> Vec<String> {
+    let Some(values) = values else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    for item in values {
+        let Some(item_obj) = item.as_object() else {
+            continue;
+        };
+        let required = item_obj
+            .get("isRequired")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !required {
+            continue;
+        }
+        if let Some(name) = item_obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+fn mcp_registry_entry_from_json(item: &serde_json::Value) -> Option<McpRegistryEntry> {
+    let server = item.get("server")?.as_object()?;
+    let server_name = server.get("name")?.as_str()?.trim().to_string();
+    if server_name.is_empty() {
+        return None;
+    }
+
+    let title = server
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(server_name.as_str())
+        .to_string();
+    let description = server
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("MCP server")
+        .to_string();
+    let version = server
+        .get("version")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("latest")
+        .to_string();
+    let source_url = server
+        .get("repository")
+        .and_then(|v| v.as_object())
+        .and_then(|repo| repo.get("url"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let website_url = server
+        .get("websiteUrl")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let mut transport = "stdio".to_string();
+    let mut command: Option<String> = None;
+    let mut args = Vec::new();
+    let mut url: Option<String> = None;
+    let mut required_env = Vec::new();
+    let mut required_headers = Vec::new();
+
+    if let Some(packages) = server.get("packages").and_then(|v| v.as_array()) {
+        let preferred = packages
+            .iter()
+            .find(|pkg| {
+                pkg.get("transport")
+                    .and_then(|t| t.as_object())
+                    .and_then(|t| t.get("type"))
+                    .and_then(|v| v.as_str())
+                    == Some("stdio")
+            })
+            .or_else(|| packages.first());
+
+        if let Some(package) = preferred.and_then(|v| v.as_object()) {
+            let transport_type = package
+                .get("transport")
+                .and_then(|t| t.as_object())
+                .and_then(|t| t.get("type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("stdio");
+            transport = match transport_type {
+                "streamable-http" => "http".to_string(),
+                "sse" => "sse".to_string(),
+                _ => "stdio".to_string(),
+            };
+            if transport != "stdio" {
+                url = package
+                    .get("transport")
+                    .and_then(|t| t.as_object())
+                    .and_then(|t| t.get("url"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+            }
+
+            let runtime_hint = package
+                .get("runtimeHint")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string);
+            let runtime_args = parse_registry_arg_values(
+                package.get("runtimeArguments").and_then(|v| v.as_array()),
+            );
+            let package_args = parse_registry_arg_values(
+                package.get("packageArguments").and_then(|v| v.as_array()),
+            );
+            required_env = parse_required_key_values(
+                package
+                    .get("environmentVariables")
+                    .and_then(|v| v.as_array()),
+            );
+
+            if transport == "stdio" {
+                command = runtime_hint.or_else(|| {
+                    package
+                        .get("registryType")
+                        .and_then(|v| v.as_str())
+                        .and_then(|kind| match kind {
+                            "npm" => Some("npx".to_string()),
+                            _ => None,
+                        })
+                });
+                if !runtime_args.is_empty() {
+                    args.extend(runtime_args);
+                } else if command.as_deref() == Some("npx") {
+                    if let Some(identifier) = package
+                        .get("identifier")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                    {
+                        let mut resolved = identifier.to_string();
+                        let version_hint = package
+                            .get("version")
+                            .and_then(|v| v.as_str())
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty());
+                        if !resolved.contains('@') {
+                            if let Some(version_hint) = version_hint {
+                                resolved = format!("{}@{}", resolved, version_hint);
+                            }
+                        }
+                        args.push("-y".to_string());
+                        args.push(resolved);
+                    }
+                }
+                args.extend(package_args);
+            }
+        }
+    }
+
+    if command.is_none() && url.is_none() {
+        if let Some(remotes) = server.get("remotes").and_then(|v| v.as_array()) {
+            if let Some(remote) = remotes.first().and_then(|v| v.as_object()) {
+                let remote_type = remote
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("streamable-http");
+                transport = if remote_type == "sse" {
+                    "sse".to_string()
+                } else {
+                    "http".to_string()
+                };
+                url = remote
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                required_headers =
+                    parse_required_key_values(remote.get("headers").and_then(|v| v.as_array()));
+            }
+        }
+    }
+
+    Some(McpRegistryEntry {
+        id: slugify_registry_server_id(&server_name),
+        server_name,
+        title,
+        description,
+        version,
+        transport,
+        command,
+        args,
+        url,
+        required_env,
+        required_headers,
+        source_url,
+        website_url,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn search_mcp_registry_cmd(
+    query: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<McpRegistryEntry>, String> {
+    tokio::task::spawn_blocking(move || {
+        let capped_limit = limit.unwrap_or(20).clamp(1, 100).to_string();
+        let mut request = ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(3))
+            .timeout(Duration::from_secs(7))
+            .build()
+            .get("https://registry.modelcontextprotocol.io/v0.1/servers")
+            .query("version", "latest")
+            .query("limit", &capped_limit);
+
+        if let Some(search) = query
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+        {
+            request = request.query("search", &search);
+        }
+
+        let response = request.call().map_err(|err| err.to_string())?;
+        let value: serde_json::Value = response.into_json().map_err(|err| err.to_string())?;
+        let rows = value
+            .get("servers")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut deduped = HashMap::<String, McpRegistryEntry>::new();
+        for row in rows {
+            let Some(entry) = mcp_registry_entry_from_json(&row) else {
+                continue;
+            };
+            deduped.entry(entry.server_name.clone()).or_insert(entry);
+        }
+
+        let mut entries: Vec<McpRegistryEntry> = deduped.into_values().collect();
+        entries.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ─── Commands: Skills ─────────────────────────────────────────────────────────
@@ -4152,8 +5366,54 @@ fn install_skill_from_source_cmd(
 #[tauri::command]
 #[specta::specta]
 fn list_providers_cmd(state: State<AppState>) -> Result<Vec<ProviderInfo>, String> {
-    let dir = get_active_dir(&state)?;
-    list_providers(&dir).map_err(|e| e.to_string())
+    if let Ok(dir) = get_active_dir(&state) {
+        return list_providers(&dir).map_err(|e| e.to_string());
+    }
+
+    let enabled: HashSet<String> = get_config(None)
+        .map(|config| config.providers.into_iter().collect())
+        .unwrap_or_default();
+
+    let providers = runtime::agent_export::PROVIDERS
+        .iter()
+        .map(|descriptor| {
+            let installed = detect_binary(descriptor.binary);
+            ProviderInfo {
+                id: descriptor.id.to_string(),
+                name: descriptor.name.to_string(),
+                binary: descriptor.binary.to_string(),
+                project_config: descriptor.project_config.to_string(),
+                global_config: descriptor.global_config.to_string(),
+                config_format: match descriptor.config_format {
+                    runtime::agent_export::ConfigFormat::Json => "json".to_string(),
+                    runtime::agent_export::ConfigFormat::Toml => "toml".to_string(),
+                },
+                prompt_output: match descriptor.prompt_output {
+                    runtime::agent_export::PromptOutput::ClaudeMd => "claude-md".to_string(),
+                    runtime::agent_export::PromptOutput::GeminiMd => "gemini-md".to_string(),
+                    runtime::agent_export::PromptOutput::AgentsMd => "agents-md".to_string(),
+                    runtime::agent_export::PromptOutput::None => "none".to_string(),
+                },
+                skills_output: match descriptor.skills_output {
+                    runtime::agent_export::SkillsOutput::ClaudeSkills => {
+                        "claude-skills".to_string()
+                    }
+                    runtime::agent_export::SkillsOutput::AgentSkills => "agent-skills".to_string(),
+                    runtime::agent_export::SkillsOutput::CodexSkills => "codex-skills".to_string(),
+                    runtime::agent_export::SkillsOutput::None => "none".to_string(),
+                },
+                enabled: enabled.contains(descriptor.id),
+                installed,
+                version: if installed {
+                    detect_version(descriptor.binary)
+                } else {
+                    None
+                },
+                models: list_models(descriptor.id).unwrap_or_default(),
+            }
+        })
+        .collect();
+    Ok(providers)
 }
 
 /// Return the known models for a specific provider (static list).
@@ -4204,6 +5464,33 @@ async fn export_agent_config_cmd(target: String, state: State<'_, AppState>) -> 
     let dir = get_active_dir(&state)?;
     tokio::task::spawn_blocking(move || {
         runtime::agent_export::export_to(dir, &target).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn import_agent_config_cmd(
+    target: String,
+    include_permissions: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<ProviderImportReport, String> {
+    let dir = get_active_dir(&state)?;
+    tokio::task::spawn_blocking(move || {
+        let imported_mcp_servers =
+            runtime::agent_export::import_from_provider(&target, dir.clone())
+                .map_err(|e| e.to_string())?;
+        let imported_permissions = if include_permissions.unwrap_or(true) {
+            runtime::agent_export::import_permissions_from_provider(&target, dir)
+                .map_err(|e| e.to_string())?
+        } else {
+            false
+        };
+        Ok(ProviderImportReport {
+            imported_mcp_servers,
+            imported_permissions,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -4419,8 +5706,13 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             add_mcp_server_cmd,
             remove_mcp_server_cmd,
             validate_mcp_servers_cmd,
+            probe_mcp_servers_cmd,
+            get_agent_discovery_cache_cmd,
+            refresh_agent_discovery_cache_cmd,
+            search_mcp_registry_cmd,
             // Skills
             list_skills_cmd,
+            list_skill_tool_hints_cmd,
             get_skill_cmd,
             create_skill_cmd,
             update_skill_cmd,
@@ -4436,6 +5728,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             search_catalog_cmd,
             // Agent export
             export_agent_config_cmd,
+            import_agent_config_cmd,
             // AI
             generate_issue_description_cmd,
             generate_adr_cmd,
@@ -4495,6 +5788,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::path::Path;
 
     #[test]
@@ -4591,5 +5885,58 @@ mod tests {
 
         let fallback = resolve_workspace_target_dir(ship_dir, None);
         assert_eq!(fallback, Path::new("/tmp/project"));
+    }
+
+    #[test]
+    fn infer_probe_server_id_slugifies_name() {
+        let server = McpServerConfig {
+            id: "".to_string(),
+            name: "GitHub MCP Server".to_string(),
+            command: "npx".to_string(),
+            args: vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-github".to_string(),
+            ],
+            env: HashMap::new(),
+            scope: "project".to_string(),
+            server_type: McpServerType::Stdio,
+            url: None,
+            disabled: false,
+            timeout_secs: None,
+        };
+        let id = infer_probe_server_id(&server, 0);
+        assert_eq!(id, "github-mcp-server");
+    }
+
+    #[test]
+    fn parse_skill_tool_hint_reads_allowed_tools() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos().to_string())
+            .unwrap_or_else(|_| "0".to_string());
+        let root = std::env::temp_dir().join(format!("ship-skill-hint-{}", stamp));
+        let skill_dir = root.join("docs-writer");
+        fs::create_dir_all(&skill_dir).expect("create temp skill dir");
+        let body = r#"---
+name: docs-writer
+description: docs helper
+allowed-tools:
+  - Read
+  - mcp__github__issues_list
+---
+
+# Skill
+"#;
+        fs::write(skill_dir.join("SKILL.md"), body).expect("write skill");
+
+        let hint = parse_skill_tool_hint(&skill_dir).expect("expected skill hint");
+        assert_eq!(hint.id, "docs-writer");
+        assert_eq!(hint.allowed_tools.len(), 2);
+        assert!(hint.allowed_tools.contains(&"Read".to_string()));
+        assert!(hint
+            .allowed_tools
+            .contains(&"mcp__github__issues_list".to_string()));
+
+        let _ = fs::remove_dir_all(&root);
     }
 }
