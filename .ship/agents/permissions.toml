@@ -1,64 +1,20 @@
 [tools]
-allow = ["*"]
-deny = [
-  "Bash(rm -rf *)",
-  "Bash(git reset --hard*)",
-  "Bash(curl *|bash*)",
-]
+allow = [""]
+deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)", "Bash(curl *|bash*)", ""]
 
 [filesystem]
-allow = [
-  "./",
-  "./.ship",
-  "./crates",
-  "./example",
-  "./site",
-  "./scripts",
-]
-deny = [
-  "/",
-  "~/.ssh",
-  "~/.aws",
-  "~/.gnupg",
-]
+allow = ["./", "./.ship", "./crates", "./example", "./site", "./scripts"]
+deny = ["/", "~/.ssh", "~/.aws", "~/.gnupg"]
 
 [commands]
-allow = [
-  "ship *",
-  "cargo *",
-  "git status*",
-  "git diff*",
-  "git add *",
-  "git commit *",
-  "rg *",
-  "ls *",
-  "cat *",
-  "sed *",
-]
-deny = [
-  "git reset --hard*",
-  "git clean -fd*",
-  "rm -rf *",
-]
+allow = ["ship *", "cargo *", "git status*", "git diff*", "git add *", "git commit *", "rg *", "ls *", "cat *", "sed *"]
+deny = ["git reset --hard*", "git clean -fd*", "rm -rf *"]
 
 [network]
 policy = "allow-list"
-allow_hosts = [
-  "github.com",
-  "api.github.com",
-  "skills.sh",
-  "agentskills.io",
-  "crates.io",
-  "docs.rs",
-  "registry.npmjs.org",
-]
+allow_hosts = ["github.com", "api.github.com", "skills.sh", "agentskills.io", "crates.io", "docs.rs", "registry.npmjs.org"]
 
 [agent]
 max_cost_per_session = 15.0
 max_turns = 200
-require_confirmation = [
-  "git push *",
-  "git reset --hard*",
-  "rm -rf *",
-  "cargo publish *",
-]
+require_confirmation = ["git push *", "git reset --hard*", "rm -rf *", "cargo publish *"]
