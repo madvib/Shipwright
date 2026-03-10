@@ -1,6 +1,6 @@
 ---
 name: provider-integration-hardening
-description: Add or audit agent-provider integrations end-to-end with a strict 4-pass workflow (doc accuracy, hooks/security, UX/reactivity, reusable provider extension output). Use this whenever a new provider is added, provider config is refactored, hook support changes, model selection logic is touched, or settings UX must stay provider-aware and non-static.
+description: Internal workflow for provider-level integration hardening in Ship. Execute one element at a time (detection, configuration, import/export), one provider at a time (Claude -> Gemini -> Codex), and capture precise implementation knowledge in references.
 compatibility: Requires repo write access and ability to run runtime tests.
 allowed-tools:
   - Read
@@ -9,95 +9,120 @@ allowed-tools:
 metadata:
   display_name: Provider Integration Hardening
   source: custom
+  owner: ship-core
+  scope: internal
+  skill_version: 3
+  last_updated: 2026-03-10
 ---
 
 # Provider Integration Hardening
 
-Run these passes in order. Do not skip validation.
+This skill is for internal Ship contributors. Use it when hardening provider integrations.
+The model is strict:
 
-## Pass 1: Doc-Accurate Audit
+1. Pick one **element** only (for now: provider-level `detection`, `configuration`, `import/export`).
+2. Pick one **provider** only (start with Claude).
+3. Complete deeply, document ground truth, then move to next provider.
 
-1. Read latest official docs for config keys, MCP schema, model config behavior, hooks, permissions.
-2. Compare docs to runtime export/import + UI surfaces.
-3. Capture mismatches with exact file/field references.
-4. Fix correctness and security mismatches first.
+## Provider-Level Runbook (Element Pass 1)
 
-Required audit output format:
-- `Mismatch`
-- `Expected (docs)`
-- `Current (repo)`
-- `Fix`
+### Step A: Docs + Runtime Truth
+
+1. Read official provider docs for:
+- config file locations (global/user/project/local)
+- MCP schema and path precedence
+- hooks/events and settings knobs
+- permission model and default behavior
+
+2. Read Ship runtime mappings:
+- `core/runtime/src/agents/export/sections/provider_registry.rs`
+- `core/runtime/src/agents/export/sections/sync_and_mcp.rs`
+- `core/runtime/src/agents/export/sections/permissions.rs`
+- `crates/ui/src/features/agents/AgentsPanel.tsx`
+
+3. Record exact behavior with file references and dates in `references/<provider>-provider-pass1.md`.
+
+Required output format:
+- `Capability`
+- `Provider docs say`
+- `Ship currently does`
+- `Gap`
+- `Action`
 - `Verification`
 
-## Pass 2: Hooks + Security Depth
+### Step B: Detection
 
-1. Keep Ship hook model provider-agnostic.
-2. Map hook triggers to provider-native events safely.
-3. Export hooks only where the provider schema supports them.
-4. Preserve structured hook payloads (grouping, matcher, timeout, description).
-5. Never pretend support exists: explicitly skip unsupported providers.
+Document:
+- binary detection method
+- version detection method
+- model discovery method
+- when autodetect runs (init only vs every open)
+- failure modes and user-facing diagnostics
 
-Security baseline:
-- Pre-exec policy checks for shell/tool calls.
-- Post-exec telemetry/conflict detection.
-- Session-start prompt/context injection.
+### Step C: Configuration
 
-## Pass 3: UX + Reactive Settings
+Document:
+- all files Ship reads and writes for that provider
+- project/global precedence rules
+- settings that are intentionally Ship-managed vs untouched
+- advanced/escape-hatch settings (and whether to expose)
 
-1. Add a dedicated settings section for hook/model/provider behavior when needed.
-2. Keep model suggestions dynamic (provider config + env + project config).
-3. Avoid hardcoded model IDs in runtime and UI.
-4. Make options reactive to currently enabled providers.
-5. Show unsupported capability states in plain language.
+### Step D: Import / Export
 
-## Pass 4: Reusable Provider Extension Pack
+Document:
+- import source order and merge behavior
+- export target files and merge behavior
+- teardown behavior
+- data loss risks, id collisions, managed marker behavior
 
-1. Capture provider-specific mapping notes in `references/`.
-2. Produce a concrete checklist for onboarding the next provider.
-3. Record dogfood results for Claude/Gemini/Codex in docs.
-4. Keep implementation guidance operational and copy/paste-ready.
+### Step E: Hooks as Internal Detail
 
-## Examples
+Treat raw hooks as implementation detail by default.
+Prefer provider-level policy toggles that compile into hook/settings output.
+Only expose raw hook editing in advanced mode.
 
-### Example A: Provider supports hooks
+## MCP Element Runbook (Element Pass 2)
 
-Input task:
-- "Add provider X with native hooks and MCP export"
+After provider pass 1 is complete for all supported providers, run MCP as a dedicated element:
 
-Expected approach:
-1. Audit provider docs.
-2. Add trigger mapping for supported lifecycle events.
-3. Add export test proving hook shape in provider-native config.
-4. Add/adjust settings UI so users can configure hooks.
-5. Update docs + dogfood report.
+1. **Validation:** ensure config parsing and provider shape checks are explicit and actionable.
+2. **Discovery:** probe configured MCP servers and capture reachable status + discovered tools.
+3. **Controls:** expose per-server and per-tool policy toggles that compile to canonical permissions.
+4. **Export mapping:** verify deny/allow patterns map correctly into Claude/Gemini/Codex policy outputs.
+5. **UX density:** keep MCP status + controls inline in server rows; avoid detached empty panels.
 
-### Example B: Provider does not support hooks
+Required verification:
 
-Input task:
-- "Add provider Y; no hooks in schema"
+- `cargo check -p ui`
+- `cargo run -p ui --bin ship -- gen-bindings`
+- docs updated (`docs/agent-settings-ui.md`) for any new user-facing behavior
 
-Expected approach:
-1. Keep hooks in Ship internal config.
-2. Skip native hook export for provider Y.
-3. Surface "no native hooks" in settings UX.
-4. Add explicit assessment note in docs with source link.
+## Sequence
 
-## Output Contract
+Run this skill in this order:
 
-A complete run produces all of:
-1. Runtime code changes (export/import/config mapping).
-2. UI changes (reactive provider-aware settings).
-3. Tests for new provider behavior and hook/model edge cases.
-4. Docs update (`docs/agent-configuration.md` + dogfood notes).
+1. `Claude` (complete first; this is the quality bar)
+2. `Gemini`
+3. `Codex`
 
-## Validation Checklist
+Each provider pass must update:
+- provider-specific reference doc
+- matrix summary
+- tests or validation checklist if behavior changed
 
-- Runtime tests pass for changed provider export paths.
-- Hook payloads match provider schema exactly.
-- No static model IDs in provider registry logic.
-- Settings route and navigation updated when new section added.
-- Codex-like unsupported capabilities are explicitly called out.
+## Current References
 
-See detailed provider notes:
+- `references/claude-provider-pass1.md`
+- `references/gemini-provider-pass1.md`
+- `references/codex-provider-pass1.md`
 - `references/provider-matrix.md`
 - `references/hook-mapping.md`
+- `references/mcp-pass1.md`
+
+## Validation Checklist (Provider-Level Pass)
+
+- Runtime tests pass for changed provider export paths.
+- Import/export order and path behavior are explicit and tested.
+- Provider docs links are included with validation date.
+- UI labels/tooltips match runtime truth.
+- Unsupported provider capabilities are explicit, not implied.

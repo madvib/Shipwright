@@ -25,7 +25,7 @@ Use this table when converting Ship triggers to provider-native events.
         "hooks": [
           {
             "type": "command",
-            "command": "$SHIP_HOOKS_BIN",
+            "command": "ship hooks run",
             "timeout": 2000,
             "description": "policy gate"
           }
@@ -48,7 +48,7 @@ Use this table when converting Ship triggers to provider-native events.
           {
             "name": "before-tool-guard",
             "type": "command",
-            "command": "$SHIP_HOOKS_BIN",
+            "command": "ship hooks run",
             "timeout": 1200,
             "description": "decompose chained shell command"
           }
@@ -63,3 +63,12 @@ Use this table when converting Ship triggers to provider-native events.
 
 If a provider lacks native hooks support, do not invent a pseudo-field in exported config.
 Keep hooks in Ship state and surface unsupported status in UI.
+
+## Runtime Notes
+
+- Hooks UI is intentionally hidden for now; Ship manages the baseline internally.
+- Ship writes hook runtime policy artifacts to `.ship/agents/runtime/`:
+  - `hook-context.md`
+  - `envelope.json`
+- Hook telemetry is internal and global at:
+  - `~/.ship/state/telemetry/hooks/events.ndjson`

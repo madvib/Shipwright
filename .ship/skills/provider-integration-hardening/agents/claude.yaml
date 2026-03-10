@@ -1,0 +1,8 @@
+version: 1
+display_name: Provider Integration Hardening (Claude Pass)
+short_description: Claude-focused provider hardening for detection, configuration, and import/export behavior
+default_prompt: >-
+  Run provider-integration-hardening for Claude only. Focus on detection,
+  configuration mapping, and import/export behavior. Update references with
+  precise runtime/file-path truth and clear gaps against official docs.
+

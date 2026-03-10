@@ -1,0 +1,11 @@
+name = "provider-integration-hardening"
+display_name = "Provider Integration Hardening"
+scope = "internal"
+version = 4
+owner = "ship-core"
+updated_at = "2026-03-10"
+
+[coverage]
+element = "provider-level"
+providers = ["claude", "gemini", "codex"]
+current_focus = "mcp"
