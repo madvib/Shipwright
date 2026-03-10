@@ -583,8 +583,8 @@ pub struct AgentModeDb {
 /// This means the DB location is independent of the project's path on disk, so worktrees,
 /// renames, and multi-machine setups all resolve to the same DB as long as `ship.toml` is present.
 ///
-/// Falls back to the path-based slug for projects that predate the `id` field, and writes
-/// the generated ID into `ship.toml` so the fallback only runs once.
+/// If `ship.toml` exists but lacks an `id`, Ship auto-generates and persists one
+/// so legacy projects heal themselves without requiring a manual `ship init`.
 pub fn project_db_path(ship_dir: &Path) -> Result<PathBuf> {
     let global_dir = ship_global_dir()?;
     ensure_global_dir_outside_project(ship_dir, &global_dir)?;
@@ -597,31 +597,53 @@ pub fn project_db_path(ship_dir: &Path) -> Result<PathBuf> {
 /// Reads only the `id` field from `ship.toml` — never calls `get_config` to avoid
 /// circular dependency (get_config → get_runtime_settings → open_project_connection → here).
 fn project_db_key(ship_dir: &Path) -> Result<String> {
-    match read_project_id_from_toml(ship_dir) {
-        Some(id) if !id.is_empty() => Ok(id),
-        _ => Err(anyhow!(
-            "Project at {} has no id field in ship.toml. Re-run `ship init` to add one.",
-            ship_dir.display()
-        )),
+    if let Some(id) = read_project_id_from_toml(ship_dir) {
+        return Ok(id);
     }
+
+    ensure_project_id_in_toml(ship_dir)
 }
 
 /// Read just the `id` field from ship.toml without going through the full config system.
 fn read_project_id_from_toml(ship_dir: &Path) -> Option<String> {
     let path = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
     let content = std::fs::read_to_string(path).ok()?;
-    // Parse as a minimal struct to avoid any DB access.
-    #[derive(serde::Deserialize, Default)]
-    struct MinConfig {
-        #[serde(default)]
-        id: String,
-    }
-    let min: MinConfig = toml::from_str(&content).unwrap_or_default();
-    if min.id.is_empty() {
+    let parsed: toml::Value = toml::from_str(&content).ok()?;
+    let id = parsed.get("id")?.as_str()?.trim().to_string();
+    if id.is_empty() {
         None
     } else {
-        Some(min.id)
+        Some(id)
     }
+}
+
+fn ensure_project_id_in_toml(ship_dir: &Path) -> Result<String> {
+    let path = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
+    let content = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "Project at {} has no readable ship.toml. Re-run `ship init` to initialize it.",
+            ship_dir.display()
+        )
+    })?;
+
+    let mut parsed: toml::Value = toml::from_str(&content).with_context(|| {
+        format!(
+            "Project at {} has an invalid ship.toml. Re-run `ship init` or fix the file.",
+            ship_dir.display()
+        )
+    })?;
+
+    let table = parsed
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("ship.toml must contain a top-level table."))?;
+
+    let generated_id = crate::gen_nanoid();
+    table.insert("id".to_string(), toml::Value::String(generated_id.clone()));
+
+    let updated = toml::to_string_pretty(&parsed)?;
+    crate::fs_util::write_atomic(&path, updated)?;
+
+    Ok(generated_id)
 }
 
 pub fn ensure_project_database(ship_dir: &Path) -> Result<DatabaseMigrationReport> {
@@ -2182,6 +2204,31 @@ mod tests {
 
         // Clean up the DB we just created in ~/.ship/state/
         std::fs::remove_file(&report_a.db_path).ok();
+        Ok(())
+    }
+
+    #[test]
+    fn project_db_key_auto_populates_missing_id_in_ship_toml() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        std::fs::write(
+            ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
+            "version = '1'\nname = 'legacy-project'\n",
+        )?;
+
+        let key = project_db_key(&ship_dir)?;
+        assert!(!key.trim().is_empty());
+
+        let raw = std::fs::read_to_string(ship_dir.join(crate::config::PRIMARY_CONFIG_FILE))?;
+        let parsed: toml::Value = toml::from_str(&raw)?;
+        let persisted_id = parsed
+            .get("id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        assert_eq!(persisted_id, key);
         Ok(())
     }
 

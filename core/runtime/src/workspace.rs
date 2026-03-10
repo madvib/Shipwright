@@ -1,8 +1,8 @@
-use crate::project::sanitize_file_name;
+use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
 use crate::events::{EventAction, EventEntity, append_event};
 use crate::state_db::{
     WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, delete_workspace_db,
-    demote_other_active_workspaces_db, get_active_workspace_session_db, get_workspace_db,
+    get_active_workspace_session_db, get_workspace_db,
     get_workspace_session_db, insert_workspace_session_db, list_workspace_sessions_db,
     list_workspaces_db, set_branch_link, update_workspace_session_db, upsert_workspace_db,
 };
@@ -12,6 +12,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
+use std::fs;
+use std::io::Write;
+use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -400,6 +403,155 @@ fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> ShipWorkspace
 
 fn workspace_id_from_branch(branch: &str) -> String {
     sanitize_file_name(branch)
+}
+
+fn default_project_worktree_root(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("worktrees")
+}
+
+fn default_global_worktree_root(ship_dir: &Path) -> Option<PathBuf> {
+    let slug = project_slug_from_ship_dir(ship_dir);
+    let global_dir = get_global_dir().ok()?;
+    Some(global_dir.join("project").join(slug).join("worktrees"))
+}
+
+fn default_worktree_path(ship_dir: &Path, branch: &str) -> Option<String> {
+    let branch_token = sanitize_file_name(branch);
+
+    let project_root = default_project_worktree_root(ship_dir);
+    if fs::create_dir_all(&project_root).is_ok() {
+        return Some(
+            project_root
+                .join(&branch_token)
+                .to_string_lossy()
+                .to_string(),
+        );
+    }
+
+    if let Some(global_root) = default_global_worktree_root(ship_dir)
+        && fs::create_dir_all(&global_root).is_ok()
+    {
+        return Some(global_root.join(branch_token).to_string_lossy().to_string());
+    }
+
+    None
+}
+
+
+fn session_artifacts_root(ship_dir: &Path) -> Option<PathBuf> {
+    let slug = project_slug_from_ship_dir(ship_dir);
+    let global_dir = get_global_dir().ok()?;
+    Some(global_dir.join("project").join(slug).join("sessions"))
+}
+
+fn session_artifacts_dir(ship_dir: &Path, session_id: &str) -> Option<PathBuf> {
+    let root = session_artifacts_root(ship_dir)?;
+    Some(root.join(sanitize_file_name(session_id)))
+}
+
+fn persist_session_artifact(ship_dir: &Path, session: &WorkspaceSession, phase: &str) -> Result<()> {
+    let Some(session_dir) = session_artifacts_dir(ship_dir, &session.id) else {
+        return Ok(());
+    };
+    fs::create_dir_all(&session_dir)?;
+
+    let snapshot_path = session_dir.join("session.json");
+    let snapshot = serde_json::to_string_pretty(session)?;
+    fs::write(snapshot_path, snapshot)?;
+
+    let timeline_path = session_dir.join("timeline.ndjson");
+    let entry = serde_json::json!({
+        "phase": phase,
+        "timestamp": Utc::now().to_rfc3339(),
+        "session_id": session.id,
+        "branch": session.workspace_branch,
+        "status": session.status.to_string(),
+        "provider": session.primary_provider,
+        "goal": session.goal,
+        "summary": session.summary,
+        "updated_feature_ids": session.updated_feature_ids,
+        "updated_spec_ids": session.updated_spec_ids,
+    });
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(timeline_path)?;
+    writeln!(file, "{}", entry)?;
+
+    Ok(())
+}
+
+fn append_session_note_artifact(ship_dir: &Path, session_id: &str, note: &str) -> Result<()> {
+    let Some(session_dir) = session_artifacts_dir(ship_dir, session_id) else {
+        return Ok(());
+    };
+    fs::create_dir_all(&session_dir)?;
+
+    let notes_path = session_dir.join("notes.ndjson");
+    let entry = serde_json::json!({
+        "timestamp": Utc::now().to_rfc3339(),
+        "note": note,
+    });
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(notes_path)?;
+    writeln!(file, "{}", entry)?;
+
+    Ok(())
+}
+
+
+fn run_post_session_hooks(ship_dir: &Path, session: &WorkspaceSession) -> Result<()> {
+    let effective = crate::config::get_effective_config(Some(ship_dir.to_path_buf()))?;
+    let hooks: Vec<_> = effective
+        .hooks
+        .into_iter()
+        .filter(|hook| {
+            hook.trigger == crate::config::HookTrigger::SessionEnd
+                || hook.trigger == crate::config::HookTrigger::Stop
+        })
+        .collect();
+
+    for hook in hooks {
+        let command = hook.command.trim();
+        if command.is_empty() {
+            continue;
+        }
+
+        let mut process = if cfg!(windows) {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", command]);
+            cmd
+        } else {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-lc", command]);
+            cmd
+        };
+
+        let output = process
+            .current_dir(ship_dir)
+            .env("SHIP_SESSION_ID", &session.id)
+            .env("SHIP_SESSION_BRANCH", &session.workspace_branch)
+            .output();
+
+        match output {
+            Ok(out) => {
+                if !out.status.success() {
+                    eprintln!(
+                        "Post-session hook '{}' failed with status {:?}",
+                        hook.id,
+                        out.status.code()
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!("Failed to execute post-session hook '{}': {}", hook.id, error);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn normalize_mode_ref(mode: &str) -> Option<String> {
@@ -1016,9 +1168,12 @@ pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &s
         "agent",
         EventEntity::Session,
         EventAction::Note,
-        active.id,
+        active.id.clone(),
         Some(format!("branch={} {}", workspace.branch, normalized_note)),
     )?;
+    if let Err(error) = append_session_note_artifact(ship_dir, &active.id, normalized_note) {
+        eprintln!("Failed to persist session note artifact: {}", error);
+    }
     Ok(())
 }
 
@@ -1042,11 +1197,11 @@ pub fn start_workspace_session(
     }
 
     if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
-        return Err(anyhow::anyhow!(
-            "Workspace session '{}' is already active for '{}'",
-            active.id,
-            workspace.branch
-        ));
+        let existing = hydrate_workspace_session(active);
+        if let Err(error) = persist_session_artifact(ship_dir, &existing, "attach") {
+            eprintln!("Failed to persist attached session artifact: {}", error);
+        }
+        return Ok(existing);
     }
 
     let mode_id = mode_id
@@ -1120,6 +1275,10 @@ pub fn start_workspace_session(
         Some(details.join(" ")),
     )?;
 
+    if let Err(error) = persist_session_artifact(ship_dir, &started, "start") {
+        eprintln!("Failed to persist session artifact on start: {}", error);
+    }
+
     Ok(started)
 }
 
@@ -1168,10 +1327,18 @@ pub fn end_workspace_session(
         Some(details.join(" ")),
     )?;
 
+    if let Err(error) = persist_session_artifact(ship_dir, &ended, "end") {
+        eprintln!("Failed to persist session artifact on end: {}", error);
+    }
+    if let Err(error) = run_post_session_hooks(ship_dir, &ended) {
+        eprintln!("Failed to run post-session hooks: {}", error);
+    }
+
     Ok(ended)
 }
 
 /// Create or update a workspace record without requiring a git checkout.
+
 /// This is the runtime-native entrypoint for workspace lifecycle management.
 pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Result<Workspace> {
     let branch = ensure_branch_key(&request.branch)?.to_string();
@@ -1218,6 +1385,9 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     if !workspace.is_worktree {
         workspace.worktree_path = None;
     } else if workspace.worktree_path.is_none() {
+        workspace.worktree_path = default_worktree_path(ship_dir, &branch);
+    }
+    if workspace.is_worktree && workspace.worktree_path.is_none() {
         return Err(anyhow::anyhow!(
             "Worktree workspace requires a worktree path"
         ));
@@ -1249,7 +1419,6 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     workspace.status = next_status;
     workspace.resolved_at = now;
     if next_status == WorkspaceStatus::Active {
-        demote_other_active_workspaces_db(ship_dir, &workspace.branch, &now.to_rfc3339())?;
         workspace.last_activated_at = Some(now);
     }
 
@@ -1270,7 +1439,6 @@ pub fn transition_workspace_status(
 
     let now = Utc::now();
     if next_status == WorkspaceStatus::Active {
-        demote_other_active_workspaces_db(ship_dir, &workspace.branch, &now.to_rfc3339())?;
         workspace.last_activated_at = Some(now);
     }
 
@@ -1302,8 +1470,7 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
         workspace.status,
         WorkspaceStatus::Active,
     )?;
-
-    demote_other_active_workspaces_db(ship_dir, branch, &now.to_rfc3339())?;
+
     workspace.status = WorkspaceStatus::Active;
     workspace.resolved_at = now;
     workspace.last_activated_at = Some(now);
@@ -1373,8 +1540,6 @@ pub fn seed_service_workspace(ship_dir: &Path) -> Result<()> {
     workspace.status = WorkspaceStatus::Active;
     workspace.last_activated_at = Some(now);
 
-    // Demote any currently active workspace before seeding.
-    demote_other_active_workspaces_db(ship_dir, PROJECT_BRANCH, &now.to_rfc3339())?;
     upsert_workspace(ship_dir, &workspace)?;
 
     Ok(())
@@ -1847,7 +2012,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_session_start_rejects_duplicate_active_sessions() -> Result<()> {
+    fn workspace_session_start_attaches_existing_active_session() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
@@ -1867,16 +2032,17 @@ mod tests {
             None,
             None,
         )?;
-        let err = start_workspace_session(
+        let attached = start_workspace_session(
             &ship_dir,
             "feature/session-dupe",
             Some("two".into()),
             None,
             None,
-        )
-        .expect_err("second active session should be rejected");
+        )?;
 
-        assert!(err.to_string().contains(&first.id));
+        assert_eq!(attached.id, first.id);
+        let sessions = list_workspace_sessions(&ship_dir, Some("feature/session-dupe"), 10)?;
+        assert_eq!(sessions.len(), 1);
         Ok(())
     }
 
