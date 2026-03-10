@@ -210,7 +210,7 @@ tags = []
     <PageFrame>
       <PageHeader
         title="Specs"
-        description="Refine intent, then turn specs into actionable issues."
+        description="Refine intent, then turn specs into actionable implementation tasks."
         actions={
           <div className="flex items-center gap-2">
             <Tooltip>

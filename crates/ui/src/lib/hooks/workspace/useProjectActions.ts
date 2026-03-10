@@ -53,7 +53,7 @@ export function useProjectActions({
     setSelectedFeature(null);
   }, [setSelectedAdr, setSelectedSpec, setSelectedRelease, setSelectedFeature]);
 
-  const activateProjectFromInfo = useCallback(async (info: { name: string; path: string; issue_count?: number }) => {
+  const activateProjectFromInfo = useCallback(async (info: { name: string; path: string }) => {
     setActiveProject(projectFromInfo(info));
     setDetectedProject(null);
     resetSelection();
@@ -127,8 +127,8 @@ export function useProjectActions({
         description: input.description ?? null,
         statuses,
         git: {
-          ignore: ['issues'],
-          commit: ['releases', 'features', 'specs', 'adrs', 'ship.toml', 'templates'],
+          ignore: [] as string[],
+          commit: ['releases', 'features', 'specs', 'adrs', 'vision', 'ship.toml', 'templates'],
         },
       } as ProjectConfig;
     }

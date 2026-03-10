@@ -76,24 +76,24 @@ one compiles the right CLAUDE.md and .mcp.json for your AI provider.
 2. Call `activate_workspace` with the branch name. This recompiles provider context — the
    agent immediately has the right tools and instructions for that workspace's mode and scope.
 3. Optionally call `set_mode` if you want to shift the tool surface (e.g., enable extended
-   CRUD tools for an issue triage session).
+   planning tools for release/spec coordination).
 
 ### Workspace types
 
 - **service**: the project-management workspace (`ship` branch). Always present. Activating it
-  unlocks the full PM surface — issues, specs, releases, sessions history — without needing a
+  unlocks the full PM surface — specs, releases, sessions history — without needing a
   mode. Use this for planning, triage, release prep, and cross-workspace coordination.
 - **feature**: tied to a feature document, inherits feature's mode/provider config
 - **patch**: urgent, minimal scope
 
-**The service workspace is the home base.** If the user wants to triage issues, prep a release,
+**The service workspace is the home base.** If the user wants to coordinate planning, prep a release,
 or work across multiple features, activate it first:
 
 ```
 activate_workspace(branch="ship")
 ```
 
-This compiles a bird's-eye CLAUDE.md (all features, issues, active sessions, upcoming release)
+This compiles a bird's-eye CLAUDE.md (all features, active sessions, upcoming release)
 and expands the available tools to the full PM surface automatically.
 
 ### Modes shape the tool surface
@@ -101,12 +101,12 @@ and expands the available tools to the full PM surface automatically.
 By default (non-service workspace, no mode), only core workflow tools are visible. Two ways
 to expand the surface:
 
-1. **Activate the service workspace** (`ship`) — auto-unlocks PM tools (issues, specs, releases)
+1. **Activate the service workspace** (`ship`) — auto-unlocks PM tools (specs, releases, notes)
 2. **Set a mode** with `active_tools` configured — fine-grained control for any workspace type
 
 ```
 active_tools: []          # unlocks everything
-active_tools: ["create_issue", "move_issue", "search_issues"]   # just issue tools
+active_tools: ["create_spec", "update_spec", "list_releases"]   # scoped planning tools
 ```
 
 If the user wants to work on specs or releases from a feature workspace, read
@@ -178,7 +178,7 @@ This is the most important part. When calling `end_session`:
 - After each state-changing tool call, verify the result. Read back what you wrote.
 - Keep feature intent stable — only change it if the actual goal changed, not just the
   implementation approach.
-- Log decisions as ADRs, not as comments in features or issues. They're easier to find.
+- Log decisions as ADRs, not as ad-hoc comments in features or notes. They're easier to find.
 - Don't close features or sessions based on memory — read state first.
 
 ## Anti-Patterns

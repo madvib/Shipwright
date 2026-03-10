@@ -1221,12 +1221,12 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 GitCommands::Status => {
                     let git = get_git_config(&project_dir)?;
                     let cats = [
-                        "issues",
                         "releases",
                         "features",
                         "adrs",
                         "specs",
                         "notes",
+                        "vision",
                         "agents",
                         "ship.toml",
                         "templates",
@@ -1349,7 +1349,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 ConfigCommands::Status { action } => match action {
                     StatusCommands::List => {
                         let statuses = get_project_statuses(project_dir)?;
-                        println!("Issue statuses:");
+                        println!("Workflow statuses:");
                         for s in statuses {
                             println!("  - {}", s);
                         }
@@ -2558,11 +2558,11 @@ fn launch_ui_dev_command(watch: bool, release: bool) -> Result<()> {
     Ok(())
 }
 
-fn launch_ui_executable(_repo_root: Option<&Path>) -> Result<()> {
+fn launch_ui_executable(repo_root: Option<&Path>) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
         if let Some(root) = repo_root {
-            let candidates = [
+            let candidates: [PathBuf; 4] = [
                 root.join("target/release/bundle/macos/Shipwright.app"),
                 root.join("target/debug/bundle/macos/Shipwright.app"),
                 root.join("crates/ui/src-tauri/target/release/bundle/macos/Shipwright.app"),

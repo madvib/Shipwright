@@ -1,7 +1,6 @@
 pub mod adr;
 pub mod demo;
 pub mod feature;
-pub mod issue;
 pub mod note;
 pub mod ops;
 pub mod project;
@@ -20,10 +19,6 @@ pub use feature::{
     get_feature_documentation, import_features_from_files, list_features, move_feature,
     record_feature_session_update, update_feature, update_feature_content,
     update_feature_documentation,
-};
-pub use issue::{
-    Issue, IssueEntry, IssueStatus, create_issue, delete_issue, get_issue_by_id, list_issues,
-    move_issue, update_issue,
 };
 pub use note::{
     Note, NoteEntry, NoteScope, create_note, delete_note, get_note_by_id, import_notes_from_files,

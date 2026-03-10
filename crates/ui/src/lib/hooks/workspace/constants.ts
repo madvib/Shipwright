@@ -30,17 +30,15 @@ export const dedupeProjects = (projects: ProjectDiscovery[]): Project[] => {
     deduped.push({
       name: project.name,
       path,
-      issue_count: typeof project.issue_count === 'number' ? project.issue_count : undefined,
     });
   }
 
   return deduped;
 };
 
-export const projectFromInfo = (info: { name: string; path: string; issue_count?: number }): Project => ({
+export const projectFromInfo = (info: { name: string; path: string }): Project => ({
   name: info.name,
   path: normalizeProjectPath(info.path),
-  issue_count: info.issue_count,
 });
 
 export const applyTheme = (theme?: string) => {

@@ -13,8 +13,6 @@ function titleForKind(kind: TemplateKind): string {
   switch (kind) {
     case 'adr':
       return 'ADR Template';
-    case 'issue':
-      return 'Issue Template';
     case 'spec':
       return 'Spec Template';
     case 'release':

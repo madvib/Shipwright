@@ -28,7 +28,7 @@ pub fn project_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("project")
 }
 
-/// `.ship/workflow/` — features, specs, issues
+/// `.ship/workflow/` — specs and workflow documents
 pub fn workflow_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("workflow")
 }
@@ -1126,7 +1126,7 @@ Use Ship as the system of record for workflow state changes.
 
 ## Canonical Flow
 
-Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release
+Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
 "#,
     )?;
 

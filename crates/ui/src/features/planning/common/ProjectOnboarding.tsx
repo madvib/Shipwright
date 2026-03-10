@@ -233,7 +233,7 @@ export default function ProjectOnboarding({
                       <div>
                         <p className="text-sm font-medium">Workflow Statuses</p>
                         <p className="text-muted-foreground text-xs">
-                          Issue statuses used to track work across this project.
+                          Workflow statuses used to track work across this project.
                         </p>
                       </div>
                       <button
@@ -250,7 +250,9 @@ export default function ProjectOnboarding({
                     <div className="flex flex-wrap gap-2">
                       {DEFAULT_STATUSES.map((status) => {
                         const active = selectedStatuses.includes(status.id);
-                        const colors = STATUS_COLORS[status.color] ?? STATUS_COLORS['gray'];
+                        const colors =
+                          STATUS_COLORS[(status.color ?? 'gray') as keyof typeof STATUS_COLORS] ??
+                          STATUS_COLORS.gray;
                         return (
                           <button
                             key={status.id}

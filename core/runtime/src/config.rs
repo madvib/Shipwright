@@ -384,8 +384,6 @@ pub struct ProjectDiscovery {
     /// Stored as PathBuf internally; serialized as a string path on the wire.
     #[specta(type = String)]
     pub path: PathBuf,
-    #[serde(default)]
-    pub issue_count: usize,
 }
 
 // ─── Read / Write ─────────────────────────────────────────────────────────────
@@ -1017,22 +1015,6 @@ pub fn add_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
 }
 
 pub fn remove_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
-    // Guard: refuse if any issues exist in this status folder
-    if let Some(ref dir) = project_dir {
-        let status_dir = crate::project::issues_dir(dir).join(status);
-        if status_dir.exists() {
-            let count = fs::read_dir(&status_dir)
-                .map(|d| d.filter_map(|e| e.ok()).count())
-                .unwrap_or(0);
-            if count > 0 {
-                return Err(anyhow!(
-                    "Cannot remove status '{}': {} issue(s) still in this status. Move them first.",
-                    status,
-                    count
-                ));
-            }
-        }
-    }
     let mut config = get_config(project_dir.clone())?;
     config.statuses.retain(|s| s.id != status);
     save_config(&config, project_dir.clone())?;
@@ -1093,16 +1075,16 @@ pub fn is_category_committed(git: &GitConfig, category: &str) -> bool {
 }
 
 /// Write `.ship/.gitignore`. Everything not in `git.commit` is ignored by default.
-/// Keys use namespace paths (e.g. "workflow/issues", "project/adrs").
+/// Keys use namespace paths (e.g. "workflow/specs", "project/adrs").
 pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     // (key, namespace path) — key is what appears in git.commit config
     let known: &[(&str, &str)] = &[
-        ("issues", "workflow/issues"),
         ("specs", "workflow/specs"),
         ("features", "project/features"),
         ("releases", "project/releases"),
         ("adrs", "project/adrs"),
         ("notes", "project/notes"),
+        ("vision", "project/vision.md"),
         ("agents", "agents"),
         ("ship.toml", "ship.toml"),
         ("templates", "**/TEMPLATE.md"),
@@ -1222,7 +1204,6 @@ pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
                 projects.push(ProjectDiscovery {
                     name: name.into_owned(),
                     path: ship_dir,
-                    issue_count: 0,
                 });
             }
         }

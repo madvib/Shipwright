@@ -51,11 +51,11 @@ interface SettingsPanelProps {
 }
 
 const GIT_CATEGORIES = [
-  'issues',
   'releases',
   'features',
   'adrs',
   'specs',
+  'vision',
   'ship.toml',
   'templates',
 ];
@@ -173,7 +173,7 @@ function normalizeProjectConfig(config: ProjectConfig | null): NormalizedProject
     git: {
       ignore: config?.git?.ignore ?? [],
       commit:
-        config?.git?.commit ?? ['releases', 'features', 'adrs', 'specs', 'ship.toml', 'templates'],
+        config?.git?.commit ?? ['releases', 'features', 'adrs', 'specs', 'vision', 'ship.toml', 'templates'],
     },
     ai: normalizeAiConfig(config?.ai ?? null),
     modes: config?.modes ?? [],
@@ -529,7 +529,7 @@ export default function SettingsPanel({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">Appearance &amp; Defaults</h3>
-                  <p className="text-[11px] text-muted-foreground">Theme and creation defaults for new issues.</p>
+                  <p className="text-[11px] text-muted-foreground">Theme and creation defaults for new work items.</p>
                 </div>
               </div>
               <CardContent className="grid gap-2 !pt-5 md:grid-cols-[1.2fr_1fr_1fr]">
@@ -558,7 +558,7 @@ export default function SettingsPanel({
                   <p className="text-muted-foreground text-[11px] opacity-70">Choose your preferred interface theme.</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Default Issue Status</Label>
+                  <Label>Default Workflow Status</Label>
                   <Select
                     value={local.default_status ?? availableStatuses[0]?.id ?? 'backlog'}
                     onValueChange={(value) =>

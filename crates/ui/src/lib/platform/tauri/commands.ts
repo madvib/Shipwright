@@ -162,7 +162,7 @@ export interface RuntimePerfSnapshot {
   watcher_last_ingest_micros: number;
 }
 
-export type TemplateKind = 'issue' | 'adr' | 'spec' | 'release' | 'feature' | 'vision';
+export type TemplateKind = 'adr' | 'spec' | 'release' | 'feature' | 'vision';
 export type NotesScope = 'project' | 'global';
 
 const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> => {

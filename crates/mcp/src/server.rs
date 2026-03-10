@@ -119,7 +119,7 @@ impl ShipServer {
     fn is_core_tool(tool_name: &str) -> bool {
         // Core workflow tools always available regardless of active mode.
         // These cover the three-stage Ship workflow: Planning → Workspace → Session.
-        // Extended tools (issues, specs, releases, etc.) require a mode OR a service workspace.
+        // Extended tools (specs, releases, etc.) require a mode OR a service workspace.
         const CORE_TOOLS: &[&str] = &[
             // Project context
             "open_project",
@@ -504,8 +504,8 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let issues = list_specs(&project_dir).unwrap_or_default();
-        let entry = issues.iter().find(|e| e.file_name == req.file_name);
+        let specs = list_specs(&project_dir).unwrap_or_default();
+        let entry = specs.iter().find(|e| e.file_name == req.file_name);
         match entry {
             Some(entry) => {
                 let mut spec = entry.spec.clone();

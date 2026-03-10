@@ -1,7 +1,6 @@
 import { isTauriRuntime } from './runtime';
 
 interface ProjectEventHandlers {
-  onIssuesChanged?: () => void;
   onSpecsChanged?: () => void;
   onAdrsChanged?: () => void;
   onFeaturesChanged?: () => void;
@@ -23,13 +22,6 @@ export async function subscribeProjectEvents(
 
   const { listen } = await import('@tauri-apps/api/event');
   const unlistenFns: UnlistenFn[] = [];
-
-  if (handlers.onIssuesChanged) {
-    const unlisten = await listen('ship://issues-changed', () => {
-      handlers.onIssuesChanged?.();
-    });
-    unlistenFns.push(unlisten);
-  }
 
   if (handlers.onSpecsChanged) {
     const unlisten = await listen('ship://specs-changed', () => {

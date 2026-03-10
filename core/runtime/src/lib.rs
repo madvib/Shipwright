@@ -113,12 +113,10 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_status_blocked_by_issues() -> anyhow::Result<()> {
+    fn test_remove_status_without_issue_guard() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         add_status(Some(project_dir.clone()), "review")?;
-        // Removed create_issue call as it's no longer in runtime.
-        // In the future, we could add a similar test using the project module.
         let result = remove_status(Some(project_dir), "review");
         assert!(result.is_ok());
         Ok(())
@@ -128,10 +126,10 @@ mod tests {
     fn test_git_config_roundtrip() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        set_category_committed(&project_dir, "issues", true)?;
+        set_category_committed(&project_dir, "features", true)?;
         set_category_committed(&project_dir, "notes", false)?;
         let git = get_git_config(&project_dir)?;
-        assert!(is_category_committed(&git, "issues"));
+        assert!(is_category_committed(&git, "features"));
         assert!(!is_category_committed(&git, "notes"));
         Ok(())
     }
@@ -166,7 +164,6 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
         // Default config keeps project docs local unless explicitly included.
-        assert!(gitignore.contains("workflow/issues"));
         assert!(gitignore.contains("generated/"));
         assert!(gitignore.contains(".tmp-global/"));
         assert!(gitignore.contains("project/releases"));
@@ -174,6 +171,7 @@ mod tests {
         assert!(gitignore.contains("workflow/specs"));
         assert!(gitignore.contains("project/adrs"));
         assert!(gitignore.contains("project/notes"));
+        assert!(!gitignore.contains("project/vision.md"));
         // DB is now at ~/.ship/state/<slug>/ship.db — not inside .ship/
         assert!(!gitignore.contains("ship.db"));
         assert!(!gitignore.contains("log.md"));

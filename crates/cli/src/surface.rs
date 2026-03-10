@@ -88,7 +88,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: ConfigCommands,
     },
-    /// Track time spent on issues
+    /// Track time spent on work items
     #[command(hide = true)]
     Time {
         #[command(subcommand)]
@@ -145,12 +145,12 @@ pub enum GitCommands {
     Status,
     /// Include a category in git commits
     Include {
-        /// One of: issues, releases, features, specs, adrs, notes, agents, ship.toml, templates
+        /// One of: releases, features, specs, adrs, notes, vision, agents, ship.toml, templates
         category: String,
     },
     /// Exclude a category from git commits (adds to .ship/.gitignore)
     Exclude {
-        /// One of: issues, releases, features, specs, adrs, notes, agents, ship.toml, templates
+        /// One of: releases, features, specs, adrs, notes, vision, agents, ship.toml, templates
         category: String,
     },
     /// Install git hooks for feature-aware checkout
@@ -189,7 +189,7 @@ pub enum GhostCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCommands {
-    /// Manage issue statuses/categories
+    /// Manage workflow statuses/categories
     Status {
         #[command(subcommand)]
         action: StatusCommands,
@@ -309,11 +309,11 @@ pub enum HooksCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum StatusCommands {
-    /// List configured issue statuses
+    /// List configured workflow statuses
     List,
     /// Add a new status
     Add { name: String },
-    /// Remove a status (does not delete existing issues)
+    /// Remove a status
     Remove { name: String },
 }
 
@@ -807,7 +807,7 @@ pub enum ProjectCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum DevCommands {
-    /// Migrate YAML issues and JSON config to TOML
+    /// Repair legacy state and re-import markdown-backed entities
     Migrate {
         /// Re-run startup markdown imports even if already marked complete
         #[arg(long, default_value_t = false)]

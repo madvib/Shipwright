@@ -787,7 +787,7 @@ Use Ship as the system of record for workflow state changes.
 
 ## Canonical Flow
 
-Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release
+Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
 "#,
     )?;
 

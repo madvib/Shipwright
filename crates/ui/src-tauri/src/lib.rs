@@ -10,8 +10,8 @@ use runtime::config::{
     ProjectDiscovery,
 };
 use runtime::project::{
-    features_dir, get_active_project_global, get_project_dir, releases_dir, sanitize_file_name,
-    resolve_project_ship_dir, set_active_project_global, SHIP_DIR_NAME,
+    features_dir, get_active_project_global, get_project_dir, releases_dir,
+    resolve_project_ship_dir, sanitize_file_name, set_active_project_global, SHIP_DIR_NAME,
 };
 use runtime::{
     activate_workspace, autodetect_providers, create_skill, create_user_skill, create_workspace,
@@ -29,17 +29,15 @@ use runtime::{
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
-    create_adr, create_feature, create_issue, create_note, create_release_with_metadata,
-    create_spec, delete_adr, delete_issue, delete_spec, feature_done, feature_start, get_adr_by_id,
-    get_feature_by_id, get_feature_documentation, get_issue_by_id, get_note_by_id,
-    get_project_name, get_release_by_id, get_spec_by_id, init_project, list_adrs, list_features,
-    list_issues, list_notes, list_registered_projects, list_releases, list_specs, move_adr,
-    move_issue, move_spec, read_template, register_project, rename_project, update_adr,
-    update_feature_content, update_feature_documentation, update_issue, update_note_content,
-    update_release, update_spec, AdrEntry, AdrStatus, FeatureDocStatus,
-    FeatureEntry as ProjectFeatureEntry, Issue, IssueEntry, IssueStatus, NoteScope,
-    ReleaseEntry as ProjectReleaseEntry, ReleaseStatus as ProjectReleaseStatus, Spec, SpecEntry,
-    SpecStatus, ADR,
+    create_adr, create_feature, create_note, create_release_with_metadata, create_spec, delete_adr,
+    delete_spec, feature_done, feature_start, get_adr_by_id, get_feature_by_id,
+    get_feature_documentation, get_note_by_id, get_project_name, get_release_by_id, get_spec_by_id,
+    init_project, list_adrs, list_features, list_notes, list_registered_projects, list_releases,
+    list_specs, move_adr, move_spec, read_template, register_project, rename_project, update_adr,
+    update_feature_content, update_feature_documentation, update_note_content, update_release,
+    update_spec, AdrEntry, AdrStatus, FeatureDocStatus, FeatureEntry as ProjectFeatureEntry,
+    NoteScope, ReleaseEntry as ProjectReleaseEntry, ReleaseStatus as ProjectReleaseStatus, Spec,
+    SpecEntry, SpecStatus, ADR,
 };
 use specta::Type;
 use std::collections::{HashMap, HashSet};
@@ -382,7 +380,6 @@ pub struct AppState {
 pub struct ProjectInfo {
     pub name: String,
     pub path: String,
-    pub issue_count: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -1021,13 +1018,9 @@ fn list_projects() -> Result<Vec<ProjectDiscovery>, String> {
         let ship_path = ensure_ship_path(&entry.path);
         let key = ship_path.to_string_lossy().to_string();
         if ship_path.exists() && seen_paths.insert(key) {
-            let issue_count = list_issues(&ship_path)
-                .map(|issues| issues.len())
-                .unwrap_or(0);
             projects.push(ProjectDiscovery {
                 name: entry.name,
                 path: ship_path,
-                issue_count,
             });
         }
     }
@@ -1044,24 +1037,18 @@ fn get_active_project(state: State<AppState>) -> Result<Option<ProjectInfo>, Str
             drop(guard);
             if let Ok(Some(path)) = get_active_project_global() {
                 if path.exists() {
-                    let issues = list_issues(&path).unwrap_or_default();
                     return Ok(Some(ProjectInfo {
                         name: project_display_name(&path),
                         path: path.to_string_lossy().to_string(),
-                        issue_count: issues.len(),
                     }));
                 }
             }
             Ok(None)
         }
-        Some(path) => {
-            let issues = list_issues(path).unwrap_or_default();
-            Ok(Some(ProjectInfo {
-                name: project_display_name(path),
-                path: path.to_string_lossy().to_string(),
-                issue_count: issues.len(),
-            }))
-        }
+        Some(path) => Ok(Some(ProjectInfo {
+            name: project_display_name(path),
+            path: path.to_string_lossy().to_string(),
+        })),
     }
 }
 
@@ -1076,12 +1063,10 @@ fn set_active_project(
     if !ship_path.exists() {
         return Err(format!("Path does not exist: {}", ship_path.display()));
     }
-    let issues = list_issues(&ship_path).unwrap_or_default();
     let display_name = project_display_name(&ship_path);
     let info = ProjectInfo {
         name: display_name.clone(),
         path: ship_path.to_string_lossy().to_string(),
-        issue_count: issues.len(),
     };
     *state.active_project.lock().unwrap() = Some(ship_path.clone());
     register_project(display_name, ship_path.clone()).map_err(|e: anyhow::Error| e.to_string())?;
@@ -1121,12 +1106,10 @@ async fn pick_and_open_project(
         detect_project_providers_non_blocking(&final_ship_path);
     }
 
-    let issues = list_issues(&final_ship_path).unwrap_or_default();
     let display_name = project_display_name(&final_ship_path);
     let info = ProjectInfo {
         name: display_name.clone(),
         path: final_ship_path.to_string_lossy().to_string(),
-        issue_count: issues.len(),
     };
     *state.active_project.lock().unwrap() = Some(final_ship_path.clone());
     register_project(display_name, final_ship_path.clone())
@@ -1155,12 +1138,10 @@ fn detect_current_project(
             if !ship_path.exists() {
                 continue;
             }
-            let issues = list_issues(&ship_path).unwrap_or_default();
             let display_name = project_display_name(&ship_path);
             let info = ProjectInfo {
                 name: display_name,
                 path: ship_path.to_string_lossy().to_string(),
-                issue_count: issues.len(),
             };
             *state.active_project.lock().unwrap() = Some(ship_path.clone());
             if let Err(err) = start_project_watcher(&app, &state, &ship_path) {
@@ -1174,12 +1155,10 @@ fn detect_current_project(
     // Fallback: detect local .ship via cwd traversal and register it.
     match get_project_dir(None) {
         Ok(ship_path) => {
-            let issues = list_issues(&ship_path).unwrap_or_default();
             let display_name = project_display_name(&ship_path);
             let info = ProjectInfo {
                 name: display_name.clone(),
                 path: ship_path.to_string_lossy().to_string(),
-                issue_count: issues.len(),
             };
             // Also set as active
             *state.active_project.lock().unwrap() = Some(ship_path.clone());
@@ -1225,12 +1204,10 @@ async fn create_new_project(
         detect_project_providers_non_blocking(&ship_path);
     }
 
-    let issues = list_issues(&ship_path).unwrap_or_default();
     let display_name = project_display_name(&ship_path);
     let info = ProjectInfo {
         name: display_name.clone(),
         path: ship_path.to_string_lossy().to_string(),
-        issue_count: issues.len(),
     };
     *state.active_project.lock().unwrap() = Some(ship_path.clone());
     register_project(display_name, ship_path.clone()).map_err(|e: anyhow::Error| e.to_string())?;
@@ -1310,11 +1287,9 @@ fn create_project_with_options(
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| get_project_name(&ship_path));
 
-    let issues = list_issues(&ship_path).unwrap_or_default();
     let info = ProjectInfo {
         name: display_name.clone(),
         path: ship_path.to_string_lossy().to_string(),
-        issue_count: issues.len(),
     };
 
     *state.active_project.lock().unwrap() = Some(ship_path.clone());
@@ -1344,11 +1319,9 @@ fn rename_project_cmd(
     }
 
     let _ = ShipEvent::ConfigChanged.emit(&app_handle);
-    let issues = list_issues(&ship_path).unwrap_or_default();
     Ok(ProjectInfo {
         name: project_display_name(&ship_path),
         path: ship_path.to_string_lossy().to_string(),
-        issue_count: issues.len(),
     })
 }
 
@@ -1488,100 +1461,6 @@ fn start_project_watcher(
         handle: poller,
     });
 
-    Ok(())
-}
-
-// ─── Commands: Issues ─────────────────────────────────────────────────────────
-
-#[tauri::command]
-#[specta::specta]
-fn list_items(state: State<AppState>) -> Result<Vec<IssueEntry>, String> {
-    let project_dir = get_active_dir(&state)?;
-    list_issues(&project_dir).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn get_issue_by_path(path: String) -> Result<Issue, String> {
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    Issue::from_markdown(&content).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn create_new_issue(
-    title: String,
-    description: String,
-    status: String,
-    assignee: Option<String>,
-    tags: Option<Vec<String>>,
-    state: State<AppState>,
-) -> Result<IssueEntry, String> {
-    let project_dir = get_active_dir(&state)?;
-    let issue_status = status
-        .parse::<IssueStatus>()
-        .map_err(|_| format!("Invalid issue status: {}", status))?;
-
-    let entry = create_issue(
-        &project_dir,
-        &title,
-        &description,
-        issue_status,
-        assignee,
-        None, // priority
-        None, // release_id
-        None, // feature_id
-    )
-    .map_err(|e| e.to_string())?;
-
-    if let Some(t) = tags {
-        let mut issue = entry.issue.clone();
-        issue.metadata.tags = t;
-        update_issue(&project_dir, &entry.id, issue).map_err(|e| e.to_string())?;
-    }
-
-    log_action(&project_dir, "issue create", &format!("Created: {}", title)).ok();
-
-    get_issue_by_id(&project_dir, &entry.id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn update_issue_command(id: String, issue: Issue, state: State<AppState>) -> Result<(), String> {
-    let project_dir = get_active_dir(&state)?;
-    update_issue(&project_dir, &id, issue).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn move_issue_status(
-    id: String,
-    new_status: String,
-    state: State<AppState>,
-) -> Result<IssueEntry, String> {
-    let project_dir = get_active_dir(&state)?;
-    let status = new_status
-        .parse::<IssueStatus>()
-        .map_err(|_| format!("Invalid issue status: {}", new_status))?;
-
-    let entry = move_issue(&project_dir, &id, status).map_err(|e| e.to_string())?;
-    log_action(
-        &project_dir,
-        "issue move",
-        &format!("Moved {} → {}", entry.file_name, new_status),
-    )
-    .ok();
-
-    Ok(entry)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn delete_issue_cmd(id: String, state: State<AppState>) -> Result<(), String> {
-    let project_dir = get_active_dir(&state)?;
-    delete_issue(&project_dir, &id).map_err(|e| e.to_string())?;
-    log_action(&project_dir, "issue delete", &format!("Deleted: {}", id)).ok();
     Ok(())
 }
 
@@ -3283,7 +3162,13 @@ async fn get_branch_file_diff_cmd(
         let range = format!("{base_branch}...{branch}");
 
         let output = std::process::Command::new("git")
-            .args(["diff", "--no-color", range.as_str(), "--", file_path.as_str()])
+            .args([
+                "diff",
+                "--no-color",
+                range.as_str(),
+                "--",
+                file_path.as_str(),
+            ])
             .current_dir(&git_root)
             .output()
             .map_err(|e| e.to_string())?;
@@ -6052,25 +5937,6 @@ async fn import_agent_config_cmd(
 
 #[tauri::command]
 #[specta::specta]
-async fn generate_issue_description_cmd(
-    title: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let dir = get_active_dir(&state)?;
-    let config = get_effective_config(Some(dir)).map_err(|e| e.to_string())?;
-    let ai = config.ai.unwrap_or_default();
-    let prompt = format!(
-        "Write a concise issue description for a software task titled: \"{}\". \
-         Return only the description body in markdown, no title or preamble.",
-        title
-    );
-    tokio::task::spawn_blocking(move || invoke_ai_cli(&ai, &prompt))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-#[specta::specta]
 async fn generate_adr_cmd(
     title: String,
     context: String,
@@ -6095,29 +5961,6 @@ async fn generate_adr_cmd(
         .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-#[specta::specta]
-async fn brainstorm_issues_cmd(
-    topic: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
-    let dir = get_active_dir(&state)?;
-    let config = get_effective_config(Some(dir)).map_err(|e| e.to_string())?;
-    let ai = config.ai.unwrap_or_default();
-    let prompt = format!(
-        "List 5 actionable software task titles for: \"{}\". \
-         Return one task title per line, no numbering, bullets, or extra text.",
-        topic
-    );
-    let output = tokio::task::spawn_blocking(move || invoke_ai_cli(&ai, &prompt))
-        .await
-        .map_err(|e| e.to_string())??;
-    Ok(output
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect())
-}
 #[tauri::command]
 #[specta::specta]
 async fn transform_text_cmd(
@@ -6159,13 +6002,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             create_project_with_options,
             rename_project_cmd,
             detect_current_project,
-            // Issues
-            list_items,
-            get_issue_by_path,
-            create_new_issue,
-            update_issue_command,
-            move_issue_status,
-            delete_issue_cmd,
             // ADRs
             list_adrs_cmd,
             create_new_adr,
@@ -6285,9 +6121,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             export_agent_config_cmd,
             import_agent_config_cmd,
             // AI
-            generate_issue_description_cmd,
             generate_adr_cmd,
-            brainstorm_issues_cmd,
             transform_text_cmd,
         ])
 }
