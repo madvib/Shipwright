@@ -2,7 +2,9 @@
 # - Define servers, tools, and resources for your agents.
 
 [mcp]
-# Example:
-# [mcp.servers.memory]
-# command = "npx"
-# args = ["-y", "@modelcontextprotocol/server-memory"]
+# Ship runtime MCP server is enabled by default.
+# This gives agents workspace-aware tools that map to Ship workflow primitives.
+[mcp.servers.ship]
+name = "Ship Runtime"
+command = "ship"
+args = ["mcp", "serve"]

@@ -754,7 +754,10 @@ mod tests {
     #[test]
     fn parses_test_global_dir_pid() -> Result<()> {
         assert_eq!(parse_test_global_dir_pid("ship-test-global-123"), Some(123));
-        assert_eq!(parse_test_global_dir_pid("ship-test-global-123-ThreadId9"), Some(123));
+        assert_eq!(
+            parse_test_global_dir_pid("ship-test-global-123-ThreadId9"),
+            Some(123)
+        );
         assert_eq!(parse_test_global_dir_pid("ship-test-global-abc"), None);
         assert_eq!(parse_test_global_dir_pid("other-prefix-123"), None);
         Ok(())
@@ -842,36 +845,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
         let mut config = crate::config::ProjectConfig::default();
         config.id = crate::gen_nanoid();
-        config.modes = vec![
-            crate::config::ModeConfig {
-                id: "planning".to_string(),
-                name: "Planning".to_string(),
-                description: Some(
-                    "High-context planning for specs, issues, and ADR prep before coding."
-                        .to_string(),
-                ),
-                ..Default::default()
-            },
-            crate::config::ModeConfig {
-                id: "code".to_string(),
-                name: "Code".to_string(),
-                description: Some(
-                    "Execution-focused mode for implementing and moving work through issue status."
-                        .to_string(),
-                ),
-                ..Default::default()
-            },
-            crate::config::ModeConfig {
-                id: "config".to_string(),
-                name: "Config".to_string(),
-                description: Some(
-                    "Configuration mode for skills, providers, hooks, and project policy."
-                        .to_string(),
-                ),
-                ..Default::default()
-            },
-        ];
-        config.active_mode = Some("planning".to_string());
         crate::config::save_config(&config, Some(ship_path.clone()))?;
     }
 

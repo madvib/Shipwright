@@ -1,5 +1,5 @@
-use crate::project::sanitize_file_name;
 use crate::events::{EventAction, EventEntity, append_event};
+use crate::project::sanitize_file_name;
 use crate::state_db::{
     WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, delete_workspace_db,
     demote_other_active_workspaces_db, get_active_workspace_session_db, get_workspace_db,
@@ -1154,10 +1154,16 @@ pub fn end_workspace_session(
         details.push(format!("summary={summary}"));
     }
     if !ended.updated_feature_ids.is_empty() {
-        details.push(format!("updated_features={}", ended.updated_feature_ids.join(",")));
+        details.push(format!(
+            "updated_features={}",
+            ended.updated_feature_ids.join(",")
+        ));
     }
     if !ended.updated_spec_ids.is_empty() {
-        details.push(format!("updated_specs={}", ended.updated_spec_ids.join(",")));
+        details.push(format!(
+            "updated_specs={}",
+            ended.updated_spec_ids.join(",")
+        ));
     }
     append_event(
         ship_dir,

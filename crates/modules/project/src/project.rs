@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::config::{
-    ModeConfig, NamespaceConfig, ProjectConfig, add_mode as runtime_add_mode,
+    ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig, add_mode as runtime_add_mode,
     ensure_registered_namespaces as runtime_ensure_registered_namespaces, get_config,
     remove_mode as runtime_remove_mode, save_config, set_active_mode as runtime_set_active_mode,
 };
@@ -468,7 +468,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
 
     write_default_templates(&ship_path)?;
     write_directory_readmes(&ship_path)?;
-    write_default_agent_mode_files(&ship_path)?;
     write_default_skills(&ship_path)?;
     write_if_missing(
         &mcp_config_path(&ship_path),
@@ -483,6 +482,7 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         &principles_path,
         include_str!("../../../../core/runtime/src/templates/RULE.md"),
     )?;
+    write_default_agent_mode_files(&ship_path)?;
 
     let gitignore_path = ship_path.join(".gitignore");
     if !gitignore_path.exists() {
@@ -646,55 +646,110 @@ fn cleanup_legacy_config_files(ship_path: &Path) -> Result<()> {
 fn default_agent_modes() -> Vec<ModeConfig> {
     vec![
         ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
+            id: "frontend-react".to_string(),
+            name: "Frontend React".to_string(),
             description: Some(
-                "High-context planning for specs and ADR prep before coding.".to_string(),
-            ),
-            active_tools: vec![
-                "ship_list_notes".to_string(),
-                "ship_create_note".to_string(),
-                "ship_list_specs".to_string(),
-                "ship_get_spec".to_string(),
-                "ship_create_spec".to_string(),
-                "ship_update_spec".to_string(),
-                "ship_draft_adr".to_string(),
-                "ship_get_project_info".to_string(),
-            ],
-            ..Default::default()
-        },
-        ModeConfig {
-            id: "code".to_string(),
-            name: "Code".to_string(),
-            description: Some(
-                "Execution-focused mode for implementing and progressing features.".to_string(),
-            ),
-            active_tools: vec![
-                "ship_list_specs".to_string(),
-                "ship_get_spec".to_string(),
-                "ship_update_spec".to_string(),
-                "ship_list_notes".to_string(),
-                "ship_create_note".to_string(),
-            ],
-            ..Default::default()
-        },
-        ModeConfig {
-            id: "config".to_string(),
-            name: "Config".to_string(),
-            description: Some(
-                "Configuration and environment mode for skills, providers, hooks, and project policy."
+                "Ship-first template for React + TypeScript UI work with design-system and accessibility focus."
                     .to_string(),
             ),
-            active_tools: vec![
-                "ship_get_project_info".to_string(),
-                "ship_create_skill".to_string(),
-                "ship_update_skill".to_string(),
-                "ship_delete_skill".to_string(),
-                "ship_git_config_set".to_string(),
-                "ship_git_hooks_install".to_string(),
-                "ship_detect_providers".to_string(),
-                "ship_connect_provider".to_string(),
-                "ship_disconnect_provider".to_string(),
+            mcp_servers: vec!["ship".to_string()],
+            skills: vec![
+                "ship-workflow".to_string(),
+                "task-policy".to_string(),
+                "start-session".to_string(),
+            ],
+            prompt_id: Some("ship-workflow".to_string()),
+            permissions: PermissionConfig {
+                allow: vec![
+                    "Read".to_string(),
+                    "Glob".to_string(),
+                    "Grep".to_string(),
+                    "Edit".to_string(),
+                    "Write".to_string(),
+                    "MultiEdit".to_string(),
+                    "Bash".to_string(),
+                    "mcp__ship__*".to_string(),
+                    "mcp__*__read*".to_string(),
+                    "mcp__*__list*".to_string(),
+                    "mcp__*__search*".to_string(),
+                    "mcp__*__write*".to_string(),
+                ],
+                deny: vec!["mcp__*__delete*".to_string(), "mcp__*__exec*".to_string()],
+            },
+            target_agents: vec!["claude".to_string(), "codex".to_string()],
+            ..Default::default()
+        },
+        ModeConfig {
+            id: "rust-expert".to_string(),
+            name: "Rust Expert".to_string(),
+            description: Some(
+                "Ship-first template for Rust services, safety-first refactors, and performance tuning."
+                    .to_string(),
+            ),
+            mcp_servers: vec!["ship".to_string()],
+            skills: vec![
+                "ship-workflow".to_string(),
+                "task-policy".to_string(),
+                "start-session".to_string(),
+            ],
+            prompt_id: Some("ship-workflow".to_string()),
+            permissions: PermissionConfig {
+                allow: vec![
+                    "Read".to_string(),
+                    "Glob".to_string(),
+                    "Grep".to_string(),
+                    "Edit".to_string(),
+                    "Write".to_string(),
+                    "MultiEdit".to_string(),
+                    "Bash".to_string(),
+                    "mcp__ship__*".to_string(),
+                    "mcp__*__read*".to_string(),
+                    "mcp__*__list*".to_string(),
+                    "mcp__*__search*".to_string(),
+                ],
+                deny: vec!["mcp__*__delete*".to_string(), "mcp__*__exec*".to_string()],
+            },
+            target_agents: vec!["claude".to_string(), "codex".to_string()],
+            ..Default::default()
+        },
+        ModeConfig {
+            id: "documentation-expert".to_string(),
+            name: "Documentation Expert".to_string(),
+            description: Some(
+                "Ship-first template for ADRs, API docs, release notes, and repository knowledge curation."
+                    .to_string(),
+            ),
+            mcp_servers: vec!["ship".to_string()],
+            skills: vec![
+                "ship-workflow".to_string(),
+                "task-policy".to_string(),
+                "create-document".to_string(),
+            ],
+            prompt_id: Some("create-document".to_string()),
+            permissions: PermissionConfig {
+                allow: vec![
+                    "Read".to_string(),
+                    "Glob".to_string(),
+                    "Grep".to_string(),
+                    "Edit".to_string(),
+                    "Write".to_string(),
+                    "MultiEdit".to_string(),
+                    "mcp__ship__*".to_string(),
+                    "mcp__*__read*".to_string(),
+                    "mcp__*__list*".to_string(),
+                    "mcp__*__search*".to_string(),
+                ],
+                deny: vec![
+                    "Bash".to_string(),
+                    "mcp__*__write*".to_string(),
+                    "mcp__*__delete*".to_string(),
+                    "mcp__*__exec*".to_string(),
+                ],
+            },
+            target_agents: vec![
+                "claude".to_string(),
+                "gemini".to_string(),
+                "codex".to_string(),
             ],
             ..Default::default()
         },
@@ -713,11 +768,11 @@ fn write_default_agent_mode_files(ship_path: &Path) -> Result<()> {
 }
 
 fn write_default_skills(ship_path: &Path) -> Result<()> {
-    let skill_root = skills_dir(ship_path).join("task-policy");
-    fs::create_dir_all(&skill_root)?;
+    let project_skills_root = skills_dir(ship_path);
+    fs::create_dir_all(&project_skills_root)?;
 
     write_if_missing(
-        &skill_root.join("SKILL.md"),
+        &project_skills_root.join("task-policy").join("SKILL.md"),
         r#"---
 name: task-policy
 description: Ship workflow policy and execution guardrails for daily delivery.
@@ -736,11 +791,30 @@ Vision -> Release -> Feature -> Spec -> Issues -> Close Feature -> Ship Release
 "#,
     )?;
 
-    let mut config = get_config(Some(ship_path.to_path_buf()))?;
-    if !config.agent.skills.contains(&"task-policy".to_string()) {
-        config.agent.skills.push("task-policy".to_string());
-        save_config(&config, Some(ship_path.to_path_buf()))?;
+    const PROJECT_BUILTINS: &[(&str, &str)] = &[
+        (
+            "ship-workflow",
+            include_str!("../../../../core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
+        ),
+        (
+            "start-session",
+            include_str!("../../../../core/runtime/src/templates/skills/start-session/SKILL.md"),
+        ),
+        (
+            "create-document",
+            include_str!("../../../../core/runtime/src/templates/skills/create-document/SKILL.md"),
+        ),
+        (
+            "workspace-session-lifecycle",
+            include_str!(
+                "../../../../core/runtime/src/templates/skills/workspace-session-lifecycle/SKILL.md"
+            ),
+        ),
+    ];
+    for (id, content) in PROJECT_BUILTINS {
+        write_if_missing(&project_skills_root.join(id).join("SKILL.md"), content)?;
     }
+
     seed_builtin_user_skills(&runtime::project::user_skills_dir())?;
     Ok(())
 }
@@ -1316,18 +1390,29 @@ mod tests {
     }
 
     #[test]
-    fn init_project_seeds_default_planning_code_and_config_modes() -> Result<()> {
+    fn init_project_seeds_ship_first_templates_and_not_legacy_modes() -> Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
         let config = get_config(Some(ship_path))?;
 
-        assert!(config.modes.iter().any(|mode| mode.id == "planning"));
-        assert!(config.modes.iter().any(|mode| mode.id == "code"));
-        assert!(config.modes.iter().any(|mode| mode.id == "config"));
+        assert!(config.modes.iter().any(|mode| mode.id == "frontend-react"));
+        assert!(config.modes.iter().any(|mode| mode.id == "rust-expert"));
         assert!(
-            !config.modes.iter().any(|mode| mode.id == "execution"),
-            "new init should not seed legacy execution mode"
+            config
+                .modes
+                .iter()
+                .any(|mode| mode.id == "documentation-expert")
         );
+        let frontend = config
+            .modes
+            .iter()
+            .find(|mode| mode.id == "frontend-react")
+            .expect("frontend-react template should exist");
+        assert!(frontend.skills.iter().any(|skill| skill == "ship-workflow"));
+        assert!(frontend.mcp_servers.iter().any(|server| server == "ship"));
+        assert!(!config.modes.iter().any(|mode| mode.id == "planning"));
+        assert!(!config.modes.iter().any(|mode| mode.id == "code"));
+        assert!(!config.modes.iter().any(|mode| mode.id == "config"));
         Ok(())
     }
 
@@ -1338,9 +1423,9 @@ mod tests {
         write_default_agent_mode_files(&ship_path)?;
         let config = get_config(Some(ship_path))?;
 
-        for id in ["planning", "code", "config"] {
+        for id in ["frontend-react", "rust-expert", "documentation-expert"] {
             let count = config.modes.iter().filter(|mode| mode.id == id).count();
-            assert_eq!(count, 1, "mode '{}' should be present exactly once", id);
+            assert_eq!(count, 1, "template '{}' should be present exactly once", id);
         }
         Ok(())
     }

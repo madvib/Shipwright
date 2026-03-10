@@ -73,10 +73,10 @@ pub use workspace::{
     ShipWorkspaceKind, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
     WorkspaceSessionStatus, WorkspaceStatus, activate_workspace, create_workspace,
     delete_workspace, end_workspace_session, get_active_workspace_session, get_workspace,
-    get_workspace_provider_matrix, list_workspace_sessions, list_workspaces, repair_workspace,
-    record_workspace_session_progress,
-    set_workspace_active_mode, start_workspace_session, sync_workspace,
-    transition_workspace_status, upsert_workspace, validate_workspace_transition,
+    get_workspace_provider_matrix, list_workspace_sessions, list_workspaces,
+    record_workspace_session_progress, repair_workspace, set_workspace_active_mode,
+    start_workspace_session, sync_workspace, transition_workspace_status, upsert_workspace,
+    validate_workspace_transition,
 };
 
 pub fn gen_nanoid() -> String {
@@ -251,9 +251,10 @@ mod tests {
         assert!(ship_path.join("project/README.md").is_file());
         assert!(ship_path.join("workflow/README.md").is_file());
         let cfg = crate::config::get_config(Some(ship_path.clone()))?;
-        assert!(cfg.modes.iter().any(|mode| mode.id == "planning"));
-        assert!(cfg.modes.iter().any(|mode| mode.id == "code"));
-        assert!(cfg.modes.iter().any(|mode| mode.id == "config"));
+        assert!(
+            cfg.modes.is_empty(),
+            "new projects should not seed legacy planning/code/config modes by default"
+        );
         assert!(!ship_path.join("events.ndjson").is_file());
         assert!(ship_path.join("ship.toml").is_file());
         // default skill seeded

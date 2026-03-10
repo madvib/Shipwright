@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 /// Origin of a skill document.
@@ -282,6 +282,119 @@ fn resolve_repo_source(source: &str) -> String {
     trimmed.to_string()
 }
 
+fn is_github_shorthand(source: &str) -> bool {
+    let parts: Vec<&str> = source.split('/').collect();
+    parts.len() == 2
+        && parts
+            .iter()
+            .all(|part| !part.trim().is_empty() && !part.contains(char::is_whitespace))
+}
+
+fn is_supported_remote_source(source: &str) -> bool {
+    source.starts_with("https://github.com/")
+        || source.starts_with("http://github.com/")
+        || source.starts_with("git@github.com:")
+        || is_github_shorthand(source)
+}
+
+fn validate_git_ref(git_ref: &str) -> Result<()> {
+    let trimmed = git_ref.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("git-ref cannot be empty"));
+    }
+    if trimmed.len() > 128 {
+        return Err(anyhow!("git-ref cannot exceed 128 characters"));
+    }
+    if trimmed.starts_with('-')
+        || trimmed.contains("..")
+        || trimmed.contains(char::is_whitespace)
+        || !trimmed.chars().all(|ch| {
+            ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '/' || ch == '-'
+        })
+    {
+        return Err(anyhow!(
+            "Invalid git-ref '{}'. Use branch/tag names like 'main' or 'release/v1'.",
+            git_ref
+        ));
+    }
+    Ok(())
+}
+
+fn validate_repo_path(repo_path: &str) -> Result<()> {
+    let trimmed = repo_path.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("repo-path cannot be empty"));
+    }
+    let path = Path::new(trimmed);
+    if path.is_absolute() {
+        return Err(anyhow!(
+            "repo-path must be relative to the cloned repository"
+        ));
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(anyhow!(
+            "repo-path must not contain '..' traversal segments"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_skill_install_request(
+    source: &str,
+    skill_id: &str,
+    git_ref: &str,
+    repo_path: &str,
+) -> Result<()> {
+    let source = source.trim();
+    if source.is_empty() {
+        return Err(anyhow!("source cannot be empty"));
+    }
+    if source.contains('\n') || source.contains('\r') {
+        return Err(anyhow!("source must be a single-line value"));
+    }
+    if !is_valid_skill_name(skill_id) {
+        return Err(anyhow!(
+            "Invalid skill id '{}'. Skill IDs must be kebab-case and <= 64 chars.",
+            skill_id
+        ));
+    }
+
+    validate_git_ref(git_ref)?;
+    validate_repo_path(repo_path)?;
+
+    let source_path = Path::new(source);
+    let is_local_source = source_path.is_absolute()
+        || source_path.exists()
+        || source.starts_with("./")
+        || source.starts_with("../")
+        || source.starts_with("~/");
+
+    if is_local_source {
+        return Ok(());
+    }
+
+    if source.contains("://") || source.starts_with("git@") {
+        if !is_supported_remote_source(source) {
+            return Err(anyhow!(
+                "Unsupported remote source '{}'. Use a GitHub URL/SSH source or local path.",
+                source
+            ));
+        }
+        return Ok(());
+    }
+
+    if !is_github_shorthand(source) {
+        return Err(anyhow!(
+            "Unsupported source '{}'. Use `owner/repo`, a GitHub URL, or a local path.",
+            source
+        ));
+    }
+    Ok(())
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -381,6 +494,8 @@ fn install_skill_from_source_into_dir(
     repo_path: &str,
     force: bool,
 ) -> Result<Skill> {
+    validate_skill_install_request(source, skill_id, git_ref, repo_path)?;
+
     let tmp_root = std::env::temp_dir().join(format!("ship-skill-install-{}", crate::gen_nanoid()));
     fs::create_dir_all(&tmp_root)?;
     struct CleanupGuard(PathBuf);
@@ -919,8 +1034,8 @@ Body.
         let tmp = tempdir()?;
         let project_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let legacy_skill_dir = crate::project::legacy_project_skills_dir(&project_dir)
-            .join("legacy-skill");
+        let legacy_skill_dir =
+            crate::project::legacy_project_skills_dir(&project_dir).join("legacy-skill");
         fs::create_dir_all(&legacy_skill_dir)?;
         write_atomic(
             &legacy_skill_dir.join("SKILL.md"),
@@ -1045,6 +1160,41 @@ Create and validate skills.
         )
         .expect_err("install should fail without force");
         assert!(err.to_string().contains("already exists"));
+        Ok(())
+    }
+
+    #[test]
+    fn install_skill_rejects_unsupported_remote_source() {
+        let err = validate_skill_install_request(
+            "https://gitlab.com/example/skills.git",
+            "skill-creator",
+            "main",
+            "skills",
+        )
+        .expect_err("non-github remote source should be rejected");
+        assert!(err.to_string().contains("Unsupported remote source"));
+    }
+
+    #[test]
+    fn install_skill_rejects_invalid_repo_path() {
+        let err = validate_skill_install_request(
+            "vercel-labs/agent-skills",
+            "skill-creator",
+            "main",
+            "../skills",
+        )
+        .expect_err("repo-path traversal should be rejected");
+        assert!(err.to_string().contains("must not contain '..'"));
+    }
+
+    #[test]
+    fn install_skill_accepts_github_shorthand_request() -> Result<()> {
+        validate_skill_install_request(
+            "vercel-labs/agent-skills",
+            "skill-creator",
+            "main",
+            "skills",
+        )?;
         Ok(())
     }
 }

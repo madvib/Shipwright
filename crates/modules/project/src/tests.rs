@@ -356,8 +356,8 @@ mod tests {
     }
 
     #[test]
-    fn test_create_spec_defaults_to_service_workspace_when_only_active_workspace() -> anyhow::Result<()>
-    {
+    fn test_create_spec_defaults_to_service_workspace_when_only_active_workspace()
+    -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
 

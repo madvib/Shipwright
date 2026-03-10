@@ -6,22 +6,19 @@
 
 [tools]
 # Tool pattern allow/deny lists.
-# `allow = ["*"]` means all tools unless denied.
-# Patterns are provider/tool specific (e.g. "Bash(*)", "WebFetch(*)", "mcp__ship__*").
-allow = ["*"]
-deny = []
+# Ship-first baseline: read + Ship MCP tools are enabled, mutating tools require explicit opt-in.
+allow = ["Read", "Glob", "Grep", "mcp__ship__*", "mcp__*__read*", "mcp__*__list*", "mcp__*__search*"]
+deny = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
 
 [filesystem]
-# Path globs. Empty means no extra constraints at this layer.
-# Example: allow = ["./src/**", "./docs/**"]
-allow = []
-deny = []
+# Path globs.
+allow = ["**/*"]
+deny = ["/etc/**", "/sys/**", "/proc/**", "~/.ssh/**", "~/.gnupg/**"]
 
 [commands]
-# Shell command prefix patterns.
-# Example: allow = ["cargo test", "git status"]
-allow = []
-deny = []
+# Shell command prefix patterns used by policy export/hook envelope compilation.
+allow = ["git status", "git diff", "git log", "ls", "cat", "rg", "find", "pwd"]
+deny = ["rm -rf", "git push --force", "npm publish", "cargo publish"]
 
 [network]
 # one of: "none" | "localhost" | "allow-list" | "unrestricted"
@@ -30,6 +27,6 @@ allow_hosts = []
 
 [agent]
 # Optional runtime guardrails.
-# max_cost_per_session = 10.0
-# max_turns = 40
-require_confirmation = []
+max_cost_per_session = 5.0
+max_turns = 50
+require_confirmation = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
