@@ -1,3 +1,14 @@
+---
+name: skill-1772918234174
+description: Project skill 'skill-1772918234174'
+compatibility: null
+allowed-tools: null
+license: null
+metadata:
+  display_name: Untitled Skill
+  source: custom
+---
+
 # Workflow System Of Record
 
 * Use Ship entities and operations as the source of truth for project state.
@@ -14,3 +25,4 @@
 
 * Keep MCP server IDs stable, skip unknown targets safely, and never commit secrets.
 
+<br />
