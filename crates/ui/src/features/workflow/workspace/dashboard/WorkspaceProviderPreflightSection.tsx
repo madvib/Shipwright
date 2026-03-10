@@ -1,5 +1,5 @@
-import { Badge, Button } from '@ship/ui';
-import { RefreshCw } from 'lucide-react';
+import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from '@ship/ui';
+import { Info, RefreshCw } from 'lucide-react';
 import { ProviderInfo } from '@/bindings';
 import { WorkspaceProviderMatrix } from '@/lib/platform/tauri/commands';
 
@@ -30,10 +30,19 @@ export function WorkspaceProviderPreflightSection({
     <section className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <p className="text-[11px] font-semibold text-muted-foreground">Provider Preflight</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-[11px] font-semibold text-muted-foreground">Agent Readiness</p>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="size-3 cursor-help text-muted-foreground/60" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                Preflight checks provider install/connect/allow status before session start.
+              </TooltipContent>
+            </Tooltip>
+          </div>
           <p className="text-[10px] text-muted-foreground">
-            Mode source: {providerMatrix?.source ?? 'unknown'} · allowed:{' '}
-            {allowed.length > 0 ? allowed.join(', ') : 'none'}
+            Source: {providerMatrix?.source ?? 'unknown'} · allowed: {allowed.length > 0 ? allowed.join(', ') : 'none'}
           </p>
         </div>
         <Button
@@ -65,6 +74,8 @@ export function WorkspaceProviderPreflightSection({
             const isAllowed = allowed.includes(id);
             const isEnabled = info?.enabled ?? false;
             const isInstalled = info?.installed ?? false;
+            const isReady = isAllowed && isEnabled && isInstalled;
+
             return (
               <div key={id} className="rounded-md border bg-muted/10 px-2 py-2">
                 <div className="flex items-center justify-between gap-2">
@@ -78,7 +89,10 @@ export function WorkspaceProviderPreflightSection({
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <Badge variant={isAllowed ? 'default' : 'outline'} className="h-5 px-1.5 text-[9px]">
+                    <Badge variant={isReady ? 'default' : 'outline'} className="h-5 px-1.5 text-[9px]">
+                      {isReady ? 'ready' : 'check'}
+                    </Badge>
+                    <Badge variant={isAllowed ? 'secondary' : 'outline'} className="h-5 px-1.5 text-[9px]">
                       {isAllowed ? 'allowed' : 'blocked'}
                     </Badge>
                     <Badge
@@ -103,7 +117,7 @@ export function WorkspaceProviderPreflightSection({
                 ) : null}
                 {!isEnabled ? (
                   <p className="mt-1 text-[10px] text-amber-700">
-                    Run <code>ship providers connect {id}</code> to allow this provider for the project.
+                    Run <code>ship providers connect {id}</code> to enable this provider.
                   </p>
                 ) : null}
               </div>
@@ -114,4 +128,3 @@ export function WorkspaceProviderPreflightSection({
     </section>
   );
 }
-

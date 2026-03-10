@@ -39,6 +39,17 @@ export interface WorkspaceEditorInfo {
   name: string;
   binary: string;
 }
+export interface GitBranchInfo {
+  name: string;
+  current: boolean;
+  base_branch: string;
+  ahead: number;
+  behind: number;
+  touched_files: number;
+  insertions: number;
+  deletions: number;
+}
+
 
 export interface WorkspaceFileChange {
   status: string;
@@ -53,6 +64,25 @@ export interface WorkspaceGitStatusSummary {
   ahead: number;
   behind: number;
   upstream?: string | null;
+}
+
+export interface BranchFileChange {
+  status: string;
+  path: string;
+  insertions: number;
+  deletions: number;
+}
+
+export interface BranchDetailSummary {
+  branch: string;
+  base_branch: string;
+  ahead: number;
+  behind: number;
+  touched_files: number;
+  insertions: number;
+  deletions: number;
+  has_workspace: boolean;
+  changes: BranchFileChange[];
 }
 
 export interface WorkspaceSessionInfo {
@@ -164,6 +194,11 @@ export const getWorkspaceCmd = (branch: string): Promise<Result<Workspace | null
   invoke('get_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace | null, string>)).catch(error => ({ status: 'error', error }));
 export const listWorkspaceEditorsCmd = (): Promise<Result<WorkspaceEditorInfo[], string>> =>
   invoke('list_workspace_editors_cmd').then(data => ({ status: 'ok', data } as Result<WorkspaceEditorInfo[], string>)).catch(error => ({ status: 'error', error }));
+export const listGitBranchesCmd = (): Promise<Result<GitBranchInfo[], string>> =>
+  invoke('list_git_branches_cmd')
+    .then(data => ({ status: 'ok', data } as Result<GitBranchInfo[], string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+
 export const listWorkspacesCmd = (): Promise<Result<Workspace[], string>> =>
   invoke('list_workspaces_cmd').then(data => ({ status: 'ok', data } as Result<Workspace[], string>)).catch(error => ({ status: 'error', error }));
 export const listProvidersCmd = (): Promise<Result<ProviderInfo[], string>> =>
@@ -179,18 +214,20 @@ export const createWorkspaceCmd = (
     specId?: string | null;
     releaseId?: string | null;
     modeId?: string | null;
-    activate?: boolean;
+    isWorktree?: boolean | null;
+    worktreePath?: string | null;
   }
 ): Promise<Result<Workspace, string>> =>
   invoke('create_workspace_cmd', {
     branch,
     workspaceType: options?.workspaceType ?? null,
     environmentId: options?.environmentId ?? null,
+    isWorktree: options?.isWorktree ?? null,
+    worktreePath: options?.worktreePath ?? null,
     featureId: options?.featureId ?? null,
     specId: options?.specId ?? null,
     releaseId: options?.releaseId ?? null,
     modeId: options?.modeId ?? null,
-    activate: options?.activate ?? null,
   }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const activateWorkspaceCmd = (branch: string): Promise<Result<Workspace, string>> =>
   invoke('activate_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
@@ -277,6 +314,19 @@ export const getWorkspaceGitStatusCmd = (
 ): Promise<Result<WorkspaceGitStatusSummary, string>> =>
   invoke('get_workspace_git_status_cmd', { branch })
     .then(data => ({ status: 'ok', data } as Result<WorkspaceGitStatusSummary, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const getBranchDetailCmd = (
+  branch: string,
+): Promise<Result<BranchDetailSummary, string>> =>
+  invoke('get_branch_detail_cmd', { branch })
+    .then(data => ({ status: 'ok', data } as Result<BranchDetailSummary, string>))
+    .catch(error => ({ status: 'error', error: String(error) }));
+export const getBranchFileDiffCmd = (
+  branch: string,
+  path: string,
+): Promise<Result<string, string>> =>
+  invoke('get_branch_file_diff_cmd', { branch, path })
+    .then(data => ({ status: 'ok', data } as Result<string, string>))
     .catch(error => ({ status: 'error', error: String(error) }));
 export const openWorkspaceEditorCmd = (
   branch: string,

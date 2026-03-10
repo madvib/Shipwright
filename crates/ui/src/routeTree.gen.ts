@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProjectSpecsRouteImport } from './routes/project/specs'
 import { Route as ProjectSettingsRouteImport } from './routes/project/settings'
 import { Route as ProjectReleasesRouteImport } from './routes/project/releases'
 import { Route as ProjectOverviewRouteImport } from './routes/project/overview'
@@ -25,8 +26,8 @@ import { Route as ProjectAgentsSkillsRouteImport } from './routes/project/agents
 import { Route as ProjectAgentsRulesRouteImport } from './routes/project/agents.rules'
 import { Route as ProjectAgentsProvidersRouteImport } from './routes/project/agents.providers'
 import { Route as ProjectAgentsPermissionsRouteImport } from './routes/project/agents.permissions'
-import { Route as ProjectAgentsHooksRouteImport } from './routes/project/agents.hooks'
 import { Route as ProjectAgentsMcpRouteImport } from './routes/project/agents.mcp'
+import { Route as ProjectAgentsHooksRouteImport } from './routes/project/agents.hooks'
 
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
@@ -36,6 +37,11 @@ const ProjectsRoute = ProjectsRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectSpecsRoute = ProjectSpecsRouteImport.update({
+  id: '/project/specs',
+  path: '/project/specs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectSettingsRoute = ProjectSettingsRouteImport.update({
@@ -132,8 +138,9 @@ export interface FileRoutesByFullPath {
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
+  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/hooks': typeof ProjectAgentsHooksRoute
+  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
   '/project/agents/providers': typeof ProjectAgentsProvidersRoute
   '/project/agents/rules': typeof ProjectAgentsRulesRoute
@@ -152,8 +159,9 @@ export interface FileRoutesByTo {
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
+  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/hooks': typeof ProjectAgentsHooksRoute
+  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
   '/project/agents/providers': typeof ProjectAgentsProvidersRoute
   '/project/agents/rules': typeof ProjectAgentsRulesRoute
@@ -173,8 +181,9 @@ export interface FileRoutesById {
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
+  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/hooks': typeof ProjectAgentsHooksRoute
+  '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
   '/project/agents/providers': typeof ProjectAgentsProvidersRoute
   '/project/agents/rules': typeof ProjectAgentsRulesRoute
@@ -195,8 +204,9 @@ export interface FileRouteTypes {
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/agents/mcp'
+    | '/project/specs'
     | '/project/agents/hooks'
+    | '/project/agents/mcp'
     | '/project/agents/permissions'
     | '/project/agents/providers'
     | '/project/agents/rules'
@@ -215,8 +225,9 @@ export interface FileRouteTypes {
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/agents/mcp'
+    | '/project/specs'
     | '/project/agents/hooks'
+    | '/project/agents/mcp'
     | '/project/agents/permissions'
     | '/project/agents/providers'
     | '/project/agents/rules'
@@ -235,8 +246,9 @@ export interface FileRouteTypes {
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/agents/mcp'
+    | '/project/specs'
     | '/project/agents/hooks'
+    | '/project/agents/mcp'
     | '/project/agents/permissions'
     | '/project/agents/providers'
     | '/project/agents/rules'
@@ -256,6 +268,7 @@ export interface RootRouteChildren {
   ProjectOverviewRoute: typeof ProjectOverviewRoute
   ProjectReleasesRoute: typeof ProjectReleasesRoute
   ProjectSettingsRoute: typeof ProjectSettingsRoute
+  ProjectSpecsRoute: typeof ProjectSpecsRoute
   ProjectWorkflowWorkspaceRoute: typeof ProjectWorkflowWorkspaceRoute
 }
 
@@ -273,6 +286,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/project/specs': {
+      id: '/project/specs'
+      path: '/project/specs'
+      fullPath: '/project/specs'
+      preLoaderRoute: typeof ProjectSpecsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project/settings': {
@@ -391,8 +411,8 @@ declare module '@tanstack/react-router' {
 }
 
 interface ProjectAgentsRouteChildren {
-  ProjectAgentsMcpRoute: typeof ProjectAgentsMcpRoute
   ProjectAgentsHooksRoute: typeof ProjectAgentsHooksRoute
+  ProjectAgentsMcpRoute: typeof ProjectAgentsMcpRoute
   ProjectAgentsPermissionsRoute: typeof ProjectAgentsPermissionsRoute
   ProjectAgentsProvidersRoute: typeof ProjectAgentsProvidersRoute
   ProjectAgentsRulesRoute: typeof ProjectAgentsRulesRoute
@@ -401,8 +421,8 @@ interface ProjectAgentsRouteChildren {
 }
 
 const ProjectAgentsRouteChildren: ProjectAgentsRouteChildren = {
-  ProjectAgentsMcpRoute: ProjectAgentsMcpRoute,
   ProjectAgentsHooksRoute: ProjectAgentsHooksRoute,
+  ProjectAgentsMcpRoute: ProjectAgentsMcpRoute,
   ProjectAgentsPermissionsRoute: ProjectAgentsPermissionsRoute,
   ProjectAgentsProvidersRoute: ProjectAgentsProvidersRoute,
   ProjectAgentsRulesRoute: ProjectAgentsRulesRoute,
@@ -425,6 +445,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectOverviewRoute: ProjectOverviewRoute,
   ProjectReleasesRoute: ProjectReleasesRoute,
   ProjectSettingsRoute: ProjectSettingsRoute,
+  ProjectSpecsRoute: ProjectSpecsRoute,
   ProjectWorkflowWorkspaceRoute: ProjectWorkflowWorkspaceRoute,
 }
 export const routeTree = rootRouteImport

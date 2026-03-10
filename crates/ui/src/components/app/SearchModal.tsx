@@ -147,11 +147,23 @@ export function SearchModal() {
         if (!runtimeBranch) return;
         await runWorkspaceMutation(async () => {
             const workspaceExists = knownWorkspaceBranches.includes(runtimeBranch);
-            const result = workspaceExists
-                ? await activateWorkspaceCmd(runtimeBranch)
-                : await createWorkspaceCmd(runtimeBranch, { activate: true });
-            if (result.status === 'error') {
-                throw new Error(result.error || `Failed to ensure workspace for ${runtimeBranch}`);
+
+            if (workspaceExists) {
+                const activateResult = await activateWorkspaceCmd(runtimeBranch);
+                if (activateResult.status === 'error') {
+                    throw new Error(activateResult.error || `Failed to ensure workspace for ${runtimeBranch}`);
+                }
+                return;
+            }
+
+            const createResult = await createWorkspaceCmd(runtimeBranch);
+            if (createResult.status === 'error') {
+                throw new Error(createResult.error || `Failed to create workspace for ${runtimeBranch}`);
+            }
+
+            const activateResult = await activateWorkspaceCmd(runtimeBranch);
+            if (activateResult.status === 'error') {
+                throw new Error(activateResult.error || `Workspace created but activation failed for ${runtimeBranch}`);
             }
         });
     }, [knownWorkspaceBranches, runWorkspaceMutation, runtimeBranch]);

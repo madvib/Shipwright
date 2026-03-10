@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, useLocation, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';

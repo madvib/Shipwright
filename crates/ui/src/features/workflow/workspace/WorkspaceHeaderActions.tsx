@@ -1,5 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Check,
+  ChevronsUpDown,
+  CircleHelp,
+  Link2,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Sun,
+  Moon,
+  Wrench,
+} from 'lucide-react';
+import {
+  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -8,32 +21,28 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Switch,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@ship/ui";
-import { Plus, RefreshCw, Trash2, Archive } from "lucide-react";
-import { ModeConfig } from "@/bindings";
-import { WorkspaceRow } from "./types";
+} from '@ship/ui';
+import { type GitBranchInfo } from '@/lib/platform/tauri/commands';
 
-const WORKSPACE_MODE_DEFAULT = "__workspace_default__";
-const CREATE_MODE_DEFAULT = "__mode_default__";
-
-type WorkspaceTypeOption = "feature" | "patch" | "service";
+type WorkspaceTypeOption = 'feature' | 'patch' | 'service';
+type EnvironmentMode = 'template' | 'custom';
 
 interface CreateWorkspaceInput {
   branch: string;
   workspaceType: WorkspaceTypeOption;
   environmentId: string | null;
-  modeId: string | null;
   featureId: string | null;
-  specId: string | null;
   releaseId: string | null;
+  isWorktree: boolean;
+  worktreePath: string | null;
 }
 
 interface WorkspaceLinkOption {
@@ -41,357 +50,666 @@ interface WorkspaceLinkOption {
   label: string;
 }
 
+interface CreateWorkspaceIntent {
+  nonce: number;
+  branch: string | null;
+}
+
 interface WorkspaceHeaderActionsProps {
-  detail: WorkspaceRow | null;
-  modeOptions: ModeConfig[];
+  gitBranches: GitBranchInfo[];
+  existingWorkspaceBranches: string[];
   creatingWorkspace: boolean;
-  deletingWorkspace: boolean;
-  archivingWorkspace: boolean;
-  updatingWorkspaceMode: boolean;
   environmentOptions: WorkspaceLinkOption[];
   featureOptions: WorkspaceLinkOption[];
-  specOptions: WorkspaceLinkOption[];
   releaseOptions: WorkspaceLinkOption[];
+  createIntent: CreateWorkspaceIntent | null;
+  onCreateIntentConsumed: () => void;
   onCreateWorkspace: (input: CreateWorkspaceInput) => Promise<void>;
-  onDeleteWorkspace: (branch: string) => Promise<void>;
-  onArchiveWorkspace: (branch: string) => Promise<void>;
-  onUpdateWorkspaceMode: (modeId: string | null) => Promise<void>;
+  currentTheme?: string;
+  onThemeChange?: (theme: 'light' | 'dark') => void;
+}
+
+const WORKSPACE_TYPE_LABELS: Record<WorkspaceTypeOption, string> = {
+  feature: 'Feature',
+  patch: 'Patch',
+  service: 'Service',
+};
+
+function labelForOption(option: WorkspaceLinkOption | undefined): string {
+  if (!option) return '';
+  return option.label?.trim() || option.id;
+}
+
+function matchesQuery(option: WorkspaceLinkOption, query: string): boolean {
+  if (!query) return true;
+  const label = labelForOption(option).toLowerCase();
+  const id = option.id.toLowerCase();
+  return label.includes(query) || id.includes(query);
+}
+
+function slugify(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
 }
 
 export function WorkspaceHeaderActions({
-  detail,
-  modeOptions,
+  gitBranches,
+  existingWorkspaceBranches,
   creatingWorkspace,
-  deletingWorkspace,
-  archivingWorkspace,
-  updatingWorkspaceMode,
   environmentOptions,
   featureOptions,
-  specOptions,
   releaseOptions,
+  createIntent,
+  onCreateIntentConsumed,
   onCreateWorkspace,
-  onDeleteWorkspace,
-  onArchiveWorkspace,
-  onUpdateWorkspaceMode,
+  currentTheme,
+  onThemeChange,
 }: WorkspaceHeaderActionsProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createBranch, setCreateBranch] = useState("");
-  const [createType, setCreateType] = useState<WorkspaceTypeOption>("feature");
-  const [createModeId, setCreateModeId] = useState<string>(CREATE_MODE_DEFAULT);
-  const [createEnvironmentId, setCreateEnvironmentId] = useState<string>("");
-  const [createFeatureId, setCreateFeatureId] = useState<string>("");
-  const [createSpecId, setCreateSpecId] = useState<string>("");
-  const [createReleaseId, setCreateReleaseId] = useState<string>("");
 
-  const modeLabelById = useMemo(
-    () =>
-      new Map(
-        modeOptions.map((mode) => [mode.id, mode.name ?? mode.id] as const),
-      ),
-    [modeOptions],
+  const [attachExistingBranch, setAttachExistingBranch] = useState(false);
+  const [createSourceBranch, setCreateSourceBranch] = useState<string | null>(null);
+  const [createBranchSearch, setCreateBranchSearch] = useState('');
+  const [createBranchOverride, setCreateBranchOverride] = useState('');
+  const [patchTitle, setPatchTitle] = useState('');
+
+  const [createType, setCreateType] = useState<WorkspaceTypeOption>('feature');
+
+  const [createEnvironmentMode, setCreateEnvironmentMode] = useState<EnvironmentMode>('template');
+  const [createEnvironmentSearch, setCreateEnvironmentSearch] = useState('');
+  const [createEnvironmentId, setCreateEnvironmentId] = useState<string | null>(null);
+
+  const [createLinkSearch, setCreateLinkSearch] = useState('');
+  const [createFeatureId, setCreateFeatureId] = useState<string | null>(null);
+  const [createReleaseId, setCreateReleaseId] = useState<string | null>(null);
+
+  const [createIsWorktree, setCreateIsWorktree] = useState(true);
+  const [createWorktreePath, setCreateWorktreePath] = useState('');
+
+  const existingWorkspaceBranchSet = useMemo(
+    () => new Set(existingWorkspaceBranches),
+    [existingWorkspaceBranches],
   );
 
-  const modeSelectValue = useMemo(() => {
-    if (!detail?.activeMode) return WORKSPACE_MODE_DEFAULT;
-    return modeLabelById.has(detail.activeMode)
-      ? detail.activeMode
-      : WORKSPACE_MODE_DEFAULT;
-  }, [detail?.activeMode, modeLabelById]);
+  const unattachedBranches = useMemo(
+    () => gitBranches.filter((entry) => !existingWorkspaceBranchSet.has(entry.name)),
+    [gitBranches, existingWorkspaceBranchSet],
+  );
 
-  const createModeValue = useMemo(() => {
-    if (createModeId === CREATE_MODE_DEFAULT) return CREATE_MODE_DEFAULT;
-    return modeLabelById.has(createModeId) ? createModeId : CREATE_MODE_DEFAULT;
-  }, [createModeId, modeLabelById]);
+  const pickInitialBranch = useCallback(
+    (preferred?: string | null): string | null => {
+      const candidate = preferred?.trim();
+      if (candidate) return candidate;
+      return unattachedBranches[0]?.name ?? gitBranches[0]?.name ?? null;
+    },
+    [unattachedBranches, gitBranches],
+  );
 
-  const resetCreateWorkspaceDraft = () => {
-    setCreateDialogOpen(false);
-    setCreateBranch("");
-    setCreateType("feature");
-    setCreateModeId(CREATE_MODE_DEFAULT);
-    setCreateEnvironmentId("");
-    setCreateFeatureId("");
-    setCreateSpecId("");
-    setCreateReleaseId("");
-  };
+  const resetCreateWorkspaceDraft = useCallback(
+    (preferredBranch?: string | null) => {
+      const initialBranch = pickInitialBranch(preferredBranch);
+      const shouldAttach = Boolean(preferredBranch?.trim());
+      setAttachExistingBranch(shouldAttach);
+      setCreateSourceBranch(initialBranch);
+      setCreateBranchSearch('');
+      setCreateBranchOverride('');
+      setPatchTitle('');
+      setCreateType('feature');
+      setCreateEnvironmentMode('template');
+      setCreateEnvironmentSearch('');
+      setCreateEnvironmentId(null);
+      setCreateLinkSearch('');
+      setCreateFeatureId(null);
+      setCreateReleaseId(null);
+      setCreateIsWorktree(true);
+      setCreateWorktreePath('');
+    },
+    [pickInitialBranch],
+  );
 
-  const handleDelete = async () => {
-    if (!detail) return;
-    const confirmed = window.confirm(
-      `Delete workspace '${detail.branch}'? This removes ALL runtime state and history for this branch.`,
+  useEffect(() => {
+    if (!createIntent?.nonce) return;
+    setCreateDialogOpen(true);
+    resetCreateWorkspaceDraft(createIntent.branch);
+    onCreateIntentConsumed();
+  }, [createIntent?.nonce, createIntent?.branch, onCreateIntentConsumed, resetCreateWorkspaceDraft]);
+
+  const branchSearchQuery = createBranchSearch.trim().toLowerCase();
+
+  const selectableBranches = useMemo(() => {
+    const byName = new Map<string, GitBranchInfo>();
+    for (const entry of unattachedBranches) {
+      byName.set(entry.name, entry);
+    }
+
+    if (createSourceBranch && !byName.has(createSourceBranch)) {
+      const existing = gitBranches.find((entry) => entry.name === createSourceBranch);
+      if (existing) {
+        byName.set(existing.name, existing);
+      }
+    }
+
+    return Array.from(byName.values());
+  }, [createSourceBranch, gitBranches, unattachedBranches]);
+
+  const filteredBranches = useMemo(
+    () =>
+      selectableBranches.filter((entry) => {
+        if (!branchSearchQuery) return true;
+        return entry.name.toLowerCase().includes(branchSearchQuery);
+      }),
+    [selectableBranches, branchSearchQuery],
+  );
+
+  const environmentSearchQuery = createEnvironmentSearch.trim().toLowerCase();
+
+  const filteredEnvironmentOptions = useMemo(
+    () => environmentOptions.filter((option) => matchesQuery(option, environmentSearchQuery)),
+    [environmentOptions, environmentSearchQuery],
+  );
+
+  const environmentLabel = useMemo(() => {
+    if (createEnvironmentMode === 'custom') return 'Custom environment';
+    if (!createEnvironmentId) return 'No template selected';
+    return (
+      labelForOption(environmentOptions.find((option) => option.id === createEnvironmentId)) ||
+      createEnvironmentId
     );
-    if (!confirmed) return;
-    await onDeleteWorkspace(detail.branch);
-  };
+  }, [createEnvironmentMode, createEnvironmentId, environmentOptions]);
 
-  const handleArchive = async () => {
-    if (!detail) return;
-    const confirmed = window.confirm(
-      `Archive workspace '${detail.branch}'? This marks the workspace as archived and moves it out of the active roster.`,
-    );
-    if (!confirmed) return;
-    await onArchiveWorkspace(detail.branch);
-  };
+  const linkSearchQuery = createLinkSearch.trim().toLowerCase();
+
+  const filteredFeatureOptions = useMemo(
+    () => featureOptions.filter((option) => matchesQuery(option, linkSearchQuery)),
+    [featureOptions, linkSearchQuery],
+  );
+
+  const filteredReleaseOptions = useMemo(
+    () => releaseOptions.filter((option) => matchesQuery(option, linkSearchQuery)),
+    [releaseOptions, linkSearchQuery],
+  );
+
+  const linkedCount = Number(Boolean(createFeatureId || createReleaseId));
+
+  const autoBranch = useMemo(() => {
+    const featureLabel = createFeatureId
+      ? labelForOption(featureOptions.find((option) => option.id === createFeatureId))
+      : '';
+    const releaseLabel = createReleaseId
+      ? labelForOption(releaseOptions.find((option) => option.id === createReleaseId))
+      : '';
+
+    const stem =
+      (createType === 'patch' && patchTitle.trim()) ||
+      featureLabel ||
+      releaseLabel ||
+      `${createType}-workspace`;
+
+    const prefix = createType === 'service' ? 'service' : createType;
+    const slug = slugify(stem) || 'workspace';
+    return `${prefix}/${slug}`;
+  }, [
+    createFeatureId,
+    createReleaseId,
+    createType,
+    patchTitle,
+    featureOptions,
+    releaseOptions,
+  ]);
+
+  const resolvedBranch = useMemo(() => {
+    if (attachExistingBranch) {
+      return createSourceBranch?.trim() || '';
+    }
+    const override = createBranchOverride.trim();
+    return override || autoBranch;
+  }, [attachExistingBranch, createSourceBranch, createBranchOverride, autoBranch]);
+
+
 
   const handleCreate = async () => {
-    const branch = createBranch.trim();
+    const branch = resolvedBranch.trim();
     if (!branch) return;
+    if (createFeatureId && createReleaseId) {
+      window.alert('Choose either a feature anchor or a release anchor before creating the workspace.');
+      return;
+    }
+
     await onCreateWorkspace({
       branch,
       workspaceType: createType,
-      environmentId: createEnvironmentId.trim() || null,
-      modeId: createModeId === CREATE_MODE_DEFAULT ? null : createModeId,
-      featureId: createFeatureId.trim() || null,
-      specId: createSpecId.trim() || null,
-      releaseId: createReleaseId.trim() || null,
+      environmentId: createEnvironmentMode === 'template' ? createEnvironmentId : null,
+      featureId: createFeatureId,
+      releaseId: createReleaseId,
+      isWorktree: createIsWorktree,
+      worktreePath: createIsWorktree ? createWorktreePath.trim() || null : null,
     });
+
+    setCreateDialogOpen(false);
     resetCreateWorkspaceDraft();
+  };
+
+  const openCreateDialog = (preferredBranch?: string | null) => {
+    resetCreateWorkspaceDraft(preferredBranch);
+    setCreateDialogOpen(true);
+  };
+
+  const renderLinkSection = (
+    title: string,
+    options: WorkspaceLinkOption[],
+    selectedId: string | null,
+    onSelect: (id: string | null) => void,
+  ) => {
+    return (
+      <div className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+          <span className="truncate text-[10px] text-muted-foreground">
+            {selectedId
+              ? labelForOption(options.find((option) => option.id === selectedId)) || selectedId
+              : 'Unlinked'}
+          </span>
+        </div>
+
+        <div className="max-h-28 space-y-1 overflow-y-auto">
+          <Button
+            size="xs"
+            variant={!selectedId ? 'secondary' : 'ghost'}
+            className="h-7 w-full justify-start"
+            onClick={() => onSelect(null)}
+          >
+            Unlinked
+          </Button>
+          {options.map((option) => (
+            <Button
+              key={option.id}
+              size="xs"
+              variant={selectedId === option.id ? 'secondary' : 'ghost'}
+              className="h-7 w-full justify-between"
+              onClick={() => onSelect(option.id)}
+            >
+              <span className="truncate">{labelForOption(option)}</span>
+              {selectedId === option.id && <Check className="size-3" />}
+            </Button>
+          ))}
+          {options.length === 0 ? (
+            <p className="px-1 text-[10px] text-muted-foreground">No results.</p>
+          ) : null}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="flex items-center gap-2">
-      {detail && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div>
-              <Select
-                value={modeSelectValue}
-                onValueChange={(next) =>
-                  void onUpdateWorkspaceMode(
-                    next === WORKSPACE_MODE_DEFAULT ? null : next,
-                  )
-                }
-                disabled={updatingWorkspaceMode}
-              >
-                <SelectTrigger size="sm" className="h-8 w-40 text-xs">
-                  <SelectValue placeholder="Mode: Default">
-                    {(value) => {
-                      if (!value || value === WORKSPACE_MODE_DEFAULT) {
-                        return "Mode: Default";
-                      }
-                      const asString = String(value);
-                      return `Mode: ${modeLabelById.get(asString) ?? "Default"}`;
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={WORKSPACE_MODE_DEFAULT}>
-                    Default (service)
-                  </SelectItem>
-                  {modeOptions.map((mode) => (
-                    <SelectItem key={mode.id} value={mode.id}>
-                      {mode.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            Workspace mode override. Applies to this branch only.
-          </TooltipContent>
-        </Tooltip>
-      )}
-
       <Dialog
         open={createDialogOpen}
         onOpenChange={(open) => {
-          if (open) {
-            setCreateDialogOpen(true);
-            return;
+          setCreateDialogOpen(open);
+          if (!open) {
+            resetCreateWorkspaceDraft();
           }
-          resetCreateWorkspaceDraft();
         }}
       >
         <Button
           size="sm"
           variant="outline"
           className="h-8 gap-1.5"
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={() => openCreateDialog()}
         >
           <Plus className="size-3.5" />
-          New Workspace
+          Create Workspace
         </Button>
+
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Workspace</DialogTitle>
             <DialogDescription>
-              Create a feature/patch/service workspace and activate it. Optional
-              environment profile seeds initial settings; each workspace keeps
-              its own configuration.
+              Configure type, environment, and links first. Attaching an existing branch is optional.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              value={createBranch}
-              onChange={(event) => setCreateBranch(event.target.value)}
-              placeholder="feature/auth-session-recovery"
-            />
-            <Select
-              value={createType}
-              onValueChange={(value) =>
-                setCreateType(value as WorkspaceTypeOption)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="feature">feature</SelectItem>
-                <SelectItem value="patch">patch</SelectItem>
-                <SelectItem value="service">service</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={createModeValue}
-              onValueChange={(value) =>
-                setCreateModeId(value ?? CREATE_MODE_DEFAULT)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Service Default Mode">
-                  {(value) => {
-                    if (!value || value === CREATE_MODE_DEFAULT) {
-                      return "Service Default Mode";
-                    }
-                    const asString = String(value);
-                    return (
-                      modeLabelById.get(asString) ?? "Service Default Mode"
-                    );
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={CREATE_MODE_DEFAULT}>
-                  Service Default Mode
-                </SelectItem>
-                {modeOptions.map((mode) => (
-                  <SelectItem key={mode.id} value={mode.id}>
-                    {mode.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              list="create-workspace-environment-options"
-              value={createEnvironmentId}
-              onChange={(event) => setCreateEnvironmentId(event.target.value)}
-              placeholder="Environment profile id (optional)"
-            />
-            <datalist id="create-workspace-environment-options">
-              {environmentOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </datalist>
-            <Input
-              list="create-workspace-feature-options"
-              value={createFeatureId}
-              onChange={(event) => setCreateFeatureId(event.target.value)}
-              placeholder="Link feature id (optional)"
-            />
-            <datalist id="create-workspace-feature-options">
-              {featureOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </datalist>
-            <Input
-              list="create-workspace-spec-options"
-              value={createSpecId}
-              onChange={(event) => setCreateSpecId(event.target.value)}
-              placeholder="Link spec id (optional)"
-            />
-            <datalist id="create-workspace-spec-options">
-              {specOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </datalist>
-            <Input
-              list="create-workspace-release-options"
-              value={createReleaseId}
-              onChange={(event) => setCreateReleaseId(event.target.value)}
-              placeholder="Link release id (optional)"
-            />
-            <datalist id="create-workspace-release-options">
-              {releaseOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </datalist>
+
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="mr-1">Type</Label>
+              <Popover>
+                <PopoverTrigger>
+                  <Button size="sm" variant="outline" className="h-8 gap-2">
+                    <Wrench className="size-3.5" />
+                    {WORKSPACE_TYPE_LABELS[createType]}
+                    <ChevronsUpDown className="size-3.5 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-2" align="start" sideOffset={8}>
+                  <div className="space-y-1">
+                    {(['feature', 'patch', 'service'] as WorkspaceTypeOption[]).map((type) => (
+                      <Button
+                        key={type}
+                        size="xs"
+                        variant={createType === type ? 'secondary' : 'ghost'}
+                        className="h-8 w-full justify-between"
+                        onClick={() => setCreateType(type)}
+                      >
+                        <span>{WORKSPACE_TYPE_LABELS[type]} workspace</span>
+                        {createType === type && <Check className="size-3.5" />}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="size-7">
+                    <CircleHelp className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Type controls lifecycle semantics and default branch naming.</TooltipContent>
+              </Tooltip>
+
+              <Popover>
+                <PopoverTrigger>
+                  <Button size="sm" variant="outline" className="h-8 gap-2">
+                    <Settings2 className="size-3.5" />
+                    Environment
+                    <ChevronsUpDown className="size-3.5 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(520px,90vw)] p-3" align="start" sideOffset={8}>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1 rounded-md border p-1">
+                      <Button
+                        size="xs"
+                        variant={createEnvironmentMode === 'template' ? 'secondary' : 'ghost'}
+                        className="h-7 flex-1"
+                        onClick={() => setCreateEnvironmentMode('template')}
+                      >
+                        Use template
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant={createEnvironmentMode === 'custom' ? 'secondary' : 'ghost'}
+                        className="h-7 flex-1"
+                        onClick={() => {
+                          setCreateEnvironmentMode('custom');
+                          setCreateEnvironmentId(null);
+                        }}
+                      >
+                        Customize
+                      </Button>
+                    </div>
+
+                    {createEnvironmentMode === 'template' ? (
+                      <div className="space-y-2">
+                        <Input
+                          value={createEnvironmentSearch}
+                          onChange={(event) => setCreateEnvironmentSearch(event.target.value)}
+                          placeholder="Search environment templates..."
+                          className="h-8"
+                        />
+                        <div className="max-h-36 space-y-1 overflow-y-auto">
+                          <Button
+                            size="xs"
+                            variant={!createEnvironmentId ? 'secondary' : 'ghost'}
+                            className="h-7 w-full justify-between"
+                            onClick={() => setCreateEnvironmentId(null)}
+                          >
+                            No template
+                            {!createEnvironmentId ? <Check className="size-3" /> : null}
+                          </Button>
+                          {filteredEnvironmentOptions.map((option) => (
+                            <Button
+                              key={option.id}
+                              size="xs"
+                              variant={createEnvironmentId === option.id ? 'secondary' : 'ghost'}
+                              className="h-7 w-full justify-between"
+                              onClick={() => setCreateEnvironmentId(option.id)}
+                            >
+                              <span className="truncate">{labelForOption(option)}</span>
+                              {createEnvironmentId === option.id ? <Check className="size-3" /> : null}
+                            </Button>
+                          ))}
+                          {filteredEnvironmentOptions.length === 0 ? (
+                            <p className="px-1 text-[10px] text-muted-foreground">No templates found.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border bg-muted/20 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          Custom environment wiring is enabled. Template selection is intentionally skipped.
+                        </p>
+                      </div>
+                    )}
+
+                    <p className="text-[10px] text-muted-foreground">Selected: {environmentLabel}</p>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="size-7">
+                    <CircleHelp className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Environment controls providers, tools, and permissions for this workspace.</TooltipContent>
+              </Tooltip>
+
+              <Popover>
+                <PopoverTrigger>
+                  <Button size="sm" variant="outline" className="h-8 gap-2">
+                    <Link2 className="size-3.5" />
+                    Links
+                    {linkedCount > 0 ? (
+                      <Badge variant="secondary" className="h-4.5 px-1.5 text-[9px]">
+                        {linkedCount}
+                      </Badge>
+                    ) : null}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(620px,94vw)] p-3" align="start" sideOffset={8}>
+                  <div className="space-y-3">
+                    <p className="text-[10px] text-muted-foreground">
+                      Anchor this workspace to exactly one of feature or release.
+                    </p>
+                    <Input
+                      value={createLinkSearch}
+                      onChange={(event) => setCreateLinkSearch(event.target.value)}
+                      placeholder="Search features and releases..."
+                      className="h-8"
+                    />
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {renderLinkSection('Feature (anchor)', filteredFeatureOptions, createFeatureId, (id) => {
+                        setCreateFeatureId(id);
+                        if (id) setCreateReleaseId(null);
+                      })}
+                      {renderLinkSection('Release (anchor)', filteredReleaseOptions, createReleaseId, (id) => {
+                        setCreateReleaseId(id);
+                        if (id) setCreateFeatureId(null);
+                      })}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="size-7">
+                    <CircleHelp className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Links connect this workspace to planning docs and release context.</TooltipContent>
+              </Tooltip>
+            </div>
+
+            {createType === 'patch' && (
+              <div className="space-y-2">
+                <Label>Patch title</Label>
+                <Input
+                  value={patchTitle}
+                  onChange={(event) => setPatchTitle(event.target.value)}
+                  placeholder="Optional: human-readable patch title"
+                />
+              </div>
+            )}
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-sm">Attach existing branch</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Optional. If disabled, Ship creates a branch automatically.
+                  </p>
+                </div>
+                <Switch checked={attachExistingBranch} onCheckedChange={setAttachExistingBranch} />
+              </div>
+
+              {attachExistingBranch ? (
+                <div className="mt-3 space-y-2">
+                  <Label>Select existing branch</Label>
+                  <Popover>
+                    <PopoverTrigger>
+                      <Button variant="outline" className="h-9 w-full justify-between">
+                        <span className="truncate text-left">{createSourceBranch ?? 'Choose a branch'}</span>
+                        <ChevronsUpDown className="size-3.5 opacity-60" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[min(540px,90vw)] p-3" align="start" sideOffset={8}>
+                      <div className="space-y-2">
+                        <Input
+                          value={createBranchSearch}
+                          onChange={(event) => setCreateBranchSearch(event.target.value)}
+                          placeholder="Search branches..."
+                          className="h-8"
+                        />
+                        <div className="max-h-48 space-y-1 overflow-y-auto">
+                          {filteredBranches.map((entry) => (
+                            <Button
+                              key={entry.name}
+                              size="xs"
+                              variant={createSourceBranch === entry.name ? 'secondary' : 'ghost'}
+                              className="h-8 w-full justify-between"
+                              onClick={() => setCreateSourceBranch(entry.name)}
+                            >
+                              <span className="truncate text-left">{entry.name}</span>
+                              <span className="ml-3 text-[10px] text-muted-foreground">
+                                ↑{entry.ahead} ↓{entry.behind}
+                              </span>
+                            </Button>
+                          ))}
+                          {filteredBranches.length === 0 ? (
+                            <p className="px-1 text-xs text-muted-foreground">No branches available.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <div className="rounded border bg-background/60 px-2.5 py-2 text-xs">
+                    Auto branch: <code>{autoBranch}</code>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Branch override (optional)</Label>
+                    <Input
+                      value={createBranchOverride}
+                      onChange={(event) => setCreateBranchOverride(event.target.value)}
+                      placeholder="Only set if you need a custom branch"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-sm">Use worktree</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Default is enabled. If path is blank, Ship assigns a managed location.
+                  </p>
+                </div>
+                <Switch checked={createIsWorktree} onCheckedChange={setCreateIsWorktree} />
+              </div>
+
+              {createIsWorktree && (
+                <div className="space-y-2">
+                  <Label>Worktree path override</Label>
+                  <Input
+                    value={createWorktreePath}
+                    onChange={(event) => setCreateWorktreePath(event.target.value)}
+                    placeholder="Optional (defaults to .ship/worktrees/<branch>)"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Existing git worktrees on this branch are detected and reused automatically.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
+
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={resetCreateWorkspaceDraft}
+              onClick={() => {
+                setCreateDialogOpen(false);
+                resetCreateWorkspaceDraft();
+              }}
               disabled={creatingWorkspace}
             >
               Cancel
             </Button>
-            <Button
-              onClick={() => void handleCreate()}
-              disabled={creatingWorkspace || !createBranch.trim()}
-            >
-              {creatingWorkspace ? (
-                <RefreshCw className="size-3.5 animate-spin" />
-              ) : (
-                <Plus className="size-3.5" />
-              )}
-              Create
+            <Button onClick={() => void handleCreate()} disabled={creatingWorkspace || !resolvedBranch.trim()}>
+              {creatingWorkspace ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              Create Workspace
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5"
-            onClick={() => void handleArchive()}
-            disabled={
-              !detail || archivingWorkspace || detail.status === "archived"
-            }
-          >
-            {archivingWorkspace ? (
-              <RefreshCw className="size-3.5 animate-spin" />
-            ) : (
-              <Archive className="size-3.5" />
-            )}
-            Archive
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          Mark workspace as archived. Moves it out of active view.
-        </TooltipContent>
-      </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 text-status-red"
-            onClick={() => void handleDelete()}
-            disabled={!detail || deletingWorkspace}
-          >
-            {deletingWorkspace ? (
-              <RefreshCw className="size-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="size-3.5" />
-            )}
-            Delete
+      <Popover>
+        <PopoverTrigger>
+          <Button size="icon-xs" variant="outline" className="size-8">
+            <Settings2 className="size-3.5" />
           </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          Permanently delete workspace and its runtime state.
-        </TooltipContent>
-      </Tooltip>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-3" align="end" sideOffset={8}>
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Workspace Settings
+            </p>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">Theme</p>
+              <div className="grid grid-cols-2 gap-1">
+                <Button
+                  size="xs"
+                  variant={currentTheme === 'light' ? 'secondary' : 'outline'}
+                  className="h-7 justify-start gap-1.5"
+                  onClick={() => onThemeChange?.('light')}
+                >
+                  <Sun className="size-3" />
+                  Light
+                </Button>
+                <Button
+                  size="xs"
+                  variant={currentTheme === 'dark' ? 'secondary' : 'outline'}
+                  className="h-7 justify-start gap-1.5"
+                  onClick={() => onThemeChange?.('dark')}
+                >
+                  <Moon className="size-3" />
+                  Dark
+                </Button>
+              </div>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+
     </div>
   );
 }

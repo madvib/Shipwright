@@ -189,7 +189,7 @@ export function WorkspaceTerminalTray({
 
             {runtimePerf && (
                 <div className="border-b border-border bg-muted/20 px-4 py-1 text-[10px] text-muted-foreground">
-                    perf: start {runtimePerf.terminal_start_last_micros}us · read {runtimePerf.terminal_last_read_micros}us · write {runtimePerf.terminal_write_last_micros}us · resize {runtimePerf.terminal_resize_last_micros}us · watcher events {runtimePerf.watcher_fs_events} / flushes {runtimePerf.watcher_flushes}
+                    dev perf: start {runtimePerf.terminal_start_last_micros}us · read {runtimePerf.terminal_last_read_micros}us · write {runtimePerf.terminal_write_last_micros}us · resize {runtimePerf.terminal_resize_last_micros}us · fs events {runtimePerf.watcher_fs_events} · flushes {runtimePerf.watcher_flushes} · ingest {runtimePerf.watcher_ingest_runs}
                 </div>
             )}
 

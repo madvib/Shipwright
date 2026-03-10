@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Suspense, lazy } from 'react';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
-import { WORKFLOW_WORKSPACE_ROUTE } from '@/lib/constants/routes';
+import { OVERVIEW_ROUTE } from '@/lib/constants/routes';
 import type { SettingsSection } from '@/features/settings/SettingsLayout';
 import RouteFallback from '@/components/app/RouteFallback';
 
@@ -35,7 +35,7 @@ function SettingsRouteComponent() {
           await workspace.handleSaveGlobalAgentSettings(config);
         }}
         onDone={() => {
-          void navigate({ to: WORKFLOW_WORKSPACE_ROUTE });
+          void navigate({ to: OVERVIEW_ROUTE });
         }}
       />
     </Suspense>

@@ -1,18 +1,22 @@
+import { useMemo, useState } from 'react';
 import {
   Badge,
   Button,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@ship/ui';
-import { cn } from '@/lib/utils';
 import {
   Archive,
-  GitBranch,
-  Info,
+  ExternalLink,
+  Link2,
   RefreshCw,
-  Settings2,
   Sparkles,
+  Wrench,
 } from 'lucide-react';
 import { type WorkspaceRepairReport } from '@/lib/platform/tauri/commands';
 import { WorkspaceGraphStatus } from '../../components/WorkspaceLifecycleGraph';
@@ -21,10 +25,20 @@ import { WorkspaceRow } from '../types';
 interface WorkspaceStatusCardProps {
   detail: WorkspaceRow;
   statusVariant: (status: WorkspaceGraphStatus) => 'default' | 'secondary' | 'outline';
+  linkedFeature: any;
+  linkedRelease: any;
+  linkFeatureId: string | null;
+  setLinkFeatureId: (id: string | null) => void;
+  linkReleaseId: string | null;
+  setLinkReleaseId: (id: string | null) => void;
+  featureLinkOptions: any[];
+  releaseLinkOptions: any[];
+  updatingLinks: boolean;
+  onUpdateLinks: (featureId: string | null, releaseId: string | null) => void;
+  onOpenFeature: () => void;
+  onOpenRelease: () => void;
   onSync: () => void;
   syncing: boolean;
-  onActivate: () => void;
-  activating: boolean;
   onArchive: () => void;
   archiving: boolean;
   onRepair: () => void;
@@ -35,192 +49,306 @@ interface WorkspaceStatusCardProps {
 export function WorkspaceStatusCard({
   detail,
   statusVariant,
+  linkedFeature,
+  linkedRelease,
+  linkFeatureId,
+  setLinkFeatureId,
+  linkReleaseId,
+  setLinkReleaseId,
+  featureLinkOptions,
+  releaseLinkOptions,
+  updatingLinks,
+  onUpdateLinks,
+  onOpenFeature,
+  onOpenRelease,
   onSync,
   syncing,
-  onActivate,
-  activating,
   onArchive,
   archiving,
   onRepair,
   repairing,
   lastRepairReport,
 }: WorkspaceStatusCardProps) {
+  const [anchorSearch, setAnchorSearch] = useState('');
+
   const compileSummary = detail.compiledAt
     ? new Date(detail.compiledAt).toLocaleString()
-    : 'Not compiled yet';
+    : 'not compiled yet';
+
+  const search = anchorSearch.trim().toLowerCase();
+  const filteredFeatures = useMemo(
+    () =>
+      featureLinkOptions.filter((feature) => {
+        if (!search) return true;
+        const id = String(feature.id ?? '').toLowerCase();
+        const title = String(feature.title ?? '').toLowerCase();
+        return id.includes(search) || title.includes(search);
+      }),
+    [featureLinkOptions, search],
+  );
+
+  const filteredReleases = useMemo(
+    () =>
+      releaseLinkOptions.filter((release) => {
+        if (!search) return true;
+        const id = String(release.id ?? '').toLowerCase();
+        const version = String(release.version ?? '').toLowerCase();
+        const fileName = String(release.file_name ?? '').toLowerCase();
+        return id.includes(search) || version.includes(search) || fileName.includes(search);
+      }),
+    [releaseLinkOptions, search],
+  );
+
+  const linkButtonTitle = linkFeatureId
+    ? 'Feature linked'
+    : linkReleaseId
+      ? 'Release linked'
+      : 'No anchor linked';
 
   return (
-    <section className="rounded-xl border bg-card p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
-            {detail.branch}
-          </h4>
-          <p className="text-[11px] text-muted-foreground">
-            {detail.workspaceType} · {detail.isWorktree ? 'Worktree' : 'Checkout'}
-          </p>
-        </div>
-        <Badge
-          variant={statusVariant(detail.status)}
-          className="h-6 px-2.5 text-[10px] font-semibold uppercase"
-        >
-          {detail.status}
-        </Badge>
-      </div>
+    <section className="rounded-xl border bg-card p-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant={statusVariant(detail.status)} className="h-5 px-2 text-[9px] uppercase">
+            {detail.status === 'active' ? 'open' : detail.status}
+          </Badge>
+          <Badge variant="outline" className="h-5 px-2 text-[9px] uppercase">
+            {detail.workspaceType}
+          </Badge>
+          <Badge variant="outline" className="h-5 px-2 text-[9px] uppercase">
+            {detail.isWorktree ? 'worktree' : 'checkout'}
+          </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="h-5 max-w-[18rem] truncate px-2 text-[9px]">
+                env: {detail.environmentId ?? 'default'}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>{detail.environmentId ?? 'Workspace default environment'}</TooltipContent>
+          </Tooltip>
+          <Badge variant="outline" className="h-5 px-2 text-[9px]">
+            providers: {(detail.providers ?? []).length}
+          </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="h-5 px-2 text-[9px]">
+                <Sparkles className="mr-1 size-3" />
+                {detail.compileError ? 'compile error' : 'context compiled'}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>Last compile: {compileSummary}</TooltipContent>
+          </Tooltip>
+          {detail.worktreePath ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="h-5 max-w-[20rem] truncate px-2 text-[9px]">
+                  wt: {detail.worktreePath}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xl break-all">{detail.worktreePath}</TooltipContent>
+            </Tooltip>
+          ) : null}
 
-      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-        <div className="rounded-lg border bg-muted/20 px-3 py-2">
-          <div className="mb-1 flex items-center gap-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Active Mode
-            </p>
+          {linkedFeature ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Info className="size-2.5 cursor-help text-muted-foreground/40 transition-colors hover:text-muted-foreground" />
+                <Badge variant="secondary" className="h-5 max-w-[18rem] gap-1 truncate px-2 text-[9px]">
+                  feature: {linkedFeature.title || linkedFeature.id}
+                  <button
+                    type="button"
+                    className="inline-flex items-center"
+                    onClick={onOpenFeature}
+                    aria-label="Open linked feature"
+                  >
+                    <ExternalLink className="size-3" />
+                  </button>
+                </Badge>
               </TooltipTrigger>
-              <TooltipContent side="top">
-                The operational mode this workspace is optimized for (e.g.
-                coding, logic, etc.)
-              </TooltipContent>
+              <TooltipContent>Open linked feature</TooltipContent>
             </Tooltip>
-          </div>
-          <div className="flex items-center gap-2">
-            <Sparkles className="size-3.5 text-primary" />
-            <span className="text-xs font-medium text-foreground">
-              {detail.activeMode ?? 'Default'}
-            </span>
-          </div>
+          ) : null}
+
+          {!linkedFeature && linkedRelease ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="h-5 max-w-[18rem] gap-1 truncate px-2 text-[9px]">
+                  release: {linkedRelease.version || linkedRelease.file_name || linkedRelease.id}
+                  <button
+                    type="button"
+                    className="inline-flex items-center"
+                    onClick={onOpenRelease}
+                    aria-label="Open linked release"
+                  >
+                    <ExternalLink className="size-3" />
+                  </button>
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>Open linked release</TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
-        <div className="rounded-lg border bg-muted/20 px-3 py-2">
-          <div className="mb-1 flex items-center gap-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Last Compile
-            </p>
+
+        <div className="flex items-center gap-1">
+          <Popover>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Info className="size-2.5 cursor-help text-muted-foreground/40 transition-colors hover:text-muted-foreground" />
+                <PopoverTrigger>
+                  <Button size="icon-xs" variant="outline" className="size-7" disabled={updatingLinks}>
+                    {updatingLinks ? <RefreshCw className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
+                  </Button>
+                </PopoverTrigger>
               </TooltipTrigger>
-              <TooltipContent side="top">
-                Compile timestamp and generation for this workspace.
-              </TooltipContent>
+              <TooltipContent>{linkButtonTitle} · configure links</TooltipContent>
             </Tooltip>
-          </div>
-          <div className="flex items-center justify-between gap-3 text-[11px]">
-            <span className="truncate text-muted-foreground">{compileSummary}</span>
-            <span className="font-mono text-muted-foreground">
-              gen {detail.configGeneration}
-            </span>
-          </div>
+            <PopoverContent className="w-[min(640px,94vw)] p-3" align="end" sideOffset={8}>
+              <div className="space-y-3">
+                <p className="text-[10px] text-muted-foreground">
+                  Anchor this workspace to one feature or one release. Specs are linked per session.
+                </p>
+                <Input
+                  value={anchorSearch}
+                  onChange={(event) => setAnchorSearch(event.target.value)}
+                  placeholder="Search features and releases..."
+                  className="h-8"
+                />
+
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <div className="space-y-1 rounded-lg border bg-muted/20 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Feature</p>
+                      {linkFeatureId ? (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-[10px]"
+                          onClick={() => {
+                            setLinkFeatureId(null);
+                            void onUpdateLinks(null, null);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                      {filteredFeatures.map((feature) => {
+                        const title = feature.title || feature.id;
+                        return (
+                          <Button
+                            key={feature.id}
+                            size="xs"
+                            variant={linkFeatureId === feature.id ? 'secondary' : 'ghost'}
+                            className="h-8 w-full justify-start"
+                            onClick={() => {
+                              setLinkFeatureId(feature.id);
+                              setLinkReleaseId(null);
+                              void onUpdateLinks(feature.id, null);
+                            }}
+                            disabled={updatingLinks}
+                            title={title}
+                          >
+                            <span className="truncate">{title}</span>
+                          </Button>
+                        );
+                      })}
+                      {filteredFeatures.length === 0 ? (
+                        <p className="px-1 text-[10px] text-muted-foreground">No feature matches.</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 rounded-lg border bg-muted/20 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Release</p>
+                      {linkReleaseId ? (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-[10px]"
+                          onClick={() => {
+                            setLinkReleaseId(null);
+                            void onUpdateLinks(null, null);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                      {filteredReleases.map((release) => {
+                        const title = release.version || release.file_name || release.id;
+                        return (
+                          <Button
+                            key={release.id}
+                            size="xs"
+                            variant={linkReleaseId === release.id ? 'secondary' : 'ghost'}
+                            className="h-8 w-full justify-start"
+                            onClick={() => {
+                              setLinkFeatureId(null);
+                              setLinkReleaseId(release.id);
+                              void onUpdateLinks(null, release.id);
+                            }}
+                            disabled={updatingLinks}
+                            title={title}
+                          >
+                            <span className="truncate">{title}</span>
+                          </Button>
+                        );
+                      })}
+                      {filteredReleases.length === 0 ? (
+                        <p className="px-1 text-[10px] text-muted-foreground">No release matches.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon-xs" variant="outline" className="size-7" onClick={onSync} disabled={syncing}>
+                {syncing ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Sync workspace record from git/worktree state</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon-xs" variant="outline" className="size-7" onClick={onRepair} disabled={repairing}>
+                {repairing ? <RefreshCw className="size-3.5 animate-spin" /> : <Wrench className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Repair provider/compile drift</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-xs"
+                variant="outline"
+                className="size-7"
+                onClick={onArchive}
+                disabled={archiving || detail.status === 'archived'}
+              >
+                {archiving ? <RefreshCw className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Archive workspace</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
       {detail.compileError && (
-        <p className="mb-3 rounded-md border border-status-red/30 bg-status-red/5 px-2 py-1.5 text-[11px] text-status-red">
+        <div className="mt-2 rounded-md border border-status-red/30 bg-status-red/5 px-2 py-1 text-[10px] text-status-red">
           compile error: {detail.compileError}
-        </p>
+        </div>
       )}
 
-      <div className="mb-2 flex gap-2 border-t pt-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 flex-1 gap-1.5 text-xs font-medium"
-              onClick={onSync}
-              disabled={syncing}
-            >
-              {syncing ? (
-                <RefreshCw className="size-3 animate-spin" />
-              ) : (
-                <RefreshCw className="size-3" />
-              )}
-              Sync
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh workspace record from current branch/worktree state.</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              className={cn(
-                "h-8 flex-1 gap-1.5 text-xs font-semibold",
-                lastRepairReport?.needs_recompile && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-              )}
-              onClick={onActivate}
-              disabled={activating}
-            >
-              {activating ? (
-                <RefreshCw className="size-3 animate-spin" />
-              ) : (
-                <GitBranch className="size-3" />
-              )}
-              Activate
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Compile and apply this workspace context as the active branch environment.</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 flex-1 gap-1.5 text-xs font-medium"
-              onClick={onArchive}
-              disabled={archiving}
-            >
-              {archiving ? (
-                <RefreshCw className="size-3 animate-spin" />
-              ) : (
-                <Archive className="size-3" />
-              )}
-              Archive
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Archive this workspace while preserving its links and session history.</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 flex-1 gap-1.5 text-xs font-medium"
-              onClick={onRepair}
-              disabled={repairing}
-            >
-              {repairing ? (
-                <RefreshCw className="size-3 animate-spin" />
-              ) : (
-                <Settings2 className="size-3" />
-              )}
-              Repair
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Run workspace consistency checks and recompile missing/invalid provider config as needed.</TooltipContent>
-        </Tooltip>
-      </div>
-
-      <div className="mb-3 grid grid-cols-3 gap-2 px-1 text-[9px] text-muted-foreground uppercase tracking-widest font-bold">
-        <div className="text-center">Refresh</div>
-        <div className="text-center text-foreground/70">Deploy</div>
-        <div className="text-center">Fix</div>
-      </div>
-
-      <p className="text-[10px] text-muted-foreground">
-        Integrity hash: <code>{detail.contextHash?.slice(0, 12) ?? 'n/a'}</code>
-      </p>
-
       {lastRepairReport && (
-        <div className="mt-3 rounded-lg border bg-muted/20 p-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Repair Report
-          </p>
-          <p className="text-[11px] text-muted-foreground">
-            needs_recompile={String(lastRepairReport.needs_recompile)} ·
-            reapplied={String(lastRepairReport.reapplied_compile)} ·
-            missing={lastRepairReport.missing_provider_configs.join(', ') || 'none'}
-          </p>
+        <div className="mt-2 rounded-md border bg-muted/20 px-2 py-1 text-[10px] text-muted-foreground">
+          repair: recompile={String(lastRepairReport.needs_recompile)} · reapplied={String(lastRepairReport.reapplied_compile)} · missing={lastRepairReport.missing_provider_configs.length}
         </div>
       )}
     </section>
