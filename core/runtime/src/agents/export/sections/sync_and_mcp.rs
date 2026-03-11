@@ -42,7 +42,12 @@ pub fn write_context(project_root: &Path, provider_id: &str, content: &str) -> R
 
 /// Export the active mode (or global config) to the specified provider.
 pub fn export_to(project_dir: PathBuf, target: &str) -> Result<()> {
-    export_to_inner(project_dir, target, None, None)
+    export_to_inner(project_dir, target, None, None, None)
+}
+
+/// Export using an explicit project root for generated provider files.
+pub fn export_to_at_root(project_dir: PathBuf, target: &str, project_root: &Path) -> Result<()> {
+    export_to_inner(project_dir, target, None, None, Some(project_root))
 }
 
 /// Like `export_to` but restricts project MCP servers to those whose IDs appear in
@@ -52,7 +57,17 @@ pub fn export_to_filtered(
     target: &str,
     server_filter: Option<&[String]>,
 ) -> Result<()> {
-    export_to_inner(project_dir, target, server_filter, None)
+    export_to_inner(project_dir, target, server_filter, None, None)
+}
+
+/// Like `export_to_filtered` but writes generated files under `project_root`.
+pub fn export_to_filtered_at_root(
+    project_dir: PathBuf,
+    target: &str,
+    server_filter: Option<&[String]>,
+    project_root: &Path,
+) -> Result<()> {
+    export_to_inner(project_dir, target, server_filter, None, Some(project_root))
 }
 
 /// Like `export_to` but applies a mode override when building payload.
@@ -61,7 +76,8 @@ pub fn export_to_with_mode_override(
     target: &str,
     active_mode_override: Option<&str>,
 ) -> Result<()> {
-    export_to_inner(project_dir, target, None, active_mode_override)
+    let _ = active_mode_override;
+    export_to_inner(project_dir, target, None, None, None)
 }
 
 /// Like `export_to_filtered` but applies a mode override when building payload.
@@ -71,7 +87,8 @@ pub fn export_to_filtered_with_mode_override(
     server_filter: Option<&[String]>,
     active_mode_override: Option<&str>,
 ) -> Result<()> {
-    export_to_inner(project_dir, target, server_filter, active_mode_override)
+    let _ = active_mode_override;
+    export_to_inner(project_dir, target, server_filter, None, None)
 }
 
 fn export_to_inner(
@@ -79,14 +96,16 @@ fn export_to_inner(
     target: &str,
     server_filter: Option<&[String]>,
     active_mode_override: Option<&str>,
+    project_root_override: Option<&Path>,
 ) -> Result<()> {
+    let _ = active_mode_override;
     let desc = require_provider(target)?;
-    let mut payload = build_payload_with_mode_override(&project_dir, active_mode_override)?;
+    let mut payload = build_payload_with_mode_override(&project_dir, None)?;
     if let Some(ids) = server_filter {
         payload.servers.retain(|s| ids.contains(&s.id));
     }
-    let project_root = project_dir
-        .parent()
+    let project_root = project_root_override
+        .or_else(|| project_dir.parent())
         .ok_or_else(|| anyhow!("Cannot determine project root from {:?}", project_dir))?;
     let mut state = load_managed_state(&project_dir);
 
@@ -156,6 +175,9 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
         ConfigFormat::Toml => {
             let config_path = project_root.join(desc.project_config);
             teardown_toml(&config_path, desc.mcp_key, &tool_state)?;
+            if desc.id == "codex" {
+                teardown_codex_execpolicy(project_root)?;
+            }
         }
     }
 
@@ -215,14 +237,9 @@ pub fn sync_active_mode_with_override(
     project_dir: &Path,
     active_mode_override: Option<&str>,
 ) -> Result<Vec<String>> {
+    let _ = active_mode_override;
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
-    let (resolved_mode, _) = resolve_active_mode(&config, active_mode_override);
-    let mode_targets = resolved_mode
-        .map(|m| m.target_agents.clone())
-        .unwrap_or_default();
-    let targets: Vec<String> = if !mode_targets.is_empty() {
-        mode_targets
-    } else if !config.providers.is_empty() {
+    let targets: Vec<String> = if !config.providers.is_empty() {
         config.providers.clone()
     } else {
         vec!["claude".to_string()]
@@ -239,11 +256,7 @@ pub fn sync_active_mode_with_override(
             eprintln!("[ship] warning: skipping unknown target agent '{}'", target);
             continue;
         }
-        export_to_with_mode_override(
-            project_dir.to_path_buf(),
-            &normalized,
-            active_mode_override,
-        )?;
+        export_to(project_dir.to_path_buf(), &normalized)?;
         synced.push(normalized);
     }
     Ok(synced)
@@ -550,24 +563,6 @@ fn import_mcp_servers_from_toml(
 
 // ─── Payload builder ──────────────────────────────────────────────────────────
 
-fn resolve_active_mode<'a>(
-    config: &'a ProjectConfig,
-    active_mode_override: Option<&str>,
-) -> (Option<&'a ModeConfig>, Option<String>) {
-    let override_mode = active_mode_override
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .and_then(|mode_id| config.modes.iter().find(|mode| mode.id == mode_id))
-        .map(|mode| mode.id.clone());
-
-    let selected_mode_id = override_mode.or_else(|| config.active_mode.clone());
-    let selected_mode = selected_mode_id
-        .as_ref()
-        .and_then(|mode_id| config.modes.iter().find(|mode| mode.id == *mode_id));
-
-    (selected_mode, selected_mode_id)
-}
-
 #[cfg(test)]
 fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
     build_payload_with_mode_override(project_dir, None)
@@ -577,50 +572,16 @@ fn build_payload_with_mode_override(
     project_dir: &Path,
     active_mode_override: Option<&str>,
 ) -> Result<SyncPayload> {
+    let _ = active_mode_override;
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
-    let mut effective_permissions = get_permissions(project_dir.to_path_buf())?;
-    let (mode, mode_id) = resolve_active_mode(&config, active_mode_override);
-
-    if let Some(mode) = mode {
-        if !mode.permissions.allow.is_empty() {
-            effective_permissions.tools.allow = mode.permissions.allow.clone();
-        }
-        if !mode.permissions.deny.is_empty() {
-            effective_permissions.tools.deny = mode.permissions.deny.clone();
-        }
-        let servers = if mode.mcp_servers.is_empty() {
-            config.mcp_servers.clone()
-        } else {
-            config
-                .mcp_servers
-                .iter()
-                .filter(|s| mode.mcp_servers.contains(&s.id))
-                .cloned()
-                .collect()
-        };
-        let instruction_skill = mode
-            .prompt_id
-            .as_ref()
-            .and_then(|id| get_effective_skill(project_dir, id).ok());
-        let mut hooks = config.hooks.clone();
-        hooks.extend(mode.hooks.clone());
-        return Ok(SyncPayload {
-            servers,
-            instruction_skill_id: instruction_skill.as_ref().map(|skill| skill.id.clone()),
-            instructions: instruction_skill.map(|skill| skill.content),
-            hooks,
-            permissions: effective_permissions,
-            active_mode_id: mode_id,
-        });
-    }
-
+    let effective_permissions = get_permissions(project_dir.to_path_buf())?;
     Ok(SyncPayload {
         servers: config.mcp_servers,
         instruction_skill_id: None,
         instructions: None,
         hooks: config.hooks,
         permissions: effective_permissions,
-        active_mode_id: mode_id,
+        active_mode_id: None,
     })
 }
 
@@ -791,12 +752,15 @@ fn export_toml(
 
     root.insert(desc.mcp_key.to_string(), toml::Value::Table(new_mcp));
     if desc.id == "codex" {
-        apply_codex_permissions(root, &payload.permissions);
+        apply_codex_permissions(root, project_root, &payload.permissions);
     }
 
     let header = "# Generated by Ship. Do not edit manually — run `ship git sync` to regenerate.\n\n";
     let content = format!("{}{}", header, toml::to_string_pretty(&doc)?);
     crate::fs_util::write_atomic(&config_path, content)?;
+    if desc.id == "codex" {
+        export_codex_execpolicy(project_root, &payload.permissions)?;
+    }
 
     // System instructions output (from mode `prompt_id`, which now points to a skill ID).
     if let Some(instructions) = &payload.instructions {
@@ -1000,17 +964,7 @@ fn export_skills_to_claude(project_dir: &Path, project_root: &Path) -> Result<()
 }
 
 fn resolve_skills_for_export(project_dir: &Path) -> Result<Vec<crate::skill::Skill>> {
-    let config = get_effective_config(Some(project_dir.to_path_buf()))?;
-    let mut skills = list_effective_skills(project_dir)?;
-
-    if let Some(active_mode_id) = config.active_mode.as_deref()
-        && let Some(mode) = config.modes.iter().find(|m| m.id == active_mode_id)
-        && !mode.skills.is_empty()
-    {
-        skills.retain(|skill| mode.skills.contains(&skill.id));
-    }
-
-    Ok(skills)
+    list_effective_skills(project_dir)
 }
 
 /// Write skills using the agentskills.io layout: `<skills_dir>/<skill-id>/SKILL.md`

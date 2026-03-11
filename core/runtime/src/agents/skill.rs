@@ -24,7 +24,7 @@ pub enum SkillSource {
 /// They can be invoked explicitly by the user with `/skill-name [args]`
 /// and can use `$ARGUMENTS`.
 /// Stored as:
-/// - project scope: `.ship/skills/<id>/SKILL.md`
+/// - project scope: `.ship/agents/skills/<id>/SKILL.md`
 /// - user scope: `~/.ship/skills/<id>/SKILL.md`
 /// using Agent Skills spec format.
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -411,7 +411,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 }
 
 fn migrate_legacy_project_skills(project_dir: &Path, target_root: &Path) -> Result<()> {
-    for legacy_root in crate::project::legacy_project_skills_dir_candidates(project_dir) {
+    let mut legacy_roots = vec![crate::project::legacy_repo_project_skills_dir(project_dir)];
+    legacy_roots.extend(crate::project::legacy_project_skills_dir_candidates(project_dir));
+
+    for legacy_root in legacy_roots {
         if legacy_root == target_root || !legacy_root.exists() || !legacy_root.is_dir() {
             continue;
         }

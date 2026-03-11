@@ -85,7 +85,7 @@ mod tests {
                 ..Default::default()
             },
         )?;
-        let created = create_spec(&project_dir, "ops-spec", "body", None)?;
+        let created = create_spec(&project_dir, "ops-spec", "body", Some("feature/ops-spec"))?;
         let moved = move_spec(&project_dir, &created.id, SpecStatus::Active)?;
         assert_eq!(moved.status, SpecStatus::Active);
 

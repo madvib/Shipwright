@@ -1,7 +1,7 @@
 use crate::config::{LEGACY_CONFIG_FILE, PRIMARY_CONFIG_FILE};
 use crate::project::{
     AppState, ProjectRegistry, adrs_dir, features_dir, generated_ns, notes_dir, project_ns,
-    releases_dir, specs_dir, workflow_ns,
+    releases_dir, specs_dir,
 };
 use crate::state_db::{DatabaseMigrationReport, ensure_global_database, ensure_project_database};
 use anyhow::{Context, Result};
@@ -121,7 +121,6 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
 
     // Ensure namespace roots exist before we begin moving/copying.
     fs::create_dir_all(project_ns(ship_dir))?;
-    fs::create_dir_all(workflow_ns(ship_dir))?;
     fs::create_dir_all(generated_ns(ship_dir))?;
     fs::create_dir_all(notes_dir(ship_dir))?;
     migrate_project_config_file(ship_dir)?;
@@ -131,6 +130,7 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
 
     let mappings = [
         (ship_dir.join("specs"), specs_dir(ship_dir)),
+        (ship_dir.join("workflow").join("specs"), specs_dir(ship_dir)),
         (ship_dir.join("features"), features_dir(ship_dir)),
         (ship_dir.join("adrs"), adrs_dir(ship_dir)),
         (ship_dir.join("notes"), notes_dir(ship_dir)),
@@ -149,6 +149,7 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
         let legacy_vision_candidates = [
             ship_dir.join("specs").join("vision.md"),
             ship_dir.join("workflow").join("specs").join("vision.md"),
+            specs_dir(ship_dir).join("vision.md"),
         ];
         if let Some(legacy_vision) = legacy_vision_candidates.iter().find(|path| path.exists()) {
             if let Some(parent) = modern_vision.parent() {
@@ -470,7 +471,6 @@ mod tests {
         fs::create_dir_all(ship.join("specs"))?;
         fs::create_dir_all(ship.join("features"))?;
         fs::create_dir_all(ship.join("releases"))?;
-        fs::create_dir_all(ship.join("workflow/releases"))?;
         fs::create_dir_all(ship.join("adrs"))?;
         fs::create_dir_all(ship.join("project/releases"))?;
         fs::write(
@@ -484,7 +484,7 @@ mod tests {
             "+++\ntitle=\"Auth\"\n+++\n\nbody",
         )?;
         fs::write(
-            ship.join("workflow/releases/v1.md"),
+            ship.join("releases/v1.md"),
             "+++\nversion=\"v1\"\n+++\n\nbody",
         )?;
 

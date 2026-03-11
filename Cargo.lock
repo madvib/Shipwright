@@ -1093,6 +1093,7 @@ dependencies = [
  "ship-module-git",
  "ship-module-project",
  "tempfile",
+ "toml 0.8.2",
 ]
 
 [[package]]

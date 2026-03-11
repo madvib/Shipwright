@@ -18,7 +18,6 @@ use runtime::project::{
     sanitize_file_name as runtime_sanitize_file_name,
     ship_dir_from_path as runtime_ship_dir_from_path, skills_dir as runtime_skills_dir,
     specs_dir as runtime_specs_dir, upcoming_releases_dir as runtime_upcoming_releases_dir,
-    workflow_ns as runtime_workflow_ns,
 };
 use runtime::{EventAction, EventEntity, append_event};
 use serde::{Deserialize, Serialize};
@@ -42,10 +41,6 @@ pub const SPEC_STATUSES: &[&str] = &["draft", "active", "archived"];
 
 pub fn project_ns(ship_dir: &Path) -> PathBuf {
     runtime_project_ns(ship_dir)
-}
-
-pub fn workflow_ns(ship_dir: &Path) -> PathBuf {
-    runtime_workflow_ns(ship_dir)
 }
 
 pub fn agents_ns(ship_dir: &Path) -> PathBuf {
@@ -231,7 +226,7 @@ fn should_filter_transient_registry_path(path: &Path) -> bool {
         return true;
     }
 
-    path_contains_component_sequence(path, &["example", "projects-e2e"])
+    path_contains_component_sequence(path, &["examples", "projects-e2e"])
         || path_contains_component_sequence(path, &["target", "tmp"])
 }
 
@@ -567,12 +562,8 @@ fn write_directory_readmes(ship_path: &Path) -> Result<()> {
             "# project/notes/\n\nProject-scoped notes.\n".to_string(),
         ),
         (
-            workflow_ns(ship_path),
-            "# workflow/\n\nExecution artifacts for ongoing work.\n- `specs/`\n- `features/`\n".to_string(),
-        ),
-        (
             specs_dir(ship_path),
-            format!("# workflow/specs/\n\nProduct/technical specifications, organized by status:\n- {}\n", SPEC_STATUSES.join("\n- ")),
+            format!("# project/specs/\n\nProduct/technical specifications, organized by status:\n- {}\n", SPEC_STATUSES.join("\n- ")),
         ),
         (
             features_dir(ship_path),
@@ -580,7 +571,7 @@ fn write_directory_readmes(ship_path: &Path) -> Result<()> {
         ),
         (
             agents_ns(ship_path),
-            "# agents/\n\nAgent runtime config and policy.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- Skills: project scope in `.ship/skills/`, user scope in `~/.ship/skills/`.\n- Modes: persisted in SQLite runtime state.\n".to_string(),
+            "# agents/\n\nAgent runtime config and policy.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- `skills/`: project-scoped skills (`~/.ship/skills/` remains user/global scope).\n- `runtime/`: exported hook/runtime payloads for providers.\n".to_string(),
         ),
         (
             rules_dir(ship_path),
@@ -766,6 +757,7 @@ fn write_default_agent_mode_files(ship_path: &Path) -> Result<()> {
 fn write_default_skills(ship_path: &Path) -> Result<()> {
     let project_skills_root = skills_dir(ship_path);
     fs::create_dir_all(&project_skills_root)?;
+    migrate_legacy_project_skills_dir(ship_path, &project_skills_root)?;
 
     write_if_missing(
         &project_skills_root.join("task-policy").join("SKILL.md"),
@@ -812,6 +804,51 @@ Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
     }
 
     seed_builtin_user_skills(&runtime::project::user_skills_dir())?;
+    Ok(())
+}
+
+fn migrate_legacy_project_skills_dir(ship_path: &Path, target_root: &Path) -> Result<()> {
+    let legacy_root = ship_path.join("skills");
+    if legacy_root == target_root || !legacy_root.is_dir() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(&legacy_root)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        if !source_path.is_dir() || !source_path.join("SKILL.md").is_file() {
+            continue;
+        }
+
+        let destination_path = target_root.join(entry.file_name());
+        if destination_path.exists() {
+            continue;
+        }
+
+        match fs::rename(&source_path, &destination_path) {
+            Ok(_) => {}
+            Err(_) => {
+                copy_dir_recursive(&source_path, &destination_path)?;
+                fs::remove_dir_all(&source_path)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let target_path = dst.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_dir_recursive(&source_path, &target_path)?;
+        } else {
+            fs::copy(&source_path, &target_path)?;
+        }
+    }
     Ok(())
 }
 
@@ -982,11 +1019,13 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
 }
 
 fn ensure_first_party_namespaces(namespaces: &mut Vec<NamespaceConfig>) {
-    namespaces.retain(|ns| !(ns.id == "plugins" && ns.path == "plugins"));
+    namespaces.retain(|ns| {
+        !(ns.id == "plugins" && ns.path == "plugins")
+            && !(ns.id == "workflow" && ns.path == "workflow")
+    });
 
     let required = [
         ("project", "project", "project"),
-        ("workflow", "workflow", "workflow"),
         ("agents", "agents", "agents"),
         ("generated", "generated", "runtime"),
     ];
@@ -1010,7 +1049,7 @@ fn template_rel_path(kind: &str) -> Result<&'static str> {
     match kind {
         "adr" | "adrs" => Ok("project/adrs/TEMPLATE.md"),
         "note" | "notes" => Ok("project/notes/TEMPLATE.md"),
-        "spec" | "specs" => Ok("workflow/specs/TEMPLATE.md"),
+        "spec" | "specs" => Ok("project/specs/TEMPLATE.md"),
         "release" | "releases" => Ok("project/releases/TEMPLATE.md"),
         "feature" | "features" => Ok("project/features/TEMPLATE.md"),
         "vision" => Ok("project/TEMPLATE.md"),
@@ -1287,7 +1326,7 @@ mod tests {
                 },
                 ProjectEntry {
                     name: "E2E".to_string(),
-                    path: PathBuf::from("/Users/micah/dev/ship/example/projects-e2e/.ship"),
+                    path: PathBuf::from("/Users/micah/dev/ship/examples/projects-e2e/.ship"),
                 },
                 ProjectEntry {
                     name: "TargetTmp".to_string(),
@@ -1311,7 +1350,7 @@ mod tests {
             "/private/var/folders/x/T/tmp.123/.ship"
         )));
         assert!(should_filter_transient_registry_path(Path::new(
-            "/Users/me/dev/ship/example/projects-e2e/.ship"
+            "/Users/me/dev/ship/examples/projects-e2e/.ship"
         )));
         assert!(should_filter_transient_registry_path(Path::new(
             "/Users/me/dev/ship/target/tmp/ship-e2e/.ship"

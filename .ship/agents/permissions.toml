@@ -1,9 +1,9 @@
 [tools]
-allow = [""]
-deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)", "Bash(curl *|bash*)", ""]
+allow = ["*"]
+deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)", "Bash(curl *|bash*)"]
 
 [filesystem]
-allow = ["./", "./.ship", "./crates", "./example", "./site", "./scripts"]
+allow = ["./", "./.ship", "./crates", "./examples", "./site", "./scripts"]
 deny = ["/", "~/.ssh", "~/.aws", "~/.gnupg"]
 
 [commands]

@@ -14,11 +14,8 @@ impl mcp_framework::McpApp for ShipMcpApp {
         mcp_framework::McpMetadata::new("ship-mcp", "Ship MCP", env!("SHIP_MCP_VERSION_STRING"))
     }
 
-    fn startup_banner(metadata: mcp_framework::McpMetadata) -> Option<String> {
-        Some(format!(
-            "{} Server v{} starting on stdio...",
-            metadata.display_name, metadata.version
-        ))
+    fn startup_banner(_metadata: mcp_framework::McpMetadata) -> Option<String> {
+        None
     }
 
     fn shutdown_banner(

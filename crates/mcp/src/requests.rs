@@ -171,10 +171,8 @@ pub struct CreateWorkspaceToolRequest {
     pub environment_id: Option<String>,
     /// Optional linked feature ID.
     pub feature_id: Option<String>,
-    /// Optional linked spec ID.
-    pub spec_id: Option<String>,
-    /// Optional linked release ID.
-    pub release_id: Option<String>,
+    /// Optional linked target ID.
+    pub target_id: Option<String>,
     /// Optional workspace mode override.
     pub mode_id: Option<String>,
     /// Whether this workspace is a git worktree.
@@ -219,8 +217,6 @@ pub struct EndSessionRequest {
     pub summary: Option<String>,
     /// Feature IDs updated during this session.
     pub updated_feature_ids: Option<Vec<String>>,
-    /// Spec IDs updated during this session.
-    pub updated_spec_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, JsonSchema)]

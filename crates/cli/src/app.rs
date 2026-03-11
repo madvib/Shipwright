@@ -4,8 +4,9 @@ use runtime::workspace::set_workspace_active_mode;
 use runtime::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, ShipWorkspaceKind, WorkspaceStatus,
     activate_workspace, add_status, autodetect_providers, create_workspace, end_workspace_session,
-    get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
-    is_category_committed, list_mcp_servers, list_providers, list_workspace_sessions,
+    get_active_workspace_session, get_config, get_git_config, get_project_statuses,
+    get_workspace, get_workspace_provider_matrix, is_category_committed, list_mcp_servers,
+    list_providers, list_workspace_sessions,
     list_workspaces, log_action, migrate_global_state, migrate_json_config_file,
     migrate_project_state, record_workspace_session_progress, remove_status, repair_workspace,
     set_category_committed, start_workspace_session, sync_workspace, transition_workspace_status,
@@ -689,8 +690,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     feature,
                     feature_title,
                     environment_id,
-                    spec,
-                    release,
+                    target,
                     mode,
                     activate,
                     checkout,
@@ -726,8 +726,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     } else {
                         None
                     };
-                    let mut spec = spec;
-                    let mut release = release;
+                    let mut target = target;
                     let mut start_session = start_session;
                     let mut goal = goal;
                     let mut provider = provider;
@@ -736,10 +735,10 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let interactive =
                         !no_input && io::stdin().is_terminal() && io::stdout().is_terminal();
                     if interactive {
-                        if release.is_none() {
+                        if target.is_none() {
                             let releases = list_releases(&project_dir)?;
                             if !releases.is_empty() {
-                                println!("Available releases:");
+                                println!("Available targets (from releases):");
                                 for entry in releases.iter().take(8) {
                                     println!(
                                         "  - {} ({})",
@@ -749,35 +748,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                                 if releases.len() > 8 {
                                     println!("  ... and {} more", releases.len() - 8);
                                 }
-                                release = prompt_optional("Attach release id (Enter to skip): ")?;
-                            }
-                        }
-
-                        if spec.is_none() && is_feature_workspace {
-                            let create_now =
-                                prompt_yes_no("Create a starter spec now? [Y/n]: ", true)?;
-                            if create_now {
-                                let default_title =
-                                    format!("{} Spec", branch_to_feature_title(&branch));
-                                let title = prompt_with_default("Spec title", &default_title)?;
-                                let spec_goal = prompt_optional("Spec goal (optional): ")?;
-                                let body = format!(
-                                    "## Goal\n{}\n\n## Scope\n- \n\n## Acceptance Criteria\n- [ ] \n",
-                                    spec_goal.clone().unwrap_or_else(|| {
-                                        "Define outcome and boundaries for this workspace."
-                                            .to_string()
-                                    })
-                                );
-                                let created_spec =
-                                    create_spec(&project_dir, &title, &body, Some(&branch))?;
-                                println!(
-                                    "Spec created and linked: {} ({})",
-                                    created_spec.file_name, created_spec.id
-                                );
-                                spec = Some(created_spec.id);
-                                if goal.is_none() {
-                                    goal = spec_goal;
-                                }
+                                target = prompt_optional("Attach target id (Enter to skip): ")?;
                             }
                         }
 
@@ -893,8 +864,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             status: desired_status,
                             environment_id,
                             feature_id: resolved_feature_id,
-                            spec_id: spec,
-                            release_id: release,
+                            target_id: target,
                             active_mode: mode,
                             is_worktree: Some(worktree),
                             worktree_path: resolved_worktree_path,
@@ -1042,6 +1012,36 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         }
                     }
                 }
+                WorkspaceCommands::Providers { branch, mode } => {
+                    let branch = branch.unwrap_or(current_branch(&project_root)?);
+                    let matrix =
+                        get_workspace_provider_matrix(&project_dir, &branch, mode.as_deref())?;
+                    println!("Workspace provider matrix for {}", matrix.workspace_branch);
+                    println!("  source: {}", matrix.source);
+                    println!(
+                        "  mode: {}",
+                        matrix.mode_id.as_deref().unwrap_or("<none>")
+                    );
+                    println!(
+                        "  allowed: {}",
+                        if matrix.allowed_providers.is_empty() {
+                            "none".to_string()
+                        } else {
+                            matrix.allowed_providers.join(",")
+                        }
+                    );
+                    println!(
+                        "  supported: {}",
+                        if matrix.supported_providers.is_empty() {
+                            "none".to_string()
+                        } else {
+                            matrix.supported_providers.join(",")
+                        }
+                    );
+                    if let Some(error) = matrix.resolution_error.as_deref() {
+                        println!("  resolution_error: {}", error);
+                    }
+                }
                 WorkspaceCommands::Session { action } => match action {
                     WorkspaceSessionCommands::Start {
                         branch,
@@ -1078,7 +1078,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         branch,
                         summary,
                         updated_feature,
-                        updated_spec,
                     } => {
                         let branch = branch.unwrap_or(current_branch(&project_root)?);
                         let summary_for_docs = summary.clone();
@@ -1088,7 +1087,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             EndWorkspaceSessionRequest {
                                 summary,
                                 updated_feature_ids: updated_feature,
-                                updated_spec_ids: updated_spec,
                             },
                         )?;
                         if !session.updated_feature_ids.is_empty() {
@@ -1405,7 +1403,20 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
         Some(Commands::Mcp { action }) => {
             match action {
                 None | Some(McpCommands::Serve) => {
-                    // Handled by the main unitary binary as it requires async
+                    let mut cmd = std::env::current_exe()?;
+                    cmd.set_file_name("ship-mcp");
+                    if !cmd.exists() {
+                        cmd = PathBuf::from("ship-mcp");
+                    }
+
+                    let mut child = ProcessCommand::new(cmd)
+                        .spawn()
+                        .map_err(|e| anyhow::anyhow!("Failed to launch ship-mcp server binary: {}", e))?;
+
+                    let status = child.wait()?;
+                    if !status.success() {
+                        std::process::exit(status.code().unwrap_or(1));
+                    }
                 }
                 Some(McpCommands::List) => {
                     let project_dir = get_project_dir_cli()?;
@@ -3010,11 +3021,8 @@ fn format_workspace_summary(workspace: &runtime::workspace::Workspace) -> String
     if let Some(feature_id) = workspace.feature_id.as_deref() {
         parts.push(format!("feature={}", feature_id));
     }
-    if let Some(spec_id) = workspace.spec_id.as_deref() {
-        parts.push(format!("spec={}", spec_id));
-    }
-    if let Some(release_id) = workspace.release_id.as_deref() {
-        parts.push(format!("release={}", release_id));
+    if let Some(target_id) = workspace.target_id.as_deref() {
+        parts.push(format!("target={}", target_id));
     }
     if let Some(mode) = workspace.active_mode.as_deref() {
         parts.push(format!("mode={}", mode));
@@ -3064,8 +3072,8 @@ fn format_workspace_session(session: &runtime::WorkspaceSession) -> String {
             session.updated_feature_ids.join(",")
         ));
     }
-    if !session.updated_spec_ids.is_empty() {
-        parts.push(format!("specs=[{}]", session.updated_spec_ids.join(",")));
+    if let Some(record_id) = session.session_record_id.as_deref() {
+        parts.push(format!("record={}", record_id));
     }
     if let Some(compiled_at) = session.compiled_at.as_ref() {
         parts.push(format!("compiled_at={}", compiled_at));
@@ -3147,47 +3155,20 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
             None
         };
 
-        let release_candidate = if workspace.release_id.is_none() {
-            selected_feature.and_then(|entry| entry.feature.metadata.release_id.clone())
-        } else {
-            None
-        };
-
-        let branch_specs = specs
-            .iter()
-            .filter(|entry| {
-                entry.spec.metadata.branch.as_deref() == Some(workspace.branch.as_str())
+        let target_candidate = if workspace.target_id.is_none() {
+            selected_feature.and_then(|entry| {
+                entry
+                    .feature
+                    .metadata
+                    .active_target_id
+                    .clone()
+                    .or_else(|| entry.feature.metadata.release_id.clone())
             })
-            .collect::<Vec<_>>();
-
-        if workspace.spec_id.is_none() && branch_specs.len() > 1 {
-            report.ambiguous_spec_links += 1;
-            report.ambiguous_spec_details.push(format!(
-                "{} -> [{}]",
-                workspace.branch,
-                branch_specs
-                    .iter()
-                    .map(|entry| entry.id.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-
-        let spec_candidate = if workspace.spec_id.is_none() {
-            selected_feature
-                .and_then(|entry| entry.feature.metadata.spec_id.clone())
-                .or_else(|| {
-                    if branch_specs.len() == 1 {
-                        branch_specs.first().map(|entry| entry.id.clone())
-                    } else {
-                        None
-                    }
-                })
         } else {
             None
         };
 
-        if feature_candidate.is_some() || spec_candidate.is_some() || release_candidate.is_some() {
+        if feature_candidate.is_some() || target_candidate.is_some() {
             report.workspace_updates += 1;
             if apply {
                 create_workspace(
@@ -3195,8 +3176,7 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
                     CreateWorkspaceRequest {
                         branch: workspace.branch.clone(),
                         feature_id: feature_candidate,
-                        spec_id: spec_candidate,
-                        release_id: release_candidate,
+                        target_id: target_candidate,
                         ..CreateWorkspaceRequest::default()
                     },
                 )?;
@@ -3812,6 +3792,30 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_workspace_providers_command() {
+        let cli = Cli::try_parse_from([
+            "ship",
+            "workspace",
+            "providers",
+            "--branch",
+            "feature/demo",
+            "--mode",
+            "planning",
+        ])
+        .expect("workspace providers should parse");
+
+        match cli.command {
+            Some(Commands::Workspace {
+                action: WorkspaceCommands::Providers { branch, mode },
+            }) => {
+                assert_eq!(branch.as_deref(), Some("feature/demo"));
+                assert_eq!(mode.as_deref(), Some("planning"));
+            }
+            other => panic!("unexpected parse result: {:?}", other),
+        }
+    }
+
+    #[test]
     fn cli_parses_workspace_session_end_with_updates() {
         let cli = Cli::try_parse_from([
             "ship",
@@ -3824,8 +3828,6 @@ mod tests {
             "feat-auth",
             "--updated-feature",
             "feat-session",
-            "--updated-spec",
-            "spec-auth",
         ])
         .expect("workspace session end should parse");
 
@@ -3838,14 +3840,12 @@ mod tests {
                                 branch,
                                 summary,
                                 updated_feature,
-                                updated_spec,
                             },
                     },
             }) => {
                 assert!(branch.is_none());
                 assert_eq!(summary.as_deref(), Some("Done"));
                 assert_eq!(updated_feature, vec!["feat-auth", "feat-session"]);
-                assert_eq!(updated_spec, vec!["spec-auth"]);
             }
             other => panic!("unexpected parse result: {:?}", other),
         }

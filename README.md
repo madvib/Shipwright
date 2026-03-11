@@ -99,7 +99,7 @@ Forty-plus tools including `get_project_info` (full context in one call), `creat
 Reusable agent instructions, scoped to project or user:
 
 ```markdown
-# .ship/skills/task-policy/SKILL.md
+# .ship/agents/skills/task-policy/SKILL.md
 
 ---
 name: task-policy
@@ -162,24 +162,18 @@ ship git sync
 ├── ship.toml                 # project config, providers, git policy
 ├── project/
 │   ├── features/             # feature documents (committed)
+│   ├── specs/                # spec documents (committed)
 │   ├── releases/             # release documents (committed)
 │   ├── adrs/                 # architecture decisions (committed)
 │   │   └── accepted/
 │   └── vision.md
-├── workflow/
-│   ├── specs/                # spec documents (committed)
-│   └── issues/               # issues — local only by default
-│       ├── backlog/
-│       ├── in-progress/
-│       ├── blocked/
-│       └── done/
 └── agents/
     ├── skills/               # reusable agent instructions
     ├── rules/                # always-on rules, inlined into every context
     └── modes/                # named agent configurations
 ```
 
-**Git policy** — Ship defaults to a config-first posture: `ship.toml`, MCP config, permissions, and rules are tracked; project/workflow docs, skills, and templates are local unless explicitly included.
+**Git policy** — Ship defaults to a config-first posture: `ship.toml`, MCP config, permissions, and rules are tracked; project docs, skills, and templates are local unless explicitly included.
 
 ---
 

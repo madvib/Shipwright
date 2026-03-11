@@ -61,19 +61,24 @@ pub use skill::{
     list_effective_skills, list_skills, list_user_skills, update_skill, update_user_skill,
 };
 pub use state_db::{
-    DatabaseMigrationReport, clear_branch_doc, clear_branch_link, clear_global_migration_meta,
+    CapabilityDb, CapabilityMapDb, DatabaseMigrationReport, WorkspaceSessionRecordDb,
+    clear_branch_doc, clear_branch_link, clear_global_migration_meta,
     clear_project_migration_meta, ensure_global_database, ensure_project_database, get_branch_doc,
-    get_branch_link, get_managed_state_db, mark_migration_meta_complete_global,
+    get_branch_link, get_feature_primary_capability_db, get_managed_state_db,
+    get_workspace_session_record_db, list_capabilities_db, list_capability_maps_db,
+    list_target_features_db, mark_migration_meta_complete_global,
     mark_migration_meta_complete_project, migration_meta_complete_global,
-    migration_meta_complete_project, set_branch_doc, set_branch_link, set_managed_state_db,
-    upsert_workspace_db,
+    migration_meta_complete_project, replace_target_features_db, set_branch_doc, set_branch_link,
+    set_feature_primary_capability_db, set_managed_state_db, upsert_capability_db,
+    upsert_capability_map_db, upsert_workspace_db,
 };
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,
     ShipWorkspaceKind, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
-    WorkspaceSessionStatus, WorkspaceStatus, activate_workspace, create_workspace,
-    delete_workspace, end_workspace_session, get_active_workspace_session, get_workspace,
-    get_workspace_provider_matrix, list_workspace_sessions, list_workspaces,
+    WorkspaceSessionRecord, WorkspaceSessionStatus, WorkspaceStatus, activate_workspace,
+    create_workspace, delete_workspace, end_workspace_session, get_active_workspace_session,
+    get_workspace, get_workspace_provider_matrix, get_workspace_session_record,
+    list_workspace_sessions, list_workspaces,
     record_workspace_session_progress, repair_workspace, set_workspace_active_mode,
     start_workspace_session, sync_workspace, transition_workspace_status, upsert_workspace,
     validate_workspace_transition,
@@ -187,11 +192,11 @@ mod tests {
         assert!(gitignore.contains(".tmp-global/"));
         assert!(gitignore.contains("project/releases"));
         assert!(gitignore.contains("project/features"));
-        assert!(gitignore.contains("workflow/specs"));
+        assert!(gitignore.contains("project/specs"));
         assert!(gitignore.contains("project/adrs"));
         assert!(gitignore.contains("project/notes"));
         assert!(gitignore.contains("project/vision.md"));
-        assert!(gitignore.contains("skills"));
+        assert!(gitignore.contains("agents/skills"));
         assert!(gitignore.contains("agents/README.md"));
         assert!(!gitignore.contains("agents/rules"));
         assert!(!gitignore.contains("agents/mcp.toml"));
@@ -252,10 +257,9 @@ mod tests {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
         assert!(ship_path.exists());
-        // workflow/ namespace
-        assert!(ship_path.join("workflow/specs").is_dir());
-        assert!(ship_path.join("project/features").is_dir());
         // project/ namespace
+        assert!(ship_path.join("project/specs").is_dir());
+        assert!(ship_path.join("project/features").is_dir());
         assert!(ship_path.join("project/releases").is_dir());
         assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/notes").is_dir());
@@ -270,7 +274,7 @@ mod tests {
         assert!(ship_path.join("project/notes/TEMPLATE.md").is_file());
         assert!(ship_path.join("README.md").is_file());
         assert!(ship_path.join("project/README.md").is_file());
-        assert!(ship_path.join("workflow/README.md").is_file());
+        assert!(ship_path.join("agents/README.md").is_file());
         let cfg = crate::config::get_config(Some(ship_path.clone()))?;
         assert!(
             cfg.modes.is_empty(),

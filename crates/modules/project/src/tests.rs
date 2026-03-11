@@ -11,16 +11,17 @@ mod tests {
     use std::path::Path;
     use tempfile::tempdir;
 
-    fn ensure_active_workspace(project_dir: &Path) -> anyhow::Result<()> {
+    fn ensure_active_workspace(project_dir: &Path) -> anyhow::Result<&'static str> {
+        let branch = "feature/spec-tests";
         runtime::create_workspace(
             project_dir,
             runtime::CreateWorkspaceRequest {
-                branch: "feature/spec-tests".to_string(),
+                branch: branch.to_string(),
                 status: Some(runtime::WorkspaceStatus::Active),
                 ..Default::default()
             },
         )?;
-        Ok(())
+        Ok(branch)
     }
 
     #[test]
@@ -344,8 +345,8 @@ mod tests {
     fn test_create_spec_api() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Auth Spec", "Spec content", None)?;
+        let workspace = ensure_active_workspace(&project_dir)?;
+        let entry = create_spec(&project_dir, "Auth Spec", "Spec content", Some(workspace))?;
         assert_eq!(entry.spec.metadata.title, "Auth Spec");
         assert_eq!(entry.status, SpecStatus::Draft);
         assert!(!std::path::PathBuf::from(&entry.path).exists());
@@ -377,12 +378,17 @@ mod tests {
                 branch: "feature/feature-context".to_string(),
                 status: Some(runtime::WorkspaceStatus::Active),
                 feature_id: Some("feat-ctx".to_string()),
-                release_id: Some("v0.9.0-alpha".to_string()),
+                target_id: Some("v0.9.0-alpha".to_string()),
                 ..Default::default()
             },
         )?;
 
-        let entry = create_spec(&project_dir, "Context Spec", "body", None)?;
+        let entry = create_spec(
+            &project_dir,
+            "Context Spec",
+            "body",
+            Some("feature/feature-context"),
+        )?;
         assert_eq!(entry.spec.metadata.feature_id.as_deref(), Some("feat-ctx"));
         assert_eq!(
             entry.spec.metadata.release_id.as_deref(),
@@ -400,8 +406,13 @@ mod tests {
     fn test_get_and_update_spec() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Spec Update", "original body", None)?;
+        let workspace = ensure_active_workspace(&project_dir)?;
+        let entry = create_spec(
+            &project_dir,
+            "Spec Update",
+            "original body",
+            Some(workspace),
+        )?;
         let initial = get_spec_by_id(&project_dir, &entry.id)?;
 
         let mut spec = initial.spec.clone();
@@ -416,8 +427,8 @@ mod tests {
     fn test_move_spec_api() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Move Spec", "content", None)?;
+        let workspace = ensure_active_workspace(&project_dir)?;
+        let entry = create_spec(&project_dir, "Move Spec", "content", Some(workspace))?;
         let moved = move_spec(&project_dir, &entry.id, SpecStatus::Active)?;
         assert!(moved.path.contains("active"));
         assert_eq!(moved.status, SpecStatus::Active);
@@ -428,8 +439,8 @@ mod tests {
     fn test_delete_spec_api() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Delete Spec", "content", None)?;
+        let workspace = ensure_active_workspace(&project_dir)?;
+        let entry = create_spec(&project_dir, "Delete Spec", "content", Some(workspace))?;
         assert!(!std::path::PathBuf::from(&entry.path).exists());
         delete_spec(&project_dir, &entry.id)?;
         assert!(get_spec_by_id(&project_dir, &entry.id).is_err());

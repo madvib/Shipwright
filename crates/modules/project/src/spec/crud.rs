@@ -114,7 +114,7 @@ pub fn create_spec(
             branch: Some(workspace.branch.clone()),
             workspace_id: Some(workspace.id.clone()),
             feature_id: workspace.feature_id.clone(),
-            release_id: workspace.release_id.clone(),
+            release_id: workspace.target_id.clone(),
             ..Default::default()
         },
         body: body.to_string(),

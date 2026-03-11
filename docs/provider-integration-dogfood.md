@@ -1,7 +1,7 @@
 # Provider Integration Dogfood (2026-03-09)
 
 Applied `provider-integration-hardening` across the current provider set.
-Skill package path: `.ship/skills/provider-integration-hardening/`.
+Skill package path: `.ship/agents/skills/provider-integration-hardening/`.
 
 ## Claude
 

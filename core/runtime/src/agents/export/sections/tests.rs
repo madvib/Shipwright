@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn build_payload_active_mode_filters_servers_and_applies_mode_hooks_permissions() {
+    fn build_payload_uses_project_servers_hooks_and_permissions() {
         let (_tmp, project_dir) = project_with_servers(vec![
             make_stdio_server("allowed"),
             make_stdio_server("blocked"),
@@ -179,27 +179,15 @@ mod tests {
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload(&project_dir).unwrap();
-        let server_ids: Vec<_> = payload.servers.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(server_ids, vec!["allowed"]);
-        assert_eq!(payload.active_mode_id.as_deref(), Some("focus"));
-        assert_eq!(payload.permissions.tools.allow, vec!["Bash(*)".to_string()]);
-        assert_eq!(
-            payload.permissions.tools.deny,
-            vec!["WebFetch(*)".to_string()]
-        );
-
-        let hook_ids: Vec<_> = payload.hooks.iter().map(|h| h.id.as_str()).collect();
-        let global_idx = hook_ids
-            .iter()
-            .position(|id| *id == "project-global-hook")
-            .expect("global hook missing");
-        let mode_idx = hook_ids
-            .iter()
-            .position(|id| *id == "mode-hook")
-            .expect("mode hook missing");
+        let server_ids: Vec<_> = payload.servers.iter().map(|server| server.id.as_str()).collect();
+        assert_eq!(server_ids, vec!["allowed", "blocked"]);
+        assert_eq!(payload.active_mode_id, None);
+        assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
+        assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
+        assert!(payload.hooks.iter().any(|hook| hook.id == "project-global-hook"));
         assert!(
-            global_idx < mode_idx,
-            "mode hooks must append after global hooks"
+            !payload.hooks.iter().any(|hook| hook.id == "mode-hook"),
+            "mode hooks should not affect export payload"
         );
     }
 
@@ -272,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn build_payload_mode_overrides_replace_only_tool_permissions() {
+    fn build_payload_mode_overrides_are_ignored_for_export() {
         let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         save_permissions(
             project_dir.clone(),
@@ -304,11 +292,8 @@ mod tests {
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload(&project_dir).unwrap();
-        assert_eq!(payload.permissions.tools.allow, vec!["Bash(*)".to_string()]);
-        assert_eq!(
-            payload.permissions.tools.deny,
-            vec!["WebFetch(*)".to_string()]
-        );
+        assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
+        assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
         assert_eq!(
             payload.permissions.network.policy,
             crate::permissions::NetworkPolicy::AllowList
@@ -320,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn build_payload_workspace_mode_override_takes_precedence() {
+    fn build_payload_workspace_mode_override_is_ignored() {
         let (_tmp, project_dir) = project_with_servers(vec![
             make_stdio_server("planning-server"),
             make_stdio_server("code-server"),
@@ -364,14 +349,19 @@ mod tests {
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload_with_mode_override(&project_dir, Some("code")).unwrap();
-        assert_eq!(payload.active_mode_id.as_deref(), Some("code"));
-        let server_ids: Vec<_> = payload.servers.iter().map(|server| server.id.as_str()).collect();
-        assert_eq!(server_ids, vec!["code-server"]);
-        assert_eq!(payload.permissions.tools.allow, vec!["Bash(*)".to_string()]);
+        assert_eq!(payload.active_mode_id, None);
+        let mut server_ids: Vec<_> = payload
+            .servers
+            .iter()
+            .map(|server| server.id.as_str().to_string())
+            .collect();
+        server_ids.sort();
         assert_eq!(
-            payload.permissions.tools.deny,
-            vec!["WebFetch(*)".to_string()]
+            server_ids,
+            vec!["code-server".to_string(), "planning-server".to_string()]
         );
+        assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
+        assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
     }
 
     #[test]
@@ -379,13 +369,6 @@ mod tests {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec!["codex".to_string()];
-        config.modes = vec![ModeConfig {
-            id: "focus".to_string(),
-            name: "Focus".to_string(),
-            target_agents: vec![],
-            ..Default::default()
-        }];
-        config.active_mode = Some("focus".to_string());
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let synced = sync_active_mode(&project_dir).unwrap();
@@ -410,19 +393,13 @@ mod tests {
     fn sync_active_mode_normalizes_targets_and_skips_unknown_values() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
-        config.modes = vec![ModeConfig {
-            id: "focus".to_string(),
-            name: "Focus".to_string(),
-            target_agents: vec![
-                " codex ".to_string(),
-                "unknown-agent".to_string(),
-                "CLAUDE".to_string(),
-                "claude".to_string(),
-                "".to_string(),
-            ],
-            ..Default::default()
-        }];
-        config.active_mode = Some("focus".to_string());
+        config.providers = vec![
+            " codex ".to_string(),
+            "unknown-agent".to_string(),
+            "CLAUDE".to_string(),
+            "claude".to_string(),
+            "".to_string(),
+        ];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let synced = sync_active_mode(&project_dir).unwrap();
@@ -436,30 +413,15 @@ mod tests {
     }
 
     #[test]
-    fn sync_active_mode_with_override_uses_override_targets() {
+    fn sync_active_mode_with_override_uses_project_targets() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec!["claude".to_string()];
-        config.active_mode = Some("planning".to_string());
-        config.modes = vec![
-            ModeConfig {
-                id: "planning".to_string(),
-                name: "Planning".to_string(),
-                target_agents: vec!["claude".to_string()],
-                ..Default::default()
-            },
-            ModeConfig {
-                id: "code".to_string(),
-                name: "Code".to_string(),
-                target_agents: vec!["codex".to_string()],
-                ..Default::default()
-            },
-        ];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let synced = sync_active_mode_with_override(&project_dir, Some("code")).unwrap();
-        assert_eq!(synced, vec!["codex".to_string()]);
-        assert!(tmp.path().join(".codex").join("config.toml").exists());
+        assert_eq!(synced, vec!["claude".to_string()]);
+        assert!(tmp.path().join(".mcp.json").exists());
     }
 
     // ── Registry ───────────────────────────────────────────────────────────────
@@ -632,13 +594,34 @@ mod tests {
         .unwrap();
 
         export_to(project_dir.clone(), "claude").unwrap();
+        let settings_path = home.path().join(".claude").join("settings.json");
+        let settings: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
+        let expected_allow = settings["permissions"]["allow"]
+            .as_array()
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let expected_deny = settings["permissions"]["deny"]
+            .as_array()
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         save_permissions(project_dir.clone(), &Permissions::default()).unwrap();
         let imported = import_permissions_from_provider("claude", project_dir.clone()).unwrap();
         assert!(imported);
         let restored = crate::permissions::get_permissions(project_dir).unwrap();
-        assert_eq!(restored.tools.allow, vec!["Bash(*)".to_string()]);
-        assert_eq!(restored.tools.deny, vec!["WebFetch(*)".to_string()]);
+        assert_eq!(restored.tools.allow, expected_allow);
+        assert_eq!(restored.tools.deny, expected_deny);
     }
 
     #[test]
@@ -1049,12 +1032,99 @@ priority = 700
             val["sandbox_workspace_write"]["network_access"].as_bool(),
             Some(true)
         );
+        let writable_roots = val["sandbox_workspace_write"]["writable_roots"]
+            .as_array()
+            .expect("codex writable_roots should be emitted");
+        let root_strings: Vec<&str> = writable_roots
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+        let expected_root = std::fs::canonicalize(tmp.path()).unwrap_or(tmp.path().to_path_buf());
+        assert!(
+            root_strings.iter().any(|root| {
+                std::fs::canonicalize(root).unwrap_or_else(|_| std::path::PathBuf::from(root))
+                    == expected_root
+            }),
+            "writable_roots should include current workspace root"
+        );
         assert_eq!(val["approval_policy"].as_str(), Some("on-request"));
-        assert!(val["rules"]["prefix_rules"].is_array());
+        assert!(
+            val.get("allow").is_none(),
+            "codex config.toml should not use legacy top-level allow field"
+        );
+        assert!(
+            val.get("rules").is_none(),
+            "codex config.toml should not use legacy [rules].prefix_rules mapping"
+        );
+
+        let rules_path = tmp.path().join(".codex/rules/ship.rules");
+        assert!(rules_path.exists(), "codex execpolicy file should be written");
+        let rules = std::fs::read_to_string(rules_path).unwrap();
+        assert!(rules.contains("decision = \"forbidden\""));
+        assert!(rules.contains("decision = \"prompt\""));
+        assert!(rules.contains("decision = \"allow\""));
+        assert!(rules.contains("pattern = [\"rm\", \"-rf\"]"));
+        assert!(rules.contains("pattern = [\"git\", \"push\"]"));
+        assert!(rules.contains("pattern = [\"cargo\"]"));
     }
 
     #[test]
     fn codex_permissions_round_trip_imports_back_to_canonical() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let codex_dir = tmp.path().join(".codex/rules");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        std::fs::write(
+            codex_dir.join("project.rules"),
+            r#"
+prefix_rule(
+    pattern = ["cargo"],
+    decision = "allow",
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "forbidden",
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+)
+"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            tmp.path().join(".codex/config.toml"),
+            r#"
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+
+[sandbox_workspace_write]
+network_access = false
+"#,
+        )
+        .unwrap();
+
+        let imported = import_permissions_from_provider("codex", project_dir.clone()).unwrap();
+        assert!(imported);
+        let restored = crate::permissions::get_permissions(project_dir).unwrap();
+        assert_eq!(
+            restored.network.policy,
+            crate::permissions::NetworkPolicy::None
+        );
+        assert!(restored.commands.allow.contains(&"cargo *".to_string()));
+        assert!(restored.commands.deny.contains(&"rm -rf *".to_string()));
+        assert!(
+            restored
+                .agent
+                .require_confirmation
+                .contains(&"git push *".to_string())
+        );
+    }
+
+    #[test]
+    fn codex_legacy_permissions_config_import_still_supported() {
         let (tmp, project_dir) = project_with_servers(vec![]);
         let codex_dir = tmp.path().join(".codex");
         std::fs::create_dir_all(&codex_dir).unwrap();
@@ -1080,10 +1150,6 @@ prefix_rules = [
         let imported = import_permissions_from_provider("codex", project_dir.clone()).unwrap();
         assert!(imported);
         let restored = crate::permissions::get_permissions(project_dir).unwrap();
-        assert_eq!(
-            restored.network.policy,
-            crate::permissions::NetworkPolicy::None
-        );
         assert!(restored.commands.allow.contains(&"cargo *".to_string()));
         assert!(restored.commands.deny.contains(&"rm -rf *".to_string()));
         assert!(
@@ -1118,7 +1184,7 @@ prefix_rules = [
     }
 
     #[test]
-    fn codex_export_applies_active_mode_skill_filter() {
+    fn codex_export_writes_all_skills_without_mode_filtering() {
         let (tmp, project_dir) = project_with_servers(vec![]);
         create_skill(&project_dir, "rt-allowed-skill", "Allowed", "allowed body").unwrap();
         create_skill(&project_dir, "rt-blocked-skill", "Blocked", "blocked body").unwrap();
@@ -1149,8 +1215,8 @@ prefix_rules = [
                 .exists()
         );
         assert!(
-            !skills_dir.join("rt-blocked-skill").exists(),
-            "skills excluded by active mode should not be exported"
+            skills_dir.join("rt-blocked-skill").join("SKILL.md").exists(),
+            "export should not filter skills by active mode"
         );
     }
 

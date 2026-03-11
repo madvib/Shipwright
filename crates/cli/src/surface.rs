@@ -645,12 +645,9 @@ pub enum WorkspaceCommands {
         /// Optional profile preset id used to seed workspace configuration
         #[arg(long = "environment-id", alias = "profile")]
         environment_id: Option<String>,
-        /// Link this workspace to a spec id
-        #[arg(long)]
-        spec: Option<String>,
-        /// Link this workspace to a release id
-        #[arg(long)]
-        release: Option<String>,
+        /// Link this workspace to a target id ("release" is accepted as an alias)
+        #[arg(long, alias = "release")]
+        target: Option<String>,
         /// Optional workspace mode override for this branch workspace
         #[arg(long)]
         mode: Option<String>,
@@ -698,7 +695,7 @@ pub enum WorkspaceCommands {
     },
     /// Mark a workspace as archived
     Archive { branch: String },
-    /// Reconcile feature/spec/workspace links (dry-run by default)
+    /// Reconcile feature/workspace links (dry-run by default)
     Reconcile {
         /// Apply mutations (omit for dry-run preview)
         #[arg(long, default_value_t = false)]
@@ -712,6 +709,15 @@ pub enum WorkspaceCommands {
         /// Preview repair actions without writing changes
         #[arg(long, default_value_t = false)]
         dry_run: bool,
+    },
+    /// Show effective provider resolution and precedence for a workspace
+    Providers {
+        /// Branch workspace key (defaults to current git branch)
+        #[arg(long)]
+        branch: Option<String>,
+        /// Optional mode override for previewing provider resolution
+        #[arg(long)]
+        mode: Option<String>,
     },
 }
 
@@ -743,9 +749,6 @@ pub enum WorkspaceSessionCommands {
         /// Feature IDs updated during the session
         #[arg(long = "updated-feature")]
         updated_feature: Vec<String>,
-        /// Spec IDs updated during the session
-        #[arg(long = "updated-spec")]
-        updated_spec: Vec<String>,
     },
     /// Show the active session for a workspace (defaults to current branch workspace)
     Status {

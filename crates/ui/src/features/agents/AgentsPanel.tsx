@@ -1016,7 +1016,7 @@ export default function AgentsPanel({
   const activeDoc = activeDocs.find((doc) => doc.id === activeSelectedDocId) ?? activeDocs[0] ?? null;
   const skillScopeRoot =
     agentScope === 'project'
-      ? '.ship/skills'
+      ? '.ship/agents/skills'
       : '~/.ship/skills';
 
   const selectActiveDoc = (kind: MarkdownDocKind, docId: string) => {

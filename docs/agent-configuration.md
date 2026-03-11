@@ -142,7 +142,7 @@ The effective agent config is computed in three layers, highest wins:
 Layer 1: Project defaults
   └─ ship.toml: providers, hooks, mcp_servers (full list)
   └─ agents/permissions.toml: base permissions
-  └─ .ship/skills/: project-scoped skills
+  └─ .ship/agents/skills/: project-scoped skills
   └─ ~/.ship/skills/: user-scoped skills
 
 Layer 2: Active mode override (if mode is set)
@@ -163,9 +163,21 @@ Layer 3: Feature [agent] overrides (if on a feature branch)
 
 **Mode resolution order:** `active_mode_override` arg → `config.active_mode` → no mode.
 
-**Mode target agents:** If `mode.target_agents` is non-empty, only those providers are
-synced when the mode is active. If empty, falls back to `config.providers`. If that's
-also empty, defaults to `["claude"]`.
+**Export targeting:** provider sync uses `config.providers` (fallback `["claude"]`) and does
+not use mode-scoped `target_agents`.
+
+### Workspace Session Provider Precedence
+
+When compiling/exporting provider config for a workspace session, Ship resolves providers in this order:
+
+1. `workspace.providers` override (workspace row)
+2. `feature.agent.providers` override (if workspace links a feature)
+3. active mode `target_agents`
+4. project `config.providers`
+5. fallback default `["claude"]`
+
+Use `ship workspace providers --branch <branch> [--mode <id>]` to inspect the effective source,
+allowed providers, and resolution errors.
 
 ---
 
@@ -178,12 +190,12 @@ Called once per enabled provider. For each provider:
 `build_payload_with_mode_override` constructs a `SyncPayload`:
 ```
 SyncPayload {
-  servers: Vec<McpServerConfig>   ← filtered by mode.mcp_servers if mode active
-  instruction_skill_id: Option    ← from mode.prompt_id (resolved to skill)
-  instructions: Option<String>    ← skill content for system instructions
-  hooks: Vec<HookConfig>          ← project hooks + mode hooks
-  permissions: Permissions        ← base permissions with mode tool overlays applied
-  active_mode_id: Option<String>
+  servers: Vec<McpServerConfig>   ← full project server list
+  instruction_skill_id: Option    ← None
+  instructions: Option<String>    ← None
+  hooks: Vec<HookConfig>          ← project hooks only
+  permissions: Permissions        ← canonical agents/permissions.toml
+  active_mode_id: Option<String>  ← None
 }
 ```
 
@@ -342,15 +354,16 @@ decision = "deny"
 priority = 900
 ```
 
-**Codex — `.codex/config.toml` permissions fields:**
-Codex permissions are written inline into the same config file as MCP servers.
+**Codex — `.codex/config.toml` + `.codex/rules/ship.rules` permissions fields:**
+Codex network/sandbox settings are written to `.codex/config.toml`; command policy is written
+as execpolicy rules to `.codex/rules/ship.rules`.
 
 | Ship field | Codex field |
 |---|---|
-| `commands.allow` | `allow = [...]` (top-level array) |
 | `network.policy` (allow-list or unrestricted) | `sandbox_workspace_write.network_access = true` |
-| `commands.deny` patterns | `rules.prefix_rules = [{prefix, decision="forbidden"}]` |
-| `agent.require_confirmation` | `rules.prefix_rules = [{prefix, decision="prompt"}]` |
+| `commands.allow` patterns | `.codex/rules/ship.rules` `prefix_rule(... decision="allow")` |
+| `commands.deny` patterns | `.codex/rules/ship.rules` `prefix_rule(... decision="forbidden")` |
+| `agent.require_confirmation` | `.codex/rules/ship.rules` `prefix_rule(... decision="prompt")` |
 
 Codex `sandbox_mode` is always set to `"workspace-write"`.
 `approval_policy` is `"on-failure"` if no restrictions, `"on-request"` if any deny/confirmation rules exist.
@@ -359,16 +372,9 @@ Example Codex config output:
 ```toml
 sandbox_mode = "workspace-write"
 approval_policy = "on-request"
-allow = ["npm test", "cargo build"]
 
 [sandbox_workspace_write]
 network_access = false
-
-[rules]
-prefix_rules = [
-  { prefix = "rm -rf", decision = "forbidden" },
-  { prefix = "git push --force", decision = "prompt" }
-]
 
 [mcp_servers.ship]
 command = "ship"
@@ -377,6 +383,19 @@ args = ["mcp", "serve"]
 [mcp_servers.my-server]
 command = "my-server"
 args = ["--port", "3000"]
+```
+
+Example `.codex/rules/ship.rules` output:
+```starlark
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "forbidden",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "prompt",
+)
 ```
 
 ### 7. Save managed state
@@ -431,15 +450,17 @@ Reads Ship's own exported policy file and reverses the mapping:
 | `mcpName` + `toolName` | `tools.allow/deny` as `mcpName__toolName` |
 | `mcpName` only | `tools.allow/deny` as `mcpName__*` |
 
-### From Codex (`.codex/config.toml`)
+### From Codex (`.codex/config.toml` + `.codex/rules/*.rules`)
 
 | Codex field | Ship field |
 |---|---|
-| `allow = [...]` | `commands.allow` |
 | `sandbox_workspace_write.network_access = true` | `network.policy = unrestricted` |
 | `sandbox_workspace_write.network_access = false` | `network.policy = none` |
-| `rules.prefix_rules[].decision = "forbidden"` | `commands.deny` (as `prefix*`) |
-| `rules.prefix_rules[].decision = "prompt"` | `agent.require_confirmation` (as `prefix*`) |
+| `.codex/rules/*.rules` `prefix_rule(... decision = "allow")` | `commands.allow` (as `prefix*`) |
+| `.codex/rules/*.rules` `prefix_rule(... decision = "forbidden")` | `commands.deny` (as `prefix*`) |
+| `.codex/rules/*.rules` `prefix_rule(... decision = "prompt")` | `agent.require_confirmation` (as `prefix*`) |
+| legacy `allow = [...]` (if present) | `commands.allow` |
+| legacy `rules.prefix_rules` (if present) | deny/prompt mapping above |
 
 ---
 
@@ -494,7 +515,7 @@ Skills live in the filesystem, not SQLite.
 
 | Scope | Location |
 |---|---|
-| Project | `.ship/skills/<id>/SKILL.md` |
+| Project | `.ship/agents/skills/<id>/SKILL.md` |
 | User (global) | `~/.ship/skills/<id>/SKILL.md` |
 
 File format: `SKILL.md` with YAML frontmatter + markdown body.
@@ -518,10 +539,9 @@ Instructions here...
 `list_effective_skills` merges project + user skills. Project skills take precedence
 (same ID in both = project wins).
 
-### Mode filtering
+### Export filtering
 
-If a mode is active and `mode.skills` is non-empty, only those skill IDs are included
-in the exported set. Skills not in the list are not written to provider skill dirs.
+Skill export is not mode-filtered. Export writes all effective skills (project + user).
 
 ### Skill directories written at sync
 

@@ -1,17 +1,17 @@
 # Managed by Ship — edit via `ship git include/exclude`
 
-workflow/specs
+project/specs
 project/features
 project/releases
 project/adrs
 project/notes
 project/vision.md
-skills
+agents/skills
+agents/runtime
 agents/README.md
 agents/skill-library-strategy.md
 README.md
 project/README.md
-workflow/README.md
 **/TEMPLATE.md
 generated/
 .tmp-global/

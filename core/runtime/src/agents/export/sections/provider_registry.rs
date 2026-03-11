@@ -1,10 +1,9 @@
 use crate::config::{
-    HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, ProjectConfig,
-    get_config, get_effective_config,
+    HookConfig, HookTrigger, McpServerConfig, McpServerType, get_config, get_effective_config,
 };
 use crate::permissions::{Permissions, get_permissions};
 use crate::project::{SHIP_DIR_NAME, ship_dir_from_path};
-use crate::skill::{get_effective_skill, list_effective_skills};
+use crate::skill::list_effective_skills;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

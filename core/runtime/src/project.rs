@@ -23,14 +23,9 @@ unsafe extern "C" {
 // All document paths are derived from these. Never construct paths with raw
 // string joins outside of these helpers.
 
-/// `.ship/project/` — vision, notes, ADRs
+/// `.ship/project/` — vision, specs, features, releases, notes, ADRs
 pub fn project_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("project")
-}
-
-/// `.ship/workflow/` — specs and workflow documents
-pub fn workflow_ns(ship_dir: &Path) -> PathBuf {
-    ship_dir.join("workflow")
 }
 
 /// `.ship/agents/` — rules, permissions, MCP config
@@ -61,7 +56,7 @@ pub fn notes_dir(ship_dir: &Path) -> PathBuf {
 }
 
 pub fn specs_dir(ship_dir: &Path) -> PathBuf {
-    workflow_ns(ship_dir).join("specs")
+    project_ns(ship_dir).join("specs")
 }
 
 pub fn features_dir(ship_dir: &Path) -> PathBuf {
@@ -239,7 +234,7 @@ fn is_transient_project_root(project_root: &Path) -> bool {
         || starts_with_components(&canonical, &["var", "folders"])
         || starts_with_components(&canonical, &["private", "var", "folders"])
         || contains_component_sequence(&canonical, &["appdata", "local", "temp"])
-        || contains_component_sequence(&canonical, &["example", "projects-e2e"])
+        || contains_component_sequence(&canonical, &["examples", "projects-e2e"])
         || contains_component_sequence(&canonical, &["target", "tmp"])
 }
 
@@ -314,8 +309,13 @@ pub fn user_skills_dir() -> PathBuf {
         .join("skills")
 }
 
-/// Project-scoped skills store: `.ship/skills/`
+/// Project-scoped skills store: `.ship/agents/skills/`
 pub fn project_skills_dir(ship_dir: &Path) -> PathBuf {
+    agents_ns(ship_dir).join("skills")
+}
+
+/// Legacy project-scoped skills store used by older builds: `.ship/skills/`
+pub fn legacy_repo_project_skills_dir(ship_dir: &Path) -> PathBuf {
     ship_dir.join("skills")
 }
 
@@ -1027,7 +1027,7 @@ mod tests {
             "C:/Users/me/AppData/Local/Temp/ship-e2e"
         )));
         assert!(is_transient_project_root(Path::new(
-            "/work/example/projects-e2e/sandbox"
+            "/work/examples/projects-e2e/sandbox"
         )));
         assert!(!is_transient_project_root(Path::new(
             "/Users/me/dev/real-project"
@@ -1130,10 +1130,11 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
 
     for rel in [
         "project/adrs",
+        "project/specs",
         "project/features",
         "project/releases",
         "project/notes",
-        "workflow/specs",
+        "agents/skills",
         "generated",
     ] {
         fs::create_dir_all(ship_path.join(rel))?;
@@ -1164,10 +1165,7 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         &ship_path.join("project/README.md"),
         "# Project Namespace\n",
     )?;
-    write_if_missing(
-        &ship_path.join("workflow/README.md"),
-        "# Workflow Namespace\n",
-    )?;
+    write_if_missing(&ship_path.join("agents/README.md"), "# Agents Namespace\n")?;
 
     // Write ship.toml (with a stable project ID) BEFORE any DB access so that
     // project_db_key can read the ID and derive a stable state directory path.

@@ -1676,7 +1676,7 @@ fn auto_provision_workspace(
             branch: branch.to_string(),
             workspace_type,
             feature_id,
-            release_id,
+            target_id: release_id,
             is_worktree: Some(true),
             worktree_path,
             ..CreateWorkspaceRequest::default()
@@ -2654,7 +2654,7 @@ async fn create_workspace_cmd(
     workspace_type: Option<String>,
     environment_id: Option<String>,
     feature_id: Option<String>,
-    spec_id: Option<String>,
+    target_id: Option<String>,
     release_id: Option<String>,
     mode_id: Option<String>,
     is_worktree: Option<bool>,
@@ -2693,8 +2693,7 @@ async fn create_workspace_cmd(
                 workspace_type: parsed_workspace_type,
                 environment_id,
                 feature_id,
-                spec_id,
-                release_id,
+                target_id: target_id.or(release_id),
                 active_mode: mode_id,
                 is_worktree,
                 worktree_path: resolved_worktree_path,
@@ -2839,13 +2838,13 @@ async fn end_workspace_session_cmd(
 ) -> Result<WorkspaceSession, String> {
     let project_dir = get_active_dir(&state)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _ = updated_spec_ids;
         let session = end_workspace_session(
             &project_dir,
             &branch,
             EndWorkspaceSessionRequest {
                 summary,
                 updated_feature_ids: updated_feature_ids.unwrap_or_default(),
-                updated_spec_ids: updated_spec_ids.unwrap_or_default(),
             },
         )
         .map_err(|e| e.to_string())?;
@@ -6255,8 +6254,7 @@ mod tests {
             status: WorkspaceStatus::Active,
             environment_id: None,
             feature_id: None,
-            spec_id: None,
-            release_id: None,
+            target_id: None,
             active_mode: None,
             providers: Vec::new(),
             resolved_at: "2026-03-06T00:00:00Z".parse().expect("valid timestamp"),

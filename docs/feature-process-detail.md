@@ -240,7 +240,7 @@ Appends session summary text to each feature's doc content.
 1. Validates title non-empty
 2. Generates nanoid(8) id
 3. Writes row to `spec` table (metadata + status = `draft`)
-4. Writes body to markdown file at `.ship/workflow/specs/draft/{slug}.md`
+4. Writes body to markdown file at `.ship/project/specs/draft/{slug}.md`
 5. Appends `"spec create"` to action log
 
 **Writes:** `spec` table row + markdown file.
@@ -488,6 +488,11 @@ This is what gets written to `CLAUDE.md` and `.mcp.json`.
 3. Feature-level `[agent]` overrides from `feature.agent_json` in DB
    (can add specific skills or MCP servers for this branch only)
 
+For workspace session provider export specifically, precedence is:
+`workspace.providers` → `feature.agent.providers` → `mode.target_agents` →
+`config.providers` → `["claude"]`.
+Use `ship workspace providers` to inspect effective resolution.
+
 **Result:** `AgentConfig` struct containing resolved providers, model, max_cost, max_turns,
 mcp_servers, skills, rules, permissions, active_mode. Written to disk as provider-specific files.
 
@@ -512,7 +517,7 @@ resolution: workspace mode override → project active mode → no filter (all t
 They appear as slash commands in Claude (`.claude/commands/{id}.md`) and as inline context
 in `CLAUDE.md`.
 
-**Storage:** `.ship/skills/{id}/SKILL.md` (project-scoped) or `~/.ship/skills/{id}/SKILL.md`
+**Storage:** `.ship/agents/skills/{id}/SKILL.md` (project-scoped) or `~/.ship/skills/{id}/SKILL.md`
 (user-scoped). No DB entry — filesystem only.
 
 **Install from git:** `skill install` fetches a `.md` file from a git URL and writes it to
@@ -609,11 +614,9 @@ in the global registry.
     adrs/proposed/       — ADR markdown files by status
     releases/            — release markdown files
     features/planned/    — feature markdown files by status
+    specs/draft/         — spec markdown files by status
     notes/               — (unused — notes are DB-only)
     vision.md            — project vision (freeform, no schema)
-  workflow/
-    specs/draft/         — spec markdown files by status
-    issues/              — (unused — issues are DB-only)
   agents/
     skills/              — project-scoped skill files
     modes/               — mode config files

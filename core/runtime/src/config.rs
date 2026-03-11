@@ -40,7 +40,7 @@ pub struct GitConfig {
 impl Default for GitConfig {
     fn default() -> Self {
         // Default:
-        // - Keep workflow/project docs local by default.
+        // - Keep project docs local by default.
         // - Keep core control-plane config and always-on rules tracked.
         Self {
             ignore: Vec::new(),
@@ -165,11 +165,11 @@ struct LegacyAgentsConfigFile {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
 pub struct NamespaceConfig {
-    /// Stable namespace id (e.g. "project", "workflow", "agents", "plugin:ghost-issues")
+    /// Stable namespace id (e.g. "project", "agents", "generated", "plugin:ghost-issues")
     pub id: String,
     /// Directory path relative to `.ship/`
     pub path: String,
-    /// Owning module or family (e.g. "project", "workflow", "agents", "plugins")
+    /// Owning module or family (e.g. "project", "agents", "runtime", "plugins")
     pub owner: String,
 }
 
@@ -179,11 +179,6 @@ fn default_namespaces() -> Vec<NamespaceConfig> {
             id: "project".to_string(),
             path: "project".to_string(),
             owner: "project".to_string(),
-        },
-        NamespaceConfig {
-            id: "workflow".to_string(),
-            path: "workflow".to_string(),
-            owner: "workflow".to_string(),
         },
         NamespaceConfig {
             id: "agents".to_string(),
@@ -1180,11 +1175,11 @@ pub fn is_category_committed(git: &GitConfig, category: &str) -> bool {
 }
 
 /// Write `.ship/.gitignore`. Everything not in `git.commit` is ignored by default.
-/// Keys use namespace paths (e.g. "workflow/specs", "project/adrs").
+/// Keys use namespace paths (e.g. "project/specs", "project/adrs").
 pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
     // (key, namespace path) — key is what appears in git.commit config
     let known: &[(&str, &str)] = &[
-        ("specs", "workflow/specs"),
+        ("specs", "project/specs"),
         ("features", "project/features"),
         ("releases", "project/releases"),
         ("adrs", "project/adrs"),
@@ -1193,12 +1188,11 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         ("mcp", "agents/mcp.toml"),
         ("permissions", "agents/permissions.toml"),
         ("rules", "agents/rules"),
-        ("skills", "skills"),
+        ("skills", "agents/skills"),
         ("agent-docs", "agents/README.md"),
         ("agent-strategy", "agents/skill-library-strategy.md"),
         ("ship-readme", "README.md"),
         ("project-readme", "project/README.md"),
-        ("workflow-readme", "workflow/README.md"),
         ("ship.toml", "ship.toml"),
         ("templates", "**/TEMPLATE.md"),
     ];
@@ -1229,7 +1223,6 @@ pub fn ensure_registered_namespaces(
 ) -> Result<()> {
     const RESERVED_TOP_LEVEL: &[&str] = &[
         "project",
-        "workflow",
         "agents",
         "generated",
         "ship.toml",

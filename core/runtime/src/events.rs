@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 pub const EVENTS_FILE_NAME: &str = "events.ndjson";
 const EVENT_INDEX_FILE: &str = "generated/event_index.json";
 const TRACKED_DIRS: &[&str] = &[
-    "workflow/specs",
+    "project/specs",
     "project/features",
     "project/releases",
     "project/notes",
@@ -466,7 +466,7 @@ pub fn sync_event_snapshot(project_dir: &Path) -> Result<usize> {
 }
 
 fn classify_path(rel_path: &str) -> Option<(EventEntity, String, Option<String>)> {
-    if let Some(file) = rel_path.strip_prefix("workflow/specs/") {
+    if let Some(file) = rel_path.strip_prefix("project/specs/") {
         return Some((
             EventEntity::Spec,
             file.to_string(),

@@ -168,6 +168,51 @@ Body is identified by `ship:feature id={id}` marker or `id = "{id}"` in frontmat
 | feature_doc.content | ❌ not confirmed | ❌ not confirmed |
 | agent config | ⚠️ | ⚠️ |
 
+#### Capability + target link tables (runtime v0020)
+
+These tables are now part of the SQLite schema and are intended to support the
+“capability map + target slice” model:
+
+```sql
+capability_map(
+  id TEXT PRIMARY KEY,
+  vision_ref TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+
+capability(
+  id TEXT PRIMARY KEY,
+  map_id TEXT NOT NULL REFERENCES capability_map(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  parent_capability_id TEXT REFERENCES capability(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  ord INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+
+feature_capability(
+  feature_id TEXT NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
+  capability_id TEXT NOT NULL REFERENCES capability(id) ON DELETE CASCADE,
+  is_primary INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(feature_id, capability_id)
+)
+
+target_feature(
+  target_id TEXT NOT NULL REFERENCES release(id) ON DELETE CASCADE,
+  feature_id TEXT NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
+  ord INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(target_id, feature_id)
+)
+```
+
+Legacy `feature.release_id` / `feature.active_target_id` still exist for compatibility while
+the join-table model is being adopted across app/UI flows.
+
 ---
 
 ### Spec
@@ -216,7 +261,7 @@ Default: `draft`
 Expected columns based on CRUD: `id, title, status, author, branch, workspace_id, feature_id, release_id, tags_json, created_at, updated_at`
 
 #### Markdown file location
-`.ship/workflow/specs/{status}/{slug}.md`
+`.ship/project/specs/{status}/{slug}.md`
 <!-- should all be editable in UI. links are lacking across the board -->
 #### UI fields to render / editable
 | Field | Display | Editable |

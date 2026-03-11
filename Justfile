@@ -83,11 +83,11 @@ ghost:
 
 # Run projects-module e2e checks
 e2e-projects:
-    ./example/projects-e2e/e2e/project-features.sh
+    ./examples/projects-e2e/e2e/project-features.sh
 
 # Reset local example workspace with fresh generated .ship data
 e2e-reset:
-    ./example/projects-e2e/reset.sh
+    ./examples/projects-e2e/reset.sh
 
 # ── MCP ────────────────────────────────────────────────────────────────────────
 

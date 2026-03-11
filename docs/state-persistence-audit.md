@@ -47,9 +47,9 @@ MCP is read-heavy via resources:
 | Project runtime settings (`providers`, `active_mode`, `hooks`, `statuses`, `ai`, `git`, `namespaces`) | Project SQLite (`agent_runtime_settings`) | Migrated out of `ship.toml` | DB-first |
 | MCP server registry | `.ship/agents/mcp.toml` | Indexed in SQLite artifact registry | File-first + DB index |
 | Modes | Project SQLite (`agent_mode`) | Resolved refs from file catalog | DB-first |
-| Skills (project) | `.ship/skills/<id>/SKILL.md` | Indexed for mode resolution | Canonical project skill store |
+| Skills (project) | `.ship/agents/skills/<id>/SKILL.md` | Indexed for mode resolution | Canonical project skill store |
 | Skills (global) | `~/.ship/skills/<id>/SKILL.md` | Seeded built-ins | Canonical user/global skill store |
-| Skill cache / legacy compatibility | `~/.ship/projects/<slug>/skills` | Read+promote into `.ship/skills` | Legacy migration path only (not canonical) |
+| Skill cache / legacy compatibility | `~/.ship/projects/<slug>/skills` and `.ship/skills` | Read+promote into `.ship/agents/skills` | Legacy migration path only (not canonical) |
 | Features | SQLite `feature*` tables | Markdown under `.ship/project/features/...` | Dual-write drift risk |
 | Releases | SQLite `release*` tables | Markdown under `.ship/project/releases/...` | Dual-write drift risk |
 | ADRs | SQLite `adr*` tables | Markdown under `.ship/project/adrs/...` | Dual-write drift risk |
@@ -62,7 +62,7 @@ MCP is read-heavy via resources:
 
 ### Skill storage policy (canonical)
 
-- Project-scoped skills: `.ship/skills/<id>/SKILL.md`
+- Project-scoped skills: `.ship/agents/skills/<id>/SKILL.md`
 - User/global skills: `~/.ship/skills/<id>/SKILL.md`
 - Legacy cache path `~/.ship/projects/<slug>/skills` is migration-only and should not be treated as source of truth.
 - Online/catalog installs do not maintain a separate persistent cache-of-record; installed output is copied into one of the canonical directories above.

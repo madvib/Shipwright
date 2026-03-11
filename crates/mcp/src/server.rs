@@ -652,8 +652,7 @@ impl ShipServer {
             status: None,
             environment_id: req.environment_id,
             feature_id: req.feature_id,
-            spec_id: req.spec_id,
-            release_id: req.release_id,
+            target_id: req.target_id,
             active_mode: req.mode_id,
             providers: None,
             is_worktree: req.is_worktree,
@@ -796,7 +795,6 @@ impl ShipServer {
         let end_req = RuntimeEndWorkspaceSessionRequest {
             summary: req.summary,
             updated_feature_ids,
-            updated_spec_ids: req.updated_spec_ids.unwrap_or_default(),
         };
         let session = match runtime_end_workspace_session(&project_dir, &branch, end_req) {
             Ok(session) => session,
@@ -1515,8 +1513,7 @@ mod tests {
                 workspace_type: Some("feature".to_string()),
                 environment_id: None,
                 feature_id: None,
-                spec_id: None,
-                release_id: None,
+                target_id: None,
                 mode_id: None,
                 is_worktree: Some(false),
                 worktree_path: None,

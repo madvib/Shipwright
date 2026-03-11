@@ -317,11 +317,11 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
 
             for provider in &agent_cfg.providers {
                 agent_export::write_context(project_root, provider, &context)?;
-                agent_export::export_to_filtered_with_mode_override(
+                agent_export::export_to_filtered_at_root(
                     ship_dir.to_path_buf(),
                     provider,
                     feature_server_filter,
-                    workspace_mode_override.as_deref(),
+                    project_root,
                 )?;
                 if provider == "claude" {
                     ensure_required_mcp_servers(project_root, &mcp_server_ids)?;
@@ -346,11 +346,7 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
 
             for provider in &agent_cfg.providers {
                 agent_export::write_context(project_root, provider, &context)?;
-                agent_export::export_to_with_mode_override(
-                    ship_dir.to_path_buf(),
-                    provider,
-                    workspace_mode_override.as_deref(),
-                )?;
+                agent_export::export_to_at_root(ship_dir.to_path_buf(), provider, project_root)?;
             }
 
             println!(

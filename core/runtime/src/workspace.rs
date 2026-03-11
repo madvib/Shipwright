@@ -3,10 +3,13 @@ use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_n
 use crate::state_db::{
     WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, delete_workspace_db,
     get_active_workspace_session_db, get_workspace_db, get_workspace_session_db,
-    insert_workspace_session_db, list_workspace_sessions_db, list_workspaces_db, set_branch_link,
-    update_workspace_session_db, upsert_workspace_db,
+    get_workspace_session_record_db, insert_workspace_session_db,
+    insert_workspace_session_record_db, list_workspace_sessions_db, list_workspaces_db,
+    set_branch_link, update_workspace_session_db, upsert_workspace_db,
 };
-use crate::state_db::{get_branch_link, get_feature_by_branch_links, get_feature_links};
+use crate::state_db::{
+    get_branch_link, get_feature_agent_providers, get_feature_by_branch_links, get_feature_links,
+};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -120,9 +123,7 @@ pub struct Workspace {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub feature_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub release_id: Option<String>,
+    pub target_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_mode: Option<String>,
     pub providers: Vec<String>,
@@ -266,8 +267,8 @@ pub struct WorkspaceSession {
     pub summary: Option<String>,
     #[serde(default)]
     pub updated_feature_ids: Vec<String>,
-    #[serde(default)]
-    pub updated_spec_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_record_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compiled_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -280,11 +281,23 @@ pub struct WorkspaceSession {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct WorkspaceSessionRecord {
+    pub id: String,
+    pub session_id: String,
+    pub workspace_id: String,
+    pub workspace_branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub updated_feature_ids: Vec<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct EndWorkspaceSessionRequest {
     pub summary: Option<String>,
     pub updated_feature_ids: Vec<String>,
-    pub updated_spec_ids: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -324,8 +337,7 @@ pub struct CreateWorkspaceRequest {
     pub status: Option<WorkspaceStatus>,
     pub environment_id: Option<String>,
     pub feature_id: Option<String>,
-    pub spec_id: Option<String>,
-    pub release_id: Option<String>,
+    pub target_id: Option<String>,
     pub active_mode: Option<String>,
     pub providers: Option<Vec<String>>,
     pub is_worktree: Option<bool>,
@@ -367,13 +379,25 @@ fn hydrate_workspace_session(row: WorkspaceSessionDb) -> WorkspaceSession {
         goal: row.goal,
         summary: row.summary,
         updated_feature_ids: row.updated_feature_ids,
-        updated_spec_ids: row.updated_spec_ids,
+        session_record_id: None,
         compiled_at: parse_datetime_opt(row.compiled_at),
         compile_error: row.compile_error,
         config_generation_at_start: row.config_generation_at_start,
         stale_context: false,
         created_at: parse_datetime(&row.created_at),
         updated_at: parse_datetime(&row.updated_at),
+    }
+}
+
+fn hydrate_workspace_session_record(row: crate::state_db::WorkspaceSessionRecordDb) -> WorkspaceSessionRecord {
+    WorkspaceSessionRecord {
+        id: row.id,
+        session_id: row.session_id,
+        workspace_id: row.workspace_id,
+        workspace_branch: row.workspace_branch,
+        summary: row.summary,
+        updated_feature_ids: row.updated_feature_ids,
+        created_at: parse_datetime(&row.created_at),
     }
 }
 
@@ -389,6 +413,12 @@ fn annotate_session_stale_state(
                 .map(|workspace_generation| *workspace_generation > session_generation)
         })
         .unwrap_or(false);
+}
+
+fn annotate_session_record(ship_dir: &Path, session: &mut WorkspaceSession) -> Result<()> {
+    session.session_record_id = get_workspace_session_record_db(ship_dir, &session.id)?
+        .map(|record| record.id);
+    Ok(())
 }
 
 fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> ShipWorkspaceKind {
@@ -473,7 +503,7 @@ fn persist_session_artifact(
         "goal": session.goal,
         "summary": session.summary,
         "updated_feature_ids": session.updated_feature_ids,
-        "updated_spec_ids": session.updated_spec_ids,
+        "session_record_id": session.session_record_id,
     });
     let mut file = fs::OpenOptions::new()
         .create(true)
@@ -601,10 +631,11 @@ fn resolve_session_providers(
 }
 
 fn resolve_provider_candidates(
+    ship_dir: &Path,
     config: &crate::config::ProjectConfig,
     workspace: &Workspace,
     mode_id: Option<&str>,
-) -> (Vec<String>, &'static str, Option<String>) {
+) -> Result<(Vec<String>, &'static str, Option<String>)> {
     let resolved_mode_id = mode_id.and_then(normalize_mode_ref).or_else(|| {
         workspace
             .active_mode
@@ -618,8 +649,18 @@ fn resolve_provider_candidates(
         .map(|mode| mode.target_agents.clone())
         .unwrap_or_default();
 
+    let feature_targets = workspace
+        .feature_id
+        .as_deref()
+        .map(|feature_id| get_feature_agent_providers(ship_dir, feature_id))
+        .transpose()?
+        .flatten()
+        .unwrap_or_default();
+
     let (candidates, source) = if !workspace.providers.is_empty() {
         (workspace.providers.clone(), "workspace")
+    } else if !feature_targets.is_empty() {
+        (feature_targets, "feature")
     } else if !mode_targets.is_empty() {
         (mode_targets, "mode")
     } else if !config.providers.is_empty() {
@@ -627,7 +668,7 @@ fn resolve_provider_candidates(
     } else {
         (vec!["claude".to_string()], "default")
     };
-    (candidates, source, resolved_mode_id)
+    Ok((candidates, source, resolved_mode_id))
 }
 
 fn build_workspace_provider_matrix(
@@ -637,7 +678,7 @@ fn build_workspace_provider_matrix(
 ) -> Result<WorkspaceProviderMatrix> {
     let config = crate::config::get_effective_config(Some(ship_dir.to_path_buf()))?;
     let (candidates, source, resolved_mode_id) =
-        resolve_provider_candidates(&config, workspace, mode_id);
+        resolve_provider_candidates(ship_dir, &config, workspace, mode_id)?;
     let mut providers = Vec::new();
     for candidate in candidates {
         let Some(normalized) = normalize_provider_ref(&candidate) else {
@@ -849,8 +890,7 @@ fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
         status: WorkspaceStatus::Active,
         environment_id: None,
         feature_id: None,
-        spec_id: None,
-        release_id: None,
+        target_id: None,
         active_mode: None,
         providers: Vec::new(),
         resolved_at: now,
@@ -873,13 +913,12 @@ fn hydrate_from_branch_links(
         match link_type.as_str() {
             "feature" => {
                 workspace.feature_id = Some(link_id.clone());
-                if let Some((spec_id, release_id)) = get_feature_links(ship_dir, &link_id)? {
-                    workspace.spec_id = spec_id;
-                    workspace.release_id = release_id;
+                if let Some(target_id) = get_feature_links(ship_dir, &link_id)? {
+                    workspace.target_id = target_id;
                 }
             }
-            "spec" => {
-                workspace.spec_id = Some(link_id);
+            "target" | "release" => {
+                workspace.target_id = Some(link_id);
             }
             _ => {}
         }
@@ -888,14 +927,12 @@ fn hydrate_from_branch_links(
     // Git branch linkage also lives on feature rows; hydrate from there when
     // no explicit branch_context mapping is present.
     if workspace.feature_id.is_none()
-        && let Some((feature_id, spec_id, release_id)) =
-            get_feature_by_branch_links(ship_dir, branch)?
+        && let Some((feature_id, target_id)) = get_feature_by_branch_links(ship_dir, branch)?
     {
         workspace.feature_id = Some(feature_id);
-        if workspace.spec_id.is_none() {
-            workspace.spec_id = spec_id;
+        if workspace.target_id.is_none() {
+            workspace.target_id = target_id;
         }
-        workspace.release_id = release_id;
     }
 
     Ok(())
@@ -903,13 +940,10 @@ fn hydrate_from_branch_links(
 
 fn hydrate_from_feature_links(ship_dir: &Path, workspace: &mut Workspace) -> Result<()> {
     if let Some(feature_id) = workspace.feature_id.clone()
-        && let Some((spec_id, release_id)) = get_feature_links(ship_dir, &feature_id)?
+        && let Some(target_id) = get_feature_links(ship_dir, &feature_id)?
     {
-        if workspace.spec_id.is_none() {
-            workspace.spec_id = spec_id;
-        }
-        if workspace.release_id.is_none() {
-            workspace.release_id = release_id;
+        if workspace.target_id.is_none() {
+            workspace.target_id = target_id;
         }
     }
     Ok(())
@@ -970,8 +1004,7 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
             status,
             environment_id,
             feature_id,
-            spec_id,
-            release_id,
+            target_id,
             active_mode,
             providers,
             resolved_at,
@@ -991,8 +1024,7 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
                 status: normalize_workspace_status(&status),
                 environment_id,
                 feature_id,
-                spec_id,
-                release_id,
+                target_id,
                 active_mode,
                 providers,
                 resolved_at,
@@ -1018,8 +1050,7 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         status,
         environment_id,
         feature_id,
-        spec_id,
-        release_id,
+        target_id,
         active_mode,
         providers,
         resolved_at,
@@ -1039,8 +1070,7 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
             status: normalize_workspace_status(&status),
             environment_id,
             feature_id,
-            spec_id,
-            release_id,
+            target_id,
             active_mode,
             providers,
             resolved_at: parse_datetime(&resolved_at),
@@ -1088,8 +1118,7 @@ pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
             status: &status,
             environment_id: workspace.environment_id.as_deref(),
             feature_id: workspace.feature_id.as_deref(),
-            spec_id: workspace.spec_id.as_deref(),
-            release_id: workspace.release_id.as_deref(),
+            target_id: workspace.target_id.as_deref(),
             active_mode: workspace.active_mode.as_deref(),
             providers: &workspace.providers,
             resolved_at: &resolved_at,
@@ -1119,6 +1148,7 @@ pub fn get_active_workspace_session(
         get_active_workspace_session_db(ship_dir, &workspace.id)?.map(|row| {
             let mut session = hydrate_workspace_session(row);
             annotate_session_stale_state(&mut session, &generation_by_branch);
+            let _ = annotate_session_record(ship_dir, &mut session);
             session
         }),
     )
@@ -1152,8 +1182,20 @@ pub fn list_workspace_sessions(
         rows.into_iter().map(hydrate_workspace_session).collect();
     for session in &mut sessions {
         annotate_session_stale_state(session, &workspace_generation_by_branch);
+        annotate_session_record(ship_dir, session)?;
     }
     Ok(sessions)
+}
+
+pub fn get_workspace_session_record(
+    ship_dir: &Path,
+    session_id: &str,
+) -> Result<Option<WorkspaceSessionRecord>> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() {
+        return Err(anyhow!("Session ID cannot be empty"));
+    }
+    Ok(get_workspace_session_record_db(ship_dir, session_id)?.map(hydrate_workspace_session_record))
 }
 
 pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &str) -> Result<()> {
@@ -1202,7 +1244,8 @@ pub fn start_workspace_session(
     }
 
     if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
-        let existing = hydrate_workspace_session(active);
+        let mut existing = hydrate_workspace_session(active);
+        let _ = annotate_session_record(ship_dir, &mut existing);
         if let Err(error) = persist_session_artifact(ship_dir, &existing, "attach") {
             eprintln!("Failed to persist attached session artifact: {}", error);
         }
@@ -1249,7 +1292,6 @@ pub fn start_workspace_session(
         goal: normalize_optional_text(goal),
         summary: None,
         updated_feature_ids: Vec::new(),
-        updated_spec_ids: Vec::new(),
         compiled_at: workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339()),
         compile_error: workspace.compile_error.clone(),
         config_generation_at_start: Some(workspace.config_generation),
@@ -1304,7 +1346,6 @@ pub fn end_workspace_session(
     active.ended_at = Some(now.clone());
     active.summary = normalize_optional_text(request.summary);
     active.updated_feature_ids = request.updated_feature_ids;
-    active.updated_spec_ids = request.updated_spec_ids;
     active.updated_at = now;
 
     update_workspace_session_db(ship_dir, &active)?;
@@ -1323,12 +1364,6 @@ pub fn end_workspace_session(
             ended.updated_feature_ids.join(",")
         ));
     }
-    if !ended.updated_spec_ids.is_empty() {
-        details.push(format!(
-            "updated_specs={}",
-            ended.updated_spec_ids.join(",")
-        ));
-    }
     append_event(
         ship_dir,
         "ship",
@@ -1337,6 +1372,20 @@ pub fn end_workspace_session(
         ended.id.clone(),
         Some(details.join(" ")),
     )?;
+
+    let record = crate::state_db::WorkspaceSessionRecordDb {
+        id: crate::gen_nanoid(),
+        session_id: ended.id.clone(),
+        workspace_id: ended.workspace_id.clone(),
+        workspace_branch: ended.workspace_branch.clone(),
+        summary: ended.summary.clone(),
+        updated_feature_ids: ended.updated_feature_ids.clone(),
+        created_at: Utc::now().to_rfc3339(),
+    };
+    insert_workspace_session_record_db(ship_dir, &record)?;
+
+    let mut ended = ended;
+    ended.session_record_id = Some(record.id);
 
     if let Err(error) = persist_session_artifact(ship_dir, &ended, "end") {
         eprintln!("Failed to persist session artifact on end: {}", error);
@@ -1366,11 +1415,8 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     if let Some(environment_id) = request.environment_id {
         workspace.environment_id = normalize_optional_text(Some(environment_id));
     }
-    if let Some(spec_id) = request.spec_id {
-        workspace.spec_id = Some(spec_id);
-    }
-    if let Some(release_id) = request.release_id {
-        workspace.release_id = Some(release_id);
+    if let Some(target_id) = request.target_id {
+        workspace.target_id = Some(target_id);
     }
     if let Some(active_mode) = request.active_mode {
         workspace.active_mode = Some(validate_mode_exists(ship_dir, &active_mode)?);
@@ -1566,8 +1612,17 @@ mod tests {
         ship_dir: &Path,
         feature_id: &str,
         branch: &str,
-        spec_id: Option<&str>,
-        release_id: Option<&str>,
+        target_id: Option<&str>,
+    ) -> Result<()> {
+        insert_feature_for_branch_with_agent(ship_dir, feature_id, branch, target_id, "{}")
+    }
+
+    fn insert_feature_for_branch_with_agent(
+        ship_dir: &Path,
+        feature_id: &str,
+        branch: &str,
+        target_id: Option<&str>,
+        agent_json: &str,
     ) -> Result<()> {
         crate::state_db::ensure_project_database(ship_dir)?;
         let mut conn = crate::state_db::open_project_connection(ship_dir)?;
@@ -1577,14 +1632,14 @@ mod tests {
             .build()?;
         rt.block_on(async {
             sqlx::query(
-                "INSERT INTO feature (id, title, description, status, release_id, spec_id, branch, agent_json, tags_json, created_at, updated_at)
-                 VALUES (?, ?, '', 'planned', ?, ?, ?, '{}', '[]', ?, ?)",
+                "INSERT INTO feature (id, title, description, status, active_target_id, branch, agent_json, tags_json, created_at, updated_at)
+                 VALUES (?, ?, '', 'planned', ?, ?, ?, '[]', ?, ?)",
             )
             .bind(feature_id)
             .bind(format!("Feature {}", feature_id))
-            .bind(release_id)
-            .bind(spec_id)
+            .bind(target_id)
             .bind(branch)
+            .bind(agent_json)
             .bind(&now)
             .bind(&now)
             .execute(&mut conn)
@@ -1743,19 +1798,12 @@ mod tests {
     }
 
     #[test]
-    fn create_workspace_mixed_branch_links_preserve_spec_context_and_hydrate_feature_release()
-    -> Result<()> {
+    fn create_workspace_mixed_branch_links_preserve_target_context() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        insert_feature_for_branch(
-            &ship_dir,
-            "feat-mixed",
-            "feature/mixed",
-            Some("spec-from-feature"),
-            Some("release-from-feature"),
-        )?;
-        crate::state_db::set_branch_link(&ship_dir, "feature/mixed", "spec", "spec-direct")?;
+        insert_feature_for_branch(&ship_dir, "feat-mixed", "feature/mixed", Some("target-a"))?;
+        crate::state_db::set_branch_link(&ship_dir, "feature/mixed", "target", "target-direct")?;
 
         let workspace = create_workspace(
             &ship_dir,
@@ -1766,11 +1814,7 @@ mod tests {
         )?;
 
         assert_eq!(workspace.feature_id.as_deref(), Some("feat-mixed"));
-        assert_eq!(workspace.spec_id.as_deref(), Some("spec-direct"));
-        assert_eq!(
-            workspace.release_id.as_deref(),
-            Some("release-from-feature")
-        );
+        assert_eq!(workspace.target_id.as_deref(), Some("target-direct"));
         let stored_link = get_branch_link(&ship_dir, "feature/mixed")?;
         assert_eq!(
             stored_link,
@@ -1780,22 +1824,22 @@ mod tests {
     }
 
     #[test]
-    fn workspace_never_persists_spec_as_branch_owner() -> Result<()> {
+    fn workspace_never_persists_target_as_branch_owner() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         let workspace = create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
-                branch: "service/spec-context".to_string(),
+                branch: "service/target-context".to_string(),
                 workspace_type: Some(ShipWorkspaceKind::Feature),
-                spec_id: Some("spec-only".to_string()),
+                target_id: Some("target-only".to_string()),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
 
-        assert_eq!(workspace.spec_id.as_deref(), Some("spec-only"));
-        assert!(get_branch_link(&ship_dir, "service/spec-context")?.is_none());
+        assert_eq!(workspace.target_id.as_deref(), Some("target-only"));
+        assert!(get_branch_link(&ship_dir, "service/target-context")?.is_none());
         Ok(())
     }
 
@@ -1846,7 +1890,7 @@ mod tests {
         let workspace = activate_workspace(&ship_dir, "main")?;
         assert_eq!(workspace.status, WorkspaceStatus::Active);
         assert!(workspace.feature_id.is_none());
-        assert!(workspace.spec_id.is_none());
+        assert!(workspace.target_id.is_none());
         assert!(get_branch_link(&ship_dir, "main")?.is_none());
         Ok(())
     }
@@ -1881,7 +1925,6 @@ mod tests {
                 goal: None,
                 summary: Some("done".to_string()),
                 updated_feature_ids: Vec::new(),
-                updated_spec_ids: Vec::new(),
                 compiled_at: None,
                 compile_error: None,
                 config_generation_at_start: None,
@@ -2000,14 +2043,13 @@ mod tests {
             EndWorkspaceSessionRequest {
                 summary: Some("Implemented parser + tests".to_string()),
                 updated_feature_ids: vec!["feat-parser".to_string()],
-                updated_spec_ids: vec!["spec-parser".to_string()],
             },
         )?;
         assert_eq!(ended.status, WorkspaceSessionStatus::Ended);
         assert!(ended.ended_at.is_some());
         assert_eq!(ended.summary.as_deref(), Some("Implemented parser + tests"));
         assert_eq!(ended.updated_feature_ids, vec!["feat-parser".to_string()]);
-        assert_eq!(ended.updated_spec_ids, vec!["spec-parser".to_string()]);
+        assert!(ended.session_record_id.is_some());
         assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
 
         let events = crate::events::read_events(&ship_dir)?;
@@ -2244,6 +2286,46 @@ mod tests {
         let matrix = get_workspace_provider_matrix(&ship_dir, "feature/provider-matrix", None)?;
         assert_eq!(matrix.source, "workspace");
         assert_eq!(matrix.allowed_providers, vec!["codex".to_string()]);
+        assert!(matrix.resolution_error.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn provider_matrix_prefers_feature_agent_providers_over_mode_and_config() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        let mut config = crate::config::ProjectConfig::default();
+        config.providers = vec!["claude".to_string()];
+        config.modes = vec![crate::config::ModeConfig {
+            id: "planning".to_string(),
+            name: "Planning".to_string(),
+            target_agents: vec!["codex".to_string()],
+            ..Default::default()
+        }];
+        crate::config::save_config(&config, Some(ship_dir.clone()))?;
+
+        insert_feature_for_branch_with_agent(
+            &ship_dir,
+            "feat-provider-feature",
+            "feature/provider-feature",
+            None,
+            r#"{"providers":["gemini"]}"#,
+        )?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/provider-feature".to_string(),
+                feature_id: Some("feat-provider-feature".to_string()),
+                active_mode: Some("planning".to_string()),
+                ..Default::default()
+            },
+        )?;
+
+        let matrix = get_workspace_provider_matrix(&ship_dir, "feature/provider-feature", None)?;
+        assert_eq!(matrix.source, "feature");
+        assert_eq!(matrix.allowed_providers, vec!["gemini".to_string()]);
         assert!(matrix.resolution_error.is_none());
         Ok(())
     }

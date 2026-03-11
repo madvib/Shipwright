@@ -74,7 +74,7 @@ When exporting to provider configs:
 - User-defined provider MCP entries are preserved.
 - Previously Ship-managed entries are replaced with current resolved set.
 - Disabled servers are not exported.
-- Active mode MCP filters are applied before export.
+- Export does not apply global mode filtering; provider output is derived from current workspace config + selected server filter (if provided).
 
 ## Provider-Specific Targets
 
