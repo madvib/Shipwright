@@ -44,7 +44,7 @@ use ship_module_project::ops::note::{
 use ship_module_project::ops::release::{
     create_release, get_release_by_id, list_releases, update_release_content,
 };
-use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
+
 use ship_module_project::{NoteScope, get_project_name, list_registered_projects};
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
@@ -146,12 +146,7 @@ impl ShipServer {
     fn is_project_workspace_tool(tool_name: &str) -> bool {
         // Tools auto-unlocked when the active workspace is type=service.
         // These cover PM mutation flows (read surfaces should prefer resources).
-        const PROJECT_TOOLS: &[&str] = &[
-            "create_spec",
-            "update_spec",
-            "create_release",
-            "update_release",
-        ];
+        const PROJECT_TOOLS: &[&str] = &["create_release", "update_release"];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         PROJECT_TOOLS.contains(&normalized.as_str())
     }
@@ -264,7 +259,6 @@ impl ShipServer {
 
         let releases = list_releases(&project_dir).unwrap_or_default();
         let features = list_features(&project_dir).unwrap_or_default();
-        let specs = list_specs(&project_dir).unwrap_or_default();
         let adrs = list_adrs(&project_dir).unwrap_or_default();
 
         let mut out = format!("# Project: {}\n\n", name);
@@ -348,15 +342,7 @@ impl ShipServer {
             }
         }
 
-        // Specs
-        out.push_str("\n## Specs\n");
-        if specs.is_empty() {
-            out.push_str("No specs.\n");
-        } else {
-            for s in &specs {
-                out.push_str(&format!("- {} ({})\n", s.spec.metadata.title, s.file_name));
-            }
-        }
+
 
         // ADRs
         out.push_str("\n## ADRs\n");
@@ -481,43 +467,7 @@ impl ShipServer {
         }
     }
 
-    // ─── Spec Tools ───────────────────────────────────────────────────────────
 
-    /// Create a new spec
-    #[tool(description = "Create a new spec document in the active project")]
-    async fn create_spec(&self, Parameters(req): Parameters<CreateSpecRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let content = req.content.as_deref().unwrap_or("");
-        match create_spec(&project_dir, &req.title, content, req.workspace.as_deref()) {
-            Ok(file) => format!("Created spec: {}", file.file_name),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Update a spec's content
-    #[tool(description = "Update the content of an existing spec")]
-    async fn update_spec(&self, Parameters(req): Parameters<UpdateSpecRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let specs = list_specs(&project_dir).unwrap_or_default();
-        let entry = specs.iter().find(|e| e.file_name == req.file_name);
-        match entry {
-            Some(entry) => {
-                let mut spec = entry.spec.clone();
-                spec.body = req.content;
-                match update_spec(&project_dir, &entry.id, spec) {
-                    Ok(_) => format!("Updated spec: {}", req.file_name),
-                    Err(e) => format!("Error: {}", e),
-                }
-            }
-            None => format!("Error: Spec not found with filename {}", req.file_name),
-        }
-    }
 
     // ─── Release Tools ────────────────────────────────────────────────────────
 
@@ -575,7 +525,6 @@ impl ShipServer {
             &req.title,
             content,
             req.release_id.as_deref(),
-            req.spec_id.as_deref(),
             req.branch.as_deref(),
         ) {
             Ok(feature) => format!(
@@ -895,24 +844,7 @@ impl ShipServer {
                 .ok()
                 .and_then(|e| e.release.to_markdown().ok());
         }
-        // ship://specs
-        if uri == "ship://specs" {
-            let entries = list_specs(dir).ok()?;
-            if entries.is_empty() {
-                return Some("No specs found.".to_string());
-            }
-            let mut out = String::from("Specs:\n");
-            for s in &entries {
-                out.push_str(&format!("- {} ({})\n", s.spec.metadata.title, s.file_name));
-            }
-            return Some(out);
-        }
-        // ship://specs/{file}
-        if let Some(file) = uri.strip_prefix("ship://specs/") {
-            return get_spec_by_id(dir, file)
-                .ok()
-                .and_then(|entry| entry.spec.to_markdown().ok());
-        }
+
         // ship://adrs
         if uri == "ship://adrs" {
             let entries = list_adrs(dir).ok()?;

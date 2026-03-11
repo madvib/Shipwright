@@ -1,6 +1,6 @@
 use super::{OpsError, OpsResult, append_project_log};
 use crate::{
-    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureStatus,
+    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureModel, FeatureStatus,
     record_feature_session_update,
 };
 use std::path::Path;
@@ -10,7 +10,6 @@ pub fn create_feature(
     title: &str,
     body: &str,
     release_id: Option<&str>,
-    spec_id: Option<&str>,
     branch: Option<&str>,
 ) -> OpsResult<FeatureEntry> {
     if title.trim().is_empty() {
@@ -19,7 +18,7 @@ pub fn create_feature(
         ));
     }
 
-    let entry = crate::feature::create_feature(ship_dir, title, body, release_id, spec_id, branch)
+    let entry = crate::feature::create_feature(ship_dir, title, body, release_id, branch)
         .map_err(OpsError::from)?;
     append_project_log(
         ship_dir,
@@ -38,6 +37,10 @@ pub fn list_features(ship_dir: &Path) -> OpsResult<Vec<FeatureEntry>> {
 
 pub fn get_feature_by_id(ship_dir: &Path, id: &str) -> OpsResult<FeatureEntry> {
     crate::feature::get_feature_by_id(ship_dir, id).map_err(OpsError::from)
+}
+
+pub fn get_feature_model(ship_dir: &Path, id: &str) -> OpsResult<FeatureModel> {
+    crate::feature::get_feature_model(ship_dir, id).map_err(OpsError::from)
 }
 
 pub fn ensure_feature_documentation(ship_dir: &Path, id: &str) -> OpsResult<FeatureDocumentation> {
@@ -194,7 +197,6 @@ mod tests {
             "ops-start",
             "",
             None,
-            None,
             Some("feature/ops"),
         )?;
 
@@ -213,7 +215,7 @@ mod tests {
     fn feature_done_requires_branch() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let created = create_feature(&project_dir, "ops-done", "", None, None, None)?;
+        let created = create_feature(&project_dir, "ops-done", "", None, None)?;
         crate::feature_start(&project_dir, &created.id)?;
 
         let err = feature_done(&project_dir, &created.id).expect_err("expected validation failure");
@@ -229,7 +231,6 @@ mod tests {
             &project_dir,
             "ops-done-happy",
             "",
-            None,
             None,
             Some("feature/ops-done-happy"),
         )?;
@@ -257,7 +258,6 @@ mod tests {
             "docs-scaffold",
             "",
             None,
-            None,
             Some("feature/docs-scaffold"),
         )?;
 
@@ -276,7 +276,6 @@ mod tests {
             &project_dir,
             "session-doc-sync",
             "",
-            None,
             None,
             Some("feature/session-doc-sync"),
         )?;
@@ -304,7 +303,6 @@ mod tests {
             &project_dir,
             "done-doc-gate",
             "",
-            None,
             None,
             Some("feature/done-doc-gate"),
         )?;

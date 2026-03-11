@@ -98,8 +98,6 @@ pub struct FeatureMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_target_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<FeatureAgentConfig>,
@@ -129,6 +127,54 @@ pub struct Feature {
     pub todos: Vec<FeatureTodo>,
     #[serde(default)]
     pub criteria: Vec<FeatureCriterion>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureDeclarationCriterion {
+    pub text: String,
+    pub has_pass_fail_condition: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureDeclaration {
+    pub narrative: String,
+    #[serde(default)]
+    pub acceptance_criteria: Vec<FeatureDeclarationCriterion>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureStatusCheck {
+    pub text: String,
+    pub passing: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureObservedStatus {
+    pub narrative: String,
+    #[serde(default)]
+    pub checks: Vec<FeatureStatusCheck>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureDelta {
+    pub declaration_missing: bool,
+    pub status_missing: bool,
+    #[serde(default)]
+    pub unmet_acceptance_criteria: Vec<String>,
+    #[serde(default)]
+    pub failing_checks: Vec<String>,
+    #[serde(default)]
+    pub missing_pass_fail_criteria: Vec<String>,
+    pub drift_score: u32,
+    #[serde(default)]
+    pub actionable_items: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct FeatureModel {
+    pub declaration: FeatureDeclaration,
+    pub status: FeatureObservedStatus,
+    pub delta: FeatureDelta,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]

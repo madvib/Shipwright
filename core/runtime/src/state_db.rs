@@ -1277,10 +1277,7 @@ pub fn clear_branch_doc(ship_dir: &Path, branch: &str) -> Result<()> {
 
 /// Look up feature-linked target id used by workspace hydration.
 /// Returns `target_id` when the feature exists.
-pub fn get_feature_links(
-    ship_dir: &Path,
-    feature_id: &str,
-) -> Result<Option<Option<String>>> {
+pub fn get_feature_links(ship_dir: &Path, feature_id: &str) -> Result<Option<Option<String>>> {
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query("SELECT active_target_id, release_id FROM feature WHERE id = ?")
@@ -3172,7 +3169,7 @@ mod tests {
             &ship_dir,
             &CapabilityMapDb {
                 id: "cap-map-main".to_string(),
-                vision_ref: Some("project/vision.md".to_string()),
+                vision_ref: Some("vision.md".to_string()),
                 created_at: now.clone(),
                 updated_at: now.clone(),
             },

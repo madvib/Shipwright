@@ -1,4 +1,4 @@
-use crate::{create_adr, create_spec};
+use crate::{create_adr, create_feature};
 use anyhow::Result;
 use runtime::log_action;
 use std::path::PathBuf;
@@ -6,26 +6,15 @@ use std::path::PathBuf;
 pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
     let project_dir = crate::project::init_project(base_dir)?;
 
-    // Sample specs
-    let spec_title = "Agent Configuration and Modes";
-    let spec_slug = runtime::project::sanitize_file_name(spec_title);
-    let spec_file = runtime::project::specs_dir(&project_dir).join(format!("{}.md", spec_slug));
-    if !spec_file.exists() {
-        runtime::create_workspace(
-            &project_dir,
-            runtime::CreateWorkspaceRequest {
-                branch: "feature/agent-configuration-and-modes".to_string(),
-                status: Some(runtime::WorkspaceStatus::Active),
-                ..Default::default()
-            },
-        )?;
-        create_spec(
-            &project_dir,
-            spec_title,
-            "## Overview\n\nDefine a unified agent config layer for provider/model, instruction skills, context, rules, skills, MCP servers, and modes.\n\n## Goals\n\n- One global and project-scoped config model\n- Pass-through generation via claude/codex/gemini CLIs\n- Clear mode semantics tied to workflow policy\n\n## Non-Goals\n\n- Full workflow customization engine in alpha\n\n## Approach\n\nBuild release/feature/spec primitives and wire them through CLI, MCP, and UI.\n\n## Open Questions\n\n- How to best express mode overrides per checked-out feature?\n",
-            Some("feature/agent-configuration-and-modes"),
-        )?;
-    }
+    // Sample feature
+    let feature_title = "Pre-defined Agent Modes";
+    create_feature(
+        &project_dir,
+        feature_title,
+        "## Overview\n\nDefine a unified agent config layer for provider/model, instruction skills, context, rules, skills, MCP servers, and modes.\n\n## Goals\n\n- One global and project-scoped config model\n- Pass-through generation via claude/codex/gemini CLIs\n- Clear mode semantics tied to workflow policy\n",
+        None,
+        None,
+    )?;
 
     // Seed ADRs
     let adrs = vec![

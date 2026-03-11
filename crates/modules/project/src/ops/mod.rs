@@ -5,7 +5,6 @@ pub mod adr;
 pub mod feature;
 pub mod note;
 pub mod release;
-pub mod spec;
 
 pub trait ShipModule: Send + Sync + 'static {
     fn module_type_id() -> &'static str
@@ -34,12 +33,6 @@ impl ShipModule for crate::Note {
 impl ShipModule for crate::Release {
     fn module_type_id() -> &'static str {
         "release"
-    }
-}
-
-impl ShipModule for crate::Spec {
-    fn module_type_id() -> &'static str {
-        "spec"
     }
 }
 

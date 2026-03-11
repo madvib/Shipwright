@@ -1184,7 +1184,7 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         ("releases", "project/releases"),
         ("adrs", "project/adrs"),
         ("notes", "project/notes"),
-        ("vision", "project/vision.md"),
+        ("vision", "vision.md"),
         ("mcp", "agents/mcp.toml"),
         ("permissions", "agents/permissions.toml"),
         ("rules", "agents/rules"),

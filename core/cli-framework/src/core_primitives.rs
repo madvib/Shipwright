@@ -113,6 +113,7 @@ pub enum ProviderAction {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProviderImportSummary {
     pub mcp_servers_added: usize,
+    pub skills_added: usize,
     pub permissions_imported: bool,
 }
 
@@ -489,9 +490,10 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
             }
             let summary = import_provider_surface(project_dir, &id)?;
             println!(
-                "Imported from {}: mcp_servers={}, permissions={}",
+                "Imported from {}: mcp_servers={}, skills={}, permissions={}",
                 id,
                 summary.mcp_servers_added,
+                summary.skills_added,
                 if summary.permissions_imported {
                     "yes"
                 } else {
@@ -555,9 +557,10 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
                 for provider in targets {
                     let summary = import_provider_surface(project_dir, &provider)?;
                     println!(
-                        "Imported from {}: mcp_servers={}, permissions={}",
+                        "Imported from {}: mcp_servers={}, skills={}, permissions={}",
                         provider,
                         summary.mcp_servers_added,
+                        summary.skills_added,
                         if summary.permissions_imported {
                             "yes"
                         } else {
@@ -574,12 +577,15 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
 fn import_provider_surface(project_dir: &Path, provider_id: &str) -> Result<ProviderImportSummary> {
     let mcp_servers_added =
         runtime::agents::export::import_from_provider(provider_id, project_dir.to_path_buf())?;
+    let skills_added =
+        runtime::agents::export::import_skills_from_provider(provider_id, project_dir.to_path_buf())?;
     let permissions_imported = runtime::agents::export::import_permissions_from_provider(
         provider_id,
         project_dir.to_path_buf(),
     )?;
     Ok(ProviderImportSummary {
         mcp_servers_added,
+        skills_added,
         permissions_imported,
     })
 }

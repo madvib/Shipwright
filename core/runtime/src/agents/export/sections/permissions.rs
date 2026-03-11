@@ -238,7 +238,7 @@ fn dedupe_patterns(values: &mut Vec<String>) {
 }
 
 fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> Result<()> {
-    let runtime_dir = project_root.join(".ship").join("agents").join("runtime");
+    let runtime_dir = project_root.join(".ship").join("generated").join("runtime");
     fs::create_dir_all(&runtime_dir)?;
 
     let generated_at = chrono::Utc::now().to_rfc3339();
@@ -363,6 +363,13 @@ fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> R
         payload.permissions.agent.require_confirmation.join(", "),
     );
     crate::fs_util::write_atomic(&runtime_dir.join("hook-context.md"), context)?;
+
+    // Best-effort cleanup of legacy runtime path from older builds.
+    let legacy_runtime_dir = project_root.join(".ship").join("agents").join("runtime");
+    for name in ["envelope.json", "hook-context.md"] {
+        let _ = fs::remove_file(legacy_runtime_dir.join(name));
+    }
+    let _ = fs::remove_dir(&legacy_runtime_dir);
     Ok(())
 }
 

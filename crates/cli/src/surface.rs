@@ -35,11 +35,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: SkillCommands,
     },
-    /// Manage specs
-    Spec {
-        #[command(subcommand)]
-        action: SpecCommands,
-    },
+
     /// Manage releases
     Release {
         #[command(subcommand)]
@@ -145,12 +141,12 @@ pub enum GitCommands {
     Status,
     /// Include a category in git commits
     Include {
-        /// One of: releases, features, specs, adrs, notes, vision, agents, ship.toml, templates
+        /// One of: releases, features, adrs, notes, vision, agents, ship.toml, templates
         category: String,
     },
     /// Exclude a category from git commits (adds to .ship/.gitignore)
     Exclude {
-        /// One of: releases, features, specs, adrs, notes, vision, agents, ship.toml, templates
+        /// One of: releases, features, adrs, notes, vision, agents, ship.toml, templates
         category: String,
     },
     /// Install git hooks for feature-aware checkout
@@ -470,30 +466,7 @@ pub enum SkillCommands {
     },
 }
 
-#[derive(Subcommand, Debug)]
-pub enum SpecCommands {
-    /// Create a new spec
-    Create {
-        title: String,
-        /// Optional initial content (defaults to scaffold)
-        #[arg(short, long)]
-        content: Option<String>,
-        /// Workspace branch/id. Defaults to the active workspace.
-        #[arg(long)]
-        workspace: Option<String>,
-    },
-    /// List spec documents
-    List,
-    /// Print a spec document's markdown content
-    Get { file_name: String },
-    /// Update a spec's content (reads from stdin if --content omitted)
-    Update {
-        file_name: String,
-        /// New content. If omitted, reads from stdin.
-        #[arg(short, long)]
-        content: Option<String>,
-    },
-}
+
 
 #[derive(Subcommand, Debug)]
 pub enum ReleaseCommands {
@@ -532,9 +505,7 @@ pub enum FeatureCommands {
         /// Link this feature to a release ID
         #[arg(long)]
         release_id: Option<String>,
-        /// Link this feature to a spec ID
-        #[arg(long)]
-        spec_id: Option<String>,
+
         /// Link this feature to a git branch name
         #[arg(long)]
         branch: Option<String>,

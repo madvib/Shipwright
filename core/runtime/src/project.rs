@@ -23,7 +23,7 @@ unsafe extern "C" {
 // All document paths are derived from these. Never construct paths with raw
 // string joins outside of these helpers.
 
-/// `.ship/project/` — vision, specs, features, releases, notes, ADRs
+/// `.ship/project/` — specs, features, releases, notes, ADRs
 pub fn project_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("project")
 }
@@ -81,6 +81,16 @@ pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
 
 pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
     agents_ns(ship_dir).join("permissions.toml")
+}
+
+/// `.ship/vision.md` — project north-star document
+pub fn vision_doc_path(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("vision.md")
+}
+
+/// `.ship/TEMPLATE.md` — vision template
+pub fn vision_template_path(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("TEMPLATE.md")
 }
 
 /// Derive a stable, filesystem-safe project slug from a .ship path.
@@ -1153,11 +1163,11 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         "+++\ntitle = \"\"\n+++\n\n",
     )?;
     write_if_missing(
-        &ship_path.join("project/TEMPLATE.md"),
+        &vision_template_path(&ship_path),
         "# Vision\n\nDescribe what this project is trying to achieve.\n",
     )?;
     write_if_missing(
-        &ship_path.join("project/vision.md"),
+        &vision_doc_path(&ship_path),
         "# Vision\n\nDescribe what this project is trying to achieve.\n",
     )?;
     write_if_missing(&ship_path.join("README.md"), "# Ship Project\n")?;

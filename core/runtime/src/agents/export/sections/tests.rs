@@ -126,6 +126,26 @@ mod tests {
         (tmp, project_dir)
     }
 
+    fn assert_exported_skill_frontmatter(path: &std::path::Path, expected_name: &str) {
+        let content = std::fs::read_to_string(path)
+            .unwrap_or_else(|_| panic!("expected readable SKILL.md at {}", path.display()));
+        assert!(
+            content.starts_with("---\n"),
+            "SKILL.md must start with YAML frontmatter at {}",
+            path.display()
+        );
+        assert!(
+            content.contains(&format!("\nname: {expected_name}\n")),
+            "SKILL.md frontmatter must include matching name at {}",
+            path.display()
+        );
+        assert!(
+            content.contains("\ndescription: "),
+            "SKILL.md frontmatter must include description at {}",
+            path.display()
+        );
+    }
+
     #[test]
     fn build_payload_uses_project_servers_hooks_and_permissions() {
         let (_tmp, project_dir) = project_with_servers(vec![
@@ -305,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn build_payload_workspace_mode_override_is_ignored() {
+    fn build_payload_workspace_mode_override_applies() {
         let (_tmp, project_dir) = project_with_servers(vec![
             make_stdio_server("planning-server"),
             make_stdio_server("code-server"),
@@ -333,6 +353,14 @@ mod tests {
                     allow: vec!["WebFetch(*)".to_string()],
                     deny: vec!["Bash(*)".to_string()],
                 },
+                hooks: vec![HookConfig {
+                    id: "planning-hook".to_string(),
+                    trigger: HookTrigger::Stop,
+                    matcher: None,
+                    timeout_ms: None,
+                    description: None,
+                    command: "echo planning".to_string(),
+                }],
                 ..Default::default()
             },
             ModeConfig {
@@ -343,25 +371,44 @@ mod tests {
                     allow: vec!["Bash(*)".to_string()],
                     deny: vec!["WebFetch(*)".to_string()],
                 },
+                hooks: vec![HookConfig {
+                    id: "code-hook".to_string(),
+                    trigger: HookTrigger::PostToolUse,
+                    matcher: Some("Bash".to_string()),
+                    timeout_ms: None,
+                    description: None,
+                    command: "echo code".to_string(),
+                }],
                 ..Default::default()
             },
         ];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload_with_mode_override(&project_dir, Some("code")).unwrap();
-        assert_eq!(payload.active_mode_id, None);
+        assert_eq!(payload.active_mode_id.as_deref(), Some("code"));
         let mut server_ids: Vec<_> = payload
             .servers
             .iter()
             .map(|server| server.id.as_str().to_string())
             .collect();
         server_ids.sort();
+        assert_eq!(server_ids, vec!["code-server".to_string()]);
         assert_eq!(
-            server_ids,
-            vec!["code-server".to_string(), "planning-server".to_string()]
+            payload.permissions.tools.allow,
+            vec!["Read(*)".to_string(), "Bash(*)".to_string()]
         );
-        assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
-        assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
+        assert_eq!(
+            payload.permissions.tools.deny,
+            vec!["Edit(*)".to_string(), "WebFetch(*)".to_string()]
+        );
+        assert!(
+            payload.hooks.iter().any(|hook| hook.id == "code-hook"),
+            "mode hooks should be appended when workspace mode override is set"
+        );
+        assert!(
+            !payload.hooks.iter().any(|hook| hook.id == "planning-hook"),
+            "non-selected mode hooks must not be exported"
+        );
     }
 
     #[test]
@@ -422,6 +469,28 @@ mod tests {
         let synced = sync_active_mode_with_override(&project_dir, Some("code")).unwrap();
         assert_eq!(synced, vec!["claude".to_string()]);
         assert!(tmp.path().join(".mcp.json").exists());
+    }
+
+    #[test]
+    fn sync_active_mode_with_override_prefers_mode_targets() {
+        let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
+        let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
+        config.providers = vec!["claude".to_string()];
+        config.modes = vec![ModeConfig {
+            id: "code".to_string(),
+            name: "Code".to_string(),
+            target_agents: vec!["codex".to_string()],
+            ..Default::default()
+        }];
+        save_config(&config, Some(project_dir.clone())).unwrap();
+
+        let synced = sync_active_mode_with_override(&project_dir, Some("code")).unwrap();
+        assert_eq!(synced, vec!["codex".to_string()]);
+        assert!(tmp.path().join(".codex").join("config.toml").exists());
+        assert!(
+            !tmp.path().join(".mcp.json").exists(),
+            "mode target override should avoid syncing project default providers"
+        );
     }
 
     // ── Registry ───────────────────────────────────────────────────────────────
@@ -695,6 +764,27 @@ mod tests {
         assert_eq!(pre_tool["matcher"].as_str(), Some("Bash"));
     }
 
+    #[test]
+    fn claude_export_skills_use_yaml_frontmatter_format() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(
+            &project_dir,
+            "rt-claude-frontmatter-skill",
+            "Claude Frontmatter Skill",
+            "Skill body",
+        )
+        .unwrap();
+
+        export_to(project_dir, "claude").unwrap();
+        let skill_path = tmp
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("rt-claude-frontmatter-skill")
+            .join("SKILL.md");
+        assert_exported_skill_frontmatter(&skill_path, "rt-claude-frontmatter-skill");
+    }
+
     // ── Gemini ─────────────────────────────────────────────────────────────────
 
     #[test]
@@ -751,6 +841,27 @@ mod tests {
         )
         .unwrap();
         assert!(val["mcpServers"]["ship"].is_object());
+    }
+
+    #[test]
+    fn gemini_export_skills_use_yaml_frontmatter_format() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(
+            &project_dir,
+            "rt-gemini-frontmatter-skill",
+            "Gemini Frontmatter Skill",
+            "Skill body",
+        )
+        .unwrap();
+
+        export_to(project_dir, "gemini").unwrap();
+        let skill_path = tmp
+            .path()
+            .join(".gemini")
+            .join("skills")
+            .join("rt-gemini-frontmatter-skill")
+            .join("SKILL.md");
+        assert_exported_skill_frontmatter(&skill_path, "rt-gemini-frontmatter-skill");
     }
 
     #[test]
@@ -867,7 +978,7 @@ mod tests {
 
         export_to(project_dir, "gemini").unwrap();
 
-        let runtime_dir = tmp.path().join(".ship").join("agents").join("runtime");
+        let runtime_dir = tmp.path().join(".ship").join("generated").join("runtime");
         let envelope_path = runtime_dir.join("envelope.json");
         let context_path = runtime_dir.join("hook-context.md");
         assert!(envelope_path.exists(), "expected hook envelope file");
@@ -1218,6 +1329,47 @@ prefix_rules = [
             skills_dir.join("rt-blocked-skill").join("SKILL.md").exists(),
             "export should not filter skills by active mode"
         );
+        assert!(
+            !tmp.path().join("agents").exists(),
+            "provider export must not create legacy root agents/ directory"
+        );
+    }
+
+    #[test]
+    fn export_skills_rejects_legacy_root_agents_path() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(&project_dir, "rt-legacy-guard", "Guard", "body").unwrap();
+        let legacy = tmp.path().join("agents").join("skills");
+        let err = export_skills_to_dir(&project_dir, &legacy).unwrap_err();
+        assert!(
+            err.to_string().contains("legacy path"),
+            "unexpected error for legacy agents/skills guard: {err}"
+        );
+        assert!(
+            !legacy.exists(),
+            "legacy agents/skills path should not be created"
+        );
+    }
+
+    #[test]
+    fn codex_export_skills_use_yaml_frontmatter_format() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(
+            &project_dir,
+            "rt-frontmatter-skill",
+            "Frontmatter Skill",
+            "Skill body",
+        )
+        .unwrap();
+
+        export_to(project_dir, "codex").unwrap();
+        let skill_path = tmp
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("rt-frontmatter-skill")
+            .join("SKILL.md");
+        assert_exported_skill_frontmatter(&skill_path, "rt-frontmatter-skill");
     }
 
     #[test]
@@ -1457,5 +1609,103 @@ args = ["-y", "@mcp/github"]
             .find(|s| s.id == "global-gh")
             .expect("global codex fallback server should be imported");
         assert_eq!(server.scope, "global");
+    }
+
+    #[test]
+    fn import_skills_from_claude_reads_project_skills_dir() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let skills_dir = tmp.path().join(".claude").join("skills").join("release-guard");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            r#"---
+name: release-guard
+description: Enforce release policy checks.
+metadata:
+  display_name: Release Guard
+---
+
+Always run release checks before merge.
+"#,
+        )
+        .unwrap();
+
+        let added = import_skills_from_provider("claude", project_dir.clone()).unwrap();
+        assert_eq!(added, 1);
+
+        let skills = crate::skill::list_skills(&project_dir).unwrap();
+        let skill = skills
+            .iter()
+            .find(|skill| skill.id == "release-guard")
+            .expect("imported skill should exist in project skills");
+        assert_eq!(skill.name, "Release Guard");
+        assert!(skill.content.contains("Always run release checks"));
+    }
+
+    #[test]
+    fn import_skills_from_provider_dedupes_existing_skill_ids() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        create_skill(
+            &project_dir,
+            "release-guard",
+            "Existing Release Guard",
+            "existing body",
+        )
+        .unwrap();
+
+        let skills_dir = tmp.path().join(".claude").join("skills").join("release-guard");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            r#"---
+name: release-guard
+description: Enforce release policy checks.
+metadata:
+  display_name: Release Guard
+---
+
+provider body
+"#,
+        )
+        .unwrap();
+
+        let added = import_skills_from_provider("claude", project_dir.clone()).unwrap();
+        assert_eq!(added, 0, "existing skill ids should not be overwritten");
+
+        let skills = crate::skill::list_skills(&project_dir).unwrap();
+        let skill = skills
+            .iter()
+            .find(|skill| skill.id == "release-guard")
+            .expect("existing skill should remain");
+        assert_eq!(skill.name, "Existing Release Guard");
+        assert_eq!(skill.content, "existing body");
+    }
+
+    #[test]
+    fn import_skills_from_codex_uses_global_fallback_when_project_missing() {
+        let (_tmp, project_dir) = project_with_servers(vec![]);
+        let home = tempdir().unwrap();
+        let _home_guard = lock_home_for_test(home.path());
+
+        let skills_dir = home.path().join(".agents").join("skills").join("ops-helper");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            r#"---
+name: ops-helper
+description: Operations helper skill.
+metadata:
+  display_name: Ops Helper
+---
+
+Use this for incident response.
+"#,
+        )
+        .unwrap();
+
+        let added = import_skills_from_provider("codex", project_dir.clone()).unwrap();
+        assert_eq!(added, 1);
+        let skills = crate::skill::list_skills(&project_dir).unwrap();
+        assert!(skills.iter().any(|skill| skill.id == "ops-helper"));
     }
 }

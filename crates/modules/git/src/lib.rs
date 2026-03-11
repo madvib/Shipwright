@@ -2,9 +2,9 @@ use anyhow::{Context, Result, anyhow};
 use runtime::{
     Rule, Skill,
     agents::{config::resolve_agent_config_with_mode_override, export as agent_export},
-    get_effective_config, sync_workspace,
+    sync_workspace,
 };
-use ship_module_project::{Feature, FeatureEntry, Spec, SpecEntry, list_features, list_specs};
+use ship_module_project::{Feature, FeatureEntry, list_features};
 use std::collections::BTreeSet;
 use std::fs;
 #[cfg(unix)]
@@ -143,7 +143,6 @@ pub fn find_feature_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<F
 /// Which linked entity is associated with the checked-out branch.
 pub enum BranchLinkedEntity {
     Feature(FeatureEntry),
-    Spec(SpecEntry),
 }
 
 fn persist_branch_link(ship_dir: &Path, branch: &str, linked: &BranchLinkedEntity) -> Result<()> {
@@ -151,23 +150,8 @@ fn persist_branch_link(ship_dir: &Path, branch: &str, linked: &BranchLinkedEntit
         BranchLinkedEntity::Feature(entry) => {
             runtime::set_branch_link(ship_dir, branch, "feature", &entry.id)?;
         }
-        BranchLinkedEntity::Spec(entry) => {
-            let content = fs::read_to_string(&entry.path)?;
-            let spec = Spec::from_markdown(&content)?;
-            runtime::set_branch_link(ship_dir, branch, "spec", &spec.metadata.id)?;
-        }
     }
     Ok(())
-}
-
-fn find_spec_for_branch(ship_dir: &Path, branch: &str) -> Result<Option<SpecEntry>> {
-    let specs = list_specs(ship_dir)?;
-    for entry in specs {
-        if entry.spec.metadata.branch.as_deref() == Some(branch) {
-            return Ok(Some(entry));
-        }
-    }
-    Ok(None)
 }
 
 fn find_feature_by_uuid(ship_dir: &Path, uuid: &str) -> Option<FeatureEntry> {
@@ -181,14 +165,7 @@ fn find_feature_by_uuid(ship_dir: &Path, uuid: &str) -> Option<FeatureEntry> {
     None
 }
 
-fn find_spec_by_uuid(ship_dir: &Path, uuid: &str) -> Option<SpecEntry> {
-    list_specs(ship_dir)
-        .ok()?
-        .into_iter()
-        .find(|entry| entry.id == uuid)
-}
-
-/// Find which linked entity (feature or spec) is associated with the given branch.
+/// Find which linked feature is associated with the given branch.
 /// Checks the DB index first (O(1)), then falls back to a frontmatter file scan.
 pub fn find_linked_entity_for_branch(
     ship_dir: &Path,
@@ -206,21 +183,13 @@ pub fn find_linked_entity_for_branch(
                     return Ok(Some(BranchLinkedEntity::Feature(path)));
                 }
             }
-            "spec" => {
-                if let Some(path) = find_spec_by_uuid(ship_dir, &link_id) {
-                    return Ok(Some(BranchLinkedEntity::Spec(path)));
-                }
-            }
             _ => {}
         }
     }
 
-    // Fallback: scan frontmatter of all features then specs
+    // Fallback: scan frontmatter of all features.
     if let Some(path) = find_feature_for_branch(ship_dir, branch)? {
         return Ok(Some(BranchLinkedEntity::Feature(path)));
-    }
-    if let Some(path) = find_spec_for_branch(ship_dir, branch)? {
-        return Ok(Some(BranchLinkedEntity::Spec(path)));
     }
     Ok(None)
 }
@@ -270,27 +239,51 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
         }
     };
 
-    let config = get_effective_config(Some(ship_dir.to_path_buf()))?;
-
     let Some(doc) = linked else {
-        // Teardown must include:
-        // 1) currently configured providers, and
-        // 2) providers that have previously-exported Ship-managed state.
-        //
-        // This prevents stale context/config when a feature-level provider override
-        // (e.g. codex) differs from project-level providers.
-        let mut teardown_targets: BTreeSet<String> = config.providers.iter().cloned().collect();
+        // Baseline branch context (no feature link): keep Ship MCP + skills available
+        // across branches by exporting provider config with project/mode scope.
+        let agent_cfg = resolve_agent_config_with_mode_override(
+            ship_dir,
+            None,
+            workspace_mode_override.as_deref(),
+        )?;
+        let baseline_servers: Vec<String> =
+            agent_cfg.mcp_servers.iter().map(|s| s.id.clone()).collect();
+        let baseline_context =
+            build_workspace_context(new_branch, &agent_cfg.skills, &agent_cfg.rules);
+
+        let desired_targets: BTreeSet<String> = agent_cfg.providers.iter().cloned().collect();
+        // Teardown only providers that were previously managed but are no longer active.
         for provider in runtime::list_providers(ship_dir)? {
+            if desired_targets.contains(&provider.id) {
+                continue;
+            }
             let (managed_servers, last_mode) =
                 runtime::get_managed_state_db(ship_dir, &provider.id).unwrap_or_default();
             if !managed_servers.is_empty() || last_mode.is_some() {
-                teardown_targets.insert(provider.id);
+                agent_export::teardown(ship_dir.to_path_buf(), &provider.id)?;
             }
         }
 
-        for provider in teardown_targets {
-            agent_export::teardown(ship_dir.to_path_buf(), &provider)?;
+        for provider in &agent_cfg.providers {
+            agent_export::write_context(project_root, provider, &baseline_context)?;
+            agent_export::export_to_filtered_with_mode_override_at_root(
+                ship_dir.to_path_buf(),
+                provider,
+                Some(baseline_servers.as_slice()),
+                workspace_mode_override.as_deref(),
+                project_root,
+            )?;
+            if provider == "claude" {
+                ensure_required_mcp_servers(project_root, &baseline_servers)?;
+            }
         }
+
+        println!(
+            "[ship] loaded workspace '{}' for: {}",
+            new_branch,
+            agent_cfg.providers.join(", ")
+        );
         return Ok(());
     };
 
@@ -317,10 +310,11 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
 
             for provider in &agent_cfg.providers {
                 agent_export::write_context(project_root, provider, &context)?;
-                agent_export::export_to_filtered_at_root(
+                agent_export::export_to_filtered_with_mode_override_at_root(
                     ship_dir.to_path_buf(),
                     provider,
                     feature_server_filter,
+                    workspace_mode_override.as_deref(),
                     project_root,
                 )?;
                 if provider == "claude" {
@@ -331,27 +325,6 @@ pub fn on_post_checkout(ship_dir: &Path, new_branch: &str, project_root: &Path) 
             println!(
                 "[ship] loaded feature '{}' for: {}",
                 feature.metadata.title,
-                agent_cfg.providers.join(", ")
-            );
-        }
-        BranchLinkedEntity::Spec(spec_entry) => {
-            let spec = spec_entry.spec;
-            let agent_cfg = resolve_agent_config_with_mode_override(
-                ship_dir,
-                None,
-                workspace_mode_override.as_deref(),
-            )?;
-
-            let context = build_spec_context(&spec, &agent_cfg.skills, &agent_cfg.rules);
-
-            for provider in &agent_cfg.providers {
-                agent_export::write_context(project_root, provider, &context)?;
-                agent_export::export_to_at_root(ship_dir.to_path_buf(), provider, project_root)?;
-            }
-
-            println!(
-                "[ship] loaded spec '{}' for: {}",
-                spec.metadata.title,
                 agent_cfg.providers.join(", ")
             );
         }
@@ -389,30 +362,19 @@ pub fn build_feature_context(feature: &Feature, skills: &[Skill], rules: &[Rule]
     c
 }
 
-/// Build provider-agnostic Markdown context for a spec branch.
-pub fn build_spec_context(spec: &Spec, skills: &[Skill], rules: &[Rule]) -> String {
+/// Build provider-agnostic Markdown context for non-feature branches.
+pub fn build_workspace_context(branch: &str, skills: &[Skill], rules: &[Rule]) -> String {
     let mut c = String::new();
-    c.push_str(&format!("# [ship] {}\n\n", spec.metadata.title));
+    c.push_str(&format!("# [ship] Workspace: {}\n\n", branch));
     c.push_str("> Auto-generated by ship on branch checkout. Do not edit manually - re-run `ship git sync` to regenerate.\n\n");
-
-    c.push_str("## Spec\n\n");
-    if spec.body.trim().is_empty() {
-        c.push_str("_No spec body provided._\n\n");
-    } else {
-        c.push_str(spec.body.trim());
-        c.push_str("\n\n");
-    }
+    c.push_str("## Workspace Context\n\n");
+    c.push_str(
+        "This branch is not linked to a feature. Ship exported baseline project context so tools and policies remain available.\n\n",
+    );
 
     append_skills_section(&mut c, skills);
     append_rules_section(&mut c, rules);
-
-    let branch = spec.metadata.branch.as_deref().unwrap_or("unassigned");
-    let sid = if spec.metadata.id.is_empty() {
-        "unknown"
-    } else {
-        &spec.metadata.id
-    };
-    c.push_str(&format!("---\n_Branch: {} | Spec: {}_\n", branch, sid));
+    c.push_str(&format!("---\n_Branch: {}_\n", branch));
     c
 }
 
@@ -574,7 +536,7 @@ mod tests {
     fn find_feature_for_branch_returns_matching_feature() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
-        let entry = create_feature(&ship_dir, "Auth", "body", None, None, Some("feature/auth"))?;
+        let entry = create_feature(&ship_dir, "Auth", "body", None, Some("feature/auth"))?;
 
         let found = find_feature_for_branch(&ship_dir, "feature/auth")?;
         assert_eq!(found.map(|f| f.id), Some(entry.id));
@@ -589,7 +551,6 @@ mod tests {
             &ship_dir,
             "Feature Title",
             "Feature body",
-            None,
             None,
             Some("feature/title"),
         )?;

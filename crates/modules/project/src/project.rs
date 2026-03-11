@@ -17,7 +17,8 @@ use runtime::project::{
     resolve_project_ship_dir as runtime_resolve_project_ship_dir, rules_dir as runtime_rules_dir,
     sanitize_file_name as runtime_sanitize_file_name,
     ship_dir_from_path as runtime_ship_dir_from_path, skills_dir as runtime_skills_dir,
-    specs_dir as runtime_specs_dir, upcoming_releases_dir as runtime_upcoming_releases_dir,
+    upcoming_releases_dir as runtime_upcoming_releases_dir,
+    vision_doc_path as runtime_vision_doc_path, vision_template_path as runtime_vision_template_path,
 };
 use runtime::{EventAction, EventEntity, append_event};
 use serde::{Deserialize, Serialize};
@@ -35,7 +36,6 @@ pub const ADR_STATUSES: &[&str] = &[
     "deprecated",
 ];
 pub const FEATURE_STATUSES: &[&str] = &["planned", "in-progress", "implemented", "deprecated"];
-pub const SPEC_STATUSES: &[&str] = &["draft", "active", "archived"];
 
 // ── Namespace path helpers ────────────────────────────────────────────────────
 
@@ -67,9 +67,6 @@ pub fn notes_dir(ship_dir: &Path) -> PathBuf {
     runtime_notes_dir(ship_dir)
 }
 
-pub fn specs_dir(ship_dir: &Path) -> PathBuf {
-    runtime_specs_dir(ship_dir)
-}
 
 pub fn features_dir(ship_dir: &Path) -> PathBuf {
     runtime_features_dir(ship_dir)
@@ -93,6 +90,14 @@ pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
 
 pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
     runtime_permissions_config_path(ship_dir)
+}
+
+pub fn vision_doc_path(ship_dir: &Path) -> PathBuf {
+    runtime_vision_doc_path(ship_dir)
+}
+
+pub fn vision_template_path(ship_dir: &Path) -> PathBuf {
+    runtime_vision_template_path(ship_dir)
 }
 
 pub fn ship_dir_from_path(path: &Path) -> Option<PathBuf> {
@@ -435,33 +440,17 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     }
     ensure_registered_namespaces(&ship_path, &config.namespaces)?;
 
-    fs::create_dir_all(releases_dir(&ship_path))?;
-    fs::create_dir_all(upcoming_releases_dir(&ship_path))?;
-
-    let adrs = adrs_dir(&ship_path);
-    for status in ADR_STATUSES {
-        fs::create_dir_all(adrs.join(status))?;
-    }
-
-    fs::create_dir_all(notes_dir(&ship_path))?;
-
-    let features = features_dir(&ship_path);
-    for status in FEATURE_STATUSES {
-        fs::create_dir_all(features.join(status))?;
-    }
-
-    let specs = specs_dir(&ship_path);
-    for status in SPEC_STATUSES {
-        fs::create_dir_all(specs.join(status))?;
-    }
-
     fs::create_dir_all(skills_dir(&ship_path))?;
     fs::create_dir_all(rules_dir(&ship_path))?;
 
     runtime::events::ensure_event_log(&ship_path)?;
 
-    write_default_templates(&ship_path)?;
-    write_directory_readmes(&ship_path)?;
+    // Seed only the canonical project vision doc at init. Other planning artifacts
+    // are DB-first and can be exported on demand.
+    write_if_missing(
+        &vision_doc_path(&ship_path),
+        include_str!("../../../../core/runtime/src/templates/VISION.md"),
+    )?;
     write_default_skills(&ship_path)?;
     write_if_missing(
         &mcp_config_path(&ship_path),
@@ -503,10 +492,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
 
 fn write_default_templates(ship_path: &Path) -> Result<()> {
     write_if_missing(
-        &specs_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../../core/runtime/src/templates/SPEC.md"),
-    )?;
-    write_if_missing(
         &features_dir(ship_path).join("TEMPLATE.md"),
         include_str!("../../../../core/runtime/src/templates/FEATURE.md"),
     )?;
@@ -523,11 +508,11 @@ fn write_default_templates(ship_path: &Path) -> Result<()> {
         include_str!("../../../../core/runtime/src/templates/NOTE.md"),
     )?;
     write_if_missing(
-        &project_ns(ship_path).join("TEMPLATE.md"),
+        &vision_template_path(ship_path),
         include_str!("../../../../core/runtime/src/templates/VISION.md"),
     )?;
 
-    let vision_doc = project_ns(ship_path).join("vision.md");
+    let vision_doc = vision_doc_path(ship_path);
     write_if_missing(
         &vision_doc,
         include_str!("../../../../core/runtime/src/templates/VISION.md"),
@@ -543,7 +528,7 @@ fn write_directory_readmes(ship_path: &Path) -> Result<()> {
         ),
         (
             project_ns(ship_path),
-            "# project/\n\nProject-level docs and long-lived context.\n- `vision.md`\n- `releases/`\n- `adrs/`\n- `notes/`\n".to_string(),
+            "# project/\n\nProject-level docs and long-lived context.\n- `releases/`\n- `adrs/`\n- `notes/`\n".to_string(),
         ),
         (
             releases_dir(ship_path),
@@ -562,16 +547,12 @@ fn write_directory_readmes(ship_path: &Path) -> Result<()> {
             "# project/notes/\n\nProject-scoped notes.\n".to_string(),
         ),
         (
-            specs_dir(ship_path),
-            format!("# project/specs/\n\nProduct/technical specifications, organized by status:\n- {}\n", SPEC_STATUSES.join("\n- ")),
-        ),
-        (
             features_dir(ship_path),
             format!("# project/features/\n\nHigh-level project features, organized by status:\n- {}\n", FEATURE_STATUSES.join("\n- ")),
         ),
         (
             agents_ns(ship_path),
-            "# agents/\n\nAgent runtime config and policy.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- `skills/`: project-scoped skills (`~/.ship/skills/` remains user/global scope).\n- `runtime/`: exported hook/runtime payloads for providers.\n".to_string(),
+            "# agents/\n\nAgent runtime config and policy.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- `skills/`: project-scoped skills (`~/.ship/skills/` remains user/global scope).\n\nTransient hook/runtime payloads are written under `generated/runtime/`.\n".to_string(),
         ),
         (
             rules_dir(ship_path),
@@ -1052,7 +1033,7 @@ fn template_rel_path(kind: &str) -> Result<&'static str> {
         "spec" | "specs" => Ok("project/specs/TEMPLATE.md"),
         "release" | "releases" => Ok("project/releases/TEMPLATE.md"),
         "feature" | "features" => Ok("project/features/TEMPLATE.md"),
-        "vision" => Ok("project/TEMPLATE.md"),
+        "vision" => Ok("TEMPLATE.md"),
         _ => Err(anyhow!("Unknown template kind: {}", kind)),
     }
 }
@@ -1099,6 +1080,17 @@ pub fn read_template(ship_path: &Path, kind: &str) -> Result<String> {
     if template_path.exists() {
         return fs::read_to_string(&template_path)
             .with_context(|| format!("Failed to read template: {}", template_path.display()));
+    }
+    if normalized == "vision" {
+        let legacy_project_template = project_ns(ship_path).join("TEMPLATE.md");
+        if legacy_project_template.exists() {
+            return fs::read_to_string(&legacy_project_template).with_context(|| {
+                format!(
+                    "Failed to read template: {}",
+                    legacy_project_template.display()
+                )
+            });
+        }
     }
 
     if let Some(file_name) = legacy_template_file_name(&normalized) {

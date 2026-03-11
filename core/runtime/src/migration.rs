@@ -1,7 +1,7 @@
 use crate::config::{LEGACY_CONFIG_FILE, PRIMARY_CONFIG_FILE};
 use crate::project::{
     AppState, ProjectRegistry, adrs_dir, features_dir, generated_ns, notes_dir, project_ns,
-    releases_dir, specs_dir,
+    releases_dir, specs_dir, vision_doc_path, vision_template_path,
 };
 use crate::state_db::{DatabaseMigrationReport, ensure_global_database, ensure_project_database};
 use anyhow::{Context, Result};
@@ -144,9 +144,10 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
         migrate_directory_tree(&legacy, &modern, &mut report)?;
     }
 
-    let modern_vision = ship_dir.join("project").join("vision.md");
+    let modern_vision = vision_doc_path(ship_dir);
     if !modern_vision.exists() {
         let legacy_vision_candidates = [
+            project_ns(ship_dir).join("vision.md"),
             ship_dir.join("specs").join("vision.md"),
             ship_dir.join("workflow").join("specs").join("vision.md"),
             specs_dir(ship_dir).join("vision.md"),
@@ -237,7 +238,7 @@ fn migrate_template_layout(ship_dir: &Path, report: &mut ProjectFileMigrationRep
         ("RELEASE.md", releases_dir(ship_dir).join("TEMPLATE.md")),
         ("ADR.md", adrs_dir(ship_dir).join("TEMPLATE.md")),
         ("NOTE.md", notes_dir(ship_dir).join("TEMPLATE.md")),
-        ("VISION.md", project_ns(ship_dir).join("TEMPLATE.md")),
+        ("VISION.md", vision_template_path(ship_dir)),
     ];
 
     for (legacy_name, target) in mappings {
@@ -495,7 +496,7 @@ mod tests {
         );
         assert!(ship.join("project/features/auth.md").exists());
         assert!(ship.join("project/releases/v1.md").exists());
-        assert!(ship.join("project/vision.md").exists());
+        assert!(ship.join("vision.md").exists());
         Ok(())
     }
 

@@ -4,12 +4,12 @@ use runtime::workspace::set_workspace_active_mode;
 use runtime::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, ShipWorkspaceKind, WorkspaceStatus,
     activate_workspace, add_status, autodetect_providers, create_workspace, end_workspace_session,
-    get_active_workspace_session, get_config, get_git_config, get_project_statuses,
-    get_workspace, get_workspace_provider_matrix, is_category_committed, list_mcp_servers,
-    list_providers, list_workspace_sessions,
-    list_workspaces, log_action, migrate_global_state, migrate_json_config_file,
-    migrate_project_state, record_workspace_session_progress, remove_status, repair_workspace,
-    set_category_committed, start_workspace_session, sync_workspace, transition_workspace_status,
+    get_active_workspace_session, get_config, get_git_config, get_project_statuses, get_workspace,
+    get_workspace_provider_matrix, is_category_committed, list_mcp_servers, list_providers,
+    list_workspace_sessions, list_workspaces, log_action, migrate_global_state,
+    migrate_json_config_file, migrate_project_state, record_workspace_session_progress,
+    remove_status, repair_workspace, set_category_committed, start_workspace_session,
+    sync_workspace, transition_workspace_status,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
 use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
@@ -24,11 +24,11 @@ use ship_module_project::ops::note::{
 use ship_module_project::ops::release::{
     create_release, get_release_by_id, list_releases, update_release,
 };
-use ship_module_project::ops::spec::{create_spec, get_spec_by_id, list_specs, update_spec};
+
 use ship_module_project::{
     ADR, AdrStatus, FeatureDocStatus, FeatureStatus, NoteScope, import_adrs_from_files,
     import_features_from_files, import_notes_from_files, import_releases_from_files,
-    import_specs_from_files, init_demo_project, init_project, list_registered_projects,
+    init_demo_project, init_project, list_registered_projects,
     register_project, rename_project, unregister_project,
 };
 use std::collections::HashMap;
@@ -353,54 +353,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             };
             cli_framework::handle_skill_action(action, project_dir.as_deref())?;
         }
-        Some(Commands::Spec { action }) => {
-            let project_dir = get_project_dir_cli()?;
-            match action {
-                SpecCommands::Create {
-                    title,
-                    content,
-                    workspace,
-                } => {
-                    let body = content.unwrap_or_default();
-                    let spec = create_spec(&project_dir, &title, &body, workspace.as_deref())?;
-                    println!("Spec created: {} ({})", spec.file_name, spec.id);
-                }
-                SpecCommands::List => {
-                    let mut specs = list_specs(&project_dir)?;
-                    specs.sort_by(|a, b| b.spec.metadata.updated.cmp(&a.spec.metadata.updated));
-                    if specs.is_empty() {
-                        println!("No specs found.");
-                    } else {
-                        for spec in specs {
-                            println!(
-                                "[{}] {} ({})",
-                                spec.status, spec.spec.metadata.title, spec.file_name
-                            );
-                        }
-                    }
-                }
-                SpecCommands::Get { file_name } => {
-                    let spec = get_spec_by_id(&project_dir, &file_name)?;
-                    println!("{}", spec.spec.to_markdown()?);
-                }
-                SpecCommands::Update { file_name, content } => {
-                    let entry = get_spec_by_id(&project_dir, &file_name)?;
-                    let body = match content {
-                        Some(c) => c,
-                        None => {
-                            use std::io::Read;
-                            let mut buf = String::new();
-                            std::io::stdin().read_to_string(&mut buf)?;
-                            buf
-                        }
-                    };
-                    let mut spec = entry.spec.clone();
-                    spec.body = body;
-                    update_spec(&project_dir, &entry.id, spec)?;
-                    println!("Spec updated: {}", file_name);
-                }
-            }
-        }
+
         Some(Commands::Release { action }) => {
             let project_dir = get_project_dir_cli()?;
             match action {
@@ -450,7 +403,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     title,
                     content,
                     release_id,
-                    spec_id,
                     branch,
                 } => {
                     let body = content.unwrap_or_default();
@@ -459,7 +411,6 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         &title,
                         &body,
                         release_id.as_deref(),
-                        spec_id.as_deref(),
                         branch.as_deref(),
                     )?;
                     println!("Feature created: {}", entry.path);
@@ -502,9 +453,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     if let Some(ref release_id) = m.release_id {
                         println!("release_id = \"{}\"", release_id);
                     }
-                    if let Some(ref spec_id) = m.spec_id {
-                        println!("spec_id = \"{}\"", spec_id);
-                    }
+
                     println!("updated = \"{}\"", m.updated);
                     if !entry.feature.body.trim().is_empty() {
                         println!("\n---\n\n{}", entry.feature.body.trim());
@@ -790,6 +739,13 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         let path = resolved_worktree_path
                             .as_deref()
                             .ok_or_else(|| anyhow::anyhow!("Worktree path resolution failed"))?;
+                        let hooks_disabled_dir = project_dir
+                            .join("generated")
+                            .join("runtime")
+                            .join("hooks-disabled");
+                        std::fs::create_dir_all(&hooks_disabled_dir)?;
+                        let hooks_disabled_cfg =
+                            format!("core.hooksPath={}", hooks_disabled_dir.display());
                         let exists = ProcessCommand::new("git")
                             .args(["rev-parse", "--verify", &branch])
                             .current_dir(&project_root)
@@ -797,7 +753,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                             .map(|output| output.status.success())
                             .unwrap_or(false);
 
-                        let mut args = vec!["worktree", "add"];
+                        let mut args = vec!["-c", hooks_disabled_cfg.as_str(), "worktree", "add"];
                         if !exists {
                             args.push("-b");
                             args.push(&branch);
@@ -958,16 +914,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         if apply { "applied" } else { "dry-run" }
                     );
                     println!("  workspace updates: {}", report.workspace_updates);
-                    println!("  spec metadata updates: {}", report.spec_updates);
                     println!(
                         "  ambiguous feature links: {}",
                         report.ambiguous_feature_links
                     );
                     for detail in &report.ambiguous_feature_details {
-                        println!("    - {}", detail);
-                    }
-                    println!("  ambiguous spec links: {}", report.ambiguous_spec_links);
-                    for detail in &report.ambiguous_spec_details {
                         println!("    - {}", detail);
                     }
                 }
@@ -1018,10 +969,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                         get_workspace_provider_matrix(&project_dir, &branch, mode.as_deref())?;
                     println!("Workspace provider matrix for {}", matrix.workspace_branch);
                     println!("  source: {}", matrix.source);
-                    println!(
-                        "  mode: {}",
-                        matrix.mode_id.as_deref().unwrap_or("<none>")
-                    );
+                    println!("  mode: {}", matrix.mode_id.as_deref().unwrap_or("<none>"));
                     println!(
                         "  allowed: {}",
                         if matrix.allowed_providers.is_empty() {
@@ -1400,85 +1348,83 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
             ensure_builtin_plugin_namespaces(&project_dir)?;
             handle_time_command(action, &project_dir)?;
         }
-        Some(Commands::Mcp { action }) => {
-            match action {
-                None | Some(McpCommands::Serve) => {
-                    let mut cmd = std::env::current_exe()?;
-                    cmd.set_file_name("ship-mcp");
-                    if !cmd.exists() {
-                        cmd = PathBuf::from("ship-mcp");
-                    }
+        Some(Commands::Mcp { action }) => match action {
+            None | Some(McpCommands::Serve) => {
+                let mut cmd = std::env::current_exe()?;
+                cmd.set_file_name("ship-mcp");
+                if !cmd.exists() {
+                    cmd = PathBuf::from("ship-mcp");
+                }
 
-                    let mut child = ProcessCommand::new(cmd)
-                        .spawn()
-                        .map_err(|e| anyhow::anyhow!("Failed to launch ship-mcp server binary: {}", e))?;
+                let mut child = ProcessCommand::new(cmd).spawn().map_err(|e| {
+                    anyhow::anyhow!("Failed to launch ship-mcp server binary: {}", e)
+                })?;
 
-                    let status = child.wait()?;
-                    if !status.success() {
-                        std::process::exit(status.code().unwrap_or(1));
-                    }
-                }
-                Some(McpCommands::List) => {
-                    let project_dir = get_project_dir_cli()?;
-                    cli_framework::handle_mcp_action(cli_framework::McpAction::List, &project_dir)?;
-                }
-                Some(McpCommands::Export { target }) => {
-                    let project_dir = get_project_dir_cli()?;
-                    cli_framework::handle_mcp_action(
-                        cli_framework::McpAction::Export { target },
-                        &project_dir,
-                    )?;
-                }
-                Some(McpCommands::Import { provider }) => {
-                    let project_dir = get_project_dir_cli()?;
-                    cli_framework::handle_mcp_action(
-                        cli_framework::McpAction::Import { provider },
-                        &project_dir,
-                    )?;
-                }
-                Some(McpCommands::Add {
-                    id,
-                    name,
-                    url,
-                    disabled,
-                }) => {
-                    let project_dir = get_project_dir_cli()?;
-                    cli_framework::handle_mcp_action(
-                        cli_framework::McpAction::Add {
-                            id,
-                            name,
-                            url,
-                            disabled,
-                        },
-                        &project_dir,
-                    )?;
-                }
-                Some(McpCommands::AddStdio {
-                    id,
-                    name,
-                    command,
-                    args,
-                }) => {
-                    let project_dir = get_project_dir_cli()?;
-                    cli_framework::handle_mcp_action(
-                        cli_framework::McpAction::AddStdio {
-                            id,
-                            name,
-                            command,
-                            args,
-                        },
-                        &project_dir,
-                    )?;
-                }
-                Some(McpCommands::Remove { id }) => {
-                    let project_dir = get_project_dir_cli()?;
-                    cli_framework::handle_mcp_action(
-                        cli_framework::McpAction::Remove { id },
-                        &project_dir,
-                    )?;
+                let status = child.wait()?;
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
                 }
             }
-        }
+            Some(McpCommands::List) => {
+                let project_dir = get_project_dir_cli()?;
+                cli_framework::handle_mcp_action(cli_framework::McpAction::List, &project_dir)?;
+            }
+            Some(McpCommands::Export { target }) => {
+                let project_dir = get_project_dir_cli()?;
+                cli_framework::handle_mcp_action(
+                    cli_framework::McpAction::Export { target },
+                    &project_dir,
+                )?;
+            }
+            Some(McpCommands::Import { provider }) => {
+                let project_dir = get_project_dir_cli()?;
+                cli_framework::handle_mcp_action(
+                    cli_framework::McpAction::Import { provider },
+                    &project_dir,
+                )?;
+            }
+            Some(McpCommands::Add {
+                id,
+                name,
+                url,
+                disabled,
+            }) => {
+                let project_dir = get_project_dir_cli()?;
+                cli_framework::handle_mcp_action(
+                    cli_framework::McpAction::Add {
+                        id,
+                        name,
+                        url,
+                        disabled,
+                    },
+                    &project_dir,
+                )?;
+            }
+            Some(McpCommands::AddStdio {
+                id,
+                name,
+                command,
+                args,
+            }) => {
+                let project_dir = get_project_dir_cli()?;
+                cli_framework::handle_mcp_action(
+                    cli_framework::McpAction::AddStdio {
+                        id,
+                        name,
+                        command,
+                        args,
+                    },
+                    &project_dir,
+                )?;
+            }
+            Some(McpCommands::Remove { id }) => {
+                let project_dir = get_project_dir_cli()?;
+                cli_framework::handle_mcp_action(
+                    cli_framework::McpAction::Remove { id },
+                    &project_dir,
+                )?;
+            }
+        },
         Some(Commands::Hooks { action }) => match action {
             HooksCommands::Run { provider } => {
                 run_hooks_runtime(provider)?;
@@ -1641,7 +1587,7 @@ fn hook_telemetry_log_path() -> Option<PathBuf> {
 
 fn read_hook_context(ship_dir: &Path) -> Option<String> {
     let path = ship_dir
-        .join("agents")
+        .join("generated")
         .join("runtime")
         .join("hook-context.md");
     let content = std::fs::read_to_string(path).ok()?;
@@ -1830,7 +1776,7 @@ fn load_hook_envelope(ship_dir: Option<&Path>) -> HookEnvelope {
         return envelope;
     };
     let path = ship_dir
-        .join("agents")
+        .join("generated")
         .join("runtime")
         .join("envelope.json");
     let Ok(raw) = std::fs::read_to_string(path) else {
@@ -2494,14 +2440,13 @@ fn handle_migrate_command(force: bool) -> Result<()> {
     let global_dir = get_global_dir()?;
     let global = migrate_global_state(&global_dir)?;
     let project = migrate_project_state(&project_dir)?;
-    let specs = import_specs_from_files(&project_dir)?;
     let config = migrate_json_config_file(&project_dir)?;
     let cleared_project_markers = runtime::clear_project_migration_meta(&project_dir)?;
     let cleared_global_markers = runtime::clear_global_migration_meta()?;
     ensure_user_notes_imported_once(true, true)?;
     ensure_project_imported_once(&project_dir, true, true)?;
     println!(
-        "Migration complete{}:\n- file namespace copies: copied={} skipped={} conflicts={}\n- project DB: {} (applied {})\n- global DB: {} (applied {})\n- registry: {} -> {} entries (normalized {})\n- app_state paths normalized: {}\n- startup import markers reset: {} project marker{}, {} global marker{}\n- imported docs: {} spec{}{}.",
+        "Migration complete{}:\n- file namespace copies: copied={} skipped={} conflicts={}\n- project DB: {} (applied {})\n- global DB: {} (applied {})\n- registry: {} -> {} entries (normalized {})\n- app_state paths normalized: {}\n- startup import markers reset: {} project marker{}, {} global marker{}.",
         if force { " (forced)" } else { "" },
         project.files.copied_files,
         project.files.skipped_identical_files,
@@ -2522,13 +2467,6 @@ fn handle_migrate_command(force: bool) -> Result<()> {
         },
         cleared_global_markers,
         if cleared_global_markers == 1 { "" } else { "s" },
-        specs,
-        if specs == 1 { "" } else { "s" },
-        if config {
-            ", config.json → ship.toml"
-        } else {
-            ""
-        },
     );
     Ok(())
 }
@@ -2762,7 +2700,7 @@ fn resolve_workspace_feature_link(
         .filter(|title| !title.is_empty())
         .map(|title| title.to_string())
         .unwrap_or_else(|| branch_to_feature_title(branch));
-    let created = create_feature(project_dir, &title, "", None, None, Some(branch))?;
+    let created = create_feature(project_dir, &title, "", None, Some(branch))?;
     println!(
         "Feature created and linked: {} ({})",
         created.feature.metadata.title, created.id
@@ -3095,26 +3033,15 @@ fn format_workspace_session(session: &runtime::WorkspaceSession) -> String {
 #[derive(Default)]
 struct WorkspaceReconcileReport {
     workspace_updates: usize,
-    spec_updates: usize,
     ambiguous_feature_links: usize,
-    ambiguous_spec_links: usize,
     ambiguous_feature_details: Vec<String>,
-    ambiguous_spec_details: Vec<String>,
 }
 
 fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<WorkspaceReconcileReport> {
     let workspaces = list_workspaces(project_dir)?;
     let features = list_features(project_dir)?;
-    let specs = list_specs(project_dir)?;
 
-    let workspace_by_branch: HashMap<String, runtime::Workspace> = workspaces
-        .iter()
-        .map(|workspace| (workspace.branch.clone(), workspace.clone()))
-        .collect();
-    let workspace_by_id: HashMap<String, runtime::Workspace> = workspaces
-        .iter()
-        .map(|workspace| (workspace.id.clone(), workspace.clone()))
-        .collect();
+    let features = list_features(project_dir)?;
 
     let mut report = WorkspaceReconcileReport::default();
 
@@ -3184,33 +3111,7 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
         }
     }
 
-    for spec_entry in specs {
-        let mut spec = spec_entry.spec.clone();
-        let mut changed = false;
 
-        if spec.metadata.workspace_id.is_none()
-            && let Some(branch) = spec.metadata.branch.as_deref()
-            && let Some(workspace) = workspace_by_branch.get(branch)
-        {
-            spec.metadata.workspace_id = Some(workspace.id.clone());
-            changed = true;
-        }
-
-        if spec.metadata.branch.is_none()
-            && let Some(workspace_id) = spec.metadata.workspace_id.as_deref()
-            && let Some(workspace) = workspace_by_id.get(workspace_id)
-        {
-            spec.metadata.branch = Some(workspace.branch.clone());
-            changed = true;
-        }
-
-        if changed {
-            report.spec_updates += 1;
-            if apply {
-                update_spec(project_dir, &spec_entry.id, spec)?;
-            }
-        }
-    }
 
     Ok(report)
 }
@@ -3504,32 +3405,6 @@ mod tests {
                 assert_eq!(repo_path, "skills");
                 assert_eq!(scope, "user");
                 assert!(force);
-            }
-            other => panic!("unexpected parse result: {:?}", other),
-        }
-    }
-
-    #[test]
-    fn cli_parses_spec_create_with_workspace_override() {
-        let cli = Cli::try_parse_from([
-            "ship",
-            "spec",
-            "create",
-            "Execution Plan",
-            "--workspace",
-            "feature/execution-plan",
-        ])
-        .expect("spec create with workspace should parse");
-
-        match cli.command {
-            Some(Commands::Spec {
-                action:
-                    SpecCommands::Create {
-                        title, workspace, ..
-                    },
-            }) => {
-                assert_eq!(title, "Execution Plan");
-                assert_eq!(workspace.as_deref(), Some("feature/execution-plan"));
             }
             other => panic!("unexpected parse result: {:?}", other),
         }
@@ -3895,7 +3770,7 @@ mod tests {
         envelope: serde_json::Value,
         context: Option<&str>,
     ) -> Result<()> {
-        let runtime_dir = ship_dir.join("agents").join("runtime");
+        let runtime_dir = ship_dir.join("generated").join("runtime");
         std::fs::create_dir_all(&runtime_dir)?;
         std::fs::write(
             runtime_dir.join("envelope.json"),

@@ -412,7 +412,9 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 
 fn migrate_legacy_project_skills(project_dir: &Path, target_root: &Path) -> Result<()> {
     let mut legacy_roots = vec![crate::project::legacy_repo_project_skills_dir(project_dir)];
-    legacy_roots.extend(crate::project::legacy_project_skills_dir_candidates(project_dir));
+    legacy_roots.extend(crate::project::legacy_project_skills_dir_candidates(
+        project_dir,
+    ));
 
     for legacy_root in legacy_roots {
         if legacy_root == target_root || !legacy_root.exists() || !legacy_root.is_dir() {

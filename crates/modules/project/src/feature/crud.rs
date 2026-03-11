@@ -3,7 +3,8 @@ use super::db::{
     upsert_feature_doc_db,
 };
 use super::types::{
-    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureMetadata, FeatureStatus,
+    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureMetadata, FeatureModel,
+    FeatureStatus,
 };
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -263,7 +264,6 @@ pub fn create_feature(
     title: &str,
     body: &str,
     release_id: Option<&str>,
-    spec_id: Option<&str>,
     branch: Option<&str>,
 ) -> Result<FeatureEntry> {
     if title.trim().is_empty() {
@@ -281,7 +281,6 @@ pub fn create_feature(
             updated: now,
             release_id: release_id.map(|s| s.to_string()),
             active_target_id: release_id.map(|s| s.to_string()),
-            spec_id: spec_id.map(|s| s.to_string()),
             branch: branch.map(|s| s.to_string()),
             agent: None,
             tags: vec![],
@@ -292,6 +291,7 @@ pub fn create_feature(
     };
 
     feature.extract_structured_data();
+    let delta = feature.compute_delta();
 
     let status = FeatureStatus::Planned;
     upsert_feature_db(ship_dir, &feature, &status)?;
@@ -304,7 +304,7 @@ pub fn create_feature(
         runtime::EventEntity::Feature,
         runtime::EventAction::Create,
         id.clone(),
-        Some(format!("title={}", title)),
+        Some(format!("title={};drift_score={}", title, delta.drift_score)),
     )?;
 
     Ok(FeatureEntry {
@@ -322,19 +322,7 @@ pub fn create_feature(
 
 pub fn get_feature_by_id(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
     let resolved_id = require_feature_id(ship_dir, id)?;
-    let mut entry = get_feature_db(ship_dir, &resolved_id)?
-        .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
-    // Fallback: if SQLite body is empty, try loading from legacy markdown file (migration on read)
-    if entry.feature.body.trim().is_empty() {
-        if let Some(body) = load_feature_body_from_file(ship_dir, &resolved_id) {
-            entry.feature.body = body.clone();
-            // Back-fill SQLite so the fallback only runs once
-            let mut updated = entry.feature.clone();
-            updated.body = body;
-            let _ = upsert_feature_db(ship_dir, &updated, &entry.status);
-        }
-    }
-    Ok(entry)
+    get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))
 }
 
 pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result<FeatureEntry> {
@@ -347,6 +335,7 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
         feature.body = existing.feature.body.clone();
     }
     feature.extract_structured_data();
+    let delta = feature.compute_delta();
 
     upsert_feature_db(ship_dir, &feature, &existing.status)?;
     // Ensure updates replace the existing exported markdown file instead of
@@ -360,7 +349,10 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
         runtime::EventEntity::Feature,
         runtime::EventAction::Update,
         resolved_id.clone(),
-        Some(format!("title={}", feature.metadata.title)),
+        Some(format!(
+            "title={};drift_score={}",
+            feature.metadata.title, delta.drift_score
+        )),
     )?;
 
     let mut entry = get_feature_db(ship_dir, &resolved_id)?
@@ -440,4 +432,10 @@ pub fn feature_done(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
 
 pub fn list_features(ship_dir: &Path) -> Result<Vec<FeatureEntry>> {
     list_features_db(ship_dir)
+}
+
+pub fn get_feature_model(ship_dir: &Path, id: &str) -> Result<FeatureModel> {
+    let mut entry = get_feature_by_id(ship_dir, id)?;
+    entry.feature.extract_structured_data();
+    Ok(entry.feature.model())
 }

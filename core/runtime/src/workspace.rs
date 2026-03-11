@@ -389,7 +389,9 @@ fn hydrate_workspace_session(row: WorkspaceSessionDb) -> WorkspaceSession {
     }
 }
 
-fn hydrate_workspace_session_record(row: crate::state_db::WorkspaceSessionRecordDb) -> WorkspaceSessionRecord {
+fn hydrate_workspace_session_record(
+    row: crate::state_db::WorkspaceSessionRecordDb,
+) -> WorkspaceSessionRecord {
     WorkspaceSessionRecord {
         id: row.id,
         session_id: row.session_id,
@@ -416,8 +418,8 @@ fn annotate_session_stale_state(
 }
 
 fn annotate_session_record(ship_dir: &Path, session: &mut WorkspaceSession) -> Result<()> {
-    session.session_record_id = get_workspace_session_record_db(ship_dir, &session.id)?
-        .map(|record| record.id);
+    session.session_record_id =
+        get_workspace_session_record_db(ship_dir, &session.id)?.map(|record| record.id);
     Ok(())
 }
 
@@ -848,11 +850,13 @@ fn compile_workspace_context(
     };
 
     let now = Utc::now();
+    let context_root = resolve_workspace_context_root(ship_dir, workspace);
     for provider in &providers {
-        if let Err(error) = crate::agents::export::export_to_with_mode_override(
+        if let Err(error) = crate::agents::export::export_to_with_mode_override_at_root(
             ship_dir.to_path_buf(),
             provider,
             mode_id.as_deref(),
+            &context_root,
         ) {
             let contextual = error.context(format!(
                 "Failed to compile provider '{}' for workspace '{}'",
@@ -1195,7 +1199,10 @@ pub fn get_workspace_session_record(
     if session_id.is_empty() {
         return Err(anyhow!("Session ID cannot be empty"));
     }
-    Ok(get_workspace_session_record_db(ship_dir, session_id)?.map(hydrate_workspace_session_record))
+    Ok(
+        get_workspace_session_record_db(ship_dir, session_id)?
+            .map(hydrate_workspace_session_record),
+    )
 }
 
 pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &str) -> Result<()> {
@@ -2002,6 +2009,55 @@ mod tests {
         assert!(worktree_path.contains("feature-missing-path"));
         Ok(())
     }
+
+    #[test]
+    fn activate_worktree_workspace_compiles_agent_config_into_worktree_root() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        let mut config = crate::config::get_config(Some(ship_dir.clone()))?;
+        config.providers = vec!["claude".to_string()];
+        crate::config::save_config(&config, Some(ship_dir.clone()))?;
+
+        let worktree_root = tmp
+            .path()
+            .join(".worktrees")
+            .join("feature-worktree-export");
+        let worktree_path = worktree_root.to_string_lossy().to_string();
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/worktree-export".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                is_worktree: Some(true),
+                worktree_path: Some(worktree_path),
+                ..CreateWorkspaceRequest::default()
+            },
+        )?;
+
+        let workspace = activate_workspace(&ship_dir, "feature/worktree-export")?;
+        assert!(workspace.compiled_at.is_some());
+        assert!(workspace.compile_error.is_none());
+        assert!(
+            worktree_root.join(".mcp.json").exists(),
+            "expected provider config to be written to worktree root"
+        );
+        assert!(
+            worktree_root
+                .join(".ship")
+                .join("generated")
+                .join("runtime")
+                .join("envelope.json")
+                .exists(),
+            "expected runtime envelope artifacts in worktree root"
+        );
+        assert!(
+            !tmp.path().join(".mcp.json").exists(),
+            "main checkout root should not receive worktree provider config"
+        );
+        Ok(())
+    }
+
     #[test]
     fn workspace_session_start_and_end_happy_path() -> Result<()> {
         let tmp = tempdir()?;

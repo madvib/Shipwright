@@ -62,15 +62,14 @@ pub use skill::{
 };
 pub use state_db::{
     CapabilityDb, CapabilityMapDb, DatabaseMigrationReport, WorkspaceSessionRecordDb,
-    clear_branch_doc, clear_branch_link, clear_global_migration_meta,
-    clear_project_migration_meta, ensure_global_database, ensure_project_database, get_branch_doc,
-    get_branch_link, get_feature_primary_capability_db, get_managed_state_db,
-    get_workspace_session_record_db, list_capabilities_db, list_capability_maps_db,
-    list_target_features_db, mark_migration_meta_complete_global,
-    mark_migration_meta_complete_project, migration_meta_complete_global,
-    migration_meta_complete_project, replace_target_features_db, set_branch_doc, set_branch_link,
-    set_feature_primary_capability_db, set_managed_state_db, upsert_capability_db,
-    upsert_capability_map_db, upsert_workspace_db,
+    clear_branch_doc, clear_branch_link, clear_global_migration_meta, clear_project_migration_meta,
+    ensure_global_database, ensure_project_database, get_branch_doc, get_branch_link,
+    get_feature_primary_capability_db, get_managed_state_db, get_workspace_session_record_db,
+    list_capabilities_db, list_capability_maps_db, list_target_features_db,
+    mark_migration_meta_complete_global, mark_migration_meta_complete_project,
+    migration_meta_complete_global, migration_meta_complete_project, replace_target_features_db,
+    set_branch_doc, set_branch_link, set_feature_primary_capability_db, set_managed_state_db,
+    upsert_capability_db, upsert_capability_map_db, upsert_workspace_db,
 };
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,
@@ -78,10 +77,9 @@ pub use workspace::{
     WorkspaceSessionRecord, WorkspaceSessionStatus, WorkspaceStatus, activate_workspace,
     create_workspace, delete_workspace, end_workspace_session, get_active_workspace_session,
     get_workspace, get_workspace_provider_matrix, get_workspace_session_record,
-    list_workspace_sessions, list_workspaces,
-    record_workspace_session_progress, repair_workspace, set_workspace_active_mode,
-    start_workspace_session, sync_workspace, transition_workspace_status, upsert_workspace,
-    validate_workspace_transition,
+    list_workspace_sessions, list_workspaces, record_workspace_session_progress, repair_workspace,
+    set_workspace_active_mode, start_workspace_session, sync_workspace,
+    transition_workspace_status, upsert_workspace, validate_workspace_transition,
 };
 
 pub fn gen_nanoid() -> String {
@@ -195,7 +193,7 @@ mod tests {
         assert!(gitignore.contains("project/specs"));
         assert!(gitignore.contains("project/adrs"));
         assert!(gitignore.contains("project/notes"));
-        assert!(gitignore.contains("project/vision.md"));
+        assert!(gitignore.contains("vision.md"));
         assert!(gitignore.contains("agents/skills"));
         assert!(gitignore.contains("agents/README.md"));
         assert!(!gitignore.contains("agents/rules"));
@@ -263,14 +261,14 @@ mod tests {
         assert!(ship_path.join("project/releases").is_dir());
         assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/notes").is_dir());
-        assert!(ship_path.join("project/vision.md").is_file());
+        assert!(ship_path.join("vision.md").is_file());
         assert!(ship_path.join("generated").is_dir());
         let project_skills_dir = crate::project::skills_dir(&ship_path);
         assert!(project_skills_dir.is_dir());
         // shared
         assert!(ship_path.join("project/releases/TEMPLATE.md").is_file());
         assert!(ship_path.join("project/features/TEMPLATE.md").is_file());
-        assert!(ship_path.join("project/TEMPLATE.md").is_file());
+        assert!(ship_path.join("TEMPLATE.md").is_file());
         assert!(ship_path.join("project/notes/TEMPLATE.md").is_file());
         assert!(ship_path.join("README.md").is_file());
         assert!(ship_path.join("project/README.md").is_file());

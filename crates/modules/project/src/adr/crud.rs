@@ -82,7 +82,6 @@ pub fn create_adr(
             title: title.to_string(),
             date: now.clone(),
             tags: vec![],
-            spec_id: None,
             supersedes_id: None,
         },
         context: context.to_string(),

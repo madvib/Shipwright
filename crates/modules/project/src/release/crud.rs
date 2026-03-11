@@ -243,26 +243,16 @@ pub fn create_release_with_metadata(
 
 pub fn get_release_by_id(ship_dir: &Path, id: &str) -> Result<ReleaseEntry> {
     let resolved_id = require_release_id(ship_dir, id)?;
-    let mut entry = get_release_db(ship_dir, &resolved_id)?
-        .ok_or_else(|| anyhow!("Release not found: {}", id))?;
-    if entry.release.body.trim().is_empty()
-        && let Some(body) = load_release_body_from_file(ship_dir, &resolved_id, &entry.version)
-    {
-        entry.release.body = body;
-    }
-    Ok(entry)
+    get_release_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Release not found: {}", id))
 }
 
 pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result<ReleaseEntry> {
     let resolved_id = require_release_id(ship_dir, id)?;
-    let _existing = get_release_db(ship_dir, &resolved_id)?
+    let existing = get_release_db(ship_dir, &resolved_id)?
         .ok_or_else(|| anyhow!("Release not found: {}", id))?;
     release.metadata.updated = Utc::now().to_rfc3339();
-    if release.body.trim().is_empty()
-        && let Some(body) =
-            load_release_body_from_file(ship_dir, &resolved_id, &release.metadata.version)
-    {
-        release.body = body;
+    if release.body.trim().is_empty() {
+        release.body = existing.release.body;
     }
 
     let persisted_status = release.metadata.status;
