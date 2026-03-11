@@ -1,6 +1,5 @@
 import { ArrowRight, Link2 } from 'lucide-react';
 import { FeatureInfo as FeatureEntry, ReleaseInfo as ReleaseEntry } from '@/bindings';
-import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import { Badge } from '@ship/ui';
 import { Progress } from '@ship/ui';
 import { cn } from '@/lib/utils';
@@ -9,7 +8,6 @@ import { FeatureChecklistMetrics, formatStatusLabel } from '@/features/planning/
 interface FeatureHubRowProps {
   feature: FeatureEntry;
   release: ReleaseEntry | null;
-  spec: SpecEntry | null;
   metrics?: FeatureChecklistMetrics;
   readiness: number;
   isBlocking: boolean;
@@ -19,7 +17,6 @@ interface FeatureHubRowProps {
 export default function FeatureHubRow({
   feature,
   release,
-  spec,
   metrics,
   readiness,
   isBlocking,
@@ -35,22 +32,41 @@ export default function FeatureHubRow({
       <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-semibold">{feature.title}</p>
-          <Badge variant="outline">{formatStatusLabel(feature.status)}</Badge>
-          {feature.docs_status && (
-            <Badge variant="outline">Docs: {feature.docs_status}</Badge>
-          )}
-          {isBlocking && <Badge variant="secondary">Blocking</Badge>}
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase font-bold tracking-tighter shrink-0">{formatStatusLabel(feature.status)}</Badge>
+            {feature.docs_status && (
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "h-5 px-1.5 text-[10px] shrink-0",
+                  feature.docs_status.toLowerCase().includes('not-started') && "bg-muted/50 text-muted-foreground border-transparent font-medium"
+                )}
+              >
+                Docs: {feature.docs_status}
+              </Badge>
+            )}
+            {isBlocking && <Badge variant="secondary" className="h-5 px-1.5 text-[10px] shrink-0">Blocking</Badge>}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Badge variant="secondary">{release?.version ?? feature.release_id ?? 'No release'}</Badge>
-          {spec && <Badge variant="secondary">{spec.spec.metadata.title}</Badge>}
+          <Badge
+            variant={feature.release_id ? "secondary" : "outline"}
+            className={cn(
+              "h-5 px-1.5 text-[10px] font-bold tracking-tight",
+              !feature.release_id && "border-dashed opacity-70"
+            )}
+          >
+            {release?.version ?? feature.release_id ?? 'No release'}
+          </Badge>
+
           {feature.branch && (
-            <span className="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
+            <span className="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] font-mono opacity-80">
               <Link2 className="size-3" />
               {feature.branch}
             </span>
           )}
         </div>
+
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[11px]">
             <span className="text-muted-foreground">Readiness</span>

@@ -27,7 +27,6 @@ interface WorkspaceDashboardProps {
   linkReleaseId: string | null;
   setLinkReleaseId: (id: string | null) => void;
   featureLinkOptions: any[];
-  specLinkOptions: any[];
   releaseLinkOptions: any[];
   updatingLinks: boolean;
   onUpdateLinks: (featureId: string | null, releaseId: string | null) => void;
@@ -45,8 +44,6 @@ interface WorkspaceDashboardProps {
   setSessionGoalInput: (val: string) => void;
   sessionSummaryInput: string;
   setSessionSummaryInput: (val: string) => void;
-  sessionSpecIds: string[];
-  setSessionSpecIds: (ids: string[]) => void;
   providerMatrix: WorkspaceProviderMatrix | null;
   providerInfos: ProviderInfo[];
   workspaceChanges: WorkspaceFileChange[];
@@ -100,7 +97,6 @@ export function WorkspaceDashboard({
   linkReleaseId,
   setLinkReleaseId,
   featureLinkOptions,
-  specLinkOptions,
   releaseLinkOptions,
   updatingLinks,
   onUpdateLinks,
@@ -118,8 +114,6 @@ export function WorkspaceDashboard({
   setSessionGoalInput,
   sessionSummaryInput,
   setSessionSummaryInput,
-  sessionSpecIds,
-  setSessionSpecIds,
   providerMatrix,
   providerInfos,
   workspaceChanges,
@@ -191,8 +185,23 @@ export function WorkspaceDashboard({
         {branchDetail.changes.length === 0 ? (
           <p className="text-[11px] text-muted-foreground">No file differences against base branch.</p>
         ) : (
-          <div className="grid grid-cols-1 gap-2 xl:grid-cols-[300px_minmax(0,1fr)]">
-            <div className="max-h-[540px] overflow-y-auto rounded-md border bg-muted/10 p-1.5">
+        <div className="grid grid-cols-1 gap-2 xl:grid-cols-[300px_minmax(0,1fr)]">
+            <div className="max-h-[540px] flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2 px-1 py-1 rounded border bg-muted/5">
+                {[
+                  { label: 'A', color: 'bg-emerald-500/10 text-emerald-700', full: 'Added' },
+                  { label: 'D', color: 'bg-red-500/10 text-red-700', full: 'Deleted' },
+                  { label: 'M', color: 'bg-amber-500/10 text-amber-700', full: 'Modified' },
+                  { label: 'R', color: 'bg-sky-500/10 text-sky-700', full: 'Renamed' },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center gap-1">
+                    <span className={cn('rounded border px-1 font-mono text-[9px] font-bold', item.color)} title={item.full}>
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex-1 overflow-y-auto rounded-md border bg-muted/10 p-1.5">
               {branchDetail.changes.map((change) => {
                 const selected = branchDiffPath === change.path;
                 return (
@@ -226,6 +235,7 @@ export function WorkspaceDashboard({
                   </button>
                 );
               })}
+              </div>
             </div>
 
             <div className="min-h-[420px] overflow-auto rounded-md border bg-background/70 p-2">
@@ -237,12 +247,29 @@ export function WorkspaceDashboard({
                     {branchDiffPath}
                   </p>
                   <div className="space-y-[1px] font-mono text-[11px] leading-relaxed">
-                    {parsedDiffLines.map((line, index) => (
-                      <div key={`${index}-${line.slice(0, 12)}`} className={cn('grid grid-cols-[44px_minmax(0,1fr)] gap-2 px-1', diffLineClass(line))}>
-                        <span className="select-none text-right text-[10px] text-muted-foreground/70">{index + 1}</span>
-                        <span className="whitespace-pre-wrap break-words">{line || ' '}</span>
-                      </div>
-                    ))}
+                    {parsedDiffLines.length > 200 && branchDetail.changes.find(c => c.path === branchDiffPath)?.status === 'D' ? (
+                        <div className="py-12 text-center bg-red-500/5 rounded border border-red-500/20">
+                           <p className="text-muted-foreground text-xs mb-3">Large deleted file ({parsedDiffLines.length} lines)</p>
+                           <Button
+                             size="xs"
+                             variant="outline"
+                             onClick={(e) => {
+                                e.currentTarget.parentElement?.classList.add('hidden');
+                                e.currentTarget.parentElement?.nextElementSibling?.classList.remove('hidden');
+                             }}
+                            >
+                             Show Diff
+                           </Button>
+                        </div>
+                    ) : null}
+                    <div className={cn(parsedDiffLines.length > 200 && branchDetail.changes.find(c => c.path === branchDiffPath)?.status === 'D' ? 'hidden' : '')}>
+                        {parsedDiffLines.map((line, index) => (
+                        <div key={`${index}-${line.slice(0, 12)}`} className={cn('grid grid-cols-[44px_minmax(0,1fr)] gap-2 px-1', diffLineClass(line))}>
+                            <span className="select-none text-right text-[10px] text-muted-foreground/70">{index + 1}</span>
+                            <span className="whitespace-pre-wrap break-words">{line || ' '}</span>
+                        </div>
+                        ))}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -257,22 +284,26 @@ export function WorkspaceDashboard({
 
   if (!detail) {
     if (branchDetail) {
-      return <div className="space-y-3 p-3">{renderBranchDetailPanel(true)}</div>;
+      return <div className="space-y-6 p-4 md:p-6 lg:p-8">{renderBranchDetailPanel(true)}</div>;
     }
 
     return (
-      <div className="flex h-full min-h-[20rem] items-center justify-center p-8 text-center">
-        <div>
-          <Clock3 className="mx-auto size-6 text-muted-foreground/40" />
-          <p className="mt-2 text-sm text-muted-foreground">No workspace configured yet.</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Create from a git branch to unlock sessions, runtime context, and workspace-aware tooling.
+      <div className="flex h-full min-h-[70vh] items-center justify-center p-8 text-center bg-muted/5 rounded-xl border border-dashed border-border/60 mx-4 md:mx-6 lg:mx-8 my-4 md:my-6 lg:my-8">
+        <div className="max-w-md">
+          <div className="relative mx-auto mb-6 flex size-16 items-center justify-center">
+            <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10" />
+            <Clock3 className="relative size-8 text-primary/40" />
+          </div>
+          <p className="text-base font-bold text-foreground">No workspace configured yet</p>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            Connect this project to a git branch to unlock session tracking, runtime context, and workspace-aware AI assistants.
           </p>
-          <div className="mt-4 flex items-center justify-center gap-2">
+          <div className="mt-8 flex items-center justify-center gap-2">
             <Button
-              size="sm"
+              size="lg"
               onClick={onCreateFromBranch}
               disabled={creatingWorkspace}
+              className="px-8 shadow-lg shadow-primary/20"
             >
               {creatingWorkspace ? 'Creating Workspace...' : 'Create From Branch'}
             </Button>
@@ -283,9 +314,9 @@ export function WorkspaceDashboard({
   }
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-6 p-4 md:p-6 lg:p-8">
       <WorkspaceStatusCard
-        detail={detail}
+        detail={detail!}
         statusVariant={statusVariant}
         linkedFeature={linkedFeature}
         linkedRelease={linkedRelease}
@@ -383,9 +414,6 @@ export function WorkspaceDashboard({
             setSessionGoalInput={setSessionGoalInput}
             sessionSummaryInput={sessionSummaryInput}
             setSessionSummaryInput={setSessionSummaryInput}
-            sessionSpecIds={sessionSpecIds}
-            setSessionSpecIds={setSessionSpecIds}
-            specLinkOptions={specLinkOptions}
             providerMatrix={providerMatrix}
             sessionProvider={sessionProvider}
             setSessionProvider={setSessionProvider}

@@ -1,12 +1,7 @@
-import { useMemo, useState } from 'react';
 import {
   Badge,
   Button,
-  Checkbox,
   Input,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -16,9 +11,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@ship/ui';
-import { Clock3, Info, Play, Plus, RefreshCw, Square, Zap } from 'lucide-react';
+import { Clock3, Info, Play, RefreshCw, Square, Zap } from 'lucide-react';
 import {
-  createSpecCmd,
   type WorkspaceProviderMatrix,
   type WorkspaceSessionInfo,
 } from '@/lib/platform/tauri/commands';
@@ -36,9 +30,6 @@ interface WorkspaceSessionSectionProps {
   setSessionGoalInput: (val: string) => void;
   sessionSummaryInput: string;
   setSessionSummaryInput: (val: string) => void;
-  sessionSpecIds: string[];
-  setSessionSpecIds: (ids: string[]) => void;
-  specLinkOptions: any[];
   providerMatrix: WorkspaceProviderMatrix | null;
   sessionProvider: string | null;
   setSessionProvider: (provider: string | null) => void;
@@ -57,16 +48,10 @@ export function WorkspaceSessionSection({
   setSessionGoalInput,
   sessionSummaryInput,
   setSessionSummaryInput,
-  sessionSpecIds,
-  setSessionSpecIds,
-  specLinkOptions,
   providerMatrix,
   sessionProvider,
   setSessionProvider,
 }: WorkspaceSessionSectionProps) {
-  const [specSearch, setSpecSearch] = useState('');
-  const [creatingSpec, setCreatingSpec] = useState(false);
-  const [specError, setSpecError] = useState<string | null>(null);
 
   const hasActiveSession = activeSession?.status === 'active';
   const allowedProviders = providerMatrix?.allowed_providers ?? [];
@@ -76,154 +61,6 @@ export function WorkspaceSessionSection({
     .filter((session) => Boolean(session.summary) || Boolean(session.goal))
     .slice(0, 3);
 
-  const specOptions = useMemo(
-    () =>
-      specLinkOptions
-        .map((entry) => ({
-          id: entry.id,
-          label: entry.spec?.metadata?.title || entry.id,
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label)),
-    [specLinkOptions],
-  );
-
-  const filteredSpecOptions = useMemo(() => {
-    const query = specSearch.trim().toLowerCase();
-    if (!query) return specOptions;
-    return specOptions.filter((option) => {
-      const label = option.label.toLowerCase();
-      const id = option.id.toLowerCase();
-      return label.includes(query) || id.includes(query);
-    });
-  }, [specOptions, specSearch]);
-
-  const selectedSpecBadges = sessionSpecIds
-    .map((id) => specOptions.find((option) => option.id === id))
-    .filter((value): value is { id: string; label: string } => Boolean(value))
-    .slice(0, 8);
-
-  const toggleSpecSelection = (specId: string) => {
-    setSessionSpecIds(
-      sessionSpecIds.includes(specId)
-        ? sessionSpecIds.filter((id) => id !== specId)
-        : [...sessionSpecIds, specId],
-    );
-  };
-
-  const canCreateSpec = specSearch.trim().length > 0;
-
-  const handleCreateSpec = async () => {
-    const title = specSearch.trim();
-    if (!title) return;
-
-    setCreatingSpec(true);
-    setSpecError(null);
-    try {
-      const template = `# ${title}\n\n## Context\n\n## Session Plan\n\n## Validation\n`;
-      const res = await createSpecCmd(title, template);
-      if (res.status === 'error') {
-        setSpecError(res.error || 'Failed to create spec.');
-        return;
-      }
-      setSessionSpecIds(Array.from(new Set([...sessionSpecIds, res.data.id])));
-      setSpecSearch('');
-    } finally {
-      setCreatingSpec(false);
-    }
-  };
-
-  const renderSpecPicker = () => (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] text-muted-foreground">Session Specs</p>
-        {sessionSpecIds.length > 0 ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            className="h-6 px-1.5 text-[10px]"
-            onClick={() => setSessionSpecIds([])}
-          >
-            Clear
-          </Button>
-        ) : null}
-      </div>
-
-      <Popover>
-        <PopoverTrigger>
-          <Button size="sm" variant="outline" className="h-8 w-full justify-between text-[11px]">
-            <span className="truncate">
-              {sessionSpecIds.length > 0
-                ? `${sessionSpecIds.length} spec${sessionSpecIds.length === 1 ? '' : 's'} linked`
-                : 'Create Session Spec or Link Existing'}
-            </span>
-            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-              {sessionSpecIds.length}
-            </Badge>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[min(520px,94vw)] p-3" align="start" sideOffset={8}>
-          <div className="space-y-2">
-            <Input
-              value={specSearch}
-              onChange={(event) => setSpecSearch(event.target.value)}
-              placeholder="Search existing specs or type a new title..."
-              className="h-8"
-            />
-
-            <Button
-              size="xs"
-              variant="outline"
-              className="h-7 w-full justify-start gap-1.5"
-              onClick={() => void handleCreateSpec()}
-              disabled={!canCreateSpec || creatingSpec}
-            >
-              {creatingSpec ? <RefreshCw className="size-3 animate-spin" /> : <Plus className="size-3" />}
-              Create spec "{specSearch.trim() || '...'}"
-            </Button>
-
-            <div className="max-h-52 space-y-1 overflow-y-auto">
-              {filteredSpecOptions.map((option) => (
-                <label
-                  key={option.id}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-transparent px-2 py-1.5 text-[11px] hover:border-border"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-foreground">{option.label}</p>
-                    <p className="truncate text-[10px] text-muted-foreground">{option.id}</p>
-                  </div>
-                  <Checkbox
-                    checked={sessionSpecIds.includes(option.id)}
-                    onCheckedChange={() => toggleSpecSelection(option.id)}
-                  />
-                </label>
-              ))}
-              {filteredSpecOptions.length === 0 ? (
-                <p className="px-1 text-[10px] text-muted-foreground">No specs match this search.</p>
-              ) : null}
-            </div>
-
-            {specError ? (
-              <p className="rounded border border-status-red/30 bg-status-red/5 px-2 py-1 text-[10px] text-status-red">
-                {specError}
-              </p>
-            ) : null}
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {selectedSpecBadges.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {selectedSpecBadges.map((spec) => (
-            <Badge key={spec.id} variant="outline" className="text-[9px]">
-              {spec.label}
-            </Badge>
-          ))}
-        </div>
-      ) : (
-        <p className="text-[10px] text-muted-foreground">No session specs linked yet.</p>
-      )}
-    </div>
-  );
 
   return (
     <section className="space-y-3 rounded-lg border bg-card p-3">
@@ -280,7 +117,6 @@ export function WorkspaceSessionSection({
                 ) : null}
               </div>
 
-              {renderSpecPicker()}
             </div>
             <Button
               size="sm"
@@ -343,7 +179,6 @@ export function WorkspaceSessionSection({
                 </TooltipContent>
               </Tooltip>
 
-              {renderSpecPicker()}
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2">

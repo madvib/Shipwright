@@ -17,15 +17,10 @@ import {
   ReleaseDocument as Release,
   ReleaseInfo,
   ProviderInfo,
-  SpecEntry as RawSpecInfo,
   Workspace,
   Result,
   commands as spectaCommands,
 } from '@/bindings';
-import {
-  SpecInfo,
-  toSpecInfo,
-} from '@/lib/types/spec';
 
 export interface CreateProjectPayload {
   directory: string;
@@ -97,7 +92,6 @@ export interface WorkspaceSessionInfo {
   goal?: string | null;
   summary?: string | null;
   updated_feature_ids: string[];
-  updated_spec_ids: string[];
   compiled_at?: string | null;
   compile_error?: string | null;
   config_generation_at_start?: number | null;
@@ -162,7 +156,7 @@ export interface RuntimePerfSnapshot {
   watcher_last_ingest_micros: number;
 }
 
-export type TemplateKind = 'adr' | 'spec' | 'release' | 'feature' | 'vision';
+export type TemplateKind = 'adr' | 'release' | 'feature' | 'vision';
 export type NotesScope = 'project' | 'global';
 
 const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> => {
@@ -174,8 +168,6 @@ const unwrapResult = async <T>(promise: Promise<Result<T, string>>): Promise<T> 
 };
 
 export const listAdrs = (): Promise<AdrEntry[]> => invoke('list_adrs_cmd');
-export const listSpecs = (): Promise<SpecInfo[]> =>
-  invoke<RawSpecInfo[]>('list_specs_cmd').then((entries) => entries.map(toSpecInfo));
 export const listReleases = (): Promise<ReleaseInfo[]> => invoke<ReleaseInfo[]>('list_releases_cmd');
 export const listFeatures = (): Promise<FeatureEntry[]> => invoke('list_features_cmd');
 export const listNotes = (scope: NotesScope = 'project'): Promise<NoteEntry[]> =>
@@ -211,7 +203,6 @@ export const createWorkspaceCmd = (
     workspaceType?: string | null;
     environmentId?: string | null;
     featureId?: string | null;
-    specId?: string | null;
     releaseId?: string | null;
     modeId?: string | null;
     isWorktree?: boolean | null;
@@ -225,7 +216,6 @@ export const createWorkspaceCmd = (
     isWorktree: options?.isWorktree ?? null,
     worktreePath: options?.worktreePath ?? null,
     featureId: options?.featureId ?? null,
-    specId: options?.specId ?? null,
     releaseId: options?.releaseId ?? null,
     modeId: options?.modeId ?? null,
   }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
@@ -293,13 +283,11 @@ export const endWorkspaceSessionCmd = (
   branch: string,
   summary?: string | null,
   updatedFeatureIds?: string[] | null,
-  updatedSpecIds?: string[] | null,
 ): Promise<Result<WorkspaceSessionInfo, string>> =>
   invoke('end_workspace_session_cmd', {
     branch,
     summary: summary ?? null,
     updatedFeatureIds: updatedFeatureIds ?? null,
-    updatedSpecIds: updatedSpecIds ?? null,
   })
     .then(data => ({ status: 'ok', data } as Result<WorkspaceSessionInfo, string>))
     .catch(error => ({ status: 'error', error: String(error) }));
@@ -424,42 +412,6 @@ export const moveAdrCmd = (id: string, newStatus: AdrStatus): Promise<AdrEntry> 
 export const deleteAdrCmd = (id: string): Promise<void> =>
   unwrapResult(spectaCommands.deleteAdrCmd(id)).then(() => undefined);
 
-export const getSpecCmd = (id: string): Promise<Result<SpecInfo, string>> =>
-  spectaCommands.getSpecCmd(id)
-    .then((result) => {
-      if (result.status === 'ok') {
-        return { status: 'ok', data: toSpecInfo(result.data) } as Result<SpecInfo, string>;
-      }
-      return result as unknown as Result<SpecInfo, string>;
-    });
-
-export const createSpecCmd = (title: string, content: string): Promise<Result<SpecInfo, string>> =>
-  invoke<RawSpecInfo>('create_spec_cmd', { title, content })
-    .then((data) => ({ status: 'ok', data: toSpecInfo(data) } as Result<SpecInfo, string>))
-    .catch((error) => ({ status: 'error', error: String(error) }));
-
-export const updateSpecCmd = async (id: string, content: string): Promise<Result<SpecInfo, string>> => {
-  const existing = await spectaCommands.getSpecCmd(id);
-  if (existing.status === 'error') {
-    return existing as unknown as Result<SpecInfo, string>;
-  }
-  return spectaCommands.updateSpecCmd(id, { ...existing.data.spec, body: content })
-    .then((result) => {
-      if (result.status === 'ok') {
-        return { status: 'ok', data: toSpecInfo(result.data) } as Result<SpecInfo, string>;
-      }
-      return result as unknown as Result<SpecInfo, string>;
-    });
-};
-
-export const moveSpecCmd = (id: string, newStatus: string): Promise<Result<SpecInfo, string>> =>
-  invoke<RawSpecInfo>('move_spec_cmd', { id, newStatus })
-    .then((data) => ({ status: 'ok', data: toSpecInfo(data) } as Result<SpecInfo, string>))
-    .catch((error) => ({ status: 'error', error: String(error) }));
-
-export const deleteSpecCmd = (id: string): Promise<Result<null, string>> =>
-  spectaCommands.deleteSpecCmd(id);
-
 export const getReleaseCmd = (fileName: string): Promise<Result<Release, string>> =>
   invoke('get_release_cmd', { fileName }).then(data => ({ status: 'ok', data } as Result<Release, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
@@ -507,9 +459,8 @@ export const createFeatureCmd = (
   title: string,
   content: string,
   release?: string | null,
-  spec?: string | null,
   branch?: string | null,
-): Promise<Result<Feature, string>> => invoke('create_feature_cmd', { title, content, release, spec, branch }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
+): Promise<Result<Feature, string>> => invoke('create_feature_cmd', { title, content, release, branch }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));
 
 export const updateFeatureCmd = (fileName: string, content: string): Promise<Result<Feature, string>> =>
   invoke('update_feature_cmd', { fileName, content }).then(data => ({ status: 'ok', data } as Result<Feature, string>)).catch(error => ({ status: 'error', error: String(error) }));

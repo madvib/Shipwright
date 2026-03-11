@@ -20,7 +20,6 @@ import { deriveAdrHeaderTitle } from './adrTitle';
 
 interface AdrDetailProps {
   entry: AdrEntry;
-  specSuggestions: { id: string; title: string }[];
   tagSuggestions: string[];
   adrSuggestions?: { id: string; title: string }[];
   mcpEnabled?: boolean;
@@ -41,7 +40,6 @@ function normalizeAdr(adr: ADR): ADR {
 
 export default function AdrDetail({
   entry,
-  specSuggestions,
   tagSuggestions,
   adrSuggestions = [],
   mcpEnabled = false,
@@ -137,7 +135,6 @@ export default function AdrDetail({
                 setDraft(next);
                 setDirty(true);
               }}
-              specSuggestions={specSuggestions}
               tagSuggestions={tagSuggestions}
               adrSuggestions={adrSuggestions}
               onNavigate={(type) => {
@@ -162,7 +159,6 @@ export default function AdrDetail({
               setDraft(next);
               setDirty(true);
             }}
-            specSuggestions={specSuggestions}
             tagSuggestions={tagSuggestions}
             extraActions={actionButtons}
             adrSuggestions={adrSuggestions}

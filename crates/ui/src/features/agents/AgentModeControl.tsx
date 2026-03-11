@@ -1,6 +1,8 @@
 import { Bot, Check, ChevronDown, Settings2, Sparkles } from 'lucide-react';
 import { ModeConfig } from '@/bindings';
 import { Button, Badge } from '@ship/ui';
+import { cn } from '@/lib/utils';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +10,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@ship/ui';
+
 
 interface AgentModeControlProps {
   modes: ModeConfig[];
@@ -76,14 +82,20 @@ export default function AgentModeControl({
                   <Bot className="size-3.5 text-muted-foreground" />
                   <div className="min-w-0">
                     <p className="truncate text-xs font-medium">Default</p>
-                    <p className="truncate text-[10px] text-muted-foreground">
-                      Use project default behavior
-                    </p>
+                    <Tooltip delayDuration={500}>
+                      <TooltipTrigger asChild>
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          Use project default behavior
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">Use project default behavior</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
                 {activeModeId === null ? <Check className="size-3.5 text-primary" /> : null}
               </div>
             </DropdownMenuRadioItem>
+
 
             {modes.map((mode) => (
               <DropdownMenuRadioItem
@@ -95,10 +107,16 @@ export default function AgentModeControl({
                   <div className="min-w-0">
                     <p className="truncate text-xs font-medium">{mode.name}</p>
                     {mode.description ? (
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        {mode.description}
-                      </p>
+                      <Tooltip delayDuration={500}>
+                        <TooltipTrigger asChild>
+                          <p className="truncate text-[10px] text-muted-foreground">
+                            {mode.description}
+                          </p>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">{mode.description}</TooltipContent>
+                      </Tooltip>
                     ) : null}
+
                   </div>
                   {activeModeId === mode.id ? (
                     <Check className="size-3.5 text-primary" />
@@ -109,15 +127,30 @@ export default function AgentModeControl({
           </DropdownMenuRadioGroup>
 
           <DropdownMenuSeparator />
-          <div className="flex items-center justify-between px-2 py-2">
+          <div className={cn(
+            "flex items-center justify-between px-2 py-2",
+            (!aiProvider || !aiModel) && "bg-status-orange/5 border-t border-status-orange/10"
+          )}>
             <div className="min-w-0">
-              <p className="text-[10px] text-muted-foreground">
-                Provider: <span className="font-medium text-foreground">{aiProvider ?? 'none'}</span>
+              <p className={cn(
+                "text-[10px] font-medium transition-colors",
+                !aiProvider ? "text-status-orange" : "text-muted-foreground"
+              )}>
+                Provider: <span className={cn(
+                  "font-bold",
+                  !aiProvider ? "animate-pulse" : "text-foreground"
+                )}>{aiProvider ?? 'none'}</span>
               </p>
-              <p className="truncate text-[10px] text-muted-foreground">
-                Model: {aiModel ?? 'not set'}
+              <p className={cn(
+                "truncate text-[10px] font-medium transition-colors",
+                !aiModel ? "text-status-orange" : "text-muted-foreground"
+              )}>
+                Model: <span className={cn(
+                  !aiModel && "font-bold animate-pulse"
+                )}>{aiModel ?? 'not set'}</span>
               </p>
             </div>
+
             <Button
               variant="ghost"
               size="xs"

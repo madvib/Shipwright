@@ -34,12 +34,10 @@ const DOC_STATUS_OPTIONS = ['not-started', 'draft', 'reviewed', 'published'];
 interface FeatureDetailProps {
   feature: FeatureEntry;
   releaseSuggestions?: string[];
-  specSuggestions?: string[];
   tagSuggestions?: string[];
   mcpEnabled?: boolean;
   onClose: () => void;
   onSelectRelease: (fileName: string) => void;
-  onSelectSpec: (fileName: string) => void;
   onSave: (fileName: string, content: string) => Promise<void> | void;
   onStart: (fileName: string) => Promise<void> | void;
   onDone: (fileName: string) => Promise<void> | void;
@@ -54,12 +52,10 @@ interface FeatureDetailProps {
 export default function FeatureDetail({
   feature,
   releaseSuggestions = [],
-  specSuggestions = [],
   tagSuggestions = [],
   mcpEnabled = true,
   onClose,
   onSelectRelease,
-  onSelectSpec,
   onSave,
   onStart,
   onDone,
@@ -190,7 +186,6 @@ export default function FeatureDetail({
 
   const handleMetadataUpdate = useCallback((updates: {
     release_id?: string;
-    spec_id?: string;
     tags?: string[];
   }) => {
     let nextContent = content;
@@ -198,9 +193,6 @@ export default function FeatureDetail({
 
     if (updates.release_id !== undefined) {
       nextContent = setFrontmatterStringField(nextContent, 'release_id', updates.release_id, delimiter) || nextContent;
-    }
-    if (updates.spec_id !== undefined) {
-      nextContent = setFrontmatterStringField(nextContent, 'spec_id', updates.spec_id, delimiter) || nextContent;
     }
     if (updates.tags) {
       nextContent = setFrontmatterStringListField(nextContent, 'tags', updates.tags, delimiter) || nextContent;
@@ -273,17 +265,14 @@ export default function FeatureDetail({
             <FeatureHeaderMetadata
               status={feature.status}
               releaseId={feature.release_id || undefined}
-              specId={feature.spec_id || undefined}
               tags={tags}
               isEditing={editing}
               onUpdate={handleMetadataUpdate}
               onStatusTransition={handleStatusTransition}
               releaseSuggestions={releaseSuggestions}
-              specSuggestions={specSuggestions}
               tagSuggestions={tagSuggestions}
               onNavigate={(id, type) => {
                 if (type === 'release') onSelectRelease(id);
-                if (type === 'spec') onSelectSpec(id);
               }}
             />
           </div>

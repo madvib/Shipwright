@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-    Shapes,
     Tag,
     CheckCircle2,
     Clock,
@@ -22,19 +21,16 @@ import { MetadataPopover } from '../common/MetadataPopover';
 interface FeatureHeaderMetadataProps {
     status: string;
     releaseId?: string;
-    specId?: string;
     tags?: string[];
     isEditing: boolean;
     onUpdate: (updates: {
         release_id?: string;
-        spec_id?: string;
         tags?: string[];
     }) => void;
     onStatusTransition?: (status: string) => Promise<void> | void;
     releaseSuggestions?: string[];
-    specSuggestions?: string[];
     tagSuggestions?: string[];
-    onNavigate?: (id: string, type: 'release' | 'spec') => void;
+    onNavigate?: (id: string, type: 'release') => void;
 }
 
 const STATUS_OPTIONS = [
@@ -47,13 +43,11 @@ const STATUS_OPTIONS = [
 export function FeatureHeaderMetadata({
     status,
     releaseId,
-    specId,
     tags = [],
     isEditing,
     onUpdate,
     onStatusTransition,
     releaseSuggestions = [],
-    specSuggestions = [],
     tagSuggestions = [],
     onNavigate,
 }: FeatureHeaderMetadataProps) {
@@ -61,7 +55,6 @@ export function FeatureHeaderMetadata({
     const StatusIcon = currentStatus.icon;
 
     const [releaseInput, setReleaseInput] = useState(releaseId || '');
-    const [specInput, setSpecInput] = useState(specId || '');
 
     const canTransition = (nextStatus: string) => {
         if (nextStatus === status) {
@@ -146,31 +139,6 @@ export function FeatureHeaderMetadata({
                 )}
             </MetadataPopover>
 
-            {/* Spec Popover */}
-            <MetadataPopover
-                icon={Shapes}
-                label={specId || 'No Spec'}
-                title="Linked Specification"
-                action={specId && onNavigate && (
-                    <Button variant="link" size="xs" className="h-auto p-0 text-[10px]" onClick={() => onNavigate(specId, 'spec')}>
-                        View Spec
-                    </Button>
-                )}
-            >
-                {isEditing ? (
-                    <AutocompleteInput
-                        value={specInput}
-                        onValueChange={setSpecInput}
-                        options={specSuggestions.map(id => ({ value: id, label: id }))}
-                        placeholder="Search specs..."
-                        onCommit={(val) => onUpdate({ spec_id: val || undefined })}
-                    />
-                ) : (
-                    <div className="rounded-md border bg-muted/20 p-2 mx-1">
-                        <p className="text-sm font-medium">{specId || 'None'}</p>
-                    </div>
-                )}
-            </MetadataPopover>
 
             {/* Tags Popover */}
             <MetadataPopover

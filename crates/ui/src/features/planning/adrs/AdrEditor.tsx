@@ -8,7 +8,6 @@ import { deriveAdrDocTitle } from './adrTitle';
 interface AdrEditorProps {
   adr: ADR;
   onChange: (next: ADR) => void;
-  specSuggestions: { id: string; title: string }[];
   tagSuggestions: string[];
   adrSuggestions?: { id: string; title: string }[];
   placeholder?: string;

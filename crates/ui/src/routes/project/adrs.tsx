@@ -25,7 +25,6 @@ function AdrsRouteComponent() {
         onMoveAdr={ship.handleMoveAdr}
         onSaveAdr={ship.handleSaveAdr}
         onDeleteAdr={ship.handleDeleteAdr}
-        specSuggestions={ship.specSuggestions}
         tagSuggestions={ship.tagSuggestions}
         adrSuggestions={ship.adrSuggestions}
         mcpEnabled={workspace.mcpEnabled}

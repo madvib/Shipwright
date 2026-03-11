@@ -1,24 +1,18 @@
-import { ComponentType, useCallback, useContext, useEffect, useMemo, useState, ChangeEvent, MouseEvent } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState, ChangeEvent, MouseEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  AlertCircle,
-  CheckCircle2,
-  Compass,
-  Edit3,
   FileText,
-  HelpCircle,
   Plus,
-  RefreshCcw,
   Save,
   Trash2,
   X,
-  XCircle,
+  Edit3,
+  Compass,
 } from 'lucide-react';
 import { ADR, AdrEntry, AdrStatus } from '@/bindings';
 import { FacetedFilter, PageFrame, PageHeader } from '@ship/ui';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -27,11 +21,6 @@ import {
   CardTitle,
   EmptyState,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -41,18 +30,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  AutocompleteInput,
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  Badge,
 } from '@ship/ui';
 import { cn } from '@/lib/utils';
+import {
+  ADR_STATUS_OPTIONS,
+  formatStatusLabel,
+  getAdrStatusClasses,
+} from '@/lib/workspace-ui';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ship/ui';
 import { PageChromeContext } from '@ship/ui';
-// Route imports removed – specs is no longer a top-level page
-import { getAdrStatusClasses } from '@/lib/workspace-ui';
 import AdrEditor from './AdrEditor';
 import TemplateEditorButton from '../common/TemplateEditorButton';
 import { AdrHeaderMetadata } from './AdrHeaderMetadata';
@@ -69,7 +65,6 @@ interface AdrListProps {
     options?: {
       status?: string;
       date?: string;
-      spec?: string | null;
       tags?: string[];
     }
   ) => Promise<AdrEntry | void> | AdrEntry | void;
@@ -77,7 +72,6 @@ interface AdrListProps {
   onMoveAdr: (id: string, status: AdrStatus) => void | Promise<void>;
   onSaveAdr: (id: string, adr: ADR) => void | Promise<void>;
   onDeleteAdr: (id: string) => void | Promise<void>;
-  specSuggestions: { id: string; title: string }[];
   tagSuggestions: string[];
   adrSuggestions: { id: string; title: string }[];
   mcpEnabled: boolean;
@@ -92,22 +86,6 @@ const ADR_SORT_OPTIONS: Array<{ value: AdrSort; label: string }> = [
   { value: 'status', label: 'Status' },
   { value: 'title', label: 'Title' },
 ];
-
-const ADR_STATUS_OPTIONS: Array<{
-  value: AdrStatus;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-}> = [
-    { value: 'proposed', label: 'Proposed', icon: HelpCircle },
-    { value: 'accepted', label: 'Accepted', icon: CheckCircle2 },
-    { value: 'rejected', label: 'Rejected', icon: XCircle },
-    { value: 'superseded', label: 'Superseded', icon: RefreshCcw },
-    { value: 'deprecated', label: 'Deprecated', icon: AlertCircle },
-  ];
-
-function formatStatusLabel(status: AdrStatus): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
 
 function normalizeAdr(adr: ADR): ADR {
   return {
@@ -126,7 +104,6 @@ function createInitialAdrDraft(): ADR {
       title: '',
       date: new Date().toISOString().slice(0, 10),
       tags: [],
-      spec_id: null,
       supersedes_id: null,
     },
     context: '',
@@ -142,7 +119,6 @@ export default function AdrList({
   onMoveAdr,
   onSaveAdr,
   onDeleteAdr,
-  specSuggestions,
   tagSuggestions,
   adrSuggestions,
   mcpEnabled,
@@ -174,8 +150,7 @@ export default function AdrList({
         entry.adr?.metadata?.title.toLowerCase().includes(needle) ||
         entry.status.toLowerCase().includes(needle) ||
         entry.file_name.toLowerCase().includes(needle) ||
-        entry.id.toLowerCase().includes(needle) ||
-        (entry.adr?.metadata?.spec_id ?? '').toLowerCase().includes(needle);
+        entry.id.toLowerCase().includes(needle);
 
       const matchesStatus =
         selectedStatuses.size === 0 || selectedStatuses.has(entry.status);
@@ -200,8 +175,10 @@ export default function AdrList({
             (Number.isNaN(dateB) ? 0 : dateB) - (Number.isNaN(dateA) ? 0 : dateA)
           );
         case 'title':
+          const titleA = a.adr?.metadata?.title.toLowerCase() || '';
+          const titleB = b.adr?.metadata?.title.toLowerCase() || '';
           return (
-            a.adr?.metadata?.title.toLowerCase().localeCompare(b.adr?.metadata?.title.toLowerCase()) ||
+            titleA.localeCompare(titleB) ||
             (Number.isNaN(dateB) ? 0 : dateB) - (Number.isNaN(dateA) ? 0 : dateA)
           );
         case 'newest':
@@ -241,8 +218,7 @@ export default function AdrList({
   }, [activeEntry?.id, creating]);
 
   const handleMoveStatus = useCallback(
-    (entry: AdrEntry, next: string) => {
-      const nextStatus = next as AdrStatus;
+    (entry: AdrEntry, nextStatus: AdrStatus) => {
       if (nextStatus === entry.status || movingIds.has(entry.id)) return;
 
       setMovingIds((current) => new Set(current).add(entry.id));
@@ -306,7 +282,6 @@ export default function AdrList({
         const created = await onCreateAdr(nextTitle, draft.context.trim(), draft.decision.trim(), {
           status: createStatus,
           date: draft.metadata.date,
-          spec: draft.metadata.spec_id ?? null,
           tags: draft.metadata.tags ?? [],
         });
         if (!created) {
@@ -347,17 +322,6 @@ export default function AdrList({
     ? (draft?.metadata.title.trim() || 'New ADR')
     : (displayEntry?.adr.metadata.title ?? 'Select A Decision');
 
-  const updateAdrMetadata = useCallback(async (entry: AdrEntry, updates: Partial<ADR['metadata']>) => {
-    const nextAdr = {
-      ...entry.adr,
-      metadata: {
-        ...entry.adr.metadata,
-        ...updates
-      }
-    };
-    await onSaveAdr(entry.id, nextAdr);
-  }, [onSaveAdr]);
-
   const RegisterContent = useMemo(() => {
     return (
       <div className="flex flex-col h-full min-h-0 py-1 px-1">
@@ -384,7 +348,7 @@ export default function AdrList({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {ADR_SORT_OPTIONS.map((option) => (
+                {ADR_SORT_OPTIONS.map((option: { value: AdrSort; label: string }) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -405,26 +369,6 @@ export default function AdrList({
                     : 'border-transparent bg-transparent'
                 )}
                 onClick={() => {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7589/ingest/f85ceda4-335f-4e01-985d-67f8dc3ec941', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'X-Debug-Session-Id': '25afe1'
-                    },
-                    body: JSON.stringify({
-                      sessionId: '25afe1',
-                      runId: 'initial',
-                      hypothesisId: 'H3',
-                      location: 'AdrList.tsx:402',
-                      message: 'ADR list item clicked',
-                      data: {
-                        entryId: entry.id
-                      },
-                      timestamp: Date.now()
-                    })
-                  }).catch(() => { });
-                  // #endregion agent log
                   void onSelectAdr(entry);
                 }}
                 title={entry.path}
@@ -444,50 +388,18 @@ export default function AdrList({
                   >
                     {formatStatusLabel(entry.status)}
                   </Badge>
-
-                  <Popover>
-                    <PopoverTrigger>
-                      <button
-                        className="p-0 border-none bg-transparent hover:opacity-80 transition-opacity"
-                        title="Edit Spec Link"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "h-4.5 px-1.5 text-[9px] font-mono",
-                            entry.adr.metadata.spec_id ? "opacity-60" : "opacity-20 hover:opacity-100"
-                          )}
-                        >
-                          {entry.adr.metadata.spec_id || 'no spec'}
-                        </Badge>
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-3" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Linked Specification</p>
-                        <AutocompleteInput
-                          value={entry.adr.metadata.spec_id || ''}
-                          onValueChange={(next: string) => void updateAdrMetadata(entry, { spec_id: next || null })}
-                          options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
-                          placeholder="Search or enter spec ID..."
-                          className="h-8 text-xs font-mono"
-                        />
-                      </div>
-                    </PopoverContent>
-                  </Popover>
                 </div>
               </button>
               <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Select
                   value={entry.status}
-                  onValueChange={(next) => next && handleMoveStatus(entry, next as AdrStatus)}
+                  onValueChange={(next: string | null) => next && handleMoveStatus(entry, next as AdrStatus)}
                 >
                   <SelectTrigger size="sm" className="h-6 w-6 p-0 border-none bg-transparent hover:bg-muted/80" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     <Edit3 className="size-3 text-muted-foreground" />
                   </SelectTrigger>
                   <SelectContent align="end" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                    {ADR_STATUS_OPTIONS.map((option) => (
+                    {ADR_STATUS_OPTIONS.map((option: { value: string; label: string }) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -511,37 +423,13 @@ export default function AdrList({
     sortBy,
     sortedAdrs,
     activeEntry,
-    activeEntry?.id,
     onSelectAdr,
-    handleMoveStatus,
-    updateAdrMetadata,
-    specSuggestions,
-    tagSuggestions
+    handleMoveStatus
   ]);
 
   const { setChrome } = useContext(PageChromeContext);
   useEffect(() => {
     if (showReadPane) {
-      // #region agent log
-      fetch('http://127.0.0.1:7589/ingest/f85ceda4-335f-4e01-985d-67f8dc3ec941', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Session-Id': '25afe1'
-        },
-        body: JSON.stringify({
-          sessionId: '25afe1',
-          runId: 'initial',
-          hypothesisId: 'H2',
-          location: 'AdrList.tsx:497',
-          message: 'setChrome effect updating sidebar',
-          data: {
-            showReadPane
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => { });
-      // #endregion agent log
       setChrome({
         sidebar: RegisterContent,
         onBack: onBackToGlobal
@@ -558,10 +446,8 @@ export default function AdrList({
         actions={
           <div className="flex items-center gap-2">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <TemplateEditorButton kind="adr" />
-                </div>
+              <TooltipTrigger>
+                <TemplateEditorButton kind="adr" />
               </TooltipTrigger>
               <TooltipContent side="bottom">Configure the ADR template.</TooltipContent>
             </Tooltip>
@@ -629,10 +515,9 @@ export default function AdrList({
                               setDraft(next);
                               setDirty(true);
                             }}
-                            specSuggestions={specSuggestions}
                             tagSuggestions={tagSuggestions}
                             adrSuggestions={adrSuggestions}
-                            onNavigate={(type: string, id: string) => {
+                            onNavigate={(type: 'adr', id: string) => {
                               if (type === 'adr') {
                                 const found = adrs.find(a => a.id === id);
                                 if (found) void onSelectAdr(found);
@@ -649,7 +534,7 @@ export default function AdrList({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {ADR_STATUS_OPTIONS.map((option) => (
+                              {ADR_STATUS_OPTIONS.map((option: { value: string; label: string }) => (
                                 <SelectItem key={option.value} value={option.value}>
                                   {option.label}
                                 </SelectItem>
@@ -664,12 +549,18 @@ export default function AdrList({
                             }}
                             disabled={movingIds.has(displayEntry.id)}
                           >
-                            <SelectTrigger size="sm" className="h-8 w-36">
+                            <SelectTrigger
+                                size="sm"
+                                className={cn(
+                                    "h-8 w-40 font-bold uppercase tracking-wider text-[10px] transition-all",
+                                    getAdrStatusClasses(displayEntry.status)
+                                )}
+                            >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {ADR_STATUS_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
+                              {ADR_STATUS_OPTIONS.map((option: { value: string; label: string }) => (
+                                <SelectItem key={option.value} value={option.value} className="text-[10px] font-bold uppercase tracking-wider">
                                   {option.label}
                                 </SelectItem>
                               ))}
@@ -709,7 +600,7 @@ export default function AdrList({
 
                         {!creating && displayEntry && (
                           <AlertDialog>
-                            <AlertDialogTrigger>
+                            <AlertDialogTrigger asChild>
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -762,7 +653,6 @@ export default function AdrList({
                             setDirty(true);
                             setCreateError(null);
                           }}
-                          specSuggestions={specSuggestions}
                           tagSuggestions={tagSuggestions}
                           adrSuggestions={adrSuggestions}
                           mcpEnabled={mcpEnabled}

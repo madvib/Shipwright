@@ -123,10 +123,19 @@ export default function Sidebar({
                     : 'text-sidebar-foreground/50 group-hover:text-sidebar-primary/70 group-hover:scale-110'
               )}
             />
-            {!isCompact && <span className="text-[13px] font-medium tracking-tight">{item.label}</span>}
-            {!isCompact && active && (
-              <div className="ml-auto size-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
+            {!isCompact && (
+              <div className="flex flex-1 items-center justify-between min-w-0">
+                <span className="text-[13px] font-medium tracking-tight truncate">{item.label}</span>
+                {/*
+                  SELECTION INDICATOR:
+                  The primary color dot indicates the currently active route.
+                */}
+                {active && (
+                  <div className="size-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_currentColor]" />
+                )}
+              </div>
             )}
+
           </Button>
         </TooltipTrigger>
         <TooltipContent side="right" className="font-bold text-[10px] uppercase tracking-widest">
@@ -159,7 +168,13 @@ export default function Sidebar({
             <span className="relative z-10 text-xs font-black tracking-tighter text-white drop-shadow-sm font-mono">
               {avatarLabel}
             </span>
+            {/*
+              NOTIFICATION DOT PATTERN:
+              The orange dot (bg-emerald-500 here, though feedback mentioned orange in Overview context)
+              is used to indicate active status or notifications.
+            */}
             <div className="absolute -bottom-1 -right-1 size-3.5 rounded-full border-2 border-sidebar bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align={collapsed ? 'start' : 'start'}

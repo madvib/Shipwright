@@ -55,3 +55,15 @@ const ADR_STATUS_COLORS: Record<string, string> = {
 export function getAdrStatusClasses(status: string): string {
   return ADR_STATUS_COLORS[status] ?? 'text-muted-foreground';
 }
+
+export const ADR_STATUS_OPTIONS = [
+  { value: 'proposed', label: 'Proposed' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'deprecated', label: 'Deprecated' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'superseded', label: 'Superseded' },
+];
+
+export function formatStatusLabel(status: string): string {
+  return ADR_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
+}

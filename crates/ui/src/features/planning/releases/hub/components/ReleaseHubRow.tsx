@@ -55,7 +55,15 @@ export default function ReleaseHubRow({
             <Badge variant="outline">{formatStatusLabel(release.status)}</Badge>
             <Badge variant="secondary">{activeTargetCount} active targets</Badge>
             <Badge variant="secondary">{linkedCount} linked features</Badge>
-            {blockers > 0 && <Badge variant="secondary">{blockers} blockers</Badge>}
+            {blockers > 0 && (
+              <Badge
+                variant="secondary"
+                className="bg-orange-500/10 text-orange-600 border-orange-500/20"
+                title="View blockers in Features Hub"
+              >
+                {blockers} blockers
+              </Badge>
+            )}
           </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px]">
@@ -66,15 +74,13 @@ export default function ReleaseHubRow({
               value={progress}
               indicatorClassName={cn(blockers > 0 ? 'bg-amber-500' : 'bg-emerald-500')}
             />
-            <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-              <span>
-                Todos: {todosDone}/{todosTotal}
-              </span>
-              <span>
-                Acceptance: {acceptanceDone}/{acceptanceTotal}
-              </span>
+            <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase font-bold tracking-tight text-muted-foreground/70">
+              <span>{todosDone}/{todosTotal} todos</span>
+              <span className="opacity-40">·</span>
+              <span>{acceptanceDone}/{acceptanceTotal} acceptance</span>
             </div>
           </div>
+
         </div>
         <Button variant="outline" size="sm" onClick={() => onOpen(release)}>
           Open

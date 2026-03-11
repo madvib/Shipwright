@@ -54,7 +54,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
   const [endingSession, setEndingSession] = useState(false);
   const [sessionGoalInput, setSessionGoalInput] = useState('');
   const [sessionSummaryInput, setSessionSummaryInput] = useState('');
-  const [sessionSpecIds, setSessionSpecIds] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [updatingLinks, setUpdatingLinks] = useState(false);
   const [linkFeatureId, setLinkFeatureId] = useState<string | null>(null);
@@ -180,7 +179,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
           branch: workspace.branch,
           workspaceType: normalizeWorkspaceType(runtimeWorkspace.workspace_type),
           featureId: workspace.feature_id ?? null,
-          specId: workspace.spec_id ?? null,
           releaseId: runtimeWorkspace.release_id ?? null,
           environmentId: runtimeWorkspace.environment_id ?? null,
           activeMode: workspace.active_mode ?? null,
@@ -208,7 +206,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     return rows.filter((row) => {
       if (row.branch.toLowerCase().includes(query)) return true;
       if (row.featureId?.toLowerCase().includes(query)) return true;
-      if (row.specId?.toLowerCase().includes(query)) return true;
       if (row.releaseId?.toLowerCase().includes(query)) return true;
       return false;
     });
@@ -236,10 +233,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     setLinkFeatureId(detail.featureId ?? null);
     setLinkReleaseId(detail.releaseId ?? null);
   }, [detail?.branch, detail?.featureId, detail?.releaseId]);
-
-  useEffect(() => {
-    setSessionSpecIds([]);
-  }, [detail?.branch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,8 +374,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     setSessionGoalInput,
     sessionSummaryInput,
     setSessionSummaryInput,
-    sessionSpecIds,
-    setSessionSpecIds,
     syncing,
     setSyncing,
     updatingLinks,

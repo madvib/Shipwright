@@ -128,8 +128,6 @@ interface WorkspaceSidebarProps {
   onHome: () => void;
   onCollapse: () => void;
   featureLabels: Record<string, string>;
-  releaseLabels: Record<string, string>;
-  specLabels: Record<string, string>;
 }
 
 function humanizeBranchToken(value: string): string {
@@ -158,8 +156,6 @@ export function WorkspaceSidebar({
   onHome,
   onCollapse,
   featureLabels,
-  releaseLabels,
-  specLabels,
 }: WorkspaceSidebarProps) {
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [viewMode, setViewMode] = useState<SidebarView>('workspaces');
@@ -223,25 +219,23 @@ export function WorkspaceSidebar({
 
   const workspaceTitleForRow = useCallback(
     (row: WorkspaceRow) => {
-      const releaseTitle = row.releaseId ? releaseLabels[row.releaseId] : null;
       const featureTitle = row.featureId ? featureLabels[row.featureId] : null;
-      const specTitle = row.specId ? specLabels[row.specId] : null;
 
       if (row.workspaceType === 'patch') {
-        const title = releaseTitle || featureTitle || specTitle || 'Patch Workspace';
+        const title = featureTitle || 'Patch Workspace';
         return {
           title,
           subtitle: row.branch,
         };
       }
 
-      const title = releaseTitle || featureTitle || specTitle || humanizeBranchToken(row.branch);
+      const title = featureTitle || humanizeBranchToken(row.branch);
       return {
         title,
         subtitle: row.branch,
       };
     },
-    [featureLabels, releaseLabels, specLabels],
+    [featureLabels],
   );
 
   const query = localSearch.trim().toLowerCase();
@@ -266,8 +260,6 @@ export function WorkspaceSidebar({
       if (title.includes(query)) return true;
       if (row.branch.toLowerCase().includes(query)) return true;
       if (row.featureId?.toLowerCase().includes(query)) return true;
-      if (row.specId?.toLowerCase().includes(query)) return true;
-      if (row.releaseId?.toLowerCase().includes(query)) return true;
       return false;
     });
   }, [

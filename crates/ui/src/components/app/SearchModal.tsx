@@ -2,7 +2,6 @@ import * as React from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
     StickyNote,
-    FileText,
     Target,
     Gavel,
     Package,
@@ -38,7 +37,6 @@ import {
     NOTES_ROUTE,
     OVERVIEW_ROUTE,
     RELEASES_ROUTE,
-    SPECS_ROUTE,
     WORKFLOW_WORKSPACE_ROUTE,
 } from '@/lib/constants/routes';
 import {
@@ -66,7 +64,6 @@ export function SearchModal() {
 
     const {
         notes,
-        specs,
         features,
         adrs,
         releases,
@@ -167,10 +164,6 @@ export function SearchModal() {
         });
     }, [knownWorkspaceBranches, runWorkspaceMutation, runtimeBranch]);
 
-    const openSpecContext = React.useCallback(async (spec: typeof specs[number]) => {
-        await navigate({ to: SPECS_ROUTE });
-        await ship.handleSelectSpec(spec);
-    }, [navigate, ship]);
 
     const openSettingsSection = React.useCallback((section: 'providers' | 'mcp' | 'skills' | 'rules' | 'permissions') => {
         const routeBySection = {
@@ -201,10 +194,6 @@ export function SearchModal() {
                     <CommandItem onSelect={() => runCommand(() => void navigate({ to: FEATURES_ROUTE }))}>
                         <Target className="mr-2 h-4 w-4" />
                         <span>Features</span>
-                    </CommandItem>
-                    <CommandItem onSelect={() => runCommand(() => void navigate({ to: SPECS_ROUTE }))}>
-                        <FileText className="mr-2 h-4 w-4" />
-                        <span>Specs</span>
                     </CommandItem>
                     <CommandItem onSelect={() => runCommand(() => void navigate({ to: RELEASES_ROUTE }))}>
                         <Package className="mr-2 h-4 w-4" />
@@ -334,28 +323,6 @@ export function SearchModal() {
                     </CommandGroup>
                 )}
 
-                {specs.length > 0 && (
-                    <CommandGroup heading="Specs">
-                        {specs.map((spec) => (
-                            <CommandItem
-                                key={`spec-${spec.file_name}`}
-                                onSelect={() =>
-                                    runCommand(() => openSpecContext(spec))
-                                }
-                            >
-                                <FileText className="mr-2 h-4 w-4" />
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                    <span className="truncate">
-                                        {spec.spec.metadata.title || spec.id}
-                                    </span>
-                                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                                        {spec.id}
-                                    </span>
-                                </div>
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
-                )}
 
                 {releases.length > 0 && (
                     <CommandGroup heading="Releases">

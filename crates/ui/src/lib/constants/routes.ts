@@ -2,7 +2,6 @@ export const OVERVIEW_ROUTE = '/project/overview' as const;
 export const PROJECTS_ROUTE = '/projects' as const;
 export const RELEASES_ROUTE = '/project/releases' as const;
 export const FEATURES_ROUTE = '/project/features' as const;
-export const SPECS_ROUTE = '/project/specs' as const;
 export const WORKFLOW_WORKSPACE_ROUTE = '/project/workflow/workspace' as const;
 export const ADRS_ROUTE = '/project/adrs' as const;
 export const NOTES_ROUTE = '/project/notes' as const;
@@ -21,7 +20,6 @@ export type AppRoutePath =
   | typeof PROJECTS_ROUTE
   | typeof RELEASES_ROUTE
   | typeof FEATURES_ROUTE
-  | typeof SPECS_ROUTE
   | typeof WORKFLOW_WORKSPACE_ROUTE
   | typeof ADRS_ROUTE
   | typeof NOTES_ROUTE
@@ -40,7 +38,6 @@ export const ROUTE_LABELS: Record<AppRoutePath, string> = {
   [PROJECTS_ROUTE]: 'Projects',
   [RELEASES_ROUTE]: 'Releases',
   [FEATURES_ROUTE]: 'Features',
-  [SPECS_ROUTE]: 'Specs',
   [WORKFLOW_WORKSPACE_ROUTE]: 'Workspaces',
   [ADRS_ROUTE]: 'Decisions',
   [NOTES_ROUTE]: 'Notes',

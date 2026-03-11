@@ -20,7 +20,6 @@ interface FeatureMetadataPanelProps {
   defaultTitle: string;
   defaultStatus?: string;
   releaseSuggestions?: string[];
-  specSuggestions?: string[];
   adrSuggestions?: string[];
   tagSuggestions?: string[];
   onChange: (frontmatter: string | null, delimiter: FrontmatterDelimiter) => void;
@@ -32,9 +31,9 @@ function createStarterMetadata(
   status: string
 ): string {
   if (delimiter === '---') {
-    return `title: "${title}"\nstatus: "${status}"\nrelease: ""\nspec: ""\nadrs: []\ntags: []`;
+    return `title: "${title}"\nstatus: "${status}"\nrelease: ""\nadrs: []\ntags: []`;
   }
-  return `title = "${title}"\nstatus = "${status}"\nrelease = ""\nspec = ""\nadrs = []\ntags = []`;
+  return `title = "${title}"\nstatus = "${status}"\nrelease = ""\nadrs = []\ntags = []`;
 }
 
 export default function FeatureMetadataPanel({
@@ -43,7 +42,6 @@ export default function FeatureMetadataPanel({
   defaultTitle,
   defaultStatus = 'active',
   releaseSuggestions = [],
-  specSuggestions = [],
   adrSuggestions = [],
   tagSuggestions = [],
   onChange,
@@ -60,7 +58,6 @@ export default function FeatureMetadataPanel({
   const owner = readFrontmatterStringField(effectiveFrontmatter, 'owner');
   const branch = readFrontmatterStringField(effectiveFrontmatter, 'branch');
   const releaseId = readFrontmatterStringField(effectiveFrontmatter, 'release_id') || readFrontmatterStringField(effectiveFrontmatter, 'release');
-  const specId = readFrontmatterStringField(effectiveFrontmatter, 'spec_id') || readFrontmatterStringField(effectiveFrontmatter, 'spec');
   const adrs = readFrontmatterStringListField(effectiveFrontmatter, 'adrs');
   const tags = readFrontmatterStringListField(effectiveFrontmatter, 'tags');
 
@@ -153,17 +150,6 @@ export default function FeatureMetadataPanel({
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">Spec</label>
-            <AutocompleteInput
-              value={specId || ''}
-              options={specSuggestions.map((value) => ({ value }))}
-              className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
-              placeholder="None"
-              noResultsText="No specs found."
-              onValueChange={(value) => updateField('spec_id', value)}
-            />
-          </div>
         </div>
 
         {/* Ownership & Branch */}

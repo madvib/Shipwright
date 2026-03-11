@@ -4,13 +4,11 @@ import {
     NOTES_ROUTE,
     OVERVIEW_ROUTE,
     RELEASES_ROUTE,
-    SPECS_ROUTE,
     WORKFLOW_WORKSPACE_ROUTE,
 } from '../constants/routes';
 import {
     FileStack,
     Flag,
-    FileCode2,
     LayoutDashboard,
     NotebookPen,
     Package,
@@ -40,7 +38,6 @@ export const SHIP_NAV_SECTIONS: NavSection[] = [
         label: '',
         items: [
             { id: 'features', path: FEATURES_ROUTE, label: 'Features', icon: Flag },
-            { id: 'specs', path: SPECS_ROUTE, label: 'Specs', icon: FileCode2 },
             { id: 'releases', path: RELEASES_ROUTE, label: 'Releases', icon: Package },
             { id: 'decisions', path: ADRS_ROUTE, label: 'Decisions', icon: FileStack },
             { id: 'notes', path: NOTES_ROUTE, label: 'Notes', icon: NotebookPen },

@@ -20,7 +20,7 @@ interface MetadataPopoverProps {
 
 /**
  * A reusable pattern for "Icon + Label -> Popover with Header and Content".
- * Common in ADR, Spec, and Feature metadata headers.
+ * Common in ADR and Feature metadata headers.
  */
 export function MetadataPopover({
     icon: Icon,

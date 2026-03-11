@@ -9,7 +9,6 @@ import { deriveAdrHeaderTitle } from './adrTitle';
 interface NewAdrModalProps {
   onClose: () => void;
   tagSuggestions: string[];
-  specSuggestions: { id: string; title: string }[];
   adrSuggestions?: { id: string; title: string }[];
   onSubmit: (
     title: string,
@@ -18,7 +17,6 @@ interface NewAdrModalProps {
     options?: {
       status?: string;
       date?: string;
-      spec?: string | null;
       tags?: string[];
     }
   ) => void | Promise<void>;
@@ -31,7 +29,6 @@ function createInitialAdr(): ADR {
       title: '',
       date: new Date().toISOString().slice(0, 10),
       tags: [],
-      spec_id: null,
       supersedes_id: null,
     },
     context: '',
@@ -47,7 +44,7 @@ const ADR_STATUSES: AdrStatus[] = [
   'deprecated',
 ];
 
-export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSuggestions, adrSuggestions }: NewAdrModalProps) {
+export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, adrSuggestions }: NewAdrModalProps) {
   const [draft, setDraft] = useState<ADR>(() => createInitialAdr());
   const [status, setStatus] = useState<AdrStatus>('proposed');
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +63,6 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
     await onSubmit(title, draft.context.trim(), draft.decision.trim(), {
       status,
       date: draft.metadata.date,
-      spec: draft.metadata.spec_id?.trim() ? draft.metadata.spec_id.trim() : null,
       tags: Array.from(new Set((draft.metadata.tags ?? []).map((tag) => tag.trim()).filter(Boolean))),
     });
   }, [draft, onSubmit, status]);
@@ -159,7 +155,6 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, specSug
               setDraft(next);
               setError(null);
             }}
-            specSuggestions={specSuggestions}
             tagSuggestions={tagSuggestions}
             adrSuggestions={adrSuggestions}
             onInsertTemplate={insertTemplate}

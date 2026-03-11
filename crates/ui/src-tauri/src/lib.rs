@@ -11,7 +11,8 @@ use runtime::config::{
 };
 use runtime::project::{
     features_dir, get_active_project_global, get_project_dir, releases_dir,
-    resolve_project_ship_dir, sanitize_file_name, set_active_project_global, SHIP_DIR_NAME,
+    project_slug_from_ship_dir, resolve_project_ship_dir, sanitize_file_name,
+    set_active_project_global, SHIP_DIR_NAME,
 };
 use runtime::{
     activate_workspace, autodetect_providers, create_skill, create_user_skill, create_workspace,
@@ -29,15 +30,14 @@ use runtime::{
 };
 use serde::{Deserialize, Serialize};
 use ship_module_project::{
-    create_adr, create_feature, create_note, create_release_with_metadata, create_spec, delete_adr,
-    delete_spec, feature_done, feature_start, get_adr_by_id, get_feature_by_id,
-    get_feature_documentation, get_note_by_id, get_project_name, get_release_by_id, get_spec_by_id,
-    init_project, list_adrs, list_features, list_notes, list_registered_projects, list_releases,
-    list_specs, move_adr, move_spec, read_template, register_project, rename_project, update_adr,
-    update_feature_content, update_feature_documentation, update_note_content, update_release,
-    update_spec, AdrEntry, AdrStatus, FeatureDocStatus, FeatureEntry as ProjectFeatureEntry,
-    NoteScope, ReleaseEntry as ProjectReleaseEntry, ReleaseStatus as ProjectReleaseStatus, Spec,
-    SpecEntry, SpecStatus, ADR,
+    create_adr, create_feature, create_note, create_release_with_metadata, delete_adr,
+    feature_done, feature_start, get_adr_by_id, get_feature_by_id, get_feature_documentation,
+    get_note_by_id, get_project_name, get_release_by_id, init_project, list_adrs, list_features,
+    list_notes, list_registered_projects, list_releases, move_adr, read_template, register_project,
+    rename_project, update_adr, update_feature_content, update_feature_documentation,
+    update_note_content, update_release, AdrEntry, AdrStatus, FeatureDocStatus,
+    FeatureEntry as ProjectFeatureEntry, NoteScope, ReleaseEntry as ProjectReleaseEntry,
+    ReleaseStatus as ProjectReleaseStatus, ADR,
 };
 use specta::Type;
 use std::collections::{HashMap, HashSet};
@@ -64,8 +64,6 @@ use tauri_specta::Event;
 #[derive(Clone, Serialize, Type, tauri_specta::Event)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ShipEvent {
-    /// Spec files changed.
-    SpecsChanged,
     /// ADR files changed.
     AdrsChanged,
     /// Feature files changed.
@@ -163,6 +161,7 @@ pub struct McpValidationReport {
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct ProviderImportReport {
     pub imported_mcp_servers: usize,
+    pub imported_skills: usize,
     pub imported_permissions: bool,
 }
 
@@ -383,21 +382,6 @@ pub struct ProjectInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
-pub struct SpecInfo {
-    pub file_name: String,
-    pub title: String,
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Type)]
-pub struct SpecDocument {
-    pub file_name: String,
-    pub title: String,
-    pub path: String,
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct VisionDocument {
     pub content: String,
 }
@@ -434,8 +418,6 @@ pub struct FeatureInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_target_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -455,8 +437,6 @@ pub struct FeatureDocument {
     pub release_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_target_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -811,7 +791,6 @@ fn map_feature_info(project_dir: &Path, entry: &ProjectFeatureEntry) -> FeatureI
         status: entry.status.to_string(),
         release_id: entry.feature.metadata.release_id.clone(),
         active_target_id: entry.feature.metadata.active_target_id.clone(),
-        spec_id: entry.feature.metadata.spec_id.clone(),
         branch: entry.feature.metadata.branch.clone(),
         description: entry.feature.metadata.description.clone(),
         docs_status,
@@ -834,7 +813,6 @@ fn map_feature_document(project_dir: &Path, entry: &ProjectFeatureEntry) -> Feat
         status: info.status,
         release_id: info.release_id,
         active_target_id: info.active_target_id,
-        spec_id: info.spec_id,
         branch: info.branch,
         description: info.description,
         path: info.path,
@@ -1540,98 +1518,7 @@ fn delete_adr_cmd(
     Ok(())
 }
 
-// ─── Commands: Specs ─────────────────────────────────────────────────────────
-
-#[tauri::command]
-#[specta::specta]
-fn list_specs_cmd(state: State<AppState>) -> Result<Vec<SpecEntry>, String> {
-    let project_dir = get_active_dir(&state)?;
-    list_specs(&project_dir).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn get_spec_cmd(id: String, state: State<AppState>) -> Result<SpecEntry, String> {
-    let project_dir = get_active_dir(&state)?;
-    get_spec_by_id(&project_dir, &id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn create_spec_cmd(
-    app_handle: tauri::AppHandle,
-    title: String,
-    content: String,
-    state: State<AppState>,
-) -> Result<SpecEntry, String> {
-    let project_dir = get_active_dir(&state)?;
-    let entry = create_spec(&project_dir, &title, &content, None).map_err(|e| e.to_string())?;
-    log_action(
-        &project_dir,
-        "spec create",
-        &format!("Created Spec: {}", title),
-    )
-    .ok();
-    let _ = ShipEvent::SpecsChanged.emit(&app_handle);
-    Ok(entry)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn update_spec_cmd(
-    app_handle: tauri::AppHandle,
-    id: String,
-    spec: Spec,
-    state: State<AppState>,
-) -> Result<SpecEntry, String> {
-    let project_dir = get_active_dir(&state)?;
-    let entry = update_spec(&project_dir, &id, spec).map_err(|e| e.to_string())?;
-    log_action(
-        &project_dir,
-        "spec update",
-        &format!("Updated Spec: {}", entry.file_name),
-    )
-    .ok();
-    let _ = ShipEvent::SpecsChanged.emit(&app_handle);
-    Ok(entry)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn move_spec_cmd(
-    app_handle: tauri::AppHandle,
-    id: String,
-    new_status: String,
-    state: State<AppState>,
-) -> Result<SpecEntry, String> {
-    let project_dir = get_active_dir(&state)?;
-    let status = new_status
-        .parse::<SpecStatus>()
-        .map_err(|_| format!("Invalid spec status: {}", new_status))?;
-    let entry = move_spec(&project_dir, &id, status).map_err(|e| e.to_string())?;
-    let _ = ShipEvent::SpecsChanged.emit(&app_handle);
-    Ok(entry)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn delete_spec_cmd(
-    app_handle: tauri::AppHandle,
-    id: String,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let project_dir = get_active_dir(&state)?;
-    delete_spec(&project_dir, &id).map_err(|e| e.to_string())?;
-    log_action(
-        &project_dir,
-        "spec delete",
-        &format!("Deleted Spec: {}", id),
-    )
-    .ok();
-    let _ = ShipEvent::SpecsChanged.emit(&app_handle);
-    Ok(())
-}
-
+// ─── Helpers: Workspace Utilities ───────────────────────────────────────────
 fn normalize_optional_branch(value: Option<&str>) -> Option<String> {
     value.and_then(|entry| {
         let trimmed = entry.trim();
@@ -1862,7 +1749,6 @@ fn create_feature_cmd(
     title: String,
     content: String,
     release: Option<String>,
-    spec: Option<String>,
     branch: Option<String>,
     state: State<AppState>,
 ) -> Result<FeatureDocument, String> {
@@ -1874,7 +1760,6 @@ fn create_feature_cmd(
         &title,
         &content,
         release.as_deref(),
-        spec.as_deref(),
         Some(workspace_branch.as_str()),
     )
     .map_err(|e| e.to_string())?;
@@ -1995,12 +1880,67 @@ fn get_template_cmd(kind: String, state: State<AppState>) -> Result<String, Stri
 
 // ─── Commands: Vision ─────────────────────────────────────────────────────────
 
+fn vision_document_candidates(project_dir: &Path) -> [PathBuf; 4] {
+    let project_ns = runtime::project::project_ns(project_dir);
+    [
+        project_dir.join("vision.md"),
+        project_dir.join("VISION.md"),
+        project_ns.join("vision.md"),
+        project_ns.join("VISION.md"),
+    ]
+}
+
+fn read_vision_document(project_dir: &Path) -> String {
+    vision_document_candidates(project_dir)
+        .iter()
+        .find(|path| path.exists())
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_default()
+}
+
+fn resolve_vision_document_write_path(project_dir: &Path) -> PathBuf {
+    let lower = project_dir.join("vision.md");
+    let upper = project_dir.join("VISION.md");
+    let mut found_lower = false;
+    let mut found_upper = false;
+    let mut legacy_alias: Option<String> = None;
+    if let Ok(entries) = std::fs::read_dir(project_dir) {
+        for entry in entries.flatten() {
+            let name = match entry.file_name().into_string() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            if name == "vision.md" {
+                found_lower = true;
+                continue;
+            }
+            if name == "VISION.md" {
+                found_upper = true;
+                continue;
+            }
+            if name.eq_ignore_ascii_case("vision.md") && legacy_alias.is_none() {
+                legacy_alias = Some(name);
+            }
+        }
+    }
+    if found_lower {
+        return lower;
+    }
+    if found_upper {
+        return upper;
+    }
+    if let Some(alias) = legacy_alias {
+        return project_dir.join(alias);
+    }
+
+    lower
+}
+
 #[tauri::command]
 #[specta::specta]
 fn get_vision_cmd(state: State<AppState>) -> Result<VisionDocument, String> {
     let project_dir = get_active_dir(&state)?;
-    let vision_path = runtime::project::project_ns(&project_dir).join("vision.md");
-    let content = std::fs::read_to_string(&vision_path).unwrap_or_default();
+    let content = read_vision_document(&project_dir);
     Ok(VisionDocument { content })
 }
 
@@ -2012,7 +1952,7 @@ fn update_vision_cmd(
     state: State<AppState>,
 ) -> Result<VisionDocument, String> {
     let project_dir = get_active_dir(&state)?;
-    let vision_path = runtime::project::project_ns(&project_dir).join("vision.md");
+    let vision_path = resolve_vision_document_write_path(&project_dir);
     if let Some(parent) = vision_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -2833,12 +2773,10 @@ async fn end_workspace_session_cmd(
     branch: String,
     summary: Option<String>,
     updated_feature_ids: Option<Vec<String>>,
-    updated_spec_ids: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceSession, String> {
     let project_dir = get_active_dir(&state)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let _ = updated_spec_ids;
         let session = end_workspace_session(
             &project_dir,
             &branch,
@@ -4067,16 +4005,74 @@ fn is_upper_snake_case(value: &str) -> bool {
 }
 
 fn command_resolves(command: &str) -> bool {
+    let Some(command_name) = command_lookup_target(command) else {
+        return false;
+    };
+    if command_name.contains('/') || command_name.contains('\\') {
+        Path::new(&command_name).exists()
+    } else {
+        runtime::agent_export::detect_binary(&command_name)
+    }
+}
+
+fn command_lookup_target(command: &str) -> Option<String> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut tokens = trimmed.split_whitespace().peekable();
+    let mut command_name = tokens.next()?;
+
+    if is_env_launcher(command_name) {
+        while let Some(token) = tokens.peek() {
+            if is_env_flag(token) || looks_like_env_assignment(token) {
+                tokens.next();
+                continue;
+            }
+            break;
+        }
+        command_name = tokens.next()?;
+    } else {
+        while looks_like_env_assignment(command_name) {
+            command_name = tokens.next()?;
+        }
+    }
+
+    Some(command_name.to_string())
+}
+
+fn is_env_launcher(token: &str) -> bool {
+    if token == "env" {
+        return true;
+    }
+    Path::new(token)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "env")
+        .unwrap_or(false)
+}
+
+fn is_env_flag(token: &str) -> bool {
+    token.starts_with('-') && !looks_like_env_assignment(token)
+}
+
+fn looks_like_env_assignment(token: &str) -> bool {
+    let Some((name, _)) = token.split_once('=') else {
+        return false;
+    };
+    looks_like_env_name(name)
+}
+
+fn looks_like_env_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
         return false;
     }
-    let command_name = trimmed.split_whitespace().next().unwrap_or(trimmed);
-    if command_name.contains('/') || command_name.contains('\\') {
-        Path::new(command_name).exists()
-    } else {
-        runtime::agent_export::detect_binary(command_name)
-    }
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 fn parse_http_host_port(raw_url: &str) -> Option<(String, u16)> {
@@ -4155,18 +4151,51 @@ fn discovery_cache_path(
     scope: Option<&str>,
     project_dir: Option<&Path>,
 ) -> Result<PathBuf, String> {
+    let global = runtime::project::get_global_dir().map_err(|err| err.to_string())?;
     match normalize_scope(scope) {
         "project" => {
             let Some(project) = project_dir else {
                 return Err("Project scope discovery requires an active project.".to_string());
             };
-            Ok(project.join("agents").join("discovery-cache.json"))
+            let slug = project_slug_from_ship_dir(project);
+            Ok(global
+                .join("state")
+                .join("discovery")
+                .join("projects")
+                .join(slug)
+                .join("cache.json"))
         }
-        _ => {
-            let global = runtime::project::get_global_dir().map_err(|err| err.to_string())?;
-            Ok(global.join("agents").join("discovery-cache.json"))
-        }
+        _ => Ok(global.join("state").join("discovery").join("global-cache.json")),
     }
+}
+
+fn legacy_discovery_cache_path(scope: Option<&str>, project_dir: Option<&Path>) -> Option<PathBuf> {
+    match normalize_scope(scope) {
+        "project" => project_dir.map(|project| project.join("agents").join("discovery-cache.json")),
+        _ => runtime::project::get_global_dir()
+            .ok()
+            .map(|global| global.join("agents").join("discovery-cache.json")),
+    }
+}
+
+fn migrate_legacy_discovery_cache(
+    target_path: &Path,
+    scope: Option<&str>,
+    project_dir: Option<&Path>,
+) {
+    if target_path.exists() {
+        return;
+    }
+    let Some(legacy_path) = legacy_discovery_cache_path(scope, project_dir) else {
+        return;
+    };
+    if !legacy_path.exists() {
+        return;
+    }
+    if let Some(parent) = target_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::copy(&legacy_path, target_path);
 }
 
 fn load_discovery_cache(path: &Path) -> AgentDiscoveryCache {
@@ -5266,6 +5295,7 @@ async fn probe_mcp_servers_cmd(
         let generated_at = now_epoch_secs_string();
 
         if let Ok(cache_path) = discovery_cache_path(scope.as_deref(), active_dir.as_deref()) {
+            migrate_legacy_discovery_cache(&cache_path, scope.as_deref(), active_dir.as_deref());
             let mut cache = load_discovery_cache(&cache_path);
             for row in &results {
                 if !row.discovered_tools.is_empty() {
@@ -5300,6 +5330,7 @@ fn get_agent_discovery_cache_cmd(
 ) -> Result<AgentDiscoveryCache, String> {
     let active_dir = get_active_dir(&state).ok();
     let path = discovery_cache_path(scope.as_deref(), active_dir.as_deref())?;
+    migrate_legacy_discovery_cache(&path, scope.as_deref(), active_dir.as_deref());
     Ok(load_discovery_cache(&path))
 }
 
@@ -5312,6 +5343,7 @@ fn refresh_agent_discovery_cache_cmd(
     let active_dir = get_active_dir(&state).ok();
     let normalized_scope = normalize_scope(scope.as_deref()).to_string();
     let cache_path = discovery_cache_path(Some(&normalized_scope), active_dir.as_deref())?;
+    migrate_legacy_discovery_cache(&cache_path, Some(&normalized_scope), active_dir.as_deref());
     let mut cache = load_discovery_cache(&cache_path);
 
     let base = if normalized_scope == "project" {
@@ -5917,6 +5949,8 @@ async fn import_agent_config_cmd(
         let imported_mcp_servers =
             runtime::agent_export::import_from_provider(&target, dir.clone())
                 .map_err(|e| e.to_string())?;
+        let imported_skills = runtime::agent_export::import_skills_from_provider(&target, dir.clone())
+            .map_err(|e| e.to_string())?;
         let imported_permissions = if include_permissions.unwrap_or(true) {
             runtime::agent_export::import_permissions_from_provider(&target, dir)
                 .map_err(|e| e.to_string())?
@@ -5925,6 +5959,7 @@ async fn import_agent_config_cmd(
         };
         Ok(ProviderImportReport {
             imported_mcp_servers,
+            imported_skills,
             imported_permissions,
         })
     })
@@ -6009,12 +6044,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             move_adr_cmd,
             delete_adr_cmd,
             // Specs
-            list_specs_cmd,
-            get_spec_cmd,
-            create_spec_cmd,
-            update_spec_cmd,
-            move_spec_cmd,
-            delete_spec_cmd,
             // Releases
             list_releases_cmd,
             get_release_cmd,
@@ -6179,6 +6208,14 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
+    fn test_dir(prefix: &str) -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos().to_string())
+            .unwrap_or_else(|_| "0".to_string());
+        std::env::temp_dir().join(format!("{}-{}", prefix, stamp))
+    }
+
     #[test]
     fn ai_cli_attempts_codex_prefers_exec_then_prompt() {
         let attempts = ai_cli_attempts("codex", "hello");
@@ -6235,6 +6272,38 @@ mod tests {
 
         let shell = resolve_terminal_command("shell");
         assert!(!shell.trim().is_empty());
+    }
+
+    #[test]
+    fn command_lookup_target_skips_inline_env_assignments() {
+        assert_eq!(
+            command_lookup_target("FOO=bar BAR=baz npx -y @modelcontextprotocol/server-github"),
+            Some("npx".to_string())
+        );
+        assert_eq!(
+            command_lookup_target("FOO=bar /usr/local/bin/mcp-server"),
+            Some("/usr/local/bin/mcp-server".to_string())
+        );
+    }
+
+    #[test]
+    fn command_lookup_target_handles_env_launcher_wrappers() {
+        assert_eq!(
+            command_lookup_target("env FOO=bar PATH=/tmp/bin npx -y context7"),
+            Some("npx".to_string())
+        );
+        assert_eq!(
+            command_lookup_target("/usr/bin/env -i FOO=bar node server.js"),
+            Some("node".to_string())
+        );
+    }
+
+    #[test]
+    fn command_lookup_target_rejects_empty_or_env_only_input() {
+        assert_eq!(command_lookup_target(""), None);
+        assert_eq!(command_lookup_target("   "), None);
+        assert_eq!(command_lookup_target("env"), None);
+        assert_eq!(command_lookup_target("FOO=bar"), None);
     }
 
     #[test]
@@ -6323,6 +6392,63 @@ allowed-tools:
         assert!(hint
             .allowed_tools
             .contains(&"mcp__github__issues_list".to_string()));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn read_vision_document_supports_legacy_uppercase_filename() {
+        let root = test_dir("ship-ui-vision-read");
+        let project_ns = runtime::project::project_ns(&root);
+        fs::create_dir_all(&project_ns).expect("create project namespace");
+        fs::write(project_ns.join("VISION.md"), "legacy vision body")
+            .expect("write legacy vision file");
+
+        let content = read_vision_document(&root);
+        assert_eq!(content, "legacy vision body");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_vision_write_path_preserves_existing_filename_case() {
+        let root = test_dir("ship-ui-vision-write");
+        fs::create_dir_all(&root).expect("create root namespace");
+        let lower = root.join("vision.md");
+        let upper = root.join("VISION.md");
+
+        fs::write(&upper, "legacy vision").expect("write legacy vision file");
+        assert_eq!(resolve_vision_document_write_path(&root), upper);
+
+        fs::remove_file(root.join("VISION.md")).expect("remove uppercase file");
+        fs::write(&lower, "canonical vision").expect("write lowercase vision file");
+        assert_eq!(resolve_vision_document_write_path(&root), lower);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_vision_write_path_prefers_lowercase_when_both_files_exist() {
+        let root = test_dir("ship-ui-vision-write-both");
+        fs::create_dir_all(&root).expect("create root namespace");
+        let lower = root.join("vision.md");
+        let upper = root.join("VISION.md");
+
+        fs::write(&upper, "legacy").expect("write uppercase vision file");
+        fs::write(&lower, "canonical").expect("write lowercase vision file");
+
+        // Case-insensitive filesystems cannot materialize both names simultaneously.
+        let dual_name_supported = fs::canonicalize(&lower)
+            .ok()
+            .zip(fs::canonicalize(&upper).ok())
+            .map(|(a, b)| a != b)
+            .unwrap_or(false);
+        if !dual_name_supported {
+            let _ = fs::remove_dir_all(&root);
+            return;
+        }
+
+        assert_eq!(resolve_vision_document_write_path(&root), lower);
 
         let _ = fs::remove_dir_all(&root);
     }

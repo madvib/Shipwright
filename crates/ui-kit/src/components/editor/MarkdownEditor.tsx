@@ -15,6 +15,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '../dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip';
 import CustomMilkdownEditor from './CustomMilkdownEditor';
 // import FrontmatterPanel from './FrontmatterPanel';
 import {
@@ -234,14 +235,16 @@ export default function MarkdownEditor({
                     )}
 
                     {showAiActions && mode === 'edit' && onTransformText && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger>
-                                <Button variant="outline" size="xs" disabled={sampling}>
-                                    <Wand2 className="size-3.5" />
-                                    AI Actions
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" size="xs" disabled={sampling}>
+                                            <Wand2 className="size-3.5" />
+                                            AI Actions
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
                                 <DropdownMenuGroup>
                                     <DropdownMenuLabel className="px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
                                         Transform Text
@@ -269,6 +272,11 @@ export default function MarkdownEditor({
                                 </div>
                             </DropdownMenuContent>
                         </DropdownMenu>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                Refine, polish, or transform your text using AI.
+                            </TooltipContent>
+                        </Tooltip>
                     )}
 
                     {showStats && mode === 'edit' && (

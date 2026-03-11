@@ -115,7 +115,6 @@ export function useWorkspaceController() {
     setActiveProject,
     setDetectedProject,
     setSelectedAdr: ship.setSelectedAdr,
-    setSelectedSpec: ship.setSelectedSpec,
     setSelectedRelease: ship.setSelectedRelease,
     setSelectedFeature: ship.setSelectedFeature,
     setCreatingProject,

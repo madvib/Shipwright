@@ -169,9 +169,6 @@ export function useWorkspaceLifecycle({
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     void subscribeProjectEvents({
-      onSpecsChanged: () => {
-        scheduleProjectDataReload();
-      },
       onAdrsChanged: () => {
         scheduleProjectDataReload();
       },

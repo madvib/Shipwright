@@ -365,13 +365,13 @@ export function WorkspaceHeaderActions({
           Create Workspace
         </Button>
 
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Create Workspace</DialogTitle>
             <DialogDescription>
               Configure type, environment, and links first. Attaching an existing branch is optional.
-            </DialogDescription>
-          </DialogHeader>
+          </DialogDescription>
+        </DialogHeader>
 
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -540,7 +540,7 @@ export function WorkspaceHeaderActions({
                     <CircleHelp className="size-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Links connect this workspace to planning docs and release context.</TooltipContent>
+                <TooltipContent>Links connect this workspace to planning docs and project context.</TooltipContent>
               </Tooltip>
             </div>
 

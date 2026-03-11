@@ -7,7 +7,6 @@ import {
   ReleaseDocument,
   StatusConfig,
 } from '@/bindings';
-import { SpecInfo } from '@/lib/types/spec';
 import { CreateProjectInput } from '@/features/planning/common/ProjectOnboarding';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import {
@@ -26,7 +25,6 @@ interface UseProjectActionsParams {
   setActiveProject: Dispatch<SetStateAction<Project | null>>;
   setDetectedProject: Dispatch<SetStateAction<Project | null>>;
   setSelectedAdr: Dispatch<SetStateAction<AdrEntry | null>>;
-  setSelectedSpec: Dispatch<SetStateAction<SpecInfo | null>>;
   setSelectedRelease: Dispatch<SetStateAction<ReleaseDocument | null>>;
   setSelectedFeature: Dispatch<SetStateAction<FeatureDocument | null>>;
   setCreatingProject: Dispatch<SetStateAction<boolean>>;
@@ -39,7 +37,6 @@ export function useProjectActions({
   setActiveProject,
   setDetectedProject,
   setSelectedAdr,
-  setSelectedSpec,
   setSelectedRelease,
   setSelectedFeature,
   setCreatingProject,
@@ -48,10 +45,9 @@ export function useProjectActions({
 }: UseProjectActionsParams) {
   const resetSelection = useCallback(() => {
     setSelectedAdr(null);
-    setSelectedSpec(null);
     setSelectedRelease(null);
     setSelectedFeature(null);
-  }, [setSelectedAdr, setSelectedSpec, setSelectedRelease, setSelectedFeature]);
+  }, [setSelectedAdr, setSelectedRelease, setSelectedFeature]);
 
   const activateProjectFromInfo = useCallback(async (info: { name: string; path: string }) => {
     setActiveProject(projectFromInfo(info));
@@ -128,7 +124,7 @@ export function useProjectActions({
         statuses,
         git: {
           ignore: [] as string[],
-          commit: ['releases', 'features', 'specs', 'adrs', 'vision', 'ship.toml', 'templates'],
+          commit: ['releases', 'features', 'adrs', 'vision', 'ship.toml', 'templates'],
         },
       } as ProjectConfig;
     }

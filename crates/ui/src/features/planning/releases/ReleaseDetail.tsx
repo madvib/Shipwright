@@ -309,14 +309,13 @@ export default function ReleaseDetail({
               </div>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-3">
-              <article className="ship-markdown-preview rounded-md border bg-background px-4 py-3">
-                {stripAllFrontmatter(documentModel.body).trim() ? (
+              {stripAllFrontmatter(documentModel.body).trim() ? (
+                <article className="ship-markdown-preview rounded-md border bg-background px-4 py-3">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripAllFrontmatter(documentModel.body)}</ReactMarkdown>
-                ) : (
-                  <p className="text-muted-foreground text-sm italic">No body content yet.</p>
-                )}
-              </article>
+                </article>
+              ) : null}
             </CardContent>
+
           </Card>
 
           <div className="grid min-h-0 gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -386,8 +385,15 @@ export default function ReleaseDetail({
                                 </Badge>
                                 <span className="text-muted-foreground text-[11px]">{readiness}%</span>
                               </div>
-                              <Progress value={readiness} indicatorClassName={tone.progress} />
+                              <Progress
+                                value={readiness}
+                                indicatorClassName={cn(
+                                  tone.progress,
+                                  readiness > 0 && readiness < 5 && "min-w-[4%]"
+                                )}
+                              />
                             </div>
+
                           </button>
                         );
                       })}

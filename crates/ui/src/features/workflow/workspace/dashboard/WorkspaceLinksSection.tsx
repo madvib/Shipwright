@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import {
-  Badge,
   Button,
   Select,
   SelectContent,
@@ -22,7 +21,6 @@ interface WorkspaceLinksSectionProps {
   linkReleaseId: string;
   setLinkReleaseId: (id: string) => void;
   featureLinkOptions: any[];
-  specLinkOptions: any[];
   releaseLinkOptions: any[];
   recentSessions: WorkspaceSessionInfo[];
   updatingLinks: boolean;
@@ -40,27 +38,19 @@ export function WorkspaceLinksSection({
   linkReleaseId,
   setLinkReleaseId,
   featureLinkOptions,
-  specLinkOptions,
   releaseLinkOptions,
-  recentSessions,
   updatingLinks,
   onApplyLinks,
   onOpenFeature,
   onOpenRelease,
   noLinkValue,
 }: WorkspaceLinksSectionProps) {
+
   const featureLabelById = useMemo(
     () => new Map(featureLinkOptions.map((entry) => [entry.id, entry.title || entry.id])),
     [featureLinkOptions],
   );
 
-  const specLabelById = useMemo(
-    () =>
-      new Map(
-        specLinkOptions.map((entry) => [entry.id, entry.spec?.metadata?.title || entry.id]),
-      ),
-    [specLinkOptions],
-  );
 
   const releaseLabelById = useMemo(
     () =>
@@ -94,19 +84,6 @@ export function WorkspaceLinksSection({
   const hasAnchorConflict =
     safeFeatureValue !== noLinkValue && safeReleaseValue !== noLinkValue;
 
-  const touchedSpecIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const session of recentSessions) {
-      for (const specId of session.updated_spec_ids ?? []) {
-        if (specId?.trim()) ids.add(specId);
-      }
-    }
-    return Array.from(ids);
-  }, [recentSessions]);
-
-  const visibleTouchedSpecs = touchedSpecIds
-    .map((id) => ({ id, label: specLabelById.get(id) ?? id }))
-    .slice(0, 8);
 
   return (
     <section className="rounded-lg border bg-card p-3">
@@ -118,7 +95,7 @@ export function WorkspaceLinksSection({
               <Info className="size-3 cursor-help text-muted-foreground/50" />
             </TooltipTrigger>
             <TooltipContent side="top" className="max-w-xs">
-              Workspace links store one planning anchor (feature OR release). Specs are attached per session.
+              Workspace links store one planning anchor (feature OR release).
             </TooltipContent>
           </Tooltip>
         </div>
@@ -226,20 +203,6 @@ export function WorkspaceLinksSection({
           </p>
         )}
 
-        <div className="rounded-md border bg-muted/20 px-2.5 py-2">
-          <p className="text-[10px] text-muted-foreground">Recent Session Specs</p>
-          {visibleTouchedSpecs.length === 0 ? (
-            <p className="mt-1 text-[10px] text-muted-foreground">No session-updated specs yet.</p>
-          ) : (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {visibleTouchedSpecs.map((spec) => (
-                <Badge key={spec.id} variant="outline" className="text-[9px]">
-                  {spec.label}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </section>
   );

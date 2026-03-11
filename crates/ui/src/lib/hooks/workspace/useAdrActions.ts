@@ -45,7 +45,6 @@ export function useAdrActions({
     options?: {
       status?: string;
       date?: string;
-      spec?: string | null;
       tags?: string[];
     }
   ) => {
@@ -57,15 +56,12 @@ export function useAdrActions({
     try {
       let entry = await createNewAdrCmd(title, context, decision);
       const nextDate = options?.date?.trim() || entry.adr.metadata.date;
-      const nextSpec = options?.spec?.trim() ? options.spec.trim() : null;
       const nextTags = Array.from(
         new Set((options?.tags ?? []).map((tag) => tag.trim()).filter(Boolean))
       );
-      const currentSpec = entry.adr.metadata.spec_id ?? null;
       const currentTags = entry.adr.metadata.tags ?? [];
       const metadataChanged =
         nextDate !== entry.adr.metadata.date ||
-        nextSpec !== currentSpec ||
         nextTags.join('\n') !== currentTags.join('\n');
 
       if (metadataChanged) {
@@ -74,7 +70,6 @@ export function useAdrActions({
           metadata: {
             ...entry.adr.metadata,
             date: nextDate,
-            spec_id: nextSpec,
             tags: nextTags,
           },
         });

@@ -203,7 +203,7 @@ export function WorkspaceStatusCard({
             <PopoverContent className="w-[min(640px,94vw)] p-3" align="end" sideOffset={8}>
               <div className="space-y-3">
                 <p className="text-[10px] text-muted-foreground">
-                  Anchor this workspace to one feature or one release. Specs are linked per session.
+                  Anchor this workspace to one feature or one release.
                 </p>
                 <Input
                   value={anchorSearch}

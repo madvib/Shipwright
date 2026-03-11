@@ -8,7 +8,6 @@ import { AutocompleteInput } from '@ship/ui';
 
 interface AdrFrontmatterPanelProps {
   adr: ADR;
-  specSuggestions: string[];
   tagSuggestions: string[];
   adrSuggestions: string[];
   onChange: (next: ADR) => void;
@@ -16,7 +15,6 @@ interface AdrFrontmatterPanelProps {
 
 export default function AdrFrontmatterPanel({
   adr,
-  specSuggestions,
   tagSuggestions,
   adrSuggestions,
   onChange,
@@ -78,19 +76,6 @@ export default function AdrFrontmatterPanel({
           />
         </div>
 
-        <div className="space-y-1">
-          <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">
-            Reference Spec
-          </label>
-          <AutocompleteInput
-            value={adr.metadata.spec_id || ''}
-            options={specSuggestions.map((spec) => ({ value: spec }))}
-            className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50"
-            placeholder="None"
-            noResultsText="No specs found."
-            onValueChange={(spec) => updateMetadata({ spec_id: (spec || '').trim() || null })}
-          />
-        </div>
 
         <div className="space-y-1">
           <label className="text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">

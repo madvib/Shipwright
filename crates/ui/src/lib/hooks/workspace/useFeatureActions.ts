@@ -47,7 +47,6 @@ export function useFeatureActions({
     title: string,
     content: string,
     release?: string | null,
-    spec?: string | null,
     branch?: string | null,
   ) => {
     if (!isTauriRuntime()) {
@@ -56,7 +55,7 @@ export function useFeatureActions({
     }
 
     try {
-      const result = await createFeatureCmd(title, content, release, spec, branch);
+      const result = await createFeatureCmd(title, content, release, null, branch);
       if (result.status === 'ok') {
         const created = result.data;
         setFeatures((prev) => [...prev, created]);

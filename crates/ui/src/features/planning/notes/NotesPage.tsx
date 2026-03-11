@@ -43,8 +43,8 @@ const NoteListItem = memo(({
         )}
         onClick={onClick}
     >
-        <p className="truncate text-sm font-semibold">{note.title || 'Untitled'}</p>
-        <p className="text-muted-foreground text-[10px] mt-0.5">{relativeDate(note.updated)}</p>
+        <p className="line-clamp-2 text-[13px] font-bold leading-tight">{note.title || 'Untitled'}</p>
+        <p className="text-muted-foreground text-[10px] mt-1">{relativeDate(note.updated)}</p>
     </button>
 ));
 NoteListItem.displayName = 'NoteListItem';
@@ -65,7 +65,6 @@ export default function NotesPage() {
         handleSaveNote: handleSaveProjectNote,
         handleDeleteNote: handleDeleteProjectNote,
         setSelectedNote: setProjectSelectedNote,
-        specSuggestions,
         tagSuggestions,
     } = useShip();
 
@@ -295,17 +294,11 @@ export default function NotesPage() {
         scheduleAutoSave(next.title, next.content, next.id);
     };
 
-    const handleMetadataChange = (nextSpecs: string[], nextTags: string[]) => {
+    const handleMetadataChange = (nextTags: string[]) => {
         if (!localNote) return;
         const { frontmatter, body, delimiter } = splitFrontmatterDocument(localNote.content);
-        let nextFrontmatter = setFrontmatterStringListField(
+        const nextFrontmatter = setFrontmatterStringListField(
             frontmatter,
-            'specs',
-            nextSpecs,
-            delimiter ?? '+++'
-        );
-        nextFrontmatter = setFrontmatterStringListField(
-            nextFrontmatter,
             'tags',
             nextTags,
             delimiter ?? '+++'
@@ -336,7 +329,7 @@ export default function NotesPage() {
     const isCreating = Boolean(localNote && !localNote.id);
 
     return (
-        <PageFrame className="h-screen overflow-hidden flex flex-col md:p-8">
+        <PageFrame className="h-screen overflow-hidden flex flex-col p-4 md:p-6 lg:p-8">
             <div className="flex-none">
                 <PageHeader
                     title={isGlobalScope ? 'Global Notes' : 'Notes'}
@@ -351,15 +344,31 @@ export default function NotesPage() {
             </div>
 
             <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 pb-4">
-                <div className="lg:w-72 flex flex-col gap-2 rounded-lg border bg-card/30 p-2 overflow-hidden shadow-sm">
+                <div className="lg:w-80 flex flex-col gap-2 rounded-lg border bg-card/30 p-2 overflow-hidden shadow-sm">
                     <div className="flex-1 overflow-y-auto pr-1">
                         {isLoading ? (
                             <p className="text-muted-foreground px-2 py-4 text-center text-sm">Loading…</p>
                         ) : sortedNotes.length === 0 && !isCreating ? (
-                            <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
-                                <StickyNote className="text-muted-foreground size-8 opacity-50" />
-                                <p className="text-muted-foreground text-sm">No notes yet.</p>
-                                <p className="text-muted-foreground text-xs">Capture a thought.</p>
+                            <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+                                <div className="relative flex size-12 items-center justify-center">
+                                    <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10" />
+                                    <StickyNote className="relative text-primary/40 size-6" />
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium text-foreground">No notes found</p>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Capture your thoughts, ideas, or architectural context.
+                                    </p>
+                                </div>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-2 h-8"
+                                    onClick={() => handleNewNote()}
+                                >
+                                    <Plus className="mr-1.5 size-3" />
+                                    Create Note
+                                </Button>
                             </div>
                         ) : (
                             <div className="space-y-1 pr-1">
@@ -421,7 +430,6 @@ export default function NotesPage() {
                             <NoteMetadata
                                 frontmatter={splitFrontmatterDocument(localNote.content).frontmatter}
                                 updated={selectedNote?.updated || new Date().toISOString()}
-                                specSuggestions={specSuggestions}
                                 tagSuggestions={tagSuggestions}
                                 isEditing={true}
                                 onChange={handleMetadataChange}

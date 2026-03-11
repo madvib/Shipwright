@@ -4,7 +4,6 @@ import {
   FeatureInfo as FeatureEntry,
   FeatureDocument,
   ReleaseInfo as ReleaseEntry,
-  SpecEntry,
 } from '@/bindings';
 import {
   Alert,
@@ -36,7 +35,6 @@ import { formatStatusLabel } from '@/features/planning/common/hub/utils/featureM
 interface FeaturesPageProps {
   features: FeatureEntry[];
   releases: ReleaseEntry[];
-  specs: SpecEntry[];
   selectedFeature: FeatureDocument | null;
   onCloseFeatureDetail: () => void;
   onSelectFeature: (entry: FeatureEntry) => void;
@@ -53,11 +51,9 @@ interface FeaturesPageProps {
     title: string,
     content: string,
     releaseId?: string | null,
-    specId?: string | null,
     branch?: string | null,
   ) => Promise<void>;
   onSelectReleaseFromFeature?: (name: string) => void;
-  onSelectSpecFromFeature?: (name: string) => void;
   tagSuggestions?: string[];
   mcpEnabled?: boolean;
 }
@@ -73,7 +69,6 @@ const FEATURE_SORT_OPTIONS: Array<{ value: FeatureSort; label: string }> = [
 export default function FeaturesPage({
   features,
   releases,
-  specs,
   selectedFeature,
   onCloseFeatureDetail,
   onSelectFeature,
@@ -83,14 +78,12 @@ export default function FeaturesPage({
   onSaveFeatureDocumentation,
   onCreateFeature,
   onSelectReleaseFromFeature,
-  onSelectSpecFromFeature,
   mcpEnabled = true,
 }: FeaturesPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [createReleaseId, setCreateReleaseId] = useState<string>('');
-  const [createSpecId, setCreateSpecId] = useState<string>('');
   const [createBranch, setCreateBranch] = useState<string>('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +99,7 @@ export default function FeaturesPage({
     setTitle('');
     setContent('');
     setCreateReleaseId('');
-    setCreateSpecId('');
+    setCreateReleaseId('');
     setCreateBranch('');
     setError(null);
   };
@@ -182,7 +175,6 @@ export default function FeaturesPage({
         title,
         content,
         createReleaseId.trim() || null,
-        createSpecId.trim() || null,
         createBranch.trim() || null,
       );
       resetCreateFeatureDraft();
@@ -210,7 +202,7 @@ export default function FeaturesPage({
                       New Feature
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">Create a new feature specification</TooltipContent>
+                  <TooltipContent side="bottom">Create a new feature</TooltipContent>
                 </Tooltip>
               </div>
             }
@@ -234,10 +226,10 @@ export default function FeaturesPage({
               />
 
               {filteredFeatures.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+
                   {filteredFeatures.map((feature) => {
                     const release = releases.find(r => r.id === feature.release_id) ?? null;
-                    const spec = specs.find(s => s.id === feature.spec_id) ?? null;
                     const metrics = featureMetricsByFile[feature.file_name];
                     const readiness =
                       metrics?.readinessPercent ??
@@ -251,7 +243,6 @@ export default function FeaturesPage({
                         key={feature.file_name}
                         feature={feature}
                         release={release}
-                        spec={spec}
                         readiness={readiness}
                         isBlocking={isBlocking}
                         onSelect={() => onSelectFeature(feature)}
@@ -290,13 +281,7 @@ export default function FeaturesPage({
               onSelectReleaseFromFeature(name);
             }
           }}
-          onSelectSpec={(name) => {
-            if (onSelectSpecFromFeature) {
-              onSelectSpecFromFeature(name);
-            }
-          }}
           releaseSuggestions={releases.map(r => r.version)}
-          specSuggestions={specs.map(s => s.file_name)}
           mcpEnabled={mcpEnabled}
         />
       )}
@@ -359,22 +344,6 @@ export default function FeaturesPage({
                   {releases.map((release) => (
                     <option key={release.id} value={release.id}>
                       {release.version}
-                    </option>
-                  ))}
-                </datalist>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Spec Link (Optional)</label>
-                <Input
-                  list="feature-create-specs"
-                  value={createSpecId}
-                  placeholder="spec id (ex: spec_123...)"
-                  onChange={(event) => setCreateSpecId(event.target.value)}
-                />
-                <datalist id="feature-create-specs">
-                  {specs.map((spec) => (
-                    <option key={spec.id} value={spec.id}>
-                      {spec.spec.metadata.title}
                     </option>
                   ))}
                 </datalist>

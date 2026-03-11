@@ -9,7 +9,6 @@ import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 
 const ENTITY_STYLES: Record<string, string> = {
   issue: 'border-amber-500/30 text-amber-300',
-  spec: 'border-sky-500/30 text-sky-300',
   adr: 'border-emerald-500/30 text-emerald-300',
   project: 'border-violet-500/30 text-violet-300',
   config: 'border-fuchsia-500/30 text-fuchsia-300',

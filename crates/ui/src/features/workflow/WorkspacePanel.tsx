@@ -145,16 +145,11 @@ export default function WorkspacePanel() {
     state.setEndingSession(true);
     try {
       const summary = state.sessionSummaryInput.trim();
-      const updatedFeatureIds =
-        state.linkFeatureId
-          ? [state.linkFeatureId]
-          : [];
-      const updatedSpecIds = state.sessionSpecIds.filter((value) => value.trim().length > 0);
       const res = await endWorkspaceSessionCmd(
         state.detail.branch,
         summary.length > 0 ? summary : null,
-        updatedFeatureIds,
-        updatedSpecIds
+        state.linkFeatureId ? [state.linkFeatureId] : [],
+        []
       );
       if (res.status === 'ok') {
         if (terminal.terminalSession?.branch === state.detail.branch) {
@@ -199,7 +194,7 @@ export default function WorkspacePanel() {
         state.linkFeatureId
           ? [state.linkFeatureId]
           : [],
-        state.sessionSpecIds.filter((value) => value.trim().length > 0)
+        []
       );
       if (endRes.status === 'error') {
         state.setError(endRes.error || 'Failed to end current session for restart.');
@@ -412,11 +407,6 @@ export default function WorkspacePanel() {
     [ship.features],
   );
 
-  const specLabels = useMemo(
-    () => Object.fromEntries(ship.specs.map((spec: any) => [spec.id, spec.spec.metadata.title ?? spec.id])),
-    [ship.specs],
-  );
-
   const releaseLabels = useMemo(() => {
     const entries: Array<[string, string]> = [];
     for (const release of ship.releases) {
@@ -446,9 +436,12 @@ export default function WorkspacePanel() {
   }, [state.providerMatrix]);
 
   const handleOpenFeature = () => {
-    if (linkedFeature) {
-      void navigate({ to: FEATURES_ROUTE });
-      void ship.handleSelectFeature(linkedFeature);
+    if (state.detail?.featureId) {
+      const feat = ship.features.find(f => f.id === state.detail?.featureId);
+      if (feat) {
+        void navigate({ to: FEATURES_ROUTE });
+        void ship.handleSelectFeature(feat);
+      }
     }
   };
 
@@ -519,7 +512,6 @@ export default function WorkspacePanel() {
           onCollapse={() => setWorkspaceSidebarCollapsed(true)}
           featureLabels={featureLabels}
           releaseLabels={releaseLabels}
-          specLabels={specLabels}
         />
       </aside>
 
@@ -575,7 +567,6 @@ export default function WorkspacePanel() {
             linkReleaseId={state.linkReleaseId}
             setLinkReleaseId={state.setLinkReleaseId}
             featureLinkOptions={ship.features}
-            specLinkOptions={ship.specs}
             releaseLinkOptions={ship.releases}
             updatingLinks={state.updatingLinks}
             onUpdateLinks={handleUpdateLinks}
@@ -591,8 +582,6 @@ export default function WorkspacePanel() {
             setSessionGoalInput={state.setSessionGoalInput}
             sessionSummaryInput={state.sessionSummaryInput}
             setSessionSummaryInput={state.setSessionSummaryInput}
-            sessionSpecIds={state.sessionSpecIds}
-            setSessionSpecIds={state.setSessionSpecIds}
             providerMatrix={state.providerMatrix}
             providerInfos={state.providerInfos}
             workspaceChanges={state.workspaceChanges}

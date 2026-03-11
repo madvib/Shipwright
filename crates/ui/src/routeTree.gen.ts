@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectSpecsRouteImport } from './routes/project/specs'
 import { Route as ProjectSettingsRouteImport } from './routes/project/settings'
 import { Route as ProjectReleasesRouteImport } from './routes/project/releases'
 import { Route as ProjectOverviewRouteImport } from './routes/project/overview'
@@ -37,11 +36,6 @@ const ProjectsRoute = ProjectsRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectSpecsRoute = ProjectSpecsRouteImport.update({
-  id: '/project/specs',
-  path: '/project/specs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectSettingsRoute = ProjectSettingsRouteImport.update({
@@ -138,7 +132,6 @@ export interface FileRoutesByFullPath {
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/hooks': typeof ProjectAgentsHooksRoute
   '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
@@ -159,7 +152,6 @@ export interface FileRoutesByTo {
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/hooks': typeof ProjectAgentsHooksRoute
   '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
@@ -181,7 +173,6 @@ export interface FileRoutesById {
   '/project/overview': typeof ProjectOverviewRoute
   '/project/releases': typeof ProjectReleasesRoute
   '/project/settings': typeof ProjectSettingsRoute
-  '/project/specs': typeof ProjectSpecsRoute
   '/project/agents/hooks': typeof ProjectAgentsHooksRoute
   '/project/agents/mcp': typeof ProjectAgentsMcpRoute
   '/project/agents/permissions': typeof ProjectAgentsPermissionsRoute
@@ -204,7 +195,6 @@ export interface FileRouteTypes {
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/specs'
     | '/project/agents/hooks'
     | '/project/agents/mcp'
     | '/project/agents/permissions'
@@ -225,7 +215,6 @@ export interface FileRouteTypes {
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/specs'
     | '/project/agents/hooks'
     | '/project/agents/mcp'
     | '/project/agents/permissions'
@@ -246,7 +235,6 @@ export interface FileRouteTypes {
     | '/project/overview'
     | '/project/releases'
     | '/project/settings'
-    | '/project/specs'
     | '/project/agents/hooks'
     | '/project/agents/mcp'
     | '/project/agents/permissions'
@@ -268,7 +256,6 @@ export interface RootRouteChildren {
   ProjectOverviewRoute: typeof ProjectOverviewRoute
   ProjectReleasesRoute: typeof ProjectReleasesRoute
   ProjectSettingsRoute: typeof ProjectSettingsRoute
-  ProjectSpecsRoute: typeof ProjectSpecsRoute
   ProjectWorkflowWorkspaceRoute: typeof ProjectWorkflowWorkspaceRoute
 }
 
@@ -286,13 +273,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/project/specs': {
-      id: '/project/specs'
-      path: '/project/specs'
-      fullPath: '/project/specs'
-      preLoaderRoute: typeof ProjectSpecsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project/settings': {
@@ -445,7 +425,6 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectOverviewRoute: ProjectOverviewRoute,
   ProjectReleasesRoute: ProjectReleasesRoute,
   ProjectSettingsRoute: ProjectSettingsRoute,
-  ProjectSpecsRoute: ProjectSpecsRoute,
   ProjectWorkflowWorkspaceRoute: ProjectWorkflowWorkspaceRoute,
 }
 export const routeTree = rootRouteImport

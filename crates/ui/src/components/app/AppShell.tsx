@@ -16,9 +16,9 @@ import {
   SETTINGS_ROUTE,
   OVERVIEW_ROUTE,
   PROJECTS_ROUTE,
-  WORKFLOW_WORKSPACE_ROUTE,
   normalizePath,
 } from '@/lib/constants/routes';
+
 import {
   MessageCircle,
   Search,
@@ -364,23 +364,32 @@ export default function App() {
           </main>
 
           {chatOpen && (
-            <aside className="flex w-80 shrink-0 flex-col border-l border-border/50 bg-card/50">
-              <div className="flex h-10 items-center justify-between border-b border-border/50 px-3">
-                <span className="text-xs font-semibold">AI Chat</span>
+            <aside className="flex w-96 shrink-0 flex-col border-l border-border/50 bg-card/50 shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
+              <div className="flex h-10 items-center justify-between border-b border-border/50 px-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">AI Chat</span>
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  className="size-6"
+                  className="size-7 hover:bg-accent/80"
                   onClick={() => setChatOpen(false)}
                 >
                   ✕
                 </Button>
               </div>
-              <div className="flex flex-1 flex-col items-center justify-center p-4 text-center">
-                <MessageCircle className="size-8 text-muted-foreground/30 mb-3" />
-                <p className="text-sm font-medium text-muted-foreground">AI Chat</p>
-                <p className="mt-1 text-xs text-muted-foreground/70">Coming soon. Ask questions about your project, generate specs, and plan work.</p>
+
+              <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+                <div className="relative mb-6">
+                  <div className="absolute inset-0 scale-150 animate-pulse rounded-full bg-primary/10 blur-xl" />
+                  <div className="relative flex size-16 items-center justify-center rounded-2xl border bg-card/50 shadow-sm">
+                    <MessageCircle className="size-8 text-primary/40" />
+                  </div>
+                </div>
+                <p className="text-sm font-bold text-foreground/90">AI Studio Chat</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground max-w-[200px] mx-auto opacity-80">
+                  Coming soon in Alpha. Ask questions about your project, plan work, or generate architectural context.
+                </p>
               </div>
+
             </aside>
           )}
         </div>

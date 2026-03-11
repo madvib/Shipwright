@@ -23,7 +23,6 @@ function OverviewRouteComponent() {
     <Suspense fallback={<RouteFallback label="Loading overview..." />}>
       <ProjectOverview
         project={workspace.activeProject}
-        specs={ship.specs}
         adrs={ship.adrs}
         releases={ship.releases}
         features={ship.features}

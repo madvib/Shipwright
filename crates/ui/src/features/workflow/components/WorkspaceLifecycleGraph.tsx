@@ -19,7 +19,6 @@ export interface WorkspaceGraphRow {
   branch: string;
   status: WorkspaceGraphStatus;
   workspaceType: 'feature' | 'patch' | 'service';
-  specId: string | null;
   featureId: string | null;
   releaseId: string | null;
   providers: string[];
@@ -262,7 +261,7 @@ export function WorkspaceLifecycleGraph({
         : groupBy === 'release'
           ? `${row.status} · ${row.workspaceType}`
           : row.workspaceType;
-    return `${base}${row.specId ? ` · ${row.specId}` : row.featureId ? ` · ${row.featureId}` : ''}`;
+    return `${base}${row.featureId ? ` · ${row.featureId}` : ''}`;
   };
 
   return (

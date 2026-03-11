@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commands } from '@/bindings';
@@ -18,6 +18,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { splitFrontmatterDocument } from '@ship/ui';
+import { cn } from '@/lib/utils';
 import { AdrHeaderMetadata } from '../adrs/AdrHeaderMetadata';
 
 import {
@@ -25,10 +26,9 @@ import {
   EventRecord,
   FeatureInfo as FeatureEntry,
   NoteInfo as NoteEntry,
-  ProjectDiscovery as Project,
   ReleaseInfo as ReleaseEntry,
+  ProjectDiscovery as Project,
 } from '@/bindings';
-import { SpecInfo as SpecEntry } from '@/lib/types/spec';
 import {
   ADRS_ROUTE,
   AppRoutePath,
@@ -46,7 +46,6 @@ import { PageFrame, PageHeader, DetailSheet } from '@ship/ui';
 
 interface ProjectOverviewProps {
   project: Project;
-  specs: SpecEntry[];
   adrs: AdrEntry[];
   releases: ReleaseEntry[];
   features: FeatureEntry[];
@@ -57,7 +56,6 @@ interface ProjectOverviewProps {
 
 export default function ProjectOverview({
   project,
-  specs,
   adrs,
   releases,
   features,
@@ -69,15 +67,20 @@ export default function ProjectOverview({
   const queryClient = useQueryClient();
   const [visionEditing, setVisionEditing] = useState(false);
   const [visionDraft, setVisionDraft] = useState('');
-
   const { data: visionData } = useQuery({
-    queryKey: ['vision'],
+    queryKey: ['vision', project.path],
     queryFn: async () => {
       const res = await commands.getVisionCmd();
       if (res.status === 'error') throw new Error(res.error);
       return res.data;
     },
   });
+
+  useEffect(() => {
+    if (visionData) {
+      setVisionDraft(visionData.content);
+    }
+  }, [visionData]);
 
   const updateVision = useMutation({
     mutationFn: async (content: string) => {
@@ -86,8 +89,11 @@ export default function ProjectOverview({
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vision'] });
+      queryClient.invalidateQueries({ queryKey: ['vision', project.path] });
       setVisionEditing(false);
+    },
+    onError: (err) => {
+      console.error(`Failed to update vision: ${err}`);
     },
   });
 
@@ -109,11 +115,15 @@ export default function ProjectOverview({
     const { body } = splitFrontmatterDocument(visionData.content);
 
     // Strip markdown symbols for the preview
-    return body
+    const clean = body
       .replace(/^#+\s+/gm, '') // Remove headers
       .replace(/[*_~`]/g, '') // Remove simple formatting
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links
       .trim();
+
+    if (!clean) return body.trim().slice(0, 160);
+
+    return clean;
   }, [visionData?.content]);
 
   const activeRelease = releases.find(r => r.status === 'active') || releases[0];
@@ -128,7 +138,6 @@ export default function ProjectOverview({
 
   const recentAdrs = [...adrs]
     .slice(0, 3);
-  const specCount = specs.length;
 
   return (
     <PageFrame>
@@ -142,10 +151,10 @@ export default function ProjectOverview({
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Planning Loop Column */}
-        <div className="space-y-6">
-          <Card className="border-l-4 border-l-primary/60">
+        <div className="space-y-8">
+          <Card className="border-l-4 border-l-primary/60 shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -166,8 +175,12 @@ export default function ProjectOverview({
                   </div>
                   <Button size="xs" variant="ghost" className="h-6 px-2 text-[10px]" onClick={handleVisionEdit}>View Vision</Button>
                 </div>
-                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed italic">
-                  {visionBody || "No vision defined yet. What is your goal?"}
+                <p className={cn(
+                  "text-xs line-clamp-2 leading-relaxed italic transition-opacity duration-300",
+                  !visionData ? "opacity-30" : "opacity-100",
+                  visionBody ? "text-muted-foreground" : "text-muted-foreground/40"
+                )}>
+                  {visionBody || (visionData ? "No vision defined yet. Click 'View Vision' to set your project's north star." : "Loading vision...")}
                 </p>
               </div>
 
@@ -191,7 +204,14 @@ export default function ProjectOverview({
                 ) : (
                   <div className="rounded-md border border-dashed p-6 text-center bg-muted/10">
                     <p className="text-xs text-muted-foreground mb-3">No releases planned.</p>
-                    <Button size="xs" onClick={() => onNavigate(RELEASES_ROUTE)}>Start a Release</Button>
+                    <div className="space-y-4">
+                      <Button size="xs" onClick={() => onNavigate(RELEASES_ROUTE)}>Start a Release</Button>
+                      <div className="pt-2">
+                        <blockquote className="text-[10px] italic text-muted-foreground/70 leading-relaxed border-t pt-4">
+                          "Ship handles the context loop so you can focus on the intent loop. That is the Ship Workflow."
+                        </blockquote>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -226,17 +246,17 @@ export default function ProjectOverview({
 
           {/* ADRs / Context */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileStack className="size-4 text-amber-500" />
-                Context (ADRs)
-              </CardTitle>
-              <CardDescription>Architectural decision records.</CardDescription>
-            </CardHeader>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileStack className="size-4 text-amber-500" />
+                    Context (ADRs)
+                  </CardTitle>
+                </div>
+              </CardHeader>
+
             <CardContent className="space-y-2">
-              <div className="text-muted-foreground text-[10px] uppercase tracking-wider">
-                {specCount} spec{specCount === 1 ? '' : 's'} in context
-              </div>
+
               {recentAdrs.map(adr => (
                 <div key={adr.file_name} className="flex flex-col gap-1.5 rounded-md border bg-card/30 px-3 py-2 text-xs">
                   <div className="flex items-center justify-between">
@@ -246,9 +266,8 @@ export default function ProjectOverview({
                   <AdrHeaderMetadata
                     adr={adr.adr}
                     onChange={() => { }}
-                    specSuggestions={specs.map(s => ({ id: s.id, title: s.spec.metadata.title }))}
-                    adrSuggestions={adrs.map(a => ({ id: a.file_name, title: a.adr.metadata.title }))}
-                    tagSuggestions={[]}
+                  adrSuggestions={adrs.map(a => ({ id: a.file_name, title: a.adr.metadata.title }))}
+                  tagSuggestions={[]}
                     onNavigate={(type, id) => {
                       if (type === 'adr') {
                         navigate({ to: ADRS_ROUTE, search: { id } });
@@ -268,7 +287,7 @@ export default function ProjectOverview({
         </div>
 
         {/* Task Loop Column */}
-        <div className="space-y-6">
+        <div className="space-y-8">
           {/* Inbox / Brain Dump */}
           <Card className="border-l-4 border-l-emerald-500/60">
             <CardHeader className="pb-3">
@@ -291,12 +310,22 @@ export default function ProjectOverview({
                 </div>
               ))}
               {recentNotes.length === 0 && (
-                <div className="rounded-md border border-dashed py-8 text-center bg-muted/5">
-                  <Lightbulb className="size-5 text-muted-foreground mx-auto mb-2 opacity-50" />
-                  <p className="text-xs text-muted-foreground">Your inbox is empty.</p>
-                  <Button variant="link" size="xs" onClick={() => onNavigate(NOTES_ROUTE)}>Capture a thought</Button>
+                <div className="rounded-md border border-dashed py-12 text-center bg-muted/5">
+                  <div className="relative mx-auto mb-4 flex size-12 items-center justify-center">
+                    <div className="absolute inset-0 animate-pulse rounded-full bg-emerald-500/10" />
+                    <ScrollText className="relative size-6 text-emerald-500/40" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/80">Your inbox is empty</p>
+                  <p className="mt-1 text-xs text-muted-foreground max-w-[180px] mx-auto mb-4">
+                    Capture a quick thought or brain dump to get started.
+                  </p>
+                  <Button size="xs" variant="outline" className="h-8" onClick={() => onNavigate(NOTES_ROUTE)}>
+                    <Plus className="mr-1.5 size-3" />
+                    Capture a thought
+                  </Button>
                 </div>
               )}
+
             </CardContent>
           </Card>
 

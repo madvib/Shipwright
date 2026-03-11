@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Shapes, Tag } from 'lucide-react';
+import { Calendar as CalendarIcon, Tag } from 'lucide-react';
 import {
     Badge,
     FacetedFilter,
@@ -11,32 +11,25 @@ import { MetadataPopover } from '../common/MetadataPopover';
 interface NoteMetadataProps {
     frontmatter: string | null;
     updated: string;
-    specSuggestions: { id: string; title: string }[];
     tagSuggestions: string[];
     isEditing: boolean;
-    onChange: (specs: string[], tags: string[]) => void;
+    onChange: (tags: string[]) => void;
     onNavigate?: (id: string) => void;
 }
 
 export function NoteMetadata({
     frontmatter,
     updated,
-    specSuggestions,
     tagSuggestions,
     isEditing,
     onChange,
     onNavigate,
 }: NoteMetadataProps) {
     const summary = readFrontmatterSummary(frontmatter);
-    const { specs = [], tags = [] } = summary;
-
-
-    const handleSpecChange = (nextSpecs: string[]) => {
-        onChange(nextSpecs, tags);
-    };
+    const { tags = [] } = summary;
 
     const handleTagChange = (nextTags: string[]) => {
-        onChange(specs, nextTags);
+        onChange(nextTags);
     };
 
     return (
@@ -46,74 +39,39 @@ export function NoteMetadata({
                 <span>{formatDate(updated)}</span>
             </div>
 
-            {/* Specs Popover */}
-            <MetadataPopover
-                icon={Shapes}
-                label={specs.length > 0
-                    ? `${specs.length} Spec${specs.length === 1 ? '' : 's'}`
-                    : 'No linked specs'}
-                title="Linked Specs"
-                triggerClassName="max-w-[300px]"
-            >
-                <div className="flex flex-wrap gap-1.5 min-h-[20px]">
-                    {specs.map((id) => {
-                        const title = specSuggestions.find(s => s.id === id)?.title || id;
-                        return (
-                            <Badge
-                                key={id}
-                                variant="secondary"
-                                className="h-5 px-1.5 text-[10px] font-normal cursor-pointer hover:bg-secondary/80"
-                                onClick={() => onNavigate?.(id)}
-                                title={`View ${title}`}
-                            >
-                                {title}
+
+
+            {/* Tags Popover - Hide if empty unless editing */}
+            {(tags.length > 0 || isEditing) && (
+                <MetadataPopover
+                    icon={Tag}
+                    label={tags.length > 0 ? `${tags.length} Tag${tags.length === 1 ? '' : 's'}` : 'Add Tags'}
+                    title="Tags"
+                    triggerClassName="shrink-0"
+                    contentClassName="w-64 p-3"
+                >
+                    <div className="flex flex-wrap gap-1.5">
+                        {tags.map((tag) => (
+                            <Badge key={tag} variant="secondary" className="h-5 px-1.5 text-[10px] font-normal uppercase">
+                                {tag}
                             </Badge>
-                        );
-                    })}
-                    {specs.length === 0 && (
-                        <span className="text-xs text-muted-foreground italic">No linked specs</span>
+                        ))}
+                        {tags.length === 0 && (
+                            <span className="text-xs text-muted-foreground italic">No tags</span>
+                        )}
+                    </div>
+                    {isEditing && (
+                        <FacetedFilter
+                            title="Edit Tags"
+                            options={tagSuggestions.map(t => ({ value: t, label: t }))}
+                            selectedValues={tags}
+                            onSelectionChange={handleTagChange}
+                            allowNew
+                            onAddNew={(tag) => handleTagChange([...tags, tag])}
+                        />
                     )}
-                </div>
-
-                {isEditing && (
-                    <FacetedFilter
-                        title="Link Specs"
-                        options={specSuggestions.map(s => ({ value: s.id, label: s.title }))}
-                        selectedValues={specs}
-                        onSelectionChange={handleSpecChange}
-                    />
-                )}
-            </MetadataPopover>
-
-            {/* Tags Popover */}
-            <MetadataPopover
-                icon={Tag}
-                label={tags.length > 0 ? `${tags.length} Tag${tags.length === 1 ? '' : 's'}` : 'No tags'}
-                title="Tags"
-                triggerClassName="shrink-0"
-                contentClassName="w-64 p-3"
-            >
-                <div className="flex flex-wrap gap-1.5">
-                    {tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="h-5 px-1.5 text-[10px] font-normal uppercase">
-                            {tag}
-                        </Badge>
-                    ))}
-                    {tags.length === 0 && (
-                        <span className="text-xs text-muted-foreground italic">No tags</span>
-                    )}
-                </div>
-                {isEditing && (
-                    <FacetedFilter
-                        title="Edit Tags"
-                        options={tagSuggestions.map(t => ({ value: t, label: t }))}
-                        selectedValues={tags}
-                        onSelectionChange={handleTagChange}
-                        allowNew
-                        onAddNew={(tag) => handleTagChange([...tags, tag])}
-                    />
-                )}
-            </MetadataPopover>
+                </MetadataPopover>
+            )}
         </BaseMetadataHeader>
     );
 }

@@ -54,6 +54,7 @@
   --status-yellow: oklch(0.7 0.18 55);
   --status-purple: oklch(0.6 0.2 300);
   --status-orange: oklch(0.6 0.2 35);
+  --status-amber: oklch(0.75 0.15 75);
 }
 
 .dark {
@@ -97,6 +98,7 @@
   --color-status-yellow: var(--status-yellow);
   --color-status-purple: var(--status-purple);
   --color-status-orange: var(--status-orange);
+  --color-status-amber: var(--status-amber);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -251,12 +253,18 @@
     overflow: auto;
     overflow-x: hidden;
     /* Base padding to ensure no page is ever flush to edge */
-    padding: 1.25rem;
+    padding: 1rem;
   }
 
   @media (min-width: 768px) {
     .main-content {
       padding: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .main-content {
+      padding: 2rem;
     }
   }
 }

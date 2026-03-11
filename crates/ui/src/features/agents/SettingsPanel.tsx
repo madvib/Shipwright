@@ -54,7 +54,6 @@ const GIT_CATEGORIES = [
   'releases',
   'features',
   'adrs',
-  'specs',
   'vision',
   'ship.toml',
   'templates',
@@ -173,7 +172,7 @@ function normalizeProjectConfig(config: ProjectConfig | null): NormalizedProject
     git: {
       ignore: config?.git?.ignore ?? [],
       commit:
-        config?.git?.commit ?? ['releases', 'features', 'adrs', 'specs', 'vision', 'ship.toml', 'templates'],
+        config?.git?.commit ?? ['releases', 'features', 'adrs', 'vision', 'ship.toml', 'templates'],
     },
     ai: normalizeAiConfig(config?.ai ?? null),
     modes: config?.modes ?? [],
@@ -421,7 +420,7 @@ export default function SettingsPanel({
   const settingsOnly = panelMode === 'settings-only';
 
   return (
-    <PageFrame width="narrow" className="md:p-4">
+    <PageFrame width="narrow" className="p-4 md:p-6 lg:p-8">
       <PageHeader
         title={
           <span className="flex items-center gap-2">
@@ -490,10 +489,10 @@ export default function SettingsPanel({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">MCP Server</h3>
-                  <p className="text-[11px] text-muted-foreground">Local bridge for AI clients and tooling.</p>
+                  <p className="text-[11px] text-muted-foreground">Expose Ship's project context library to local AI clients and third-party tooling via the Model Context Protocol.</p>
                 </div>
               </div>
-              <CardContent className="space-y-2 !pt-5">
+              <CardContent className="space-y-3 !pt-4">
                 <div className="space-y-2">
                   <Label htmlFor="settings-mcp-port">Port</Label>
                   <Input
@@ -512,7 +511,7 @@ export default function SettingsPanel({
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <div className="space-y-0.5">
                     <p className="text-sm font-medium">Enable MCP</p>
-                    <p className="text-muted-foreground text-xs">Allow AI clients to connect to Ship context.</p>
+                    <p className="text-muted-foreground text-xs">Allow external AI tools to connect to Ship as a context provider, enabling them to query your ADRs and codebase structure.</p>
                   </div>
                   <Switch
                     checked={local.mcp_enabled !== false}
@@ -864,7 +863,7 @@ export default function SettingsPanel({
                           },
                         })
                       }
-                      placeholder="AGENTS.md&#10;specs/&#10;adrs/"
+                      placeholder="AGENTS.md&#10;features/&#10;adrs/"
                     />
                   </div>
 

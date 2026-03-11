@@ -93,25 +93,25 @@ type HookEventOption = {
 };
 
 const HOOK_EVENTS: HookEventOption[] = [
-  { value: 'SessionStart', label: 'Session Start', providers: ['claude', 'gemini'] },
-  { value: 'UserPromptSubmit', label: 'User Prompt Submit', providers: ['claude'] },
-  { value: 'PreToolUse', label: 'Pre Tool Use', providers: ['claude', 'gemini'], matcherHint: 'Tool matcher (e.g. Bash, mcp__*).' },
-  { value: 'PermissionRequest', label: 'Permission Request', providers: ['claude'] },
-  { value: 'PostToolUse', label: 'Post Tool Use', providers: ['claude', 'gemini'], matcherHint: 'Tool matcher (e.g. Bash, mcp__*).' },
-  { value: 'PostToolUseFailure', label: 'Post Tool Failure', providers: ['claude'] },
-  { value: 'Notification', label: 'Notification', providers: ['claude', 'gemini'] },
-  { value: 'SubagentStart', label: 'Subagent Start', providers: ['claude'] },
-  { value: 'SubagentStop', label: 'Subagent Stop', providers: ['claude'] },
-  { value: 'Stop', label: 'Stop', providers: ['claude', 'gemini'] },
-  { value: 'PreCompact', label: 'Pre Compact', providers: ['claude', 'gemini'] },
-  { value: 'BeforeTool', label: 'Before Tool', providers: ['gemini'], matcherHint: 'Tool matcher (e.g. run_shell_command).' },
-  { value: 'AfterTool', label: 'After Tool', providers: ['gemini'], matcherHint: 'Tool matcher (e.g. run_shell_command).' },
-  { value: 'BeforeAgent', label: 'Before Agent', providers: ['gemini'] },
-  { value: 'AfterAgent', label: 'After Agent', providers: ['gemini'] },
-  { value: 'SessionEnd', label: 'Session End', providers: ['gemini'] },
-  { value: 'BeforeModel', label: 'Before Model', providers: ['gemini'] },
-  { value: 'AfterModel', label: 'After Model', providers: ['gemini'] },
-  { value: 'BeforeToolSelection', label: 'Before Tool Selection', providers: ['gemini'] },
+  { value: 'SessionStart', label: 'Session Start', providers: ['claude', 'gemini'], description: 'Triggered when a new agent session begins.' },
+  { value: 'UserPromptSubmit', label: 'User Prompt Submit', providers: ['claude'], description: 'Triggered exactly after the user sends a message, before model processing.' },
+  { value: 'PreToolUse', label: 'Pre Tool Use', providers: ['claude', 'gemini'], matcherHint: 'Tool matcher (e.g. Bash, mcp__*).', description: 'Before a tool is executed. Can be used for custom authorization.' },
+  { value: 'PermissionRequest', label: 'Permission Request', providers: ['claude'], description: 'Triggered when the agent asks for explicit permission for an action.' },
+  { value: 'PostToolUse', label: 'Post Tool Use', providers: ['claude', 'gemini'], matcherHint: 'Tool matcher (e.g. Bash, mcp__*).', description: 'After a tool execution completes successfully.' },
+  { value: 'PostToolUseFailure', label: 'Post Tool Failure', providers: ['claude'], description: 'Triggered if a tool execution returns an error.' },
+  { value: 'Notification', label: 'Notification', providers: ['claude', 'gemini'], description: 'Triggered when the agent sends an out-of-band notification.' },
+  { value: 'SubagentStart', label: 'Subagent Start', providers: ['claude'], description: 'Triggered when a subagent is spawned.' },
+  { value: 'SubagentStop', label: 'Subagent Stop', providers: ['claude'], description: 'Triggered when a subagent terminates.' },
+  { value: 'Stop', label: 'Stop', providers: ['claude', 'gemini'], description: 'Triggered when the main agent loop stops.' },
+  { value: 'PreCompact', label: 'Pre Compact', providers: ['claude', 'gemini'], description: 'Triggered before context compaction/token management starts.' },
+  { value: 'BeforeTool', label: 'Before Tool', providers: ['gemini'], matcherHint: 'Tool matcher (e.g. run_shell_command).', description: 'Gemini-specific hook before tool execution.' },
+  { value: 'AfterTool', label: 'After Tool', providers: ['gemini'], matcherHint: 'Tool matcher (e.g. run_shell_command).', description: 'Gemini-specific hook after tool execution.' },
+  { value: 'BeforeAgent', label: 'Before Agent', providers: ['gemini'], description: 'Gemini-specific hook before agent logic runs.' },
+  { value: 'AfterAgent', label: 'After Agent', providers: ['gemini'], description: 'Gemini-specific hook after agent logic runs.' },
+  { value: 'SessionEnd', label: 'Session End', providers: ['gemini'], description: 'Triggered when the Gemini session completes.' },
+  { value: 'BeforeModel', label: 'Before Model', providers: ['gemini'], description: 'Gemini-specific hook before model call.' },
+  { value: 'AfterModel', label: 'After Model', providers: ['gemini'], description: 'Gemini-specific hook after model response.' },
+  { value: 'BeforeToolSelection', label: 'Before Tool Selection', providers: ['gemini'], description: 'Gemini-specific hook during tool selection phase.' },
 ];
 
 const EMPTY_MODE: ModeConfig = {
@@ -571,7 +571,7 @@ function normalizeProjectConfig(config: ProjectConfig | null): ProjectConfig {
     git: {
       ignore: config?.git?.ignore ?? [],
       commit:
-        config?.git?.commit ?? ['releases', 'features', 'adrs', 'specs', 'ship.toml', 'templates'],
+        config?.git?.commit ?? ['releases', 'features', 'adrs', 'ship.toml', 'templates'],
     },
     ai: normalizeAiConfig(config?.ai ?? null),
     modes: config?.modes ?? [],
@@ -861,7 +861,7 @@ function getProviderSyncSummary(
   if (blockingProviderIssues.length > 0 || sharedBlockingIssues.length > 0) {
     return {
       status: 'needs-attention',
-      detail: 'Fix the reported config or MCP issues before syncing this provider.',
+      detail: `Fix ${provider.name} config or MCP issues before syncing.`,
       issues: [...blockingProviderIssues, ...sharedBlockingIssues],
     };
   }
@@ -869,7 +869,7 @@ function getProviderSyncSummary(
   if (driftIssues.length > 0) {
     return {
       status: 'drift-detected',
-      detail: 'Provider config shape diverges from Ship-managed expectations.',
+      detail: `${provider.name} config shape diverges from Ship expectations.`,
       issues: driftIssues,
     };
   }
@@ -1867,11 +1867,15 @@ export default function AgentsPanel({
       const res = await commands.importAgentConfigCmd(target, true);
       if (res.status === 'error') throw new Error(res.error);
       const importedMcp = res.data.imported_mcp_servers;
+      const importedSkills = res.data.imported_skills;
       const importedPermissions = res.data.imported_permissions;
       const summaryParts = [
         importedMcp > 0
           ? `${importedMcp} MCP server${importedMcp === 1 ? '' : 's'} imported`
           : 'No new MCP servers',
+        importedSkills > 0
+          ? `${importedSkills} skill${importedSkills === 1 ? '' : 's'} imported`
+          : 'No new skills',
       ];
       if (importedPermissions) {
         summaryParts.push('permissions imported');
@@ -2406,9 +2410,14 @@ export default function AgentsPanel({
                             {providerHookEvents.length > 0 ? (
                               <div className="flex flex-wrap gap-1.5">
                                 {providerHookEvents.map((event) => (
-                                  <Badge key={`${provider.id}-${event.value}`} variant="secondary" className="text-[10px]">
-                                    {event.label}
-                                  </Badge>
+                                  <Tooltip key={`${provider.id}-${event.value}`}>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="secondary" className="text-[10px] cursor-default">
+                                        {event.label}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">{event.description}</TooltipContent>
+                                  </Tooltip>
                                 ))}
                               </div>
                             ) : (
@@ -2787,9 +2796,9 @@ export default function AgentsPanel({
         {initialSection === 'mcp' && (
           <div className="grid gap-4">
             {MCP_STDIO_ONLY_ALPHA && (
-              <Alert className="border-amber-500/30 bg-amber-500/5">
-                <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
-                  Alpha note: MCP server execution is currently stdio-only. HTTP/SSE entries can be discovered but not configured for active use yet.
+              <Alert variant="outline" className="opacity-80 border-dashed">
+                <AlertDescription className="text-[11px] text-muted-foreground">
+                  <span className="font-semibold text-amber-600 dark:text-amber-500">Alpha</span>: MCP server execution is currently stdio-only. HTTP/SSE entries can be discovered but not configured for active use yet.
                 </AlertDescription>
               </Alert>
             )}
@@ -2918,7 +2927,7 @@ export default function AgentsPanel({
                 {initialSection === 'mcp' && (
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Official Registry matches</span>
+                      <span>Registry results</span>
                       {mcpRegistryQuery.isFetching && <span>searching…</span>}
                     </div>
                     {mcpRegistryQuery.isError ? (
@@ -3331,16 +3340,8 @@ export default function AgentsPanel({
             {initialSection === 'skills' && (
               <Alert className="border-cyan-500/20 bg-cyan-500/5">
                 <Zap className="size-4 text-cyan-500" />
-                <AlertDescription className="space-y-1 text-xs">
-                  <p>
-                    <span className="font-semibold">Skills are a full SDK</span>, not just markdown. A skill package can include YAML config, prompt templates, MCP tool bindings, hooks, and multi-file logic — similar to a lightweight app.
-                  </p>
-                  <p className="text-muted-foreground">
-                    Studio mode now renders each skill as an auditable folder with package metadata while you edit in real time.
-                  </p>
-                  <p className="text-muted-foreground">
-                    Switch between folder-audit studio and compact list view as needed.
-                  </p>
+                <AlertDescription className="text-xs">
+                  <span className="font-semibold">Skills are a full SDK</span> — A package including YAML config, prompt templates, and multi-file logic. Studio mode renders these as auditable folders in real-time.
                 </AlertDescription>
               </Alert>
             )}
@@ -3370,6 +3371,28 @@ export default function AgentsPanel({
                       Create a new {initialSection === 'skills' ? 'skill package' : 'rule document'} in {agentScope} scope.
                     </TooltipContent>
                   </Tooltip>
+
+                  {initialSection === 'skills' && (
+                    <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={skillSourceInput}
+                          onChange={(e) => setSkillSourceInput(e.target.value)}
+                          placeholder="Install from URL (GitHub/Gist)…"
+                          className="h-8 text-xs font-mono"
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 shrink-0"
+                          onClick={() => handleInstallSkillFromSource()}
+                          disabled={!skillSourceInput.trim() || installSkillFromSourceMut.isPending}
+                        >
+                          {installSkillFromSourceMut.isPending ? 'Installing…' : <Download className="size-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {initialSection === 'skills' && (
                     <div>
@@ -3426,44 +3449,7 @@ export default function AgentsPanel({
                           )}
                         </div>
                       )}
-                      <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_130px_auto]">
-                        <AutocompleteInput
-                          value={skillSourceInput}
-                          options={catalogSkillSourceOptions}
-                          placeholder="Install skill from URL or repo path..."
-                          onValueChange={setSkillSourceInput}
-                          className="h-8 text-xs"
-                        />
-                        <Input
-                          value={skillSourceIdInput}
-                          onChange={(event) => setSkillSourceIdInput(event.target.value)}
-                          placeholder={inferredSkillSourceId || 'skill-id'}
-                          className="h-8 text-xs font-mono"
-                        />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              onClick={handleInstallSkillFromSource}
-                              disabled={!skillSourceInput.trim() || !(skillSourceIdInput.trim() || inferredSkillSourceId) || installSkillFromSourceMut.isPending}
-                            >
-                              <Upload className="mr-1.5 size-3.5" />
-                              {installSkillFromSourceMut.isPending ? 'Installing…' : 'Install URL'}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Install a skill from GitHub repo/tree URL, GitHub SSH URL, or local repo path.
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      {installSkillFromSourceMut.isError && (
-                        <p className="mt-1 text-[11px] text-destructive">
-                          {String(installSkillFromSourceMut.error)}
-                        </p>
-                      )}
+
                     </div>
                   )}
 
@@ -3582,7 +3568,14 @@ export default function AgentsPanel({
                     <PenLine className="size-3.5 text-indigo-500" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-sm font-semibold">{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</h3>
+                    <div className="flex items-center gap-1.5 text-sm font-semibold">
+                      <span className="opacity-50 font-normal">{initialSection === 'skills' ? 'Skills' : 'Rules'}</span>
+                      <span className="opacity-30">/</span>
+                      <span>{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</span>
+                      <Badge variant="outline" className="ml-2 h-4 px-1.5 py-0 text-[10px] font-normal tracking-tight opacity-70">
+                        {agentScope} scope
+                      </Badge>
+                    </div>
                     <p className="text-[11px] text-muted-foreground">
                       {initialSection === 'skills'
                         ? 'Edit skill content — studio folder audit updates in real time as you type.'
@@ -3894,6 +3887,12 @@ export default function AgentsPanel({
         {initialSection === 'permissions' && (
           <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
             <div className="space-y-4">
+              <Alert className="border-primary/20 bg-primary/5">
+                <Shield className="size-4 text-primary" />
+                <AlertDescription className="text-xs">
+                  <span className="font-semibold">Runtime enforcement</span> — Rules are enforced by the Ship core runtime. An agent cannot bypass these policies even if instructed to.
+                </AlertDescription>
+              </Alert>
               {/* Rule Sets / Presets */}
               <Card size="sm" className="overflow-hidden">
                 <div className="flex items-center gap-3 border-b px-4 py-3">
