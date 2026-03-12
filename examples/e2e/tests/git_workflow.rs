@@ -6,8 +6,8 @@
 ///
 /// Branch hierarchy tested: main > release/vX > feature/Y > worktree
 ///
-/// Run: cargo test --test git_workflow -p e2e
-/// Run ignored: cargo test --test git_workflow -p e2e -- --include-ignored
+/// Run: cargo test --test git_workflow -p examples-e2e
+/// Run ignored: cargo test --test git_workflow -p examples-e2e -- --include-ignored
 mod helpers;
 
 use crate::helpers::create_feature;
@@ -25,26 +25,33 @@ use std::process::Command;
 mod new_project {
     use super::*;
 
-    /// `ship init` on an empty directory produces the full .ship/ structure.
+    /// `ship init` on an empty directory produces the canonical Ship structure.
     #[test]
     fn init_creates_full_ship_structure() {
         let p = TestProject::with_git().unwrap();
 
-        // Core namespace directories
-        p.assert_ship_file("project/features");
-        p.assert_ship_file("project/releases");
-        p.assert_ship_file("project/adrs");
-        p.assert_ship_file("project/notes");
-        p.assert_ship_file("agents/rules");
-
-        // Config
+        // Core canonical docs/config
+        p.assert_ship_file("vision.md");
         p.assert_ship_file("ship.toml");
+        p.assert_no_ship_file("project/vision.md");
+        p.assert_no_ship_file("TEMPLATE.md");
+        p.assert_no_ship_file("README.md");
 
-        // Default templates
-        p.assert_ship_file("project/features/TEMPLATE.md");
-        p.assert_ship_file("project/adrs/TEMPLATE.md");
+        // Agent surface
+        p.assert_ship_file("agents/rules");
+        p.assert_ship_file("agents/mcp.toml");
+        p.assert_ship_file("agents/permissions.toml");
+        p.assert_ship_file("agents/skills/task-policy/SKILL.md");
 
-        // Runtime state is SQLite-first; no NDJSON event file is required on init.
+        // Runtime artifacts
+        p.assert_ship_file("generated");
+
+        // DB-first model: project markdown templates are not seeded on init.
+        p.assert_no_ship_file("project/features");
+        p.assert_no_ship_file("project/releases");
+        p.assert_no_ship_file("project/adrs");
+        p.assert_no_ship_file("project/notes");
+        p.assert_no_ship_file("project/specs");
     }
 
     /// Default task-policy skill is seeded on init.
@@ -136,11 +143,11 @@ mod new_project {
         );
     }
 
-    /// Feature template has the richer lifecycle fields (planned, version, Why/Delivery sections).
+    /// Feature template fallback has the richer lifecycle fields.
     #[test]
     fn init_feature_template_has_lifecycle_fields() {
         let p = TestProject::with_git().unwrap();
-        let template = p.read_ship_file("project/features/TEMPLATE.md");
+        let template = ship_module_project::read_template(&p.ship_dir, "feature").unwrap();
         assert!(template.contains("release_id"));
         assert!(template.contains("## Why"));
         assert!(template.contains("## Delivery Todos"));
@@ -665,7 +672,7 @@ mod existing_agent_configs {
     /// After checkout, Ship adds its own servers to .mcp.json without removing user servers.
     #[test]
     fn checkout_merges_ship_servers_into_existing_mcp_json() {
-        use runtime::config::{McpServerConfig, McpServerType, ProjectConfig, save_config};
+        use runtime::config::{McpServerConfig, McpServerType, save_config};
 
         let user_config = r#"{"mcpServers":{"github":{"type":"stdio","command":"gh-mcp"}}}"#;
         let mut files: Vec<(&str, &str)> = EXISTING_JS_PROJECT.to_vec();
@@ -718,7 +725,7 @@ mod existing_agent_configs {
     /// Checkout to main preserves baseline Ship servers and existing user servers.
     #[test]
     fn checkout_main_preserves_baseline_and_user_servers() {
-        use runtime::config::{McpServerConfig, McpServerType, ProjectConfig, save_config};
+        use runtime::config::{McpServerConfig, McpServerType, save_config};
 
         let user_config = r#"{"mcpServers":{"github":{"type":"stdio","command":"gh-mcp"}}}"#;
         let mut files: Vec<(&str, &str)> = EXISTING_JS_PROJECT.to_vec();

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -118,12 +120,13 @@ impl TestProject {
     }
 
     /// Create a temp git project by copying a fixture directory under
-    /// `examples/projects-e2e/projects/<fixture_name>`, then run `ship init`.
+    /// `examples/projects/<fixture_name>`, then run `ship init`.
     pub fn with_fixture_project(fixture_name: &str) -> Result<Self> {
         let dir = TempDir::new()?;
         let global_dir = Self::shared_global_dir()?;
         let root = dir.path();
         let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
             .join("projects")
             .join(fixture_name);
         if !fixture_root.exists() {

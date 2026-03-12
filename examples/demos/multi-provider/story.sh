@@ -7,14 +7,14 @@
 # code review. Ship manages all three from a single config source.
 #
 # Usage:
-#   bash examples/stories/multi-provider/story.sh [--skip-build]
+#   bash examples/demos/multi-provider/story.sh [--skip-build]
 # =============================================================================
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-STORIES_TMP="$ROOT_DIR/examples/stories/.tmp"
+DEMOS_TMP="$ROOT_DIR/examples/demos/.tmp"
 RUN_ID="$(date +%Y%m%d%H%M%S)"
-WORK_DIR="$STORIES_TMP/multi-provider-$RUN_ID"
+WORK_DIR="$DEMOS_TMP/multi-provider-$RUN_ID"
 HOME_DIR="$WORK_DIR/.home"
 ORIG_HOME="${HOME:-}"
 KEEP_TMP="${KEEP_TMP:-0}"

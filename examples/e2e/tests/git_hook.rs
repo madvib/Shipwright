@@ -24,54 +24,10 @@ fn make_stdio_server(id: &str) -> McpServerConfig {
     }
 }
 
-fn feature_ship_dir(path: &Path) -> &Path {
-    path.parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-}
-
-fn get_feature_id(path: &Path, ship_dir: &Path) -> String {
-    let content = std::fs::read_to_string(path).unwrap();
-    for line in content.lines() {
-        if line.starts_with("id = ") {
-            return line.split('"').nth(1).unwrap().to_string();
-        }
-    }
-
-    let file_id = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or_default()
-        .to_string();
-
-    if !file_id.is_empty()
-        && let Ok(entry) = ship_module_project::get_feature_by_id(ship_dir, &file_id)
-    {
-        return entry.id;
-    }
-
-    if let Ok(entries) = ship_module_project::list_features(ship_dir)
-        && let Some(entry) = entries
-            .into_iter()
-            .find(|entry| entry.file_name.trim_end_matches(".md") == file_id)
-    {
-        return entry.id;
-    }
-
-    panic!("No ID found in {:?}", path);
-}
-
-fn set_feature_agent(path: &Path, agent: FeatureAgentConfig) {
-    let ship_dir = feature_ship_dir(path);
-    let id = get_feature_id(path, ship_dir);
-    let mut entry = ship_module_project::get_feature_by_id(ship_dir, &id).unwrap();
+fn set_feature_agent(ship_dir: &Path, feature_id: &str, agent: FeatureAgentConfig) {
+    let mut entry = ship_module_project::get_feature_by_id(ship_dir, feature_id).unwrap();
     entry.feature.metadata.agent = Some(agent);
-    ship_module_project::update_feature(ship_dir, &id, entry.feature).unwrap();
+    ship_module_project::update_feature(ship_dir, feature_id, entry.feature).unwrap();
 }
 
 #[test]
@@ -111,8 +67,8 @@ fn checkout_non_feature_branch_is_noop() {
 
     on_post_checkout(&p.ship_dir, "main", &p.root()).unwrap();
     assert!(
-        !p.root().join("CLAUDE.md").exists(),
-        "CLAUDE.md should not be generated on non-feature branches"
+        p.root().join("CLAUDE.md").exists(),
+        "workspace CLAUDE.md should be generated on non-feature branches"
     );
 }
 
@@ -154,7 +110,8 @@ fn claude_md_includes_skill_body() {
     )
     .unwrap();
     set_feature_agent(
-        &feature_path.1,
+        &p.ship_dir,
+        &feature_path.0,
         FeatureAgentConfig {
             model: None,
             max_cost_per_session: None,
@@ -187,7 +144,8 @@ fn mcp_json_written_on_checkout() {
     )
     .unwrap();
     set_feature_agent(
-        &feature_path.1,
+        &p.ship_dir,
+        &feature_path.0,
         FeatureAgentConfig {
             model: None,
             max_cost_per_session: None,
@@ -248,7 +206,8 @@ fn default_task_policy_requires_ship_tooling_in_generated_context() {
     )
     .unwrap();
     set_feature_agent(
-        &feature_path.1,
+        &p.ship_dir,
+        &feature_path.0,
         FeatureAgentConfig {
             model: None,
             max_cost_per_session: None,
@@ -328,7 +287,8 @@ fn claude_md_reflects_skill_updates_after_regeneration() {
     )
     .unwrap();
     set_feature_agent(
-        &feature_path.1,
+        &p.ship_dir,
+        &feature_path.0,
         FeatureAgentConfig {
             model: None,
             max_cost_per_session: None,
@@ -386,7 +346,8 @@ fn agents_md_reflects_skill_updates_for_codex_after_regeneration() {
     )
     .unwrap();
     set_feature_agent(
-        &feature_path.1,
+        &p.ship_dir,
+        &feature_path.0,
         FeatureAgentConfig {
             model: None,
             max_cost_per_session: None,

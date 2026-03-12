@@ -27,5 +27,5 @@ can switch modes without re-configuring your providers.
 ## Run it
 
 ```bash
-bash examples/stories/multi-provider/story.sh
+bash examples/demos/multi-provider/story.sh
 ```

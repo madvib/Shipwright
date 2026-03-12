@@ -8,14 +8,14 @@
 # agent, running a session, and shipping.
 #
 # Usage:
-#   bash examples/stories/solo-dev/story.sh [--skip-build]
+#   bash examples/demos/solo-dev/story.sh [--skip-build]
 # =============================================================================
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-STORIES_TMP="$ROOT_DIR/examples/stories/.tmp"
+DEMOS_TMP="$ROOT_DIR/examples/demos/.tmp"
 RUN_ID="$(date +%Y%m%d%H%M%S)"
-WORK_DIR="$STORIES_TMP/solo-dev-$RUN_ID"
+WORK_DIR="$DEMOS_TMP/solo-dev-$RUN_ID"
 HOME_DIR="$WORK_DIR/.home"
 ORIG_HOME="${HOME:-}"
 KEEP_TMP="${KEEP_TMP:-0}"

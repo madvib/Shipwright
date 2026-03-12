@@ -26,5 +26,5 @@ paste it into every chat.
 ## Run it
 
 ```bash
-bash examples/stories/solo-dev/story.sh
+bash examples/demos/solo-dev/story.sh
 ```

@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-TMP_ROOT="$ROOT_DIR/examples/projects-e2e/.tmp"
+TMP_ROOT="$ROOT_DIR/examples/e2e/.tmp"
+GLOBAL_TMP_ROOT="$ROOT_DIR/examples/e2e/.tmp-global"
 RUN_ID="$(date +%Y%m%d%H%M%S)"
 WORK_DIR="$TMP_ROOT/project-e2e-$RUN_ID"
-HOME_DIR="$WORK_DIR/home"
+HOME_DIR="$GLOBAL_TMP_ROOT/home-$RUN_ID"
 ORIG_HOME="${HOME:-}"
 KEEP_TMP="${KEEP_TMP:-0}"
 
@@ -27,6 +28,13 @@ assert_contains() {
 assert_path_exists() {
   if [[ ! -e "$1" ]]; then
     echo "ASSERTION FAILED: expected path to exist: $1" >&2
+    exit 1
+  fi
+}
+
+assert_path_not_exists() {
+  if [[ -e "$1" ]]; then
+    echo "ASSERTION FAILED: expected path NOT to exist: $1" >&2
     exit 1
   fi
 }
@@ -58,6 +66,7 @@ cleanup() {
   fi
   if [[ "$KEEP_TMP" != "1" ]]; then
     rm -rf "$WORK_DIR"
+    rm -rf "$HOME_DIR"
   fi
   return "$exit_code"
 }
@@ -71,26 +80,27 @@ HOME="$ORIG_HOME" cargo build --manifest-path "$ROOT_DIR/Cargo.toml" -p cli >/de
 export HOME="$HOME_DIR"
 
 echo "Initializing isolated test workspace at $WORK_DIR"
+(cd "$WORK_DIR" && git init -q && git config user.email "ship-e2e@example.com" && git config user.name "Ship E2E")
 out="$(run_ship init .)"
 assert_contains "$out" "Initialized and tracked Ship project"
 
-# Namespace structure
-assert_path_exists "$WORK_DIR/.ship/project/features"
-assert_path_exists "$WORK_DIR/.ship/project/specs"
-assert_path_exists "$WORK_DIR/.ship/project/releases"
-assert_path_exists "$WORK_DIR/.ship/project/adrs"
-assert_path_exists "$WORK_DIR/.ship/project/notes"
+# Canonical Ship structure
 assert_path_exists "$WORK_DIR/.ship/vision.md"
-assert_path_exists "$WORK_DIR/.ship/project/releases/TEMPLATE.md"
-# Project skills are stored in repo-local .ship/agents/skills.
-if [[ ! -f "$WORK_DIR/.ship/agents/skills/task-policy/SKILL.md" ]]; then
-  echo "ASSERTION FAILED: expected seeded task-policy skill under .ship/agents/skills" >&2
-  exit 1
-fi
-assert_path_exists "$WORK_DIR/.ship/generated"
-assert_path_exists "$WORK_DIR/.ship/project/features/TEMPLATE.md"
-assert_path_exists "$WORK_DIR/.ship/project/specs/TEMPLATE.md"
 assert_path_exists "$WORK_DIR/.ship/ship.toml"
+assert_path_exists "$WORK_DIR/.ship/.gitignore"
+assert_path_exists "$WORK_DIR/.ship/agents/mcp.toml"
+assert_path_exists "$WORK_DIR/.ship/agents/permissions.toml"
+assert_path_exists "$WORK_DIR/.ship/agents/skills/task-policy/SKILL.md"
+assert_path_exists "$WORK_DIR/.ship/generated"
+assert_path_not_exists "$WORK_DIR/.ship/TEMPLATE.md"
+assert_path_not_exists "$WORK_DIR/.ship/README.md"
+
+# DB-first model: project markdown namespaces are not pre-seeded at init.
+assert_path_not_exists "$WORK_DIR/.ship/project/features"
+assert_path_not_exists "$WORK_DIR/.ship/project/specs"
+assert_path_not_exists "$WORK_DIR/.ship/project/releases"
+assert_path_not_exists "$WORK_DIR/.ship/project/adrs"
+assert_path_not_exists "$WORK_DIR/.ship/project/notes"
 
 echo "Validating workflow/status customization..."
 run_ship config status add qa >/dev/null
@@ -103,49 +113,43 @@ run_ship mode set planning >/dev/null
 mode_out="$(run_ship mode get)"
 assert_contains "$mode_out" "Active mode: planning (Planning Mode)"
 
-echo "Validating spec workflow baseline..."
-run_ship spec create "Agent Config Spec" >/dev/null
-spec_list_out="$(run_ship spec list)"
-assert_contains "$spec_list_out" "[draft] Agent Config Spec"
-spec_file="$(find "$WORK_DIR/.ship/project/specs" -maxdepth 1 -name 'agent-config-spec*.md' -print | head -n 1)"
-if [[ -z "${spec_file:-}" ]]; then
-  echo "ASSERTION FAILED: expected generated spec file in .ship/project/specs" >&2
-  exit 1
-fi
-spec_get_out="$(run_ship spec get "$(basename "$spec_file")")"
-assert_contains "$spec_get_out" "title = \"Agent Config Spec\""
-
 echo "Validating release workflow..."
 run_ship release create "v0.1.0-alpha" >/dev/null
 release_list_out="$(run_ship release list)"
-assert_contains "$release_list_out" "[planned] v0.1.0-alpha"
-release_file="$(find "$WORK_DIR/.ship/project/releases" -maxdepth 2 -name 'v0-1-0-alpha*.md' -print | head -n 1)"
-if [[ -z "${release_file:-}" ]]; then
-  echo "ASSERTION FAILED: expected generated release file in .ship/project/releases" >&2
-  exit 1
-fi
-release_get_out="$(run_ship release get "$(basename "$release_file")")"
-assert_contains "$release_get_out" "version = \"v0.1.0-alpha\""
+assert_contains "$release_list_out" "[upcoming] v0.1.0-alpha"
+release_get_out="$(run_ship release get "v0.1.0-alpha.md")"
+assert_contains "$release_get_out" "version=v0.1.0-alpha"
 
 echo "Validating feature workflow..."
-run_ship feature create "Agent Config UI" --release "$(basename "$release_file")" --spec "$(basename "$spec_file")" >/dev/null
+run_ship feature create "Agent Config UI" --release-id "v0.1.0-alpha" >/dev/null
 feature_list_out="$(run_ship feature list)"
 assert_contains "$feature_list_out" "[planned] Agent Config UI"
-feature_file="$(find "$WORK_DIR/.ship/project/features" -maxdepth 1 -name 'agent-config-ui*.md' -print | head -n 1)"
-if [[ -z "${feature_file:-}" ]]; then
-  echo "ASSERTION FAILED: expected generated feature file in .ship/project/features" >&2
+feature_id="$(echo "$feature_list_out" | sed -n 's/.*id=\([^ ]*\)$/\1/p' | head -n 1)"
+if [[ -z "${feature_id:-}" ]]; then
+  echo "ASSERTION FAILED: expected feature id in `ship feature list` output" >&2
   exit 1
 fi
-feature_get_out="$(run_ship feature get "$(basename "$feature_file")")"
+feature_get_out="$(run_ship feature get "$feature_id")"
 assert_contains "$feature_get_out" "title = \"Agent Config UI\""
-assert_contains "$feature_get_out" "release = \"$(basename "$release_file")\""
-assert_contains "$feature_get_out" "spec = \"$(basename "$spec_file")\""
+assert_contains "$feature_get_out" "release_id = \"v0.1.0-alpha\""
 
-echo "Validating MCP workflow parity..."
-HOME="$ORIG_HOME" cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p mcp mcp_release_feature_flow_emits_events >/dev/null
+echo "Validating workspace/session lifecycle..."
+run_ship workspace create "feature/agent-config-ui" --type feature --feature "$feature_id" --activate --no-input >/dev/null
+workspace_out="$(run_ship workspace list)"
+assert_contains "$workspace_out" "[active] feature/agent-config-ui (feature)"
+
+run_ship workspace session start --branch "feature/agent-config-ui" --goal "Validate e2e flow" >/dev/null
+session_status_out="$(run_ship workspace session status --branch "feature/agent-config-ui")"
+assert_contains "$session_status_out" "[active]"
+assert_contains "$session_status_out" "workspace=feature/agent-config-ui"
+run_ship workspace session end --branch "feature/agent-config-ui" --summary "e2e check complete" >/dev/null
+
+echo "Validating MCP runtime registration..."
+mcp_out="$(run_ship mcp list)"
+assert_contains "$mcp_out" "ship — Ship Runtime"
 
 echo "Validating git scope controls..."
-# Default: project docs local; rules + mcp + permissions + ship.toml tracked
+# Default: generated/runtime files ignored; ship.toml + core agent config tracked.
 assert_path_in_gitignore "generated/"
 assert_path_in_gitignore ".tmp-global/"
 assert_path_in_gitignore "project/adrs"
@@ -163,39 +167,17 @@ assert_path_not_in_gitignore "agents/permissions.toml"
 run_ship git include adrs >/dev/null
 assert_path_not_in_gitignore "project/adrs"
 
-echo "Validating issue CRUD baseline..."
-run_ship issue create "Workflow issue" "Validate end-to-end flow" >/dev/null
-issues_out="$(run_ship issue list)"
-assert_contains "$issues_out" "[backlog] workflow-issue.md"
+echo "Validating event stream visibility..."
 events_out="$(run_ship event list --since 0 --limit 100)"
-assert_contains "$events_out" "Issue.Create"
 assert_contains "$events_out" "Release.Create"
 assert_contains "$events_out" "Feature.Create"
-
-echo "Validating filesystem ingest flow..."
-cat > "$WORK_DIR/.ship/project/specs/manual-sync.md" <<'EOF'
-+++
-title = "Manual Sync"
-status = "draft"
-created = "2026-02-25T00:00:00Z"
-updated = "2026-02-25T00:00:00Z"
-author = ""
-tags = []
-+++
-
-## Overview
-
-Manual edit for ingest verification.
-EOF
-ingest_out="$(run_ship event ingest)"
-assert_contains "$ingest_out" "Ingested"
-events_after_ingest="$(run_ship event list --since 0 --limit 200)"
-assert_contains "$events_after_ingest" "[filesystem]"
-assert_contains "$events_after_ingest" "Spec.Create manual-sync.md"
+assert_contains "$events_out" "Session.Start"
+assert_contains "$events_out" "Session.Stop"
 
 echo "PASS: project feature e2e checks completed"
 if [[ "$KEEP_TMP" == "1" ]]; then
   echo "Workspace: $WORK_DIR"
+  echo "Global HOME sandbox: $HOME_DIR"
 else
   echo "Workspace cleaned up (set KEEP_TMP=1 to retain)"
 fi

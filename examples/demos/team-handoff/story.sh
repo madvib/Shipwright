@@ -9,17 +9,17 @@
 # from the first session.
 #
 # Usage:
-#   bash examples/stories/team-handoff/story.sh [--skip-build]
+#   bash examples/demos/team-handoff/story.sh [--skip-build]
 # =============================================================================
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-STORIES_TMP="$ROOT_DIR/examples/stories/.tmp"
+DEMOS_TMP="$ROOT_DIR/examples/demos/.tmp"
 RUN_ID="$(date +%Y%m%d%H%M%S)"
 
 # Two separate workspace roots — Sam's and Alex's (simulates git clone)
-SAM_DIR="$STORIES_TMP/handoff-sam-$RUN_ID"
-ALEX_DIR="$STORIES_TMP/handoff-alex-$RUN_ID"
+SAM_DIR="$DEMOS_TMP/handoff-sam-$RUN_ID"
+ALEX_DIR="$DEMOS_TMP/handoff-alex-$RUN_ID"
 SAM_HOME="$SAM_DIR/.home"
 ALEX_HOME="$ALEX_DIR/.home"
 ORIG_HOME="${HOME:-}"

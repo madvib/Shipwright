@@ -8,8 +8,8 @@
 #   - CLAUDE.md is written to the worktree root, not the main repo root
 #
 # Usage:
-#   bash examples/projects-e2e/scripts/worktree-smoke.sh
-#   SHIP=./target/release/ship bash examples/projects-e2e/scripts/worktree-smoke.sh
+#   bash examples/e2e/scripts/worktree-smoke.sh
+#   SHIP=./target/release/ship bash examples/e2e/scripts/worktree-smoke.sh
 set -euo pipefail
 
 SHIP="${SHIP:-$(dirname "$0")/../../../target/debug/ship}"

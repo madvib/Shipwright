@@ -32,5 +32,5 @@ at the runtime level.
 ## Run it
 
 ```bash
-bash examples/stories/team-handoff/story.sh
+bash examples/demos/team-handoff/story.sh
 ```

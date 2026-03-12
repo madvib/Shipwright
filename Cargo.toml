@@ -10,6 +10,6 @@ members = [
     "crates/plugins/time-tracker",
     "crates/plugins/ghost-issues",
     "crates/ui/src-tauri",
-    "examples/projects-e2e",
+    "examples/e2e",
 ]
 resolver = "2"

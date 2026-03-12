@@ -1,5 +1,5 @@
 [package]
-name = "e2e"
+name = "examples-e2e"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -44,3 +44,7 @@ path = "tests/workspace_lifecycle.rs"
 [[test]]
 name = "compiler_matrix"
 path = "tests/compiler_matrix.rs"
+
+[[test]]
+name = "entity_cli"
+path = "tests/entity_cli.rs"

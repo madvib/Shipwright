@@ -166,3 +166,25 @@ fn workspace_session_cli_rejects_updated_spec_and_emits_session_record() {
         "session list should include session record id:\n{stdout}"
     );
 }
+
+#[test]
+fn cli_root_help_omits_legacy_spec_and_issue_commands() {
+    let project = TestProject::new().unwrap();
+
+    let out = run_cli(&project, &["--help"]);
+    assert_success(&out, "ship --help failed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(
+        !stdout.contains("\n  spec"),
+        "legacy `spec` command should not appear in root help:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("\n  issue"),
+        "legacy `issue` command should not appear in root help:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("\n  workspace"),
+        "workspace command should appear in root help:\n{stdout}"
+    );
+}

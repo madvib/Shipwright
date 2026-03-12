@@ -34,43 +34,10 @@ fn stdio_server(id: &str) -> McpServerConfig {
     }
 }
 
-fn get_feature_id(path: &Path) -> String {
-    let content = std::fs::read_to_string(path).unwrap();
-    for line in content.lines() {
-        // New format: <!-- ship:feature id=ABC123 -->
-        if let Some(rest) = line.strip_prefix("<!-- ship:feature ") {
-            if let Some(id_part) = rest.split_whitespace().find(|p| p.starts_with("id=")) {
-                let id = id_part
-                    .strip_prefix("id=")
-                    .unwrap_or("")
-                    .trim_end_matches("-->");
-                if !id.is_empty() {
-                    return id.trim().to_string();
-                }
-            }
-        }
-        // Legacy TOML format: id = "ABC123"
-        if line.starts_with("id = ") {
-            return line.split('"').nth(1).unwrap().to_string();
-        }
-    }
-    panic!("No ID found in {:?}", path);
-}
-
-fn set_feature_agent(path: &Path, agent: FeatureAgentConfig) {
-    let ship_dir = path
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    let id = get_feature_id(path);
-    let mut entry = ship_module_project::get_feature_by_id(ship_dir, &id).unwrap();
+fn set_feature_agent(ship_dir: &Path, feature_id: &str, agent: FeatureAgentConfig) {
+    let mut entry = ship_module_project::get_feature_by_id(ship_dir, feature_id).unwrap();
     entry.feature.metadata.agent = Some(agent);
-    ship_module_project::update_feature(ship_dir, &id, entry.feature).unwrap();
+    ship_module_project::update_feature(ship_dir, feature_id, entry.feature).unwrap();
 }
 
 // ─── Happy path ──────────────────────────────────────────────────────────────
@@ -135,7 +102,8 @@ fn claude_md_inlines_skill_content() {
     )
     .unwrap();
     set_feature_agent(
-        &feat.1,
+        &p.ship_dir,
+        &feat.0,
         FeatureAgentConfig {
             providers: vec![],
             model: None,
@@ -168,7 +136,8 @@ fn mcp_json_contains_only_feature_declared_servers() {
     )
     .unwrap();
     set_feature_agent(
-        &feat.1,
+        &p.ship_dir,
+        &feat.0,
         FeatureAgentConfig {
             providers: vec![],
             model: None,
@@ -288,7 +257,8 @@ fn switching_to_main_restores_baseline_mcp_servers() {
     )
     .unwrap();
     set_feature_agent(
-        &feat.1,
+        &p.ship_dir,
+        &feat.0,
         FeatureAgentConfig {
             providers: vec![],
             model: None,
@@ -334,7 +304,8 @@ fn switching_to_main_removes_feature_override_provider_outputs() {
     )
     .unwrap();
     set_feature_agent(
-        &feat.1,
+        &p.ship_dir,
+        &feat.0,
         FeatureAgentConfig {
             providers: vec!["codex".to_string()],
             model: None,
@@ -560,7 +531,8 @@ fn checkout_skips_unknown_feature_provider_ids_and_exports_valid_targets() {
     )
     .unwrap();
     set_feature_agent(
-        &feat.1,
+        &p.ship_dir,
+        &feat.0,
         FeatureAgentConfig {
             providers: vec!["unknown-provider".to_string(), " CLAUDE ".to_string()],
             model: None,

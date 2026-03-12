@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORK_DIR="$ROOT_DIR/examples/projects-e2e"
+WORK_DIR="$ROOT_DIR/examples/e2e"
 SHIP_BIN="$ROOT_DIR/target/debug/ship"
 
 echo "Resetting example workspace at $WORK_DIR"

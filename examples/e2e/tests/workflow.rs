@@ -11,6 +11,8 @@ fn init_creates_namespace_structure() {
     // top-level vision
     p.assert_ship_file("vision.md");
     p.assert_no_ship_file("project/vision.md");
+    p.assert_no_ship_file("TEMPLATE.md");
+    p.assert_no_ship_file("README.md");
 
     // agents/
     p.assert_ship_file("agents/rules");
@@ -67,13 +69,10 @@ fn adrs_land_in_project_namespace() {
     .unwrap();
     let adr_path = std::path::PathBuf::from(adr_entry.path);
     assert!(adr_path.starts_with(adrs_dir(&p.ship_dir)));
-    p.assert_ship_file_contains(
-        adr_path
-            .strip_prefix(&p.ship_dir)
-            .unwrap()
-            .to_str()
-            .unwrap(),
-        "Use TOML",
+    assert_eq!(adr_entry.adr.metadata.title, "Use TOML");
+    assert!(
+        !adr_path.exists(),
+        "ADR markdown path should be projected, not written"
     );
 }
 
