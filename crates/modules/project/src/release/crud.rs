@@ -2,75 +2,9 @@ use super::db::{delete_release_db, get_release_db, list_releases_db, upsert_rele
 use super::types::{Release, ReleaseEntry, ReleaseMetadata, ReleaseStatus};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-// ── File helpers ─────────────────────────────────────────────────────────────
-
-fn release_file_path(ship_dir: &Path, version: &str) -> PathBuf {
-    let dir = runtime::project::releases_dir(ship_dir);
-    std::fs::create_dir_all(&dir).ok();
-    let candidate = dir.join(format!("{}.md", version));
-    if !candidate.exists() {
-        return candidate;
-    }
-    let mut n = 2u32;
-    loop {
-        let candidate = dir.join(format!("{}-{}.md", version, n));
-        if !candidate.exists() {
-            return candidate;
-        }
-        n += 1;
-    }
-}
-
-fn release_update_path(ship_dir: &Path, version: &str) -> PathBuf {
-    let releases_dir = runtime::project::releases_dir(ship_dir);
-    let primary = releases_dir.join(format!("{}.md", version));
-    if primary.exists() {
-        return primary;
-    }
-
-    let upcoming_dir = runtime::project::upcoming_releases_dir(ship_dir);
-    let legacy = upcoming_dir.join(format!("{}.md", version));
-    if legacy.exists() {
-        return legacy;
-    }
-
-    primary
-}
-
-fn find_release_file_by_id(ship_dir: &Path, id: &str) -> Option<PathBuf> {
-    let releases_dir = runtime::project::releases_dir(ship_dir);
-    if !releases_dir.exists() {
-        return None;
-    }
-    let legacy_marker = format!("id = \"{}\"", id);
-    let generated_marker = format!("ship:release id={}", id);
-    for entry in std::fs::read_dir(&releases_dir).ok()?.flatten() {
-        let path = entry.path();
-        if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-            continue;
-        }
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        if content.contains(&legacy_marker) || content.contains(&generated_marker) {
-            return Some(path);
-        }
-    }
-    None
-}
-
-fn load_release_body_from_file(ship_dir: &Path, id: &str, version: &str) -> Option<String> {
-    let path = find_release_file_by_id(ship_dir, id)
-        .unwrap_or_else(|| release_update_path(ship_dir, version));
-    if !path.exists() {
-        return None;
-    }
-    let content = std::fs::read_to_string(path).ok()?;
-    let release = Release::from_markdown(&content).ok()?;
-    Some(release.body)
-}
+// ── Identity helpers ─────────────────────────────────────────────────────────
 
 fn resolve_release_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
     let reference = reference.trim();
@@ -130,37 +64,10 @@ fn require_release_id(ship_dir: &Path, reference: &str) -> Result<String> {
         .ok_or_else(|| anyhow!("Release not found: {}", reference))
 }
 
-pub fn write_release_file(ship_dir: &Path, release: &Release) -> Result<PathBuf> {
-    let path = release_file_path(ship_dir, &release.metadata.version);
-    let content = release.to_markdown()?;
-    runtime::fs_util::write_atomic(&path, content)?;
+pub fn write_release_file(ship_dir: &Path, release: &Release) -> Result<std::path::PathBuf> {
+    let path =
+        runtime::project::releases_dir(ship_dir).join(format!("{}.md", release.metadata.version));
     Ok(path)
-}
-
-fn remove_release_files(ship_dir: &Path, version: &str) {
-    let releases_dir = runtime::project::releases_dir(ship_dir);
-    let upcoming_dir = runtime::project::upcoming_releases_dir(ship_dir);
-
-    for dir in &[releases_dir, upcoming_dir] {
-        if !dir.exists() {
-            continue;
-        }
-        for suffix in &["", "-2", "-3", "-4", "-5"] {
-            let file_name = if suffix.is_empty() {
-                format!("{}.md", version)
-            } else {
-                format!("{}{}.md", version, suffix)
-            };
-            let p = dir.join(file_name);
-            if p.exists() {
-                if let Ok(content) = std::fs::read_to_string(&p) {
-                    if content.contains(version) {
-                        std::fs::remove_file(&p).ok();
-                    }
-                }
-            }
-        }
-    }
 }
 
 // ── Public CRUD ──────────────────────────────────────────────────────────────
@@ -257,9 +164,6 @@ pub fn update_release(ship_dir: &Path, id: &str, mut release: Release) -> Result
 
     let persisted_status = release.metadata.status;
     upsert_release_db(ship_dir, &release, &persisted_status)?;
-    let path = release_update_path(ship_dir, &release.metadata.version);
-    let content = release.to_markdown()?;
-    runtime::fs_util::write_atomic(&path, content)?;
 
     runtime::append_event(
         ship_dir,
@@ -288,10 +192,8 @@ pub fn update_release_content(ship_dir: &Path, id: &str, content: &str) -> Resul
 
 pub fn delete_release(ship_dir: &Path, id: &str) -> Result<()> {
     let resolved_id = require_release_id(ship_dir, id)?;
-    let entry = get_release_db(ship_dir, &resolved_id)?
-        .ok_or_else(|| anyhow!("Release not found: {}", id))?;
+    get_release_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Release not found: {}", id))?;
     delete_release_db(ship_dir, &resolved_id)?;
-    remove_release_files(ship_dir, &entry.version);
 
     runtime::append_event(
         ship_dir,

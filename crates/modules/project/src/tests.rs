@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        FeatureStatus, ReleaseStatus, create_feature, create_release,
-        get_feature_by_id, get_feature_model, get_release_by_id,
-        import_features_from_files, import_releases_from_files, init_demo_project, init_project,
-        list_adrs, list_features, list_releases, move_feature,
-        update_feature, update_feature_content, update_release, update_release_content,
+        FeatureStatus, ReleaseStatus, create_feature, create_release, get_feature_by_id,
+        get_feature_model, get_release_by_id, import_features_from_files,
+        import_releases_from_files, init_demo_project, init_project, list_adrs, list_features,
+        list_releases, move_feature, update_feature, update_feature_content, update_release,
+        update_release_content,
     };
-    use std::path::Path;
     use tempfile::tempdir;
 
     #[test]
@@ -19,9 +18,14 @@ mod tests {
         assert_eq!(entry.status, ReleaseStatus::Upcoming);
 
         let path = std::path::PathBuf::from(&entry.path);
-        assert!(path.exists());
-        let content = std::fs::read_to_string(&path)?;
-        assert!(content.contains("ship:release id=v0.1.0-alpha"));
+        assert_eq!(
+            path,
+            runtime::project::releases_dir(&project_dir).join("v0.1.0-alpha.md")
+        );
+        assert!(
+            !path.exists(),
+            "release path should be projected, not written"
+        );
         Ok(())
     }
 
@@ -42,15 +46,11 @@ mod tests {
         let initial = get_release_by_id(&project_dir, &entry.id)?;
         assert_eq!(initial.release.metadata.version, "v0.2.0-alpha");
 
-        let canonical_path = runtime::project::releases_dir(&project_dir).join("v0.2.0-alpha.md");
-        let suffixed_path = runtime::project::releases_dir(&project_dir).join("v0.2.0-alpha-2.md");
-
         let updated = update_release_content(&project_dir, &entry.id, "updated")?;
         assert_eq!(updated.release.body, "updated");
         assert!(updated.release.metadata.updated >= initial.release.metadata.updated);
-        let content = std::fs::read_to_string(&canonical_path)?;
-        assert!(content.contains("updated"));
-        assert!(!suffixed_path.exists());
+        let reloaded = get_release_by_id(&project_dir, &entry.id)?;
+        assert_eq!(reloaded.release.body, "updated");
         Ok(())
     }
 
@@ -66,9 +66,8 @@ mod tests {
         release.body.clear();
         update_release(&project_dir, &created.id, release)?;
 
-        let path = runtime::project::releases_dir(&project_dir).join("v0.4.0-alpha.md");
-        let content = std::fs::read_to_string(path)?;
-        assert!(content.contains("release-body"));
+        let reloaded = get_release_by_id(&project_dir, &created.id)?;
+        assert_eq!(reloaded.release.body, "release-body");
         Ok(())
     }
 
@@ -95,9 +94,11 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let p1 = create_release(&project_dir, "v0.1.0-tmp", "")?;
         let p2 = create_release(&project_dir, "v0.1.0-tmp", "")?;
-        assert_ne!(p1.path, p2.path);
-        assert!(std::path::PathBuf::from(&p1.path).exists());
-        assert!(std::path::PathBuf::from(&p2.path).exists());
+        assert_eq!(p1.id, p2.id);
+        assert_eq!(p1.path, p2.path);
+        assert!(!std::path::PathBuf::from(&p1.path).exists());
+        assert!(!std::path::PathBuf::from(&p2.path).exists());
+        assert_eq!(list_releases(&project_dir)?.len(), 1);
         Ok(())
     }
 
@@ -161,11 +162,8 @@ mod tests {
         feature.body.clear();
         update_feature(&project_dir, &created.id, feature)?;
 
-        let path = runtime::project::features_dir(&project_dir)
-            .join("planned")
-            .join("feature-body-preserve.md");
-        let content = std::fs::read_to_string(path)?;
-        assert!(content.contains("feature-body"));
+        let reloaded = get_feature_by_id(&project_dir, &created.id)?;
+        assert_eq!(reloaded.feature.body, "feature-body");
         Ok(())
     }
 
@@ -187,17 +185,14 @@ mod tests {
         let suffixed_path = runtime::project::features_dir(&project_dir)
             .join("planned")
             .join("pre-defined-agent-modes-2.md");
-
-        // Simulate a stale duplicate file from prior updates.
-        let current = std::fs::read_to_string(&canonical_path)?;
-        std::fs::write(&suffixed_path, current)?;
-        assert!(suffixed_path.exists());
+        assert_eq!(entry.path, canonical_path.to_string_lossy().to_string());
 
         update_feature_content(&project_dir, &entry.id, "updated")?;
-        assert!(canonical_path.exists());
         assert!(!suffixed_path.exists());
-        let content = std::fs::read_to_string(&canonical_path)?;
-        assert!(content.contains("updated"));
+        assert!(!canonical_path.exists());
+        let reloaded = get_feature_by_id(&project_dir, &entry.id)?;
+        assert_eq!(reloaded.path, canonical_path.to_string_lossy().to_string());
+        assert_eq!(reloaded.feature.body, "updated");
         Ok(())
     }
 
@@ -264,12 +259,14 @@ All provider exports validated.
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let created = create_feature(&project_dir, "Move Preserve", "move-body", None, None)?;
 
-        move_feature(&project_dir, &created.id, FeatureStatus::InProgress)?;
+        let moved = move_feature(&project_dir, &created.id, FeatureStatus::InProgress)?;
         let moved_path = runtime::project::features_dir(&project_dir)
             .join("in-progress")
             .join("move-preserve.md");
-        let moved_content = std::fs::read_to_string(moved_path)?;
-        assert!(moved_content.contains("move-body"));
+        assert_eq!(moved.path, moved_path.to_string_lossy().to_string());
+        let reloaded = get_feature_by_id(&project_dir, &created.id)?;
+        assert_eq!(reloaded.status, FeatureStatus::InProgress);
+        assert_eq!(reloaded.feature.body, "move-body");
         Ok(())
     }
 
@@ -296,9 +293,10 @@ All provider exports validated.
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let p1 = create_feature(&project_dir, "Ship Agents", "", None, None)?;
         let p2 = create_feature(&project_dir, "Ship Agents!", "", None, None)?;
-        assert_ne!(p1.path, p2.path);
-        assert!(std::path::PathBuf::from(&p1.path).exists());
-        assert!(std::path::PathBuf::from(&p2.path).exists());
+        assert_ne!(p1.id, p2.id);
+        assert_eq!(p1.path, p2.path);
+        assert!(!std::path::PathBuf::from(&p1.path).exists());
+        assert!(!std::path::PathBuf::from(&p2.path).exists());
         Ok(())
     }
 

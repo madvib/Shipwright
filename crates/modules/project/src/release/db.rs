@@ -14,13 +14,14 @@ pub fn upsert_release_db(ship_dir: &Path, release: &Release, status: &ReleaseSta
         // Upsert release
         sqlx::query(
             "INSERT INTO release
-               (id, version, status, target_date, supported, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+               (id, version, status, target_date, supported, body, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                version     = excluded.version,
                status      = excluded.status,
                target_date = excluded.target_date,
                supported   = excluded.supported,
+               body        = excluded.body,
                updated_at  = excluded.updated_at",
         )
         .bind(&release.metadata.id)
@@ -28,6 +29,7 @@ pub fn upsert_release_db(ship_dir: &Path, release: &Release, status: &ReleaseSta
         .bind(status.to_string())
         .bind(&release.metadata.target_date)
         .bind(release.metadata.supported.map(|s| if s { 1 } else { 0 }))
+        .bind(&release.body)
         .bind(&release.metadata.created)
         .bind(&now)
         .execute(&mut *tx)
@@ -62,7 +64,7 @@ pub fn get_release_db(ship_dir: &Path, id: &str) -> Result<Option<ReleaseEntry>>
     let mut conn = runtime::state_db::open_project_connection(ship_dir)?;
     runtime::state_db::block_on(async {
         let row_opt = sqlx::query(
-            "SELECT id, version, status, target_date, supported, created_at, updated_at
+            "SELECT id, version, status, target_date, supported, body, created_at, updated_at
              FROM release WHERE id = ?",
         )
         .bind(id)
@@ -75,8 +77,9 @@ pub fn get_release_db(ship_dir: &Path, id: &str) -> Result<Option<ReleaseEntry>>
             let status_str: String = r.get(2);
             let target_date: Option<String> = r.get(3);
             let supported: Option<i64> = r.get(4);
-            let created: String = r.get(5);
-            let updated: String = r.get(6);
+            let body: String = r.get(5);
+            let created: String = r.get(6);
+            let updated: String = r.get(7);
 
             let status = status_str.parse::<ReleaseStatus>().unwrap_or_default();
 
@@ -97,11 +100,15 @@ pub fn get_release_db(ship_dir: &Path, id: &str) -> Result<Option<ReleaseEntry>>
                 .collect();
 
             let file_name = format!("{}.md", version);
+            let path = runtime::project::releases_dir(ship_dir)
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string();
 
             Ok(Some(ReleaseEntry {
                 id: id.clone(),
                 file_name,
-                path: String::new(),
+                path,
                 version: version.clone(),
                 status,
                 release: Release {
@@ -115,7 +122,7 @@ pub fn get_release_db(ship_dir: &Path, id: &str) -> Result<Option<ReleaseEntry>>
                         target_date,
                         tags: Vec::new(),
                     },
-                    body: String::new(),
+                    body,
                     breaking_changes,
                 },
             }))
@@ -129,7 +136,7 @@ pub fn list_releases_db(ship_dir: &Path) -> Result<Vec<ReleaseEntry>> {
     let mut conn = runtime::state_db::open_project_connection(ship_dir)?;
     runtime::state_db::block_on(async {
         let rows = sqlx::query(
-            "SELECT id, version, status, target_date, supported, created_at, updated_at
+            "SELECT id, version, status, target_date, supported, body, created_at, updated_at
              FROM release ORDER BY version DESC",
         )
         .fetch_all(&mut conn)
@@ -141,12 +148,17 @@ pub fn list_releases_db(ship_dir: &Path) -> Result<Vec<ReleaseEntry>> {
             let version: String = r.get(1);
             let status_str: String = r.get(2);
             let status = status_str.parse::<ReleaseStatus>().unwrap_or_default();
+            let body: String = r.get(5);
             let file_name = format!("{}.md", version);
+            let path = runtime::project::releases_dir(ship_dir)
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string();
 
             entries.push(ReleaseEntry {
                 id: id.clone(),
                 file_name,
-                path: String::new(),
+                path,
                 version: version.clone(),
                 status: status.clone(),
                 release: Release {
@@ -154,13 +166,13 @@ pub fn list_releases_db(ship_dir: &Path) -> Result<Vec<ReleaseEntry>> {
                         id,
                         version,
                         status,
-                        created: r.get(5),
-                        updated: r.get(6),
+                        created: r.get(6),
+                        updated: r.get(7),
                         supported: r.get::<Option<i64>, _>(4).map(|s| s != 0),
                         target_date: r.get(3),
                         tags: Vec::new(),
                     },
-                    body: String::new(),
+                    body,
                     breaking_changes: Vec::new(),
                 },
             });

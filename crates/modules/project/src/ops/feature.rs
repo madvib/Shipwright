@@ -192,13 +192,7 @@ mod tests {
     fn feature_start_rejects_invalid_transition() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let created = create_feature(
-            &project_dir,
-            "ops-start",
-            "",
-            None,
-            Some("feature/ops"),
-        )?;
+        let created = create_feature(&project_dir, "ops-start", "", None, Some("feature/ops"))?;
 
         let mut raw = crate::get_feature_by_id(&project_dir, &created.id)?;
         raw.feature.metadata.branch = Some("feature/ops".to_string());

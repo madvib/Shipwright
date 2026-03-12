@@ -12,7 +12,7 @@ use runtime::{
     sync_workspace, transition_workspace_status,
 };
 use ship_module_git::{install_hooks, on_post_checkout, write_root_gitignore};
-use ship_module_project::ops::adr::{create_adr, find_adr_path, list_adrs, move_adr};
+use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs, move_adr};
 use ship_module_project::ops::feature::{
     create_feature, delete_feature, ensure_feature_documentation, feature_done, feature_start,
     get_feature_by_id, get_feature_documentation, list_features, sync_feature_docs_after_session,
@@ -26,12 +26,11 @@ use ship_module_project::ops::release::{
 };
 
 use ship_module_project::{
-    ADR, AdrStatus, FeatureDocStatus, FeatureStatus, NoteScope, import_adrs_from_files,
+    AdrStatus, FeatureDocStatus, FeatureStatus, NoteScope, import_adrs_from_files,
     import_features_from_files, import_notes_from_files, import_releases_from_files,
-    init_demo_project, init_project, list_registered_projects,
-    register_project, rename_project, unregister_project,
+    init_demo_project, init_project, list_registered_projects, register_project, rename_project,
+    unregister_project,
 };
-use std::collections::HashMap;
 use std::env;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -227,20 +226,40 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 AdrCommands::Get { file_name } => {
-                    let path = find_adr_path(&project_dir, &file_name)?;
-                    let content = std::fs::read_to_string(path)?;
-                    println!("{}", content);
+                    let reference = file_name.trim();
+                    let mut resolved =
+                        get_adr_by_id(&project_dir, reference.trim_end_matches(".md"))
+                            .ok()
+                            .map(|entry| entry.id);
+                    if resolved.is_none() {
+                        resolved = list_adrs(&project_dir)?
+                            .into_iter()
+                            .find(|entry| entry.file_name.eq_ignore_ascii_case(reference))
+                            .map(|entry| entry.id);
+                    }
+                    let id =
+                        resolved.ok_or_else(|| anyhow::anyhow!("ADR not found: {}", file_name))?;
+                    let entry = get_adr_by_id(&project_dir, &id)?;
+                    println!("{}", entry.adr.to_markdown()?);
                 }
                 AdrCommands::Move { file_name, status } => {
                     let new_status = status
                         .parse::<AdrStatus>()
                         .map_err(|_| anyhow::anyhow!("Invalid ADR status: {}", status))?;
-                    // Find the ADR by reading the file and extracting its id.
-                    let path = find_adr_path(&project_dir, &file_name)?;
-                    let content = std::fs::read_to_string(&path)?;
-                    let adr = ADR::from_markdown(&content)
-                        .map_err(|_| anyhow::anyhow!("Could not parse ADR file: {}", file_name))?;
-                    let entry = move_adr(&project_dir, &adr.metadata.id, new_status.clone())?;
+                    let reference = file_name.trim();
+                    let mut resolved =
+                        get_adr_by_id(&project_dir, reference.trim_end_matches(".md"))
+                            .ok()
+                            .map(|entry| entry.id);
+                    if resolved.is_none() {
+                        resolved = list_adrs(&project_dir)?
+                            .into_iter()
+                            .find(|entry| entry.file_name.eq_ignore_ascii_case(reference))
+                            .map(|entry| entry.id);
+                    }
+                    let id =
+                        resolved.ok_or_else(|| anyhow::anyhow!("ADR not found: {}", file_name))?;
+                    let entry = move_adr(&project_dir, &id, new_status.clone())?;
                     println!("Moved {} to {} (id: {})", file_name, new_status, entry.id);
                 }
             }
@@ -379,13 +398,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     let version = file_name.trim_end_matches(".md");
                     let entry = get_release_by_id(&project_dir, version)
                         .map_err(|_| anyhow::anyhow!("Release not found: {}", file_name))?;
-                    let release_path =
-                        runtime::project::releases_dir(&project_dir).join(&entry.file_name);
-                    if !release_path.exists() {
-                        anyhow::bail!("Release file not found: {}", entry.file_name);
-                    }
-                    let content = std::fs::read_to_string(release_path)?;
-                    println!("{}", content);
+                    println!("{}", entry.release.to_markdown()?);
                 }
                 ReleaseCommands::Update { file_name, content } => {
                     let version = file_name.trim_end_matches(".md");
@@ -2440,7 +2453,7 @@ fn handle_migrate_command(force: bool) -> Result<()> {
     let global_dir = get_global_dir()?;
     let global = migrate_global_state(&global_dir)?;
     let project = migrate_project_state(&project_dir)?;
-    let config = migrate_json_config_file(&project_dir)?;
+    let _ = migrate_json_config_file(&project_dir)?;
     let cleared_project_markers = runtime::clear_project_migration_meta(&project_dir)?;
     let cleared_global_markers = runtime::clear_global_migration_meta()?;
     ensure_user_notes_imported_once(true, true)?;
@@ -3041,8 +3054,6 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
     let workspaces = list_workspaces(project_dir)?;
     let features = list_features(project_dir)?;
 
-    let features = list_features(project_dir)?;
-
     let mut report = WorkspaceReconcileReport::default();
 
     for workspace in &workspaces {
@@ -3110,8 +3121,6 @@ fn reconcile_workspace_links(project_dir: &Path, apply: bool) -> Result<Workspac
             }
         }
     }
-
-
 
     Ok(report)
 }

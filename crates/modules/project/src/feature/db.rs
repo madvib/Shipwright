@@ -155,11 +155,16 @@ pub fn get_feature_db(ship_dir: &Path, id: &str) -> Result<Option<FeatureEntry>>
                 .collect();
 
             let file_name = runtime::project::sanitize_file_name(&title) + ".md";
+            let path = runtime::project::features_dir(ship_dir)
+                .join(status.to_string())
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string();
 
             Ok(Some(FeatureEntry {
                 id: id.clone(),
                 file_name,
-                path: String::new(),
+                path,
                 status,
                 feature: Feature {
                     metadata: FeatureMetadata {
@@ -214,11 +219,16 @@ pub fn list_features_db(ship_dir: &Path) -> Result<Vec<FeatureEntry>> {
             let agent = agent_json.and_then(|j| serde_json::from_str(&j).ok());
             let tags = serde_json::from_str(&tags_json).unwrap_or_default();
             let file_name = runtime::project::sanitize_file_name(&title) + ".md";
+            let path = runtime::project::features_dir(ship_dir)
+                .join(status.to_string())
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string();
 
             entries.push(FeatureEntry {
                 id: id.clone(),
                 file_name,
-                path: String::new(),
+                path,
                 status,
                 feature: Feature {
                     metadata: FeatureMetadata {

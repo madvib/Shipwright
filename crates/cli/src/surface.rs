@@ -466,8 +466,6 @@ pub enum SkillCommands {
     },
 }
 
-
-
 #[derive(Subcommand, Debug)]
 pub enum ReleaseCommands {
     /// Create a new release

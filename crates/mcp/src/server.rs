@@ -342,8 +342,6 @@ impl ShipServer {
             }
         }
 
-
-
         // ADRs
         out.push_str("\n## ADRs\n");
         if adrs.is_empty() {
@@ -466,8 +464,6 @@ impl ShipServer {
             Err(e) => format!("Error: {}", e),
         }
     }
-
-
 
     // ─── Release Tools ────────────────────────────────────────────────────────
 
