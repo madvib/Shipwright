@@ -1,141 +1,106 @@
 +++
 title = "Vision"
-updated = "2026-03-02T00:00:00Z"
+updated = "2026-03-11T00:00:00Z"
 +++
 
-# Shipwright — Vision
-
-**The structure layer your AI agents don't have.**
+# Ship — Vision
 
 ---
 
 ## The Problem
 
-AI agents are extraordinarily capable within a session. Between sessions, they remember nothing. Every conversation starts from scratch — re-explaining the project, re-establishing context, re-discovering what was decided last week and why.
+Software drifts from intent. Not because developers stop caring, but because intent is stored in heads and conversations and closed browser tabs — not in the system itself. Every decision made in a meeting, every constraint discovered at 2am, every "we tried that and here's why it doesn't work" — most of it evaporates.
 
-The tools aren't the problem. The missing layer is persistent, structured project memory that agents can read without being told where to look. And a way to configure that memory precisely for the work being done right now.
+Agents accelerate this. An agent session starts cold. It has no model of what the system is supposed to be, what shaped it, or what it's drifting away from. You compensate by pasting context into every prompt. The agent executes. The system moves. Intent erodes a little more.
 
-That's Shipwright.
-
----
-
-## The Insight
-
-Every tool that matters to software development can read and write files. Git runs on files. AI agents read files. Developers live in files. The file system is the one API that has never broken backward compatibility.
-
-Shipwright's data model is a folder of markdown files with TOML frontmatter — git-friendly, grep-able, readable by any agent without an API call and any human without a browser tab. Runtime state that agents and orchestration churn through lives in SQLite — transactional, fast, local.
-
-The stuff humans write lives in git. The stuff agents churn through lives in SQLite. Both are local. Neither requires a cloud.
+The tools aren't the problem. The missing layer is structured, persistent, machine-readable intent — and a mechanism that continuously closes the gap between what the system declares it should be and what it actually is.
 
 ---
 
-## How It Works
+## The Belief
+
+Declarative systems win.
+
+Terraform over bash scripts. Kubernetes over manual deploys. In every domain where the principle has been applied, the same thing happened: teams stopped describing *steps* and started describing *desired state*. The system took responsibility for closing the gap.
+
+Software development is the last domain where this hasn't happened. We still describe steps — tickets, tasks, issues — and call that project management. We have no primitive for declaring what the system should *be* and verifying that it still is.
+
+Ship is that primitive.
+
+A feature is not a task. It is a declaration of desired system state — what the software should do, how it should behave, what the acceptance criteria are. Tests are sensors that measure the gap between declared and actual. Documentation reflects runtime behavior automatically. After every agent session, hooks close the drift. The system always knows what it is supposed to be.
+
+---
+
+## The Model
 
 ```
-shipwright init
+Vision (1)
+└── Capability Map
+    └── Capability (N)
+        └── Feature (N)                  ← declared desired state
+            ├── Declaration              ← human-authored contract
+            ├── Status                   ← actual state (tests, coverage, runtime checks)
+            ├── Delta                    ← the gap — computed, not authored
+            └── Docs                     ← derived from declaration + session records + test outcomes
+                └── Workspace (1)
+                    └── Session (N)
+                        └── Session Record   ← immutable audit artifact
 ```
 
-Creates `.ship/` in your project. From that moment your specs, issues, ADRs, and notes are plain files next to your code. A git hook fires on every branch checkout. Shipwright reads the branch, finds the relevant spec, and writes `CLAUDE.md` and `.mcp.json` automatically — scoped to exactly the work on this branch. Your agent wakes up with the right context, the right tools, and no re-explaining required.
+**Features** are the atomic unit of declared intent. Not tasks. Not tickets. Desired states that are either satisfied or drifting.
 
-The core workflow hierarchy:
+**The delta** is the actionable artifact. The gap between declaration and status drives agent work or human decisions. Without a named delta, drift-closing has nowhere to live.
 
-```text
-Vision (1) → Release (N) → Features (N)
-```
+**Session records** are immutable. They capture what the agent read, what it changed, what decisions it surfaced, where it asked for human input. They are not specs — specs described what to do. Session records are evidence of what happened.
 
-1. **Project State**: Features and Releases define the high-level project state. Features are rich containers — not single documents. Each feature is a workspace hub with its own metadata, linked spec, issues, ADRs, assets, and documentation. They live in status-based folders and provide persistent context for everything related to a piece of work.
-2. **Scopes of Work**: A **Spec** defines the technical scope for a feature's implementation — configuring a branch or workspace with explicit agent capabilities (permissions, MCP tools, and context). A spec maps to at most one feature. Refactor, experiment, and hotfix workspaces can have a spec without a linked feature.
-3. **Execution**: **Issues** represent the granular tasks required to fulfill a Spec. They flow through status-based folders and are scoped to the workspace they belong to.
+**Docs** are derived. Never hand-authored. Generated from declaration + test outcomes + session records. Always current because they cannot be edited directly.
 
-```text
-Vision → Release → Feature → Spec (Branch) → Issues → Agent Session → Merge
-```
-
-Every step is auditable. Every decision is recorded. Every agent session starts with full context and ends with a summary.
+**The capability map** is bidirectional — declared from above by humans, derived from below by the codebase. It is never closed. It is the timeless map of what the system does.
 
 ---
 
-## The Agent Config Layer
+## What Ship Does
 
-Developers using Claude Code, Gemini CLI, or Codex today manage MCP servers through scattered config files across their machine. There's no concept of "these servers are relevant for auth work" versus "these for frontend." It's manual, fragile, and gets worse with every new tool.
+Ship compiles intent into agent configuration.
 
-Shipwright fixes this at the feature branch level. When you create a feature branch, Shipwright generates the MCP config for that work — the servers, skills, context files, model, and prompts that make sense for this spec. Switch branches, the config switches with you. The agent is always correctly equipped.
+It detects installed providers — Claude Code, Gemini CLI, Codex, Cursor, Windsurf — and generates the correct native configuration for each, scoped to the active workspace. Not dotfiles maintained by hand. Structured declarations that produce the right format for the right tool at the right moment.
 
-For project-wide configuration that belongs on every branch, Shipwright manages your global AI CLI configs — writing to `~/.claude/`, `~/.gemini/`, `~/.codex/` only when you explicitly set global defaults. Everything else is project-scoped and gitignored.
+It enforces security at the runtime level. Permissions are not suggestions to the agent. They are enforced by the Ship runtime before the agent receives its first prompt. Allow/deny patterns, filesystem restrictions, MCP tool filtering — all compiled into every session.
 
----
+It runs post-session hooks. After every session, tests execute against the feature declaration. Documentation updates. Drift is measured and surfaced — routed to a human if a decision is needed, closed automatically if the system is converging.
 
-## The Module System
-
-Shipwright's core is a runtime. Everything visible is a module — Issues, Specs, ADRs, Notes, Git, Agents. Modules register document types, MCP tools, CLI commands, and UI contributions. First-party modules are compiled in. Third-party extensions come later, once the API has scar tissue from real use.
-
-Premium modules extend the runtime for teams: GitHub Sync, Agent Runner, Team Sync, Documentation Generation. One binary, entitlement-gated, no reinstall on upgrade.
+It keeps the audit trail. Session records accumulate. The history of what was built, why, and how is permanent and queryable. An agent onboarding to a feature three months later reads the same record a new engineer would.
 
 ---
 
-## Modes
+## Agents Are First-Class Users
 
-Modes shape the Shipwright UI and MCP tool surface for the kind of work you're doing — Planning when drafting specs, Execution when working issues, Review when filing ADRs. They're manually switched and global to your Shipwright session.
+Ship is not built for developers who use agents. It is built for developers *and* agents — as equal consumers of the same structured intent.
 
-Branch config is different. It's derived automatically from the spec and the branch. Modes are about human intent. Branch config is about agent environment. Both exist. Neither replaces the other.
+Every interface Ship exposes — the MCP server, the CLI, the compiled workspace context — is designed to be read and acted on by an agent without human translation. An agent does not need to be told where to find the feature declaration, what decisions shaped this module, or which tools are permitted in this workspace. Ship compiles that answer and delivers it before the first prompt.
 
----
-
-## Workflows Are Configurable
-
-Not every team needs the full loop. Shipwright's workflow is configurable:
-
-- Solo developer: Note → Spec → Issues → Agent. No features, no worktrees.
-- Small team: Spec → Feature branch → Issues → Worktree agents → Merge.
-- Large team: Full loop with approval gates, audit logging, enterprise plugins.
-
-The default workflow is sensible. Teams replace what doesn't fit.
+This is the design constraint that governs every Ship decision. If a human can read it but an agent cannot act on it, it is not finished.
 
 ---
 
-## Monetization
+## Boundaries
 
-**Free forever:** Core tool, local, no account required. The free tier is a complete product, not a trial.
+Ship is not a code editor. Agents do the coding.
 
-**Premium modules:** GitHub Sync, Agent Runner, Team Sync, Docs Generator. Compiled in, entitlement-gated. Upgrade = immediate unlock, no reinstall.
+Ship is not a general project management tool. It has no concept of a ticket unrelated to declared system state.
 
-**Marketplace:** MCP server discovery, community workflows, skills library. Server authors pay for verification and featured placement.
+Ship is not a documentation platform. Docs are a derived output, not a first-class concern.
 
-**Enterprise:** SSO, audit logs, compliance document types, custom modules.
+Ship is not a model. Models are brought by the user.
 
----
+Ship is not SaaS-first. Local-first is permanent. Cloud sync is additive infrastructure, not the product.
 
-## Roadmap
-
-**v0.1.0-alpha — The core loop works.**
-Init, Notes, Specs, Issues, Kanban, desktop UI, MCP server, git hooks, branch-scoped CLAUDE.md and MCP config generation, SQLite runtime state, workspaces. No account. No internet. Good enough to use every day.
-
-**v0.2.0 — The agent config layer.**
-External MCP management (Claude Code, Gemini CLI, Codex). Feature-branch config UI — select servers, skills, context, model from a library, no magic strings. Global AI CLI config management. Premium modules + auth. MCP marketplace beta. Team sync.
-
-**v0.3.0 — Shipwright runs the agents.**
-Native agent runner, worktree orchestration, session summaries, parallel agent coordination, cloud execution (optional). Teams can spin up isolated workspaces without local machine constraints.
-
-**v0.4.0 — The whole team.**
-Figma sync, CI/CD integration, customer feedback pipeline, team collaboration, mobile session monitor.
-
-**v0.5.0 — Enterprise.**
-SSO, audit logs, approval workflows, compliance types, admin controls.
+Ship is not trying to replace git. It sits above git, uses git as a transport, and enforces git discipline as a byproduct of its own model.
 
 ---
 
-## What Shipwright Is Not
+## The Test
 
-- Not a code editor. Agents do the coding.
-- Not a Notion replacement. General docs are not Shipwright's domain.
-- Not an AI model. Models are brought by the user.
-- Not SaaS-first. Local-first is permanent.
-- Not enterprise-first. The free tier has to be genuinely great.
+**Does this keep the system honest about what it is supposed to be?**
 
----
-
-## Naming and Format Conventions
-
-**Does this make the full development workflow — across every stakeholder, every tool, every AI agent — more continuous, more persistent, and less lossy?**
-
-If yes, it belongs in Shipwright.
+If yes, it belongs in Ship. If it is useful but doesn't close drift, it belongs somewhere else.
