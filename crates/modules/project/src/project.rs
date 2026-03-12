@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::config::{
-    ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig, add_mode as runtime_add_mode,
+    McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig,
+    add_mode as runtime_add_mode,
     ensure_registered_namespaces as runtime_ensure_registered_namespaces, get_config,
     remove_mode as runtime_remove_mode, save_config, set_active_mode as runtime_set_active_mode,
 };
@@ -18,7 +19,8 @@ use runtime::project::{
     sanitize_file_name as runtime_sanitize_file_name,
     ship_dir_from_path as runtime_ship_dir_from_path, skills_dir as runtime_skills_dir,
     upcoming_releases_dir as runtime_upcoming_releases_dir,
-    vision_doc_path as runtime_vision_doc_path, vision_template_path as runtime_vision_template_path,
+    vision_doc_path as runtime_vision_doc_path,
+    vision_template_path as runtime_vision_template_path,
 };
 use runtime::{EventAction, EventEntity, append_event};
 use serde::{Deserialize, Serialize};
@@ -28,14 +30,6 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 pub const DEFAULT_STATUSES: &[&str] = &["backlog", "in-progress", "blocked", "done"];
-pub const ADR_STATUSES: &[&str] = &[
-    "proposed",
-    "accepted",
-    "rejected",
-    "superseded",
-    "deprecated",
-];
-pub const FEATURE_STATUSES: &[&str] = &["planned", "in-progress", "implemented", "deprecated"];
 
 // ── Namespace path helpers ────────────────────────────────────────────────────
 
@@ -66,7 +60,6 @@ pub fn upcoming_releases_dir(ship_dir: &Path) -> PathBuf {
 pub fn notes_dir(ship_dir: &Path) -> PathBuf {
     runtime_notes_dir(ship_dir)
 }
-
 
 pub fn features_dir(ship_dir: &Path) -> PathBuf {
     runtime_features_dir(ship_dir)
@@ -231,7 +224,8 @@ fn should_filter_transient_registry_path(path: &Path) -> bool {
         return true;
     }
 
-    path_contains_component_sequence(path, &["examples", "projects-e2e"])
+    path_contains_component_sequence(path, &["examples", "e2e"])
+        || path_contains_component_sequence(path, &["examples", "projects-e2e"])
         || path_contains_component_sequence(path, &["target", "tmp"])
 }
 
@@ -456,6 +450,7 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         &mcp_config_path(&ship_path),
         include_str!("../../../../core/runtime/src/templates/MCP.toml"),
     )?;
+    ensure_ship_mcp_server(&ship_path)?;
     write_if_missing(
         &permissions_config_path(&ship_path),
         include_str!("../../../../core/runtime/src/templates/PERMISSIONS.toml"),
@@ -488,87 +483,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     );
 
     Ok(ship_path)
-}
-
-fn write_default_templates(ship_path: &Path) -> Result<()> {
-    write_if_missing(
-        &features_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../../core/runtime/src/templates/FEATURE.md"),
-    )?;
-    write_if_missing(
-        &releases_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../../core/runtime/src/templates/RELEASE.md"),
-    )?;
-    write_if_missing(
-        &adrs_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../../core/runtime/src/templates/ADR.md"),
-    )?;
-    write_if_missing(
-        &notes_dir(ship_path).join("TEMPLATE.md"),
-        include_str!("../../../../core/runtime/src/templates/NOTE.md"),
-    )?;
-    write_if_missing(
-        &vision_template_path(ship_path),
-        include_str!("../../../../core/runtime/src/templates/VISION.md"),
-    )?;
-
-    let vision_doc = vision_doc_path(ship_path);
-    write_if_missing(
-        &vision_doc,
-        include_str!("../../../../core/runtime/src/templates/VISION.md"),
-    )?;
-    Ok(())
-}
-
-fn write_directory_readmes(ship_path: &Path) -> Result<()> {
-    let readmes = [
-        (
-            ship_path.to_path_buf(),
-            "# .ship\n\nShip runtime data for this project. Files here are created and updated by Ship tools.\n".to_string(),
-        ),
-        (
-            project_ns(ship_path),
-            "# project/\n\nProject-level docs and long-lived context.\n- `releases/`\n- `adrs/`\n- `notes/`\n".to_string(),
-        ),
-        (
-            releases_dir(ship_path),
-            "# project/releases/\n\nRelease plans and release state. Workflow items can reference these files.\n".to_string(),
-        ),
-        (
-            upcoming_releases_dir(ship_path),
-            "# project/releases/upcoming/\n\nPlanned or active releases that have not shipped yet.\n".to_string(),
-        ),
-        (
-            adrs_dir(ship_path),
-            format!("# project/adrs/\n\nArchitecture Decision Records, organized by status:\n- {}\n", ADR_STATUSES.join("\n- ")),
-        ),
-        (
-            notes_dir(ship_path),
-            "# project/notes/\n\nProject-scoped notes.\n".to_string(),
-        ),
-        (
-            features_dir(ship_path),
-            format!("# project/features/\n\nHigh-level project features, organized by status:\n- {}\n", FEATURE_STATUSES.join("\n- ")),
-        ),
-        (
-            agents_ns(ship_path),
-            "# agents/\n\nAgent runtime config and policy.\n- `mcp.toml`: Model Context Protocol server configuration.\n- `permissions.toml`: Agent capability and access controls.\n- `rules/`: Development and project principles.\n- `skills/`: project-scoped skills (`~/.ship/skills/` remains user/global scope).\n\nTransient hook/runtime payloads are written under `generated/runtime/`.\n".to_string(),
-        ),
-        (
-            rules_dir(ship_path),
-            "# agents/rules/\n\nProject-scoped development rules and principles. Agents should consult these for every task.\n".to_string(),
-        ),
-        (
-            generated_ns(ship_path),
-            "# generated/\n\nRuntime-generated transient artifacts.\n".to_string(),
-        ),
-    ];
-
-    for (dir, content) in readmes {
-        write_if_missing(&dir.join("README.md"), &content)?;
-    }
-
-    Ok(())
 }
 
 fn write_initial_config_with_comments(ship_path: &Path, config: &ProjectConfig) -> Result<()> {
@@ -1001,12 +915,13 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
 
 fn ensure_first_party_namespaces(namespaces: &mut Vec<NamespaceConfig>) {
     namespaces.retain(|ns| {
-        !(ns.id == "plugins" && ns.path == "plugins")
+        !(ns.id == "project" && ns.path == "project")
+            && !(ns.id == "project" && ns.path == "project/")
+            && !(ns.id == "plugins" && ns.path == "plugins")
             && !(ns.id == "workflow" && ns.path == "workflow")
     });
 
     let required = [
-        ("project", "project", "project"),
         ("agents", "agents", "agents"),
         ("generated", "generated", "runtime"),
     ];
@@ -1020,6 +935,34 @@ fn ensure_first_party_namespaces(namespaces: &mut Vec<NamespaceConfig>) {
             });
         }
     }
+}
+
+fn ship_runtime_mcp_server() -> McpServerConfig {
+    McpServerConfig {
+        id: "ship".to_string(),
+        name: "Ship Runtime".to_string(),
+        command: "ship".to_string(),
+        args: vec!["mcp".to_string(), "serve".to_string()],
+        env: HashMap::new(),
+        scope: "project".to_string(),
+        server_type: McpServerType::Stdio,
+        url: None,
+        disabled: false,
+        timeout_secs: None,
+    }
+}
+
+fn ensure_ship_mcp_server(ship_path: &Path) -> Result<()> {
+    let mut config = get_config(Some(ship_path.to_path_buf()))?;
+    let has_ship_server = config
+        .mcp_servers
+        .iter()
+        .any(|server| server.id == "ship");
+    if has_ship_server {
+        return Ok(());
+    }
+    config.mcp_servers.push(ship_runtime_mcp_server());
+    save_config(&config, Some(ship_path.to_path_buf()))
 }
 
 fn ensure_registered_namespaces(ship_path: &Path, namespaces: &[NamespaceConfig]) -> Result<()> {
@@ -1318,7 +1261,7 @@ mod tests {
                 },
                 ProjectEntry {
                     name: "E2E".to_string(),
-                    path: PathBuf::from("/Users/micah/dev/ship/examples/projects-e2e/.ship"),
+                    path: PathBuf::from("/Users/micah/dev/ship/examples/e2e/.ship"),
                 },
                 ProjectEntry {
                     name: "TargetTmp".to_string(),
@@ -1342,7 +1285,7 @@ mod tests {
             "/private/var/folders/x/T/tmp.123/.ship"
         )));
         assert!(should_filter_transient_registry_path(Path::new(
-            "/Users/me/dev/ship/examples/projects-e2e/.ship"
+            "/Users/me/dev/ship/examples/e2e/.ship"
         )));
         assert!(should_filter_transient_registry_path(Path::new(
             "/Users/me/dev/ship/target/tmp/ship-e2e/.ship"
@@ -1454,6 +1397,58 @@ mod tests {
             let count = config.modes.iter().filter(|mode| mode.id == id).count();
             assert_eq!(count, 1, "template '{}' should be present exactly once", id);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn init_project_does_not_create_project_namespace_dir() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_path = init_project(tmp.path().to_path_buf())?;
+        let config = get_config(Some(ship_path.clone()))?;
+
+        assert!(
+            !ship_path.join("project").exists(),
+            "ship init should not scaffold .ship/project/"
+        );
+        assert!(
+            config.namespaces.iter().all(|ns| ns.id != "project"),
+            "project namespace should not be first-party at init"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn init_project_ensures_ship_mcp_server_when_mcp_toml_exists_without_it() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_path = tmp.path().join(".ship");
+        fs::create_dir_all(ship_path.join("agents"))?;
+
+        fs::write(
+            ship_path.join("agents/mcp.toml"),
+            r#"[mcp]
+[mcp.servers.github]
+name = "GitHub"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+"#,
+        )?;
+
+        let _ = init_project(tmp.path().to_path_buf())?;
+        let config = get_config(Some(ship_path.clone()))?;
+
+        assert!(
+            config.mcp_servers.iter().any(|server| server.id == "ship"
+                && server.command == "ship"
+                && server.args == vec!["mcp".to_string(), "serve".to_string()]),
+            "ship MCP server should always be present after init"
+        );
+        assert!(
+            config
+                .mcp_servers
+                .iter()
+                .any(|server| server.id == "github"),
+            "existing MCP servers should be preserved"
+        );
         Ok(())
     }
 }
