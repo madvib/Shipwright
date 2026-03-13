@@ -83,6 +83,7 @@ export function useWorkspaceController() {
   });
   const { loadProjectData, loadProjectConfig, refreshDetectedProject, refreshRecentProjects } = useWorkspaceLifecycle({
     activeProject,
+    setActiveProject,
     sidebarCollapsed,
     setEventEntries,
     setProjectConfig,

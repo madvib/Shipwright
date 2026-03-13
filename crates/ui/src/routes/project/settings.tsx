@@ -30,8 +30,12 @@ function SettingsRouteComponent() {
     <Suspense fallback={<RouteFallback label="Loading settings..." />}>
       <SettingsLayout
         config={workspace.config}
+        activeProject={workspace.activeProject}
         projectConfig={workspace.projectConfig}
         globalAgentConfig={workspace.globalAgentConfig}
+        recentProjects={workspace.recentProjects}
+        onOpenProject={workspace.handleOpenProject}
+        onSelectProject={workspace.handleSelectProject}
         activeSection={activeSection}
         onSectionChange={(section) => {
           void navigate({ to: '/project/settings', search: { tab: section } });

@@ -1,14 +1,10 @@
 import { type ReactNode } from 'react';
 import {
+  ArrowLeft,
   FileCog,
-  FolderOpen,
-  FolderPlus,
-  Globe2,
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
-  History,
-  Target,
   Sun,
   Moon,
 } from 'lucide-react';
@@ -19,7 +15,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -31,6 +26,7 @@ import {
   SETTINGS_ROUTE as SETTINGS_PATH,
 } from '@/lib/constants/routes';
 import { NavItem, NavSection } from '@/lib/types/navigation';
+import ProjectSwitcherMenuContent from '@/components/app/ProjectSwitcherMenuContent';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -84,9 +80,6 @@ export default function Sidebar({
 }: SidebarProps) {
   const hasSingleSection = sections.length <= 1;
 
-  const otherProjects = (recentProjects || [])
-    .filter((project) => project.path !== activeProject?.path)
-    .slice(0, 3);
   const avatarLabel = initialsFromProjectName(activeProject?.name ?? 'Ship');
 
   const renderNavButton = (item: NavItem, isCompact = false) => {
@@ -182,65 +175,14 @@ export default function Sidebar({
             sideOffset={12}
             className="w-72 p-1.5 shadow-2xl border-sidebar-border bg-popover/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200 ring-1 ring-white/10"
           >
-            <DropdownMenuGroup className="p-1">
-              <DropdownMenuLabel className="flex items-center gap-2 px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
-                <Target className="size-3" />
-                Current Project
-              </DropdownMenuLabel>
-              {activeProject ? (
-                <div className="bg-gradient-to-br from-amber-500/15 to-amber-600/5 mb-1.5 rounded-lg border border-amber-500/30 px-3.5 py-3 shadow-inner">
-                  <p className="truncate text-sm font-bold text-foreground leading-tight">{activeProject.name}</p>
-                  <p className="text-muted-foreground truncate text-[10px] opacity-60 font-mono mt-1 flex items-center gap-1">
-                    <span className="opacity-40">path:</span> {activeProject.path}
-                  </p>
-                </div>
-              ) : (
-                <div className="text-muted-foreground mb-1.5 rounded-lg border border-dashed border-sidebar-border px-3.5 py-3 text-xs italic">
-                  No active project selected.
-                </div>
-              )}
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator className="mx-1 my-1 opacity-50" />
-            <DropdownMenuGroup className="p-1">
-              <DropdownMenuLabel className="flex items-center gap-2 px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
-                <History className="size-3" />
-                Recent Projects
-              </DropdownMenuLabel>
-              {otherProjects.length === 0 ? (
-                <div className="text-muted-foreground rounded-lg px-2.5 py-3 text-xs italic opacity-60">No recent projects.</div>
-              ) : (
-                <div className="space-y-1">
-                  {otherProjects.map((project) => (
-                    <DropdownMenuItem
-                      key={project.path}
-                      className="cursor-pointer rounded-md px-3 py-2.5 transition-all active:scale-[0.98] hover:bg-sidebar-accent"
-                      onClick={() => onSelectProject(project)}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold leading-tight">{project.name}</p>
-                        <p className="text-muted-foreground truncate text-[9px] opacity-50 font-mono mt-0.5">{project.path}</p>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </div>
-              )}
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator className="mx-1 my-1 opacity-50" />
-            <DropdownMenuGroup className="p-1 space-y-0.5">
-              <DropdownMenuItem onClick={onOpenGlobalNotes} className="cursor-pointer gap-2 py-2 rounded-md hover:bg-sidebar-accent">
-                <Globe2 className="size-4 opacity-60" />
-                <span className="text-sm font-medium">Global Notes</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="my-1" />
-              <DropdownMenuItem onClick={onOpenProject} className="cursor-pointer gap-2 py-2 rounded-md hover:bg-sidebar-accent">
-                <FolderOpen className="size-4 opacity-60" />
-                <span className="text-sm font-medium">Open Folder...</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onNewProject} className="cursor-pointer gap-2 py-2 rounded-md hover:bg-sidebar-accent">
-                <FolderPlus className="size-4 opacity-60" />
-                <span className="text-sm font-medium">New Project...</span>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
+            <ProjectSwitcherMenuContent
+              activeProject={activeProject ?? null}
+              projects={recentProjects ?? []}
+              onSelectProject={onSelectProject}
+              onOpenProject={onOpenProject}
+              onNewProject={onNewProject}
+              onOpenGlobalNotes={onOpenGlobalNotes}
+            />
             {onThemeChange && (
               <>
                 <DropdownMenuSeparator className="mx-1 my-1 opacity-50" />
@@ -326,7 +268,7 @@ export default function Sidebar({
                 className="justify-start gap-2 h-8 text-xs font-semibold hover:bg-sidebar-accent"
                 onClick={onBackToGlobal}
               >
-                <History className="size-4 rotate-180" />
+                <ArrowLeft className="size-4" />
                 Back to Navigation
               </Button>
             )}
