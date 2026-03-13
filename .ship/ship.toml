@@ -1,6 +1,7 @@
 version = "1"
 name = "Shipwright"
 description = "AI native project management workspace"
+id = "KgciCBph"
 
 [[statuses]]
 id = "backlog"
@@ -27,22 +28,6 @@ id = "done"
 name = "Done"
 color = "green"
 
-[git]
-ignore = [
-    "events.ndjson",
-    "issues",
-    "notes",
-    "releases",
-    "features",
-    "specs",
-    "adrs",
-    "templates",
-]
-commit = [
-    "ship.toml",
-    "agents",
-]
-
 [[namespaces]]
 id = "project"
 path = "project"
@@ -62,3 +47,19 @@ owner = "agents"
 id = "generated"
 path = "generated"
 owner = "runtime"
+
+[git]
+ignore = [
+    "events.ndjson",
+    "issues",
+    "notes",
+    "releases",
+    "features",
+    "specs",
+    "adrs",
+    "templates",
+]
+commit = [
+    "ship.toml",
+    "agents",
+]
