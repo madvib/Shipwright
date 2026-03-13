@@ -49,40 +49,41 @@ mod tests {
 
     struct EnvVarGuard<'a> {
         _lock: MutexGuard<'a, ()>,
-        key: &'static str,
-        previous: Option<OsString>,
+        entries: Vec<(&'static str, Option<OsString>)>,
     }
 
     impl Drop for EnvVarGuard<'_> {
         fn drop(&mut self) {
-            if let Some(value) = self.previous.take() {
-                unsafe {
-                    std::env::set_var(self.key, value);
-                }
-            } else {
-                unsafe {
-                    std::env::remove_var(self.key);
+            for (key, previous) in self.entries.iter_mut().rev() {
+                if let Some(value) = previous.take() {
+                    unsafe {
+                        std::env::set_var(*key, value);
+                    }
+                } else {
+                    unsafe {
+                        std::env::remove_var(*key);
+                    }
                 }
             }
         }
     }
 
-    fn lock_env_var_for_test(key: &'static str, value: Option<&str>) -> EnvVarGuard<'static> {
+    fn lock_env_vars_for_test(vars: &[(&'static str, Option<&str>)]) -> EnvVarGuard<'static> {
         let lock = HOOK_ENV_LOCK.lock().expect("hook env lock poisoned");
-        let previous = std::env::var_os(key);
-        match value {
-            Some(next) => unsafe {
-                std::env::set_var(key, next);
-            },
-            None => unsafe {
-                std::env::remove_var(key);
-            },
+        let mut entries = Vec::with_capacity(vars.len());
+        for (key, value) in vars {
+            let previous = std::env::var_os(key);
+            match value {
+                Some(next) => unsafe {
+                    std::env::set_var(key, next);
+                },
+                None => unsafe {
+                    std::env::remove_var(key);
+                },
+            }
+            entries.push((*key, previous));
         }
-        EnvVarGuard {
-            _lock: lock,
-            key,
-            previous,
-        }
+        EnvVarGuard { _lock: lock, entries }
     }
 
     fn make_stdio_server(id: &str) -> McpServerConfig {
@@ -647,7 +648,7 @@ mod tests {
 
     #[test]
     fn claude_permissions_round_trip_imports_back_to_canonical() {
-        let (_tmp, project_dir) = project_with_servers(vec![]);
+        let (tmp, project_dir) = project_with_servers(vec![]);
         let home = tempdir().unwrap();
         let _home_guard = lock_home_for_test(home.path());
         save_permissions(
@@ -663,7 +664,7 @@ mod tests {
         .unwrap();
 
         export_to(project_dir.clone(), "claude").unwrap();
-        let settings_path = home.path().join(".claude").join("settings.json");
+        let settings_path = tmp.path().join(".claude").join("settings.json");
         let settings: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
         let expected_allow = settings["permissions"]["allow"]
@@ -695,11 +696,13 @@ mod tests {
 
     #[test]
     fn claude_exports_grouped_hook_schema_with_metadata() {
-        let (_tmp, project_dir) = project_with_servers(vec![]);
+        let (tmp, project_dir) = project_with_servers(vec![]);
         let home = tempdir().unwrap();
         let _home_guard = lock_home_for_test(home.path());
-        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
-        let _hooks_bin_guard = lock_env_var_for_test("SHIP_HOOKS_BIN", Some("ship hooks run"));
+        let _hook_env_guard = lock_env_vars_for_test(&[
+            ("SHIP_MANAGED_HOOKS", Some("1")),
+            ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+        ]);
 
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.hooks = vec![
@@ -723,7 +726,7 @@ mod tests {
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         export_to(project_dir, "claude").unwrap();
-        let settings_path = home.path().join(".claude").join("settings.json");
+        let settings_path = tmp.path().join(".claude").join("settings.json");
         let val: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
 
@@ -746,14 +749,16 @@ mod tests {
 
     #[test]
     fn claude_exports_ship_managed_hooks_baseline_when_no_custom_hooks() {
-        let (_tmp, project_dir) = project_with_servers(vec![]);
+        let (tmp, project_dir) = project_with_servers(vec![]);
         let home = tempdir().unwrap();
         let _home_guard = lock_home_for_test(home.path());
-        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
-        let _hooks_bin_guard = lock_env_var_for_test("SHIP_HOOKS_BIN", Some("ship hooks run"));
+        let _hook_env_guard = lock_env_vars_for_test(&[
+            ("SHIP_MANAGED_HOOKS", Some("1")),
+            ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+        ]);
 
         export_to(project_dir, "claude").unwrap();
-        let settings_path = home.path().join(".claude").join("settings.json");
+        let settings_path = tmp.path().join(".claude").join("settings.json");
         let val: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
 
@@ -764,6 +769,57 @@ mod tests {
         );
         let pre_tool = &val["hooks"]["PreToolUse"][0];
         assert_eq!(pre_tool["matcher"].as_str(), Some("Bash"));
+    }
+
+    #[test]
+    fn claude_export_prunes_stale_ship_managed_hook_triggers() {
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let home = tempdir().unwrap();
+        let _home_guard = lock_home_for_test(home.path());
+
+        {
+            let _hook_env_guard = lock_env_vars_for_test(&[
+                ("SHIP_MANAGED_HOOKS", Some("1")),
+                ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+            ]);
+            export_to(project_dir.clone(), "claude").unwrap();
+        }
+
+        let settings_path = tmp.path().join(".claude").join("settings.json");
+        let mut seeded: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
+        seeded["hooks"]["ThirdPartyEvent"] = serde_json::json!([{
+            "hooks": [{ "type": "command", "command": "echo keep-me" }]
+        }]);
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&seeded).unwrap(),
+        )
+        .unwrap();
+
+        {
+            let _hook_env_guard = lock_env_vars_for_test(&[
+                ("SHIP_MANAGED_HOOKS", Some("0")),
+                ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+            ]);
+            export_to(project_dir, "claude").unwrap();
+        }
+
+        let val: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
+        let hooks = val["hooks"].as_object().cloned().unwrap_or_default();
+        assert!(
+            hooks.contains_key("ThirdPartyEvent"),
+            "non-Ship hooks should remain untouched"
+        );
+        assert!(
+            !hooks.contains_key("SessionStart"),
+            "stale managed trigger should be removed"
+        );
+        assert!(
+            !hooks.contains_key("PreToolUse"),
+            "stale managed trigger should be removed"
+        );
     }
 
     #[test]
@@ -905,8 +961,10 @@ mod tests {
     #[test]
     fn gemini_exports_hooks_to_settings_json() {
         let (tmp, project_dir) = project_with_servers(vec![]);
-        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
-        let _hooks_bin_guard = lock_env_var_for_test("SHIP_HOOKS_BIN", Some("ship hooks run"));
+        let _hook_env_guard = lock_env_vars_for_test(&[
+            ("SHIP_MANAGED_HOOKS", Some("1")),
+            ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+        ]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.hooks = vec![HookConfig {
             id: "before-tool-guard".to_string(),
@@ -940,8 +998,10 @@ mod tests {
     #[test]
     fn gemini_exports_ship_managed_hook_commands_with_provider_hint() {
         let (tmp, project_dir) = project_with_servers(vec![]);
-        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
-        let _hooks_bin_guard = lock_env_var_for_test("SHIP_HOOKS_BIN", Some("ship hooks run"));
+        let _hook_env_guard = lock_env_vars_for_test(&[
+            ("SHIP_MANAGED_HOOKS", Some("1")),
+            ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+        ]);
 
         export_to(project_dir, "gemini").unwrap();
         let settings_path = tmp.path().join(".gemini").join("settings.json");
@@ -963,8 +1023,10 @@ mod tests {
     #[test]
     fn export_writes_hook_runtime_artifacts() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
-        let _managed_guard = lock_env_var_for_test("SHIP_MANAGED_HOOKS", Some("1"));
-        let _hooks_bin_guard = lock_env_var_for_test("SHIP_HOOKS_BIN", Some("ship hooks run"));
+        let _hook_env_guard = lock_env_vars_for_test(&[
+            ("SHIP_MANAGED_HOOKS", Some("1")),
+            ("SHIP_HOOKS_BIN", Some("ship hooks run")),
+        ]);
         save_permissions(
             project_dir.clone(),
             &Permissions {

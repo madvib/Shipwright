@@ -387,8 +387,12 @@ fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> R
     Ok(())
 }
 
-fn export_claude_settings(hooks: &[HookConfig], permissions: &Permissions) -> Result<()> {
-    let path = home()?.join(".claude").join("settings.json");
+fn export_claude_settings(
+    project_root: &Path,
+    hooks: &[HookConfig],
+    permissions: &Permissions,
+) -> Result<()> {
+    let path = project_root.join(".claude").join("settings.json");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -399,7 +403,7 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &Permissions) -> Re
     };
     let obj = root
         .as_object_mut()
-        .ok_or_else(|| anyhow!("~/.claude/settings.json is not an object"))?;
+        .ok_or_else(|| anyhow!(".claude/settings.json is not an object"))?;
 
     if has_claude_permission_overrides(permissions) {
         let perms = obj.entry("permissions").or_insert(serde_json::json!({}));
@@ -410,7 +414,8 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &Permissions) -> Re
         p.insert("deny".into(), serde_json::json!(permissions.tools.deny));
     }
 
-    if !hooks.is_empty() {
+    let should_reconcile_hooks = !hooks.is_empty() || obj.get("hooks").is_some();
+    if should_reconcile_hooks {
         let hooks_val = obj.entry("hooks").or_insert(serde_json::json!({}));
         let hooks_map = hooks_val
             .as_object_mut()
@@ -438,8 +443,22 @@ fn export_claude_settings(hooks: &[HookConfig], permissions: &Permissions) -> Re
             }
             by_trigger.entry(key).or_default().push(group);
         }
+
+        // Keep Claude hook triggers in sync with the active hook set to avoid stale keys.
+        for trigger in claude_managed_trigger_keys() {
+            if let Some(entries) = by_trigger.remove(trigger) {
+                hooks_map.insert((*trigger).to_string(), serde_json::json!(entries));
+            } else {
+                hooks_map.remove(*trigger);
+            }
+        }
+
         for (trigger, entries) in by_trigger {
             hooks_map.insert(trigger.to_string(), serde_json::json!(entries));
+        }
+
+        if hooks_map.is_empty() {
+            obj.remove("hooks");
         }
     }
 
@@ -518,6 +537,22 @@ fn claude_trigger_name(trigger: &HookTrigger) -> Option<&'static str> {
         | HookTrigger::AfterModel
         | HookTrigger::BeforeToolSelection => None,
     }
+}
+
+fn claude_managed_trigger_keys() -> &'static [&'static str] {
+    &[
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PermissionRequest",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "Notification",
+        "SubagentStart",
+        "SubagentStop",
+        "Stop",
+        "PreCompact",
+    ]
 }
 
 fn gemini_trigger_name(trigger: &HookTrigger) -> Option<&'static str> {
@@ -830,13 +865,21 @@ fn escape_starlark_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn import_permissions_from_claude() -> Result<Option<Permissions>> {
-    let path = home()?.join(".claude").join("settings.json");
-    if !path.exists() {
+fn import_permissions_from_claude(project_dir: &Path) -> Result<Option<Permissions>> {
+    let Some(project_root) = project_dir.parent() else {
         return Ok(None);
-    }
+    };
+    let project_path = project_root.join(".claude").join("settings.json");
+    let global_path = home()?.join(".claude").join("settings.json");
+    let path = if project_path.exists() {
+        project_path
+    } else if global_path.exists() {
+        global_path
+    } else {
+        return Ok(None);
+    };
 
-    let root: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    let root: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path)?)?;
     let Some(perms) = root.get("permissions").and_then(|p| p.as_object()) else {
         return Ok(None);
     };

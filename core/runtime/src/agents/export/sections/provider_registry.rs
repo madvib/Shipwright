@@ -155,24 +155,13 @@ pub struct ProviderInfo {
 
 /// Returns true if `binary` is found in the system PATH.
 pub fn detect_binary(binary: &str) -> bool {
-    // Use `which` on Unix; fall back to manual PATH scan.
-    std::process::Command::new("which")
-        .arg(binary)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or_else(|_| {
-            std::env::var_os("PATH")
-                .into_iter()
-                .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-                .any(|dir| dir.join(binary).is_file())
-        })
+    resolve_binary_path(binary).is_some()
 }
 
 /// Returns the version string from `<binary> --version` (first line), or None.
 pub fn detect_version(binary: &str) -> Option<String> {
-    let out = std::process::Command::new(binary)
+    let command = resolve_binary_path(binary).unwrap_or_else(|| PathBuf::from(binary));
+    let out = std::process::Command::new(command)
         .arg("--version")
         .output()
         .ok()?;
@@ -188,6 +177,80 @@ pub fn detect_version(binary: &str) -> Option<String> {
         .next()
         .map(|l| l.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+fn resolve_binary_path(binary: &str) -> Option<PathBuf> {
+    let mut dirs = Vec::<PathBuf>::new();
+    let mut seen = HashSet::<PathBuf>::new();
+
+    if let Some(path_env) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_env) {
+            if seen.insert(dir.clone()) {
+                dirs.push(dir);
+            }
+        }
+    }
+
+    for dir in fallback_binary_dirs() {
+        if seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+
+    for dir in dirs {
+        let candidate = dir.join(binary);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        #[cfg(windows)]
+        for ext in ["exe", "cmd", "bat", "com"] {
+            let with_ext = dir.join(format!("{}.{}", binary, ext));
+            if with_ext.is_file() {
+                return Some(with_ext);
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn fallback_binary_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/opt/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".cargo/bin"));
+        dirs.push(home.join(".local/bin"));
+        dirs.push(home.join("bin"));
+    }
+    dirs
+}
+
+#[cfg(all(not(target_os = "macos"), not(windows)))]
+fn fallback_binary_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".cargo/bin"));
+        dirs.push(home.join(".local/bin"));
+        dirs.push(home.join("bin"));
+    }
+    dirs
+}
+
+#[cfg(windows)]
+fn fallback_binary_dirs() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 fn provider_info(d: &ProviderDescriptor, enabled: bool, project_dir: Option<&Path>) -> ProviderInfo {

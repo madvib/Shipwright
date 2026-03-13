@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::config::{
-    McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig,
+    McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, ProjectConfig,
     add_mode as runtime_add_mode,
     ensure_registered_namespaces as runtime_ensure_registered_namespaces, get_config,
     remove_mode as runtime_remove_mode, save_config, set_active_mode as runtime_set_active_mode,
@@ -460,8 +460,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         &principles_path,
         include_str!("../../../../core/runtime/src/templates/RULE.md"),
     )?;
-    write_default_agent_mode_files(&ship_path)?;
-
     let gitignore_path = ship_path.join(".gitignore");
     if !gitignore_path.exists() {
         let default_git = runtime::config::GitConfig::default();
@@ -489,7 +487,7 @@ fn write_initial_config_with_comments(ship_path: &Path, config: &ProjectConfig) 
     let config_path = ship_path.join(runtime::config::PRIMARY_CONFIG_FILE);
     let mut content = String::from(
         "# Ship project configuration\n\
-         # - Edit with care; prefer `ship config`, `ship mode`, and `ship git` commands where possible.\n\
+         # - Edit with care; prefer `ship config` and `ship git` commands where possible.\n\
          # - `namespaces` controls top-level directories under `.ship/`.\n\
          # - Plugin namespaces are dynamically registered when plugins are used.\n\n",
     );
@@ -522,130 +520,6 @@ fn cleanup_legacy_config_files(ship_path: &Path) -> Result<()> {
         }
     }
 
-    Ok(())
-}
-
-fn default_agent_modes() -> Vec<ModeConfig> {
-    vec![
-        ModeConfig {
-            id: "frontend-react".to_string(),
-            name: "Frontend React".to_string(),
-            description: Some(
-                "Ship-first template for React + TypeScript UI work with design-system and accessibility focus."
-                    .to_string(),
-            ),
-            mcp_servers: vec!["ship".to_string()],
-            skills: vec![
-                "ship-workflow".to_string(),
-                "task-policy".to_string(),
-                "start-session".to_string(),
-            ],
-            prompt_id: Some("ship-workflow".to_string()),
-            permissions: PermissionConfig {
-                allow: vec![
-                    "Read".to_string(),
-                    "Glob".to_string(),
-                    "Grep".to_string(),
-                    "Edit".to_string(),
-                    "Write".to_string(),
-                    "MultiEdit".to_string(),
-                    "Bash".to_string(),
-                    "mcp__ship__*".to_string(),
-                    "mcp__*__read*".to_string(),
-                    "mcp__*__list*".to_string(),
-                    "mcp__*__search*".to_string(),
-                    "mcp__*__write*".to_string(),
-                ],
-                deny: vec!["mcp__*__delete*".to_string(), "mcp__*__exec*".to_string()],
-            },
-            target_agents: vec!["claude".to_string(), "codex".to_string()],
-            ..Default::default()
-        },
-        ModeConfig {
-            id: "rust-expert".to_string(),
-            name: "Rust Expert".to_string(),
-            description: Some(
-                "Ship-first template for Rust services, safety-first refactors, and performance tuning."
-                    .to_string(),
-            ),
-            mcp_servers: vec!["ship".to_string()],
-            skills: vec![
-                "ship-workflow".to_string(),
-                "task-policy".to_string(),
-                "start-session".to_string(),
-            ],
-            prompt_id: Some("ship-workflow".to_string()),
-            permissions: PermissionConfig {
-                allow: vec![
-                    "Read".to_string(),
-                    "Glob".to_string(),
-                    "Grep".to_string(),
-                    "Edit".to_string(),
-                    "Write".to_string(),
-                    "MultiEdit".to_string(),
-                    "Bash".to_string(),
-                    "mcp__ship__*".to_string(),
-                    "mcp__*__read*".to_string(),
-                    "mcp__*__list*".to_string(),
-                    "mcp__*__search*".to_string(),
-                ],
-                deny: vec!["mcp__*__delete*".to_string(), "mcp__*__exec*".to_string()],
-            },
-            target_agents: vec!["claude".to_string(), "codex".to_string()],
-            ..Default::default()
-        },
-        ModeConfig {
-            id: "documentation-expert".to_string(),
-            name: "Documentation Expert".to_string(),
-            description: Some(
-                "Ship-first template for ADRs, API docs, release notes, and repository knowledge curation."
-                    .to_string(),
-            ),
-            mcp_servers: vec!["ship".to_string()],
-            skills: vec![
-                "ship-workflow".to_string(),
-                "task-policy".to_string(),
-                "create-document".to_string(),
-            ],
-            prompt_id: Some("create-document".to_string()),
-            permissions: PermissionConfig {
-                allow: vec![
-                    "Read".to_string(),
-                    "Glob".to_string(),
-                    "Grep".to_string(),
-                    "Edit".to_string(),
-                    "Write".to_string(),
-                    "MultiEdit".to_string(),
-                    "mcp__ship__*".to_string(),
-                    "mcp__*__read*".to_string(),
-                    "mcp__*__list*".to_string(),
-                    "mcp__*__search*".to_string(),
-                ],
-                deny: vec![
-                    "Bash".to_string(),
-                    "mcp__*__write*".to_string(),
-                    "mcp__*__delete*".to_string(),
-                    "mcp__*__exec*".to_string(),
-                ],
-            },
-            target_agents: vec![
-                "claude".to_string(),
-                "gemini".to_string(),
-                "codex".to_string(),
-            ],
-            ..Default::default()
-        },
-    ]
-}
-
-fn write_default_agent_mode_files(ship_path: &Path) -> Result<()> {
-    let project_dir = Some(ship_path.to_path_buf());
-    let config = get_config(project_dir.clone())?;
-    for mode in default_agent_modes() {
-        if !config.modes.iter().any(|existing| existing.id == mode.id) {
-            runtime_add_mode(project_dir.clone(), mode)?;
-        }
-    }
     Ok(())
 }
 
@@ -954,10 +828,7 @@ fn ship_runtime_mcp_server() -> McpServerConfig {
 
 fn ensure_ship_mcp_server(ship_path: &Path) -> Result<()> {
     let mut config = get_config(Some(ship_path.to_path_buf()))?;
-    let has_ship_server = config
-        .mcp_servers
-        .iter()
-        .any(|server| server.id == "ship");
+    let has_ship_server = config.mcp_servers.iter().any(|server| server.id == "ship");
     if has_ship_server {
         return Ok(());
     }
@@ -1360,43 +1231,15 @@ mod tests {
     }
 
     #[test]
-    fn init_project_seeds_ship_first_templates_and_not_legacy_modes() -> Result<()> {
+    fn init_project_does_not_seed_modes() -> Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
         let config = get_config(Some(ship_path))?;
 
-        assert!(config.modes.iter().any(|mode| mode.id == "frontend-react"));
-        assert!(config.modes.iter().any(|mode| mode.id == "rust-expert"));
         assert!(
-            config
-                .modes
-                .iter()
-                .any(|mode| mode.id == "documentation-expert")
+            config.modes.is_empty(),
+            "ship init should not scaffold any default modes"
         );
-        let frontend = config
-            .modes
-            .iter()
-            .find(|mode| mode.id == "frontend-react")
-            .expect("frontend-react template should exist");
-        assert!(frontend.skills.iter().any(|skill| skill == "ship-workflow"));
-        assert!(frontend.mcp_servers.iter().any(|server| server == "ship"));
-        assert!(!config.modes.iter().any(|mode| mode.id == "planning"));
-        assert!(!config.modes.iter().any(|mode| mode.id == "code"));
-        assert!(!config.modes.iter().any(|mode| mode.id == "config"));
-        Ok(())
-    }
-
-    #[test]
-    fn write_default_agent_mode_files_is_idempotent() -> Result<()> {
-        let tmp = tempdir()?;
-        let ship_path = init_project(tmp.path().to_path_buf())?;
-        write_default_agent_mode_files(&ship_path)?;
-        let config = get_config(Some(ship_path))?;
-
-        for id in ["frontend-react", "rust-expert", "documentation-expert"] {
-            let count = config.modes.iter().filter(|mode| mode.id == id).count();
-            assert_eq!(count, 1, "template '{}' should be present exactly once", id);
-        }
         Ok(())
     }
 

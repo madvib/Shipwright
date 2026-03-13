@@ -27,8 +27,6 @@ pub enum SkillAction {
     Install {
         source: String,
         id: String,
-        git_ref: String,
-        repo_path: String,
         scope: SkillWriteScope,
         force: bool,
     },
@@ -145,8 +143,6 @@ pub fn handle_skill_action(action: SkillAction, project_dir: Option<&Path>) -> R
         SkillAction::Install {
             source,
             id,
-            git_ref,
-            repo_path,
             scope,
             force,
         } => {
@@ -163,8 +159,8 @@ pub fn handle_skill_action(action: SkillAction, project_dir: Option<&Path>) -> R
                 project_dir,
                 &source,
                 &id,
-                Some(&git_ref),
-                Some(&repo_path),
+                None,
+                None,
                 install_scope,
                 force,
             )?;

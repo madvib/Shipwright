@@ -205,7 +205,7 @@ fn export_to_inner(
             write_hook_runtime_artifacts(project_root, &payload)?;
             let provider_hooks = hooks_for_provider("claude", &payload.hooks);
             if !provider_hooks.is_empty() || has_claude_permission_overrides(&payload.permissions) {
-                export_claude_settings(&provider_hooks, &payload.permissions)?;
+                export_claude_settings(project_root, &provider_hooks, &payload.permissions)?;
             }
         }
         "gemini" => {
@@ -508,7 +508,7 @@ fn normalize_imported_server(mut server: McpServerConfig) -> Option<McpServerCon
 /// importable permissions were found for the provider.
 pub fn import_permissions_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<bool> {
     let imported = match provider_id {
-        "claude" => import_permissions_from_claude()?,
+        "claude" => import_permissions_from_claude(&project_dir)?,
         "gemini" => import_permissions_from_gemini(&project_dir)?,
         "codex" => import_permissions_from_codex(&project_dir)?,
         _ => return Err(anyhow!("Unsupported provider '{}'", provider_id)),
@@ -1178,7 +1178,7 @@ fn teardown_toml(config_path: &Path, mcp_key: &str, tool_state: &ToolState) -> R
 fn ship_server_entry() -> (&'static str, serde_json::Value) {
     let entry = serde_json::json!({
         "command": "ship",
-        "args": ["mcp"],
+        "args": ["mcp", "serve"],
         "type": "stdio",
         "_ship": { "managed": true }
     });

@@ -4,7 +4,7 @@ description: >
   Guide for working with Ship — the project intelligence layer. Use this skill whenever
   you're starting a work session, planning features, making architectural decisions, logging
   progress, or wrapping up a session. Covers all three stages: Planning (features, decisions,
-  notes), Workspace activation (context compilation, mode selection), and Sessions (start,
+  notes), Workspace activation (context compilation and agent configuration), and Sessions (start,
   log, end with feedback into docs). Always use this when the user says "start a session",
   "let's plan", "log what we did", or "wrap up" — and proactively consult it at the beginning
   of any interaction with a Ship-managed project.
@@ -74,16 +74,14 @@ one compiles the right CLAUDE.md and .mcp.json for your AI provider.
 
 1. Read `ship://workspaces` to see what's available.
 2. Call `activate_workspace` with the branch name. This recompiles provider context — the
-   agent immediately has the right tools and instructions for that workspace's mode and scope.
-3. Optionally call `set_mode` if you want to shift the tool surface (e.g., enable extended
-   planning tools for release/spec coordination).
+   agent immediately has the right tools and instructions for that workspace.
+3. Confirm workspace agent config (providers/MCP/skills) is correct before starting a session.
 
 ### Workspace types
 
 - **service**: the project-management workspace (`ship` branch). Always present. Activating it
-  unlocks the full PM surface — specs, releases, sessions history — without needing a
-  mode. Use this for planning, triage, release prep, and cross-workspace coordination.
-- **feature**: tied to a feature document, inherits feature's mode/provider config
+  unlocks planning and coordination surfaces across features, targets, and sessions.
+- **feature**: tied to a feature document and branch-specific implementation work.
 - **patch**: urgent, minimal scope
 
 **The service workspace is the home base.** If the user wants to coordinate planning, prep a release,
@@ -96,21 +94,13 @@ activate_workspace(branch="ship")
 This compiles a bird's-eye CLAUDE.md (all features, active sessions, upcoming release)
 and expands the available tools to the full PM surface automatically.
 
-### Modes shape the tool surface
+### Workspace Agent Config
 
-By default (non-service workspace, no mode), only core workflow tools are visible. Two ways
-to expand the surface:
+Workspace behavior is driven by effective agent config, not global modes.
 
-1. **Activate the service workspace** (`ship`) — auto-unlocks PM tools (specs, releases, notes)
-2. **Set a mode** with `active_tools` configured — fine-grained control for any workspace type
-
-```
-active_tools: []          # unlocks everything
-active_tools: ["create_spec", "update_spec", "list_releases"]   # scoped planning tools
-```
-
-If the user wants to work on specs or releases from a feature workspace, read
-`ship://modes` and activate an appropriate mode, or suggest switching to the service workspace.
+1. Inspect providers/MCP/skills resolved for the workspace.
+2. If context is wrong, update workspace agent config and re-sync.
+3. If MCP changed, restart the active session so the provider picks up the updated tool graph.
 
 ---
 

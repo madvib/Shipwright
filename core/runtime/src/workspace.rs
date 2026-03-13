@@ -1,4 +1,6 @@
-use crate::agents::config::{AgentConfig, resolve_agent_config_with_mode_override};
+use crate::agents::config::{
+    AgentConfig, FeatureAgentConfig, resolve_agent_config_with_mode_override,
+};
 use crate::events::{EventAction, EventEntity, append_event};
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
 use crate::state_db::{
@@ -136,7 +138,12 @@ pub struct Workspace {
     pub target_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_mode: Option<String>,
+    #[serde(default)]
     pub providers: Vec<String>,
+    #[serde(default)]
+    pub mcp_servers: Vec<String>,
+    #[serde(default)]
+    pub skills: Vec<String>,
     pub resolved_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_activated_at: Option<DateTime<Utc>>,
@@ -350,6 +357,8 @@ pub struct CreateWorkspaceRequest {
     pub target_id: Option<String>,
     pub active_mode: Option<String>,
     pub providers: Option<Vec<String>>,
+    pub mcp_servers: Option<Vec<String>>,
+    pub skills: Option<Vec<String>>,
     pub is_worktree: Option<bool>,
     pub worktree_path: Option<String>,
     pub context_hash: Option<String>,
@@ -619,6 +628,49 @@ fn normalize_provider_ref(provider: &str) -> Option<String> {
     }
 }
 
+fn normalize_nonempty_id_list(ids: &[String]) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for raw in ids {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value = trimmed.to_string();
+        if !normalized.iter().any(|existing| existing == &value) {
+            normalized.push(value);
+        }
+    }
+    normalized
+}
+
+fn merge_feature_agent_with_workspace(
+    feature_agent: Option<FeatureAgentConfig>,
+    workspace: &Workspace,
+) -> Option<FeatureAgentConfig> {
+    let mut has_override = feature_agent.is_some();
+    let mut merged = feature_agent.unwrap_or_default();
+
+    let workspace_providers = normalize_nonempty_id_list(&workspace.providers);
+    if !workspace_providers.is_empty() {
+        merged.providers = workspace_providers;
+        has_override = true;
+    }
+
+    let workspace_mcp_servers = normalize_nonempty_id_list(&workspace.mcp_servers);
+    if !workspace_mcp_servers.is_empty() {
+        merged.mcp_servers = workspace_mcp_servers;
+        has_override = true;
+    }
+
+    let workspace_skills = normalize_nonempty_id_list(&workspace.skills);
+    if !workspace_skills.is_empty() {
+        merged.skills = workspace_skills;
+        has_override = true;
+    }
+
+    if has_override { Some(merged) } else { None }
+}
+
 fn validate_mode_exists(ship_dir: &Path, mode_id: &str) -> Result<String> {
     let normalized = normalize_mode_ref(mode_id)
         .ok_or_else(|| anyhow::anyhow!("Workspace mode cannot be empty"))?;
@@ -666,31 +718,9 @@ fn resolve_workspace_agent_config(
         .map(|feature_id| get_feature_agent_config(ship_dir, feature_id))
         .transpose()?
         .flatten();
+    let workspace_agent = merge_feature_agent_with_workspace(feature_agent, workspace);
 
-    let mut resolved = resolve_agent_config_with_mode_override(
-        ship_dir,
-        feature_agent.as_ref(),
-        mode_id.as_deref(),
-    )?;
-
-    if !workspace.providers.is_empty() {
-        let mut workspace_providers = Vec::new();
-        for candidate in &workspace.providers {
-            let Some(normalized) = normalize_provider_ref(candidate) else {
-                continue;
-            };
-            if crate::agents::export::get_provider(&normalized).is_some()
-                && !workspace_providers.iter().any(|p| p == &normalized)
-            {
-                workspace_providers.push(normalized);
-            }
-        }
-        if !workspace_providers.is_empty() {
-            resolved.providers = workspace_providers;
-        }
-    }
-
-    Ok(resolved)
+    resolve_agent_config_with_mode_override(ship_dir, workspace_agent.as_ref(), mode_id.as_deref())
 }
 
 fn build_workspace_provider_matrix(
@@ -826,10 +856,12 @@ fn compute_workspace_context_hash(
             "feature_id": workspace.feature_id,
             "target_id": workspace.target_id,
             "mode_id": resolved_agent.active_mode,
+            "provider_overrides": normalize_nonempty_id_list(&workspace.providers),
+            "mcp_server_overrides": normalize_nonempty_id_list(&workspace.mcp_servers),
+            "skill_overrides": normalize_nonempty_id_list(&workspace.skills),
         },
         "providers": normalized_providers,
         "model": resolved_agent.model,
-        "max_cost_per_session": resolved_agent.max_cost_per_session,
         "config_hash": config_hash,
         "permissions_hash": permissions_hash,
         "skill_hashes": skill_hashes,
@@ -1032,6 +1064,8 @@ fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
         target_id: None,
         active_mode: None,
         providers: Vec::new(),
+        mcp_servers: Vec::new(),
+        skills: Vec::new(),
         resolved_at: now,
         last_activated_at: None,
         is_worktree: false,
@@ -1145,6 +1179,8 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
         target_id,
         active_mode,
         providers,
+        mcp_servers,
+        skills,
         resolved_at,
         is_worktree,
         worktree_path,
@@ -1173,6 +1209,8 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
         target_id,
         active_mode,
         providers,
+        mcp_servers,
+        skills,
         resolved_at: parse_datetime(&resolved_at),
         last_activated_at: parse_datetime_opt(last_activated_at),
         is_worktree,
@@ -1197,6 +1235,8 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         target_id,
         active_mode,
         providers,
+        mcp_servers,
+        skills,
         resolved_at,
         is_worktree,
         worktree_path,
@@ -1222,6 +1262,8 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
             target_id,
             active_mode,
             providers,
+            mcp_servers,
+            skills,
             resolved_at: parse_datetime(&resolved_at),
             last_activated_at: parse_datetime_opt(last_activated_at),
             is_worktree,
@@ -1270,6 +1312,8 @@ pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
             target_id: workspace.target_id.as_deref(),
             active_mode: workspace.active_mode.as_deref(),
             providers: &workspace.providers,
+            mcp_servers: &workspace.mcp_servers,
+            skills: &workspace.skills,
             resolved_at: &resolved_at,
             is_worktree: workspace.is_worktree,
             worktree_path: workspace.worktree_path.as_deref(),
@@ -1574,6 +1618,12 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     if let Some(providers) = request.providers {
         workspace.providers = providers;
     }
+    if let Some(mcp_servers) = request.mcp_servers {
+        workspace.mcp_servers = mcp_servers;
+    }
+    if let Some(skills) = request.skills {
+        workspace.skills = skills;
+    }
     if let Some(is_worktree) = request.is_worktree {
         workspace.is_worktree = is_worktree;
     }
@@ -1647,6 +1697,12 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     }
     if let Some(mode_id) = workspace.active_mode.as_deref() {
         details.push(format!("mode={mode_id}"));
+    }
+    if !workspace.mcp_servers.is_empty() {
+        details.push(format!("mcp={}", workspace.mcp_servers.len()));
+    }
+    if !workspace.skills.is_empty() {
+        details.push(format!("skills={}", workspace.skills.len()));
     }
     if workspace.is_worktree {
         details.push("worktree=true".to_string());
@@ -1808,6 +1864,7 @@ pub fn seed_service_workspace(ship_dir: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use sqlx::Connection;
+    use std::collections::HashMap;
     use tempfile::tempdir;
 
     fn insert_feature_for_branch(
@@ -1849,6 +1906,21 @@ mod tests {
         })?;
         rt.block_on(async { conn.close().await })?;
         Ok(())
+    }
+
+    fn stdio_server(id: &str, command: &str) -> crate::config::McpServerConfig {
+        crate::config::McpServerConfig {
+            id: id.to_string(),
+            name: id.to_string(),
+            command: command.to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            scope: "project".to_string(),
+            server_type: crate::config::McpServerType::Stdio,
+            url: None,
+            disabled: false,
+            timeout_secs: None,
+        }
     }
 
     #[test]
@@ -2349,6 +2421,95 @@ mod tests {
                 .join("SKILL.md")
                 .exists(),
             "non-selected feature skill should not be exported"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_agent_overrides_persist_and_round_trip() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/agent-overrides".to_string(),
+                providers: Some(vec!["codex".to_string()]),
+                mcp_servers: Some(vec!["github".to_string()]),
+                skills: Some(vec!["task-policy".to_string()]),
+                ..Default::default()
+            },
+        )?;
+
+        let workspace = get_workspace(&ship_dir, "feature/agent-overrides")?
+            .ok_or_else(|| anyhow::anyhow!("workspace missing"))?;
+        assert_eq!(workspace.providers, vec!["codex".to_string()]);
+        assert_eq!(workspace.mcp_servers, vec!["github".to_string()]);
+        assert_eq!(workspace.skills, vec!["task-policy".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_agent_overrides_take_precedence_over_feature_agent_filters() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        let mut config = crate::config::ProjectConfig::default();
+        config.providers = vec!["claude".to_string()];
+        config.mcp_servers = vec![
+            stdio_server("github", "gh"),
+            stdio_server("linear", "linear"),
+        ];
+        crate::config::save_config(&config, Some(ship_dir.clone()))?;
+
+        crate::skill::create_skill(&ship_dir, "selected-skill", "Selected", "selected content")?;
+        crate::skill::create_skill(
+            &ship_dir,
+            "workspace-skill",
+            "Workspace",
+            "workspace content",
+        )?;
+
+        insert_feature_for_branch_with_agent(
+            &ship_dir,
+            "feat-workspace-agent-override",
+            "feature/workspace-agent-override",
+            None,
+            r#"{"providers":["gemini"],"mcp_servers":["github"],"skills":["selected-skill"]}"#,
+        )?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/workspace-agent-override".to_string(),
+                feature_id: Some("feat-workspace-agent-override".to_string()),
+                providers: Some(vec!["codex".to_string()]),
+                mcp_servers: Some(vec!["linear".to_string()]),
+                skills: Some(vec!["workspace-skill".to_string()]),
+                ..Default::default()
+            },
+        )?;
+
+        let workspace = get_workspace(&ship_dir, "feature/workspace-agent-override")?
+            .ok_or_else(|| anyhow::anyhow!("workspace missing"))?;
+        let resolved = resolve_workspace_agent_config(&ship_dir, &workspace, None)?;
+
+        assert_eq!(resolved.providers, vec!["codex".to_string()]);
+        assert_eq!(
+            resolved
+                .mcp_servers
+                .iter()
+                .map(|server| server.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["linear"]
+        );
+        assert_eq!(
+            resolved
+                .skills
+                .iter()
+                .map(|skill| skill.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["workspace-skill"]
         );
         Ok(())
     }

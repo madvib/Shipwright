@@ -482,6 +482,11 @@ const PROJECT_MIGRATIONS: &[(&str, &str)] = &[
          CREATE INDEX IF NOT EXISTS target_feature_feature_idx
            ON target_feature(feature_id, target_id);",
     ),
+    (
+        "0021_workspace_agent_overrides",
+        "ALTER TABLE workspace ADD COLUMN mcp_servers_json TEXT NOT NULL DEFAULT '[]';
+         ALTER TABLE workspace ADD COLUMN skills_json TEXT NOT NULL DEFAULT '[]';",
+    ),
 ];
 const GLOBAL_MIGRATIONS: &[(&str, &str)] = &[
     ("0001_global_schema", GLOBAL_SCHEMA_V1),
@@ -507,6 +512,8 @@ pub type WorkspaceDbRow = (
     Option<String>,
     Option<String>,
     Vec<String>,
+    Vec<String>,
+    Vec<String>,
     String,
     bool,
     Option<String>,
@@ -526,6 +533,8 @@ pub type WorkspaceDbListRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Vec<String>,
+    Vec<String>,
     Vec<String>,
     String,
     bool,
@@ -547,6 +556,8 @@ pub struct WorkspaceUpsert<'a> {
     pub target_id: Option<&'a str>,
     pub active_mode: Option<&'a str>,
     pub providers: &'a [String],
+    pub mcp_servers: &'a [String],
+    pub skills: &'a [String],
     pub resolved_at: &'a str,
     pub is_worktree: bool,
     pub worktree_path: Option<&'a str>,
@@ -1626,7 +1637,7 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
+            "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace WHERE branch = ?",
         )
         .bind(branch)
@@ -1643,15 +1654,19 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
         let target_id: Option<String> = row.get(5);
         let active_mode: Option<String> = row.get(6);
         let providers_json: String = row.get(7);
-        let resolved_at: String = row.get(8);
-        let is_worktree: i64 = row.get(9);
-        let worktree_path: Option<String> = row.get(10);
-        let last_activated_at: Option<String> = row.get(11);
-        let context_hash: Option<String> = row.get(12);
-        let config_generation: i64 = row.get(13);
-        let compiled_at: Option<String> = row.get(14);
-        let compile_error: Option<String> = row.get(15);
+        let mcp_servers_json: String = row.get(8);
+        let skills_json: String = row.get(9);
+        let resolved_at: String = row.get(10);
+        let is_worktree: i64 = row.get(11);
+        let worktree_path: Option<String> = row.get(12);
+        let last_activated_at: Option<String> = row.get(13);
+        let context_hash: Option<String> = row.get(14);
+        let config_generation: i64 = row.get(15);
+        let compiled_at: Option<String> = row.get(16);
+        let compile_error: Option<String> = row.get(17);
         let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
+        let mcp_servers: Vec<String> = serde_json::from_str(&mcp_servers_json).unwrap_or_default();
+        let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
         Ok(Some((
             id,
             workspace_type,
@@ -1661,6 +1676,8 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
             target_id,
             active_mode,
             providers,
+            mcp_servers,
+            skills,
             resolved_at,
             is_worktree != 0,
             worktree_path,
@@ -1679,7 +1696,7 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
     let mut conn = open_project_db(ship_dir)?;
     let rows = block_on(async {
         sqlx::query(
-            "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
+            "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace
              ORDER BY
                CASE status
@@ -1705,15 +1722,19 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
         let target_id: Option<String> = row.get(6);
         let active_mode: Option<String> = row.get(7);
         let providers_json: String = row.get(8);
-        let resolved_at: String = row.get(9);
-        let is_worktree: i64 = row.get(10);
-        let worktree_path: Option<String> = row.get(11);
-        let last_activated_at: Option<String> = row.get(12);
-        let context_hash: Option<String> = row.get(13);
-        let config_generation: i64 = row.get(14);
-        let compiled_at: Option<String> = row.get(15);
-        let compile_error: Option<String> = row.get(16);
+        let mcp_servers_json: String = row.get(9);
+        let skills_json: String = row.get(10);
+        let resolved_at: String = row.get(11);
+        let is_worktree: i64 = row.get(12);
+        let worktree_path: Option<String> = row.get(13);
+        let last_activated_at: Option<String> = row.get(14);
+        let context_hash: Option<String> = row.get(15);
+        let config_generation: i64 = row.get(16);
+        let compiled_at: Option<String> = row.get(17);
+        let compile_error: Option<String> = row.get(18);
         let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
+        let mcp_servers: Vec<String> = serde_json::from_str(&mcp_servers_json).unwrap_or_default();
+        let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
 
         result.push((
             branch,
@@ -1725,6 +1746,8 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
             target_id,
             active_mode,
             providers,
+            mcp_servers,
+            skills,
             resolved_at,
             is_worktree != 0,
             worktree_path,
@@ -1743,10 +1766,14 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
     let mut conn = open_project_db(ship_dir)?;
     let providers_json = serde_json::to_string(record.providers)
         .with_context(|| "Failed to serialize workspace providers")?;
+    let mcp_servers_json = serde_json::to_string(record.mcp_servers)
+        .with_context(|| "Failed to serialize workspace mcp servers")?;
+    let skills_json = serde_json::to_string(record.skills)
+        .with_context(|| "Failed to serialize workspace skills")?;
     block_on(async {
         sqlx::query(
-            "INSERT INTO workspace (branch, id, workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, config_generation, compiled_at, compile_error)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO workspace (branch, id, workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, config_generation, compiled_at, compile_error)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(branch) DO UPDATE SET
                id            = excluded.id,
                workspace_type = excluded.workspace_type,
@@ -1756,6 +1783,8 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
                target_id     = excluded.target_id,
                active_mode   = excluded.active_mode,
                providers_json = excluded.providers_json,
+               mcp_servers_json = excluded.mcp_servers_json,
+               skills_json = excluded.skills_json,
                resolved_at   = excluded.resolved_at,
                is_worktree   = excluded.is_worktree,
                worktree_path = excluded.worktree_path,
@@ -1774,6 +1803,8 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
         .bind(record.target_id)
         .bind(record.active_mode)
         .bind(&providers_json)
+        .bind(&mcp_servers_json)
+        .bind(&skills_json)
         .bind(record.resolved_at)
         .bind(if record.is_worktree { 1i64 } else { 0i64 })
         .bind(record.worktree_path)
@@ -2344,6 +2375,18 @@ fn ensure_project_schema_compat(connection: &mut SqliteConnection) -> Result<()>
         "workspace",
         "target_id",
         "ALTER TABLE workspace ADD COLUMN target_id TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "mcp_servers_json",
+        "ALTER TABLE workspace ADD COLUMN mcp_servers_json TEXT NOT NULL DEFAULT '[]'",
+    )?;
+    ensure_column(
+        connection,
+        "workspace",
+        "skills_json",
+        "ALTER TABLE workspace ADD COLUMN skills_json TEXT NOT NULL DEFAULT '[]'",
     )?;
     ensure_column(
         connection,

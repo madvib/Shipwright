@@ -3,8 +3,6 @@ use crate::config::{McpServerConfig, get_config};
 pub struct FeatureAgentConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_cost_per_session: Option<f64>,
     #[serde(default)]
     pub mcp_servers: Vec<String>,
     #[serde(default)]
@@ -38,10 +36,6 @@ pub struct AgentConfig {
     pub providers: Vec<String>,
     /// Model override — `None` means use the provider's default.
     pub model: Option<String>,
-    /// USD spend cap per session. `None` = unlimited.
-    pub max_cost_per_session: Option<f64>,
-    /// Max agentic turns. `None` = unlimited.
-    pub max_turns: Option<u32>,
     /// Resolved MCP servers (project list, filtered by mode + feature).
     pub mcp_servers: Vec<McpServerConfig>,
     /// Resolved skills (project + user effective list, filtered by feature).
@@ -147,10 +141,6 @@ pub fn resolve_agent_config_with_mode_override(
         .and_then(|fa| fa.model.clone())
         .or_else(|| config.ai.as_ref().and_then(|ai| ai.model.clone()));
 
-    // ── Cost / turns ──────────────────────────────────────────────────────────
-    let max_cost_per_session = feature_agent.and_then(|fa| fa.max_cost_per_session);
-    let max_turns: Option<u32> = None; // not in FeatureAgentConfig yet; reserved
-
     // ── MCP servers ───────────────────────────────────────────────────────────
     let mut mcp_servers = config.mcp_servers.clone();
 
@@ -202,8 +192,6 @@ pub fn resolve_agent_config_with_mode_override(
     Ok(AgentConfig {
         providers,
         model,
-        max_cost_per_session,
-        max_turns,
         mcp_servers,
         skills,
         rules,
@@ -257,7 +245,6 @@ mod tests {
 
         let feature_agent = FeatureAgentConfig {
             model: Some("feature-model".to_string()),
-            max_cost_per_session: Some(4.2),
             mcp_servers: vec!["github".to_string()],
             skills: vec!["rt-beta-skill".to_string()],
             providers: vec!["codex".to_string()],
@@ -266,7 +253,6 @@ mod tests {
         let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
         assert_eq!(resolved.providers, vec!["codex".to_string()]);
         assert_eq!(resolved.model.as_deref(), Some("feature-model"));
-        assert_eq!(resolved.max_cost_per_session, Some(4.2));
         assert_eq!(
             resolved
                 .skills
@@ -287,7 +273,6 @@ mod tests {
 
         let feature_agent = FeatureAgentConfig {
             model: None,
-            max_cost_per_session: None,
             mcp_servers: vec![],
             skills: vec!["rt-missing-skill".to_string(), "rt-only-skill".to_string()],
             providers: vec![],
@@ -414,7 +399,6 @@ mod tests {
 
         let feature_agent = FeatureAgentConfig {
             model: None,
-            max_cost_per_session: None,
             mcp_servers: vec!["linear".to_string(), "figma".to_string()],
             skills: vec![],
             providers: vec![],
@@ -442,7 +426,6 @@ mod tests {
 
         let feature_agent = FeatureAgentConfig {
             model: Some("feature-model".to_string()),
-            max_cost_per_session: None,
             mcp_servers: vec![],
             skills: vec![],
             providers: vec![],
@@ -468,7 +451,6 @@ mod tests {
 
         let feature_agent = FeatureAgentConfig {
             model: None,
-            max_cost_per_session: None,
             mcp_servers: vec![],
             skills: vec![],
             providers: vec![
@@ -499,7 +481,6 @@ mod tests {
 
         let feature_agent = FeatureAgentConfig {
             model: None,
-            max_cost_per_session: None,
             mcp_servers: vec![],
             skills: vec![],
             providers: vec!["unknown-provider".to_string()],

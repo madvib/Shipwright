@@ -7,7 +7,6 @@ project/adrs
 project/notes
 project/vision.md
 agents/skills
-agents/runtime
 agents/README.md
 agents/skill-library-strategy.md
 README.md

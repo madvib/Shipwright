@@ -1,5 +1,5 @@
 use anyhow::Result;
-use runtime::project::{get_global_dir, get_project_dir, ship_dir_from_path};
+use runtime::project::{get_global_dir, get_project_dir, resolve_project_ship_dir};
 use runtime::workspace::set_workspace_active_mode;
 use runtime::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, ShipWorkspaceKind, WorkspaceStatus,
@@ -16,7 +16,7 @@ use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs, move_a
 use ship_module_project::ops::feature::{
     create_feature, delete_feature, ensure_feature_documentation, feature_done, feature_start,
     get_feature_by_id, get_feature_documentation, list_features, sync_feature_docs_after_session,
-    update_feature, update_feature_documentation,
+    update_feature, update_feature_content, update_feature_documentation,
 };
 use ship_module_project::ops::note::{
     create_note, get_note_by_id, list_notes, update_note_content,
@@ -158,10 +158,20 @@ pub fn append_doctor_checks(report: &mut cli_framework::DoctorReport) -> Result<
             match ship_mcp {
                 Some(server)
                     if server.command == "ship"
-                        && server.args.len() >= 1
+                        && server.args.len() >= 2
                         && server.args[0] == "mcp" =>
                 {
-                    report.ok("MCP server ship", "registered with `ship mcp` command");
+                    if server.args[1] == "serve" {
+                        report.ok("MCP server ship", "registered with `ship mcp serve` command");
+                    } else {
+                        report.warn(
+                            "MCP server ship",
+                            format!(
+                                "registration looks outdated; expected `ship mcp serve`, got: {} {:?}",
+                                server.command, server.args
+                            ),
+                        );
+                    }
                 }
                 Some(server) => report.warn(
                     "MCP server ship",
@@ -324,15 +334,11 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                 SkillCommands::Install {
                     source,
                     id,
-                    git_ref,
-                    repo_path,
                     scope,
                     force,
                 } => cli_framework::SkillAction::Install {
                     source,
                     id,
-                    git_ref,
-                    repo_path,
                     scope: cli_framework::parse_skill_write_scope(&scope)?,
                     force,
                 },
@@ -473,9 +479,7 @@ pub fn handle_cli(cli: Cli) -> Result<()> {
                     }
                 }
                 FeatureCommands::Update { id, content } => {
-                    let mut entry = get_feature_by_id(&project_dir, &id)?;
-                    entry.feature.body = content;
-                    update_feature(&project_dir, &id, entry.feature)?;
+                    update_feature_content(&project_dir, &id, &content)?;
                     println!("Updated feature: {}", id);
                 }
                 FeatureCommands::Start { id, branch } => {
@@ -1545,7 +1549,7 @@ fn resolve_ship_dir_for_hook_runtime(cwd: &Path) -> Option<PathBuf> {
     if cwd.join(".ship").is_dir() {
         return Some(cwd.join(".ship"));
     }
-    ship_dir_from_path(cwd)
+    resolve_project_ship_dir(cwd)
 }
 
 fn append_hook_event_log(
@@ -3384,14 +3388,10 @@ mod tests {
             "ship",
             "skill",
             "install",
-            "vercel-labs/agent-skills",
+            "vercel-react-best-practices",
             "vercel-react-best-practices",
             "--scope",
             "user",
-            "--repo-path",
-            "skills",
-            "--git-ref",
-            "main",
             "--force",
         ])
         .expect("skill install should parse");
@@ -3402,16 +3402,12 @@ mod tests {
                     SkillCommands::Install {
                         source,
                         id,
-                        git_ref,
-                        repo_path,
                         scope,
                         force,
                     },
             }) => {
-                assert_eq!(source, "vercel-labs/agent-skills");
+                assert_eq!(source, "vercel-react-best-practices");
                 assert_eq!(id, "vercel-react-best-practices");
-                assert_eq!(git_ref, "main");
-                assert_eq!(repo_path, "skills");
                 assert_eq!(scope, "user");
                 assert!(force);
             }
@@ -3788,6 +3784,22 @@ mod tests {
         if let Some(context) = context {
             std::fs::write(runtime_dir.join("hook-context.md"), context)?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_ship_dir_for_hook_runtime_handles_nested_project_cwd() -> Result<()> {
+        let tmp = tempdir()?;
+        let project_root = tmp.path().join("repo");
+        std::fs::create_dir_all(&project_root)?;
+        let ship_dir = init_project(project_root.clone())?;
+
+        let nested = project_root.join("services").join("ship-cloud").join("src");
+        std::fs::create_dir_all(&nested)?;
+
+        let resolved = resolve_ship_dir_for_hook_runtime(&nested)
+            .expect("expected .ship to resolve from nested cwd");
+        assert_eq!(resolved.canonicalize()?, ship_dir.canonicalize()?);
         Ok(())
     }
 

@@ -197,6 +197,24 @@ mod tests {
     }
 
     #[test]
+    fn test_update_feature_content_syncs_metadata_title_from_markdown_h1() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_feature(&project_dir, "Old Title", "initial", None, None)?;
+
+        update_feature_content(
+            &project_dir,
+            &entry.id,
+            "# New Title\n\n## Intent\n\nUpdated intent body.",
+        )?;
+
+        let reloaded = get_feature_by_id(&project_dir, &entry.id)?;
+        assert_eq!(reloaded.feature.metadata.title, "New Title");
+        assert!(reloaded.feature.body.starts_with("# New Title"));
+        Ok(())
+    }
+
+    #[test]
     fn test_feature_model_computes_delta_from_declaration_and_status() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;

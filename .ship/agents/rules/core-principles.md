@@ -12,4 +12,3 @@
 
 * Treat migration and sync steps as idempotent by default.
 
-<br />

@@ -401,18 +401,12 @@ pub enum NoteCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum SkillCommands {
-    /// Install a skill from a Git source (GitHub shorthand, URL, or local path)
+    /// Install a skill via skills.sh (paste command or pass skill ID)
     Install {
-        /// Source repo: owner/repo, git URL, or local path
+        /// skills.sh command or skill ID
         source: String,
         /// Skill ID (directory name containing SKILL.md)
         id: String,
-        /// Git ref to clone
-        #[arg(long, default_value = "main")]
-        git_ref: String,
-        /// Subpath in repo to search
-        #[arg(long, default_value = ".")]
-        repo_path: String,
         /// Scope: user (default) or project
         #[arg(long, default_value = "user")]
         scope: String,

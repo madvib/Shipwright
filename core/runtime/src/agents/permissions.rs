@@ -2,6 +2,7 @@ use crate::fs_util::write_atomic;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -51,10 +52,6 @@ pub struct NetworkPermissions {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct AgentLimits {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_cost_per_session: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_turns: Option<u32>,
     #[serde(default = "default_require_confirmation")]
     pub require_confirmation: Vec<String>,
 }
@@ -184,8 +181,6 @@ impl Default for NetworkPermissions {
 impl Default for AgentLimits {
     fn default() -> Self {
         Self {
-            max_cost_per_session: Some(5.0),
-            max_turns: Some(50),
             require_confirmation: default_require_confirmation(),
         }
     }
@@ -226,4 +221,46 @@ pub fn save_permissions(ship_dir: PathBuf, permissions: &Permissions) -> Result<
         fs::create_dir_all(parent)?;
     }
     write_atomic(&path, toml::to_string(permissions)?)
+}
+
+fn canonical_tool_ids() -> Vec<String> {
+    let mut ids = BTreeSet::new();
+    for value in default_tool_allow()
+        .into_iter()
+        .chain(default_tool_deny())
+        .chain(default_require_confirmation())
+    {
+        let trimmed = value.trim();
+        if trimmed.is_empty() || trimmed == "*" || trimmed.starts_with("mcp__") {
+            continue;
+        }
+        ids.insert(trimmed.to_string());
+    }
+    ids.into_iter().collect()
+}
+
+pub fn permission_tool_ids_for_provider(provider_id: &str) -> Vec<String> {
+    let mut ids: BTreeSet<String> = canonical_tool_ids().into_iter().collect();
+    if provider_id == "gemini" {
+        ids.insert("run_shell_command".to_string());
+    }
+    ids.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::permission_tool_ids_for_provider;
+
+    #[test]
+    fn provider_tool_vocab_excludes_wildcards_and_mcp_patterns() {
+        let ids = permission_tool_ids_for_provider("claude");
+        assert!(!ids.iter().any(|id| id == "*"));
+        assert!(!ids.iter().any(|id| id.starts_with("mcp__")));
+    }
+
+    #[test]
+    fn gemini_vocab_includes_shell_tool_id() {
+        let ids = permission_tool_ids_for_provider("gemini");
+        assert!(ids.iter().any(|id| id == "run_shell_command"));
+    }
 }

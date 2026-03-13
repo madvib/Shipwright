@@ -600,6 +600,8 @@ impl ShipServer {
             target_id: req.target_id,
             active_mode: req.mode_id,
             providers: None,
+            mcp_servers: None,
+            skills: None,
             is_worktree: req.is_worktree,
             worktree_path: req.worktree_path,
             context_hash: None,

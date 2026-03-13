@@ -48,7 +48,7 @@ pub use migration::{
 };
 pub use permissions::{
     AgentLimits, CommandPermissions, FsPermissions, NetworkPermissions, NetworkPolicy, Permissions,
-    ToolPermissions, get_permissions, save_permissions,
+    ToolPermissions, get_permissions, permission_tool_ids_for_provider, save_permissions,
 };
 pub use plugin::{Plugin, PluginRegistry};
 // NOTE: ship-specific project primitives stay under `runtime::project`.

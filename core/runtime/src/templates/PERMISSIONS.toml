@@ -26,7 +26,5 @@ policy = "none"
 allow_hosts = []
 
 [agent]
-# Optional runtime guardrails.
-max_cost_per_session = 5.0
-max_turns = 50
+# Tool patterns that require explicit confirmation.
 require_confirmation = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]

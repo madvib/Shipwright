@@ -268,6 +268,12 @@ pub fn update_feature_content(ship_dir: &Path, id: &str, content: &str) -> Resul
     let mut entry = get_feature_db(ship_dir, &resolved_id)?
         .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
     entry.feature.body = content.to_string();
+    if let Ok(parsed) = Feature::from_markdown(content) {
+        let parsed_title = parsed.metadata.title.trim();
+        if !parsed_title.is_empty() {
+            entry.feature.metadata.title = parsed_title.to_string();
+        }
+    }
     update_feature(ship_dir, &resolved_id, entry.feature)
 }
 

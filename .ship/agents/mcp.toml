@@ -1,14 +1,13 @@
-[mcp.servers.mcp-docs]
+[mcp.servers.antigravity]
 id = ""
-name = "MCP Docs Bridge"
-command = ""
-args = []
+name = "Antigravity"
+command = "antigravity"
+args = ["mcp"]
 scope = "project"
-server_type = "http"
-url = "http://127.0.0.1:7773/mcp"
+server_type = "stdio"
 disabled = true
 
-[mcp.servers.mcp-docs.env]
+[mcp.servers.antigravity.env]
 
 [mcp.servers.rust-docs]
 id = ""
@@ -22,21 +21,6 @@ disabled = true
 
 [mcp.servers.rust-docs.env]
 
-[mcp.servers.shadcn]
-id = ""
-name = "shadcn/ui"
-command = "pnpm"
-args = [
-    "dlx",
-    "shadcn@latest",
-    "mcp",
-]
-scope = "project"
-server_type = "stdio"
-disabled = false
-
-[mcp.servers.shadcn.env]
-
 [mcp.servers.frontend-docs]
 id = ""
 name = "Frontend Docs Bridge"
@@ -48,6 +32,30 @@ url = "http://127.0.0.1:7772/mcp"
 disabled = true
 
 [mcp.servers.frontend-docs.env]
+
+[mcp.servers.mcp-docs]
+id = ""
+name = "MCP Docs Bridge"
+command = ""
+args = []
+scope = "project"
+server_type = "http"
+url = "http://127.0.0.1:7773/mcp"
+disabled = true
+
+[mcp.servers.mcp-docs.env]
+
+[mcp.servers.ship]
+id = ""
+name = "Ship"
+command = "ship"
+args = ["mcp"]
+scope = "project"
+server_type = "stdio"
+disabled = false
+timeout_secs = 30
+
+[mcp.servers.ship.env]
 
 [mcp.servers.github]
 id = ""
@@ -64,29 +72,6 @@ disabled = true
 [mcp.servers.github.env]
 GITHUB_TOKEN = "${GITHUB_TOKEN}"
 
-[mcp.servers.antigravity]
-id = ""
-name = "Antigravity"
-command = "antigravity"
-args = ["mcp"]
-scope = "project"
-server_type = "stdio"
-disabled = true
-
-[mcp.servers.antigravity.env]
-
-[mcp.servers.ship]
-id = ""
-name = "Ship"
-command = "ship"
-args = ["mcp"]
-scope = "project"
-server_type = "stdio"
-disabled = false
-timeout_secs = 30
-
-[mcp.servers.ship.env]
-
 [mcp.servers.playwright]
 id = ""
 name = "Playwright MCP"
@@ -97,3 +82,18 @@ server_type = "stdio"
 disabled = true
 
 [mcp.servers.playwright.env]
+
+[mcp.servers.shadcn]
+id = ""
+name = "shadcn/ui"
+command = "pnpm"
+args = [
+    "dlx",
+    "shadcn@latest",
+    "mcp",
+]
+scope = "project"
+server_type = "stdio"
+disabled = false
+
+[mcp.servers.shadcn.env]
