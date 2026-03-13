@@ -7,4 +7,6 @@ import { Workspace } from '@/bindings';
  */
 export interface RuntimeWorkspace extends Workspace {
   release_id?: string | null;
+  mcp_servers?: string[];
+  skills?: string[];
 }

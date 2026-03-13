@@ -112,7 +112,7 @@ export default function ReleaseMetadataPanel({
             <Input
               value={version}
               className="h-8 border-border/40 bg-background/30 text-xs transition-colors hover:bg-background/50 focus:bg-background"
-              placeholder="v0.1.0-alpha"
+              placeholder="v0.1.1-alpha"
               onChange={(event) => updateVersion(event.target.value)}
             />
           </div>

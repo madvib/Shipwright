@@ -1,6 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { ADR, AdrStatus } from '@/bindings';
-import { generateAdrCmd } from '@/lib/platform/tauri/commands';
 import AdrEditor from './AdrEditor';
 import { loadProjectTemplate } from '@/components/editor/templateLoader';
 import { Alert, AlertDescription, Button, DetailSheet, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
@@ -158,18 +157,6 @@ export default function NewAdrModal({ onClose, onSubmit, tagSuggestions, adrSugg
             tagSuggestions={tagSuggestions}
             adrSuggestions={adrSuggestions}
             onInsertTemplate={insertTemplate}
-            mcpEnabled={false}
-            sampleLabel="Generate Draft"
-            sampleRequiresMcp={false}
-            onMcpSample={async () => {
-              try {
-                const title = draft.metadata.title.trim() || 'Untitled ADR';
-                return await generateAdrCmd(title, draft.context.trim());
-              } catch (err) {
-                setError(String(err));
-                return null;
-              }
-            }}
           />
         </div>
       </form>

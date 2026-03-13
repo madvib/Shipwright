@@ -99,6 +99,40 @@ interface ReleaseReadinessSummary {
   ready: boolean;
 }
 
+function parseVersionParts(rawVersion: string): {
+  major: number;
+  minor: number;
+  patch: number;
+  suffix: string | null;
+} | null {
+  const match = rawVersion.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    suffix: match[4] ?? null,
+  };
+}
+
+function deriveNextReleaseVersion(releases: ReleaseInfo[]): string {
+  const parsed = releases
+    .map((release) => parseVersionParts(release.version ?? ''))
+    .filter((value): value is NonNullable<ReturnType<typeof parseVersionParts>> => value !== null);
+
+  if (parsed.length === 0) return 'v0.1.1-alpha';
+
+  parsed.sort((left, right) => {
+    if (left.major !== right.major) return left.major - right.major;
+    if (left.minor !== right.minor) return left.minor - right.minor;
+    return left.patch - right.patch;
+  });
+  const latest = parsed[parsed.length - 1];
+  const nextPatch = latest.patch + 1;
+  const suffix = latest.suffix ?? 'alpha';
+  return `v${latest.major}.${latest.minor}.${nextPatch}-${suffix}`;
+}
+
 export default function ReleasesPage({
   releases,
   features,
@@ -124,6 +158,7 @@ export default function ReleasesPage({
   const [viewFilter, setViewFilter] = useState<ReleaseView>('all');
   const [activeTargetsOnly, setActiveTargetsOnly] = useState(false);
   const { metricsByFile: featureMetricsByFile } = useFeatureChecklistMetrics(features);
+  const defaultReleaseVersion = useMemo(() => deriveNextReleaseVersion(releases), [releases]);
 
   const matchesReleaseReference = (reference: string | null | undefined, release: ReleaseInfo) =>
     Boolean(reference) &&
@@ -131,7 +166,7 @@ export default function ReleasesPage({
 
   const createInitialReleaseDocument = () => {
     return `+++
-  version = "v0.1.0-alpha"
+  version = "${defaultReleaseVersion}"
 status = "planned"
 supported = false
 target_date = ""
@@ -159,7 +194,7 @@ tags = []
 
   const documentModel = useMemo(() => splitFrontmatterDocument(content), [content]);
   const fm = documentModel.frontmatter;
-  const currentVersion = readFrontmatterStringField(fm, 'version') || 'v0.1.0-alpha';
+  const currentVersion = readFrontmatterStringField(fm, 'version') || defaultReleaseVersion;
   const currentStatus = readFrontmatterStringField(fm, 'status') || 'planned';
   const currentSupported = readFrontmatterBooleanField(fm, 'supported') ?? false;
   const currentTargetDate = readFrontmatterStringField(fm, 'target_date');
@@ -368,7 +403,7 @@ tags = []
   useEffect(() => {
     if (createOpen) return;
     setContent(createInitialReleaseDocument());
-  }, [createOpen]);
+  }, [createOpen, defaultReleaseVersion]);
 
   if (selectedRelease) {
     return (

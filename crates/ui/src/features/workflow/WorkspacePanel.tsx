@@ -12,7 +12,13 @@ import {
   type WorkspaceRepairReport,
 } from '@/lib/platform/tauri/commands';
 import { useWorkspace, useShip } from '@/lib/hooks/workspace/WorkspaceContext';
-import { FEATURES_ROUTE, OVERVIEW_ROUTE, RELEASES_ROUTE } from '@/lib/constants/routes';
+import {
+  AGENTS_MCP_ROUTE,
+  AGENTS_PERMISSIONS_ROUTE,
+  FEATURES_ROUTE,
+  OVERVIEW_ROUTE,
+  RELEASES_ROUTE,
+} from '@/lib/constants/routes';
 
 // Subcomponents
 import { WorkspaceSidebar } from './workspace/WorkspaceSidebar';
@@ -20,6 +26,7 @@ import { WorkspaceHeader } from './workspace/WorkspaceHeader';
 import { WorkspaceDashboard } from './workspace/WorkspaceDashboard';
 import { WorkspaceTerminalTray } from './workspace/WorkspaceTerminalTray';
 import { WorkspaceHeaderActions } from './workspace/WorkspaceHeaderActions';
+import { WorkspaceAgentDialog } from './workspace/WorkspaceAgentDialog';
 
 // Hooks
 import { useWorkspaceState } from './workspace/useWorkspaceState';
@@ -30,6 +37,23 @@ import { WorkspaceGraphStatus } from './components/WorkspaceLifecycleGraph';
 import { cn } from '@/lib/utils';
 
 type SessionErrorSurface = 'alert' | 'silent';
+
+function normalizeIdList(values: string[]): string[] {
+  const normalized = values.map((value) => value.trim()).filter((value) => value.length > 0);
+  return Array.from(new Set(normalized)).sort((a, b) => a.localeCompare(b));
+}
+
+function hasListChanged(previous: string[], next: string[]): boolean {
+  const prevNormalized = normalizeIdList(previous);
+  const nextNormalized = normalizeIdList(next);
+  if (prevNormalized.length !== nextNormalized.length) return true;
+  for (let index = 0; index < prevNormalized.length; index += 1) {
+    if (prevNormalized[index] !== nextNormalized[index]) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export default function WorkspacePanel() {
   const navigate = useNavigate();
@@ -45,6 +69,8 @@ export default function WorkspacePanel() {
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [archivingWorkspace, setArchivingWorkspace] = useState(false);
   const [restartingSession, setRestartingSession] = useState(false);
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
+  const [savingWorkspaceAgent, setSavingWorkspaceAgent] = useState(false);
   const terminalResizerRef = useRef(false);
 
   const createIntentNonceRef = useRef(0);
@@ -224,6 +250,29 @@ export default function WorkspacePanel() {
     }
   };
 
+  const applyWorkspaceConfig = async (
+    branch: string,
+    input: {
+      workspaceType: 'feature' | 'patch' | 'service';
+      environmentId?: string | null;
+      providers?: string[];
+      mcpServers?: string[];
+      skills?: string[];
+      featureId?: string | null;
+      releaseId?: string | null;
+      isWorktree?: boolean;
+      worktreePath?: string | null;
+    },
+    fallbackError: string,
+  ) => {
+    const result = await createWorkspaceCmd(branch, input);
+    if (result.status === 'error') {
+      state.setError(result.error || fallbackError);
+      return false;
+    }
+    return true;
+  };
+
   const handleUpdateLinks = async (nextFeatureId: string | null, nextReleaseId: string | null) => {
     if (!state.detail) return;
     if (nextFeatureId && nextReleaseId) {
@@ -245,15 +294,13 @@ export default function WorkspacePanel() {
           )?.id ?? nextReleaseId
         : null;
 
-      const res = await createWorkspaceCmd(state.detail.branch, {
+      const ok = await applyWorkspaceConfig(state.detail.branch, {
         workspaceType: state.detail.workspaceType,
         environmentId: state.detail.environmentId,
         featureId: nextFeatureId,
         releaseId,
-        modeId: state.detail.activeMode ?? null,
-      });
-      if (res.status === 'error') {
-        state.setError(res.error || 'Failed to update workspace links.');
+      }, 'Failed to update workspace links.');
+      if (!ok) {
         return;
       }
       await state.load();
@@ -317,6 +364,7 @@ export default function WorkspacePanel() {
     branch: string;
     workspaceType: 'feature' | 'patch' | 'service';
     environmentId: string | null;
+    providers: string[];
     featureId: string | null;
     releaseId: string | null;
     isWorktree: boolean;
@@ -324,16 +372,16 @@ export default function WorkspacePanel() {
   }) => {
     setCreatingWorkspace(true);
     try {
-      const result = await createWorkspaceCmd(input.branch, {
+      const ok = await applyWorkspaceConfig(input.branch, {
         workspaceType: input.workspaceType,
         environmentId: input.environmentId,
+        providers: input.providers,
         featureId: input.featureId,
         releaseId: input.releaseId,
         isWorktree: input.isWorktree,
         worktreePath: input.worktreePath,
-      });
-      if (result.status === 'error') {
-        state.setError(result.error || 'Failed to create workspace.');
+      }, 'Failed to create workspace.');
+      if (!ok) {
         return;
       }
       await state.load();
@@ -354,6 +402,8 @@ export default function WorkspacePanel() {
     const handleMouseUp = () => {
       terminalResizerRef.current = false;
       document.body.style.cursor = 'default';
+      document.body.style.userSelect = '';
+      (document.body.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = '';
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -361,6 +411,9 @@ export default function WorkspacePanel() {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = '';
+      (document.body.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = '';
     };
   }, []);
 
@@ -460,6 +513,55 @@ export default function WorkspacePanel() {
     }
   };
 
+  const handleUpdateAgentConfiguration = async (input: {
+    providers: string[];
+    mcpServers: string[];
+    skills: string[];
+  }) => {
+    if (!state.detail) return;
+    const previousProviders = state.detail.providers ?? [];
+    const previousMcpServers = state.detail.mcpServers ?? [];
+    const previousSkills = state.detail.skills ?? [];
+    const providersChanged = hasListChanged(previousProviders, input.providers);
+    const mcpChanged = hasListChanged(previousMcpServers, input.mcpServers);
+    const skillsChanged = hasListChanged(previousSkills, input.skills);
+    const configChanged = providersChanged || mcpChanged || skillsChanged;
+    const hadActiveSession = state.activeSession?.status === 'active';
+    setSavingWorkspaceAgent(true);
+    try {
+      const ok = await applyWorkspaceConfig(state.detail.branch, {
+        workspaceType: state.detail.workspaceType,
+        providers: input.providers,
+        mcpServers: input.mcpServers,
+        skills: input.skills,
+        featureId: state.detail.featureId,
+        releaseId: state.detail.releaseId,
+        isWorktree: state.detail.isWorktree,
+        worktreePath: state.detail.worktreePath,
+      }, 'Failed to update workspace agent configuration.');
+      if (!ok) {
+        return;
+      }
+      const syncResult = await syncWorkspaceCmd(state.detail.branch);
+      if (syncResult.status === 'error') {
+        state.setError(syncResult.error || 'Workspace config saved but sync failed.');
+        return;
+      }
+      await state.load();
+      if (hadActiveSession && mcpChanged) {
+        state.setError(
+          'Workspace MCP configuration changed and was synced. Restart the active agent session to load updated MCP tools.',
+        );
+      } else if (hadActiveSession && configChanged) {
+        state.setError(
+          'Workspace agent configuration changed and was synced. Restart the active session to refresh context.',
+        );
+      }
+    } finally {
+      setSavingWorkspaceAgent(false);
+    }
+  };
+
   useEffect(() => {
     workspaceUi.setIsWorkspaceFocusMode(true);
     return () => workspaceUi.setIsWorkspaceFocusMode(false);
@@ -527,9 +629,12 @@ export default function WorkspacePanel() {
                 id: release.id,
                 label: release.version,
               }))}
+              providerOptions={state.providerInfos}
               createIntent={createIntent}
               onCreateIntentConsumed={() => setCreateIntent(null)}
               onCreateWorkspace={handleCreateWorkspace}
+              canConfigureAgent={Boolean(state.detail)}
+              onOpenAgentConfig={() => setAgentDialogOpen(true)}
               currentTheme={workspaceUi.config.theme}
               onThemeChange={(theme) => workspaceUi.handleSaveSettings({ ...workspaceUi.config, theme })}
             />
@@ -573,7 +678,7 @@ export default function WorkspacePanel() {
             setSessionProvider={setSessionProvider}
             restartingSession={restartingSession}
             onRestartSession={handleRestartSession}
-                        onSync={handleSync}
+            onSync={handleSync}
             syncing={state.syncing}
             onArchive={handleArchive}
             archiving={archivingWorkspace}
@@ -620,8 +725,12 @@ export default function WorkspacePanel() {
             maximized={terminalMaximized}
             height={terminalHeight}
             onResizerMouseDown={(_e) => {
+              _e.preventDefault();
+              _e.stopPropagation();
               terminalResizerRef.current = true;
               document.body.style.cursor = 'ns-resize';
+              document.body.style.userSelect = 'none';
+              (document.body.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = 'none';
             }}
             terminalContainerRef={terminal.terminalContainerRef}
             onSendSigInt={() => terminal.sendTerminalInput('\x03')}
@@ -631,6 +740,27 @@ export default function WorkspacePanel() {
             runtimePerf={runtimePerf}
           />
         )}
+
+        {state.detail ? (
+          <WorkspaceAgentDialog
+            open={agentDialogOpen}
+            onOpenChange={setAgentDialogOpen}
+            branch={state.detail.branch}
+            workspaceType={state.detail.workspaceType}
+            providerInfos={state.providerInfos}
+            currentProviders={state.detail.providers ?? []}
+            currentMcpServers={state.detail.mcpServers ?? []}
+            currentSkills={state.detail.skills ?? []}
+            saving={savingWorkspaceAgent}
+            onOpenMcpSettings={() => {
+              void navigate({ to: AGENTS_MCP_ROUTE });
+            }}
+            onOpenPermissionsSettings={() => {
+              void navigate({ to: AGENTS_PERMISSIONS_ROUTE });
+            }}
+            onSave={handleUpdateAgentConfiguration}
+          />
+        ) : null}
       </main>
     </div>
   );

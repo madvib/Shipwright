@@ -10,8 +10,6 @@ import {
     Bot,
     Settings,
     FileStack,
-    Zap,
-    Check,
     RefreshCw,
     Layers3,
     Shield,
@@ -216,35 +214,6 @@ export function SearchModal() {
                         <span>Settings</span>
                     </CommandItem>
                 </CommandGroup>
-
-                <CommandSeparator />
-
-                {!workspace.noProject && (
-                    <CommandGroup heading="Agent Mode">
-                        <CommandItem
-                            onSelect={() => runCommand(() => workspace.handleSetActiveMode(null))}
-                        >
-                            <Zap className="mr-2 h-4 w-4" />
-                            <span className="flex-1">Default Mode</span>
-                            {workspace.activeModeId === null && <Check className="ml-2 h-4 w-4 text-primary" />}
-                        </CommandItem>
-                        {workspace.modes.map((mode) => (
-                            <CommandItem
-                                key={mode.id}
-                                onSelect={() => runCommand(() => workspace.handleSetActiveMode(mode.id))}
-                            >
-                                <Zap className="mr-2 h-4 w-4" />
-                                <div className="flex-1 min-w-0">
-                                    <span>{mode.name}</span>
-                                    {mode.description && (
-                                        <span className="ml-2 text-xs text-muted-foreground">{mode.description}</span>
-                                    )}
-                                </div>
-                                {workspace.activeModeId === mode.id && <Check className="ml-2 h-4 w-4 text-primary" />}
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
-                )}
 
                 <CommandSeparator />
 

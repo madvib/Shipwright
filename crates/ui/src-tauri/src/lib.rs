@@ -22,10 +22,11 @@ use runtime::{
     install_skill_from_source, list_catalog, list_catalog_by_kind, list_effective_skills,
     list_events_since, list_models, list_providers, list_skills, list_user_skills,
     list_workspace_sessions, list_workspaces, log_action, read_log_entries, repair_workspace,
-    resolve_agent_config, search_catalog, set_workspace_active_mode, start_workspace_session,
-    sync_workspace, transition_workspace_status, update_skill, update_user_skill, AgentConfig,
-    CatalogEntry, CatalogKind, CreateWorkspaceRequest, EndWorkspaceSessionRequest, EventRecord,
-    LogEntry, ModelInfo, ProviderInfo, ShipWorkspaceKind, Skill, SkillInstallScope, Workspace,
+    permission_tool_ids_for_provider, resolve_agent_config, search_catalog,
+    set_workspace_active_mode, start_workspace_session, sync_workspace,
+    transition_workspace_status, update_skill, update_user_skill, AgentConfig, CatalogEntry,
+    CatalogKind, CreateWorkspaceRequest, EndWorkspaceSessionRequest, EventRecord, LogEntry,
+    ModelInfo, ProviderInfo, ShipWorkspaceKind, Skill, SkillInstallScope, Workspace,
     WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession, WorkspaceStatus,
 };
 use serde::{Deserialize, Serialize};
@@ -163,6 +164,15 @@ pub struct ProviderImportReport {
     pub imported_mcp_servers: usize,
     pub imported_skills: usize,
     pub imported_permissions: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct ProviderToolVocabularyEntry {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub enabled: bool,
+    pub installed: bool,
+    pub tool_ids: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -2155,6 +2165,33 @@ fn save_permissions_cmd(
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+fn list_permission_tool_vocabulary_cmd(
+    state: State<AppState>,
+) -> Result<Vec<ProviderToolVocabularyEntry>, String> {
+    let enabled: HashSet<String> = if let Ok(dir) = get_active_dir(&state) {
+        get_config(Some(dir))
+            .map(|config| config.providers.into_iter().collect())
+            .unwrap_or_default()
+    } else {
+        get_config(None)
+            .map(|config| config.providers.into_iter().collect())
+            .unwrap_or_default()
+    };
+
+    Ok(runtime::agent_export::PROVIDERS
+        .iter()
+        .map(|descriptor| ProviderToolVocabularyEntry {
+            provider_id: descriptor.id.to_string(),
+            provider_name: descriptor.name.to_string(),
+            enabled: enabled.contains(descriptor.id),
+            installed: detect_binary(descriptor.binary),
+            tool_ids: permission_tool_ids_for_provider(descriptor.id),
+        })
+        .collect())
+}
+
 // ─── Commands: Workspace ──────────────────────────────────────────────────────
 
 const WORKSPACE_EDITOR_ALIASES_CURSOR: &[&str] = &["cursor"];
@@ -2224,12 +2261,24 @@ const SUPPORTED_WORKSPACE_EDITORS: [(&str, &str, &str, &[&str]); 11] = [
 ];
 
 fn resolve_command_in_path(binary: &str) -> Option<PathBuf> {
-    let path_env = match std::env::var_os("PATH") {
-        Some(value) => value,
-        None => return None,
-    };
+    let mut dirs = Vec::<PathBuf>::new();
+    let mut seen = HashSet::<PathBuf>::new();
 
-    for dir in std::env::split_paths(&path_env) {
+    if let Some(path_env) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_env) {
+            if seen.insert(dir.clone()) {
+                dirs.push(dir);
+            }
+        }
+    }
+
+    for dir in fallback_command_dirs() {
+        if seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+
+    for dir in dirs {
         let candidate = dir.join(binary);
         if candidate.is_file() {
             return Some(candidate);
@@ -2237,22 +2286,55 @@ fn resolve_command_in_path(binary: &str) -> Option<PathBuf> {
 
         #[cfg(windows)]
         {
-            let exts = ["exe", "cmd", "bat", "com"];
-            if exts
-                .iter()
-                .map(|ext| dir.join(format!("{}.{}", binary, ext)))
-                .find(|path| path.is_file())
-                .is_some()
-            {
-                return exts
-                    .iter()
-                    .map(|ext| dir.join(format!("{}.{}", binary, ext)))
-                    .find(|path| path.is_file());
+            for ext in ["exe", "cmd", "bat", "com"] {
+                let with_ext = dir.join(format!("{}.{}", binary, ext));
+                if with_ext.is_file() {
+                    return Some(with_ext);
+                }
             }
         }
     }
 
     None
+}
+
+#[cfg(target_os = "macos")]
+fn fallback_command_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/opt/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".cargo/bin"));
+        dirs.push(home.join(".local/bin"));
+        dirs.push(home.join("bin"));
+    }
+    dirs
+}
+
+#[cfg(all(not(target_os = "macos"), not(windows)))]
+fn fallback_command_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".cargo/bin"));
+        dirs.push(home.join(".local/bin"));
+        dirs.push(home.join("bin"));
+    }
+    dirs
+}
+
+#[cfg(windows)]
+fn fallback_command_dirs() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 fn normalize_workspace_editor_id(raw: &str) -> Option<&'static str> {
@@ -2460,11 +2542,23 @@ fn resolve_shell_command() -> String {
 
 fn resolve_terminal_command(provider: &str) -> String {
     match provider {
-        "claude" => "claude".to_string(),
-        "codex" => "codex".to_string(),
-        "gemini" => "gemini".to_string(),
+        "claude" => resolve_command_in_path("claude")
+            .unwrap_or_else(|| PathBuf::from("claude"))
+            .to_string_lossy()
+            .to_string(),
+        "codex" => resolve_command_in_path("codex")
+            .unwrap_or_else(|| PathBuf::from("codex"))
+            .to_string_lossy()
+            .to_string(),
+        "gemini" => resolve_command_in_path("gemini")
+            .unwrap_or_else(|| PathBuf::from("gemini"))
+            .to_string_lossy()
+            .to_string(),
         "shell" => resolve_shell_command(),
-        other => other.to_string(),
+        other => resolve_command_in_path(other)
+            .unwrap_or_else(|| PathBuf::from(other))
+            .to_string_lossy()
+            .to_string(),
     }
 }
 
@@ -2591,16 +2685,23 @@ async fn sync_workspace_cmd(
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceAgentOverridesInput {
+    providers: Option<Vec<String>>,
+    mcp_servers: Option<Vec<String>>,
+    skills: Option<Vec<String>>,
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn create_workspace_cmd(
     branch: String,
     workspace_type: Option<String>,
     environment_id: Option<String>,
+    agent: Option<WorkspaceAgentOverridesInput>,
     feature_id: Option<String>,
-    target_id: Option<String>,
     release_id: Option<String>,
-    mode_id: Option<String>,
     is_worktree: Option<bool>,
     worktree_path: Option<String>,
     state: State<'_, AppState>,
@@ -2636,9 +2737,11 @@ async fn create_workspace_cmd(
                 branch: branch_key,
                 workspace_type: parsed_workspace_type,
                 environment_id,
+                providers: agent.as_ref().and_then(|cfg| cfg.providers.clone()),
+                mcp_servers: agent.as_ref().and_then(|cfg| cfg.mcp_servers.clone()),
+                skills: agent.and_then(|cfg| cfg.skills),
                 feature_id,
-                target_id: target_id.or(release_id),
-                active_mode: mode_id,
+                target_id: release_id,
                 is_worktree,
                 worktree_path: resolved_worktree_path,
                 ..CreateWorkspaceRequest::default()
@@ -3295,6 +3398,25 @@ async fn start_workspace_terminal_cmd(
                 let command = resolve_terminal_command(&provider_for_spawn);
                 let mut cmd = CommandBuilder::new(command.as_str());
                 cmd.cwd(&target_dir);
+                let inherited_term = std::env::var("TERM")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .unwrap_or_default();
+                if inherited_term.is_empty() || inherited_term.eq_ignore_ascii_case("dumb") {
+                    cmd.env("TERM", "xterm-256color");
+                }
+                let inherited_colorterm = std::env::var("COLORTERM")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .unwrap_or_default();
+                if inherited_colorterm.is_empty() {
+                    cmd.env("COLORTERM", "truecolor");
+                }
+                #[cfg(not(windows))]
+                if provider_for_spawn == "shell" {
+                    // Launch a login shell so PATH/bootstrap scripts from user profile are loaded.
+                    cmd.arg("-l");
+                }
                 let child = pty_pair.slave.spawn_command(cmd).map_err(|e| {
                     friendly_terminal_spawn_error(
                         &provider_for_spawn,
@@ -5949,14 +6071,14 @@ fn get_agent_config_cmd(state: State<AppState>) -> Result<AgentConfig, String> {
 
 // ─── Commands: Catalog ────────────────────────────────────────────────────────
 
-/// Return all embedded catalog entries (skills + MCP servers).
+/// Return all embedded catalog entries (MCP servers).
 #[tauri::command]
 #[specta::specta]
 fn list_catalog_cmd() -> Vec<CatalogEntry> {
     list_catalog()
 }
 
-/// Return catalog entries filtered by kind ("skill" or "mcp-server").
+/// Return catalog entries filtered by kind.
 #[tauri::command]
 #[specta::specta]
 fn list_catalog_by_kind_cmd(kind: CatalogKind) -> Vec<CatalogEntry> {
@@ -6123,6 +6245,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // Permissions
             get_permissions_cmd,
             save_permissions_cmd,
+            list_permission_tool_vocabulary_cmd,
             // Workspace
             list_workspace_editors_cmd,
             list_git_branches_cmd,
@@ -6313,9 +6436,27 @@ mod tests {
 
     #[test]
     fn terminal_command_resolves_shell_and_named_providers() {
-        assert_eq!(resolve_terminal_command("claude"), "claude");
-        assert_eq!(resolve_terminal_command("codex"), "codex");
-        assert_eq!(resolve_terminal_command("gemini"), "gemini");
+        let claude = resolve_terminal_command("claude");
+        let codex = resolve_terminal_command("codex");
+        let gemini = resolve_terminal_command("gemini");
+        let claude_leaf = Path::new(&claude)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or(&claude)
+            .to_ascii_lowercase();
+        let codex_leaf = Path::new(&codex)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or(&codex)
+            .to_ascii_lowercase();
+        let gemini_leaf = Path::new(&gemini)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or(&gemini)
+            .to_ascii_lowercase();
+        assert!(claude_leaf.starts_with("claude"));
+        assert!(codex_leaf.starts_with("codex"));
+        assert!(gemini_leaf.starts_with("gemini"));
         assert_eq!(resolve_terminal_command("custom-bin"), "custom-bin");
 
         let shell = resolve_terminal_command("shell");
@@ -6374,6 +6515,8 @@ mod tests {
             target_id: None,
             active_mode: None,
             providers: Vec::new(),
+            mcp_servers: Vec::new(),
+            skills: Vec::new(),
             resolved_at: "2026-03-06T00:00:00Z".parse().expect("valid timestamp"),
             is_worktree: true,
             worktree_path: Some("/tmp/worktrees/feature-test".to_string()),

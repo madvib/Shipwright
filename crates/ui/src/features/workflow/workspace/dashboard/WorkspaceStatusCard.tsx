@@ -18,7 +18,7 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react';
-import { type WorkspaceRepairReport } from '@/lib/platform/tauri/commands';
+import { type WorkspaceProviderMatrix, type WorkspaceRepairReport } from '@/lib/platform/tauri/commands';
 import { WorkspaceGraphStatus } from '../../components/WorkspaceLifecycleGraph';
 import { WorkspaceRow } from '../types';
 
@@ -44,6 +44,7 @@ interface WorkspaceStatusCardProps {
   onRepair: () => void;
   repairing: boolean;
   lastRepairReport: WorkspaceRepairReport | null;
+  providerMatrix: WorkspaceProviderMatrix | null;
 }
 
 export function WorkspaceStatusCard({
@@ -68,6 +69,7 @@ export function WorkspaceStatusCard({
   onRepair,
   repairing,
   lastRepairReport,
+  providerMatrix,
 }: WorkspaceStatusCardProps) {
   const [anchorSearch, setAnchorSearch] = useState('');
 
@@ -104,6 +106,10 @@ export function WorkspaceStatusCard({
     : linkReleaseId
       ? 'Release linked'
       : 'No anchor linked';
+  const effectiveProviders = (detail.providers ?? []).length > 0
+    ? detail.providers
+    : (providerMatrix?.allowed_providers ?? []);
+  const providerSource = providerMatrix?.source ?? ((detail.providers ?? []).length > 0 ? 'workspace override' : 'default');
 
   return (
     <section className="rounded-xl border bg-card p-3 shadow-sm">
@@ -338,6 +344,43 @@ export function WorkspaceStatusCard({
             <TooltipContent>Archive workspace</TooltipContent>
           </Tooltip>
         </div>
+      </div>
+
+      <div className="mt-2 rounded-md border bg-muted/15 px-2.5 py-2 text-[10px]">
+        <p className="mb-1 font-semibold uppercase tracking-wide text-muted-foreground">Effective Agent Config</p>
+        <div className="grid gap-2 md:grid-cols-3">
+          <div className="space-y-1">
+            <p className="text-muted-foreground">providers · {providerSource}</p>
+            <div className="flex flex-wrap gap-1">
+              {effectiveProviders.length > 0 ? (
+                effectiveProviders.slice(0, 6).map((provider) => (
+                  <Badge key={provider} variant="outline" className="h-4 px-1.5 text-[9px]">
+                    {provider}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-muted-foreground">none</span>
+              )}
+              {effectiveProviders.length > 6 ? (
+                <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
+                  +{effectiveProviders.length - 6}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-muted-foreground">mcp servers</p>
+            <p className="font-mono text-[10px]">{detail.mcpServers.length > 0 ? detail.mcpServers.join(', ') : 'none'}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-muted-foreground">skills</p>
+            <p className="font-mono text-[10px]">{detail.skills.length > 0 ? detail.skills.join(', ') : 'none'}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-muted-foreground">
+          generation {detail.configGeneration}
+          {detail.contextHash ? ` · context ${detail.contextHash.slice(0, 10)}…` : ''}
+        </p>
       </div>
 
       {detail.compileError && (

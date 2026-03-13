@@ -202,23 +202,35 @@ export const createWorkspaceCmd = (
   options?: {
     workspaceType?: string | null;
     environmentId?: string | null;
+    providers?: string[] | null;
+    mcpServers?: string[] | null;
+    skills?: string[] | null;
     featureId?: string | null;
     releaseId?: string | null;
-    modeId?: string | null;
     isWorktree?: boolean | null;
     worktreePath?: string | null;
   }
 ): Promise<Result<Workspace, string>> =>
-  invoke('create_workspace_cmd', {
+  {
+  const hasAgentOverride =
+    options?.providers !== undefined || options?.mcpServers !== undefined || options?.skills !== undefined;
+  return invoke('create_workspace_cmd', {
     branch,
     workspaceType: options?.workspaceType ?? null,
     environmentId: options?.environmentId ?? null,
+    agent: hasAgentOverride
+      ? {
+          providers: options?.providers ?? null,
+          mcpServers: options?.mcpServers ?? null,
+          skills: options?.skills ?? null,
+        }
+      : null,
     isWorktree: options?.isWorktree ?? null,
     worktreePath: options?.worktreePath ?? null,
     featureId: options?.featureId ?? null,
     releaseId: options?.releaseId ?? null,
-    modeId: options?.modeId ?? null,
   }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
+  };
 export const activateWorkspaceCmd = (branch: string): Promise<Result<Workspace, string>> =>
   invoke('activate_workspace_cmd', { branch }).then(data => ({ status: 'ok', data } as Result<Workspace, string>)).catch(error => ({ status: 'error', error }));
 export const setWorkspaceModeCmd = (

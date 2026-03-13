@@ -337,6 +337,7 @@ export function WorkspaceDashboard({
         onRepair={onRepair}
         repairing={repairing}
         lastRepairReport={lastRepairReport}
+        providerMatrix={providerMatrix}
       />
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -417,6 +418,7 @@ export function WorkspaceDashboard({
             providerMatrix={providerMatrix}
             sessionProvider={sessionProvider}
             setSessionProvider={setSessionProvider}
+            currentConfigGeneration={detail?.configGeneration}
           />
 
           <WorkspaceProviderPreflightSection

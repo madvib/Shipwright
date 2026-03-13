@@ -71,7 +71,7 @@ export function ReleaseHeaderMetadata({
                         value={version}
                         onChange={(event) => onUpdate({ version: event.target.value })}
                         className="h-7 w-[11rem] border-border/40 bg-transparent px-2 text-xs font-semibold"
-                        placeholder="v0.1.0-alpha"
+                        placeholder="v0.1.1-alpha"
                     />
                 ) : (
                     <span className="font-bold text-foreground">{version}</span>

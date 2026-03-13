@@ -33,6 +33,7 @@ interface WorkspaceSessionSectionProps {
   providerMatrix: WorkspaceProviderMatrix | null;
   sessionProvider: string | null;
   setSessionProvider: (provider: string | null) => void;
+  currentConfigGeneration?: number;
 }
 
 export function WorkspaceSessionSection({
@@ -51,6 +52,7 @@ export function WorkspaceSessionSection({
   providerMatrix,
   sessionProvider,
   setSessionProvider,
+  currentConfigGeneration,
 }: WorkspaceSessionSectionProps) {
 
   const hasActiveSession = activeSession?.status === 'active';
@@ -158,10 +160,24 @@ export function WorkspaceSessionSection({
               </p>
 
               {activeSession?.stale_context && (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5">
-                  <p className="text-[10px] text-amber-700">
-                    Workspace context changed since session start. Restart to refresh context.
-                  </p>
+                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5">
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-amber-700">
+                      Workspace context changed since session start. Restart to load the latest config.
+                    </p>
+                    <p className="text-[10px] text-amber-700/80">
+                      config generation: {activeSession?.config_generation_at_start ?? 'unknown'} → {currentConfigGeneration ?? 'unknown'}
+                    </p>
+                  </div>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={onRestartSession}
+                    disabled={restartingSession || endingSession}
+                  >
+                    Restart
+                  </Button>
                 </div>
               )}
 

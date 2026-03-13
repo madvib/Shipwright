@@ -4,6 +4,7 @@ import {
   ChevronsUpDown,
   CircleHelp,
   Link2,
+  Bot,
   Plus,
   RefreshCw,
   Settings2,
@@ -31,14 +32,17 @@ import {
   TooltipTrigger,
 } from '@ship/ui';
 import { type GitBranchInfo } from '@/lib/platform/tauri/commands';
+import { type ProviderInfo } from '@/bindings';
 
 type WorkspaceTypeOption = 'feature' | 'patch' | 'service';
 type EnvironmentMode = 'template' | 'custom';
+type CreateWorkspaceStep = 'intent' | 'runtime' | 'branch';
 
 interface CreateWorkspaceInput {
   branch: string;
   workspaceType: WorkspaceTypeOption;
   environmentId: string | null;
+  providers: string[];
   featureId: string | null;
   releaseId: string | null;
   isWorktree: boolean;
@@ -60,11 +64,14 @@ interface WorkspaceHeaderActionsProps {
   existingWorkspaceBranches: string[];
   creatingWorkspace: boolean;
   environmentOptions: WorkspaceLinkOption[];
+  providerOptions: ProviderInfo[];
   featureOptions: WorkspaceLinkOption[];
   releaseOptions: WorkspaceLinkOption[];
   createIntent: CreateWorkspaceIntent | null;
   onCreateIntentConsumed: () => void;
   onCreateWorkspace: (input: CreateWorkspaceInput) => Promise<void>;
+  canConfigureAgent: boolean;
+  onOpenAgentConfig: () => void;
   currentTheme?: string;
   onThemeChange?: (theme: 'light' | 'dark') => void;
 }
@@ -74,6 +81,12 @@ const WORKSPACE_TYPE_LABELS: Record<WorkspaceTypeOption, string> = {
   patch: 'Patch',
   service: 'Service',
 };
+
+const CREATE_WORKSPACE_STEPS: Array<{ id: CreateWorkspaceStep; label: string }> = [
+  { id: 'intent', label: 'Intent' },
+  { id: 'runtime', label: 'Runtime' },
+  { id: 'branch', label: 'Branch' },
+];
 
 function labelForOption(option: WorkspaceLinkOption | undefined): string {
   if (!option) return '';
@@ -101,15 +114,19 @@ export function WorkspaceHeaderActions({
   existingWorkspaceBranches,
   creatingWorkspace,
   environmentOptions,
+  providerOptions,
   featureOptions,
   releaseOptions,
   createIntent,
   onCreateIntentConsumed,
   onCreateWorkspace,
+  canConfigureAgent,
+  onOpenAgentConfig,
   currentTheme,
   onThemeChange,
 }: WorkspaceHeaderActionsProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createStep, setCreateStep] = useState<CreateWorkspaceStep>('intent');
 
   const [attachExistingBranch, setAttachExistingBranch] = useState(false);
   const [createSourceBranch, setCreateSourceBranch] = useState<string | null>(null);
@@ -122,6 +139,7 @@ export function WorkspaceHeaderActions({
   const [createEnvironmentMode, setCreateEnvironmentMode] = useState<EnvironmentMode>('template');
   const [createEnvironmentSearch, setCreateEnvironmentSearch] = useState('');
   const [createEnvironmentId, setCreateEnvironmentId] = useState<string | null>(null);
+  const [createProviders, setCreateProviders] = useState<string[]>([]);
 
   const [createLinkSearch, setCreateLinkSearch] = useState('');
   const [createFeatureId, setCreateFeatureId] = useState<string | null>(null);
@@ -162,13 +180,22 @@ export function WorkspaceHeaderActions({
       setCreateEnvironmentMode('template');
       setCreateEnvironmentSearch('');
       setCreateEnvironmentId(null);
+      const connected = providerOptions
+        .filter((provider) => provider.enabled)
+        .map((provider) => provider.id);
+      const installed = providerOptions
+        .filter((provider) => provider.installed)
+        .map((provider) => provider.id);
+      const defaults = connected.length > 0 ? connected : installed;
+      setCreateProviders(defaults);
       setCreateLinkSearch('');
       setCreateFeatureId(null);
       setCreateReleaseId(null);
       setCreateIsWorktree(true);
       setCreateWorktreePath('');
+      setCreateStep('intent');
     },
-    [pickInitialBranch],
+    [pickInitialBranch, providerOptions],
   );
 
   useEffect(() => {
@@ -234,6 +261,7 @@ export function WorkspaceHeaderActions({
   );
 
   const linkedCount = Number(Boolean(createFeatureId || createReleaseId));
+  const providerCount = createProviders.length;
 
   const autoBranch = useMemo(() => {
     const featureLabel = createFeatureId
@@ -269,6 +297,31 @@ export function WorkspaceHeaderActions({
     return override || autoBranch;
   }, [attachExistingBranch, createSourceBranch, createBranchOverride, autoBranch]);
 
+  const currentStepIndex = useMemo(
+    () => CREATE_WORKSPACE_STEPS.findIndex((step) => step.id === createStep),
+    [createStep],
+  );
+  const onFirstStep = currentStepIndex <= 0;
+  const onLastStep = currentStepIndex >= CREATE_WORKSPACE_STEPS.length - 1;
+  const canAdvanceStep = useMemo(() => {
+    if (createStep === 'runtime') {
+      return createProviders.length > 0;
+    }
+    return true;
+  }, [createProviders.length, createStep]);
+
+  const goToNextStep = () => {
+    if (!canAdvanceStep || onLastStep) return;
+    const next = CREATE_WORKSPACE_STEPS[currentStepIndex + 1];
+    if (next) setCreateStep(next.id);
+  };
+
+  const goToPreviousStep = () => {
+    if (onFirstStep) return;
+    const prev = CREATE_WORKSPACE_STEPS[currentStepIndex - 1];
+    if (prev) setCreateStep(prev.id);
+  };
+
 
 
   const handleCreate = async () => {
@@ -283,6 +336,7 @@ export function WorkspaceHeaderActions({
       branch,
       workspaceType: createType,
       environmentId: createEnvironmentMode === 'template' ? createEnvironmentId : null,
+      providers: createProviders,
       featureId: createFeatureId,
       releaseId: createReleaseId,
       isWorktree: createIsWorktree,
@@ -296,6 +350,7 @@ export function WorkspaceHeaderActions({
   const openCreateDialog = (preferredBranch?: string | null) => {
     resetCreateWorkspaceDraft(preferredBranch);
     setCreateDialogOpen(true);
+    setCreateStep('intent');
   };
 
   const renderLinkSection = (
@@ -346,6 +401,20 @@ export function WorkspaceHeaderActions({
 
   return (
     <div className="flex items-center gap-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon-xs"
+            className="size-8 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={onOpenAgentConfig}
+            disabled={!canConfigureAgent}
+          >
+            <Bot className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Workspace Agent Configuration</TooltipContent>
+      </Tooltip>
+
       <Dialog
         open={createDialogOpen}
         onOpenChange={(open) => {
@@ -369,12 +438,39 @@ export function WorkspaceHeaderActions({
           <DialogHeader>
             <DialogTitle>Create Workspace</DialogTitle>
             <DialogDescription>
-              Configure type, environment, and links first. Attaching an existing branch is optional.
-          </DialogDescription>
-        </DialogHeader>
+              {createStep === 'intent'
+                ? 'Choose workspace type and planning anchor.'
+                : createStep === 'runtime'
+                  ? 'Select runtime environment and allowed providers.'
+                  : 'Choose branch/worktree strategy and confirm creation.'}
+            </DialogDescription>
+          </DialogHeader>
 
           <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-1 rounded-md border bg-muted/20 p-1">
+              {CREATE_WORKSPACE_STEPS.map((step, idx) => {
+                const active = step.id === createStep;
+                const completed = idx < currentStepIndex;
+                return (
+                  <div
+                    key={step.id}
+                    className={`rounded px-2 py-1.5 text-center text-[10px] font-medium transition-colors ${
+                      active
+                        ? 'bg-primary/15 text-primary'
+                        : completed
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : 'text-muted-foreground'
+                    }`}
+                  >
+                    {step.label}
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
+              {createStep === 'intent' && (
+                <>
               <Label className="mr-1">Type</Label>
               <Popover>
                 <PopoverTrigger>
@@ -409,7 +505,11 @@ export function WorkspaceHeaderActions({
                 </TooltipTrigger>
                 <TooltipContent>Type controls lifecycle semantics and default branch naming.</TooltipContent>
               </Tooltip>
+                </>
+              )}
 
+              {createStep === 'runtime' && (
+                <>
               <Popover>
                 <PopoverTrigger>
                   <Button size="sm" variant="outline" className="h-8 gap-2">
@@ -497,7 +597,73 @@ export function WorkspaceHeaderActions({
                 </TooltipTrigger>
                 <TooltipContent>Environment controls providers, tools, and permissions for this workspace.</TooltipContent>
               </Tooltip>
+                </>
+              )}
 
+              {createStep === 'runtime' && (
+                <>
+              <Popover>
+                <PopoverTrigger>
+                  <Button size="sm" variant="outline" className="h-8 gap-2">
+                    <Check className="size-3.5" />
+                    Providers
+                    {providerCount > 0 ? (
+                      <Badge variant="secondary" className="h-4.5 px-1.5 text-[9px]">
+                        {providerCount}
+                      </Badge>
+                    ) : null}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(460px,90vw)] p-3" align="start" sideOffset={8}>
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-muted-foreground">
+                      Select providers this workspace should allow during session resolution.
+                    </p>
+                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                      {providerOptions.map((provider) => {
+                        const checked = createProviders.includes(provider.id);
+                        return (
+                          <Button
+                            key={provider.id}
+                            size="xs"
+                            variant={checked ? 'secondary' : 'ghost'}
+                            className="h-8 w-full justify-between"
+                            onClick={() => {
+                              setCreateProviders((current) => {
+                                if (current.includes(provider.id)) {
+                                  return current.filter((value) => value !== provider.id);
+                                }
+                                return [...current, provider.id];
+                              });
+                            }}
+                          >
+                            <span className="truncate">
+                              {provider.name} <span className="text-muted-foreground">({provider.id})</span>
+                            </span>
+                            {checked ? <Check className="size-3" /> : null}
+                          </Button>
+                        );
+                      })}
+                      {providerOptions.length === 0 ? (
+                        <p className="px-1 text-[10px] text-muted-foreground">No providers detected yet.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" className="size-7">
+                    <CircleHelp className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Providers selected here become workspace-level overrides.</TooltipContent>
+              </Tooltip>
+                </>
+              )}
+
+              {createStep === 'intent' && (
+                <>
               <Popover>
                 <PopoverTrigger>
                   <Button size="sm" variant="outline" className="h-8 gap-2">
@@ -542,9 +708,11 @@ export function WorkspaceHeaderActions({
                 </TooltipTrigger>
                 <TooltipContent>Links connect this workspace to planning docs and project context.</TooltipContent>
               </Tooltip>
+                </>
+              )}
             </div>
 
-            {createType === 'patch' && (
+            {createStep === 'intent' && createType === 'patch' && (
               <div className="space-y-2">
                 <Label>Patch title</Label>
                 <Input
@@ -555,6 +723,13 @@ export function WorkspaceHeaderActions({
               </div>
             )}
 
+            {createStep === 'runtime' && createProviders.length === 0 && (
+              <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+                Select at least one provider before continuing.
+              </div>
+            )}
+
+            {createStep === 'branch' && (
             <div className="rounded-lg border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -623,7 +798,9 @@ export function WorkspaceHeaderActions({
                 </div>
               )}
             </div>
+            )}
 
+            {createStep === 'branch' && (
             <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -649,6 +826,7 @@ export function WorkspaceHeaderActions({
                 </div>
               )}
             </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -662,10 +840,28 @@ export function WorkspaceHeaderActions({
             >
               Cancel
             </Button>
-            <Button onClick={() => void handleCreate()} disabled={creatingWorkspace || !resolvedBranch.trim()}>
-              {creatingWorkspace ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-              Create Workspace
-            </Button>
+            {!onFirstStep ? (
+              <Button
+                variant="outline"
+                onClick={goToPreviousStep}
+                disabled={creatingWorkspace}
+              >
+                Back
+              </Button>
+            ) : null}
+            {!onLastStep ? (
+              <Button
+                onClick={goToNextStep}
+                disabled={creatingWorkspace || !canAdvanceStep}
+              >
+                Next
+              </Button>
+            ) : (
+              <Button onClick={() => void handleCreate()} disabled={creatingWorkspace || !resolvedBranch.trim()}>
+                {creatingWorkspace ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                Create Workspace
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

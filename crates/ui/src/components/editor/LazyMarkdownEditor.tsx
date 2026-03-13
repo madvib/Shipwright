@@ -1,6 +1,5 @@
 import { Suspense, lazy } from 'react';
 import type { MarkdownEditorProps } from '@ship/ui';
-import { transformTextCmd } from '@/lib/platform/tauri/commands';
 
 const MarkdownEditorModule = lazy(() =>
   import('@ship/ui').then((m) => ({ default: m.MarkdownEditor }))
@@ -15,7 +14,7 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
 
   return (
     <Suspense fallback={<div className={fallbackClass} />}>
-      <MarkdownEditorModule {...props} onTransformText={transformTextCmd} />
+      <MarkdownEditorModule {...props} />
     </Suspense>
   );
 }

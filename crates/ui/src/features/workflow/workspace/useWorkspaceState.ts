@@ -3,7 +3,6 @@ import {
   getCurrentBranchCmd,
   listWorkspacesCmd,
   listWorkspaceEditorsCmd,
-  listModesCmd,
   listProvidersCmd,
   listGitBranchesCmd,
   getActiveWorkspaceSessionCmd,
@@ -21,7 +20,7 @@ import {
   type GitBranchInfo,
   type BranchDetailSummary,
 } from '@/lib/platform/tauri/commands';
-import { ModeConfig, ProviderInfo, Workspace } from '@/bindings';
+import { ProviderInfo, Workspace } from '@/bindings';
 import { RuntimeWorkspace } from '@/lib/types/workspace';
 import { WorkspaceRow, WorkspaceGroupBy } from './types';
 import { WorkspaceGraphStatus, WorkspaceGraphRow } from '../components/WorkspaceLifecycleGraph';
@@ -31,7 +30,6 @@ const SESSION_SCAN_LIMIT = 200;
 export function useWorkspaceState(workspaceUi: any, _ship: any) {
   const [branch, setBranch] = useState<string | null>(null);
   const [runtimeWorkspaces, setRuntimeWorkspaces] = useState<Workspace[]>([]);
-  const [modeOptions, setModeOptions] = useState<ModeConfig[]>([]);
   const [availableEditors, setAvailableEditors] = useState<WorkspaceEditorInfo[]>([]);
   const [providerInfos, setProviderInfos] = useState<ProviderInfo[]>([]);
   const [gitBranches, setGitBranches] = useState<GitBranchInfo[]>([]);
@@ -124,15 +122,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
     }
   };
 
-  const loadModes = async () => {
-    try {
-      const modes = await listModesCmd();
-      setModeOptions(modes);
-    } catch {
-      setModeOptions([]);
-    }
-  };
-
   const loadProviders = async () => {
     const result = await listProvidersCmd();
     if (result.status === 'ok') {
@@ -183,6 +172,8 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
           environmentId: runtimeWorkspace.environment_id ?? null,
           activeMode: workspace.active_mode ?? null,
           providers: workspace.providers ?? [],
+          mcpServers: runtimeWorkspace.mcp_servers ?? [],
+          skills: runtimeWorkspace.skills ?? [],
           resolvedAt: workspace.resolved_at,
           isWorktree: workspace.is_worktree,
           worktreePath: workspace.worktree_path ?? null,
@@ -219,7 +210,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
   useEffect(() => {
     void load();
     void loadEditors();
-    void loadModes();
     void loadProviders();
   }, []);
 
@@ -349,7 +339,6 @@ export function useWorkspaceState(workspaceUi: any, _ship: any) {
   return {
     branch,
     runtimeWorkspaces,
-    modeOptions,
     availableEditors,
     providerInfos,
     gitBranches,

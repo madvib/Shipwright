@@ -4,13 +4,11 @@ import { useUpdateChecker } from '@/lib/hooks/useUpdateChecker';
 import Sidebar from '@/components/app/Sidebar';
 import ShipMark from '@/components/app/ShipMark';
 import { PageChromeProvider, PageChromeContextValue } from '@ship/ui';
-import AgentModeControl from '@/features/agents/AgentModeControl.tsx';
 import { SearchModal } from '@/components/app/SearchModal';
 import { Button } from '@ship/ui';
 import { useWorkspace } from '@/lib/hooks/workspace/WorkspaceContext';
 import {
   AppRoutePath,
-  AGENTS_PROVIDERS_ROUTE,
   NOTES_ROUTE,
   ROUTE_LABELS,
   SETTINGS_ROUTE,
@@ -34,6 +32,26 @@ const DEFAULT_SIDEBAR_WIDTH = 280;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 380;
 const COLLAPSED_RAIL_WIDTH = '3.25rem';
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target.closest('[contenteditable="true"]')) return true;
+
+  const element = target.closest('input, textarea, select, [role="textbox"]');
+  if (!element) return false;
+
+  if (element instanceof HTMLInputElement) {
+    return !element.disabled && !element.readOnly;
+  }
+  if (element instanceof HTMLTextAreaElement) {
+    return !element.disabled && !element.readOnly;
+  }
+  if (element instanceof HTMLSelectElement) {
+    return !element.disabled;
+  }
+  return true;
+}
 
 export default function App() {
   useUpdateChecker();
@@ -143,26 +161,6 @@ export default function App() {
 
   const [chatOpen, setChatOpen] = useState(false);
 
-  const agentControl = useMemo(() => {
-    if (workspace.noProject) return null;
-
-    return (
-      <AgentModeControl
-        modes={workspace.modes}
-        activeModeId={workspace.activeModeId}
-        aiProvider={workspace.aiProvider}
-        aiModel={workspace.aiModel}
-        switchingMode={workspace.switchingMode}
-        onSetMode={(modeId: string | null) => {
-          void workspace.handleSetActiveMode(modeId);
-        }}
-        onOpenAgents={() => {
-          void navigate({ to: AGENTS_PROVIDERS_ROUTE });
-        }}
-      />
-    );
-  }, [workspace, navigate]);
-
   // Keyboard Shortcuts
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -175,6 +173,21 @@ export default function App() {
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
   }, [workspace.setSidebarCollapsed]);
+
+  useEffect(() => {
+    const preventBackspaceNavigation = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.key !== 'Backspace') return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
+      event.preventDefault();
+    };
+
+    window.addEventListener('keydown', preventBackspaceNavigation, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', preventBackspaceNavigation, { capture: true });
+    };
+  }, []);
 
   // Resizing Logic
   const startResizing = useCallback((e: React.MouseEvent) => {
@@ -291,7 +304,6 @@ export default function App() {
           onThemeChange={workspace.applyTheme}
           contextualContent={activeChrome.sidebar}
           onBackToGlobal={activeChrome.onBack}
-          agentControl={agentControl}
         />
         {!workspace.sidebarCollapsed && (
           <div

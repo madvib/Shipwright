@@ -1,4 +1,4 @@
-import { KeyboardEvent, useMemo, useState } from 'react';
+import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import {
   Combobox,
   ComboboxContent,
@@ -25,6 +25,10 @@ interface AutocompleteInputProps {
   noResultsText?: string;
   maxResults?: number;
   allowCustom?: boolean;
+  syncOnInput?: boolean;
+  autoCapitalize?: string;
+  autoCorrect?: string;
+  spellCheck?: boolean;
   onValueChange: (value: string) => void;
   onCommit?: (value: string) => void;
 }
@@ -42,15 +46,24 @@ export function AutocompleteInput({
   disabled = false,
   className,
   noResultsText = 'No matches found.',
-  maxResults = 8,
+  maxResults = 150,
   allowCustom = true,
+  syncOnInput = false,
+  autoCapitalize,
+  autoCorrect,
+  spellCheck,
   onValueChange,
   onCommit,
 }: AutocompleteInputProps) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
 
   const filtered = useMemo(() => {
-    const query = normalize(value);
+    const query = normalize(draft);
     const seen = new Set<string>();
     const pool = options.filter((option) => {
       if (!option.value.trim()) return false;
@@ -62,23 +75,28 @@ export function AutocompleteInput({
       return haystacks.some((haystack) => haystack.includes(query));
     });
     return pool.slice(0, maxResults);
-  }, [maxResults, options, value]);
+  }, [draft, maxResults, options]);
 
   const exactMatch = useMemo(() => {
-    const query = normalize(value);
+    const query = normalize(draft);
     if (!query) return null;
     return options.find((option) => normalize(option.value) === query) ?? null;
-  }, [options, value]);
+  }, [draft, options]);
 
   const selectOption = (option: AutocompleteOption) => {
+    setDraft(option.value);
     onValueChange(option.value);
     onCommit?.(option.value);
     setOpen(false);
   };
 
-  const commitCurrentValue = () => {
-    const next = value.trim();
-    if (!next) return;
+  const commitCurrentValue = (rawDraft?: string) => {
+    const next = (rawDraft ?? draft).trim();
+    if (!next) {
+      setDraft(value);
+      setOpen(false);
+      return;
+    }
     if (!allowCustom && !exactMatch) return;
     onValueChange(next);
     onCommit?.(next);
@@ -98,12 +116,13 @@ export function AutocompleteInput({
     <Combobox<AutocompleteOption>
       items={options}
       filteredItems={filtered}
-      inputValue={value}
+      inputValue={draft}
       open={open}
       autoHighlight
       onOpenChange={setOpen}
       onInputValueChange={(nextValue) => {
-        onValueChange(nextValue);
+        setDraft(nextValue);
+        if (syncOnInput) onValueChange(nextValue);
       }}
       itemToStringLabel={(option) => option.value}
       itemToStringValue={(option) => option.value}
@@ -114,11 +133,21 @@ export function AutocompleteInput({
         autoFocus={autoFocus}
         disabled={disabled}
         className={className}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        spellCheck={spellCheck}
         showTrigger={false}
         onFocus={() => setOpen(true)}
+        onBlur={(event) => {
+          if (syncOnInput) {
+            setOpen(false);
+            return;
+          }
+          commitCurrentValue(event.currentTarget.value);
+        }}
         onKeyDown={onKeyDown}
       />
-      <ComboboxContent>
+      <ComboboxContent className="w-[min(48rem,calc(100vw-2rem))] min-w-[26rem] max-w-[calc(100vw-2rem)]">
         <ComboboxEmpty>{noResultsText}</ComboboxEmpty>
         <ComboboxList>
           {(option: AutocompleteOption) => (
@@ -126,10 +155,11 @@ export function AutocompleteInput({
               key={option.value}
               value={option}
               onClick={() => selectOption(option)}
+              className="items-start"
             >
-              <span className="truncate">{option.label ?? option.value}</span>
+              <span className="block break-words">{option.label ?? option.value}</span>
               {option.label && option.label !== option.value && (
-                <span className="text-muted-foreground ml-2 truncate text-[11px]">{option.value}</span>
+                <span className="text-muted-foreground ml-2 break-all text-[11px]">{option.value}</span>
               )}
             </ComboboxItem>
           )}

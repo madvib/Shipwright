@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Settings, User as UserIcon, Palette, Globe2, GitBranch, Trash2, Upload, Sun, Moon, Cpu, Plus } from 'lucide-react';
 import { GitConfig, McpServerConfig, ModeConfig, ProjectConfig, StatusConfig } from '@/bindings';
 import {
   exportAgentConfigCmd,
-  transformTextCmd,
 } from '@/lib/platform/tauri/commands';
 import { Config, DEFAULT_STATUSES } from '@/lib/workspace-ui';
 import { Alert, AlertDescription } from '@ship/ui';
 import { Badge } from '@ship/ui';
 import { Button } from '@ship/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ship/ui';
-import { Checkbox } from '@ship/ui';
 import { Input } from '@ship/ui';
 import { Label } from '@ship/ui';
 import { PageFrame, PageHeader } from '@ship/ui';
@@ -21,11 +19,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@ship/ui';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
 } from '@ship/ui';
 import { Separator } from '@ship/ui';
 import { Switch } from '@ship/ui';
@@ -50,19 +43,6 @@ interface SettingsPanelProps {
   panelMode?: SettingsPanelMode;
 }
 
-const GIT_CATEGORIES = [
-  'releases',
-  'features',
-  'adrs',
-  'vision',
-  'ship.toml',
-  'templates',
-];
-const AI_PROVIDERS = [
-  { id: 'claude', label: 'Claude (claude)' },
-  { id: 'gemini', label: 'Gemini (gemini)' },
-  { id: 'codex', label: 'Codex (codex)' },
-];
 const SCOPE_OPTIONS = ['global', 'project', 'mode'] as const;
 const EMPTY_AGENT_LAYER = {
   skills: [],
@@ -70,67 +50,6 @@ const EMPTY_AGENT_LAYER = {
   context: [],
 };
 const DEFAULT_MODE_VALUE = 'default';
-
-const STATUS_COLORS: { value: string; hex: string; label: string }[] = [
-  { value: 'gray', hex: '#6b7280', label: 'Gray' },
-  { value: 'slate', hex: '#64748b', label: 'Slate' },
-  { value: 'red', hex: '#ef4444', label: 'Red' },
-  { value: 'orange', hex: '#f97316', label: 'Orange' },
-  { value: 'amber', hex: '#f59e0b', label: 'Amber' },
-  { value: 'yellow', hex: '#eab308', label: 'Yellow' },
-  { value: 'green', hex: '#22c55e', label: 'Green' },
-  { value: 'teal', hex: '#14b8a6', label: 'Teal' },
-  { value: 'cyan', hex: '#06b6d4', label: 'Cyan' },
-  { value: 'blue', hex: '#3b82f6', label: 'Blue' },
-  { value: 'violet', hex: '#8b5cf6', label: 'Violet' },
-  { value: 'rose', hex: '#f43f5e', label: 'Rose' },
-];
-
-function StatusColorPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (color: string) => void;
-}) {
-  const current = STATUS_COLORS.find((c) => c.value === value);
-  const currentHex = current?.hex ?? '#6b7280';
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors hover:bg-accent/50"
-      >
-        <span
-          className="size-4 rounded-full border border-border/50 shadow-sm"
-          style={{ backgroundColor: currentHex }}
-        />
-        <span className="text-muted-foreground">{current?.label ?? (value || 'Pick')}</span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-auto p-2">
-        <div className="grid grid-cols-6 gap-1.5">
-          {STATUS_COLORS.map((c) => (
-            <button
-              key={c.value}
-              type="button"
-              title={c.label}
-              onClick={() => onChange(c.value)}
-              className={cn(
-                'relative size-7 rounded-full border-2 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-                value === c.value ? 'border-foreground shadow-md scale-110' : 'border-transparent'
-              )}
-              style={{ backgroundColor: c.hex }}
-            >
-              {value === c.value && (
-                <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-bold drop-shadow">✓</span>
-              )}
-            </button>
-          ))}
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 type NormalizedProjectConfig = ProjectConfig & {
   statuses: StatusConfig[];
@@ -233,11 +152,9 @@ export default function SettingsPanel({
   const [agentScope, setAgentScope] = useState<'project' | 'global'>(
     projectConfig ? 'project' : 'global'
   );
-  const [newStatus, setNewStatus] = useState<StatusConfig>({ id: '', name: '', color: 'gray' });
   const [newServer, setNewServer] = useState(EMPTY_SERVER);
   const [newMode, setNewMode] = useState<ModeConfig>(EMPTY_MODE);
   const [exportStatus, setExportStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'error'>>({});
-  const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [agentError, setAgentError] = useState<string | null>(null);
   const initialThemeRef = useRef<string | undefined>(config.theme);
 
@@ -278,10 +195,6 @@ export default function SettingsPanel({
     }
   }, [projectConfig]);
 
-  const availableStatuses = useMemo(
-    () => (localProject.statuses.length > 0 ? localProject.statuses : DEFAULT_STATUSES),
-    [localProject.statuses]
-  );
   const hasActiveProject = !!projectConfig;
   const activeAgentConfig = agentScope === 'project' ? localProject : localGlobalAgent;
 
@@ -291,49 +204,6 @@ export default function SettingsPanel({
       return;
     }
     setLocalGlobalAgent(next);
-  };
-
-  const updateStatus = (index: number, patch: Partial<StatusConfig>) => {
-    setLocalProject((current) => ({
-      ...current,
-      statuses: current.statuses.map((status, i) => (i === index ? { ...status, ...patch } : status)),
-    }));
-  };
-
-  const removeStatus = (index: number) => {
-    setLocalProject((current) => ({
-      ...current,
-      statuses: current.statuses.filter((_, i) => i !== index),
-    }));
-  };
-
-  const toggleGitCategory = (category: string) => {
-    setLocalProject((current) => {
-      const git = {
-        ignore: [...(current.git?.ignore ?? [])],
-        commit: [...(current.git?.commit ?? [])],
-      };
-      const isCommitted = git.commit.includes(category);
-      if (isCommitted) {
-        git.commit = git.commit.filter((item) => item !== category);
-        if (!git.ignore.includes(category)) git.ignore.push(category);
-      } else {
-        git.ignore = git.ignore.filter((item) => item !== category);
-        git.commit.push(category);
-      }
-      return { ...current, git };
-    });
-  };
-
-  const handleAddStatus = () => {
-    const id = newStatus.id.trim();
-    const name = newStatus.name.trim();
-    if (!id || !name) return;
-    setLocalProject((current) => ({
-      ...current,
-      statuses: [...current.statuses, { id, name, color: (newStatus.color ?? '').trim() || 'gray' }],
-    }));
-    setNewStatus({ id: '', name: '', color: 'gray' });
   };
 
   const handleAddServer = () => {
@@ -390,18 +260,6 @@ export default function SettingsPanel({
   const handleSetActiveMode = (id: string | null) => {
     const next = id === DEFAULT_MODE_VALUE ? null : id;
     updateActiveAgentConfig({ ...activeAgentConfig, active_mode: next });
-  };
-
-  const handleTestProvider = async () => {
-    setTestStatus('loading');
-    setAgentError(null);
-    try {
-      await transformTextCmd('summarize', 'test connection');
-      setTestStatus('ok');
-    } catch (err) {
-      setTestStatus('error');
-      setAgentError(String(err));
-    }
   };
 
   const handleExport = async (target: 'claude' | 'codex' | 'gemini') => {
@@ -531,7 +389,7 @@ export default function SettingsPanel({
                   <p className="text-[11px] text-muted-foreground">Theme and creation defaults for new work items.</p>
                 </div>
               </div>
-              <CardContent className="grid gap-2 !pt-5 md:grid-cols-[1.2fr_1fr_1fr]">
+              <CardContent className="grid gap-2 !pt-5 md:grid-cols-[1.4fr_1fr]">
                 <div className="rounded-md border px-3 py-2">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <Label className="text-sm font-semibold tracking-tight">Appearance</Label>
@@ -555,26 +413,6 @@ export default function SettingsPanel({
                     </div>
                   </div>
                   <p className="text-muted-foreground text-[11px] opacity-70">Choose your preferred interface theme.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Default Workflow Status</Label>
-                  <Select
-                    value={local.default_status ?? availableStatuses[0]?.id ?? 'backlog'}
-                    onValueChange={(value) =>
-                      setLocal({ ...local, default_status: value ?? undefined })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableStatuses.map((status) => (
-                        <SelectItem key={status.id} value={status.id}>
-                          {status.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="settings-editor">Editor</Label>
@@ -630,89 +468,6 @@ export default function SettingsPanel({
                   </div>
                 </CardContent>
               </Card>
-
-              <Card size="sm" className="overflow-hidden">
-                <div className="flex items-center gap-3 border-b bg-gradient-to-r from-orange-500/10 via-card/80 to-card/50 px-4 py-3">
-                  <div className="flex size-7 items-center justify-center rounded-lg border border-orange-500/20 bg-orange-500/10">
-                    <span className="text-sm">🎨</span>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold">Statuses</h3>
-                    <p className="text-[11px] text-muted-foreground">Customize issue workflow columns for this project.</p>
-                  </div>
-                </div>
-                <CardContent className="space-y-3 !pt-5">
-                  <div className="hidden grid-cols-[1fr_1.2fr_auto_auto] gap-2 px-1 text-xs text-muted-foreground md:grid">
-                    <span>ID</span>
-                    <span>Name</span>
-                    <span>Color</span>
-                    <span />
-                  </div>
-                  {localProject.statuses.map((status, index) => (
-                    <div key={`${status.id} -${index} `} className="grid items-start gap-2 md:grid-cols-[1fr_1.2fr_auto_auto]">
-                      <Input
-                        value={status.id}
-                        onChange={(event) => updateStatus(index, { id: event.target.value })}
-                        placeholder="id"
-                      />
-                      <Input
-                        value={status.name}
-                        onChange={(event) => updateStatus(index, { name: event.target.value })}
-                        placeholder="name"
-                      />
-                      <StatusColorPicker
-                        value={status.color ?? 'gray'}
-                        onChange={(color) => updateStatus(index, { color })}
-                      />
-                      <Button variant="ghost" size="icon-xs" className="mt-0.5 text-destructive hover:text-destructive" onClick={() => removeStatus(index)}>
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Separator />
-                  <div className="grid items-start gap-2 md:grid-cols-[1fr_1.2fr_auto_auto]">
-                    <Input
-                      value={newStatus.id}
-                      onChange={(event) => setNewStatus({ ...newStatus, id: event.target.value })}
-                      placeholder="new-id"
-                    />
-                    <Input
-                      value={newStatus.name}
-                      onChange={(event) => setNewStatus({ ...newStatus, name: event.target.value })}
-                      placeholder="Display Name"
-                    />
-                    <StatusColorPicker
-                      value={newStatus.color ?? 'gray'}
-                      onChange={(color) => setNewStatus({ ...newStatus, color })}
-                    />
-                    <Button onClick={handleAddStatus} size="sm" className="mt-0.5">
-                      <Plus className="size-3.5" />
-                      Add
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card size="sm">
-                <CardHeader className="pb-2">
-                  <CardTitle>Git Commit Categories</CardTitle>
-                  <CardDescription>Choose which docs are staged by default for project commits.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-2 !pt-5 sm:grid-cols-2">
-                  {GIT_CATEGORIES.map((category) => {
-                    const committed = localProject.git?.commit?.includes(category) ?? false;
-                    return (
-                      <label key={category} className="flex items-center gap-2 rounded-md border px-3 py-2">
-                        <Checkbox checked={committed} onCheckedChange={() => toggleGitCategory(category)} />
-                        <span className="flex-1 text-sm">{category}</span>
-                        <Badge variant={committed ? 'default' : 'outline'} className="text-[10px]">
-                          {committed ? 'Commit' : 'Ignore'}
-                        </Badge>
-                      </label>
-                    );
-                  })}
-                </CardContent>
-              </Card>
             </div>
           )}
         </TabsContent>
@@ -726,81 +481,6 @@ export default function SettingsPanel({
                 hasProject={hasActiveProject}
                 onScopeChange={(next) => setAgentScope(next)}
               />
-
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>AI Provider</CardTitle>
-                  <CardDescription>
-                    Pass-through CLI provider used for generation features in the UI.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 !pt-5">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Provider</Label>
-                      <Select
-                        value={activeAgentConfig.ai?.provider ?? 'claude'}
-                        onValueChange={(value) =>
-                          updateActiveAgentConfig({
-                            ...activeAgentConfig,
-                            ai: { ...normalizeAiConfig(activeAgentConfig.ai), provider: value },
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {AI_PROVIDERS.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="settings-ai-cli">Binary Path Override</Label>
-                      <Input
-                        id="settings-ai-cli"
-                        value={activeAgentConfig.ai?.cli_path ?? ''}
-                        onChange={(event) =>
-                          updateActiveAgentConfig({
-                            ...activeAgentConfig,
-                            ai: {
-                              ...normalizeAiConfig(activeAgentConfig.ai),
-                              cli_path: event.target.value || null,
-                            },
-                          })
-                        }
-                        placeholder="Leave blank to use PATH"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={testStatus === 'loading' || !hasActiveProject}
-                      onClick={() => void handleTestProvider()}
-                    >
-                      {testStatus === 'loading' ? 'Testing…' : 'Test Provider'}
-                    </Button>
-                    {testStatus === 'ok' && (
-                      <span className="text-xs text-emerald-500">Provider working ✓</span>
-                    )}
-                    {testStatus === 'error' && (
-                      <span className="text-xs text-destructive">Failed — check binary path</span>
-                    )}
-                  </div>
-                  {!hasActiveProject && (
-                    <p className="text-muted-foreground text-xs">
-                      Open a project to run provider tests.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
 
               <Card size="sm">
                 <CardHeader>
