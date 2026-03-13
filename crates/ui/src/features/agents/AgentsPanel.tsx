@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Plus, Shield, ShieldAlert, FileSearch, Trash2, Upload, Download, Globe, Folder, Package, PenLine, ChevronDown, ChevronRight, Check, ScrollText, LockIcon, Info, Zap, BookOpen, Terminal, Link, Wrench } from 'lucide-react';
+import { Bot, Plus, Shield, ShieldAlert, FileSearch, Trash2, Upload, Download, Globe, Folder, Package, PenLine, ChevronDown, ChevronRight, ScrollText, LockIcon, Info, Zap, BookOpen, Terminal, Wrench, Save, ArrowLeft, ExternalLink } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands, AgentDiscoveryCache, CatalogEntry, HookConfig, McpProbeReport, McpRegistryEntry, McpServerConfig, McpServerType, McpValidationIssue, McpValidationReport, ModeConfig, Permissions, ProjectConfig, ProviderInfo, SkillToolHint } from '@/bindings';
+import { commands, AgentDiscoveryCache, CatalogEntry, HookConfig, McpProbeReport, McpRegistryEntry, McpServerConfig, McpServerType, McpValidationIssue, McpValidationReport, Permissions, ProjectConfig, ProjectDiscovery, ProviderInfo, ProviderToolVocabularyEntry, SkillToolHint } from '@/bindings';
 import { DEFAULT_STATUSES } from '@/lib/workspace-ui';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Alert, AlertDescription } from '@ship/ui';
 import { Badge } from '@ship/ui';
 import { Button } from '@ship/ui';
@@ -12,18 +13,22 @@ import { Label } from '@ship/ui';
 import { PageFrame, PageHeader } from '@ship/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ship/ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ship/ui';
-import { FileTree, FileTreeFile, FileTreeFolder } from '@ship/ui';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@ship/ui';
 import MarkdownEditor from '@/components/editor';
 import { AutocompleteInput } from '@ship/ui';
 import { cn } from '@/lib/utils';
+import { useAgentAssetInventory } from '@/features/agents/shared/useAgentAssetInventory';
+import { useMcpRegistrySearch } from '@/features/agents/shared/useMcpRegistrySearch';
+import { ExplorerDialog } from '@/features/agents/shared/ExplorerDialog';
 
 interface AgentsPanelProps {
+  activeProject?: ProjectDiscovery | null;
   projectConfig: ProjectConfig | null;
   globalAgentConfig: ProjectConfig | null;
   onSaveProject: (config: ProjectConfig) => void | Promise<void>;
   onSaveGlobalAgentConfig: (config: ProjectConfig) => void | Promise<void>;
   initialSection?: AgentSection;
+  onBackToSettings?: () => void;
 }
 
 type ScopeKey = 'global' | 'project';
@@ -55,32 +60,30 @@ const EMPTY_AGENT_LAYER = {
   rules: [],
 };
 
-const DEFAULT_MODE_VALUE = 'default';
-
 const SECTION_META: Record<AgentSection, { title: string; description: string }> = {
   providers: {
     title: 'Providers',
-    description: 'Choose provider/model defaults and mode controls.',
+    description: 'Provider defaults and sync.',
   },
   mcp: {
     title: 'MCP Servers',
-    description: 'Connect tools and services to your agent via the Model Context Protocol.',
+    description: 'Installed servers and connectivity.',
   },
   skills: {
     title: 'Skills',
-    description: 'Skill SDK — compose agent capabilities from structured skill packages.',
+    description: 'Skill files and source installs.',
   },
   rules: {
     title: 'Rules',
-    description: 'Global instructions applied to every agent session in this scope.',
+    description: 'Session instructions.',
   },
   hooks: {
     title: 'Hooks',
-    description: 'Lifecycle intercepts for context injection, policy enforcement, and session automation.',
+    description: 'Lifecycle commands.',
   },
   permissions: {
     title: 'Permissions',
-    description: 'Security policy: control what tools and paths your agent can access.',
+    description: 'Tool, shell, and filesystem policy.',
   },
 };
 
@@ -113,14 +116,6 @@ const HOOK_EVENTS: HookEventOption[] = [
   { value: 'AfterModel', label: 'After Model', providers: ['gemini'], description: 'Gemini-specific hook after model response.' },
   { value: 'BeforeToolSelection', label: 'Before Tool Selection', providers: ['gemini'], description: 'Gemini-specific hook during tool selection phase.' },
 ];
-
-const EMPTY_MODE: ModeConfig = {
-  id: '',
-  name: '',
-  description: null,
-  active_tools: [],
-  mcp_servers: [],
-};
 
 const EMPTY_MCP_SERVER: McpServerConfig = {
   name: '',
@@ -169,63 +164,9 @@ const SUPPORTED_PROVIDER_BASE: Array<{ id: string; name: string; binary: string 
   { id: 'codex', name: 'Codex CLI', binary: 'codex' },
 ];
 const SUPPORTED_PROVIDER_IDS = new Set(SUPPORTED_PROVIDER_BASE.map((provider) => provider.id));
-const MCP_STDIO_ONLY_ALPHA = true;
-
-type ModePresetDefinition = {
-  id: string;
-  name: string;
-  description: string;
-  target_agents: string[];
-  allow_tools: string[];
-  deny_tools: string[];
-  skill_hints: string[];
-  mcp_hints: string[];
-  default_skill_ids: string[];
-  default_mcp_server_ids: string[];
-  default_prompt_id: string | null;
-};
-
-const MODE_PRESETS: ModePresetDefinition[] = [
-  {
-    id: 'frontend-react',
-    name: 'Frontend React',
-    description: 'UI implementation template for React + TypeScript projects with design-system and accessibility focus.',
-    target_agents: ['claude', 'codex'],
-    allow_tools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'MultiEdit', 'Bash', 'mcp__*__read*', 'mcp__*__list*', 'mcp__*__search*', 'mcp__*__write*'],
-    deny_tools: ['mcp__*__delete*'],
-    skill_hints: ['react', 'frontend', 'ui', 'accessibility', 'typescript', 'design system'],
-    mcp_hints: ['playwright', 'storybook', 'browser', 'figma', 'design'],
-    default_skill_ids: ['ship-workflow', 'task-policy', 'start-session'],
-    default_mcp_server_ids: ['ship'],
-    default_prompt_id: 'ship-workflow',
-  },
-  {
-    id: 'rust-expert',
-    name: 'Rust Expert',
-    description: 'Systems programming template for Rust services, safety-first refactors, and performance tuning.',
-    target_agents: ['claude', 'codex'],
-    allow_tools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'MultiEdit', 'Bash', 'mcp__*__read*', 'mcp__*__list*', 'mcp__*__search*'],
-    deny_tools: ['mcp__*__delete*'],
-    skill_hints: ['rust', 'cargo', 'clippy', 'tokio', 'systems', 'performance'],
-    mcp_hints: ['postgres', 'redis', 'docker', 'kubernetes', 'sentry'],
-    default_skill_ids: ['ship-workflow', 'task-policy', 'start-session'],
-    default_mcp_server_ids: ['ship'],
-    default_prompt_id: 'ship-workflow',
-  },
-  {
-    id: 'documentation-expert',
-    name: 'Documentation Expert',
-    description: 'Docs template for ADRs, API docs, release notes, and repo knowledge curation.',
-    target_agents: ['claude', 'gemini', 'codex'],
-    allow_tools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'MultiEdit', 'mcp__*__read*', 'mcp__*__list*', 'mcp__*__search*'],
-    deny_tools: ['Bash', 'mcp__*__write*', 'mcp__*__delete*', 'mcp__*__exec*'],
-    skill_hints: ['docs', 'documentation', 'adr', 'api', 'release notes', 'writer'],
-    mcp_hints: ['github', 'linear', 'notion', 'docs'],
-    default_skill_ids: ['ship-workflow', 'task-policy', 'create-document'],
-    default_mcp_server_ids: ['ship'],
-    default_prompt_id: 'create-document',
-  },
-];
+const MCP_STDIO_ONLY_ALPHA = false;
+const EMPTY_CATALOG: CatalogEntry[] = [];
+const EMPTY_RULES: Array<{ file_name: string; content: string }> = [];
 
 // ── Permission presets ──────────────────────────────────────────────────────
 
@@ -246,7 +187,9 @@ const PERMISSION_PRESETS: Array<{
     apply: () => ({
       tools: { allow: ['mcp__*__read*', 'mcp__*__list*', 'mcp__*__get*', 'mcp__*__search*'], deny: ['mcp__*__write*', 'mcp__*__delete*', 'mcp__*__create*', 'mcp__*__exec*'] },
       filesystem: { allow: ['**/*'], deny: [] },
-      agent: { max_cost_per_session: 2.0, max_turns: 30 },
+      commands: { allow: [], deny: ['*'] },
+      network: { policy: 'none', allow_hosts: [] },
+      agent: { require_confirmation: [] },
     }),
   },
   {
@@ -267,8 +210,6 @@ const PERMISSION_PRESETS: Array<{
       },
       network: { policy: 'none', allow_hosts: [] },
       agent: {
-        max_cost_per_session: 5.0,
-        max_turns: 50,
         require_confirmation: ['Bash', 'Write', 'Edit', 'MultiEdit', 'mcp__*__write*', 'mcp__*__delete*', 'mcp__*__exec*'],
       },
     }),
@@ -282,7 +223,9 @@ const PERMISSION_PRESETS: Array<{
     apply: () => ({
       tools: { allow: ['*'], deny: [] },
       filesystem: { allow: ['**/*'], deny: [] },
-      agent: { max_cost_per_session: null, max_turns: null },
+      commands: { allow: ['*'], deny: [] },
+      network: { policy: 'unrestricted', allow_hosts: [] },
+      agent: { require_confirmation: [] },
     }),
   },
 ];
@@ -346,7 +289,7 @@ function McpServerForm({
               <TooltipTrigger asChild>
                 <Info className="size-3 cursor-default text-muted-foreground" />
               </TooltipTrigger>
-              <TooltipContent>Stable slug used in permissions, modes, and exports.</TooltipContent>
+              <TooltipContent>Stable slug used in permissions and provider exports.</TooltipContent>
             </Tooltip>
           </div>
           <AutocompleteInput
@@ -355,6 +298,9 @@ function McpServerForm({
             placeholder={slugifyId(draft.name || 'server-id') || 'server-id'}
             onValueChange={(value) => setField('id', value)}
             className="h-8 text-xs font-mono"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </div>
         <div className="space-y-1.5">
@@ -402,6 +348,9 @@ function McpServerForm({
               onValueChange={(value) => setField('command', value)}
               placeholder="e.g. ship-mcp"
               className="h-8 text-xs font-mono"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
           <div className="space-y-1.5">
@@ -419,6 +368,9 @@ function McpServerForm({
               onChange={(e) => setField('args', splitShellArgs(e.target.value))}
               placeholder="--port 3000"
               className="h-8 text-xs font-mono"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
         </div>
@@ -482,6 +434,9 @@ function McpServerForm({
                   }}
                   placeholder="KEY"
                   className="h-7 w-32 shrink-0 text-xs font-mono"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
                 <span className="text-xs text-muted-foreground">=</span>
                 <Input
@@ -493,6 +448,9 @@ function McpServerForm({
                   }}
                   placeholder="value"
                   className="h-7 flex-1 text-xs font-mono"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
                 <Button
                   type="button"
@@ -586,17 +544,6 @@ function normalizeProjectConfig(config: ProjectConfig | null): ProjectConfig {
   };
 }
 
-function formatUpdated(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 function formatEpochSeconds(value: string): string {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return value;
@@ -621,44 +568,106 @@ function slugifyId(value: string): string {
 
 type SkillSourceInstallSpec = {
   source: string;
-  gitRef: string | null;
-  repoPath: string | null;
-  inferredSkillId: string;
+  skillId: string;
+  parseHint: string | null;
+  canInstall: boolean;
 };
 
 function parseSkillSourceInstallSpec(rawSource: string): SkillSourceInstallSpec {
-  const trimmed = rawSource.trim().replace(/\/+$/g, '');
+  const trimmed = rawSource.trim();
   if (!trimmed) {
-    return { source: '', gitRef: null, repoPath: null, inferredSkillId: '' };
+    return { source: '', skillId: '', parseHint: null, canInstall: false };
   }
 
-  const githubTree = trimmed.match(
-    /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/(tree|blob)\/([^/]+)\/(.+)$/i
-  );
-  if (githubTree) {
-    const owner = githubTree[1];
-    const repo = githubTree[2];
-    const ref = githubTree[4];
-    const rawPath = githubTree[5].replace(/\/+$/g, '');
-    const normalizedPath = rawPath.replace(/\/SKILL\.md$/i, '');
-    const pathSegments = normalizedPath.split('/').filter(Boolean);
-    const inferred = slugifyId(pathSegments[pathSegments.length - 1] ?? repo);
+  const shellTokens = splitShellArgs(trimmed);
+  const startsAsCommand = shellTokens.length > 0
+    && ['npx', 'skills', 'skills.sh'].includes(shellTokens[0].toLowerCase());
+  const addIndex = shellTokens.findIndex((token) => token.toLowerCase() === 'add');
+  const maybeSkillsCommand = shellTokens.some((token) => {
+    const normalized = token.toLowerCase();
+    return normalized === 'skills'
+      || normalized === 'skills.sh'
+      || normalized === '@skills/cli'
+      || normalized.endsWith('/skills');
+  });
+  if (startsAsCommand || maybeSkillsCommand || addIndex >= 0) {
+    if (addIndex < 0) {
+      return {
+        source: trimmed,
+        skillId: '',
+        parseHint: 'skills.sh command must include `add` (example: npx skills add <skill-id>).',
+        canInstall: false,
+      };
+    }
+    let hasSkillTarget = false;
+    for (let index = addIndex + 1; index < shellTokens.length; index += 1) {
+      const token = shellTokens[index];
+      if (!token) continue;
+      if (token === '--skill' && shellTokens[index + 1]) {
+        hasSkillTarget = true;
+        break;
+      }
+      if (!token.startsWith('-')) {
+        hasSkillTarget = true;
+        break;
+      }
+    }
+    if (!hasSkillTarget) {
+      return {
+        source: trimmed,
+        skillId: '',
+        parseHint: 'skills.sh command is missing a skill target after `add`.',
+        canInstall: false,
+      };
+    }
+    let parsedSkillId = '';
+    for (let index = addIndex + 1; index < shellTokens.length; index += 1) {
+      const token = shellTokens[index];
+      if (!token) continue;
+      const normalized = token.toLowerCase();
+      if ((normalized === '--skill' || normalized === '-s') && shellTokens[index + 1]) {
+        const candidate = shellTokens[index + 1].trim();
+        if (candidate && !candidate.startsWith('-')) {
+          parsedSkillId = slugifyId(candidate);
+          break;
+        }
+      }
+      if (normalized.startsWith('--skill=')) {
+        const candidate = token.slice(token.indexOf('=') + 1).trim();
+        if (candidate) {
+          parsedSkillId = slugifyId(candidate);
+          break;
+        }
+      }
+    }
     return {
-      source: `${owner}/${repo}`,
-      gitRef: ref || null,
-      repoPath: normalizedPath || '.',
-      inferredSkillId: inferred,
+      source: trimmed,
+      skillId: parsedSkillId,
+      parseHint: parsedSkillId
+        ? `Using skills.sh command for "${parsedSkillId}".`
+        : 'Using skills.sh command. Ship will auto-detect the installed skill package.',
+      canInstall: true,
     };
   }
 
-  const base = trimmed.replace(/\.git$/i, '');
-  const segments = base.split('/').filter(Boolean);
-  const candidate = segments[segments.length - 1] ?? '';
+  const ownerRepoWithSkill = trimmed.match(/^([^/\s]+\/[^@\s]+)@([a-z0-9-]+)$/i);
+  if (ownerRepoWithSkill) {
+    return {
+      source: trimmed,
+      skillId: slugifyId(ownerRepoWithSkill[2]),
+      parseHint: 'Using skills.sh ID shorthand.',
+      canInstall: true,
+    };
+  }
+
+  const inferredId = slugifyId(trimmed.includes('@') ? trimmed.split('@').pop() ?? '' : trimmed);
   return {
     source: trimmed,
-    gitRef: null,
-    repoPath: null,
-    inferredSkillId: slugifyId(candidate),
+    skillId: inferredId,
+    parseHint: inferredId
+      ? 'Using skill ID shorthand.'
+      : 'Invalid input. Paste a skills.sh command or enter a skill ID.',
+    canInstall: inferredId.length > 0,
   };
 }
 
@@ -773,6 +782,65 @@ function isMcpServerDenied(permissions: Permissions | undefined, serverId: strin
   return (permissions.tools?.deny ?? []).includes(`mcp__${serverId}__*`);
 }
 
+function normalizePermissionsForEditor(input?: Permissions | null): Permissions {
+  const normalizePatternList = (values?: string[] | null): string[] =>
+    Array.from(
+      new Set(
+        (values ?? [])
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      )
+    );
+  return {
+    tools: {
+      allow: normalizePatternList(input?.tools?.allow),
+      deny: normalizePatternList(input?.tools?.deny),
+    },
+    filesystem: {
+      allow: normalizePatternList(input?.filesystem?.allow),
+      deny: normalizePatternList(input?.filesystem?.deny),
+    },
+    commands: {
+      allow: normalizePatternList(input?.commands?.allow),
+      deny: normalizePatternList(input?.commands?.deny),
+    },
+    network: {
+      policy: input?.network?.policy ?? 'none',
+      allow_hosts: normalizePatternList(input?.network?.allow_hosts),
+    },
+    agent: {
+      require_confirmation: normalizePatternList(input?.agent?.require_confirmation),
+    },
+  };
+}
+
+function extractMarkdownHeadingTitle(content: string): string | null {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^#\s+(.+)$/);
+    if (!match) continue;
+    const title = match[1]?.trim();
+    if (title) return title;
+  }
+  return null;
+}
+
+function humanizeRuleFileName(fileName: string): string {
+  const withoutExtension = fileName.replace(/\.[^.]+$/, '');
+  const normalized = withoutExtension.replace(/[-_.]+/g, ' ').trim();
+  if (!normalized) return 'Untitled Rule';
+  return normalized
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getRuleDisplayTitle(rule: { file_name: string; content: string }): string {
+  return extractMarkdownHeadingTitle(rule.content) ?? humanizeRuleFileName(rule.file_name);
+}
+
 function mcpServerFromCatalog(entry: CatalogEntry): McpServerConfig {
   const inferredId = entry.id.startsWith('mcp-') ? entry.id.slice(4) : entry.id;
   const env: Record<string, string> = {};
@@ -815,32 +883,12 @@ function mcpServerFromRegistry(entry: McpRegistryEntry): McpServerConfig {
   };
 }
 
-function sourceLabel(source?: string | null): string {
-  if (!source) return 'custom';
-  return source;
-}
-
-function hasYamlFrontmatter(content: string): boolean {
-  const trimmed = content.trimStart();
-  if (!trimmed.startsWith('---\n')) return false;
-  return trimmed.slice(4).includes('\n---');
-}
-
-function includesAnyHint(value: string, hints: string[]): boolean {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return false;
-  return hints.some((hint) => normalized.includes(hint.toLowerCase()));
-}
-
 function getProviderSyncSummary(
   provider: ProviderRow,
   enabled: boolean,
   validationReport: McpValidationReport | null
 ): ProviderSyncSummary {
   const providerIssues = (validationReport?.issues ?? []).filter((issue) => issue.provider_id === provider.id);
-  const sharedBlockingIssues = enabled
-    ? (validationReport?.issues ?? []).filter((issue) => !issue.provider_id && issue.level !== 'info')
-    : [];
   const blockingProviderIssues = providerIssues.filter(
     (issue) => issue.level === 'error' || (issue.level === 'warning' && !PROVIDER_DRIFT_CODES.has(issue.code))
   );
@@ -852,15 +900,15 @@ function getProviderSyncSummary(
     return {
       status: 'needs-attention',
       detail: `${provider.binary} is not installed or not on PATH.`,
-      issues: [...blockingProviderIssues, ...sharedBlockingIssues],
+      issues: blockingProviderIssues,
     };
   }
 
-  if (blockingProviderIssues.length > 0 || sharedBlockingIssues.length > 0) {
+  if (blockingProviderIssues.length > 0) {
     return {
       status: 'needs-attention',
-      detail: `Fix ${provider.name} config or MCP issues before syncing.`,
-      issues: [...blockingProviderIssues, ...sharedBlockingIssues],
+      detail: `Fix ${provider.name} config issues before syncing.`,
+      issues: blockingProviderIssues,
     };
   }
 
@@ -897,14 +945,74 @@ function providerStatusBadgeClass(status: ProviderSyncStatus): string {
   return 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300';
 }
 
+function permissionsQueryKey(scope: ScopeKey) {
+  return ['permissions', scope] as const;
+}
+
+interface PatternListEditorProps {
+  patterns: string[];
+  options: Array<{ value: string; label?: string; keywords?: string[] }>;
+  addLabel: string;
+  addValue?: string;
+  noResultsText: string;
+  onChange: (updater: (current: string[]) => string[]) => void;
+}
+
+function PatternListEditor({
+  patterns,
+  options,
+  addLabel,
+  addValue = '',
+  noResultsText,
+  onChange,
+}: PatternListEditorProps) {
+  return (
+    <div className="space-y-2">
+      {patterns.map((pattern, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <AutocompleteInput
+            value={pattern || ''}
+            options={options}
+            noResultsText={noResultsText}
+            onValueChange={(value) =>
+              onChange((current) => current.map((item, itemIndex) => (itemIndex === idx ? value : item)))
+            }
+            className="font-mono text-xs"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => onChange((current) => current.filter((_, index) => index !== idx))}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        variant="outline"
+        size="xs"
+        className="w-full border-dashed"
+        onClick={() => onChange((current) => [...current, addValue])}
+      >
+        <Plus className="mr-1 size-3.5" /> {addLabel}
+      </Button>
+    </div>
+  );
+}
+
 // ── AgentsPanel ─────────────────────────────────────────────────────────────
 
 export default function AgentsPanel({
+  activeProject,
   projectConfig,
   globalAgentConfig,
   onSaveProject,
   onSaveGlobalAgentConfig,
   initialSection = 'providers',
+  onBackToSettings,
 }: AgentsPanelProps) {
   const queryClient = useQueryClient();
   const [localProject, setLocalProject] = useState<ProjectConfig>(normalizeProjectConfig(projectConfig));
@@ -912,23 +1020,26 @@ export default function AgentsPanel({
     normalizeProjectConfig(globalAgentConfig)
   );
   const [agentScope, setAgentScope] = useState<ScopeKey>(projectConfig ? 'project' : 'global');
-  const [newMode, setNewMode] = useState<ModeConfig>(EMPTY_MODE);
   const [expandedProviderId, setExpandedProviderId] = useState<string>('claude');
-  const [expandedModeId, setExpandedModeId] = useState<string | null>(null);
-  const [editingMode, setEditingMode] = useState<ModeConfig | null>(null);
   const [exportStatus, setExportStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'error'>>({});
   const [importStatus, setImportStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'error'>>({});
   const [importSummary, setImportSummary] = useState<Record<string, string>>({});
 
   const [mcpEditDraft, setMcpEditDraft] = useState<McpEditDraft | null>(null);
-  const [skillStudioMode, setSkillStudioMode] = useState<boolean>(true);
-  const [skillTreeExpanded, setSkillTreeExpanded] = useState<Set<string>>(() => new Set());
   const [mcpCatalogInput, setMcpCatalogInput] = useState('');
-  const [skillCatalogInput, setSkillCatalogInput] = useState('');
+  const [mcpExplorerOpen, setMcpExplorerOpen] = useState(false);
+  const [mcpExplorerFilter, setMcpExplorerFilter] = useState<'recommended' | 'catalog' | 'registry' | 'all'>('recommended');
+  const [mcpDiagnosticsOpen, setMcpDiagnosticsOpen] = useState(false);
+  const [skillExplorerOpen, setSkillExplorerOpen] = useState(false);
   const [skillSourceInput, setSkillSourceInput] = useState('');
-  const [skillSourceIdInput, setSkillSourceIdInput] = useState('');
+  const hasActiveProject = !!activeProject || !!projectConfig;
   const hasAutoScopedToProjectRef = useRef<boolean>(!!projectConfig);
+  const permissionsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const discoveryRefreshedRef = useRef<Record<ScopeKey, boolean>>({
+    global: false,
+    project: false,
+  });
+  const mcpHydratedFromInventoryRef = useRef<Record<ScopeKey, boolean>>({
     global: false,
     project: false,
   });
@@ -944,41 +1055,46 @@ export default function AgentsPanel({
   const activeDocKind: MarkdownDocKind | null =
     initialSection === 'skills' || initialSection === 'rules' ? initialSection : null;
 
-  // Providers Query
-  const providersQuery = useQuery({
-    queryKey: ['providers'],
+  const providerAndAssetSectionActive =
+    initialSection === 'providers'
+    || initialSection === 'skills';
+  const {
+    providers,
+    skills,
+    providersPending,
+    providersError,
+    refreshProviders,
+  } = useAgentAssetInventory({
+    enabled: providerAndAssetSectionActive,
+    includeProviders: true,
+    includeMcpServers: false,
+    includeSkills: true,
+    skillScope,
+  });
+  const providerToolVocabularyQuery = useQuery({
+    queryKey: ['permission-tool-vocabulary'],
     queryFn: async () => {
-      const res = await commands.listProvidersCmd();
+      const res = await commands.listPermissionToolVocabularyCmd();
       if (res.status === 'error') throw new Error(res.error);
       return res.data;
     },
-    enabled: initialSection === 'providers',
+    enabled: initialSection === 'permissions' || initialSection === 'hooks',
+    staleTime: 60000,
   });
-  const providers = providersQuery.data ?? [];
+  const providerToolVocabulary = (providerToolVocabularyQuery.data ?? []) as ProviderToolVocabularyEntry[];
 
   // Catalog Query
-  const { data: catalog = [] } = useQuery({
+  const catalogQuery = useQuery({
     queryKey: ['catalog'],
     queryFn: async () => commands.listCatalogCmd(),
     enabled:
       initialSection === 'mcp' ||
-      initialSection === 'skills' ||
       initialSection === 'permissions',
   });
-
-  // Skills Query
-  const { data: skills = [] } = useQuery({
-    queryKey: ['skills', agentScope],
-    queryFn: async () => {
-      const res = await commands.listSkillsCmd(skillScope);
-      if (res.status === 'error') throw new Error(res.error);
-      return res.data;
-    },
-    enabled: initialSection === 'skills' || initialSection === 'providers',
-  });
+  const catalog = catalogQuery.data ?? EMPTY_CATALOG;
 
   // Rules Query
-  const { data: rules = [] } = useQuery({
+  const rulesQuery = useQuery({
     queryKey: ['rules'],
     queryFn: async () => {
       const res = await commands.listRulesCmd();
@@ -987,6 +1103,11 @@ export default function AgentsPanel({
     },
     enabled: initialSection === 'rules',
   });
+  const rules = rulesQuery.data ?? EMPTY_RULES;
+  const activeAgentConfig = useMemo(
+    () => (agentScope === 'project' ? localProject : localGlobalAgent),
+    [agentScope, localGlobalAgent, localProject]
+  );
 
   const activeDocs: AgentDoc[] =
     activeDocKind === 'skills'
@@ -1000,43 +1121,30 @@ export default function AgentsPanel({
           author: s.author ?? null,
           version: s.version ?? null,
         }))
-      : rules.map((r) => ({ id: r.file_name, title: r.file_name, content: r.content, updated: '' }));
+      : rules.map((r) => ({
+          id: r.file_name,
+          title: getRuleDisplayTitle(r),
+          content: r.content,
+          updated: '',
+        }));
   const mcpCatalogEntries = useMemo(
     () => catalog.filter((entry) => entry.kind === 'mcp-server'),
-    [catalog]
-  );
-  const skillCatalogEntries = useMemo(
-    () => catalog.filter((entry) => entry.kind === 'skill'),
     [catalog]
   );
 
   const activeSelectedDocId = activeDocKind ? selectedDocIds[agentScope][activeDocKind] : null;
   const activeDoc = activeDocs.find((doc) => doc.id === activeSelectedDocId) ?? activeDocs[0] ?? null;
-  const skillScopeRoot =
-    agentScope === 'project'
-      ? '.ship/agents/skills'
-      : '~/.ship/skills';
+  const parsedSkillInstallSpec = useMemo(
+    () => parseSkillSourceInstallSpec(skillSourceInput),
+    [skillSourceInput]
+  );
+  const canInstallFromSource = parsedSkillInstallSpec.canInstall;
 
   const selectActiveDoc = (kind: MarkdownDocKind, docId: string) => {
     setSelectedDocIds((current) => ({
       ...current,
       [agentScope]: { ...current[agentScope], [kind]: docId },
     }));
-  };
-
-  const handleSkillTreeSelect = (path: string) => {
-    const normalizedPrefix = `${skillScopeRoot}/`;
-    if (!path.startsWith(normalizedPrefix)) return;
-    const relative = path.slice(normalizedPrefix.length);
-    const [skillId] = relative.split('/');
-    if (!skillId) return;
-    selectActiveDoc('skills', skillId);
-    setSkillTreeExpanded((current) => {
-      const next = new Set(current);
-      next.add(skillScopeRoot);
-      next.add(`${skillScopeRoot}/${skillId}`);
-      return next;
-    });
   };
 
   // Mutations
@@ -1047,7 +1155,7 @@ export default function AgentsPanel({
       return res.data;
     },
     onSuccess: (newSkill) => {
-      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+      queryClient.invalidateQueries({ queryKey: ['skills', skillScope] });
       setSelectedDocIds((curr) => ({
         ...curr,
         [agentScope]: { ...curr[agentScope], skills: newSkill.id },
@@ -1062,7 +1170,7 @@ export default function AgentsPanel({
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+      queryClient.invalidateQueries({ queryKey: ['skills', skillScope] });
     },
   });
 
@@ -1072,18 +1180,18 @@ export default function AgentsPanel({
       if (res.status === 'error') throw new Error(res.error);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+      queryClient.invalidateQueries({ queryKey: ['skills', skillScope] });
       setSelectedDocIds((curr) => ({ ...curr, [agentScope]: { ...curr[agentScope], skills: null } }));
     },
   });
 
   const installSkillFromSourceMut = useMutation({
-    mutationFn: async (vars: { source: string; skillId: string; gitRef?: string | null; repoPath?: string | null }) => {
+    mutationFn: async (vars: { source: string; skillId: string }) => {
       const res = await commands.installSkillFromSourceCmd(
         vars.source,
         vars.skillId,
-        vars.gitRef ?? null,
-        vars.repoPath ?? null,
+        null,
+        null,
         skillScope,
         false
       );
@@ -1091,13 +1199,13 @@ export default function AgentsPanel({
       return res.data;
     },
     onSuccess: (installedSkill) => {
-      queryClient.invalidateQueries({ queryKey: ['skills', agentScope] });
+      queryClient.invalidateQueries({ queryKey: ['skills', skillScope] });
       setSelectedDocIds((curr) => ({
         ...curr,
         [agentScope]: { ...curr[agentScope], skills: installedSkill.id },
       }));
       setSkillSourceInput('');
-      setSkillSourceIdInput('');
+      setSkillExplorerOpen(false);
     },
   });
   const mcpServersForValidation =
@@ -1124,6 +1232,15 @@ export default function AgentsPanel({
     staleTime: 60000,
   });
   const mcpProbeReport = (mcpProbeQuery.data ?? null) as McpProbeReport | null;
+  const mcpDiagnosticsIssueCount =
+    (mcpValidationReport?.issues.length ?? 0) +
+    (mcpValidationQuery.isError ? 1 : 0) +
+    (mcpProbeQuery.isError ? 1 : 0);
+  const hasNoReachableServers =
+    !!mcpProbeReport &&
+    mcpProbeReport.checked_servers > 0 &&
+    mcpProbeReport.reachable_servers === 0;
+  const hasMcpSearchQuery = mcpCatalogInput.trim().length > 0;
   const discoveryCacheQuery = useQuery({
     queryKey: ['agent-discovery', agentScope],
     queryFn: async () => {
@@ -1157,18 +1274,26 @@ export default function AgentsPanel({
     staleTime: 60000,
   });
   const skillToolHints = (skillToolHintsQuery.data ?? []) as SkillToolHint[];
-  const mcpRegistryQuery = useQuery({
-    queryKey: ['mcp-registry', mcpCatalogInput.trim().toLowerCase()],
+  const mcpRegistryQuery = useMcpRegistrySearch({
+    query: mcpCatalogInput,
+    enabled: initialSection === 'mcp' && mcpExplorerOpen,
+    limit: 20,
+  });
+  const mcpRegistryEntries = mcpRegistryQuery.data ?? [];
+  const mcpServersInventoryQuery = useQuery({
+    queryKey: ['mcp-servers-inventory', agentScope],
     queryFn: async () => {
-      const query = mcpCatalogInput.trim();
-      const res = await commands.searchMcpRegistryCmd(query.length > 0 ? query : null, 20);
+      const res = await commands.listMcpServersCmd();
       if (res.status === 'error') throw new Error(res.error);
       return res.data;
     },
-    enabled: initialSection === 'mcp',
-    staleTime: 120000,
+    enabled:
+      initialSection === 'mcp'
+      && hasActiveProject
+      && agentScope === 'project'
+      && ((activeAgentConfig.mcp_servers ?? []).length === 0),
+    staleTime: 60_000,
   });
-  const mcpRegistryEntries = mcpRegistryQuery.data ?? [];
 
   const createRuleMut = useMutation({
     mutationFn: async (vars: { fileName: string; content: string }) => {
@@ -1221,17 +1346,6 @@ export default function AgentsPanel({
     setAgentScope('global');
   }, [projectConfig]);
   useEffect(() => {
-    if (initialSection !== 'skills') return;
-    setSkillTreeExpanded((current) => {
-      const next = new Set(current);
-      next.add(skillScopeRoot);
-      if (activeDoc?.id) {
-        next.add(`${skillScopeRoot}/${activeDoc.id}`);
-      }
-      return next;
-    });
-  }, [initialSection, skillScopeRoot, activeDoc?.id]);
-  useEffect(() => {
     if (!(initialSection === 'mcp' || initialSection === 'permissions')) return;
     if (discoveryRefreshedRef.current[agentScope]) return;
     if (!discoveryCache) return;
@@ -1255,16 +1369,33 @@ export default function AgentsPanel({
     if (!mcpProbeReport) return;
     queryClient.invalidateQueries({ queryKey: ['agent-discovery', agentScope] });
   }, [mcpProbeReport, queryClient, agentScope]);
+  useEffect(() => {
+    if (initialSection !== 'mcp') return;
+    if (agentScope !== 'project' || !hasActiveProject) return;
+    if (mcpHydratedFromInventoryRef.current[agentScope]) return;
+    if ((activeAgentConfig.mcp_servers ?? []).length > 0) {
+      mcpHydratedFromInventoryRef.current[agentScope] = true;
+      return;
+    }
+    const fallbackServers = mcpServersInventoryQuery.data ?? [];
+    if (fallbackServers.length === 0) return;
+    mcpHydratedFromInventoryRef.current[agentScope] = true;
+    updateActiveAgentConfig({
+      ...activeAgentConfig,
+      mcp_servers: fallbackServers,
+    });
+  }, [
+    initialSection,
+    agentScope,
+    hasActiveProject,
+    activeAgentConfig,
+    mcpServersInventoryQuery.data,
+  ]);
 
-  const hasActiveProject = !!projectConfig;
-  const activeAgentConfig = useMemo(
-    () => (agentScope === 'project' ? localProject : localGlobalAgent),
-    [agentScope, localGlobalAgent, localProject]
-  );
   const providerRows = useMemo<ProviderRow[]>(() => {
     const enabled = new Set(activeAgentConfig.providers ?? []);
     const detectedById = new Map(providers.map((provider) => [provider.id, provider]));
-    const checking = providersQuery.isPending;
+    const checking = providersPending;
     const supportedRows = SUPPORTED_PROVIDER_BASE.map((provider) => {
       const detected = detectedById.get(provider.id);
       if (detected) {
@@ -1298,42 +1429,47 @@ export default function AgentsPanel({
         checking,
       }));
     return [...supportedRows, ...extraRows];
-  }, [providers, activeAgentConfig.providers, providersQuery.isPending]);
-  const catalogMcpOptions = useMemo(
-    () =>
-      mcpCatalogEntries.map((entry) => ({
-        value: entry.id,
-        label: entry.name,
-        keywords: [entry.description, ...(entry.tags ?? [])],
-      })),
-    [mcpCatalogEntries]
-  );
-  const registryMcpOptions = useMemo(
-    () =>
-      mcpRegistryEntries.map((entry) => ({
-        value: entry.server_name,
-        label: `${entry.title} (Registry)`,
-        keywords: [
-          entry.description,
-          entry.version,
-          entry.transport,
+  }, [providers, activeAgentConfig.providers, providersPending]);
+  const recommendedMcpCatalogEntries = useMemo(() => {
+    const official = mcpCatalogEntries
+      .filter((entry) => (entry.tags ?? []).some((tag) => tag.toLowerCase() === 'official'))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (official.length >= 8) return official.slice(0, 8);
+
+    const seen = new Set(official.map((entry) => entry.id));
+    const fallback = mcpCatalogEntries
+      .filter((entry) => !seen.has(entry.id))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    return [...official, ...fallback].slice(0, 8);
+  }, [mcpCatalogEntries]);
+  const filteredMcpCatalogEntries = useMemo(() => {
+    const query = mcpCatalogInput.trim().toLowerCase();
+    if (!query) {
+      return [...mcpCatalogEntries].sort((left, right) => left.name.localeCompare(right.name));
+    }
+    return mcpCatalogEntries
+      .filter((entry) => {
+        const haystack = [
           entry.id,
-        ],
-      })),
-    [mcpRegistryEntries]
-  );
-  const allMcpOptions = useMemo(
-    () => [...catalogMcpOptions, ...registryMcpOptions],
-    [catalogMcpOptions, registryMcpOptions]
-  );
-  const catalogSkillOptions = useMemo(
+          entry.name,
+          entry.description,
+          entry.author ?? '',
+          ...(entry.tags ?? []),
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(query);
+      })
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [mcpCatalogEntries, mcpCatalogInput]);
+  const skillFolderRows = useMemo(
     () =>
-      skillCatalogEntries.map((entry) => ({
-        value: entry.id,
-        label: entry.name,
-        keywords: [entry.description, ...(entry.tags ?? [])],
+      activeDocs.map((doc) => ({
+        id: doc.id,
+        fileName: 'SKILL.md',
+        title: doc.title || doc.id,
       })),
-    [skillCatalogEntries]
+    [activeDocs]
   );
 
   const mcpIdOptions = useMemo(() => {
@@ -1375,25 +1511,14 @@ export default function AgentsPanel({
     const values = [...seeded, ...fromRegistry, ...fromExisting].filter(Boolean);
     return Array.from(new Set(values)).map((value) => ({ value }));
   }, [mcpRegistryEntries, activeAgentConfig.mcp_servers]);
-  const mcpTemplateEntry = useMemo(() => {
-    const query = mcpCatalogInput.trim().toLowerCase();
-    if (!query) return null;
-    return (
-      mcpCatalogEntries.find((entry) => entry.id.toLowerCase() === query) ??
-      mcpCatalogEntries.find((entry) => entry.name.toLowerCase() === query) ??
-      null
-    );
-  }, [mcpCatalogInput, mcpCatalogEntries]);
-  const mcpRegistryTemplateEntry = useMemo(() => {
-    const query = mcpCatalogInput.trim().toLowerCase();
-    if (!query) return null;
-    return (
-      mcpRegistryEntries.find((entry) => entry.server_name.toLowerCase() === query) ??
-      mcpRegistryEntries.find((entry) => entry.title.toLowerCase() === query) ??
-      mcpRegistryEntries.find((entry) => entry.id.toLowerCase() === query) ??
-      null
-    );
-  }, [mcpCatalogInput, mcpRegistryEntries]);
+  const installedMcpServerIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const server of activeAgentConfig.mcp_servers ?? []) {
+      const candidate = ((server.id ?? server.name) || '').trim().toLowerCase();
+      if (candidate) ids.add(candidate);
+    }
+    return ids;
+  }, [activeAgentConfig.mcp_servers]);
   const mcpProbeByServerId = useMemo(
     () => new Map((mcpProbeReport?.results ?? []).map((result) => [result.server_id, result])),
     [mcpProbeReport]
@@ -1414,32 +1539,6 @@ export default function AgentsPanel({
     );
     return Array.from(new Set([...fromProbe, ...fromCache]));
   }, [mcpProbeReport, cachedMcpToolsByServerId]);
-  const skillTemplateEntry = useMemo(() => {
-    const query = skillCatalogInput.trim().toLowerCase();
-    if (!query) return null;
-    return (
-      skillCatalogEntries.find((entry) => entry.id.toLowerCase() === query) ??
-      skillCatalogEntries.find((entry) => entry.name.toLowerCase() === query) ??
-      null
-    );
-  }, [skillCatalogInput, skillCatalogEntries]);
-
-  const modePresetMatches = useMemo(() => {
-    return MODE_PRESETS.reduce<Record<string, { skillIds: string[]; mcpServerIds: string[] }>>((acc, preset) => {
-      const matchingSkills = skills
-        .filter((skill) => includesAnyHint(`${skill.id} ${skill.name ?? ''}`, preset.skill_hints))
-        .map((skill) => skill.id);
-      const matchingMcpServers = (activeAgentConfig.mcp_servers ?? [])
-        .filter((server) => includesAnyHint(`${server.id ?? ''} ${server.name ?? ''}`, preset.mcp_hints))
-        .map((server) => server.id ?? server.name)
-        .filter(Boolean);
-      acc[preset.id] = {
-        skillIds: Array.from(new Set(matchingSkills)),
-        mcpServerIds: Array.from(new Set(matchingMcpServers)),
-      };
-      return acc;
-    }, {});
-  }, [skills, activeAgentConfig.mcp_servers]);
   const skillToolAllowedPatterns = useMemo(() => {
     const direct = skillToolHints.flatMap((hint) => hint.allowed_tools ?? []);
     return Array.from(
@@ -1450,7 +1549,29 @@ export default function AgentsPanel({
       )
     );
   }, [skillToolHints]);
+  const providerNativeToolIds = useMemo(() => {
+    const configured = new Set((activeAgentConfig.providers ?? []).map((provider) => provider.trim()).filter(Boolean));
+    const enabledRows = providerToolVocabulary.filter((entry) => entry.enabled);
+    const configuredRows = providerToolVocabulary.filter((entry) => configured.has(entry.provider_id));
+    const installedRows = providerToolVocabulary.filter((entry) => entry.installed);
+    const sourceRows =
+      configuredRows.length > 0
+        ? configuredRows
+        : enabledRows.length > 0
+          ? enabledRows
+          : installedRows.length > 0
+            ? installedRows
+            : providerToolVocabulary;
+
+    return Array.from(new Set(sourceRows.flatMap((entry) => entry.tool_ids ?? [])))
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0 && value !== '*' && !value.startsWith('mcp__'));
+  }, [
+    activeAgentConfig.providers,
+    providerToolVocabulary,
+  ]);
   const permissionToolSuggestions = useMemo(() => {
+    const providerNativeTools = providerNativeToolIds;
     const serverPatterns = (activeAgentConfig.mcp_servers ?? [])
       .map((server) => (server.id ?? '').trim())
       .filter(Boolean)
@@ -1463,19 +1584,53 @@ export default function AgentsPanel({
       .map((entry) => entry.id.startsWith('mcp-') ? entry.id.slice(4) : entry.id)
       .flatMap((id) => [`mcp__${id}__*`, `mcp__${id}__read*`, `mcp__${id}__write*`]);
     const baseline = ['*', 'mcp__*__*', 'mcp__*__read*', 'mcp__*__write*', 'mcp__*__delete*'];
-    return Array.from(new Set([
+    const builtInSet = new Set(providerNativeTools);
+    const values = Array.from(new Set([
       ...baseline,
+      ...providerNativeTools,
       ...serverPatterns,
       ...catalogPatterns,
       ...discoveredMcpToolPatterns,
       ...skillToolAllowedPatterns,
-    ]))
-      .map((value) => ({ value }));
+    ]));
+    const rank = (value: string) => {
+      if (value === '*') return 0;
+      if (builtInSet.has(value)) return 1;
+      if (value.startsWith('mcp__')) return 2;
+      return 3;
+    };
+    return values
+      .sort((left, right) => {
+        const bucket = rank(left) - rank(right);
+        if (bucket !== 0) return bucket;
+        return left.localeCompare(right);
+      })
+      .map((value) => {
+        const type = value === '*'
+          ? 'wildcard'
+          : builtInSet.has(value)
+            ? 'builtin'
+            : value.startsWith('mcp__')
+              ? 'mcp'
+              : 'pattern';
+        return {
+          value,
+          label: type === 'wildcard'
+            ? 'Wildcard (all tools)'
+            : type === 'builtin'
+              ? 'Built-in provider tool'
+              : type === 'mcp'
+                ? 'MCP tool pattern'
+                : 'Tool pattern',
+          keywords: [type, 'tool'],
+        };
+      });
   }, [
     activeAgentConfig.mcp_servers,
     mcpCatalogEntries,
     discoveredMcpToolPatterns,
     skillToolAllowedPatterns,
+    providerNativeToolIds,
   ]);
   const hookCommandSuggestions = useMemo(() => {
     const seeded = ['$SHIP_HOOKS_BIN', 'ship hooks run', 'node', 'bash'];
@@ -1485,24 +1640,20 @@ export default function AgentsPanel({
   }, [mcpCommandOptions, discoveryCache]);
   const hookMatcherSuggestions = useMemo(() => {
     const seeded = [
-      'Bash',
-      'Edit',
-      'Write',
-      'Read',
-      'Glob',
-      'Grep',
       'mcp__*',
       'mcp__*__read*',
       'mcp__*__write*',
-      'run_shell_command',
     ];
-    const values = [...seeded, ...permissionToolSuggestions.map((option) => option.value)];
+    const values = [
+      ...seeded,
+      ...providerNativeToolIds,
+      ...permissionToolSuggestions.map((option) => option.value),
+    ];
     return Array.from(new Set(values.filter(Boolean))).map((value) => ({ value }));
-  }, [permissionToolSuggestions]);
+  }, [permissionToolSuggestions, providerNativeToolIds]);
   const filesystemPathSuggestions = useMemo(
     () => {
       const seeded = [
-        '**/*',
         '.ship/**',
         'src/**',
         'docs/**',
@@ -1583,26 +1734,139 @@ export default function AgentsPanel({
     updateHooks(hooks);
   };
 
+  const [permissionsDraftByScope, setPermissionsDraftByScope] = useState<Record<ScopeKey, Permissions | null>>({
+    global: null,
+    project: null,
+  });
+  const [permissionsTab, setPermissionsTab] = useState<'tools' | 'commands' | 'filesystem'>('tools');
+  const [permissionsDirtyByScope, setPermissionsDirtyByScope] = useState<Record<ScopeKey, boolean>>({
+    global: false,
+    project: false,
+  });
+  const permissionsDraft = permissionsDraftByScope[agentScope];
+  const permissionsDirty = permissionsDirtyByScope[agentScope];
+
   // Permissions Query
   const { data: permissions } = useQuery({
-    queryKey: ['permissions'],
+    queryKey: permissionsQueryKey(agentScope),
     queryFn: async () => {
       const res = await commands.getPermissionsCmd();
       if (res.status === 'error') throw new Error(res.error);
-      return res.data;
+      return normalizePermissionsForEditor(res.data);
     },
     enabled: initialSection === 'permissions' || initialSection === 'mcp',
   });
 
   const savePermissionsMut = useMutation({
-    mutationFn: async (p: Permissions) => {
-      const res = await commands.savePermissionsCmd(p);
-      if (res.status === 'error') throw new Error(res.error);
+    mutationFn: async (input: { permissions: Permissions; scope: ScopeKey }) => {
+      const saveAttempt = async () => {
+        const res = await commands.savePermissionsCmd(input.permissions);
+        if (res.status === 'error') throw new Error(res.error);
+      };
+      const queued = permissionsSaveQueueRef.current.then(saveAttempt, saveAttempt);
+      permissionsSaveQueueRef.current = queued.then(
+        () => undefined,
+        () => undefined
+      );
+      await queued;
+      return {
+        scope: input.scope,
+        permissions: normalizePermissionsForEditor(input.permissions),
+      };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['permissions'] });
+    onMutate: (input) => {
+      queryClient.setQueryData(
+        permissionsQueryKey(input.scope),
+        normalizePermissionsForEditor(input.permissions),
+      );
+    },
+    onSuccess: ({ scope, permissions: savedPermissions }) => {
+      const normalized = normalizePermissionsForEditor(savedPermissions);
+      queryClient.setQueryData(permissionsQueryKey(scope), normalized);
+      setPermissionsDraftByScope((current) => ({ ...current, [scope]: normalized }));
+      setPermissionsDirtyByScope((current) => ({ ...current, [scope]: false }));
+    },
+    onError: (_error, input) => {
+      queryClient.invalidateQueries({ queryKey: permissionsQueryKey(input.scope) });
     },
   });
+
+  useEffect(() => {
+    if (!permissions) return;
+    setPermissionsDraftByScope((current) => {
+      if (current[agentScope]) return current;
+      return {
+        ...current,
+        [agentScope]: normalizePermissionsForEditor(permissions),
+      };
+    });
+  }, [agentScope, permissions]);
+
+  const activePermissions = permissionsDraft
+    ? normalizePermissionsForEditor(permissionsDraft)
+    : permissions
+      ? normalizePermissionsForEditor(permissions)
+      : null;
+
+  const savePermissionsDraft = () => {
+    if (!activePermissions || savePermissionsMut.isPending) return;
+    savePermissionsMut.mutate({
+      scope: agentScope,
+      permissions: normalizePermissionsForEditor(activePermissions),
+    });
+  };
+
+  const updatePermissions = (
+    updater: (current: Permissions) => Permissions
+  ) => {
+    setPermissionsDraftByScope((drafts) => {
+      const fallback = normalizePermissionsForEditor(
+        (queryClient.getQueryData(permissionsQueryKey(agentScope)) as Permissions | undefined)
+        ?? permissions
+      );
+      const base = normalizePermissionsForEditor(drafts[agentScope] ?? fallback);
+      const next = normalizePermissionsForEditor(updater(base));
+      return { ...drafts, [agentScope]: next };
+    });
+    setPermissionsDirtyByScope((value) => ({ ...value, [agentScope]: true }));
+  };
+  const toolAllowPatterns = activePermissions?.tools?.allow ?? [];
+  const toolDenyPatterns = activePermissions?.tools?.deny ?? [];
+  const permissionValidationIssues = useMemo(() => {
+    if (!activePermissions) return [] as string[];
+    const issues: string[] = [];
+
+    const checkToolPattern = (value: string, listName: 'allow' | 'deny') => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        issues.push(`Tools ${listName}: empty pattern.`);
+        return;
+      }
+      if (trimmed.includes(' ')) {
+        issues.push(`Tools ${listName}: "${trimmed}" contains spaces; use glob patterns/tool IDs.`);
+      }
+      if (trimmed.startsWith('mcp__') && !trimmed.slice('mcp__'.length).includes('__')) {
+        issues.push(`Tools ${listName}: "${trimmed}" is missing "__tool" segment.`);
+      }
+    };
+
+    for (const value of activePermissions.tools?.allow ?? []) checkToolPattern(value, 'allow');
+    for (const value of activePermissions.tools?.deny ?? []) checkToolPattern(value, 'deny');
+
+    for (const value of activePermissions.commands?.allow ?? []) {
+      if (!value.trim()) issues.push('Commands allow: empty pattern.');
+    }
+    for (const value of activePermissions.commands?.deny ?? []) {
+      if (!value.trim()) issues.push('Commands deny: empty pattern.');
+    }
+    for (const value of activePermissions.filesystem?.allow ?? []) {
+      if (!value.trim()) issues.push('Filesystem allow: empty path pattern.');
+    }
+    for (const value of activePermissions.filesystem?.deny ?? []) {
+      if (!value.trim()) issues.push('Filesystem deny: empty path pattern.');
+    }
+    return issues;
+  }, [activePermissions]);
 
   const updateActiveAgentConfig = (next: ProjectConfig) => {
     if (agentScope === 'project') { setLocalProject(next); return; }
@@ -1631,36 +1895,33 @@ export default function AgentsPanel({
     else deleteRuleMut.mutate(docId);
   };
 
-  const buildUniqueSkillId = (baseId: string): string => {
-    const normalized = slugifyId(baseId) || `skill-${Date.now()}`;
-    const existing = new Set(skills.map((skill) => skill.id));
-    if (!existing.has(normalized)) return normalized;
+  const appendMcpServerDefinition = (definition: McpServerConfig) => {
+    const servers = [...(activeAgentConfig.mcp_servers ?? [])];
+    const existingIds = new Set(
+      servers
+        .map((server) => (server.id ?? '').trim())
+        .filter(Boolean)
+    );
+    const baseId = inferMcpServerId(definition);
+    let id = baseId;
     let index = 2;
-    let candidate = `${normalized}-${index}`;
-    while (existing.has(candidate)) {
+    while (existingIds.has(id)) {
+      id = `${baseId}-${index}`;
       index += 1;
-      candidate = `${normalized}-${index}`;
     }
-    return candidate;
+    const nextServer: McpServerConfig = {
+      ...definition,
+      id,
+      name: definition.name.trim() || id,
+    };
+    servers.push(nextServer);
+    updateActiveAgentConfig({ ...activeAgentConfig, mcp_servers: servers });
+    setMcpExplorerOpen(false);
+    setMcpEditDraft({ idx: servers.length - 1, server: nextServer });
   };
 
-  const handleApplyMcpTemplate = () => {
-    if (mcpTemplateEntry) {
-      setMcpEditDraft({
-        idx: null,
-        server: mcpServerFromCatalog(mcpTemplateEntry),
-      });
-      return;
-    }
-    if (!mcpRegistryTemplateEntry) return;
-    if (MCP_STDIO_ONLY_ALPHA && (mcpRegistryTemplateEntry.transport ?? '').toLowerCase() !== 'stdio') {
-
-      return;
-    }
-    setMcpEditDraft({
-      idx: null,
-      server: mcpServerFromRegistry(mcpRegistryTemplateEntry),
-    });
+  const handleInstallCatalogMcpEntry = (entry: CatalogEntry) => {
+    appendMcpServerDefinition(mcpServerFromCatalog(entry));
   };
 
   const handleInstallRegistryEntry = (entry: McpRegistryEntry) => {
@@ -1669,166 +1930,17 @@ export default function AgentsPanel({
 
       return;
     }
-    const servers = [...(activeAgentConfig.mcp_servers ?? [])];
-    const existingIds = new Set(
-      servers
-        .map((server) => (server.id ?? '').trim())
-        .filter(Boolean)
-    );
-    const baseId = inferMcpServerId(normalizedServer);
-    let id = baseId;
-    let index = 2;
-    while (existingIds.has(id)) {
-      id = `${baseId}-${index}`;
-      index += 1;
-    }
-    const nextServer: McpServerConfig = {
-      ...normalizedServer,
-      id,
-      name: normalizedServer.name.trim() || id,
-    };
-    servers.push(nextServer);
-    updateActiveAgentConfig({ ...activeAgentConfig, mcp_servers: servers });
-    setMcpEditDraft({ idx: servers.length - 1, server: nextServer });
-  };
-
-  const handleApplySkillTemplate = () => {
-    if (!skillTemplateEntry) return;
-    const newId = buildUniqueSkillId(skillTemplateEntry.id);
-    createSkillMut.mutate({
-      id: newId,
-      name: skillTemplateEntry.name,
-      content: skillTemplateEntry.skill_template ?? `# ${skillTemplateEntry.name}\n\n`,
-    });
+    appendMcpServerDefinition(normalizedServer);
   };
 
   const handleInstallSkillFromSource = () => {
-    const parsed = parseSkillSourceInstallSpec(skillSourceInput);
-    const source = parsed.source.trim();
-    const rawId = skillSourceIdInput.trim() || parsed.inferredSkillId;
-    const skillId = slugifyId(rawId);
-    if (!source || !skillId) return;
+    const source = parsedSkillInstallSpec.source.trim();
+    const skillId = parsedSkillInstallSpec.skillId;
+    if (!source || !parsedSkillInstallSpec.canInstall) return;
     installSkillFromSourceMut.mutate({
       source,
       skillId,
-      gitRef: parsed.gitRef,
-      repoPath: parsed.repoPath,
     });
-  };
-
-  const handleSetShipGenerationProvider = (providerId: string) => {
-    const updated = {
-      ...activeAgentConfig,
-      ai: {
-        ...normalizeAiConfig(activeAgentConfig.ai),
-        provider: providerId,
-        model:
-          (activeAgentConfig.ai?.provider ?? 'claude') === providerId
-            ? activeAgentConfig.ai?.model ?? null
-            : null,
-      },
-    };
-    updateActiveAgentConfig(updated);
-    if (agentScope === 'project') void onSaveProject(updated);
-    else void onSaveGlobalAgentConfig(updated);
-  };
-
-  const handleAddModePreset = (preset: ModePresetDefinition) => {
-    const existing = activeAgentConfig.modes ?? [];
-    if (existing.some((mode) => mode.id === preset.id)) {
-      handleSetActiveMode(preset.id);
-      return;
-    }
-    const matching = modePresetMatches[preset.id] ?? { skillIds: [], mcpServerIds: [] };
-    const availableSkillIds = new Set(skills.map((skill) => skill.id));
-    const availableMcpServerIds = new Set(
-      (activeAgentConfig.mcp_servers ?? [])
-        .map((server) => (server.id ?? '').trim())
-        .filter(Boolean)
-    );
-    const presetSkillIds = preset.default_skill_ids.filter((id) => availableSkillIds.has(id));
-    const presetMcpServerIds = preset.default_mcp_server_ids.filter((id) => availableMcpServerIds.has(id));
-    const resolvedSkillIds = Array.from(new Set([...presetSkillIds, ...matching.skillIds]));
-    const resolvedMcpServerIds = Array.from(new Set([...presetMcpServerIds, ...matching.mcpServerIds]));
-    const promptId = preset.default_prompt_id && resolvedSkillIds.includes(preset.default_prompt_id)
-      ? preset.default_prompt_id
-      : resolvedSkillIds[0] ?? null;
-    const modeFromPreset: ModeConfig = {
-      id: preset.id,
-      name: preset.name,
-      description: preset.description,
-      active_tools: preset.allow_tools.filter((tool) => !tool.startsWith('mcp__')),
-      mcp_servers: resolvedMcpServerIds,
-      skills: resolvedSkillIds,
-      rules: [],
-      prompt_id: promptId,
-      hooks: [],
-      permissions: {
-        allow: preset.allow_tools,
-        deny: preset.deny_tools,
-      },
-      target_agents: preset.target_agents,
-    };
-    const updated = {
-      ...activeAgentConfig,
-      modes: [...existing, modeFromPreset],
-      active_mode: modeFromPreset.id,
-    };
-    updateActiveAgentConfig(updated);
-  };
-
-  const handleAddMode = () => {
-    const id = newMode.id.trim();
-    const name = newMode.name.trim();
-    if (!id || !name) return;
-    updateActiveAgentConfig({
-      ...activeAgentConfig,
-      modes: [...(activeAgentConfig.modes ?? []), { ...newMode, id, name }],
-    });
-    setNewMode(EMPTY_MODE);
-  };
-
-  const handleRemoveMode = (id: string) => {
-    updateActiveAgentConfig({
-      ...activeAgentConfig,
-      modes: (activeAgentConfig.modes ?? []).filter((m: ModeConfig) => m.id !== id),
-      active_mode: activeAgentConfig.active_mode === id ? null : activeAgentConfig.active_mode,
-    });
-  };
-
-  const handleSetActiveMode = (id: string | null) => {
-    const next = id === DEFAULT_MODE_VALUE ? null : id;
-    updateActiveAgentConfig({ ...activeAgentConfig, active_mode: next });
-  };
-
-  const handleToggleProvider = (providerId: string, currentlyEnabled: boolean) => {
-    const next = currentlyEnabled
-      ? (activeAgentConfig.providers ?? []).filter((id) => id !== providerId)
-      : [...(activeAgentConfig.providers ?? []), providerId];
-    const updated = { ...activeAgentConfig, providers: next };
-    updateActiveAgentConfig(updated);
-    if (agentScope === 'project') void onSaveProject(updated);
-    else void onSaveGlobalAgentConfig(updated);
-  };
-
-  const handleEditModeStart = (mode: ModeConfig) => {
-    setExpandedModeId(mode.id);
-    setEditingMode({ ...mode });
-  };
-
-  const handleEditModeCancel = () => {
-    setExpandedModeId(null);
-    setEditingMode(null);
-  };
-
-  const handleEditModeSave = () => {
-    if (!editingMode) return;
-    updateActiveAgentConfig({
-      ...activeAgentConfig,
-      modes: (activeAgentConfig.modes ?? []).map((m) => m.id === editingMode.id ? editingMode : m),
-    });
-    setExpandedModeId(null);
-    setEditingMode(null);
   };
 
   const handleExport = async (target: string) => {
@@ -1871,7 +1983,7 @@ export default function AgentsPanel({
           setLocalProject(normalizeProjectConfig(refreshed.data));
         }
       }
-      void providersQuery.refetch();
+      refreshProviders();
       void mcpValidationQuery.refetch();
     } catch (err) {
       setImportStatus((prev) => ({ ...prev, [target]: 'error' }));
@@ -1906,40 +2018,42 @@ export default function AgentsPanel({
   };
 
   const handleToggleDiscoveredToolPolicy = (serverId: string, toolName: string) => {
-    if (!permissions) return;
     const pattern = mcpToolPattern(serverId, toolName);
-    const deny = new Set(permissions.tools?.deny ?? []);
-    if (deny.has(pattern)) {
-      deny.delete(pattern);
-    } else {
-      deny.add(pattern);
-    }
-    savePermissionsMut.mutate({
-      ...permissions,
-      tools: {
-        ...permissions.tools,
-        allow: permissions.tools?.allow ?? ['*'],
-        deny: Array.from(deny),
-      },
+    updatePermissions((current) => {
+      const deny = new Set(current.tools?.deny ?? []);
+      if (deny.has(pattern)) {
+        deny.delete(pattern);
+      } else {
+        deny.add(pattern);
+      }
+      return {
+        ...current,
+        tools: {
+          ...current.tools,
+          allow: current.tools?.allow ?? ['*'],
+          deny: Array.from(deny),
+        },
+      };
     });
   };
 
   const handleToggleServerToolBlock = (serverId: string) => {
-    if (!permissions) return;
     const wildcard = `mcp__${serverId}__*`;
-    const deny = new Set(permissions.tools?.deny ?? []);
-    if (deny.has(wildcard)) {
-      deny.delete(wildcard);
-    } else {
-      deny.add(wildcard);
-    }
-    savePermissionsMut.mutate({
-      ...permissions,
-      tools: {
-        ...permissions.tools,
-        allow: permissions.tools?.allow ?? ['*'],
-        deny: Array.from(deny),
-      },
+    updatePermissions((current) => {
+      const deny = new Set(current.tools?.deny ?? []);
+      if (deny.has(wildcard)) {
+        deny.delete(wildcard);
+      } else {
+        deny.add(wildcard);
+      }
+      return {
+        ...current,
+        tools: {
+          ...current.tools,
+          allow: current.tools?.allow ?? ['*'],
+          deny: Array.from(deny),
+        },
+      };
     });
   };
 
@@ -1949,6 +2063,9 @@ export default function AgentsPanel({
   };
 
   const sectionMeta = SECTION_META[initialSection];
+  const showFooterSaveCta = initialSection !== 'skills'
+    && initialSection !== 'rules'
+    && initialSection !== 'permissions';
 
   const scopeToggle = (
     <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
@@ -1998,14 +2115,43 @@ export default function AgentsPanel({
       </Tooltip>
     </div>
   );
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {scopeToggle}
+    </div>
+  );
+  const sectionTitle = onBackToSettings && initialSection === 'skills'
+    ? (
+      <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-8 w-8 rounded-full"
+              onClick={onBackToSettings}
+              aria-label="Back to settings"
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Back to settings</TooltipContent>
+        </Tooltip>
+        <span>{sectionMeta.title}</span>
+      </div>
+    )
+    : sectionMeta.title;
+  const frameClass =
+    initialSection === 'skills' && onBackToSettings ? 'p-2 md:p-4' : 'md:p-8';
 
   return (
-    <PageFrame className="md:p-8">
+    <PageFrame className={frameClass}>
       <PageHeader
-        title={sectionMeta.title}
+        title={sectionTitle}
         description={sectionMeta.description}
         badge={<Badge variant="outline">Agents</Badge>}
-        actions={scopeToggle}
+        actions={headerActions}
       />
 
       <div className="grid gap-4">
@@ -2032,35 +2178,16 @@ export default function AgentsPanel({
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold">AI Clients</h3>
-                    <p className="text-[11px] text-muted-foreground">Ship manages your provider config. Pick one provider to power in-app AI features.</p>
+                    <p className="text-[11px] text-muted-foreground">Ship manages provider configs and native exports.</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        className="h-6 px-2 text-[10px]"
-                        onClick={() => void mcpValidationQuery.refetch()}
-                        disabled={mcpValidationQuery.isFetching}
-                      >
-                        {mcpValidationQuery.isFetching ? 'Checking…' : 'Run checks'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Refresh provider sync health from current MCP and provider config state.
-                    </TooltipContent>
-                  </Tooltip>
-                  {providersQuery.isPending && (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      checking PATH...
-                    </Badge>
-                  )}
-                </div>
+                {providersPending && (
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                    checking PATH...
+                  </Badge>
+                )}
               </div>
-              {providersQuery.isError && (
+              {providersError && (
                 <div className="flex items-center justify-between gap-2 border-b bg-rose-500/5 px-4 py-2.5">
                   <p className="text-[11px] text-rose-700 dark:text-rose-300">
                     Provider detection failed. Showing supported providers with unknown install status.
@@ -2070,7 +2197,7 @@ export default function AgentsPanel({
                     variant="ghost"
                     size="xs"
                     className="h-6 px-2 text-[10px]"
-                    onClick={() => void providersQuery.refetch()}
+                    onClick={() => refreshProviders()}
                   >
                     Retry
                   </Button>
@@ -2078,44 +2205,28 @@ export default function AgentsPanel({
               )}
               <div className="divide-y divide-border/50">
                 {providerRows.map((provider) => {
-                  const isEnabled = (activeAgentConfig.providers ?? []).includes(provider.id);
-                  const isShipAiProvider = (activeAgentConfig.ai?.provider ?? 'claude') === provider.id;
-                  const syncSummary = getProviderSyncSummary(provider, isEnabled, mcpValidationReport);
+                  const syncSummary = getProviderSyncSummary(provider, true, mcpValidationReport);
                   const isExpanded = expandedProviderId === provider.id;
                   const providerHookEvents = HOOK_EVENTS.filter((event) => event.providers.includes(provider.id));
-                  const providerIssuePaths = Array.from(
-                    new Set(
-                      syncSummary.issues
-                        .map((issue) => issue.source_path?.trim())
-                        .filter((path): path is string => !!path)
-                    )
-                  );
-                  const modelOptions = [
-                    ...provider.models.map((model) => ({
-                      value: model.id,
-                      label: model.recommended ? `${model.name} (recommended)` : model.name,
-                    })),
-                  ];
-                  const currentModel = activeAgentConfig.ai?.model?.trim();
-                  if (
-                    isShipAiProvider &&
-                    currentModel &&
-                    !modelOptions.some((option) => option.value === currentModel)
-                  ) {
-                    modelOptions.unshift({ value: currentModel, label: `${currentModel} (current)` });
-                  }
-                  const exportDisabledReason =
-                    !hasActiveProject
-                      ? 'Open or create a project to export provider config files.'
-                      : !isEnabled
-                        ? 'Enable provider sync in this scope before exporting.'
-                        : 'Push Ship unified config to the provider native config file.';
+                  const issueCount = syncSummary.issues.length;
+                  const nextIssue = syncSummary.issues.find((issue) => issue.level !== 'info') ?? syncSummary.issues[0] ?? null;
                   const importDisabledReason =
                     !hasActiveProject
                       ? 'Open or create a project to import provider config files.'
                       : agentScope !== 'project'
                         ? 'Switch to Project scope to import into this project.'
-                        : 'Import provider-native config into Ship (project file first, then global fallback).';
+                        : provider.id === 'claude'
+                          ? 'Imports from .mcp.json first, then ~/.claude.json if missing.'
+                          : provider.id === 'gemini'
+                            ? 'Imports from .gemini/settings.json first, then ~/.gemini/settings.json if missing.'
+                            : 'Imports from .codex/config.toml in this project.';
+                  const exportTargetReason = hasActiveProject
+                    ? provider.id === 'claude'
+                      ? 'Writes .mcp.json, CLAUDE.md, .claude/settings.json, and .claude/skills.'
+                      : provider.id === 'gemini'
+                        ? 'Writes .gemini/settings.json, GEMINI.md, .gemini/policies/ship-permissions.toml, and .gemini/skills.'
+                        : 'Writes .codex/config.toml, AGENTS.md, and .agents/skills.'
+                    : 'Open or create a project to export provider config files.';
                   const logo = PROVIDER_LOGO[provider.id];
                   return (
                     <div key={provider.id} className={cn('transition-colors', isExpanded && 'bg-muted/30')}>
@@ -2137,7 +2248,7 @@ export default function AgentsPanel({
                                 </Badge>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
-                                Provider sync health for this scope: `Ready` means safe to sync, `Needs attention` means blocking issues were detected, `Drift detected` means provider config shape diverges from Ship expectations.
+                                Provider sync health for this scope.
                               </TooltipContent>
                             </Tooltip>
                             {provider.checking ? (
@@ -2153,15 +2264,18 @@ export default function AgentsPanel({
                                 not found
                               </Badge>
                             )}
+                            {issueCount > 0 ? (
+                              <Badge variant="outline" className="cursor-default border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-800 dark:text-amber-300">
+                                {issueCount} warning{issueCount === 1 ? '' : 's'}
+                              </Badge>
+                            ) : null}
                           </div>
-                          <p className="font-mono text-[11px] text-muted-foreground">{provider.binary}</p>
-                          <p className="text-[11px] text-muted-foreground">{syncSummary.detail}</p>
                           {importSummary[provider.id] && (
                             <p className="text-[11px] text-muted-foreground">{importSummary[provider.id]}</p>
                           )}
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex shrink-0 items-center gap-1.5">
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -2186,48 +2300,9 @@ export default function AgentsPanel({
                             <TooltipTrigger asChild>
                               <Button
                                 type="button"
-                                variant={isShipAiProvider ? 'secondary' : 'ghost'}
-                                size="xs"
-                                className={cn(
-                                  'h-6 w-6 p-0',
-                                  isShipAiProvider && 'bg-primary/10 text-primary'
-                                )}
-                                onClick={() => handleSetShipGenerationProvider(provider.id)}
-                              >
-                                <Zap className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {isShipAiProvider
-                                ? 'Currently powering in-app AI features in Ship'
-                                : 'Use this provider to power AI features in Ship'}
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant={isEnabled ? 'secondary' : 'outline'}
-                                size="xs"
-                                className="h-6 px-2 text-[10px]"
-                                onClick={() => handleToggleProvider(provider.id, isEnabled)}
-                              >
-                                {isEnabled ? 'Sync On' : 'Sync Off'}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {isEnabled
-                                ? 'Disable provider export for this scope'
-                                : 'Enable provider export for this scope'}
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
                                 variant="outline"
                                 size="xs"
-                                disabled={!isEnabled || !hasActiveProject || exportStatus[provider.id] === 'loading'}
+                                disabled={!hasActiveProject || exportStatus[provider.id] === 'loading'}
                                 onClick={() => void handleExport(provider.id)}
                                 className="h-6 px-2 text-[10px]"
                               >
@@ -2238,7 +2313,7 @@ export default function AgentsPanel({
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {exportDisabledReason}
+                              {exportTargetReason}
                             </TooltipContent>
                           </Tooltip>
                           <Tooltip>
@@ -2265,117 +2340,37 @@ export default function AgentsPanel({
 
                       {isExpanded && (
                         <div className="space-y-3 border-t bg-muted/20 px-4 py-4">
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <Label className="text-xs">Config Paths</Label>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="size-3 cursor-default text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  Project/global paths come from Ship's provider registry. Detected paths come from runtime preflight checks.
-                                </TooltipContent>
-                              </Tooltip>
+                          {(!provider.installed || nextIssue) && (
+                            <div className={cn(
+                              'rounded-md border px-3 py-2 text-[11px]',
+                              !provider.installed
+                                ? 'border-amber-500/30 bg-amber-500/5 text-amber-800 dark:text-amber-200'
+                                : 'border-border/70 bg-background/80 text-muted-foreground'
+                            )}>
+                              {!provider.installed ? (
+                                <div className="flex items-center justify-between gap-2">
+                                  <p>
+                                    Install <code>{provider.binary}</code> and then rescan provider detection.
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="xs"
+                                    className="h-6 px-2 text-[10px]"
+                                    onClick={() => refreshProviders()}
+                                  >
+                                    Rescan
+                                  </Button>
+                                </div>
+                              ) : nextIssue ? (
+                                <div className="space-y-1">
+                                  <p className="font-medium text-foreground">Next step</p>
+                                  <p>{nextIssue.message}</p>
+                                  {nextIssue.hint ? <p>Hint: {nextIssue.hint}</p> : null}
+                                </div>
+                              ) : null}
                             </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {provider.project_config && (
-                                <Badge variant="outline" className="font-mono text-[10px]">
-                                  {`<project>/${provider.project_config}`}
-                                </Badge>
-                              )}
-                              {provider.global_config && (
-                                <Badge variant="outline" className="font-mono text-[10px]">
-                                  {`~/${provider.global_config}`}
-                                </Badge>
-                              )}
-                              {providerIssuePaths.map((path) => (
-                                <Badge key={path} variant="outline" className="font-mono text-[10px]">
-                                  {path}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <Label className="text-xs">Import / Export Resolution</Label>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="size-3 cursor-default text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  Import checks project config first, then falls back to global. Export always writes provider-native files based on provider conventions.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <p className="text-[11px] text-muted-foreground">
-                              Import order: <span className="font-mono">{`<project>/${provider.project_config}`}</span> then <span className="font-mono">{`~/${provider.global_config}`}</span>
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">
-                              Export MCP target: <span className="font-mono">{`<project>/${provider.project_config}`}</span>
-                            </p>
-                          </div>
-
-                          <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <Label className="text-xs">In-App AI Model</Label>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Info className="size-3 cursor-default text-muted-foreground" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {isShipAiProvider
-                                      ? 'Model used for Ship AI features with this provider.'
-                                      : 'Set this provider as Ship AI first to edit its model.'}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                              <AutocompleteInput
-                                value={isShipAiProvider ? (activeAgentConfig.ai?.model ?? '') : ''}
-                                options={modelOptions}
-                                placeholder={isShipAiProvider ? 'Select or type a model ID' : 'Select this provider for Ship AI'}
-                                noResultsText={isShipAiProvider ? 'No detected model IDs yet. You can still type one.' : 'Switch provider first.'}
-                                disabled={!isShipAiProvider}
-                                onValueChange={(value) => {
-                                  if (!isShipAiProvider) return;
-                                  updateActiveAgentConfig({
-                                    ...activeAgentConfig,
-                                    ai: { ...normalizeAiConfig(activeAgentConfig.ai), model: value || null },
-                                  });
-                                }}
-                              />
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <Label className="text-xs">CLI Path Override</Label>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Info className="size-3 cursor-default text-muted-foreground" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {isShipAiProvider
-                                      ? 'Optional absolute path to this provider binary. Blank uses PATH.'
-                                      : 'Set this provider as Ship AI first to set CLI override.'}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                              <Input
-                                value={isShipAiProvider ? (activeAgentConfig.ai?.cli_path ?? '') : ''}
-                                disabled={!isShipAiProvider}
-                                onChange={(event) => {
-                                  if (!isShipAiProvider) return;
-                                  updateActiveAgentConfig({
-                                    ...activeAgentConfig,
-                                    ai: { ...normalizeAiConfig(activeAgentConfig.ai), cli_path: event.target.value || null },
-                                  });
-                                }}
-                                placeholder={isShipAiProvider ? 'Optional absolute path' : 'Select this provider for Ship AI'}
-                                className="h-8 text-xs"
-                              />
-                            </div>
-                          </div>
+                          )}
 
                           <div className="space-y-1.5">
                             <div className="flex items-center gap-1.5">
@@ -2409,11 +2404,27 @@ export default function AgentsPanel({
                             )}
                           </div>
 
-                          {syncSummary.issues.length > 0 && (
-                            <div className="space-y-2 rounded-md border bg-background/80 p-2.5">
+                          <div className="space-y-2 rounded-md border bg-background/80 p-2.5">
+                            <div className="flex items-center justify-between gap-2">
                               <p className="text-[11px] font-medium">
-                                Diagnostics ({syncSummary.issues.length})
+                                Diagnostics
                               </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="xs"
+                                className="h-6 px-2 text-[10px]"
+                                onClick={() => void mcpValidationQuery.refetch()}
+                                disabled={mcpValidationQuery.isFetching}
+                              >
+                                {mcpValidationQuery.isFetching ? 'Checking…' : 'Validate'}
+                              </Button>
+                            </div>
+                            {syncSummary.issues.length === 0 ? (
+                              <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                                No diagnostics warnings for this provider.
+                              </p>
+                            ) : (
                               <div className="max-h-40 space-y-1 overflow-auto pr-1">
                                 {syncSummary.issues.map((issue, idx) => (
                                   <div
@@ -2427,348 +2438,21 @@ export default function AgentsPanel({
                                           : 'border-border/60 bg-muted/30 text-muted-foreground'
                                     )}
                                   >
-                                    <p className="font-medium">
-                                      {issue.level.toUpperCase()} • {issue.code}
-                                    </p>
-                                    <p>{issue.message}</p>
+                                    <p className="font-medium">{issue.message}</p>
                                     {issue.hint && <p className="opacity-90">Hint: {issue.hint}</p>}
                                   </div>
                                 ))}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-
-            {/* ── Templates ── */}
-            <Card size="sm" className="overflow-hidden">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold">Agent Templates</h3>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-3 cursor-default text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        Templates are Ship opinionated starting points. Under the hood they map to mode config with skill, MCP, and tool-policy defaults.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Start from a template, then tailor it per workspace/service.
-                  </p>
-                </div>
-                {(activeAgentConfig.modes ?? []).length > 0 && (
-                  <Badge variant="secondary" className="ml-3 shrink-0 text-[10px]">
-                    {activeAgentConfig.active_mode
-                      ? (activeAgentConfig.modes ?? []).find(m => m.id === activeAgentConfig.active_mode)?.name ?? 'Custom'
-                      : 'Default'} active
-                  </Badge>
-                )}
-              </div>
-
-              <div className="divide-y divide-border/50">
-                {(activeAgentConfig.modes ?? []).length === 0 && (
-                  <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-                    <p className="text-sm text-muted-foreground">No templates defined yet.</p>
-                    <p className="text-[11px] text-muted-foreground/60">Add a template to establish a focused starting environment for this workspace.</p>
-                  </div>
-                )}
-
-                {(activeAgentConfig.modes ?? []).map((mode) => {
-                  const isActive = mode.id === activeAgentConfig.active_mode;
-                  const isExpanded = expandedModeId === mode.id;
-                  const editing = isExpanded && editingMode?.id === mode.id ? editingMode : null;
-                  const linkedSkill = skills.find((s) => s.id === mode.prompt_id);
-                  const mcpCount = (mode.mcp_servers ?? []).length;
-                  const toolCount = (mode.active_tools ?? []).length;
-
-                  return (
-                    <div key={mode.id} className={cn('transition-colors', isExpanded && 'bg-muted/30')}>
-                      <div
-                        className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-muted/20"
-                        onClick={() => isExpanded ? handleEditModeCancel() : handleEditModeStart(mode)}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium">{mode.name}</p>
-                            {isActive && (
-                              <Badge variant="outline" className="border-primary/30 bg-primary/10 px-1.5 py-0 text-[9px] text-primary">
-                                active
-                              </Badge>
                             )}
                           </div>
-                          {mode.description && (
-                            <p className="truncate text-[11px] text-muted-foreground">{mode.description}</p>
-                          )}
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          {linkedSkill && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="cursor-default text-[10px]">
-                                  <ScrollText className="mr-1 size-2.5" />{linkedSkill.name}
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>Linked skill — used as this mode's system prompt</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {mcpCount > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="cursor-default text-[10px]">
-                                  <Package className="mr-1 size-2.5" />{mcpCount} MCP
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {(mode.mcp_servers ?? []).join(', ')}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          {toolCount > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="cursor-default text-[10px]">{toolCount} tools</Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>Active tool restrictions for this mode</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-1">
-                          {!isActive && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="xs"
-                                  className="h-6 px-2 text-[10px]"
-                                  onClick={(e) => { e.stopPropagation(); handleSetActiveMode(mode.id); }}
-                                >
-                                  <Check className="mr-1 size-3" />Set active
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Use this template for agent sessions in this scope</TooltipContent>
-                            </Tooltip>
-                          )}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="xs"
-                                className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={(e) => { e.stopPropagation(); handleRemoveMode(mode.id); }}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Delete mode</TooltipContent>
-                          </Tooltip>
-                          {isExpanded
-                            ? <ChevronDown className="size-3.5 text-muted-foreground" />
-                            : <ChevronRight className="size-3.5 text-muted-foreground" />
-                          }
-                        </div>
-                      </div>
-
-                      {isExpanded && editing && (
-                        <div className="space-y-3 border-t bg-muted/20 px-4 py-4">
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Template Name</Label>
-                              <Input
-                                value={editing.name}
-                                onChange={(e) => setEditingMode({ ...editing, name: e.target.value })}
-                                className="h-8 text-xs"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Description</Label>
-                              <Input
-                                value={editing.description ?? ''}
-                                onChange={(e) => setEditingMode({ ...editing, description: e.target.value || null })}
-                                placeholder="What this template is for"
-                                className="h-8 text-xs"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <Label className="text-xs">Linked Skill</Label>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="size-3 cursor-default text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  The skill used as this mode's system prompt. Skills can contain instructions, context, and tool config for the agent.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <Select
-                              value={editing.prompt_id ?? 'none'}
-                              onValueChange={(v) => setEditingMode({ ...editing, prompt_id: v === 'none' ? null : v })}
-                            >
-                              <SelectTrigger size="sm" className="w-full sm:w-72">
-                                <SelectValue placeholder="No linked skill" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">
-                                  <span className="text-muted-foreground">None — no linked skill</span>
-                                </SelectItem>
-                                {skills.length === 0 && (
-                                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
-                                    No skills yet — create one in the Skills tab
-                                  </div>
-                                )}
-                                {skills.map((s) => (
-                                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {(activeAgentConfig.mcp_servers ?? []).length > 0 && (
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <Label className="text-xs">MCP Servers</Label>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Info className="size-3 cursor-default text-muted-foreground" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>Select which MCP servers are active in this mode. Unselected servers won't be started.</TooltipContent>
-                                </Tooltip>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {(activeAgentConfig.mcp_servers ?? []).map((server) => {
-                                  const serverId = server.id ?? server.name;
-                                  const checked = (editing.mcp_servers ?? []).includes(serverId);
-                                  return (
-                                    <button
-                                      key={serverId}
-                                      type="button"
-                                      onClick={() => {
-                                        const next = checked
-                                          ? (editing.mcp_servers ?? []).filter((id) => id !== serverId)
-                                          : [...(editing.mcp_servers ?? []), serverId];
-                                        setEditingMode({ ...editing, mcp_servers: next });
-                                      }}
-                                      className={cn(
-                                        'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors',
-                                        checked
-                                          ? 'border-primary/40 bg-primary/10 text-primary'
-                                          : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                                      )}
-                                    >
-                                      <Package className="size-3" />
-                                      {server.name || server.id}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-2 pt-1">
-                            <Button size="sm" onClick={handleEditModeSave}>Save</Button>
-                            <Button size="sm" variant="ghost" onClick={handleEditModeCancel}>Cancel</Button>
-                          </div>
                         </div>
                       )}
                     </div>
                   );
                 })}
               </div>
-
-              <div className="space-y-3 border-t px-4 py-3">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <Label className="text-xs">Start From Ship Templates</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-3 cursor-default text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Templates include target agents, tool policy defaults, and auto-linking to matching skills/MCP in this workspace.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {MODE_PRESETS.map((preset) => {
-                      const exists = (activeAgentConfig.modes ?? []).some((mode) => mode.id === preset.id);
-                      const matching = modePresetMatches[preset.id] ?? { skillIds: [], mcpServerIds: [] };
-                      return (
-                        <Button
-                          key={preset.id}
-                          type="button"
-                          variant={exists ? 'secondary' : 'outline'}
-                          size="sm"
-                          disabled={exists}
-                          className="h-auto flex-col items-start px-3 py-2 text-left"
-                          onClick={() => handleAddModePreset(preset)}
-                        >
-                          <span className="text-xs font-semibold">{preset.name}</span>
-                          <span className="mt-0.5 line-clamp-2 text-[10px] font-normal text-muted-foreground">
-                            {preset.description}
-                          </span>
-                          <span className="mt-1 text-[10px] font-normal text-muted-foreground/80">
-                            Agents: {preset.target_agents.join(', ')}
-                          </span>
-                          <span className="text-[10px] font-normal text-muted-foreground/80">
-                            Auto-links: {matching.skillIds.length} skill{matching.skillIds.length === 1 ? '' : 's'}, {matching.mcpServerIds.length} MCP
-                          </span>
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Create Custom Template</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={newMode.name}
-                      onChange={(e) => setNewMode({
-                        ...newMode,
-                        name: e.target.value,
-                        id: e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-                      })}
-                      placeholder="New template name…"
-                      className="h-8 text-xs"
-                      onKeyDown={(e) => e.key === 'Enter' && newMode.name.trim() && handleAddMode()}
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-3.5 shrink-0 cursor-default text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Template ID is inferred automatically from this name.
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          onClick={handleAddMode}
-                          disabled={!newMode.name.trim()}
-                          className="shrink-0"
-                        >
-                          <Plus className="mr-1 size-3.5" />Add
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Create a custom template</TooltipContent>
-                    </Tooltip>
-                  </div>
-                </div>
-              </div>
             </Card>
+
           </div>
         )}
 
@@ -2777,33 +2461,19 @@ export default function AgentsPanel({
         ════════════════════════════════════════════════════════════════ */}
         {initialSection === 'mcp' && (
           <div className="grid gap-4">
-            {MCP_STDIO_ONLY_ALPHA && (
-              <Alert variant="default" className="opacity-80 border-dashed">
-                <AlertDescription className="text-[11px] text-muted-foreground">
-                  <span className="font-semibold text-amber-600 dark:text-amber-500">Alpha</span>: MCP server execution is currently stdio-only. HTTP/SSE entries can be discovered but not configured for active use yet.
-                </AlertDescription>
-              </Alert>
-            )}
             <Card size="sm" className="overflow-hidden">
               <div className="flex items-center gap-3 border-b bg-gradient-to-r from-violet-500/10 via-card/80 to-card/50 px-4 py-3">
                 <div className="flex size-7 items-center justify-center rounded-lg border border-violet-500/20 bg-violet-500/10">
                   <Package className="size-3.5 text-violet-500" />
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
                     <h3 className="text-sm font-semibold">MCP Servers</h3>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-3 cursor-default text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        MCP (Model Context Protocol) servers extend your agent with tools — file systems, databases, APIs, browser control, and more. Stored in your ship.toml and synced to provider configs on export.
-                      </TooltipContent>
-                    </Tooltip>
+                    {MCP_STDIO_ONLY_ALPHA && (
+                      <Badge variant="secondary" className="text-[10px]">stdio-only alpha</Badge>
+                    )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Connect tools and services. Stored in ship.toml — exported to each provider on sync.
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">Manage your MCP server library and validate connectivity.</p>
                 </div>
                 <Badge variant="secondary" className="shrink-0 text-[10px]">
                   {(activeAgentConfig.mcp_servers ?? []).length} server{(activeAgentConfig.mcp_servers ?? []).length !== 1 ? 's' : ''}
@@ -2811,268 +2481,448 @@ export default function AgentsPanel({
               </div>
 
               <div className="border-b bg-muted/20 px-4 py-3">
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-                  <div className="flex items-center gap-1.5">
-                    <AutocompleteInput
-                      value={mcpCatalogInput}
-                      options={allMcpOptions}
-                      placeholder="Search MCP library templates..."
-                      onValueChange={setMcpCatalogInput}
-                      className="h-8 text-xs"
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-3.5 shrink-0 cursor-default text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Search local templates plus official MCP registry results.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={handleApplyMcpTemplate}
-                        disabled={!mcpTemplateEntry && !mcpRegistryTemplateEntry}
-                      >
-                        <Plus className="mr-1.5 size-3.5" />
-                        {mcpTemplateEntry ? 'Use Template' : 'Use Registry'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Add the selected MCP definition and auto-fill recommended defaults.
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8"
-                        onClick={() => void mcpValidationQuery.refetch()}
-                        disabled={mcpValidationQuery.isFetching}
-                      >
-                        {mcpValidationQuery.isFetching ? 'Validating…' : 'Validate MCP'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Run preflight checks on server definitions and provider config files.
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={() => void mcpProbeQuery.refetch()}
-                        disabled={(activeAgentConfig.mcp_servers ?? []).length === 0 || mcpProbeQuery.isFetching}
-                      >
-                        <Wrench className="mr-1.5 size-3.5" />
-                        {mcpProbeQuery.isFetching ? 'Probing…' : 'Probe Tools'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Start each configured server and discover available MCP tools where supported.
-                    </TooltipContent>
-                  </Tooltip>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-8"
+                    onClick={() => setMcpExplorerOpen(true)}
+                  >
+                    <Plus className="mr-1.5 size-3.5" />
+                    Explore
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => setMcpEditDraft({ idx: null, server: { ...EMPTY_MCP_SERVER } })}
+                  >
+                    <PenLine className="mr-1.5 size-3.5" />
+                    Add Manually
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => setMcpDiagnosticsOpen(true)}
+                  >
+                    <Wrench className="mr-1.5 size-3.5" />
+                    Diagnostics
+                    {mcpDiagnosticsIssueCount > 0 ? (
+                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 py-0 text-[10px]">
+                        {mcpDiagnosticsIssueCount}
+                      </Badge>
+                    ) : null}
+                  </Button>
                 </div>
-                {(mcpTemplateEntry || mcpRegistryTemplateEntry) && (
-                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                    {mcpTemplateEntry && (
-                      <span>{mcpTemplateEntry.name}: {mcpTemplateEntry.description}</span>
-                    )}
-                    {!mcpTemplateEntry && mcpRegistryTemplateEntry && (
-                      <span>
-                        {mcpRegistryTemplateEntry.title} ({mcpRegistryTemplateEntry.transport}, v{mcpRegistryTemplateEntry.version}): {mcpRegistryTemplateEntry.description}
-                      </span>
-                    )}
-                    {(mcpTemplateEntry?.source_url ?? mcpRegistryTemplateEntry?.source_url ?? mcpRegistryTemplateEntry?.website_url) && (
-                      <a
-                        href={mcpTemplateEntry?.source_url ?? mcpRegistryTemplateEntry?.source_url ?? mcpRegistryTemplateEntry?.website_url ?? '#'}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                      >
-                        <Link className="size-3" />
-                        source
-                      </a>
-                    )}
-                  </div>
-                )}
-                {initialSection === 'mcp' && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Registry results</span>
-                      {mcpRegistryQuery.isFetching && <span>searching…</span>}
-                    </div>
-                    {mcpRegistryQuery.isError ? (
-                      <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                        Registry discovery unavailable right now. You can still configure servers manually.
-                      </p>
-                    ) : mcpRegistryEntries.length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground">No registry matches.</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {mcpRegistryEntries.slice(0, 5).map((entry) => {
-                          const requiredEnv = entry.required_env ?? [];
-                          const requiredHeaders = entry.required_headers ?? [];
-                          return (
-                            <div key={entry.server_name} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1.5 text-[11px]">
-                              <div className="min-w-0">
-                                <p className="truncate font-medium">{entry.title}</p>
-                                <p className="truncate text-muted-foreground">
-                                  {entry.server_name} • {entry.transport} • v{entry.version}
-                                </p>
-                                {(requiredEnv.length > 0 || requiredHeaders.length > 0) && (
-                                  <p className="truncate text-amber-700 dark:text-amber-300">
-                                    Requires: {requiredEnv.length > 0 ? `${requiredEnv.length} env` : ''}{requiredEnv.length > 0 && requiredHeaders.length > 0 ? ', ' : ''}{requiredHeaders.length > 0 ? `${requiredHeaders.length} headers` : ''}
-                                  </p>
-                                )}
-                              </div>
-                              <Button
-                                type="button"
-                                size="xs"
-                                variant="outline"
-                                className="h-6 px-2 text-[10px]"
-                                onClick={() => handleInstallRegistryEntry(entry)}
-                              >
-                                Install
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {mcpValidationQuery.isError && (
-                  <p className="mt-1.5 text-[11px] text-destructive">
-                    {String(mcpValidationQuery.error)}
-                  </p>
-                )}
-                {mcpValidationReport && (
-                  <div className="mt-2 space-y-2 rounded-md border bg-background/70 p-2.5">
-                    <div className="flex items-center justify-between gap-2 text-[11px]">
-                      <span className="font-medium">
-                        Preflight: {mcpValidationReport.ok ? 'ready' : 'needs attention'}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {mcpValidationReport.checked_servers} servers, {mcpValidationReport.checked_provider_configs} provider config files
-                      </span>
-                    </div>
-                    {mcpValidationReport.issues.length === 0 ? (
-                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                        No issues found.
-                      </p>
-                    ) : (
-                      <div className="max-h-40 space-y-1 overflow-auto pr-1">
-                        {mcpValidationReport.issues.map((issue, idx) => (
-                          <div
-                            key={`${issue.code}-${issue.server_id ?? issue.provider_id ?? idx}`}
-                            className={cn(
-                              'rounded border px-2 py-1.5 text-[11px]',
-                              issue.level === 'error'
-                                ? 'border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300'
-                                : issue.level === 'warning'
-                                  ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300'
-                                  : 'border-border/60 bg-muted/30 text-muted-foreground'
-                            )}
-                          >
-                            <p className="font-medium">
-                              {issue.level.toUpperCase()} {issue.server_id ? `• ${issue.server_id}` : issue.provider_id ? `• ${issue.provider_id}` : ''}
-                            </p>
-                            <p>{issue.message}</p>
-                            {issue.hint && <p className="opacity-90">Hint: {issue.hint}</p>}
-                            {issue.source_path && <p className="font-mono opacity-80">{issue.source_path}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {mcpProbeQuery.isError && (
-                  <p className="mt-1.5 text-[11px] text-destructive">
-                    {String(mcpProbeQuery.error)}
-                  </p>
-                )}
-                {mcpProbeReport && (
-                  <div className="mt-2 space-y-2 rounded-md border bg-background/70 p-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      <span className="font-medium">
-                        Runtime probe: {mcpProbeReport.reachable_servers}/{mcpProbeReport.checked_servers} reachable • {mcpProbeReport.discovered_tools} tool{mcpProbeReport.discovered_tools === 1 ? '' : 's'}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {formatEpochSeconds(mcpProbeReport.generated_at)}
-                      </span>
-                    </div>
-                    {(mcpProbeReport.results ?? []).length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground">No probe results yet.</p>
-                    ) : (
-                      <div className="max-h-40 space-y-1 overflow-auto pr-1">
-                        {(mcpProbeReport.results ?? []).map((result) => {
-                          const probeTools = result.discovered_tools ?? [];
-                          const probeWarnings = result.warnings ?? [];
-                          return (
-                            <div key={`probe-${result.server_id}`} className="rounded border bg-muted/30 px-2 py-1.5 text-[11px]">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="font-medium">{result.server_name || result.server_id}</p>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    'cursor-default text-[10px]',
-                                    result.status === 'ready'
-                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                      : result.status === 'partial'
-                                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                        : result.status === 'disabled'
-                                          ? 'text-muted-foreground'
-                                          : 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
-                                  )}
-                                >
-                                  {result.status}
-                                </Badge>
-                              </div>
-                              <p className="text-muted-foreground">
-                                {result.transport} - {probeTools.length} tool{probeTools.length === 1 ? '' : 's'} - {result.duration_ms}ms
-                              </p>
-                              {result.message && <p>{result.message}</p>}
-                              {probeWarnings.slice(0, 1).map((warning) => (
-                                <p key={warning} className="text-amber-700 dark:text-amber-300">{warning}</p>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                  {hasNoReachableServers ? (
+                    <Badge variant="outline" className="border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300">
+                      {mcpProbeReport?.reachable_servers ?? 0}/{mcpProbeReport?.checked_servers ?? 0} reachable
+                    </Badge>
+                  ) : mcpProbeReport ? (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      {mcpProbeReport.reachable_servers}/{mcpProbeReport.checked_servers} reachable
+                    </Badge>
+                  ) : null}
+                  {mcpValidationReport ? (
+                    <Badge variant="outline" className={mcpValidationReport.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}>
+                      Preflight {mcpValidationReport.ok ? 'ready' : 'needs attention'}
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
 
+              <ExplorerDialog
+                open={mcpExplorerOpen}
+                onOpenChange={setMcpExplorerOpen}
+                title="MCP Explorer"
+                icon={<Package className="size-4 text-violet-500" />}
+              >
+                <div className="space-y-3">
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+                      <Input
+                        value={mcpCatalogInput}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setMcpCatalogInput(next);
+                          if (next.trim().length > 0 && mcpExplorerFilter === 'recommended') {
+                            setMcpExplorerFilter('all');
+                          }
+                        }}
+                        placeholder="Search by name, ID, tag, author"
+                        className="h-8 text-xs"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                      <Select
+                        value={mcpExplorerFilter}
+                        onValueChange={(value) => setMcpExplorerFilter(value as 'recommended' | 'catalog' | 'registry' | 'all')}
+                      >
+                        <SelectTrigger size="sm" className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="recommended">Recommended</SelectItem>
+                          <SelectItem value="catalog">Catalog</SelectItem>
+                          <SelectItem value="registry">Registry</SelectItem>
+                          <SelectItem value="all">All</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(mcpExplorerFilter === 'recommended' || mcpExplorerFilter === 'all') && !hasMcpSearchQuery && (
+                      <div className="space-y-2 rounded-md border bg-muted/15 p-2.5">
+                        <div className="space-y-0.5">
+                          <p className="text-[11px] font-semibold">Recommended</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            Based on embedded catalog entries tagged official.
+                          </p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {recommendedMcpCatalogEntries.map((entry) => {
+                            const serverId = inferMcpServerId(mcpServerFromCatalog(entry)).toLowerCase();
+                            const installed = installedMcpServerIdSet.has(serverId);
+                            return (
+                              <div key={`recommended-${entry.id}`} className="rounded border bg-background/70 p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-medium">{entry.name}</p>
+                                    <p className="truncate text-[10px] text-muted-foreground">{entry.id}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {entry.source_url ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            type="button"
+                                            size="icon-sm"
+                                            variant="ghost"
+                                            className="h-6 w-6"
+                                            onClick={() => {
+                                              void openUrl(entry.source_url as string);
+                                            }}
+                                          >
+                                            <ExternalLink className="size-3.5" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Open source docs</TooltipContent>
+                                      </Tooltip>
+                                    ) : null}
+                                    <Button
+                                      type="button"
+                                      size="xs"
+                                      variant="outline"
+                                      disabled={installed}
+                                      onClick={() => handleInstallCatalogMcpEntry(entry)}
+                                    >
+                                      {installed ? 'Installed' : 'Add'}
+                                    </Button>
+                                  </div>
+                                </div>
+                                <p className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">{entry.description}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {(mcpExplorerFilter === 'catalog' || mcpExplorerFilter === 'all') && (
+                      <div className="space-y-2 rounded-md border bg-muted/15 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold">Catalog</p>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {filteredMcpCatalogEntries.length} results
+                          </Badge>
+                        </div>
+                        <div className="max-h-[48vh] space-y-1 overflow-y-auto pr-1">
+                          {filteredMcpCatalogEntries.map((entry) => {
+                            const serverId = inferMcpServerId(mcpServerFromCatalog(entry)).toLowerCase();
+                            const installed = installedMcpServerIdSet.has(serverId);
+                            return (
+                              <div key={`catalog-${entry.id}`} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1.5 text-xs">
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium">{entry.name}</p>
+                                  <p className="truncate text-[10px] text-muted-foreground">{entry.id}</p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {entry.source_url ? (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          size="icon-sm"
+                                          variant="ghost"
+                                          className="h-6 w-6"
+                                          onClick={() => {
+                                            void openUrl(entry.source_url as string);
+                                          }}
+                                        >
+                                          <ExternalLink className="size-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Open source docs</TooltipContent>
+                                    </Tooltip>
+                                  ) : null}
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    disabled={installed}
+                                    onClick={() => handleInstallCatalogMcpEntry(entry)}
+                                  >
+                                    {installed ? 'Installed' : 'Add'}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {(mcpExplorerFilter === 'registry' || mcpExplorerFilter === 'all') && (
+                      <div className="space-y-2 rounded-md border bg-muted/15 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold">Registry</p>
+                          {mcpRegistryQuery.isFetching ? (
+                            <Badge variant="outline" className="text-[10px]">Searching…</Badge>
+                          ) : null}
+                        </div>
+                        {mcpCatalogInput.trim().length < 2 ? (
+                          <p className="text-[11px] text-muted-foreground">Type at least 2 characters to search the registry.</p>
+                        ) : mcpRegistryQuery.isError ? (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                            Registry lookup unavailable right now.
+                          </p>
+                        ) : (
+                          <div className="max-h-[48vh] space-y-1 overflow-y-auto pr-1">
+                            {mcpRegistryEntries.map((entry) => {
+                              const requiredEnv = entry.required_env ?? [];
+                              const requiredHeaders = entry.required_headers ?? [];
+                              const serverId = inferMcpServerId(mcpServerFromRegistry(entry)).toLowerCase();
+                              const installed = installedMcpServerIdSet.has(serverId);
+                              return (
+                                <div key={`registry-${entry.id}`} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1.5 text-xs">
+                                  <div className="min-w-0">
+                                    <p className="truncate font-medium">{entry.title}</p>
+                                    <p className="truncate text-[10px] text-muted-foreground">
+                                      {entry.server_name} • {entry.transport} • v{entry.version}
+                                    </p>
+                                    {(requiredEnv.length > 0 || requiredHeaders.length > 0) && (
+                                      <p className="truncate text-[10px] text-amber-700 dark:text-amber-300">
+                                        Requires: {requiredEnv.length > 0 ? `${requiredEnv.length} env` : ''}{requiredEnv.length > 0 && requiredHeaders.length > 0 ? ', ' : ''}{requiredHeaders.length > 0 ? `${requiredHeaders.length} headers` : ''}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    disabled={installed}
+                                    onClick={() => handleInstallRegistryEntry(entry)}
+                                  >
+                                    {installed ? 'Installed' : 'Add'}
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                            {mcpRegistryEntries.length === 0 ? (
+                              <p className="py-2 text-[11px] text-muted-foreground">No registry matches for this query.</p>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                </div>
+              </ExplorerDialog>
+
+              <ExplorerDialog
+                open={mcpDiagnosticsOpen}
+                onOpenChange={setMcpDiagnosticsOpen}
+                title="MCP Diagnostics"
+                icon={<Wrench className="size-4 text-violet-500" />}
+              >
+                <div className="flex h-full min-h-0 flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background/70 p-2.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={() => void mcpValidationQuery.refetch()}
+                      disabled={mcpValidationQuery.isFetching}
+                    >
+                      {mcpValidationQuery.isFetching ? 'Validating…' : 'Run Validate'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={() => void mcpProbeQuery.refetch()}
+                      disabled={(activeAgentConfig.mcp_servers ?? []).length === 0 || mcpProbeQuery.isFetching}
+                    >
+                      {mcpProbeQuery.isFetching ? 'Probing…' : 'Run Probe'}
+                    </Button>
+                    <span className="text-[11px] text-muted-foreground">
+                      Validate checks config shape. Probe checks reachability and discovered tools.
+                    </span>
+                  </div>
+
+                  <Tabs defaultValue="preflight" className="flex min-h-0 flex-1 flex-col gap-3">
+                    <TabsList className="h-8 w-fit">
+                      <TabsTrigger value="preflight" className="text-xs">Preflight</TabsTrigger>
+                      <TabsTrigger value="runtime" className="text-xs">Runtime Probe</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="preflight" className="min-h-0 flex-1">
+                      <div className="flex h-full min-h-0 flex-col gap-2 rounded-md border bg-background/70 p-3">
+                        {mcpValidationQuery.isError ? (
+                          <p className="text-[11px] text-destructive">{String(mcpValidationQuery.error)}</p>
+                        ) : null}
+                        {mcpValidationReport ? (
+                          <>
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                              <span className="font-semibold">
+                                Preflight: {mcpValidationReport.ok ? 'ready' : 'needs attention'}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {mcpValidationReport.checked_servers} servers • {mcpValidationReport.checked_provider_configs} provider configs
+                              </span>
+                            </div>
+                            {mcpValidationReport.issues.length === 0 ? (
+                              <p className="text-[11px] text-emerald-700 dark:text-emerald-300">No issues found.</p>
+                            ) : (
+                              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+                                {mcpValidationReport.issues.map((issue, idx) => (
+                                  <div
+                                    key={`${issue.code}-${issue.server_id ?? issue.provider_id ?? idx}`}
+                                    className={cn(
+                                      'rounded border px-2 py-1.5 text-[11px]',
+                                      issue.level === 'error'
+                                        ? 'border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300'
+                                        : issue.level === 'warning'
+                                          ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300'
+                                          : 'border-border/60 bg-muted/30 text-muted-foreground'
+                                    )}
+                                  >
+                                    <p className="font-medium">
+                                      {issue.level.toUpperCase()} {issue.server_id ? `• ${issue.server_id}` : issue.provider_id ? `• ${issue.provider_id}` : ''}
+                                    </p>
+                                    <p>{issue.message}</p>
+                                    {issue.hint && <p className="opacity-90">Hint: {issue.hint}</p>}
+                                    {issue.source_path && <p className="font-mono opacity-80">{issue.source_path}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">Run Validate to see preflight diagnostics.</p>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="runtime" className="min-h-0 flex-1">
+                      <div className="flex h-full min-h-0 flex-col gap-2 rounded-md border bg-background/70 p-3">
+                        {mcpProbeQuery.isError ? (
+                          <p className="text-[11px] text-destructive">{String(mcpProbeQuery.error)}</p>
+                        ) : null}
+                        {mcpProbeReport ? (
+                          <>
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                              <span className="font-semibold">
+                                Runtime probe: {mcpProbeReport.reachable_servers}/{mcpProbeReport.checked_servers} reachable • {mcpProbeReport.discovered_tools} tools
+                              </span>
+                              <span className="text-muted-foreground">{formatEpochSeconds(mcpProbeReport.generated_at)}</span>
+                            </div>
+                            {(mcpProbeReport.results ?? []).length === 0 ? (
+                              <p className="text-[11px] text-muted-foreground">No probe results yet.</p>
+                            ) : (
+                              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+                                {(mcpProbeReport.results ?? []).map((result) => {
+                                  const probeTools = result.discovered_tools ?? [];
+                                  const probeWarnings = result.warnings ?? [];
+                                  return (
+                                    <div key={`probe-${result.server_id}`} className="rounded border bg-muted/30 px-2 py-1.5 text-[11px]">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="font-medium">{result.server_name || result.server_id}</p>
+                                        <Badge
+                                          variant="outline"
+                                          className={cn(
+                                            'cursor-default text-[10px]',
+                                            result.status === 'ready'
+                                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                              : result.status === 'partial'
+                                                ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                                : result.status === 'disabled'
+                                                  ? 'text-muted-foreground'
+                                                  : 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                          )}
+                                        >
+                                          {result.status.toUpperCase()}
+                                        </Badge>
+                                      </div>
+                                      <p className="text-muted-foreground">
+                                        {result.transport} • {probeTools.length} tools • {result.duration_ms}ms
+                                      </p>
+                                      {result.message ? <p>{result.message}</p> : null}
+                                      {probeWarnings.slice(0, 1).map((warning) => (
+                                        <p key={warning} className="text-amber-700 dark:text-amber-300">{warning}</p>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">Run Probe to inspect runtime diagnostics.</p>
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </ExplorerDialog>
+
               <div className="divide-y divide-border/50">
+                {mcpEditDraft?.idx === null && (
+                  <McpServerForm
+                    draft={mcpEditDraft.server}
+                    onChange={(s) => setMcpEditDraft({ idx: null, server: s })}
+                    onSave={handleSaveMcpServer}
+                    onCancel={() => setMcpEditDraft(null)}
+                    idOptions={mcpIdOptions}
+                    commandOptions={mcpCommandOptions}
+                    envKeyOptions={mcpEnvKeyOptions}
+                    isNew
+                  />
+                )}
+
                 {(activeAgentConfig.mcp_servers ?? []).length === 0 && mcpEditDraft === null && (
                   <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
                     <Package className="size-8 text-muted-foreground opacity-30" />
                     <p className="text-sm text-muted-foreground">No MCP servers configured.</p>
-                    <p className="text-[11px] text-muted-foreground/60">
-                      Add servers to give your agent access to tools, APIs, and local services.
-                    </p>
                   </div>
                 )}
 
                 {(activeAgentConfig.mcp_servers ?? []).map((server, idx) => {
                   const serverId = (server.id ?? server.name).trim();
                   const normalizedServerId = serverId || inferMcpServerId(server);
-                  const isEditing = mcpEditDraft?.idx === idx;
                   const transport = server.server_type ?? 'stdio';
                   const envCount = server.env ? Object.keys(server.env).length : 0;
                   const probeResult = mcpProbeByServerId.get(normalizedServerId);
+                  const probeStatusLabel = probeResult?.status === 'needs-attention'
+                    ? 'Issue'
+                    : probeResult?.status === 'partial'
+                      ? 'Partial'
+                      : null;
                   const discoveredTools = (() => {
                     const probeTools = probeResult?.discovered_tools ?? [];
                     const cachedTools = cachedMcpToolsByServerId.get(normalizedServerId) ?? [];
@@ -3086,10 +2936,21 @@ export default function AgentsPanel({
                     }
                     return Array.from(byName.values());
                   })();
-                  const allToolsBlocked = isMcpServerDenied(permissions, normalizedServerId);
+                  const allToolsBlocked = isMcpServerDenied(activePermissions ?? undefined, normalizedServerId);
                   return (
-                    <div key={`${normalizedServerId}-${idx}`} className={cn('transition-colors', isEditing && 'bg-muted/30')}>
-                      <div className="flex items-center gap-3 px-4 py-3">
+                    <div key={`${normalizedServerId}-${idx}`} className={cn('transition-colors', mcpEditDraft?.idx === idx && 'bg-muted/30')}>
+                      <div
+                        className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setMcpEditDraft({ idx, server: { ...server } })}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setMcpEditDraft({ idx, server: { ...server } });
+                          }
+                        }}
+                      >
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
                           <Package className="size-3.5 text-muted-foreground" />
                         </div>
@@ -3108,31 +2969,41 @@ export default function AgentsPanel({
                                   : 'Connected via HTTP request/response'}
                               </TooltipContent>
                             </Tooltip>
-                            {probeResult && (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  'cursor-default px-1.5 py-0 text-[9px]',
-                                  probeResult.status === 'ready'
-                                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                    : probeResult.status === 'partial'
-                                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                      : probeResult.status === 'disabled'
-                                        ? 'text-muted-foreground'
-                                        : 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
-                                )}
-                              >
-                                {probeResult.status}
-                              </Badge>
+                            {MCP_STDIO_ONLY_ALPHA && transport !== 'stdio' && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="secondary" className="cursor-default px-1.5 py-0 text-[9px]">
+                                    discovery-only
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  HTTP/SSE endpoints are validated and probed, but active stdio execution is the current alpha path.
+                                </TooltipContent>
+                              </Tooltip>
                             )}
+                            {probeResult && probeStatusLabel ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'cursor-default px-1.5 py-0 text-[10px]',
+                                      probeResult.status === 'partial'
+                                          ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                        : 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                    )}
+                                  >
+                                    {probeStatusLabel}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  {probeResult.message || 'Open diagnostics for details.'}
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
                             {discoveredTools.length > 0 && (
                               <Badge variant="secondary" className="cursor-default px-1.5 py-0 text-[9px]">
                                 {discoveredTools.length} tools
-                              </Badge>
-                            )}
-                            {server.disabled && (
-                              <Badge variant="outline" className="px-1.5 py-0 text-[9px] text-muted-foreground">
-                                disabled
                               </Badge>
                             )}
                           </div>
@@ -3141,11 +3012,6 @@ export default function AgentsPanel({
                               ? [server.command, ...(server.args ?? [])].join(' ')
                               : server.url ?? server.command}
                           </p>
-                          {probeResult?.message && (
-                            <p className="truncate text-[10px] text-muted-foreground">
-                              {probeResult.message}
-                            </p>
-                          )}
                         </div>
 
                         {envCount > 0 && (
@@ -3169,8 +3035,11 @@ export default function AgentsPanel({
                                   variant={allToolsBlocked ? 'secondary' : 'outline'}
                                   size="xs"
                                   className="h-6 px-2 text-[10px]"
-                                  onClick={() => handleToggleServerToolBlock(normalizedServerId)}
-                                  disabled={!permissions || savePermissionsMut.isPending}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleToggleServerToolBlock(normalizedServerId);
+                                  }}
+                                  disabled={!activePermissions || savePermissionsMut.isPending}
                                 >
                                   {allToolsBlocked ? 'All Blocked' : 'Block All'}
                                 </Button>
@@ -3187,23 +3056,11 @@ export default function AgentsPanel({
                               <Button
                                 variant="ghost"
                                 size="xs"
-                                className="h-6 w-6 p-0"
-                                onClick={() => isEditing
-                                  ? setMcpEditDraft(null)
-                                  : setMcpEditDraft({ idx, server: { ...server } })}
-                              >
-                                <PenLine className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{isEditing ? 'Cancel edit' : 'Edit server'}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="xs"
                                 className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() => handleRemoveMcpServer(idx)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleRemoveMcpServer(idx);
+                                }}
                               >
                                 <Trash2 className="size-3.5" />
                               </Button>
@@ -3215,15 +3072,10 @@ export default function AgentsPanel({
 
                       {discoveredTools.length > 0 && (
                         <div className="border-t bg-background/40 px-4 py-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-[11px] font-medium">Discovered Tools</p>
-                            <p className="text-[10px] text-muted-foreground">
-                              click to block or allow
-                            </p>
-                          </div>
+                          <p className="text-[11px] font-medium">Discovered Tools</p>
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {discoveredTools.slice(0, 24).map((tool) => {
-                              const denied = isMcpToolDenied(permissions, normalizedServerId, tool.name);
+                              const denied = isMcpToolDenied(activePermissions ?? undefined, normalizedServerId, tool.name);
                               const pattern = mcpToolPattern(normalizedServerId, tool.name);
                               return (
                                 <Tooltip key={`${normalizedServerId}-${tool.name}`}>
@@ -3237,7 +3089,7 @@ export default function AgentsPanel({
                                           : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                                       )}
                                       onClick={() => handleToggleDiscoveredToolPolicy(normalizedServerId, tool.name)}
-                                      disabled={!permissions || savePermissionsMut.isPending}
+                                      disabled={!activePermissions || savePermissionsMut.isPending}
                                     >
                                       {tool.name}
                                     </button>
@@ -3260,11 +3112,10 @@ export default function AgentsPanel({
                           </div>
                         </div>
                       )}
-
-                      {isEditing && mcpEditDraft && (
+                      {mcpEditDraft?.idx === idx && (
                         <McpServerForm
                           draft={mcpEditDraft.server}
-                          onChange={(s) => setMcpEditDraft({ ...mcpEditDraft, server: s })}
+                          onChange={(s) => setMcpEditDraft({ idx, server: s })}
                           onSave={handleSaveMcpServer}
                           onCancel={() => setMcpEditDraft(null)}
                           idOptions={mcpIdOptions}
@@ -3276,40 +3127,8 @@ export default function AgentsPanel({
                   );
                 })}
 
-                {mcpEditDraft?.idx === null && (
-                  <McpServerForm
-                    draft={mcpEditDraft.server}
-                    onChange={(s) => setMcpEditDraft({ idx: null, server: s })}
-                    onSave={handleSaveMcpServer}
-                    onCancel={() => setMcpEditDraft(null)}
-                    idOptions={mcpIdOptions}
-                    commandOptions={mcpCommandOptions}
-                    envKeyOptions={mcpEnvKeyOptions}
-                    isNew
-                  />
-                )}
               </div>
 
-              {mcpEditDraft === null && (
-                <div className="border-t px-4 py-3">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full border-dashed"
-                        onClick={() => setMcpEditDraft({ idx: null, server: { ...EMPTY_MCP_SERVER } })}
-                      >
-                        <Plus className="mr-1.5 size-3.5" />
-                        Add MCP Server
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Configure a custom MCP server connection.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              )}
             </Card>
           </div>
         )}
@@ -3319,233 +3138,99 @@ export default function AgentsPanel({
         ════════════════════════════════════════════════════════════════ */}
         {(initialSection === 'skills' || initialSection === 'rules') && activeDocKind && (
           <div className="grid gap-4">
-            {initialSection === 'skills' && (
-              <Alert className="border-cyan-500/20 bg-cyan-500/5">
-                <Zap className="size-4 text-cyan-500" />
-                <AlertDescription className="text-xs">
-                  <span className="font-semibold">Skills are a full SDK</span> — A package including YAML config, prompt templates, and multi-file logic. Studio mode renders these as auditable folders in real-time.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-              <Card size="sm" className="overflow-hidden xl:h-[640px]">
-                <div className="flex items-center gap-3 border-b bg-gradient-to-r from-cyan-500/10 via-card/80 to-card/50 px-4 py-3">
+            <div className="grid gap-5 md:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 px-1">
                   <div className="flex size-7 items-center justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10">
                     {initialSection === 'skills' ? <BookOpen className="size-3.5 text-cyan-500" /> : <ScrollText className="size-3.5 text-cyan-500" />}
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold">{initialSection === 'skills' ? 'Skills' : 'Rules'}</h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      {initialSection === 'skills' ? `${agentScope} scope` : 'global scope'}
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">{initialSection === 'skills' ? `${agentScope} scope` : 'global scope'}</p>
                   </div>
                 </div>
-                <CardContent className="space-y-3 !pt-5">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => handleCreateDoc(activeDocKind)}>
-                        <Plus className="size-3.5" />
-                        New {initialSection === 'skills' ? 'Skill' : 'Rule'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Create a new {initialSection === 'skills' ? 'skill package' : 'rule document'} in {agentScope} scope.
-                    </TooltipContent>
-                  </Tooltip>
 
-                  {initialSection === 'skills' && (
-                    <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={skillSourceInput}
-                          onChange={(e) => setSkillSourceInput(e.target.value)}
-                          placeholder="Install from URL (GitHub/Gist)…"
-                          className="h-8 text-xs font-mono"
-                        />
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-8 shrink-0"
-                          onClick={() => handleInstallSkillFromSource()}
-                          disabled={!skillSourceInput.trim() || installSkillFromSourceMut.isPending}
-                        >
-                          {installSkillFromSourceMut.isPending ? 'Installing…' : <Download className="size-3.5" />}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-1">
+                  <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => handleCreateDoc(activeDocKind)}>
+                    <Plus className="size-3.5" />
+                    New {initialSection === 'skills' ? 'Skill' : 'Rule'}
+                  </Button>
+                  {initialSection === 'skills' ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => setSkillExplorerOpen(true)}
+                    >
+                      <Download className="size-3.5" />
+                      Discover
+                    </Button>
+                  ) : null}
+                </div>
 
-                  {initialSection === 'skills' && (
-                    <div>
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                        <div className="flex items-center gap-1.5">
-                          <AutocompleteInput
-                            value={skillCatalogInput}
-                            options={catalogSkillOptions}
-                            placeholder="Install skill from library..."
-                            onValueChange={setSkillCatalogInput}
-                            className="h-8 text-xs"
-                          />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="size-3.5 shrink-0 cursor-default text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Search curated skills by name, ID, or keywords.
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              onClick={handleApplySkillTemplate}
-                              disabled={!skillTemplateEntry}
-                            >
-                              <Plus className="mr-1.5 size-3.5" />
-                              Install
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Install the selected skill package from the catalog.
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      {skillTemplateEntry && (
-                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span>{skillTemplateEntry.name}: {skillTemplateEntry.description}</span>
-                          {skillTemplateEntry.source_url && (
-                            <a
-                              href={skillTemplateEntry.source_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline"
-                            >
-                              <Link className="size-3" />
-                              source
-                            </a>
-                          )}
-                        </div>
-                      )}
-
-                    </div>
-                  )}
-
-                  {initialSection === 'skills' && (
-                    <div className="flex items-center justify-between rounded-md border bg-muted/40 px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <Folder className="size-3.5 text-cyan-500" />
-                        <div>
-                          <p className="text-[11px] font-medium leading-tight">Studio folder audit</p>
-                          <p className="text-[10px] text-muted-foreground">{skillScopeRoot}</p>
-                        </div>
-                      </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => setSkillStudioMode((current) => !current)}
-                          >
-                            {skillStudioMode ? 'Use list' : 'Use studio'}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Switch between folder-audit tree and compact list view.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  )}
-
-                  <div className="max-h-[500px] space-y-2 overflow-auto pr-1">
-                    {activeDocs.length === 0 && (
-                      <p className="py-4 text-center text-xs text-muted-foreground">
-                        No {initialSection === 'skills' ? 'skills' : 'rules'} yet.
-                      </p>
-                    )}
-
-                    {initialSection === 'skills' && skillStudioMode
-                      ? (
-                        <FileTree
-                          className="border-border/60 bg-card/40 text-xs"
-                          expanded={skillTreeExpanded}
-                          onExpandedChange={(expanded) => setSkillTreeExpanded(new Set(expanded))}
-                          selectedPath={activeDoc ? `${skillScopeRoot}/${activeDoc.id}/SKILL.md` : undefined}
-                          onSelect={handleSkillTreeSelect}
-                        >
-                          <FileTreeFolder
-                            path={skillScopeRoot}
-                            name={agentScope === 'project' ? 'project-skills' : 'user-skills'}
-                          >
-                            {activeDocs.map((doc) => {
-                              const skillPath = `${skillScopeRoot}/${doc.id}`;
-                              const frontmatterPresent = hasYamlFrontmatter(doc.content);
-                              const argumentPlaceholder = doc.content.includes('$ARGUMENTS');
-                              return (
-                                <FileTreeFolder key={doc.id} path={skillPath} name={doc.id}>
-                                  <FileTreeFile path={`${skillPath}/SKILL.md`} name="SKILL.md" />
-                                  <FileTreeFolder path={`${skillPath}/audit`} name="audit">
-                                    <FileTreeFile
-                                      path={`${skillPath}/audit/source`}
-                                      name={`source:${sourceLabel(doc.source)}`}
-                                      icon={<Package className="size-3 text-muted-foreground" />}
-                                    />
-                                    {doc.version ? (
-                                      <FileTreeFile
-                                        path={`${skillPath}/audit/version`}
-                                        name={`version:${doc.version}`}
-                                        icon={<Check className="size-3 text-muted-foreground" />}
-                                      />
-                                    ) : null}
-                                    {doc.author ? (
-                                      <FileTreeFile
-                                        path={`${skillPath}/audit/author`}
-                                        name={`author:${doc.author}`}
-                                        icon={<Check className="size-3 text-muted-foreground" />}
-                                      />
-                                    ) : null}
-                                    <FileTreeFile
-                                      path={`${skillPath}/audit/frontmatter`}
-                                      name={frontmatterPresent ? "frontmatter:ok" : "frontmatter:missing"}
-                                      icon={<Check className="size-3 text-muted-foreground" />}
-                                    />
-                                    <FileTreeFile
-                                      path={`${skillPath}/audit/arguments`}
-                                      name={argumentPlaceholder ? "args:enabled" : "args:none"}
-                                      icon={<Check className="size-3 text-muted-foreground" />}
-                                    />
-                                  </FileTreeFolder>
-                                </FileTreeFolder>
-                              );
-                            })}
-                          </FileTreeFolder>
-                        </FileTree>
-                      )
-                      : activeDocs.map((doc) => {
-                          const selected = activeDoc?.id === doc.id;
+                <div className="space-y-1">
+                  {activeDocs.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      No {initialSection === 'skills' ? 'skills' : 'rules'} yet.
+                    </p>
+                  ) : (
+                    initialSection === 'skills' ? (
+                      <div className="max-h-[62vh] overflow-y-auto rounded-lg border bg-background/60">
+                        {skillFolderRows.map((skill) => {
+                          const selected = activeDoc?.id === skill.id;
                           return (
-                            <button
-                              key={doc.id}
-                              type="button"
-                              className={`w-full rounded-md border px-2.5 py-2 text-left transition-colors ${selected ? 'border-primary/40 bg-primary/10' : 'hover:bg-muted/50'}`}
-                              onClick={() => selectActiveDoc(activeDocKind, doc.id)}
-                            >
-                              <p className="truncate text-sm font-medium">{doc.title || 'Untitled'}</p>
-                              <p className="text-xs text-muted-foreground">{formatUpdated(doc.updated)}</p>
-                            </button>
+                            <div key={skill.id} className="border-b last:border-b-0">
+                              <button
+                                type="button"
+                                className={cn(
+                                  'flex w-full items-center gap-2 px-2.5 py-2 text-left text-xs font-medium',
+                                  selected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/40'
+                                )}
+                                onClick={() => selectActiveDoc(activeDocKind, skill.id)}
+                              >
+                                <Folder className="size-3.5 opacity-80" />
+                                <span className="truncate">{skill.id}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={cn(
+                                  'flex w-full items-center gap-2 px-2.5 py-1.5 pl-8 text-left text-xs',
+                                  selected ? 'bg-primary/5 text-primary' : 'text-muted-foreground hover:bg-muted/30'
+                                )}
+                                onClick={() => selectActiveDoc(activeDocKind, skill.id)}
+                              >
+                                <ScrollText className="size-3.5 opacity-70" />
+                                <span>{skill.fileName}</span>
+                                <span className="truncate opacity-70">· {skill.title}</span>
+                              </button>
+                            </div>
                           );
                         })}
-                  </div>
-                </CardContent>
-              </Card>
+                      </div>
+                    ) : (
+                      activeDocs.map((doc) => {
+                        const selected = activeDoc?.id === doc.id;
+                        return (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            className={cn(
+                              'w-full rounded-md px-2.5 py-2 text-left transition-colors',
+                              selected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                            )}
+                            onClick={() => selectActiveDoc(activeDocKind, doc.id)}
+                          >
+                            <p className="truncate text-sm font-medium">{doc.title || 'Untitled'}</p>
+                          </button>
+                        );
+                      })
+                    )
+                  )}
+                </div>
+              </div>
 
-              <Card size="sm" className="overflow-hidden xl:h-[640px]">
-                <div className="flex items-center gap-3 border-b bg-gradient-to-r from-indigo-500/10 via-card/80 to-card/50 px-4 py-3">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 px-1">
                   <div className="flex size-7 items-center justify-center rounded-lg border border-indigo-500/20 bg-indigo-500/10">
                     <PenLine className="size-3.5 text-indigo-500" />
                   </div>
@@ -3554,64 +3239,143 @@ export default function AgentsPanel({
                       <span className="opacity-50 font-normal">{initialSection === 'skills' ? 'Skills' : 'Rules'}</span>
                       <span className="opacity-30">/</span>
                       <span>{initialSection === 'skills' ? 'Skill Editor' : 'Rules Editor'}</span>
-                      <Badge variant="outline" className="ml-2 h-4 px-1.5 py-0 text-[10px] font-normal tracking-tight opacity-70">
+                      <Badge variant="outline" className="ml-2 h-4 px-1.5 py-0 text-[10px] font-normal normal-case tracking-tight opacity-70">
                         {agentScope} scope
                       </Badge>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      {initialSection === 'skills'
-                        ? 'Edit skill content — studio folder audit updates in real time as you type.'
-                        : 'Edit rule content — global instructions applied to every session.'}
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">{initialSection === 'skills' ? 'Edit skill content' : 'Edit rule content'}</p>
                   </div>
-                  {activeDoc && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => handleDeleteDoc(activeDocKind, activeDoc.id)}
-                        >
-                          <Trash2 className="mr-1 size-3.5" />
-                          Delete
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Permanently delete this {initialSection === 'skills' ? 'skill' : 'rule'} document.
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="h-7"
+                    onClick={() => void handleSave()}
+                    disabled={agentScope === 'project' && !projectConfig}
+                  >
+                    <Save className="mr-1 size-3.5" />
+                    Save {agentScope === 'project' ? 'Project' : 'Global'}
+                  </Button>
+                  {activeDoc ? (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-muted-foreground opacity-70 hover:bg-muted hover:text-destructive"
+                      onClick={() => handleDeleteDoc(activeDocKind, activeDoc.id)}
+                    >
+                      <Trash2 className="mr-1 size-3.5" />
+                      Delete
+                    </Button>
+                  ) : null}
                 </div>
-                <CardContent className="space-y-3 !pt-5">
-                  {!activeDoc ? (
-                    <div className="flex h-[400px] flex-col items-center justify-center gap-2 text-center">
-                      <ScrollText className="size-8 text-muted-foreground opacity-30" />
-                      <p className="text-sm text-muted-foreground">Select or create a document to start editing.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Input
-                        value={activeDoc.title}
-                        onChange={(event) => handleUpsertDoc(activeDocKind, activeDoc.id, { title: event.target.value })}
-                        placeholder="Document title"
-                      />
-                      <MarkdownEditor
-                        label={undefined}
-                        value={activeDoc.content}
-                        onChange={(value) => handleUpsertDoc(activeDocKind, activeDoc.id, { content: value })}
-                        placeholder={initialSection === 'skills' ? '# Skill' : '# Rule'}
-                        rows={18}
-                        defaultMode="edit"
-                        showFrontmatter={false}
-                        showStats={false}
-                        fillHeight
-                      />
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+                {!activeDoc ? (
+                  <div className="flex h-[440px] flex-col items-center justify-center gap-2 text-center">
+                    <ScrollText className="size-8 text-muted-foreground opacity-30" />
+                    <p className="text-sm text-muted-foreground">Select or create a document to start editing.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Input
+                      value={activeDoc.title}
+                      onChange={(event) => handleUpsertDoc(activeDocKind, activeDoc.id, { title: event.target.value })}
+                      placeholder="Document title"
+                    />
+                    <MarkdownEditor
+                      label={undefined}
+                      value={activeDoc.content}
+                      onChange={(value) => handleUpsertDoc(activeDocKind, activeDoc.id, { content: value })}
+                      placeholder={initialSection === 'skills' ? '# Skill' : '# Rule'}
+                      rows={36}
+                      className="min-h-[72vh]"
+                      editorClassName={initialSection === 'rules' ? '!border-0 !rounded-none !bg-transparent' : undefined}
+                      defaultMode="edit"
+                      showFrontmatter={false}
+                      showStats={false}
+                      fillHeight={false}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
+
+            {initialSection === 'skills' ? (
+              <ExplorerDialog
+                open={skillExplorerOpen}
+                onOpenChange={setSkillExplorerOpen}
+                title="Discover Skills"
+                icon={<BookOpen className="size-4 text-cyan-500" />}
+              >
+                <Tabs defaultValue="skills-sh" className="flex h-full min-h-0 flex-col gap-3">
+                  <TabsList className="h-8 w-fit">
+                    <TabsTrigger value="skills-sh" className="text-xs">skills.sh</TabsTrigger>
+                    <TabsTrigger value="curated" className="text-xs">Curated Repo</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="skills-sh" className="min-h-0 flex-1">
+                    <div className="flex h-full min-h-0 flex-col gap-3 rounded-md border bg-muted/15 p-3">
+                      <div className="space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                          <Input
+                            value={skillSourceInput}
+                            onChange={(event) => setSkillSourceInput(event.target.value)}
+                            placeholder="Paste full skills.sh command or skill ID"
+                            className="h-9 text-xs font-mono"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-9"
+                            onClick={() => handleInstallSkillFromSource()}
+                            disabled={!canInstallFromSource || installSkillFromSourceMut.isPending}
+                          >
+                            {installSkillFromSourceMut.isPending ? 'Installing…' : (
+                              <>
+                                <Download className="mr-1 size-3.5" />
+                                Install
+                              </>
+                            )}
+                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon-sm"
+                                aria-label="Open skills.sh externally"
+                                onClick={() => {
+                                  void openUrl('https://skills.sh');
+                                }}
+                              >
+                                <ExternalLink className="size-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Open skills.sh (external)</TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {parsedSkillInstallSpec.parseHint ?? 'Use `npx skills add <skill-id>` or just `<skill-id>`.'}
+                        </p>
+                        {installSkillFromSourceMut.error ? (
+                          <p className="text-[11px] text-destructive">{String(installSkillFromSourceMut.error)}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="curated" className="min-h-0 flex-1">
+                    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/15 p-4 text-center">
+                      <BookOpen className="size-5 text-muted-foreground/70" />
+                      <p className="text-sm font-medium">Curated repository not connected yet.</p>
+                      <p className="text-xs text-muted-foreground">
+                        This tab will host Ship-curated skills as a first-class discovery source.
+                      </p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </ExplorerDialog>
+            ) : null}
           </div>
         )}
 
@@ -3867,14 +3631,8 @@ export default function AgentsPanel({
             PERMISSIONS
         ════════════════════════════════════════════════════════════════ */}
         {initialSection === 'permissions' && (
-          <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+          <div className="grid gap-4">
             <div className="space-y-4">
-              <Alert className="border-primary/20 bg-primary/5">
-                <Shield className="size-4 text-primary" />
-                <AlertDescription className="text-xs">
-                  <span className="font-semibold">Runtime enforcement</span> — Rules are enforced by the Ship core runtime. An agent cannot bypass these policies even if instructed to.
-                </AlertDescription>
-              </Alert>
               {/* Rule Sets / Presets */}
               <Card size="sm" className="overflow-hidden">
                 <div className="flex items-center gap-3 border-b px-4 py-3">
@@ -3889,11 +3647,10 @@ export default function AgentsPanel({
                           <Info className="size-3 cursor-default text-muted-foreground" />
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                          Presets apply a curated bundle of tool allow/deny rules and limits. They overwrite your current permissions — customize further after applying.
+                          Presets apply a curated bundle of tool allow/deny rules. They overwrite your current permissions — customize further after applying.
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Apply a preset, then fine-tune below.</p>
                   </div>
                 </div>
                 <CardContent className="grid gap-3 !pt-4 sm:grid-cols-3">
@@ -3905,7 +3662,11 @@ export default function AgentsPanel({
                           <button
                             type="button"
                             className="flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
-                            onClick={() => savePermissionsMut.mutate(preset.apply())}
+                            onClick={() => {
+                              const next = normalizePermissionsForEditor(preset.apply());
+                              setPermissionsDraftByScope((current) => ({ ...current, [agentScope]: next }));
+                              setPermissionsDirtyByScope((current) => ({ ...current, [agentScope]: true }));
+                            }}
                           >
                             <div className="flex items-center gap-2">
                               <Icon className={cn('size-3.5', preset.colorClass)} />
@@ -3929,14 +3690,29 @@ export default function AgentsPanel({
                   </div>
                   <div className="flex-1">
                     <h3 className="text-sm font-semibold">Capabilities</h3>
-                    <p className="text-[11px] text-muted-foreground">Fine-grained policy for tools, filesystem access, and session limits.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {discoveryCache && (
                       <Badge variant="outline" className="text-[10px]">
-                        {discoveryCache.shell_commands.length} cmds • {discoveryCache.filesystem_paths.length} paths
+                        {discoveryCache.shell_commands.length} commands • {discoveryCache.filesystem_paths.length} paths
                       </Badge>
                     )}
+                    {permissionsDirty ? (
+                      <Badge className="bg-amber-500/20 text-amber-800 hover:bg-amber-500/20 dark:text-amber-300">
+                        Unsaved policy changes
+                      </Badge>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => savePermissionsDraft()}
+                      disabled={!activePermissions || !permissionsDirty || savePermissionsMut.isPending}
+                    >
+                      <Save className="mr-1 size-3" />
+                      {savePermissionsMut.isPending ? 'Saving…' : 'Save Policy'}
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -3945,23 +3721,34 @@ export default function AgentsPanel({
                       onClick={() => refreshDiscoveryCacheMut.mutate()}
                       disabled={refreshDiscoveryCacheMut.isPending}
                     >
-                      {refreshDiscoveryCacheMut.isPending ? 'Refreshing…' : 'Refresh hints'}
+                      {refreshDiscoveryCacheMut.isPending ? 'Refreshing…' : 'Refresh detection'}
                     </Button>
                   </div>
                 </div>
                 <CardContent className="space-y-6 !pt-5">
-                  {!permissions ? (
+                  {!activePermissions ? (
                     <p className="py-10 text-center text-sm text-muted-foreground">Loading permissions...</p>
                   ) : (
-                    <Tabs defaultValue="tools">
+                      <Tabs value={permissionsTab} onValueChange={(value) => setPermissionsTab(value as 'tools' | 'commands' | 'filesystem')}>
                       <TabsList className="mb-4">
-                        <TabsTrigger value="tools">Tools</TabsTrigger>
-                        <TabsTrigger value="commands">Commands</TabsTrigger>
+                        <TabsTrigger value="tools">MCP Tools</TabsTrigger>
+                        <TabsTrigger value="commands">Shell Commands</TabsTrigger>
                         <TabsTrigger value="filesystem">Filesystem</TabsTrigger>
-                        <TabsTrigger value="limits">Limits</TabsTrigger>
                       </TabsList>
+                      {permissionValidationIssues.length > 0 && (
+                        <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+                          <p className="font-medium">Validation warnings: {permissionValidationIssues.length}</p>
+                          <p className="mt-0.5">
+                            {permissionValidationIssues[0]}
+                            {permissionValidationIssues.length > 1 ? ' (fix highlighted lists before saving)' : ''}
+                          </p>
+                        </div>
+                      )}
 
                       <TabsContent value="tools" className="space-y-6">
+                        <p className="text-[11px] text-muted-foreground">
+                          Built-in tools use plain IDs like <code>Edit</code>. MCP tools use <code>mcp__server__tool</code> patterns.
+                        </p>
                         <div className="grid gap-6 md:grid-cols-2">
                           <div className="space-y-3">
                             <div className="flex items-center gap-2">
@@ -3976,47 +3763,23 @@ export default function AgentsPanel({
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">mcp__*__read*</code> or <code className="font-mono">*</code></p>
-                            <div className="space-y-2">
-                                {(permissions.tools?.allow || []).map((p, idx) => (
-                                  <div key={idx} className="flex items-center gap-2">
-                                    <AutocompleteInput
-                                      value={p || ''}
-                                      options={permissionToolSuggestions}
-                                      noResultsText="Type a custom tool pattern."
-                                      onValueChange={(value) => {
-                                        const next = [...(permissions.tools?.allow || [])];
-                                        next[idx] = value;
-                                        savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, allow: next, deny: permissions.tools?.deny || [] } });
-                                      }}
-                                      className="font-mono text-xs"
-                                    />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.tools?.allow || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, allow: next, deny: permissions.tools?.deny || [] } });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    tools: { ...permissions.tools, allow: [...(permissions.tools?.allow || []), ''], deny: permissions.tools?.deny || [] },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Pattern
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={toolAllowPatterns}
+                              options={permissionToolSuggestions}
+                              addLabel="Add Pattern"
+                              addValue="mcp__"
+                              noResultsText="Type a custom tool pattern."
+                              onChange={(applyAllow) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  tools: {
+                                    ...current.tools,
+                                    allow: applyAllow(current.tools?.allow || []),
+                                    deny: current.tools?.deny || [],
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
 
                           <div className="space-y-3">
@@ -4028,51 +3791,27 @@ export default function AgentsPanel({
                                   <Info className="size-3 cursor-default text-muted-foreground" />
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs">
-                                  Deny always overrides allow. Blocked tools will never execute even if they match an allow pattern. Use this to hard-block dangerous operations.
+                                  Deny always overrides allow. Blocked tools will never execute even if they match an allow pattern. Built-in provider tools use plain IDs like <code>Edit</code> and <code>MultiEdit</code>.
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">mcp__*__exec*</code> or <code className="font-mono">mcp__*__delete*</code></p>
-                            <div className="space-y-2">
-                                {(permissions.tools?.deny || []).map((p, idx) => (
-                                  <div key={idx} className="flex items-center gap-2">
-                                    <AutocompleteInput
-                                      value={p || ''}
-                                      options={permissionToolSuggestions}
-                                      noResultsText="Type a custom restriction pattern."
-                                      onValueChange={(value) => {
-                                        const next = [...(permissions.tools?.deny || [])];
-                                        next[idx] = value;
-                                        savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, deny: next, allow: permissions.tools?.allow || ['*'] } });
-                                      }}
-                                      className="font-mono text-xs"
-                                    />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.tools?.deny || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({ ...permissions, tools: { ...permissions.tools, deny: next, allow: permissions.tools?.allow || ['*'] } });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    tools: { ...permissions.tools, deny: [...(permissions.tools?.deny || []), ''], allow: permissions.tools?.allow || ['*'] },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Restriction
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={toolDenyPatterns}
+                              options={permissionToolSuggestions}
+                              addLabel="Add Pattern"
+                              addValue="mcp__*__"
+                              noResultsText="Type a custom restriction pattern."
+                              onChange={(applyDeny) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  tools: {
+                                    ...current.tools,
+                                    deny: applyDeny(current.tools?.deny || []),
+                                    allow: current.tools?.allow || ['*'],
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
                         </div>
                       </TabsContent>
@@ -4092,65 +3831,22 @@ export default function AgentsPanel({
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">git</code> or <code className="font-mono">ship *</code></p>
-                            <div className="space-y-2">
-                              {(permissions.commands?.allow || []).map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <AutocompleteInput
-                                    value={p || ''}
-                                    options={commandPatternSuggestions}
-                                    noResultsText="Type a custom command pattern."
-                                    onValueChange={(value) => {
-                                      const next = [...(permissions.commands?.allow || [])];
-                                      next[idx] = value;
-                                      savePermissionsMut.mutate({
-                                        ...permissions,
-                                        commands: {
-                                          ...permissions.commands,
-                                          allow: next,
-                                          deny: permissions.commands?.deny || [],
-                                        },
-                                      });
-                                    }}
-                                    className="font-mono text-xs"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.commands?.allow || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({
-                                        ...permissions,
-                                        commands: {
-                                          ...permissions.commands,
-                                          allow: next,
-                                          deny: permissions.commands?.deny || [],
-                                        },
-                                      });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    commands: {
-                                      ...permissions.commands,
-                                      allow: [...(permissions.commands?.allow || []), ''],
-                                      deny: permissions.commands?.deny || [],
-                                    },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Allow Pattern
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={activePermissions.commands?.allow || []}
+                              options={commandPatternSuggestions}
+                              addLabel="Add Pattern"
+                              noResultsText="Type a custom command pattern."
+                              onChange={(applyAllow) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  commands: {
+                                    ...current.commands,
+                                    allow: applyAllow(current.commands?.allow || []),
+                                    deny: current.commands?.deny || [],
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
 
                           <div className="space-y-3">
@@ -4166,65 +3862,22 @@ export default function AgentsPanel({
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">rm -rf *</code> or <code className="font-mono">git push</code></p>
-                            <div className="space-y-2">
-                              {(permissions.commands?.deny || []).map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <AutocompleteInput
-                                    value={p || ''}
-                                    options={commandPatternSuggestions}
-                                    noResultsText="Type a custom blocked command."
-                                    onValueChange={(value) => {
-                                      const next = [...(permissions.commands?.deny || [])];
-                                      next[idx] = value;
-                                      savePermissionsMut.mutate({
-                                        ...permissions,
-                                        commands: {
-                                          ...permissions.commands,
-                                          deny: next,
-                                          allow: permissions.commands?.allow || [],
-                                        },
-                                      });
-                                    }}
-                                    className="font-mono text-xs"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.commands?.deny || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({
-                                        ...permissions,
-                                        commands: {
-                                          ...permissions.commands,
-                                          deny: next,
-                                          allow: permissions.commands?.allow || [],
-                                        },
-                                      });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    commands: {
-                                      ...permissions.commands,
-                                      deny: [...(permissions.commands?.deny || []), ''],
-                                      allow: permissions.commands?.allow || [],
-                                    },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Block Pattern
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={activePermissions.commands?.deny || []}
+                              options={commandPatternSuggestions}
+                              addLabel="Add Pattern"
+                              noResultsText="Type a custom blocked command."
+                              onChange={(applyDeny) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  commands: {
+                                    ...current.commands,
+                                    deny: applyDeny(current.commands?.deny || []),
+                                    allow: current.commands?.allow || [],
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
 
                           <div className="space-y-3">
@@ -4240,62 +3893,21 @@ export default function AgentsPanel({
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">git push</code> or <code className="font-mono">ship release *</code></p>
-                            <div className="space-y-2">
-                              {(permissions.agent?.require_confirmation || []).map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <AutocompleteInput
-                                    value={p || ''}
-                                    options={commandPatternSuggestions}
-                                    noResultsText="Type a command requiring approval."
-                                    onValueChange={(value) => {
-                                      const next = [...(permissions.agent?.require_confirmation || [])];
-                                      next[idx] = value;
-                                      savePermissionsMut.mutate({
-                                        ...permissions,
-                                        agent: {
-                                          ...permissions.agent,
-                                          require_confirmation: next,
-                                        },
-                                      });
-                                    }}
-                                    className="font-mono text-xs"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.agent?.require_confirmation || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({
-                                        ...permissions,
-                                        agent: {
-                                          ...permissions.agent,
-                                          require_confirmation: next,
-                                        },
-                                      });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    agent: {
-                                      ...permissions.agent,
-                                      require_confirmation: [...(permissions.agent?.require_confirmation || []), ''],
-                                    },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Approval Pattern
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={activePermissions.agent?.require_confirmation || []}
+                              options={commandPatternSuggestions}
+                              addLabel="Add Pattern"
+                              noResultsText="Type a command requiring approval."
+                              onChange={(applyRequireConfirmation) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  agent: {
+                                    ...current.agent,
+                                    require_confirmation: applyRequireConfirmation(current.agent?.require_confirmation || []),
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
                         </div>
                       </TabsContent>
@@ -4311,51 +3923,26 @@ export default function AgentsPanel({
                                   <Info className="size-3 cursor-default text-muted-foreground" />
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs">
-                                  Glob patterns for paths the agent can read and write. Use <code>**/*</code> to allow all paths, or scope to specific directories like <code>~/projects/**</code>.
+                                  Glob patterns for paths the agent can read and write. Prefer scoped directories like <code>~/projects/**</code> and add exceptions explicitly.
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">~/projects/**</code> or <code className="font-mono">**/*</code></p>
-                            <div className="space-y-2">
-                              {(permissions.filesystem?.allow || []).map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <AutocompleteInput
-                                    value={p || ''}
-                                    options={filesystemPathSuggestions}
-                                    noResultsText="Type a custom path pattern."
-                                    onValueChange={(value) => {
-                                      const next = [...(permissions.filesystem?.allow || [])];
-                                      next[idx] = value;
-                                      savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, allow: next, deny: permissions.filesystem?.deny || [] } });
-                                    }}
-                                    className="font-mono text-xs"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.filesystem?.allow || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, allow: next, deny: permissions.filesystem?.deny || [] } });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    filesystem: { ...permissions.filesystem, allow: [...(permissions.filesystem?.allow || []), ''], deny: permissions.filesystem?.deny || [] },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Path
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={activePermissions.filesystem?.allow || []}
+                              options={filesystemPathSuggestions}
+                              addLabel="Add Path"
+                              noResultsText="Type a custom path pattern."
+                              onChange={(applyAllow) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  filesystem: {
+                                    ...current.filesystem,
+                                    allow: applyAllow(current.filesystem?.allow || []),
+                                    deny: current.filesystem?.deny || [],
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
 
                           <div className="space-y-3">
@@ -4371,171 +3958,60 @@ export default function AgentsPanel({
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <p className="text-xs text-muted-foreground">e.g. <code className="font-mono">~/.ssh/**</code> or <code className="font-mono">/etc/**</code></p>
-                            <div className="space-y-2">
-                              {(permissions.filesystem?.deny || []).map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <AutocompleteInput
-                                    value={p || ''}
-                                    options={filesystemPathSuggestions}
-                                    noResultsText="Type a custom blocked path."
-                                    onValueChange={(value) => {
-                                      const next = [...(permissions.filesystem?.deny || [])];
-                                      next[idx] = value;
-                                      savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, deny: next, allow: permissions.filesystem?.allow || [] } });
-                                    }}
-                                    className="font-mono text-xs"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    onClick={() => {
-                                      const next = (permissions.filesystem?.deny || []).filter((_, i) => i !== idx);
-                                      savePermissionsMut.mutate({ ...permissions, filesystem: { ...permissions.filesystem, deny: next, allow: permissions.filesystem?.allow || [] } });
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                className="w-full border-dashed"
-                                onClick={() => {
-                                  savePermissionsMut.mutate({
-                                    ...permissions,
-                                    filesystem: { ...permissions.filesystem, deny: [...(permissions.filesystem?.deny || []), ''], allow: permissions.filesystem?.allow || [] },
-                                  });
-                                }}
-                              >
-                                <Plus className="mr-1 size-3.5" /> Add Exclusion
-                              </Button>
-                            </div>
+                            <PatternListEditor
+                              patterns={activePermissions.filesystem?.deny || []}
+                              options={filesystemPathSuggestions}
+                              addLabel="Add Pattern"
+                              noResultsText="Type a custom blocked path."
+                              onChange={(applyDeny) => {
+                                updatePermissions((current) => ({
+                                  ...current,
+                                  filesystem: {
+                                    ...current.filesystem,
+                                    deny: applyDeny(current.filesystem?.deny || []),
+                                    allow: current.filesystem?.allow || [],
+                                  },
+                                }));
+                              }}
+                            />
                           </div>
                         </div>
                       </TabsContent>
 
-                      <TabsContent value="limits" className="space-y-6">
-                        <div className="grid gap-6 md:grid-cols-2">
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                              <Label>Max Cost per Session (USD)</Label>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="size-3 cursor-default text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  Spending cap per agent session. The session stops when this limit is reached. Leave blank for unlimited.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={permissions.agent?.max_cost_per_session ?? ''}
-                              onChange={(e) => savePermissionsMut.mutate({ ...permissions, agent: { ...permissions.agent, max_cost_per_session: parseFloat(e.target.value) || null } })}
-                              placeholder="Unlimited"
-                            />
-                          </div>
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                              <Label>Max Turns per Session</Label>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="size-3 cursor-default text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  Maximum number of agent steps (tool calls + responses) before the session is halted. Leave blank for unlimited.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <Input
-                              type="number"
-                              value={permissions.agent?.max_turns ?? ''}
-                              onChange={(e) => savePermissionsMut.mutate({ ...permissions, agent: { ...permissions.agent, max_turns: parseInt(e.target.value, 10) || null } })}
-                              placeholder="Unlimited"
-                            />
-                          </div>
-                        </div>
-                      </TabsContent>
                     </Tabs>
                   )}
                 </CardContent>
               </Card>
             </div>
-
-            {/* Reference sidebar */}
-            <Card size="sm" className="h-fit overflow-hidden bg-muted/10">
-              <div className="flex items-center gap-3 border-b bg-gradient-to-r from-slate-500/10 via-card/80 to-card/50 px-4 py-3">
-                <div className="flex size-7 items-center justify-center rounded-lg border border-slate-500/20 bg-slate-500/10">
-                  <Info className="size-3.5 text-slate-500" />
-                </div>
-                <h3 className="text-sm font-semibold">Reference</h3>
-              </div>
-              <CardContent className="space-y-4 text-xs leading-relaxed !pt-5">
-                <p>Permissions define the security sandbox for all AI agents in this scope.</p>
-
-                <div className="rounded-md border bg-card p-3 space-y-2">
-                  <p className="font-semibold">How rules apply</p>
-                  <div className="space-y-1 text-muted-foreground">
-                    <p><span className="text-emerald-500 font-medium">Allow</span> patterns are checked first. <code className="font-mono">*</code> allows everything.</p>
-                    <p><span className="text-destructive font-medium">Deny</span> always wins — it overrides any matching allow rule.</p>
-                    <p>Filesystem rules are separate from tool rules.</p>
-                  </div>
-                </div>
-
-                <div className="rounded-md border bg-card p-3 space-y-2">
-                  <p className="font-semibold">Tool pattern format</p>
-                  <div className="space-y-1 text-muted-foreground font-mono">
-                    <p>mcp__<span className="text-primary">{'{server}'}</span>__<span className="text-cyan-500">{'{tool}'}</span></p>
-                    <p className="not-italic text-[10px] text-muted-foreground/70">e.g. mcp__filesystem__read_file</p>
-                    <p className="not-italic text-[10px] text-muted-foreground/70">e.g. mcp__*__write* (all write tools)</p>
-                  </div>
-                </div>
-
-                <div className="rounded-md border bg-card p-3 space-y-1">
-                  <p className="font-semibold">Runtime enforcement</p>
-                  <p className="text-muted-foreground">
-                    Rules are enforced by the Ship core runtime. An agent cannot bypass these policies even if instructed to.
-                  </p>
-                </div>
-
-                <div className="rounded-md border bg-card p-3 space-y-1">
-                  <p className="font-semibold">Scope</p>
-                  <p className="text-muted-foreground">
-                    Global permissions apply to all projects. Project permissions layer on top — project deny rules are always honored.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         )}
       </div>
 
-      <footer className="flex items-center justify-end gap-2 border-t pt-4">
-        {agentScope === 'global' ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={() => void handleSave()}>Save Global Agent Config</Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Persist global defaults for all Ship projects on this machine.
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={() => void handleSave()} disabled={!projectConfig}>
-                Save Project Agent Config
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Persist project-scoped agent overrides for this workspace.
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </footer>
+      {showFooterSaveCta && (
+        <footer className="flex items-center justify-end gap-2 border-t pt-4">
+          {agentScope === 'global' ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button onClick={() => void handleSave()}>Save Global Agent Config</Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Persist global defaults for all Ship projects on this machine.
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button onClick={() => void handleSave()} disabled={!projectConfig}>
+                  Save Project Agent Config
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Persist project-scoped agent overrides for this workspace.
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </footer>
+      )}
     </PageFrame>
   );
 }
