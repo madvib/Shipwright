@@ -622,6 +622,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "compiler"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "nanoid",
+ "serde",
+ "serde_json",
+ "specta",
+ "toml 0.8.2",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3887,6 +3901,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "compiler",
  "home",
  "nanoid",
  "regex",

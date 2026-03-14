@@ -443,22 +443,22 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     // are DB-first and can be exported on demand.
     write_if_missing(
         &vision_doc_path(&ship_path),
-        include_str!("../../../../core/runtime/src/templates/VISION.md"),
+        include_str!("../../../../crates/core/runtime/src/templates/VISION.md"),
     )?;
     write_default_skills(&ship_path)?;
     write_if_missing(
         &mcp_config_path(&ship_path),
-        include_str!("../../../../core/runtime/src/templates/MCP.toml"),
+        include_str!("../../../../crates/core/runtime/src/templates/MCP.toml"),
     )?;
     ensure_ship_mcp_server(&ship_path)?;
     write_if_missing(
         &permissions_config_path(&ship_path),
-        include_str!("../../../../core/runtime/src/templates/PERMISSIONS.toml"),
+        include_str!("../../../../crates/core/runtime/src/templates/PERMISSIONS.toml"),
     )?;
     let principles_path = rules_dir(&ship_path).join("core-principles.md");
     write_if_missing(
         &principles_path,
-        include_str!("../../../../core/runtime/src/templates/RULE.md"),
+        include_str!("../../../../crates/core/runtime/src/templates/RULE.md"),
     )?;
     let gitignore_path = ship_path.join(".gitignore");
     if !gitignore_path.exists() {
@@ -551,20 +551,20 @@ Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
     const PROJECT_BUILTINS: &[(&str, &str)] = &[
         (
             "ship-workflow",
-            include_str!("../../../../core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
         ),
         (
             "start-session",
-            include_str!("../../../../core/runtime/src/templates/skills/start-session/SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/start-session/SKILL.md"),
         ),
         (
             "create-document",
-            include_str!("../../../../core/runtime/src/templates/skills/create-document/SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/create-document/SKILL.md"),
         ),
         (
             "workspace-session-lifecycle",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/workspace-session-lifecycle/SKILL.md"
+                "../../../../crates/core/runtime/src/templates/skills/workspace-session-lifecycle/SKILL.md"
             ),
         ),
     ];
@@ -628,33 +628,33 @@ fn seed_builtin_user_skills(user_skills_root: &Path) -> Result<()> {
     const SINGLE_FILE_BUILTINS: &[(&str, &str)] = &[
         (
             "ship-workflow",
-            include_str!("../../../../core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/ship-workflow.SKILL.md"),
         ),
         (
             "create-document",
-            include_str!("../../../../core/runtime/src/templates/skills/create-document/SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/create-document/SKILL.md"),
         ),
         (
             "workspace-session-lifecycle",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/workspace-session-lifecycle/SKILL.md"
+                "../../../../crates/core/runtime/src/templates/skills/workspace-session-lifecycle/SKILL.md"
             ),
         ),
         (
             "release-orchestration",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/release-orchestration/SKILL.md"
+                "../../../../crates/core/runtime/src/templates/skills/release-orchestration/SKILL.md"
             ),
         ),
         (
             "workspace-profile-onboarding",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/workspace-profile-onboarding/SKILL.md"
+                "../../../../crates/core/runtime/src/templates/skills/workspace-profile-onboarding/SKILL.md"
             ),
         ),
         (
             "start-session",
-            include_str!("../../../../core/runtime/src/templates/skills/start-session/SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/start-session/SKILL.md"),
         ),
     ];
     for (id, content) in SINGLE_FILE_BUILTINS {
@@ -676,106 +676,106 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
     const FILES: &[(&str, &str)] = &[
         (
             "SKILL.md",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/SKILL.md"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/skill-creator/SKILL.md"),
         ),
         (
             "LICENSE.txt",
-            include_str!("../../../../core/runtime/src/templates/skills/skill-creator/LICENSE.txt"),
+            include_str!("../../../../crates/core/runtime/src/templates/skills/skill-creator/LICENSE.txt"),
         ),
         (
             "agents/analyzer.md",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/agents/analyzer.md"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/agents/analyzer.md"
             ),
         ),
         (
             "agents/comparator.md",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/agents/comparator.md"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/agents/comparator.md"
             ),
         ),
         (
             "agents/grader.md",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/agents/grader.md"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/agents/grader.md"
             ),
         ),
         (
             "assets/eval_review.html",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/assets/eval_review.html"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/assets/eval_review.html"
             ),
         ),
         (
             "eval-viewer/generate_review.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/eval-viewer/generate_review.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/eval-viewer/generate_review.py"
             ),
         ),
         (
             "eval-viewer/viewer.html",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/eval-viewer/viewer.html"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/eval-viewer/viewer.html"
             ),
         ),
         (
             "references/schemas.md",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/references/schemas.md"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/references/schemas.md"
             ),
         ),
         (
             "scripts/__init__.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/__init__.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/__init__.py"
             ),
         ),
         (
             "scripts/aggregate_benchmark.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/aggregate_benchmark.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/aggregate_benchmark.py"
             ),
         ),
         (
             "scripts/generate_report.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/generate_report.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/generate_report.py"
             ),
         ),
         (
             "scripts/improve_description.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/improve_description.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/improve_description.py"
             ),
         ),
         (
             "scripts/package_skill.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/package_skill.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/package_skill.py"
             ),
         ),
         (
             "scripts/quick_validate.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/quick_validate.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/quick_validate.py"
             ),
         ),
         (
             "scripts/run_eval.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_eval.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/run_eval.py"
             ),
         ),
         (
             "scripts/run_loop.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/run_loop.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/run_loop.py"
             ),
         ),
         (
             "scripts/utils.py",
             include_str!(
-                "../../../../core/runtime/src/templates/skills/skill-creator/scripts/utils.py"
+                "../../../../crates/core/runtime/src/templates/skills/skill-creator/scripts/utils.py"
             ),
         ),
     ];
@@ -867,22 +867,22 @@ fn legacy_template_file_name(kind: &str) -> Option<&'static str> {
 fn template_fallback(kind: &str) -> Result<&'static str> {
     match kind {
         "adr" | "adrs" => Ok(include_str!(
-            "../../../../core/runtime/src/templates/ADR.md"
+            "../../../../crates/core/runtime/src/templates/ADR.md"
         )),
         "note" | "notes" => Ok(include_str!(
-            "../../../../core/runtime/src/templates/NOTE.md"
+            "../../../../crates/core/runtime/src/templates/NOTE.md"
         )),
         "spec" | "specs" => Ok(include_str!(
-            "../../../../core/runtime/src/templates/SPEC.md"
+            "../../../../crates/core/runtime/src/templates/SPEC.md"
         )),
         "release" | "releases" => Ok(include_str!(
-            "../../../../core/runtime/src/templates/RELEASE.md"
+            "../../../../crates/core/runtime/src/templates/RELEASE.md"
         )),
         "feature" | "features" => Ok(include_str!(
-            "../../../../core/runtime/src/templates/FEATURE.md"
+            "../../../../crates/core/runtime/src/templates/FEATURE.md"
         )),
         "vision" => Ok(include_str!(
-            "../../../../core/runtime/src/templates/VISION.md"
+            "../../../../crates/core/runtime/src/templates/VISION.md"
         )),
         _ => Err(anyhow!("No fallback for template kind: {}", kind)),
     }
