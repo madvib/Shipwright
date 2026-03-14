@@ -41,6 +41,54 @@ pub struct ResolvedConfig {
 /// 1. Project defaults (`ship.toml` types + `agents/` content)
 /// 2. Active mode filter (restricts servers/skills/rules)
 /// 3. Feature overrides (model, providers, additional server/skill filter)
+/// A self-contained library of agent config assets loaded from the `agents/`
+/// directory. This is the primary input for the compiler in the new config model:
+/// ship.toml holds identity only; the library holds everything the compiler needs.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ProjectLibrary {
+    /// Mode definitions from `agents/modes/*.toml`.
+    #[serde(default)]
+    pub modes: Vec<ModeConfig>,
+    /// Active mode for this resolve (e.g. workspace override).
+    #[serde(default)]
+    pub active_mode: Option<String>,
+    /// MCP server definitions from `agents/mcp.toml`.
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+    /// Skills from `agents/skills/`.
+    #[serde(default)]
+    pub skills: Vec<Skill>,
+    /// Rules from `agents/rules/` or `agents/rules.md`.
+    #[serde(default)]
+    pub rules: Vec<Rule>,
+    /// Permissions from `agents/permissions.toml`.
+    #[serde(default)]
+    pub permissions: Permissions,
+}
+
+/// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
+/// No `ProjectConfig` or filesystem access required.
+pub fn resolve_library(
+    library: &ProjectLibrary,
+    feature: Option<&FeatureOverrides>,
+    active_mode_override: Option<&str>,
+) -> ResolvedConfig {
+    let config = ProjectConfig {
+        modes: library.modes.clone(),
+        active_mode: library.active_mode.clone(),
+        mcp_servers: library.mcp_servers.clone(),
+        ..Default::default()
+    };
+    resolve(
+        &config,
+        &library.skills,
+        &library.rules,
+        &library.permissions,
+        feature,
+        active_mode_override,
+    )
+}
+
 pub fn resolve(
     config: &ProjectConfig,
     skills: &[Skill],
@@ -49,24 +97,7 @@ pub fn resolve(
     feature: Option<&FeatureOverrides>,
     active_mode_override: Option<&str>,
 ) -> ResolvedConfig {
-    // ── Providers ─────────────────────────────────────────────────────────────
-    let feature_providers = feature
-        .filter(|f| !f.providers.is_empty())
-        .map(|f| normalize_providers(&f.providers))
-        .unwrap_or_default();
-
-    let providers = if !feature_providers.is_empty() {
-        feature_providers
-    } else {
-        let project = normalize_providers(&config.providers);
-        if project.is_empty() {
-            vec!["claude".to_string()]
-        } else {
-            project
-        }
-    };
-
-    // ── Active mode ───────────────────────────────────────────────────────────
+    // ── Active mode (resolved first — needed for provider target_agents) ──────
     let override_mode = active_mode_override
         .map(str::trim)
         .filter(|v| !v.is_empty())
@@ -76,6 +107,38 @@ pub fn resolve(
     let mode = active_mode
         .as_deref()
         .and_then(|id| config.modes.iter().find(|m| m.id == id));
+
+    // ── Providers ─────────────────────────────────────────────────────────────
+    // Resolution priority (highest wins):
+    // 1. Feature/workspace explicit providers — propagate even if empty (unknown
+    //    providers → empty rather than silent fallback).
+    // 2. Mode target_agents — when a mode is active and specifies target agents.
+    // 3. Project-level providers.
+    // 4. Default: ["claude"].
+    let feature_has_explicit = feature.map_or(false, |f| !f.providers.is_empty());
+    let feature_providers = feature
+        .filter(|f| !f.providers.is_empty())
+        .map(|f| normalize_providers(&f.providers))
+        .unwrap_or_default();
+
+    let providers = if feature_has_explicit {
+        feature_providers
+    } else {
+        let mode_providers = mode
+            .filter(|m| !m.target_agents.is_empty())
+            .map(|m| normalize_providers(&m.target_agents))
+            .unwrap_or_default();
+        if !mode_providers.is_empty() {
+            mode_providers
+        } else {
+            let project = normalize_providers(&config.providers);
+            if project.is_empty() {
+                vec!["claude".to_string()]
+            } else {
+                project
+            }
+        }
+    };
 
     // ── Model ─────────────────────────────────────────────────────────────────
     let model = feature

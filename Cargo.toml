@@ -1,15 +1,16 @@
 [workspace]
 members = [
-    "core/cli-framework",
-    "core/mcp-framework",
-    "core/runtime",
+    "crates/core/cli-framework",
+    "crates/core/compiler",
+    "crates/core/mcp-framework",
+    "crates/core/runtime",
     "crates/modules/project",
     "crates/modules/git",
-    "crates/cli",
-    "crates/mcp",
+    "apps/cli",
+    "apps/mcp",
     "crates/plugins/time-tracker",
     "crates/plugins/ghost-issues",
-    "crates/ui/src-tauri",
+    "apps/desktop/src-tauri",
     "examples/e2e",
 ]
 resolver = "2"
