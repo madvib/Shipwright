@@ -13,7 +13,7 @@ pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, res
 pub use types::{
     AgentLayerConfig, AiConfig, CatalogEntry, CatalogKind, GitConfig, HookConfig, HookTrigger,
     McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig, Permissions,
-    ProjectConfig, Rule, Skill, SkillSource, StatusConfig,
+    ProjectConfig, Rule, Skill, SkillSource, StatusConfig, ToolPermissions,
     list_catalog, list_catalog_by_kind, search_catalog,
 };
 
