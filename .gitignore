@@ -68,15 +68,6 @@ dist/
 # Team Coordination
 TEAM.md
 
-
-.claude
-.gemini
-.codex
-.qwen
-CLAUDE.md
-GEMINI.md
-.mcp.json
-
 .devcontainer
 
 # Ship runtime DB artifacts
@@ -93,6 +84,3 @@ AGENTS.md
 .claude/
 .gemini/
 .codex/
-
-# Ship — generated agent config (never commit these)
-.agents/

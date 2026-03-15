@@ -1,9 +1,13 @@
-# Workflow System Of Record
+# Development Workflow
 
-- Use Ship entities and operations as the source of truth for project state.
-- Prefer `ship` CLI or Ship MCP tools for entity mutations.
-- Keep release, feature, spec, issue, and ADR links coherent after each change.
-- Do not bypass workflow state with ad-hoc file moves unless explicitly requested.
-- Update feature/spec/release docs when behavior changes.
-- Record architecture-impacting decisions in ADRs.
-- Keep MCP server IDs stable, skip unknown targets safely, and never commit secrets.
+* ARCHITECTURE.md is the context firewall. Read it before touching code.
+
+* Platform primitives (workspace, session, event) are stable contracts. Workflow types (feature, release, spec, issue) are not platform — do not add them to platform code.
+
+* For state changes: use `ship workspace` and `ship session` CLI commands. Do not use `ship feature`, `ship spec`, `ship release`, or `ship adr` — these reference the old workflow layer which is being rebuilt.
+
+* Record architecture decisions by updating ARCHITECTURE.md directly, not by creating ADR files through the CLI.
+
+* Events are append-only. Never update or delete event records.
+
+* File length cap: 300 lines per file. New modules require tests.

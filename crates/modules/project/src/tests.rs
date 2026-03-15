@@ -1,27 +1,13 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        FeatureStatus, ReleaseStatus, SpecStatus, create_feature, create_release, create_spec,
-        delete_spec, get_feature_by_id, get_release_by_id, get_spec_by_id,
-        import_features_from_files, import_releases_from_files, init_demo_project, init_project,
-        list_adrs, list_features, list_releases, list_specs, move_feature, move_spec,
-        update_feature, update_feature_content, update_release, update_release_content,
-        update_spec,
+        FeatureStatus, ReleaseStatus, create_feature, create_release, get_feature_by_id,
+        get_feature_model, get_release_by_id, import_features_from_files,
+        import_releases_from_files, init_demo_project, init_project, list_adrs, list_features,
+        list_releases, move_feature, update_feature, update_feature_content, update_release,
+        update_release_content,
     };
-    use std::path::Path;
     use tempfile::tempdir;
-
-    fn ensure_active_workspace(project_dir: &Path) -> anyhow::Result<()> {
-        runtime::create_workspace(
-            project_dir,
-            runtime::CreateWorkspaceRequest {
-                branch: "feature/spec-tests".to_string(),
-                status: Some(runtime::WorkspaceStatus::Active),
-                ..Default::default()
-            },
-        )?;
-        Ok(())
-    }
 
     #[test]
     fn test_create_release_api() -> anyhow::Result<()> {
@@ -32,9 +18,14 @@ mod tests {
         assert_eq!(entry.status, ReleaseStatus::Upcoming);
 
         let path = std::path::PathBuf::from(&entry.path);
-        assert!(path.exists());
-        let content = std::fs::read_to_string(&path)?;
-        assert!(content.contains("ship:release id=v0.1.0-alpha"));
+        assert_eq!(
+            path,
+            runtime::project::releases_dir(&project_dir).join("v0.1.0-alpha.md")
+        );
+        assert!(
+            !path.exists(),
+            "release path should be projected, not written"
+        );
         Ok(())
     }
 
@@ -55,15 +46,11 @@ mod tests {
         let initial = get_release_by_id(&project_dir, &entry.id)?;
         assert_eq!(initial.release.metadata.version, "v0.2.0-alpha");
 
-        let canonical_path = runtime::project::releases_dir(&project_dir).join("v0.2.0-alpha.md");
-        let suffixed_path = runtime::project::releases_dir(&project_dir).join("v0.2.0-alpha-2.md");
-
         let updated = update_release_content(&project_dir, &entry.id, "updated")?;
         assert_eq!(updated.release.body, "updated");
         assert!(updated.release.metadata.updated >= initial.release.metadata.updated);
-        let content = std::fs::read_to_string(&canonical_path)?;
-        assert!(content.contains("updated"));
-        assert!(!suffixed_path.exists());
+        let reloaded = get_release_by_id(&project_dir, &entry.id)?;
+        assert_eq!(reloaded.release.body, "updated");
         Ok(())
     }
 
@@ -79,9 +66,8 @@ mod tests {
         release.body.clear();
         update_release(&project_dir, &created.id, release)?;
 
-        let path = runtime::project::releases_dir(&project_dir).join("v0.4.0-alpha.md");
-        let content = std::fs::read_to_string(path)?;
-        assert!(content.contains("release-body"));
+        let reloaded = get_release_by_id(&project_dir, &created.id)?;
+        assert_eq!(reloaded.release.body, "release-body");
         Ok(())
     }
 
@@ -108,9 +94,11 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let p1 = create_release(&project_dir, "v0.1.0-tmp", "")?;
         let p2 = create_release(&project_dir, "v0.1.0-tmp", "")?;
-        assert_ne!(p1.path, p2.path);
-        assert!(std::path::PathBuf::from(&p1.path).exists());
-        assert!(std::path::PathBuf::from(&p2.path).exists());
+        assert_eq!(p1.id, p2.id);
+        assert_eq!(p1.path, p2.path);
+        assert!(!std::path::PathBuf::from(&p1.path).exists());
+        assert!(!std::path::PathBuf::from(&p2.path).exists());
+        assert_eq!(list_releases(&project_dir)?.len(), 1);
         Ok(())
     }
 
@@ -123,7 +111,6 @@ mod tests {
             "Agent Config",
             "",
             Some("v0.1.0-alpha.md"),
-            Some("agent-config.md"),
             None,
         )?;
         assert_eq!(entry.feature.metadata.title, "Agent Config");
@@ -132,10 +119,6 @@ mod tests {
             entry.feature.metadata.release_id.as_deref(),
             Some("v0.1.0-alpha.md")
         );
-        assert_eq!(
-            entry.feature.metadata.spec_id.as_deref(),
-            Some("agent-config.md")
-        );
         Ok(())
     }
 
@@ -143,7 +126,7 @@ mod tests {
     fn test_create_feature_empty_title_rejected() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let result = create_feature(&project_dir, "", "", None, None, None);
+        let result = create_feature(&project_dir, "", "", None, None);
         assert!(result.is_err());
         Ok(())
     }
@@ -152,7 +135,7 @@ mod tests {
     fn test_get_and_update_feature() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let entry = create_feature(&project_dir, "UI Agent Panel", "initial", None, None, None)?;
+        let entry = create_feature(&project_dir, "UI Agent Panel", "initial", None, None)?;
         let initial = get_feature_by_id(&project_dir, &entry.id)?;
 
         let updated = update_feature_content(&project_dir, &entry.id, "updated")?;
@@ -171,7 +154,6 @@ mod tests {
             "feature-body",
             None,
             None,
-            None,
         )?;
 
         let mut feature = get_feature_by_id(&project_dir, &created.id)?.feature;
@@ -180,11 +162,8 @@ mod tests {
         feature.body.clear();
         update_feature(&project_dir, &created.id, feature)?;
 
-        let path = runtime::project::features_dir(&project_dir)
-            .join("planned")
-            .join("feature-body-preserve.md");
-        let content = std::fs::read_to_string(path)?;
-        assert!(content.contains("feature-body"));
+        let reloaded = get_feature_by_id(&project_dir, &created.id)?;
+        assert_eq!(reloaded.feature.body, "feature-body");
         Ok(())
     }
 
@@ -198,7 +177,6 @@ mod tests {
             "initial",
             None,
             None,
-            None,
         )?;
 
         let canonical_path = runtime::project::features_dir(&project_dir)
@@ -207,17 +185,89 @@ mod tests {
         let suffixed_path = runtime::project::features_dir(&project_dir)
             .join("planned")
             .join("pre-defined-agent-modes-2.md");
-
-        // Simulate a stale duplicate file from prior updates.
-        let current = std::fs::read_to_string(&canonical_path)?;
-        std::fs::write(&suffixed_path, current)?;
-        assert!(suffixed_path.exists());
+        assert_eq!(entry.path, canonical_path.to_string_lossy().to_string());
 
         update_feature_content(&project_dir, &entry.id, "updated")?;
-        assert!(canonical_path.exists());
         assert!(!suffixed_path.exists());
-        let content = std::fs::read_to_string(&canonical_path)?;
-        assert!(content.contains("updated"));
+        assert!(!canonical_path.exists());
+        let reloaded = get_feature_by_id(&project_dir, &entry.id)?;
+        assert_eq!(reloaded.path, canonical_path.to_string_lossy().to_string());
+        assert_eq!(reloaded.feature.body, "updated");
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_feature_content_syncs_metadata_title_from_markdown_h1() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_feature(&project_dir, "Old Title", "initial", None, None)?;
+
+        update_feature_content(
+            &project_dir,
+            &entry.id,
+            "# New Title\n\n## Intent\n\nUpdated intent body.",
+        )?;
+
+        let reloaded = get_feature_by_id(&project_dir, &entry.id)?;
+        assert_eq!(reloaded.feature.metadata.title, "New Title");
+        assert!(reloaded.feature.body.starts_with("# New Title"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_feature_model_computes_delta_from_declaration_and_status() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let project_dir = init_project(tmp.path().to_path_buf())?;
+        let entry = create_feature(
+            &project_dir,
+            "Feature Model Delta",
+            r#"
+## Declaration
+Build a robust skill export path.
+
+## Acceptance Criteria
+- [ ] PASS: SKILL.md starts with YAML frontmatter FAIL: header missing
+- [ ] Exported skill metadata is present
+
+## Status
+Codex path patched; full matrix pending.
+
+## Status Checks
+- [x] codex export test
+- [ ] claude/gemini export tests
+"#,
+            None,
+            None,
+        )?;
+
+        let initial_model = get_feature_model(&project_dir, &entry.id)?;
+        assert!(initial_model.delta.drift_score > 0);
+        assert_eq!(initial_model.delta.unmet_acceptance_criteria.len(), 2);
+        assert_eq!(initial_model.delta.failing_checks.len(), 1);
+        assert_eq!(initial_model.delta.missing_pass_fail_criteria.len(), 1);
+
+        update_feature_content(
+            &project_dir,
+            &entry.id,
+            r#"
+## Declaration
+Build a robust skill export path.
+
+## Acceptance Criteria
+- [x] PASS: SKILL.md starts with YAML frontmatter FAIL: header missing
+
+## Status
+All provider exports validated.
+
+## Status Checks
+- [x] codex export test
+- [x] claude export test
+- [x] gemini export test
+"#,
+        )?;
+
+        let resolved_model = get_feature_model(&project_dir, &entry.id)?;
+        assert_eq!(resolved_model.delta.drift_score, 0);
         Ok(())
     }
 
@@ -225,14 +275,16 @@ mod tests {
     fn test_move_feature_preserves_body() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let created = create_feature(&project_dir, "Move Preserve", "move-body", None, None, None)?;
+        let created = create_feature(&project_dir, "Move Preserve", "move-body", None, None)?;
 
-        move_feature(&project_dir, &created.id, FeatureStatus::InProgress)?;
+        let moved = move_feature(&project_dir, &created.id, FeatureStatus::InProgress)?;
         let moved_path = runtime::project::features_dir(&project_dir)
             .join("in-progress")
             .join("move-preserve.md");
-        let moved_content = std::fs::read_to_string(moved_path)?;
-        assert!(moved_content.contains("move-body"));
+        assert_eq!(moved.path, moved_path.to_string_lossy().to_string());
+        let reloaded = get_feature_by_id(&project_dir, &created.id)?;
+        assert_eq!(reloaded.status, FeatureStatus::InProgress);
+        assert_eq!(reloaded.feature.body, "move-body");
         Ok(())
     }
 
@@ -240,8 +292,8 @@ mod tests {
     fn test_list_features() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        create_feature(&project_dir, "Feature One", "", None, None, None)?;
-        create_feature(&project_dir, "Feature Two", "", None, None, None)?;
+        create_feature(&project_dir, "Feature One", "", None, None)?;
+        create_feature(&project_dir, "Feature Two", "", None, None)?;
         let features = list_features(&project_dir)?;
         assert_eq!(features.len(), 2);
         let titles: Vec<&str> = features
@@ -257,11 +309,12 @@ mod tests {
     fn test_feature_collision_gets_suffix() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
-        let p1 = create_feature(&project_dir, "Ship Agents", "", None, None, None)?;
-        let p2 = create_feature(&project_dir, "Ship Agents!", "", None, None, None)?;
-        assert_ne!(p1.path, p2.path);
-        assert!(std::path::PathBuf::from(&p1.path).exists());
-        assert!(std::path::PathBuf::from(&p2.path).exists());
+        let p1 = create_feature(&project_dir, "Ship Agents", "", None, None)?;
+        let p2 = create_feature(&project_dir, "Ship Agents!", "", None, None)?;
+        assert_ne!(p1.id, p2.id);
+        assert_eq!(p1.path, p2.path);
+        assert!(!std::path::PathBuf::from(&p1.path).exists());
+        assert!(!std::path::PathBuf::from(&p2.path).exists());
         Ok(())
     }
 
@@ -341,113 +394,9 @@ mod tests {
     }
 
     #[test]
-    fn test_create_spec_api() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Auth Spec", "Spec content", None)?;
-        assert_eq!(entry.spec.metadata.title, "Auth Spec");
-        assert_eq!(entry.status, SpecStatus::Draft);
-        assert!(!std::path::PathBuf::from(&entry.path).exists());
-        let fetched = get_spec_by_id(&project_dir, &entry.id)?;
-        assert_eq!(fetched.spec.body, "Spec content");
-        assert!(fetched.spec.metadata.workspace_id.is_some());
-        Ok(())
-    }
-
-    #[test]
-    fn test_create_spec_defaults_to_service_workspace_when_only_active_workspace() -> anyhow::Result<()>
-    {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-
-        let entry = create_spec(&project_dir, "No Workspace Spec", "body", None)?;
-        assert_eq!(entry.spec.metadata.branch.as_deref(), Some("ship"));
-        assert_eq!(entry.spec.metadata.workspace_id.as_deref(), Some("ship"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_create_spec_inherits_workspace_feature_and_release_context() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        runtime::create_workspace(
-            &project_dir,
-            runtime::CreateWorkspaceRequest {
-                branch: "feature/feature-context".to_string(),
-                status: Some(runtime::WorkspaceStatus::Active),
-                feature_id: Some("feat-ctx".to_string()),
-                release_id: Some("v0.9.0-alpha".to_string()),
-                ..Default::default()
-            },
-        )?;
-
-        let entry = create_spec(&project_dir, "Context Spec", "body", None)?;
-        assert_eq!(entry.spec.metadata.feature_id.as_deref(), Some("feat-ctx"));
-        assert_eq!(
-            entry.spec.metadata.release_id.as_deref(),
-            Some("v0.9.0-alpha")
-        );
-        assert_eq!(
-            entry.spec.metadata.branch.as_deref(),
-            Some("feature/feature-context")
-        );
-        assert!(entry.spec.metadata.workspace_id.is_some());
-        Ok(())
-    }
-
-    #[test]
-    fn test_get_and_update_spec() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Spec Update", "original body", None)?;
-        let initial = get_spec_by_id(&project_dir, &entry.id)?;
-
-        let mut spec = initial.spec.clone();
-        spec.body = "updated body".to_string();
-        let updated = update_spec(&project_dir, &entry.id, spec)?;
-        assert_eq!(updated.spec.body, "updated body");
-        assert!(updated.spec.metadata.updated >= initial.spec.metadata.updated);
-        Ok(())
-    }
-
-    #[test]
-    fn test_move_spec_api() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Move Spec", "content", None)?;
-        let moved = move_spec(&project_dir, &entry.id, SpecStatus::Active)?;
-        assert!(moved.path.contains("active"));
-        assert_eq!(moved.status, SpecStatus::Active);
-        Ok(())
-    }
-
-    #[test]
-    fn test_delete_spec_api() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let project_dir = init_project(tmp.path().to_path_buf())?;
-        ensure_active_workspace(&project_dir)?;
-        let entry = create_spec(&project_dir, "Delete Spec", "content", None)?;
-        assert!(!std::path::PathBuf::from(&entry.path).exists());
-        delete_spec(&project_dir, &entry.id)?;
-        assert!(get_spec_by_id(&project_dir, &entry.id).is_err());
-        Ok(())
-    }
-
-    #[test]
     fn test_init_demo_project_seeds_correctly() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_demo_project(tmp.path().to_path_buf())?;
-
-        // Verify specs
-        let specs = list_specs(&project_dir)?;
-        assert!(
-            specs
-                .iter()
-                .any(|s| s.spec.metadata.title == "Agent Configuration and Modes")
-        );
 
         // Verify ADRs
         let adrs = list_adrs(&project_dir)?;

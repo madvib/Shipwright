@@ -1,0 +1,21 @@
+[package]
+name = "ghost-issues"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "ghost_issues"
+path = "src/lib.rs"
+
+[dependencies]
+runtime = { path = "../../core/runtime" }
+ship-module-project = { path = "../../modules/project" }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+ignore = "0.4"
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"

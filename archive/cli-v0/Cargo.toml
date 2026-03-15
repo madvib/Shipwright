@@ -1,0 +1,23 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ship"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+cli-framework = { path = "../../crates/core/cli-framework" }
+runtime = { path = "../../crates/core/runtime" }
+ship-module-git = { path = "../../crates/modules/git" }
+ship-module-project = { path = "../../crates/modules/project" }
+time-tracker = { path = "../../crates/plugins/time-tracker" }
+ghost-issues = { path = "../../crates/plugins/ghost-issues" }
+anyhow = "1.0"
+chrono = "0.4"
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3"

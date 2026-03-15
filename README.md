@@ -1,10 +1,10 @@
-# Shipwright
+# Ship
 
 **Project memory and execution infrastructure for AI-assisted software teams.**
 
-Every agent session starts blank. Shipwright fixes that.
+Every agent session starts blank. Ship fixes that.
 
-Shipwright is a local-first project OS that persists your team's context — decisions, features, specs, open work — and injects exactly the right context into every AI agent, on every branch, for every provider. Claude, Gemini, Codex: each gets its native config format, automatically, on checkout.
+Ship is a local-first project OS that persists your team's context — decisions, features, specs, open work — and injects exactly the right context into every AI agent, on every branch, for every provider. Claude, Gemini, Codex: each gets its native config format, automatically, on checkout.
 
 ---
 
@@ -16,9 +16,9 @@ The underlying issue is structural: there's no persistent, structured project me
 
 ---
 
-## What Shipwright Does
+## What Ship Does
 
-Shipwright sits in your repository as a `.ship/` directory. It stores your project's working memory as structured markdown files with TOML frontmatter, versioned in git alongside your code. A git hook fires on every branch checkout and writes the right context files for your active agents — `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` — each populated with the current feature spec, open issues, applicable skills, and always-on rules.
+Ship sits in your repository as a `.ship/` directory. It stores your project's working memory as structured markdown files with TOML frontmatter, versioned in git alongside your code. A git hook fires on every branch checkout and writes the right context files for your active agents — `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` — each populated with the current feature spec, open issues, applicable skills, and always-on rules.
 
 **The workflow loop:**
 
@@ -26,7 +26,7 @@ Shipwright sits in your repository as a `.ship/` directory. It stores your proje
 Vision → Release → Feature → Spec → Issues → Close Feature → Ship Release
 ```
 
-At each transition, Shipwright knows where you are and what your agents need to know. Notes and ADRs exist outside the loop — ambient records created whenever a decision or insight surfaces, never blocking progress.
+At each transition, Ship knows where you are and what your agents need to know. Notes and ADRs exist outside the loop — ambient records created whenever a decision or insight surfaces, never blocking progress.
 
 ---
 
@@ -65,7 +65,7 @@ mcp_servers = [{id = "stripe-docs"}]
 
 ### Multi-provider, native formats
 
-Shipwright knows how each agent tool works. It writes config in the format each provider actually reads:
+Ship knows how each agent tool works. It writes config in the format each provider actually reads:
 
 | Provider     | Context file | MCP config                  | Skills                        |
 | ------------ | ------------ | --------------------------- | ----------------------------- |
@@ -86,7 +86,7 @@ ship providers connect gemini
 
 ### MCP server — agents as first-class consumers
 
-Shipwright runs as an MCP server, giving agents structured read/write access to the entire project state: issues, specs, features, releases, ADRs, skills, providers, events. Agents don't need file access — they use typed tools.
+Ship runs as an MCP server, giving agents structured read/write access to the entire project state: issues, specs, features, releases, ADRs, skills, providers, events. Agents don't need file access — they use typed tools.
 
 ```bash
 ship mcp # stdio transport, works with any MCP-compatible agent
@@ -99,18 +99,21 @@ Forty-plus tools including `get_project_info` (full context in one call), `creat
 Reusable agent instructions, scoped to project or user:
 
 ```markdown
-# agents/skills/task-policy.md
+# .ship/agents/skills/task-policy/SKILL.md
 
 ---
-
-id: task-policy
-name: Shipwright Workflow Policy
-
+name: task-policy
+description: Ship workflow policy and execution guardrails for daily delivery.
+metadata:
+  display_name: Ship Workflow Policy
+  source: builtin
 ---
 
 Always start from a feature document. File issues for every gap found.
 Run tests before closing feature todos.
 ```
+
+User-scoped shared skills live in `~/.ship/skills/<id>/SKILL.md`.
 
 Rules in `agents/rules/*.md` are always-on — inlined into every provider's context file on every checkout.
 
@@ -159,30 +162,24 @@ ship git sync
 ├── ship.toml                 # project config, providers, git policy
 ├── project/
 │   ├── features/             # feature documents (committed)
+│   ├── specs/                # spec documents (committed)
 │   ├── releases/             # release documents (committed)
 │   ├── adrs/                 # architecture decisions (committed)
 │   │   └── accepted/
 │   └── vision.md
-├── workflow/
-│   ├── specs/                # spec documents (committed)
-│   └── issues/               # issues — local only by default
-│       ├── backlog/
-│       ├── in-progress/
-│       ├── blocked/
-│       └── done/
 └── agents/
     ├── skills/               # reusable agent instructions
     ├── rules/                # always-on rules, inlined into every context
     └── modes/                # named agent configurations
 ```
 
-**Git policy** — Shipwright has an opinionated default: decisions and specs are committed (features, releases, specs, ADRs, templates), execution state is local (issues, notes, events). Override per-category with `ship git include/exclude`.
+**Git policy** — Ship defaults to a config-first posture: `ship.toml`, MCP config, permissions, and rules are tracked; project docs, skills, and templates are local unless explicitly included.
 
 ---
 
 ## Architecture
 
-Shipwright is a Rust monorepo:
+Ship is a Rust monorepo:
 
 | Crate                | Role                                                         |
 | -------------------- | ------------------------------------------------------------ |
@@ -226,7 +223,7 @@ Ship is in **alpha**. It is used to build itself — this repo runs Ship on ever
 
 The MCP protocol standardized how agents consume external context. Every major AI coding tool — Claude Code, Gemini CLI, Codex, Cursor, Windsurf, Zed — now supports it. The tooling layer has arrived. What's missing is the project memory layer that sits above it: structured, versioned, agent-readable, and wired into the developer's actual workflow.
 
-Shipwright is that layer.
+Ship is that layer.
 
 ---
 
@@ -238,4 +235,4 @@ Open issues, file bugs, and follow development here. The `.ship/` directory in t
 
 ---
 
-_Built with Shipwright · Rust · MCP · Local-first_
+_Built with Ship · Rust · MCP · Local-first_

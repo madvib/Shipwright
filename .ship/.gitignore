@@ -1,11 +1,15 @@
-# Managed by Ship — edit via `ship git include/exclude`
+# Ship project config — skills and rules are source, compiled artifacts are gitignored at repo root
 
-workflow/**
-project/**
-!project/VISION.md
-!project/vision.md
+project/specs
+project/features
+project/releases
+project/adrs
+project/notes
+project/vision.md
+agents/README.md
+agents/skill-library-strategy.md
+README.md
+project/README.md
 **/TEMPLATE.md
 generated/
-.tmp-global/
-
 .tmp-global/

@@ -1,0 +1,30 @@
+# Agent permissions schema (canonical).
+# Source of truth: `.ship/agents/permissions.toml`
+#
+# This file is runtime-owned and parsed by `core/runtime/src/agents/permissions.rs`.
+# Keep keys aligned with that struct to avoid drift.
+
+[tools]
+# Tool pattern allow/deny lists.
+# Ship-first baseline: read + Ship MCP tools are enabled, mutating tools require explicit opt-in.
+allow = ["Read", "Glob", "Grep", "mcp__ship__*", "mcp__*__read*", "mcp__*__list*", "mcp__*__search*"]
+deny = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
+
+[filesystem]
+# Path globs.
+allow = ["**/*"]
+deny = ["/etc/**", "/sys/**", "/proc/**", "~/.ssh/**", "~/.gnupg/**"]
+
+[commands]
+# Shell command prefix patterns used by policy export/hook envelope compilation.
+allow = ["git status", "git diff", "git log", "ls", "cat", "rg", "find", "pwd"]
+deny = ["rm -rf", "git push --force", "npm publish", "cargo publish"]
+
+[network]
+# one of: "none" | "localhost" | "allow-list" | "unrestricted"
+policy = "none"
+allow_hosts = []
+
+[agent]
+# Tool patterns that require explicit confirmation.
+require_confirmation = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]

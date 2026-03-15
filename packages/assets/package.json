@@ -1,0 +1,11 @@
+{
+  "name": "@ship/assets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ship-logos": "./public/ship-logos/",
+    "./provider-logos": "./public/provider-logos/",
+    "./ide-logos": "./public/ide-logos/"
+  }
+}

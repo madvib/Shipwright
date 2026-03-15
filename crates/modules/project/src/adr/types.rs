@@ -65,8 +65,6 @@ pub struct AdrMetadata {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub supersedes_id: Option<String>,
 }
 

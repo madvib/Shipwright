@@ -3,74 +3,12 @@ use super::db::{
     upsert_feature_doc_db,
 };
 use super::types::{
-    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureMetadata, FeatureStatus,
+    Feature, FeatureDocStatus, FeatureDocumentation, FeatureEntry, FeatureMetadata, FeatureModel,
+    FeatureStatus,
 };
 use anyhow::{Result, anyhow};
 use chrono::Utc;
-use std::path::{Path, PathBuf};
-
-// ── File helpers ─────────────────────────────────────────────────────────────
-
-fn feature_file_path(ship_dir: &Path, status: &FeatureStatus, title: &str) -> PathBuf {
-    let base = runtime::project::sanitize_file_name(title);
-    let dir = runtime::project::features_dir(ship_dir).join(status.to_string());
-    std::fs::create_dir_all(&dir).ok();
-    let candidate = dir.join(format!("{}.md", base));
-    if !candidate.exists() {
-        return candidate;
-    }
-    let mut n = 2u32;
-    loop {
-        let candidate = dir.join(format!("{}-{}.md", base, n));
-        if !candidate.exists() {
-            return candidate;
-        }
-        n += 1;
-    }
-}
-
-fn find_feature_file_by_id(ship_dir: &Path, id: &str) -> Option<PathBuf> {
-    let features_dir = runtime::project::features_dir(ship_dir);
-    let mut scan_dirs = vec![features_dir.clone()];
-    for status in &["planned", "in-progress", "implemented", "deprecated"] {
-        scan_dirs.push(features_dir.join(status));
-    }
-
-    for dir in scan_dirs {
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-            if file_name == "README.md" || file_name == "TEMPLATE.md" {
-                continue;
-            }
-            let content = match std::fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(_) => continue,
-            };
-            let legacy_marker = format!("id = \"{}\"", id);
-            let generated_marker = format!("ship:feature id={}", id);
-            if content.contains(&legacy_marker) || content.contains(&generated_marker) {
-                return Some(path);
-            }
-        }
-    }
-
-    None
-}
-
-fn load_feature_body_from_file(ship_dir: &Path, id: &str) -> Option<String> {
-    let path = find_feature_file_by_id(ship_dir, id)?;
-    let content = std::fs::read_to_string(path).ok()?;
-    let feature = Feature::from_markdown(&content).ok()?;
-    Some(feature.body)
-}
+use std::path::Path;
 
 fn resolve_feature_id(ship_dir: &Path, reference: &str) -> Result<Option<String>> {
     let reference = reference.trim();
@@ -118,10 +56,13 @@ pub fn write_feature_file(
     ship_dir: &Path,
     feature: &Feature,
     status: &FeatureStatus,
-) -> Result<PathBuf> {
-    let path = feature_file_path(ship_dir, status, &feature.metadata.title);
-    let content = feature.to_markdown()?;
-    runtime::fs_util::write_atomic(&path, content)?;
+) -> Result<std::path::PathBuf> {
+    let path = runtime::project::features_dir(ship_dir)
+        .join(status.to_string())
+        .join(format!(
+            "{}.md",
+            runtime::project::sanitize_file_name(&feature.metadata.title)
+        ));
     Ok(path)
 }
 
@@ -220,38 +161,7 @@ pub fn record_feature_session_update(
     upsert_feature_doc_db(ship_dir, &doc, actor)
 }
 
-pub fn remove_feature_files(ship_dir: &Path, id: &str, title: &str) {
-    let base = runtime::project::sanitize_file_name(title);
-    let features_dir = runtime::project::features_dir(ship_dir);
-
-    // Check root and subdirs
-    let mut scan_dirs = vec![features_dir.clone()];
-    for status in &["planned", "in-progress", "implemented", "deprecated"] {
-        scan_dirs.push(features_dir.join(status));
-    }
-
-    for dir in scan_dirs {
-        if !dir.exists() {
-            continue;
-        }
-        // Try exact match and common suffixes
-        for suffix in &["", "-2", "-3", "-4", "-5"] {
-            let file_name = if suffix.is_empty() {
-                format!("{}.md", base)
-            } else {
-                format!("{}{}.md", base, suffix)
-            };
-            let p = dir.join(file_name);
-            if p.exists() {
-                if let Ok(content) = std::fs::read_to_string(&p) {
-                    if content.contains(id) {
-                        std::fs::remove_file(&p).ok();
-                    }
-                }
-            }
-        }
-    }
-}
+pub fn remove_feature_files(_ship_dir: &Path, _id: &str, _title: &str) {}
 
 // ── Public CRUD ──────────────────────────────────────────────────────────────
 
@@ -260,7 +170,6 @@ pub fn create_feature(
     title: &str,
     body: &str,
     release_id: Option<&str>,
-    spec_id: Option<&str>,
     branch: Option<&str>,
 ) -> Result<FeatureEntry> {
     if title.trim().is_empty() {
@@ -278,7 +187,6 @@ pub fn create_feature(
             updated: now,
             release_id: release_id.map(|s| s.to_string()),
             active_target_id: release_id.map(|s| s.to_string()),
-            spec_id: spec_id.map(|s| s.to_string()),
             branch: branch.map(|s| s.to_string()),
             agent: None,
             tags: vec![],
@@ -289,6 +197,7 @@ pub fn create_feature(
     };
 
     feature.extract_structured_data();
+    let delta = feature.compute_delta();
 
     let status = FeatureStatus::Planned;
     upsert_feature_db(ship_dir, &feature, &status)?;
@@ -301,7 +210,7 @@ pub fn create_feature(
         runtime::EventEntity::Feature,
         runtime::EventAction::Create,
         id.clone(),
-        Some(format!("title={}", title)),
+        Some(format!("title={};drift_score={}", title, delta.drift_score)),
     )?;
 
     Ok(FeatureEntry {
@@ -319,19 +228,7 @@ pub fn create_feature(
 
 pub fn get_feature_by_id(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
     let resolved_id = require_feature_id(ship_dir, id)?;
-    let mut entry =
-        get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
-    // Fallback: if SQLite body is empty, try loading from legacy markdown file (migration on read)
-    if entry.feature.body.trim().is_empty() {
-        if let Some(body) = load_feature_body_from_file(ship_dir, &resolved_id) {
-            entry.feature.body = body.clone();
-            // Back-fill SQLite so the fallback only runs once
-            let mut updated = entry.feature.clone();
-            updated.body = body;
-            let _ = upsert_feature_db(ship_dir, &updated, &entry.status);
-        }
-    }
-    Ok(entry)
+    get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))
 }
 
 pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result<FeatureEntry> {
@@ -344,12 +241,9 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
         feature.body = existing.feature.body.clone();
     }
     feature.extract_structured_data();
+    let delta = feature.compute_delta();
 
     upsert_feature_db(ship_dir, &feature, &existing.status)?;
-    // Ensure updates replace the existing exported markdown file instead of
-    // generating suffixed duplicates like `foo-2.md`.
-    remove_feature_files(ship_dir, &resolved_id, &existing.feature.metadata.title);
-    write_feature_file(ship_dir, &feature, &existing.status)?;
 
     runtime::append_event(
         ship_dir,
@@ -357,7 +251,10 @@ pub fn update_feature(ship_dir: &Path, id: &str, mut feature: Feature) -> Result
         runtime::EventEntity::Feature,
         runtime::EventAction::Update,
         resolved_id.clone(),
-        Some(format!("title={}", feature.metadata.title)),
+        Some(format!(
+            "title={};drift_score={}",
+            feature.metadata.title, delta.drift_score
+        )),
     )?;
 
     let mut entry = get_feature_db(ship_dir, &resolved_id)?
@@ -371,6 +268,12 @@ pub fn update_feature_content(ship_dir: &Path, id: &str, content: &str) -> Resul
     let mut entry = get_feature_db(ship_dir, &resolved_id)?
         .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
     entry.feature.body = content.to_string();
+    if let Ok(parsed) = Feature::from_markdown(content) {
+        let parsed_title = parsed.metadata.title.trim();
+        if !parsed_title.is_empty() {
+            entry.feature.metadata.title = parsed_title.to_string();
+        }
+    }
     update_feature(ship_dir, &resolved_id, entry.feature)
 }
 
@@ -382,8 +285,6 @@ pub fn move_feature(ship_dir: &Path, id: &str, new_status: FeatureStatus) -> Res
     let mut feature = existing.feature.clone();
     feature.extract_structured_data();
     upsert_feature_db(ship_dir, &feature, &new_status)?;
-    remove_feature_files(ship_dir, &resolved_id, &existing.feature.metadata.title);
-    write_feature_file(ship_dir, &feature, &new_status)?;
 
     runtime::append_event(
         ship_dir,
@@ -399,10 +300,8 @@ pub fn move_feature(ship_dir: &Path, id: &str, new_status: FeatureStatus) -> Res
 
 pub fn delete_feature(ship_dir: &Path, id: &str) -> Result<()> {
     let resolved_id = require_feature_id(ship_dir, id)?;
-    let entry = get_feature_db(ship_dir, &resolved_id)?
-        .ok_or_else(|| anyhow!("Feature not found: {}", id))?;
+    get_feature_db(ship_dir, &resolved_id)?.ok_or_else(|| anyhow!("Feature not found: {}", id))?;
     delete_feature_db(ship_dir, &resolved_id)?;
-    remove_feature_files(ship_dir, &resolved_id, &entry.feature.metadata.title);
 
     runtime::append_event(
         ship_dir,
@@ -437,4 +336,10 @@ pub fn feature_done(ship_dir: &Path, id: &str) -> Result<FeatureEntry> {
 
 pub fn list_features(ship_dir: &Path) -> Result<Vec<FeatureEntry>> {
     list_features_db(ship_dir)
+}
+
+pub fn get_feature_model(ship_dir: &Path, id: &str) -> Result<FeatureModel> {
+    let mut entry = get_feature_by_id(ship_dir, id)?;
+    entry.feature.extract_structured_data();
+    Ok(entry.feature.model())
 }

@@ -96,9 +96,7 @@ fn parse_generated_release_header(content: &str) -> (Option<String>, Option<Stri
     let mut lines = content.lines();
     if let Some(first) = lines.next() {
         let trimmed = first.trim();
-        if trimmed.starts_with("<!-- ship:release ")
-            && trimmed.ends_with("-->")
-        {
+        if trimmed.starts_with("<!-- ship:release ") && trimmed.ends_with("-->") {
             let id = trimmed
                 .split_whitespace()
                 .find_map(|part| part.strip_prefix("id="))

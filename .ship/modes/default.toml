@@ -1,0 +1,22 @@
+[mode]
+name = "Ship Dev"
+id = "default"
+version = "0.1.0"
+description = "Default development mode for the Ship project"
+providers = ["claude"]
+
+[skills]
+# Skill IDs to activate. Empty = all installed skills.
+refs = []
+
+[mcp]
+# MCP server IDs to activate. Empty = all configured servers.
+servers = []
+
+[permissions]
+preset = "ship-guarded"
+tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
+default_mode = "default"
+
+[rules]
+# Inline rules appended after agents/rules/*.md

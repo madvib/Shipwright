@@ -1,64 +1,18 @@
 [tools]
-allow = ["*"]
-deny = [
-  "Bash(rm -rf *)",
-  "Bash(git reset --hard*)",
-  "Bash(curl *|bash*)",
-]
+allow = ["Read", "Glob", "Grep", "mcp__ship__*", "mcp__*__read*", "mcp__*__list*", "mcp__*__search*"]
+deny = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
 
 [filesystem]
-allow = [
-  "./",
-  "./.ship",
-  "./crates",
-  "./example",
-  "./site",
-  "./scripts",
-]
-deny = [
-  "/",
-  "~/.ssh",
-  "~/.aws",
-  "~/.gnupg",
-]
+allow = ["**/*"]
+deny = ["/etc/**", "/sys/**", "/proc/**", "~/.ssh/**", "~/.gnupg/**"]
 
 [commands]
-allow = [
-  "ship *",
-  "cargo *",
-  "git status*",
-  "git diff*",
-  "git add *",
-  "git commit *",
-  "rg *",
-  "ls *",
-  "cat *",
-  "sed *",
-]
-deny = [
-  "git reset --hard*",
-  "git clean -fd*",
-  "rm -rf *",
-]
+allow = ["git status", "git diff", "git log", "ls", "cat", "rg", "find", "pwd"]
+deny = ["rm -rf", "git push --force", "npm publish", "cargo publish"]
 
 [network]
-policy = "allow-list"
-allow_hosts = [
-  "github.com",
-  "api.github.com",
-  "skills.sh",
-  "agentskills.io",
-  "crates.io",
-  "docs.rs",
-  "registry.npmjs.org",
-]
+policy = "none"
+allow_hosts = []
 
 [agent]
-max_cost_per_session = 15.0
-max_turns = 200
-require_confirmation = [
-  "git push *",
-  "git reset --hard*",
-  "rm -rf *",
-  "cargo publish *",
-]
+require_confirmation = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]

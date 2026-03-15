@@ -18,10 +18,13 @@ fn test_create_adr() -> anyhow::Result<()> {
     assert_eq!(entry.adr.metadata.title, "Use PostgreSQL");
     assert_eq!(entry.adr.context, "We need relational storage.");
     assert_eq!(entry.adr.decision, "Chosen for robustness");
-    // accepted ADRs should have a committed file
+    let expected_path = runtime::project::adrs_dir(&project_dir)
+        .join("accepted")
+        .join("use-postgresql.md");
+    assert_eq!(entry.path, expected_path.to_string_lossy().to_string());
     assert!(
-        std::path::Path::new(&entry.path).exists(),
-        "accepted ADR file should be written"
+        !std::path::Path::new(&entry.path).exists(),
+        "ADR path should be projected, not written by CRUD"
     );
     Ok(())
 }
@@ -87,7 +90,7 @@ fn test_update_adr() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_move_adr_to_accepted_writes_file() -> anyhow::Result<()> {
+fn test_move_adr_to_accepted_updates_projected_path() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let project_dir = init_project(tmp.path().to_path_buf())?;
     let entry = create_adr(
@@ -99,15 +102,11 @@ fn test_move_adr_to_accepted_writes_file() -> anyhow::Result<()> {
     )?;
     let moved = move_adr(&project_dir, &entry.id, AdrStatus::Accepted)?;
     assert_eq!(moved.status, AdrStatus::Accepted);
-    // File should now exist in accepted/
     let accepted_file = runtime::project::adrs_dir(&project_dir)
         .join("accepted")
         .join(&moved.file_name);
-    assert!(
-        accepted_file.exists(),
-        "accepted ADR file should be written: {:?}",
-        accepted_file
-    );
+    assert_eq!(moved.path, accepted_file.to_string_lossy().to_string());
+    assert!(!accepted_file.exists());
     Ok(())
 }
 

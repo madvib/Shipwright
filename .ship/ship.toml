@@ -1,7 +1,7 @@
 version = "1"
-name = "Shipwright"
+id = "hRvMUz4p"
+name = "Ship"
 description = "AI native project management workspace"
-id = "KgciCBph"
 
 [[statuses]]
 id = "backlog"

@@ -20,6 +20,16 @@ impl ADR {
     }
 
     pub fn from_markdown(content: &str) -> Result<Self> {
+        // Strip HTML comment prefix that to_markdown writes (e.g. "<!-- GENERATED FILE ... -->")
+        let content = if content.starts_with("<!--") {
+            if let Some(end) = content.find("-->") {
+                content[end + 3..].trim_start_matches('\n')
+            } else {
+                content
+            }
+        } else {
+            content
+        };
         if !content.starts_with("+++\n") {
             return Err(anyhow!("Invalid ADR format: missing TOML frontmatter"));
         }

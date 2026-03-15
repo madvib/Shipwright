@@ -1,4 +1,9 @@
 packages:
-  - "crates/ui"
-  - "crates/ui-kit"
-  - "site"
+  - "apps/desktop"
+  - "apps/web"
+  - "apps/site"
+  - "packages/*"
+
+ignoredBuiltDependencies:
+  - esbuild
+  - lightningcss

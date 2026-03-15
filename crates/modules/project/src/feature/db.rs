@@ -18,8 +18,8 @@ pub fn upsert_feature_db(ship_dir: &Path, feature: &Feature, status: &FeatureSta
         // Upsert feature
         sqlx::query(
             "INSERT INTO feature
-               (id, title, description, status, body, release_id, active_target_id, spec_id, branch, agent_json, tags_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               (id, title, description, status, body, release_id, active_target_id, branch, agent_json, tags_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                title       = excluded.title,
                description = excluded.description,
@@ -27,7 +27,6 @@ pub fn upsert_feature_db(ship_dir: &Path, feature: &Feature, status: &FeatureSta
                body        = excluded.body,
                release_id  = excluded.release_id,
                active_target_id = excluded.active_target_id,
-               spec_id     = excluded.spec_id,
                branch      = excluded.branch,
                agent_json  = excluded.agent_json,
                tags_json   = excluded.tags_json,
@@ -40,7 +39,6 @@ pub fn upsert_feature_db(ship_dir: &Path, feature: &Feature, status: &FeatureSta
         .bind(&feature.body)
         .bind(&feature.metadata.release_id)
         .bind(&feature.metadata.active_target_id)
-        .bind(&feature.metadata.spec_id)
         .bind(&feature.metadata.branch)
         .bind(serde_json::to_string(&feature.metadata.agent).unwrap_or_default())
         .bind(serde_json::to_string(&feature.metadata.tags).unwrap_or_else(|_| "[]".to_string()))
@@ -97,7 +95,7 @@ pub fn get_feature_db(ship_dir: &Path, id: &str) -> Result<Option<FeatureEntry>>
     let mut conn = runtime::state_db::open_project_connection(ship_dir)?;
     runtime::state_db::block_on(async {
         let row_opt = sqlx::query(
-            "SELECT id, title, description, status, body, release_id, active_target_id, spec_id, branch, agent_json, tags_json, created_at, updated_at
+            "SELECT id, title, description, status, body, release_id, active_target_id, branch, agent_json, tags_json, created_at, updated_at
              FROM feature WHERE id = ?",
         )
         .bind(id)
@@ -112,12 +110,11 @@ pub fn get_feature_db(ship_dir: &Path, id: &str) -> Result<Option<FeatureEntry>>
             let body: String = r.get(4);
             let release_id: Option<String> = r.get(5);
             let active_target_id: Option<String> = r.get(6);
-            let spec_id: Option<String> = r.get(7);
-            let branch: Option<String> = r.get(8);
-            let agent_json: Option<String> = r.get(9);
-            let tags_json: String = r.get(10);
-            let created: String = r.get(11);
-            let updated: String = r.get(12);
+            let branch: Option<String> = r.get(7);
+            let agent_json: Option<String> = r.get(8);
+            let tags_json: String = r.get(9);
+            let created: String = r.get(10);
+            let updated: String = r.get(11);
 
             let status = FeatureStatus::from_str(&status_str).unwrap_or_default();
             let agent = agent_json.and_then(|j| serde_json::from_str(&j).ok());
@@ -158,11 +155,16 @@ pub fn get_feature_db(ship_dir: &Path, id: &str) -> Result<Option<FeatureEntry>>
                 .collect();
 
             let file_name = runtime::project::sanitize_file_name(&title) + ".md";
+            let path = runtime::project::features_dir(ship_dir)
+                .join(status.to_string())
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string();
 
             Ok(Some(FeatureEntry {
                 id: id.clone(),
                 file_name,
-                path: String::new(),
+                path,
                 status,
                 feature: Feature {
                     metadata: FeatureMetadata {
@@ -173,7 +175,6 @@ pub fn get_feature_db(ship_dir: &Path, id: &str) -> Result<Option<FeatureEntry>>
                         updated,
                         release_id,
                         active_target_id,
-                        spec_id,
                         branch,
                         agent,
                         tags,
@@ -193,7 +194,7 @@ pub fn list_features_db(ship_dir: &Path) -> Result<Vec<FeatureEntry>> {
     let mut conn = runtime::state_db::open_project_connection(ship_dir)?;
     runtime::state_db::block_on(async {
         let rows = sqlx::query(
-            "SELECT id, title, description, status, body, release_id, active_target_id, spec_id, branch, agent_json, tags_json, created_at, updated_at
+            "SELECT id, title, description, status, body, release_id, active_target_id, branch, agent_json, tags_json, created_at, updated_at
              FROM feature ORDER BY updated_at DESC",
         )
         .fetch_all(&mut conn)
@@ -208,22 +209,26 @@ pub fn list_features_db(ship_dir: &Path) -> Result<Vec<FeatureEntry>> {
             let body: String = r.get(4);
             let release_id: Option<String> = r.get(5);
             let active_target_id: Option<String> = r.get(6);
-            let spec_id: Option<String> = r.get(7);
-            let branch: Option<String> = r.get(8);
-            let agent_json: Option<String> = r.get(9);
-            let tags_json: String = r.get(10);
-            let created: String = r.get(11);
-            let updated: String = r.get(12);
+            let branch: Option<String> = r.get(7);
+            let agent_json: Option<String> = r.get(8);
+            let tags_json: String = r.get(9);
+            let created: String = r.get(10);
+            let updated: String = r.get(11);
 
             let status = FeatureStatus::from_str(&status_str).unwrap_or_default();
             let agent = agent_json.and_then(|j| serde_json::from_str(&j).ok());
             let tags = serde_json::from_str(&tags_json).unwrap_or_default();
             let file_name = runtime::project::sanitize_file_name(&title) + ".md";
+            let path = runtime::project::features_dir(ship_dir)
+                .join(status.to_string())
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string();
 
             entries.push(FeatureEntry {
                 id: id.clone(),
                 file_name,
-                path: String::new(),
+                path,
                 status,
                 feature: Feature {
                     metadata: FeatureMetadata {
@@ -234,7 +239,6 @@ pub fn list_features_db(ship_dir: &Path) -> Result<Vec<FeatureEntry>> {
                         updated,
                         release_id,
                         active_target_id,
-                        spec_id,
                         branch,
                         agent,
                         tags,

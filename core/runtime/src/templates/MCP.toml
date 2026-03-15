@@ -1,8 +1,0 @@
-# Model Context Protocol (MCP) Configuration
-# - Define servers, tools, and resources for your agents.
-
-[mcp]
-# Example:
-# [mcp.servers.memory]
-# command = "npx"
-# args = ["-y", "@modelcontextprotocol/server-memory"]
