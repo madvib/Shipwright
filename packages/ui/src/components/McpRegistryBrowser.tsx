@@ -1,8 +1,93 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, Plus, ExternalLink, Loader2, AlertCircle, Server, RefreshCw } from 'lucide-react'
+import { Search, Plus, ExternalLink, Loader2, Server, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import type { McpRegistryServer, McpServerConfig } from '../types'
 
 const REGISTRY_API = 'https://registry.modelcontextprotocol.io'
+
+// Curated fallback — shown when the live registry is unreachable.
+// Mirrors the CURATED_MCP list in the Studio Library panel.
+const CURATED_FALLBACK: McpRegistryServer[] = [
+  {
+    id: 'github', name: 'GitHub',
+    description: 'Search repos, manage PRs and issues, create commits.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['popular', 'dev'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-github', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'filesystem', name: 'Filesystem',
+    description: 'Read and write local files within configurable allowed paths.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['popular', 'files'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-filesystem', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'brave-search', name: 'Brave Search',
+    description: 'Web search via the Brave Search API.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['search', 'web'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-brave-search', command: 'npx', args: ['-y', '@modelcontextprotocol/server-brave-search'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'memory', name: 'Memory',
+    description: 'Persistent knowledge graph — remember facts across sessions.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['memory', 'context'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-memory', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'slack', name: 'Slack',
+    description: 'Read channels, post messages, and manage Slack workspaces.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['comms', 'popular'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-slack', command: 'npx', args: ['-y', '@modelcontextprotocol/server-slack'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'linear', name: 'Linear',
+    description: 'Manage issues, projects, and cycles in Linear.',
+    homepage: 'https://github.com/linear/linear',
+    tags: ['pm', 'issues'],
+    package: { registry: 'npm', name: '@linear/mcp-server', command: 'npx', args: ['-y', '@linear/mcp-server'] },
+    vendor: { name: 'Linear', url: 'https://linear.app' },
+  },
+  {
+    id: 'playwright', name: 'Playwright',
+    description: 'Browser automation — navigate, screenshot, interact with web pages.',
+    homepage: 'https://github.com/executeautomation/mcp-playwright',
+    tags: ['browser', 'testing'],
+    package: { registry: 'npm', name: '@executeautomation/playwright-mcp-server', command: 'npx', args: ['-y', '@executeautomation/playwright-mcp-server'] },
+    vendor: { name: 'ExecuteAutomation', url: 'https://executeautomation.github.io' },
+  },
+  {
+    id: 'postgres', name: 'PostgreSQL',
+    description: 'Query and inspect a PostgreSQL database with read-only access.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['database', 'sql'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-postgres', command: 'npx', args: ['-y', '@modelcontextprotocol/server-postgres'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'puppeteer', name: 'Puppeteer',
+    description: 'Headless browser control for scraping, screenshots, and automation.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['browser', 'scraping'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-puppeteer', command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+  {
+    id: 'sqlite', name: 'SQLite',
+    description: 'Read and write a local SQLite database file.',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    tags: ['database', 'local'],
+    package: { registry: 'npm', name: '@modelcontextprotocol/server-sqlite', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sqlite'] },
+    vendor: { name: 'Anthropic', url: 'https://modelcontextprotocol.io' },
+  },
+]
 
 interface RegistryResponse {
   servers: McpRegistryServer[]
@@ -15,55 +100,54 @@ interface Props {
   addedIds?: Set<string>
 }
 
+type RegistryStatus = 'loading' | 'live' | 'offline'
+
 export function McpRegistryBrowser({ onAdd, addedIds = new Set() }: Props) {
   const [query, setQuery] = useState('')
   const [servers, setServers] = useState<McpRegistryServer[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [cursor, setCursor] = useState<string | null>(null)
+  const [status, setStatus] = useState<RegistryStatus>('loading')
   const [hasMore, setHasMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchServers = useCallback(async (q: string, append = false) => {
-    setLoading(true)
-    setError(null)
+    setStatus('loading')
     try {
       const params = new URLSearchParams()
       if (q) params.set('q', q)
       params.set('per_page', '20')
       const res = await fetch(`${REGISTRY_API}/api/v0/servers?${params}`)
-      if (!res.ok) throw new Error(`Registry returned ${res.status}`)
+      if (!res.ok) throw new Error(`${res.status}`)
       const data = (await res.json()) as RegistryResponse
       const list = data.servers ?? []
       setServers(append ? (prev) => [...prev, ...list] : list)
       setHasMore(!!data.next)
-      setCursor(data.next ?? null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load registry')
-    } finally {
-      setLoading(false)
+      setNextCursor(data.next ?? null)
+      setStatus('live')
+    } catch {
+      // Fall back to curated list
+      const filtered = q
+        ? CURATED_FALLBACK.filter(
+            (s) =>
+              s.name.toLowerCase().includes(q.toLowerCase()) ||
+              (s.description ?? '').toLowerCase().includes(q.toLowerCase()) ||
+              (s.tags ?? []).some((t) => t.includes(q.toLowerCase()))
+          )
+        : CURATED_FALLBACK
+      setServers(filtered)
+      setHasMore(false)
+      setNextCursor(null)
+      setStatus('offline')
     }
   }, [])
 
-  // Initial load
-  useEffect(() => {
-    void fetchServers('')
-  }, [fetchServers])
+  useEffect(() => { void fetchServers('') }, [fetchServers])
 
-  // Debounced search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      void fetchServers(query)
-    }, 300)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
+    debounceRef.current = setTimeout(() => { void fetchServers(query) }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [query, fetchServers])
-
-  const loadMore = () => {
-    if (cursor) void fetchServers(query, true)
-  }
 
   const addToConfig = (s: McpRegistryServer) => {
     const pkg = s.package
@@ -81,9 +165,11 @@ export function McpRegistryBrowser({ onAdd, addedIds = new Set() }: Props) {
     onAdd(server)
   }
 
+  const isLoading = status === 'loading'
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Search bar */}
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
         <input
@@ -91,29 +177,42 @@ export function McpRegistryBrowser({ onAdd, addedIds = new Set() }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search MCP servers..."
-          className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+          className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-8 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
         />
-        {loading && (
+        {isLoading && (
           <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground animate-spin" />
         )}
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <AlertCircle className="size-3.5 shrink-0" />
-          <span>{error}</span>
-          <button
-            onClick={() => void fetchServers(query)}
-            className="ml-auto flex items-center gap-1 opacity-70 hover:opacity-100"
-          >
-            <RefreshCw className="size-3" /> Retry
-          </button>
+      {/* Status bar */}
+      {!isLoading && (
+        <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] ${
+          status === 'live'
+            ? 'bg-emerald-500/8 text-emerald-600 dark:text-emerald-400'
+            : 'bg-muted/60 text-muted-foreground'
+        }`}>
+          {status === 'live'
+            ? <Wifi className="size-3 shrink-0" />
+            : <WifiOff className="size-3 shrink-0" />
+          }
+          {status === 'live'
+            ? 'Live registry'
+            : 'Registry unavailable — showing curated catalog'
+          }
+          {status === 'offline' && (
+            <button
+              onClick={() => void fetchServers(query)}
+              className="ml-auto flex items-center gap-1 hover:text-foreground transition"
+            >
+              <RefreshCw className="size-2.5" /> Retry
+            </button>
+          )}
         </div>
       )}
 
       {/* Results */}
       <div className="space-y-1.5">
-        {servers.length === 0 && !loading && !error && (
+        {servers.length === 0 && !isLoading && (
           <p className="py-6 text-center text-xs text-muted-foreground">No servers found.</p>
         )}
 
@@ -169,13 +268,7 @@ export function McpRegistryBrowser({ onAdd, addedIds = new Set() }: Props) {
                       : 'bg-primary/10 text-primary hover:bg-primary/20'
                   }`}
                 >
-                  {isAdded ? (
-                    'Added'
-                  ) : (
-                    <>
-                      <Plus className="size-3" /> Add
-                    </>
-                  )}
+                  {isAdded ? 'Added' : <><Plus className="size-3" /> Add</>}
                 </button>
               </div>
             </div>
@@ -185,26 +278,14 @@ export function McpRegistryBrowser({ onAdd, addedIds = new Set() }: Props) {
 
       {hasMore && (
         <button
-          onClick={loadMore}
-          disabled={loading}
+          onClick={() => { if (nextCursor) void fetchServers(query, true) }}
+          disabled={isLoading}
           className="flex items-center justify-center gap-1.5 rounded-lg border border-border/60 py-2 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-50"
         >
-          {loading ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          {isLoading ? <Loader2 className="size-3.5 animate-spin" /> : null}
           Load more
         </button>
       )}
-
-      <p className="text-center text-[10px] text-muted-foreground">
-        Powered by{' '}
-        <a
-          href="https://registry.modelcontextprotocol.io"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline underline-offset-2 hover:text-foreground"
-        >
-          modelcontextprotocol.io
-        </a>
-      </p>
     </div>
   )
 }

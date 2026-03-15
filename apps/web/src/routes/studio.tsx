@@ -158,16 +158,53 @@ type ComposerSection = 'providers' | 'mcp' | 'skills' | 'rules' | 'permissions'
 
 // ── Helper data ───────────────────────────────────────────────────────────────
 
-const PROVIDER_LOGO: Record<string, string> = {
-  claude: '/provider-logos/claude.svg',
-  gemini: '/provider-logos/googlegemini.svg',
-}
-
 const PROVIDER_SHORT: Record<string, string> = {
   claude: 'Claude',
   gemini: 'Gemini',
   codex: 'Codex',
   cursor: 'Cursor',
+}
+
+// Provider colors for text badges (used when no logo)
+const PROVIDER_COLOR: Record<string, string> = {
+  claude: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  gemini: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
+  codex: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+  cursor: 'bg-violet-500/15 text-violet-700 dark:text-violet-400',
+}
+
+// ProviderLogo — renders the correct logo per provider with dark/light mode handling.
+// cursor: CUBE_2D_DARK (visible in dark mode) / CUBE_2D_LIGHT (visible in light mode)
+// codex: OpenAI black mono (dark:invert → white in dark mode)
+// claude + gemini: SVG with dark:invert
+function ProviderLogo({ provider, size = 'sm' }: { provider: string; size?: 'sm' | 'md' }) {
+  const cls = size === 'sm' ? 'size-3.5' : 'size-4'
+
+  if (provider === 'cursor') {
+    return (
+      <>
+        <img src="/ide-logos/CUBE_2D_LIGHT.svg" alt="Cursor" className={`${cls} object-contain dark:hidden`} />
+        <img src="/ide-logos/CUBE_2D_DARK.svg" alt="Cursor" className={`${cls} object-contain hidden dark:block`} />
+      </>
+    )
+  }
+  if (provider === 'codex') {
+    return <img src="/provider-logos/OpenAI-black-monoblossom.svg" alt="Codex" className={`${cls} object-contain dark:invert`} />
+  }
+  if (provider === 'claude') {
+    return <img src="/provider-logos/claude.svg" alt="Claude" className={`${cls} object-contain`} />
+  }
+  if (provider === 'gemini') {
+    return <img src="/provider-logos/googlegemini.svg" alt="Gemini" className={`${cls} object-contain`} />
+  }
+  // Fallback: colored initial badge
+  const color = PROVIDER_COLOR[provider] ?? 'bg-muted text-muted-foreground'
+  const short = PROVIDER_SHORT[provider] ?? provider
+  return (
+    <span className={`inline-flex items-center justify-center rounded text-[9px] font-bold px-1 ${color}`}>
+      {short.slice(0, 2).toUpperCase()}
+    </span>
+  )
 }
 
 // ── InspectorTab helpers ──────────────────────────────────────────────────────
@@ -445,9 +482,7 @@ function ExportButton({ state, selectedProviders }: ExportButtonProps) {
                   onClick={() => downloadProvider(p)}
                   className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition text-left"
                 >
-                  {PROVIDER_LOGO[p] && (
-                    <img src={PROVIDER_LOGO[p]} alt="" className="size-3 object-contain dark:invert" />
-                  )}
+                  <ProviderLogo provider={p} />
                   {PROVIDER_SHORT[p] ?? p}
                 </button>
               ) : null
@@ -787,9 +822,7 @@ function InspectorPanel({ state, selectedProviders }: InspectorPanelProps) {
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             }`}
           >
-            {PROVIDER_LOGO[p] && (
-              <img src={PROVIDER_LOGO[p]} alt="" className="size-3 object-contain dark:invert" />
-            )}
+            <ProviderLogo provider={p} />
             {PROVIDER_SHORT[p] ?? p}
           </button>
         ))}
