@@ -1,15 +1,11 @@
-# Ship project config — skills and rules are source, compiled artifacts are gitignored at repo root
-
-project/specs
-project/features
-project/releases
-project/adrs
-project/notes
-project/vision.md
-agents/README.md
-agents/skill-library-strategy.md
-README.md
-project/README.md
-**/TEMPLATE.md
+# Generated artifacts — never commit
 generated/
+agents/discovery-cache.json
+modes/
+vision.md
 .tmp-global/
+
+# Runtime DB
+ship.db
+ship.db-shm
+ship.db-wal

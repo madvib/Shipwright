@@ -1,0 +1,19 @@
+[preset]
+id = "default"
+name = "Ship Dev"
+version = "0.1.0"
+description = "Default development preset for the Ship project"
+providers = ["claude"]
+
+[skills]
+refs = []
+
+[mcp]
+servers = []
+
+[permissions]
+preset = "ship-guarded"
+tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
+default_mode = "default"
+
+[rules]
