@@ -274,10 +274,23 @@ function triggerDownload(text: string, name: string) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const STORAGE_KEY = 'ship-studio-v1'
+
+function loadStored(): { library: ProjectLibrary; modeName: string; selectedProviders: string[] } | null {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
+    if (!raw) return null
+    return JSON.parse(raw) as { library: ProjectLibrary; modeName: string; selectedProviders: string[] }
+  } catch {
+    return null
+  }
+}
+
 function StudioPage() {
-  const [library, setLibrary] = useState<ProjectLibrary>(DEFAULT_LIBRARY)
-  const [modeName, setModeName] = useState('untitled-mode')
-  const [selectedProviders, setSelectedProviders] = useState<string[]>(['claude', 'gemini', 'codex'])
+  const stored = useRef(loadStored())
+  const [library, setLibrary] = useState<ProjectLibrary>(stored.current?.library ?? DEFAULT_LIBRARY)
+  const [modeName, setModeName] = useState(stored.current?.modeName ?? 'untitled-mode')
+  const [selectedProviders, setSelectedProviders] = useState<string[]>(stored.current?.selectedProviders ?? ['claude', 'gemini', 'codex'])
   const [activeSection, setActiveSection] = useState<ComposerSection>('providers')
   const [showLibrary, setShowLibrary] = useState(true)
   const { state, compile } = useCompiler()
@@ -286,13 +299,36 @@ function StudioPage() {
     setLibrary((prev) => ({ ...prev, ...patch }))
   }, [])
 
-  // Auto-generate on library changes (debounced 600ms)
+  // Persist to localStorage whenever library/modeName/providers change
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ library, modeName, selectedProviders }))
+    } catch { /* ignore */ }
+  }, [library, modeName, selectedProviders])
+
+  // Auto-generate on library or provider changes (debounced 600ms).
+  // Inject selectedProviders into a mode so WASM produces output for all of them.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => { void compile(library) }, 600)
+    timerRef.current = setTimeout(() => {
+      const effectiveLibrary = {
+        ...library,
+        modes: [{
+          id: 'default',
+          name: modeName || 'default',
+          description: '',
+          target_agents: selectedProviders,
+          mcp_servers: [],
+          skills: [],
+          rules: [],
+        }],
+        active_mode: 'default',
+      }
+      void compile(effectiveLibrary)
+    }, 600)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [library, compile])
+  }, [library, selectedProviders, modeName, compile])
 
   const addMcpServer = useCallback((config: McpServerConfig) => {
     setLibrary((prev) => {
@@ -315,7 +351,27 @@ function StudioPage() {
   }, [])
 
   return (
-    <div className="flex h-[calc(100vh-49px)] flex-col overflow-hidden">
+    <>
+      {/* Mobile fallback — Studio requires a wide viewport */}
+      <div className="flex md:hidden flex-col items-center justify-center gap-4 px-8 py-20 text-center min-h-[60vh]">
+        <div className="flex size-12 items-center justify-center rounded-xl border border-border/60 bg-muted/40">
+          <Zap className="size-5 text-muted-foreground" />
+        </div>
+        <div>
+          <p className="font-display text-base font-semibold">Best on desktop</p>
+          <p className="mt-1 text-sm text-muted-foreground max-w-xs">
+            Ship Studio is a three-panel editor — open it on a wider screen for the full experience.
+          </p>
+        </div>
+        <a
+          href="/studio"
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+        >
+          Try anyway
+        </a>
+      </div>
+
+    <div className="hidden md:flex h-[calc(100vh-49px)] flex-col overflow-hidden">
       {/* Mode header strip */}
       <ModeHeader
         modeName={modeName}
@@ -355,6 +411,7 @@ function StudioPage() {
         />
       </div>
     </div>
+    </>
   )
 }
 
