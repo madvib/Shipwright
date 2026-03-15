@@ -1,8 +1,87 @@
 # Ship — Platform Specification
 
-> Single reference for types, config formats, file locations, ownership, and input/output contracts.
-> Read ARCHITECTURE.md first for principles and layer separation. This doc is the "what and where."
+> Single reference for types, config formats, file locations, ownership, and contracts.
+> Read ARCHITECTURE.md first for principles and layer separation.
 > **Updated**: 2026-03-15
+
+---
+
+## Artifact Taxonomy
+
+Ship manages three versioned artifact types. All follow the same registry model.
+
+| Type | Format | Atomic? | Description |
+|---|---|---|---|
+| **Skill** | `.md` (frontmatter + markdown) | ✓ | Single-purpose agent instruction |
+| **Preset** | `.toml` | — | Named config: references skills + MCP + permissions |
+| **Workflow** | `.toml` (future) | — | Orchestration: references presets + execution logic |
+
+Skills are atoms. Presets compose skills. Workflows compose presets.
+
+### Versioning and Provenance
+
+Every installed artifact (registry or local) is tracked in `~/.ship/ship.lock`:
+
+```toml
+[skills."rust-idioms@1.2.0"]
+source = "registry"
+r2_key = "skills/rust-idioms/1.2.0/SKILL.md"
+checksum = "sha256:abc123"
+installed_at = "2026-03-15T10:00:00Z"
+
+[skills."my-deploy-flow"]
+source = "local"
+# no version, no key — authored locally, not published
+
+[presets."ship-studio-default@2.1.0"]
+source = "registry"
+r2_key = "presets/ship-studio-default/2.1.0/preset.toml"
+checksum = "sha256:def456"
+skills = ["rust-idioms@1.2.0"]
+installed_at = "2026-03-15T10:00:00Z"
+```
+
+`source = "local"` means authored on this machine, not fetched from registry.
+`source = "registry"` means fetched — re-fetchable, content-addressed by checksum.
+
+---
+
+## Storage Model
+
+```
+Registry (getship.dev)
+  R2  — artifact content blobs (immutable, CDN-served)
+        skills/:id/:version/SKILL.md
+        presets/:id/:version/preset.toml
+        workflows/:id/:version/workflow.toml
+  D1  — artifact metadata (queryable)
+        skills table: id, name, description, tags, author, version, r2_key, downloads
+        presets table: id, name, description, tags, author, version, r2_key, skill_refs
+        workflows table: id, name, description, tags, author, version, r2_key, preset_refs
+  DO  — user/org state (Rivet actors, self-hostable)
+        UserActor: profile, personal skills (authored), installed manifest, usage
+        OrgActor: members, shared presets, billing
+
+Local (~/.ship/)
+  ship.lock     — installed artifact manifest (source, version, checksum, r2_key)
+  skills/       — installed skill content (registry-fetched + locally authored)
+  presets/      — installed preset content
+  cache/        — download cache (R2 objects, keyed by r2_key, LRU eviction)
+  config.toml   — identity + defaults
+
+Project (.ship/, committed to git)
+  ship.toml     — project identity + active preset ref
+  agents/       — rules, skills, MCP config (project-scoped, always active)
+```
+
+**Rules:**
+- R2 stores content. D1 stores metadata + R2 keys. Never blob-store content in D1.
+- `~/.ship/cache/` is transparent — populated on `ship use`, evictable at any time.
+- `~/.ship/skills/` is the installed layer — analogous to global node_modules.
+- Local authored skills (`source = "local"`) are never synced automatically.
+  Publishing is an explicit `ship publish` action.
+- Compiled provider files (CLAUDE.md, .mcp.json, etc.) are generated artifacts —
+  gitignored, never committed. `.ship/` is the source of truth.
 
 ---
 
@@ -10,88 +89,86 @@
 
 ### Global (`~/.ship/`)
 
-| File | Type | Purpose |
-|---|---|---|
-| `config.toml` | `ShipConfig` | Identity (name, email) + defaults (provider, mode) |
-| `path-context.toml` | `PathContext` | Maps absolute paths → active preset id |
-| `modes/<id>.toml` | `Mode` | User's personal preset library |
-| `skills/<id>.md` | Skill | User's personal skill library |
-| `mcp/registry.toml` | MCP registry | Named MCP server definitions |
-| `cache/` | — | Catalog cache, registry cache |
+| File | Purpose |
+|---|---|
+| `config.toml` | Identity (name, email) + defaults (provider, preset) |
+| `ship.lock` | Installed artifact manifest |
+| `presets/<id>.toml` | Installed/authored presets |
+| `skills/<id>/SKILL.md` | Installed/authored skills |
+| `cache/` | R2 download cache (keyed by r2_key) |
+| `mcp/registry.toml` | Named MCP server definitions |
+| `path-context.toml` | Maps project paths → active preset id |
 
 ### Project (`.ship/`, committed to git)
 
-| File | Type | Purpose |
-|---|---|---|
-| `ship.toml` | `ShipProject` | Project identity, providers, active preset |
-| `modes/<id>.toml` | `Mode` | Project-scoped presets |
-| `agents/rules/*.md` | Rule | Always-on rules injected into compiled output |
-| `agents/skills/` | Skill | Project-scoped skills |
-| `agents/mcp.toml` | MCP config | Project MCP server definitions |
-| `agents/permissions.toml` | Permissions | Base permissions (presets override on top) |
-| `agents/hooks.toml` | Hooks | Event hook definitions |
+| File | Purpose |
+|---|---|
+| `ship.toml` | Project identity, active preset ref |
+| `agents/rules/*.md` | Always-on rules compiled into every output |
+| `agents/skills/<id>/SKILL.md` | Project-scoped skills |
+| `agents/mcp.toml` | Project MCP server definitions |
+| `agents/permissions.toml` | Base permissions (presets override) |
+| `agents/hooks.toml` | Event hook definitions |
+| `agents/presets/<id>.toml` | Project-scoped presets |
 
-### Compiled artifacts (`.ship/.gitignore`d — never commit)
+### Generated (gitignored — never commit)
 
 ```
-CLAUDE.md          ← claude context file
-AGENTS.md          ← codex / openai context file
-GEMINI.md          ← gemini context file
-.mcp.json          ← claude MCP server config
-.cursor/           ← cursor rules, mcp, hooks
-.codex/            ← codex config patch
-.gemini/           ← gemini settings + policies
-.agents/skills/    ← compiled skill files
+CLAUDE.md              ← claude context
+AGENTS.md              ← codex/openai context
+GEMINI.md              ← gemini context
+.mcp.json              ← claude MCP config
+.cursor/               ← cursor rules, mcp, hooks
+.codex/                ← codex config patch
+.gemini/               ← gemini settings + policies
+.claude/skills/        ← compiled skills for claude
+.agents/skills/        ← compiled skills for codex/gemini
 ```
+
+These are outputs. `ship use` produces them. They belong in `.gitignore`.
 
 ---
 
 ## Config Schemas
 
-### `~/.ship/config.toml` — ShipConfig
+### `~/.ship/config.toml`
 
 ```toml
 [identity]
 name = "Alice"
-email = "alice@example.com"   # optional
+email = "alice@example.com"
 
 [defaults]
-provider = "claude"           # optional
-mode = "rust-expert"          # optional
+provider = "claude"
+preset = "rust-expert"
 ```
 
-### `~/.ship/path-context.toml` — PathContext
+### `.ship/ship.toml`
 
 ```toml
-[paths."/home/alice/projects/ship"]
-mode = "ship-dev"
-provider = "claude"           # optional override
-```
+version = "1"
+id = "hRvMUz4p"           # nanoid, stable
+name = "ship"
+description = "..."
 
-### `.ship/ship.toml` — ShipProject
-
-```toml
-[project]
-name = "ship"                 # optional display name
-providers = ["claude"]        # default: ["claude"]
-active_mode = "default"       # optional; path-context takes precedence
+[defaults]
+preset = "default"        # active preset id
+providers = ["claude"]
 ```
 
 ---
 
-## Preset (Mode) Format
+## Preset Format
 
-> **Naming note**: the binary, CLI, and file format currently use `mode`. This will rename to `preset` per ARCHITECTURE.md. Until then, `mode` and `preset` are synonymous in this codebase.
-
-File: `.ship/modes/<id>.toml` or `~/.ship/modes/<id>.toml`
+File: `.ship/agents/presets/<id>.toml` or `~/.ship/presets/<id>.toml`
 
 ```toml
-[mode]
-name = "Rust Expert"
+[preset]
 id = "rust-expert"
+name = "Rust Expert"
 version = "0.1.0"
 description = "Deep Rust focus with compiler context"
-providers = ["claude"]        # overrides project ship.toml providers
+providers = ["claude"]        # overrides project providers if set
 
 [skills]
 refs = ["rust-idioms", "cargo-workflow"]   # empty = all installed skills
@@ -103,25 +180,25 @@ servers = ["github", "search"]             # empty = all configured servers
 preset = "ship-guarded"       # ship-standard | ship-guarded | read-only | full-access
 tools_deny = ["mcp__*__delete*"]
 tools_ask = []
-default_mode = "plan"         # default | acceptEdits | plan | bypassPermissions
+default_mode = "plan"
 
 [rules]
 inline = """
-Prefer safe Rust. No unwrap() in library code. Run clippy before committing.
+Prefer safe Rust. No unwrap() in library code.
 """
 ```
 
 **Permission presets:**
-- `ship-standard` — base permissions as defined in `agents/permissions.toml`
-- `ship-guarded` — base + deny `mcp__*__delete*` and `mcp__*__drop*`
-- `read-only` — allow only `Read`, `Glob`, `LS`
+- `ship-standard` — base permissions from `agents/permissions.toml`
+- `ship-guarded` — base + deny destructive MCP operations
+- `read-only` — Read, Glob, LS only
 - `full-access` — allow `*`
 
 ---
 
 ## Skill Format
 
-File: `.ship/agents/skills/<id>.md` or `~/.ship/skills/<id>.md`
+File: `<skills-dir>/<id>/SKILL.md`
 
 ```markdown
 ---
@@ -135,10 +212,43 @@ triggers: ["rust", "cargo", ".rs"]
 # Rust Idioms
 
 Use `?` for error propagation. Prefer `thiserror` over `anyhow` for library crates.
-...
 ```
 
-Skills are filtered via `[skills] refs = [...]` in the preset. Empty refs = all installed skills.
+Skills are filtered by `[skills] refs` in the preset. Empty refs = all installed skills active.
+
+---
+
+## CLI Commands
+
+```
+ship init [--global]               # scaffold .ship/ or ~/.ship/
+ship login / logout / whoami
+
+ship use [<preset-id>]             # activate preset + emit provider files
+                                   # no args = re-emit current preset
+ship use --list                    # list available presets (local + registry)
+ship status                        # show active preset, providers, last built
+
+ship skill list                    # local + registry
+ship skill add <source>            # install from registry or local path
+ship skill create <id>             # scaffold new skill
+ship skill publish <id>            # publish local skill to registry
+
+ship preset list
+ship preset add <id>               # install from registry
+ship preset create <id>
+ship preset publish <id>
+
+ship import                        # detect existing provider configs, import to .ship/
+ship mcp list | add | remove
+
+ship publish                       # publish active library to registry (requires auth)
+ship sync                          # sync personal skills/presets to account (requires auth)
+ship cache clean                   # evict ~/.ship/cache/
+```
+
+`ship use` is the primary command. It installs any missing deps, activates the preset,
+and emits all provider files. Called automatically on branch switch (git hook).
 
 ---
 
@@ -148,17 +258,15 @@ Skills are filtered via `[skills] refs = [...]` in the preset. Empty refs = all 
 
 ```json
 {
-  "modes": [{ "id": "...", "name": "...", "skills": [...], "mcp_servers": [...], ... }],
-  "mcp_servers": [{ "id": "...", "name": "...", "type": "stdio|http", ... }],
+  "modes": [{ "id": "...", "name": "...", "skills": [...], "mcp_servers": [...] }],
+  "mcp_servers": [{ "id": "...", "name": "...", "type": "stdio|http" }],
   "skills": [{ "id": "...", "name": "...", "content": "...", "source": "inline|file" }],
   "rules": [{ "name": "...", "content": "..." }],
   "permissions": { "tools": { "allow": [], "deny": [], "ask": [] }, "default_mode": "plan" }
 }
 ```
 
-The Studio web UI and CLI's `compile` command both produce this as the intermediate. It is the canonical compiler input.
-
-### WASM API (packages/compiler / @ship/compiler)
+### WASM API (`packages/compiler` / `@ship/compiler`)
 
 ```typescript
 compileLibrary(library_json: string, provider: string, active_mode?: string): string
@@ -166,155 +274,90 @@ compileLibraryAll(library_json: string, active_mode?: string): string
 listProviders(): string
 ```
 
-### Output: `CompileResult` (per provider)
+### Provider Output Matrix
 
-```json
-{
-  "provider": "claude",
-  "context_content": "# CLAUDE.md content...",
-  "mcp_servers": { "github": { "command": "...", "args": [...] } },
-  "mcp_config_path": ".mcp.json",
-  "skill_files": { ".agents/skills/rust-idioms.md": "# Rust Idioms..." },
-  "rule_files": {},
-  "claude_settings_patch": { "permissions": {...}, "hooks": [...] },
-  "codex_config_patch": null,
-  "gemini_settings_patch": null,
-  "gemini_policy_patch": null,
-  "cursor_hooks_patch": null,
-  "cursor_cli_permissions": null
-}
-```
-
-### Provider output matrix
-
-| Provider | Context file | MCP config | Skills | Rules | Settings patch |
-|---|---|---|---|---|---|
-| `claude` | `CLAUDE.md` | `.mcp.json` | `.claude/skills/` | inline in CLAUDE.md | `.claude/settings.json` (permissions + hooks) |
-| `codex` | `AGENTS.md` | `.codex/config.toml` patch | `.agents/skills/` | inline | — |
-| `gemini` | `GEMINI.md` | `.gemini/settings.json` | `.agents/skills/` ¹ | `.gemini/policies/ship.toml` | `.gemini/settings.json` (hooks) |
-| `cursor` | — | `.cursor/mcp.json` | `.cursor/skills/` ² | `.cursor/rules/<name>.mdc` | `.cursor/hooks.json` + `.cursor/cli.json` |
-
-**Notes:**
-- ¹ Gemini CLI reads `.agents/skills/` per the agentskills.io multi-provider spec. Many providers cascade through `.agents/` and `.claude/` as fallbacks — skills written to those paths work across the ecosystem without Ship installed.
-- ² Cursor primary is `.cursor/skills/`; Cursor also cascades `.agents/` and `.claude/` as fallbacks.
+| Provider | Context file | MCP config | Skills dir | Settings |
+|---|---|---|---|---|
+| `claude` | `CLAUDE.md` | `.mcp.json` | `.claude/skills/` | `.claude/settings.json` |
+| `codex` | `AGENTS.md` | `.codex/config.toml` | `.agents/skills/` | — |
+| `gemini` | `GEMINI.md` | `.gemini/settings.json` | `.agents/skills/` | `.gemini/settings.json` |
+| `cursor` | — | `.cursor/mcp.json` | `.cursor/skills/` | `.cursor/rules/*.mdc` |
 
 ---
 
-## CLI Commands (ship-studio-cli → binary: `ship-studio`, rename target: `ship`)
+## GitHub Integration
 
-```
-ship-studio init [--global] [--provider <id>]
-ship-studio whoami
-ship-studio login / logout
+### Import (unauthenticated, public repos)
 
-ship-studio use <mode-id> [--path <dir>] [--compile]
-ship-studio status [--path <dir>]
-ship-studio modes [--local | --project | --cloud]
+`POST /api/github/import { url: "https://github.com/owner/repo" }`
 
-ship-studio mode create <name> [--global]
-ship-studio mode edit <name>
-ship-studio mode delete <name>
-ship-studio mode clone <src> <dst>
-ship-studio mode publish <name>           # stub — requires account
+Fetches and extracts from the repo:
+- `CLAUDE.md` → rules + skills
+- `.mcp.json` → MCP servers
+- `.cursor/rules/` → rules
+- `AGENTS.md` → rules
+- `.gemini/` → rules
 
-ship-studio compile [--provider <id>] [--dry-run] [--watch] [--path <dir>]
-ship-studio export <provider>
+Returns a `ProjectLibrary` JSON ready for the Studio compiler.
 
-ship-studio skill list
-ship-studio skill create <id> [--name] [--description]
-ship-studio skill remove <id> [--global]
-ship-studio skill add <source>            # stub — registry
-ship-studio skill publish                 # stub — requires account
+### PR Flow (requires GitHub App OAuth)
 
-ship-studio mcp list
-ship-studio mcp add <id> --url <url>
-ship-studio mcp add-stdio <id> --command <cmd> [--args ...]
-ship-studio mcp remove <id>
+`POST /api/github/pr { repo: "owner/repo", library: ProjectLibrary }`
 
-ship-studio sync                          # stub — requires account
-ship-studio server                        # stub — local HTTP server
-```
+Creates a PR that adds:
+- `.ship/` scaffold (ship.toml + compiled library as agents/)
+- `.gitignore` patch (adds all provider output files)
 
-**Upcoming (Day 4 roadmap):**
-```
-ship workspace create|activate|list
-ship session start [--goal "..."] | log [--note "..."] | end [--summary "..."]
-ship use <preset-id>           # install from registry
-```
+PR description includes: what Ship is, `npm install -g ship` (or brew), `ship use` quickstart.
+Provider files are NOT in the PR — they're generated locally after `ship use`.
 
 ---
 
 ## Ownership Map
 
-| What | Owner | Scope |
-|---|---|---|
-| Compiler types (ProjectLibrary, ResolvedConfig, CompileResult) | `crates/core/compiler` | shared |
-| WASM bindings | `crates/core/compiler` (feature = wasm) | web only |
-| CLI commands | `apps/ship-studio-cli` | CLI only |
-| CLI config types (ShipConfig, PathContext, Mode) | `apps/ship-studio-cli/src/` | CLI only |
-| Studio web UI | `apps/web` | web only |
-| Studio primitives (shared UI) | `packages/primitives` | shared |
-| WASM package | `packages/compiler` | JS/TS consumers |
-| Platform runtime types | `crates/core/runtime` | platform (future) |
-| Workflow types (Feature, Release, Issue, etc.) | shipflow package (not yet built) | workflow layer |
+| What | Owner |
+|---|---|
+| Compiler types + WASM | `crates/core/compiler` |
+| CLI commands + config types | `apps/ship-studio-cli` |
+| Studio web UI | `apps/web` |
+| Shared UI primitives | `packages/primitives` |
+| WASM package | `packages/compiler` |
+| Auth + API endpoints | `apps/web/src/routes/api/` (Cloudflare Workers) |
+| D1 schema | `apps/web/src/db/` |
+| Platform runtime types | `crates/core/runtime` |
+| Workflow types | shipflow package (not yet built) |
 
-**Platform layer owns:** Workspace, Preset, Session, Document, Event, Skill, MCP, Permission, Hook
-**Workflow layer owns:** Feature, Release, Issue, Spec, Vision, Target, ADR (as document types)
-
----
-
-## What Ship Publishes vs Consumes
-
-### Publishes (outputs from Ship)
-- Compiled provider configs: `CLAUDE.md`, `AGENTS.md`, `.mcp.json`, `.cursor/rules/`, etc.
-- Preset packages to registry: `~/<id>.toml` → `@org/preset-name`
-- Skill packages to registry: `.md` → `@org/skill-name`
-- Compiled WASM: `packages/compiler/@ship/compiler`
-
-### Consumes (inputs to Ship)
-- `ProjectLibrary` JSON — the compiler's only input (from Studio UI or CLI loader)
-- `.ship/modes/<id>.toml` — preset definitions (CLI assembles these into ProjectLibrary)
-- `.ship/agents/rules/*.md` — rules (inlined into ProjectLibrary)
-- `.ship/agents/skills/*.md` — skill content
-- Registry packages: `ship use @org/preset-name` installs into `~/.ship/modes/`
+**Platform owns:** Workspace, Preset, Session, Skill, MCP, Permission, Hook, Event
+**Workflow owns:** Feature, Release, Issue, Spec, Vision (guest types — not in platform code)
 
 ---
 
 ## Lookup Order
 
-When resolving a preset or skill by ID, the CLI searches in this order:
+Resolving a preset or skill by id:
 
-1. `.ship/modes/<id>.toml` — project scope
-2. `~/.ship/modes/<id>.toml` — global scope
-3. Registry cache `~/.ship/cache/` — cloud scope (requires account)
+1. `.ship/agents/presets/<id>.toml` — project scope
+2. `~/.ship/presets/<id>.toml` — global installed
+3. `~/.ship/cache/` — cached registry fetch
+4. Registry API — network fetch (requires connectivity)
 
-Same pattern for skills: `.ship/agents/skills/` → `~/.ship/skills/` → registry cache.
+Same order for skills: project → global → cache → network.
 
 ---
 
-## Default Behavior at `ship init`
+## `ship init` Scaffolding
 
-`ship init` creates:
 ```
 .ship/
-  ship.toml             # [project] providers = ["claude"]
-  .gitignore            # CLAUDE.md, .mcp.json, .cursor/, .codex/, .gemini/
-  README.md             # onboarding note
-  modes/                # empty — user creates presets here
+  ship.toml             # project identity, no preset active by default
+  .gitignore            # CLAUDE.md, AGENTS.md, .mcp.json, .cursor/, .codex/, .gemini/
   agents/
-    rules/              # empty — add .md rule files
-    skills/             # empty — add .md skill files
+    rules/              # always-on rules (.md files)
+    skills/             # project-specific skills
+    presets/            # project-specific presets
+    mcp.toml            # MCP server definitions
 ```
 
-`ship init --global` creates:
-```
-~/.ship/
-  config.toml           # [identity] name = ""
-  README.md
-  modes/
-  skills/
-  mcp/
-  cache/
-```
+`ship init --global` creates `~/.ship/` with config.toml, empty presets/, skills/, cache/.
 
-No preset is activated by default. Run `ship use <id>` to activate one. Run `ship compile` to emit provider files.
+Run `ship use <preset-id>` to activate a preset and emit provider files.
