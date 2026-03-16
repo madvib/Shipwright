@@ -151,6 +151,32 @@ fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> a
         return Ok(vec![(repo.to_string(), content)]);
     }
 
+    // Fallback: root-level dirs each containing SKILL.md (e.g. better-auth/skills layout)
+    if let Some(entries) = list_github_dir(owner, repo, "")? {
+        let dirs: Vec<_> = entries.iter().filter(|(_, t)| t == "dir")
+            .map(|(n, _)| n.clone())
+            .filter(|n| !n.starts_with('.'))
+            .collect();
+        if !dirs.is_empty() {
+            let mut result = Vec::new();
+            for dir in &dirs {
+                // Check direct SKILL.md and nested subdirs one level deep
+                if let Some(content) = fetch_github_file(owner, repo, &format!("{dir}/SKILL.md"))? {
+                    result.push((dir.clone(), content));
+                } else if let Some(sub_entries) = list_github_dir(owner, repo, dir)? {
+                    for (name, kind) in sub_entries {
+                        if kind == "dir" {
+                            if let Some(content) = fetch_github_file(owner, repo, &format!("{dir}/{name}/SKILL.md"))? {
+                                result.push((format!("{dir}-{name}"), content));
+                            }
+                        }
+                    }
+                }
+            }
+            if !result.is_empty() { return Ok(result); }
+        }
+    }
+
     anyhow::bail!("no skill content found in {owner}/{repo}")
 }
 
