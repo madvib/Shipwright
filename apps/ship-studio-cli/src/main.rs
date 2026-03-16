@@ -321,7 +321,7 @@ fn run_notes() -> Result<()> {
 }
 
 fn run_migrate() -> Result<()> {
-    let ship_dir = PathBuf::from(".ship");
+    let ship_dir = std::env::current_dir()?.join(".ship");
     if !ship_dir.exists() {
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
