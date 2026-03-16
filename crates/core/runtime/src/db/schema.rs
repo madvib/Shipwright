@@ -143,4 +143,5 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0005_jobs", JOBS),
     ("0006_notes", NOTES),
     ("0007_adrs", ADRS),
+    ("0008_job_claimed_by", "ALTER TABLE job ADD COLUMN claimed_by TEXT;"),
 ];
