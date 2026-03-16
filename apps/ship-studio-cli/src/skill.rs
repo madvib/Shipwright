@@ -59,10 +59,103 @@ pub fn parse_source(source: &str) -> anyhow::Result<SkillSource> {
     )
 }
 
+// ── HTTP + base64 (no runtime deps) ──────────────────────────────────────────
+
+fn fetch_url(url: &str) -> anyhow::Result<String> {
+    let output = std::process::Command::new("curl")
+        .args(["-fsSL", "--user-agent", "ship-cli/0.1", url])
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("fetch failed for {}: {}", url, String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+fn decode_base64(encoded: &str) -> anyhow::Result<String> {
+    let clean: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();
+    let output = std::process::Command::new("base64")
+        .arg("--decode")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(clean.as_bytes())?;
+            child.wait_with_output()
+        })?;
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+// ── GitHub API ────────────────────────────────────────────────────────────────
+
+fn fetch_github_file(owner: &str, repo: &str, path: &str) -> anyhow::Result<Option<String>> {
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}");
+    let raw = match fetch_url(&url) {
+        Ok(v) => v,
+        Err(_) => return Ok(None), // 404 or network error — treat as not found
+    };
+    let v: serde_json::Value = serde_json::from_str(&raw)?;
+    if v["type"].as_str() == Some("file") {
+        let encoded = v["content"].as_str()
+            .ok_or_else(|| anyhow::anyhow!("GitHub API: missing content field"))?;
+        Ok(Some(decode_base64(encoded)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn list_github_dir(owner: &str, repo: &str, path: &str) -> anyhow::Result<Option<Vec<(String, String)>>> {
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}");
+    let raw = match fetch_url(&url) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    let arr: serde_json::Value = serde_json::from_str(&raw)?;
+    Ok(arr.as_array().map(|entries| {
+        entries.iter().filter_map(|e| {
+            Some((e["name"].as_str()?.to_string(), e["type"].as_str()?.to_string()))
+        }).collect()
+    }))
+}
+
+fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> anyhow::Result<Vec<(String, String)>> {
+    if let Some(id) = skill_hint {
+        for path in &[
+            format!("skills/{id}/SKILL.md"),
+            format!("skills/{id}.md"),
+            format!("{id}/SKILL.md"),
+            "SKILL.md".to_string(),
+        ] {
+            if let Some(content) = fetch_github_file(owner, repo, path)? {
+                return Ok(vec![(id.to_string(), content)]);
+            }
+        }
+        anyhow::bail!("skill '{id}' not found in {owner}/{repo}");
+    }
+
+    if let Some(entries) = list_github_dir(owner, repo, "skills")? {
+        let dirs: Vec<_> = entries.iter().filter(|(_, t)| t == "dir").map(|(n, _)| n.clone()).collect();
+        if !dirs.is_empty() {
+            let mut result = Vec::new();
+            for name in dirs {
+                if let Some(content) = fetch_github_file(owner, repo, &format!("skills/{name}/SKILL.md"))? {
+                    result.push((name, content));
+                }
+            }
+            if !result.is_empty() { return Ok(result); }
+        }
+    }
+
+    if let Some(content) = fetch_github_file(owner, repo, "SKILL.md")? {
+        return Ok(vec![(repo.to_string(), content)]);
+    }
+
+    anyhow::bail!("no skill content found in {owner}/{repo}")
+}
+
 // ── Public add entry point ────────────────────────────────────────────────────
 
-/// Install a skill by delegating to `npx skills add`.
-/// For registry sources (skill-id@registry), delegates to `claude plugin install`.
 pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
     let parsed = parse_source(source)?;
 
@@ -76,20 +169,16 @@ pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
                 anyhow::bail!("claude plugin install failed");
             }
         }
-        SkillSource::GitHub { .. } => {
-            // Delegate to the `skills` package manager (npx skills add).
-            // See https://skills.sh for the open Agent Skills standard.
-            let mut cmd = std::process::Command::new("npx");
-            cmd.args(["skills", "add", source, "--yes"]);
-            if let Some(id) = skill_id {
-                cmd.args(["--skill", id]);
-            }
-            if global {
-                cmd.arg("--global");
-            }
-            let status = cmd.status()?;
-            if !status.success() {
-                anyhow::bail!("npx skills add failed");
+        SkillSource::GitHub { owner, repo } => {
+            eprintln!("warning: installing skills from external sources — review SKILL.md before use");
+            let skills = resolve_github_skills(&owner, &repo, skill_id)?;
+            let base = if global { global_skills_dir() } else { agents_skills_dir() };
+            for (id, content) in skills {
+                let dir = base.join(&id);
+                std::fs::create_dir_all(&dir)?;
+                std::fs::write(dir.join("SKILL.md"), content)?;
+                println!("✓ installed skill '{}' to {}", id, dir.display());
+                println!("  review before use: {}/SKILL.md", dir.display());
             }
         }
     }
