@@ -1,127 +1,109 @@
 ---
-name: tanstack-start
-description: Use when building with TanStack Start — file-based routing, server functions, API routes, TanStack Query, Cloudflare Workers deployment. Covers route conventions, data loading, mutations, and SSR patterns.
+name: tanstack-start-best-practices
+description: TanStack Start best practices for full-stack React applications. Server functions, middleware, SSR, authentication, and deployment patterns. Activate when building full-stack apps with TanStack Start.
 ---
 
-# TanStack Start — Patterns & Conventions
+# TanStack Start Best Practices
 
-## Stack
-- Framework: TanStack Start (SSR + client, built on Vite + Vinxi)
-- Routing: TanStack Router (file-based, type-safe)
-- Data: TanStack Query (`@tanstack/react-query`)
-- Deployment: Cloudflare Workers (`@cloudflare/vite-plugin`)
+Comprehensive guidelines for implementing TanStack Start patterns in full-stack React applications. These rules cover server functions, middleware, SSR, authentication, and deployment.
 
-## Route file conventions (`apps/web/src/routes/`)
+## When to Apply
 
-```
-routes/
-  __root.tsx           — root layout (providers, global nav)
-  index.tsx            — / (landing)
-  studio.tsx           — /studio
-  api/
-    auth/$.ts          — /api/auth/* catch-all
-    github/
-      import.ts        — /api/github/import
-    me.ts              — /api/me
-```
+- Creating server functions for data mutations
+- Setting up middleware for auth/logging
+- Configuring SSR and hydration
+- Implementing authentication flows
+- Handling errors across client/server boundary
+- Organizing full-stack code
+- Deploying to various platforms
 
-## Page route pattern
+## Rule Categories by Priority
 
-```typescript
-import { createFileRoute } from '@tanstack/react-router'
+| Priority | Category | Rules | Impact |
+|----------|----------|-------|--------|
+| CRITICAL | Server Functions | 5 rules | Core data mutation patterns |
+| CRITICAL | Security | 4 rules | Prevents vulnerabilities |
+| HIGH | Middleware | 4 rules | Request/response handling |
+| HIGH | Authentication | 4 rules | Secure user sessions |
+| MEDIUM | API Routes | 1 rule | External endpoint patterns |
+| MEDIUM | SSR | 6 rules | Server rendering patterns |
+| MEDIUM | Error Handling | 3 rules | Graceful failure handling |
+| MEDIUM | Environment | 1 rule | Configuration management |
+| LOW | File Organization | 3 rules | Maintainable code structure |
+| LOW | Deployment | 2 rules | Production readiness |
 
-export const Route = createFileRoute('/studio')({
-  component: StudioPage,
-  // loader runs on server during SSR, or on client during navigation
-  loader: async ({ context }) => {
-    return { /* data */ }
-  },
-})
+## Quick Reference
 
-function StudioPage() {
-  const data = Route.useLoaderData()
-  return <div>{/* ... */}</div>
-}
-```
+### Server Functions (Prefix: `sf-`)
 
-## API route pattern
+- `sf-create-server-fn` — Use createServerFn for server-side logic
+- `sf-input-validation` — Always validate server function inputs
+- `sf-method-selection` — Choose appropriate HTTP method
+- `sf-error-handling` — Handle errors in server functions
+- `sf-response-headers` — Customize response headers when needed
 
-```typescript
-import { createAPIFileRoute } from '@tanstack/react-start/api'
-import { json } from '@tanstack/react-start'
+### Security (Prefix: `sec-`)
 
-export const APIRoute = createAPIFileRoute('/api/github/import')({
-  POST: async ({ request }) => {
-    const body = await request.json() as { url: string }
-    // ... handle
-    return json({ modes: [], skills: [], rules: [], mcp_servers: [] })
-  },
-})
-```
+- `sec-validate-inputs` — Validate all user inputs with schemas
+- `sec-auth-middleware` — Protect routes with auth middleware
+- `sec-sensitive-data` — Keep secrets server-side only
+- `sec-csrf-protection` — Implement CSRF protection for mutations
 
-## Server function pattern (alternative to API routes)
+### Middleware (Prefix: `mw-`)
 
-```typescript
-import { createServerFn } from '@tanstack/react-start'
-import { z } from 'zod'
+- `mw-request-middleware` — Use request middleware for cross-cutting concerns
+- `mw-function-middleware` — Use function middleware for server functions
+- `mw-context-flow` — Properly pass context through middleware
+- `mw-composability` — Compose middleware effectively
 
-export const importRepo = createServerFn({ method: 'POST' })
-  .validator(z.object({ url: z.string().url() }))
-  .handler(async ({ data }) => {
-    // runs on server only
-    return fetchGitHubRepo(data.url)
-  })
+### Authentication (Prefix: `auth-`)
 
-// Client usage:
-const result = await importRepo({ data: { url } })
-```
+- `auth-session-management` — Implement secure session handling
+- `auth-route-protection` — Protect routes with beforeLoad
+- `auth-server-functions` — Verify auth in server functions
+- `auth-cookie-security` — Configure secure cookie settings
 
-## TanStack Query patterns
+### API Routes (Prefix: `api-`)
 
-```typescript
-// In a component
-import { useQuery, useMutation } from '@tanstack/react-query'
+- `api-routes` — Create API routes for external consumers
 
-// Query
-const { data, isPending, error } = useQuery({
-  queryKey: ['github-import', url],
-  queryFn: () => fetch('/api/github/import', {
-    method: 'POST',
-    body: JSON.stringify({ url }),
-  }).then(r => r.json()),
-  enabled: !!url,
-})
+### SSR (Prefix: `ssr-`)
 
-// Mutation
-const importMutation = useMutation({
-  mutationFn: (url: string) =>
-    fetch('/api/github/import', { method: 'POST', body: JSON.stringify({ url }) })
-      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json() }),
-  onSuccess: (library) => {
-    // populate state
-  },
-})
-```
+- `ssr-data-loading` — Load data appropriately for SSR
+- `ssr-hydration-safety` — Prevent hydration mismatches
+- `ssr-streaming` — Implement streaming SSR for faster TTFB
+- `ssr-selective` — Apply selective SSR when beneficial
+- `ssr-prerender` — Configure static prerendering and ISR
 
-## Cloudflare env bindings in route handlers
+### Environment (Prefix: `env-`)
 
-```typescript
-import { getWebRequest } from '@tanstack/react-start/server'
+- `env-functions` — Use environment functions for configuration
 
-export const APIRoute = createAPIFileRoute('/api/me')({
-  GET: async ({ request }) => {
-    // Access Cloudflare bindings via the request context
-    // DB, KV, R2 are available via process.env or the CF env object
-    const db = process.env.DB as D1Database
-    // ...
-  },
-})
-```
+### Error Handling (Prefix: `err-`)
 
-## Key constraints
-- Routes in `apps/web/src/routes/` only — no manual router config
-- API routes MUST use `createAPIFileRoute`, not `createFileRoute`
-- `createServerFn` runs on server only — safe for secrets, DB calls
-- Cloudflare Workers: no Node.js built-ins (`fs`, `path`, `crypto` → use `globalThis.crypto`)
-- No dynamic `require()` — ESM only
-- `@tanstack/react-start` imports are for client code; `@tanstack/react-start/server` for server
+- `err-server-errors` — Handle server function errors
+- `err-redirects` — Use redirects appropriately
+- `err-not-found` — Handle not-found scenarios
+
+### File Organization (Prefix: `file-`)
+
+- `file-separation` — Separate server and client code
+- `file-functions-file` — Use .functions.ts pattern
+- `file-shared-validation` — Share validation schemas
+
+### Deployment (Prefix: `deploy-`)
+
+- `deploy-env-config` — Configure environment variables
+- `deploy-adapters` — Choose appropriate deployment adapter
+
+## How to Use
+
+Each rule file in the `rules/` directory contains:
+1. **Explanation** — Why this pattern matters
+2. **Bad Example** — Anti-pattern to avoid
+3. **Good Example** — Recommended implementation
+4. **Context** — When to apply or skip this rule
+
+## Full Reference
+
+See individual rule files in `rules/` directory for detailed guidance and code examples.
