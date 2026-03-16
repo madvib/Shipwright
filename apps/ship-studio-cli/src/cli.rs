@@ -139,6 +139,13 @@ pub enum Commands {
         port: Option<u16>,
     },
 
+    // ── Job queue ─────────────────────────────────────────────────────────────
+    /// Manage the agent job queue
+    Job {
+        #[command(subcommand)]
+        action: JobCommands,
+    },
+
     // ── Project visibility ────────────────────────────────────────────────────
     /// List architecture decision records in the current project
     Adrs,
@@ -155,6 +162,46 @@ pub enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum JobCommands {
+    /// Create a new job
+    Create {
+        /// Job kind/category (e.g. feature, infra, test, spec)
+        #[arg(long, default_value = "feature")]
+        kind: String,
+        /// Human-readable job title
+        title: String,
+        /// Milestone group (e.g. "M1: Auth & Server")
+        #[arg(long)]
+        milestone: Option<String>,
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+        /// Linked branch
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// List jobs
+    List {
+        /// Filter by status (pending, running, done, blocked)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by branch
+        #[arg(long)]
+        branch: Option<String>,
+        /// Filter by milestone
+        #[arg(long)]
+        milestone: Option<String>,
+    },
+    /// Update a job's status
+    Update {
+        /// Job ID prefix (unique prefix is sufficient)
+        id: String,
+        /// New status: pending, running, done, blocked
+        status: String,
     },
 }
 

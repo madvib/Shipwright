@@ -2,6 +2,7 @@ mod agent;
 mod cli;
 mod compile;
 mod config;
+mod job;
 mod loader;
 mod mcp;
 mod mode;
@@ -10,7 +11,7 @@ mod preset;
 mod skill;
 
 use anyhow::Result;
-use cli::*;
+use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -48,6 +49,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Server { .. } => {
                 stub("server", "Local server (port 7701) — coming soon")
             }
+            Commands::Job { action } => dispatch_job(action),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
@@ -252,6 +254,20 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
 
     if watch { println!("--watch not yet implemented. Run compile manually after changes."); }
     Ok(())
+}
+
+// ── Job subcommands ───────────────────────────────────────────────────────────
+
+fn dispatch_job(action: JobCommands) -> Result<()> {
+    match action {
+        JobCommands::Create { kind, title, milestone, description, branch } => {
+            job::create(&kind, &title, milestone.as_deref(), description.as_deref(), branch.as_deref())
+        }
+        JobCommands::List { status, branch, milestone } => {
+            job::list(status.as_deref(), branch.as_deref(), milestone.as_deref())
+        }
+        JobCommands::Update { id, status } => job::update(&id, &status),
+    }
 }
 
 // ── Skill subcommands ─────────────────────────────────────────────────────────

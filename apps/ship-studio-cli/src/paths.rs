@@ -36,6 +36,16 @@ pub fn agents_permissions_path() -> PathBuf { agents_dir().join("permissions.tom
 pub fn agents_hooks_path() -> PathBuf { agents_dir().join("hooks.toml") }
 pub fn project_ship_toml() -> PathBuf { project_dir().join("ship.toml") }
 
+/// Returns the absolute path to `.ship/` in the current directory, or errors.
+pub fn project_ship_dir_required() -> anyhow::Result<std::path::PathBuf> {
+    let cwd = std::env::current_dir()?;
+    let ship_dir = cwd.join(".ship");
+    if !ship_dir.exists() {
+        anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
+    }
+    Ok(ship_dir)
+}
+
 pub fn ensure_project_dirs() -> anyhow::Result<()> {
     for dir in [project_dir(), project_modes_dir(), agents_dir(),
                 agents_rules_dir(), agents_skills_dir()] {
