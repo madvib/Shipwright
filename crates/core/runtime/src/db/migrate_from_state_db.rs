@@ -257,4 +257,68 @@ mod tests {
         assert_eq!(second.adrs_migrated, 0);
         assert_eq!(second.adrs_skipped, 1);
     }
+
+    // ── Priority 3 gap tests ──────────────────────────────────────────────────
+
+    /// Running migrate three times produces the same final DB state each time
+    /// (total record count does not grow beyond the initial migration).
+    #[test]
+    fn test_migrate_twice_same_result() {
+        let (_tmp, ship_dir) = setup();
+        seed_old_note(&ship_dir, "n-dbl-1", "Double Note 1");
+        seed_old_note(&ship_dir, "n-dbl-2", "Double Note 2");
+        seed_old_adr(&ship_dir, "a-dbl-1", "Double ADR 1");
+
+        let r1 = migrate_notes_and_adrs(&ship_dir).unwrap();
+        assert_eq!(r1.notes_migrated, 2);
+        assert_eq!(r1.adrs_migrated, 1);
+
+        let r2 = migrate_notes_and_adrs(&ship_dir).unwrap();
+        // Second run: nothing new migrated, all skipped.
+        assert_eq!(r2.notes_migrated, 0);
+        assert_eq!(r2.notes_skipped, 2);
+        assert_eq!(r2.adrs_migrated, 0);
+        assert_eq!(r2.adrs_skipped, 1);
+
+        // DB contents are unchanged after the idempotent second run.
+        let notes = crate::db::notes::list_notes(&ship_dir, None).unwrap();
+        assert_eq!(notes.len(), 2);
+        let adrs = crate::db::adrs::list_adrs(&ship_dir).unwrap();
+        assert_eq!(adrs.len(), 1);
+    }
+
+    /// Notes with duplicate IDs (same id already in platform.db) are skipped via
+    /// INSERT OR IGNORE, not overwritten. The existing title is preserved.
+    #[test]
+    fn test_duplicate_note_id_is_skipped_not_overwritten() {
+        let (_tmp, ship_dir) = setup();
+        seed_old_note(&ship_dir, "note-dup", "Original Title");
+
+        // First migration lands the note.
+        let r1 = migrate_notes_and_adrs(&ship_dir).unwrap();
+        assert_eq!(r1.notes_migrated, 1);
+        assert_eq!(r1.notes_skipped, 0);
+
+        // Simulate the old DB being updated with a new title for the same id.
+        // (In practice the old DB is immutable post-migration, but the INSERT OR
+        // IGNORE contract should hold regardless.)
+        {
+            let mut conn = open_project_connection(&ship_dir).unwrap();
+            state_block_on(async {
+                sqlx::query("UPDATE note SET title = 'Mutated Title' WHERE id = 'note-dup'")
+                    .execute(&mut conn)
+                    .await
+            })
+            .unwrap();
+        }
+
+        // Second migration sees the record already in platform.db — skips it.
+        let r2 = migrate_notes_and_adrs(&ship_dir).unwrap();
+        assert_eq!(r2.notes_migrated, 0);
+        assert_eq!(r2.notes_skipped, 1);
+
+        // The title in platform.db is still the original, not the mutated one.
+        let note = crate::db::notes::get_note(&ship_dir, "note-dup").unwrap().unwrap();
+        assert_eq!(note.title, "Original Title");
+    }
 }

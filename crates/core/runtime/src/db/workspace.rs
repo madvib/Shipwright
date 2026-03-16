@@ -320,4 +320,104 @@ mod tests {
         end_session(&ship_dir, &sess.id, Some("done")).unwrap();
         assert!(get_active_session(&ship_dir, "ws-s1").unwrap().is_none());
     }
+
+    // ── Priority 1 gap tests ──────────────────────────────────────────────────
+
+    /// Workspace with worktree_path set round-trips through storage correctly.
+    #[test]
+    fn test_workspace_with_worktree_path() {
+        let (_tmp, ship_dir) = setup();
+        let mut w = sample("ws-wt1", "feat/worktree");
+        w.worktree_path = Some("/tmp/worktrees/feat-worktree".to_string());
+        upsert_workspace(&ship_dir, &w).unwrap();
+        let got = get_workspace(&ship_dir, "ws-wt1").unwrap().unwrap();
+        assert_eq!(got.worktree_path, Some("/tmp/worktrees/feat-worktree".to_string()));
+    }
+
+    /// list_workspaces returns only the workspaces present; callers can filter
+    /// by inspecting the returned status and workspace_type fields.
+    #[test]
+    fn test_list_workspaces_status_and_kind_visible() {
+        let (_tmp, ship_dir) = setup();
+        let mut w_active = sample("ws-filter-a", "branch-active");
+        w_active.status = "active".to_string();
+        w_active.workspace_type = "declarative".to_string();
+        upsert_workspace(&ship_dir, &w_active).unwrap();
+
+        let mut w_completed = sample("ws-filter-b", "branch-completed");
+        w_completed.status = "completed".to_string();
+        w_completed.workspace_type = "imperative".to_string();
+        upsert_workspace(&ship_dir, &w_completed).unwrap();
+
+        let all = list_workspaces(&ship_dir).unwrap();
+        assert_eq!(all.len(), 2);
+
+        let active_ones: Vec<_> = all.iter().filter(|w| w.status == "active").collect();
+        assert_eq!(active_ones.len(), 1);
+        assert_eq!(active_ones[0].id, "ws-filter-a");
+
+        let declarative_ones: Vec<_> = all.iter().filter(|w| w.workspace_type == "declarative").collect();
+        assert_eq!(declarative_ones.len(), 1);
+
+        let imperative_ones: Vec<_> = all.iter().filter(|w| w.workspace_type == "imperative").collect();
+        assert_eq!(imperative_ones.len(), 1);
+        assert_eq!(imperative_ones[0].id, "ws-filter-b");
+    }
+
+    /// Full workspace lifecycle: create → list → start session → end session → verify.
+    #[test]
+    fn test_workspace_full_lifecycle() {
+        let (_tmp, ship_dir) = setup();
+
+        // Create
+        let w = sample("ws-lc1", "feat/lifecycle");
+        upsert_workspace(&ship_dir, &w).unwrap();
+
+        // List
+        let all = list_workspaces(&ship_dir).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, "ws-lc1");
+
+        // Start session
+        let sess = start_session(&ship_dir, "ws-lc1", "feat/lifecycle", Some("cli-lane"), Some("lifecycle test")).unwrap();
+        assert_eq!(sess.workspace_id, "ws-lc1");
+        assert_eq!(sess.goal, Some("lifecycle test".to_string()));
+        assert!(sess.ended_at.is_none());
+
+        // Active session is retrievable
+        let active = get_active_session(&ship_dir, "ws-lc1").unwrap().unwrap();
+        assert_eq!(active.id, sess.id);
+        assert_eq!(active.preset_id, Some("cli-lane".to_string()));
+
+        // End session with summary
+        end_session(&ship_dir, &sess.id, Some("all done")).unwrap();
+        assert!(get_active_session(&ship_dir, "ws-lc1").unwrap().is_none());
+
+        // Mark workspace completed
+        let mut w_done = w.clone();
+        w_done.status = "completed".to_string();
+        upsert_workspace(&ship_dir, &w_done).unwrap();
+        let got = get_workspace(&ship_dir, "ws-lc1").unwrap().unwrap();
+        assert_eq!(got.status, "completed");
+    }
+
+    /// Starting a session for a workspace_id that does not exist should fail
+    /// because workspace_session.workspace_id has a REFERENCES workspace(id) FK.
+    /// NOTE: SQLite FK enforcement requires PRAGMA foreign_keys = ON, which
+    /// open_db sets. If this test fails with Ok(()), it means FK enforcement
+    /// is not active in the test path — worth investigating.
+    #[test]
+    fn test_session_on_nonexistent_workspace_returns_error() {
+        let (_tmp, ship_dir) = setup();
+        let result = start_session(&ship_dir, "ws-does-not-exist", "main", None, None);
+        assert!(result.is_err(), "expected FK violation, got Ok");
+    }
+
+    /// get_workspace returns None for an id that was never inserted.
+    #[test]
+    fn test_get_workspace_missing_returns_none() {
+        let (_tmp, ship_dir) = setup();
+        let got = get_workspace(&ship_dir, "no-such-id").unwrap();
+        assert!(got.is_none());
+    }
 }

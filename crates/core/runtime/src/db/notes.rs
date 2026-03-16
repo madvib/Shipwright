@@ -220,4 +220,61 @@ mod tests {
         let got = get_note(&ship_dir, &note.id).unwrap().unwrap();
         assert!(got.synced_at.is_some());
     }
+
+    // ── Priority 4 gap tests ──────────────────────────────────────────────────
+
+    /// Create a note and an ADR, list both, delete the note, verify the ADR remains intact.
+    #[test]
+    fn test_note_and_adr_independence_on_delete() {
+        let (_tmp, ship_dir) = setup();
+
+        let note = create_note(&ship_dir, "A note", "note body", vec![], None).unwrap();
+        let adr = crate::db::adrs::create_adr(
+            &ship_dir,
+            "An ADR",
+            "some context",
+            "some decision",
+            "proposed",
+        )
+        .unwrap();
+
+        // Both exist.
+        assert_eq!(list_notes(&ship_dir, None).unwrap().len(), 1);
+        assert_eq!(crate::db::adrs::list_adrs(&ship_dir).unwrap().len(), 1);
+
+        // Delete the note.
+        delete_note(&ship_dir, &note.id).unwrap();
+        assert!(get_note(&ship_dir, &note.id).unwrap().is_none());
+
+        // ADR is untouched.
+        let remaining_adrs = crate::db::adrs::list_adrs(&ship_dir).unwrap();
+        assert_eq!(remaining_adrs.len(), 1);
+        assert_eq!(remaining_adrs[0].id, adr.id);
+
+        // Create a second note; ADR count is still 1.
+        create_note(&ship_dir, "New note", "", vec![], None).unwrap();
+        assert_eq!(crate::db::adrs::list_adrs(&ship_dir).unwrap().len(), 1);
+        assert_eq!(list_notes(&ship_dir, None).unwrap().len(), 1);
+    }
+
+    /// Delete an ADR and verify the note is not affected.
+    #[test]
+    fn test_adr_delete_does_not_affect_notes() {
+        let (_tmp, ship_dir) = setup();
+
+        create_note(&ship_dir, "Persistent note", "body", vec![], None).unwrap();
+        let adr = crate::db::adrs::create_adr(
+            &ship_dir,
+            "Transient ADR",
+            "ctx",
+            "dec",
+            "proposed",
+        )
+        .unwrap();
+
+        crate::db::adrs::delete_adr(&ship_dir, &adr.id).unwrap();
+
+        assert!(crate::db::adrs::get_adr(&ship_dir, &adr.id).unwrap().is_none());
+        assert_eq!(list_notes(&ship_dir, None).unwrap().len(), 1);
+    }
 }
