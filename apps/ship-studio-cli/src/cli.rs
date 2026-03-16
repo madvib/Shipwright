@@ -204,6 +204,9 @@ pub enum SkillCommands {
     Add {
         /// Skill ID, registry reference, local path, or GitHub URL
         source: String,
+        /// Skill ID to install (required when repo has multiple skills)
+        #[arg(long)]
+        skill: Option<String>,
         /// Install to ~/.ship/skills/ instead of .ship/agents/skills/
         #[arg(long)]
         global: bool,

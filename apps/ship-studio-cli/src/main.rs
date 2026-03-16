@@ -261,7 +261,7 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
         SkillCommands::List => skill::list(),
         SkillCommands::Create { id, name, description } => skill::create(&id, name.as_deref(), description.as_deref()),
         SkillCommands::Remove { id, global } => skill::remove(&id, global),
-        SkillCommands::Add { source, .. } => stub("skill add", &format!("Registry install for '{}' — coming soon", source)),
+        SkillCommands::Add { source, skill, global } => skill::add(&source, skill.as_deref(), global),
         SkillCommands::Update => stub("skill update", "Registry updates — coming soon"),
         SkillCommands::Validate { .. } => stub("skill validate", "Spec validation — coming soon"),
         SkillCommands::Publish { .. } => stub("skill publish", "Publishing requires a Ship account. Run: ship login"),

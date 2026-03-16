@@ -1,0 +1,32 @@
+[preset]
+name = "Better Auth"
+id = "better-auth"
+version = "0.1.0"
+description = "Authentication, sessions, OAuth providers, middleware, user management"
+providers = ["claude"]
+
+[skills]
+refs = ["better-auth", "tanstack-start"]
+
+[mcp]
+servers = ["ship"]
+
+[permissions]
+preset = "ship-guarded"
+# Auth code is sensitive — ask before broad file writes
+tools_ask = ["Bash(curl*)", "Bash(npx*)"]
+default_mode = "default"
+
+[rules]
+inline = """
+Your domain is authentication and authorization.
+Default scope: apps/web/src/lib/auth*, apps/web/src/server/auth*, apps/web/src/middleware*.
+
+This project uses Better Auth. Never roll custom auth logic.
+Always use the Better Auth plugin system for extending functionality.
+Session tokens must never be logged or written to files.
+OAuth credentials live in environment variables — never hardcode.
+When adding a new provider, update both the server config and the client config.
+
+If you need to touch the DB schema for user tables — create a job for rust-runtime.
+"""

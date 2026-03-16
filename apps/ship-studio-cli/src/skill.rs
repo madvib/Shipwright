@@ -5,6 +5,98 @@ use std::path::Path;
 
 use crate::paths::{agents_skills_dir, global_skills_dir};
 
+// ── Source parsing ────────────────────────────────────────────────────────────
+
+#[derive(Debug, PartialEq)]
+pub enum SkillSource {
+    /// GitHub owner + repo
+    GitHub { owner: String, repo: String },
+    /// skill-id@registry-name
+    Registry { id: String, registry: String },
+}
+
+/// Parse a source string into a `SkillSource`.
+pub fn parse_source(source: &str) -> anyhow::Result<SkillSource> {
+    // Full GitHub URL: https://github.com/owner/repo
+    if source.starts_with("https://github.com/") {
+        let rest = source.trim_start_matches("https://github.com/").trim_end_matches('/');
+        let parts: Vec<&str> = rest.splitn(2, '/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Ok(SkillSource::GitHub {
+                owner: parts[0].to_string(),
+                repo: parts[1].to_string(),
+            });
+        }
+        anyhow::bail!("Invalid GitHub URL '{}'. Expected https://github.com/owner/repo", source);
+    }
+
+    // registry format: skill-id@registry-name
+    if let Some(at) = source.find('@') {
+        let id = &source[..at];
+        let registry = &source[at + 1..];
+        if !id.is_empty() && !registry.is_empty() {
+            return Ok(SkillSource::Registry {
+                id: id.to_string(),
+                registry: registry.to_string(),
+            });
+        }
+    }
+
+    // Shorthand: owner/repo (no https://, no @)
+    if source.contains('/') {
+        let parts: Vec<&str> = source.splitn(2, '/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Ok(SkillSource::GitHub {
+                owner: parts[0].to_string(),
+                repo: parts[1].to_string(),
+            });
+        }
+    }
+
+    anyhow::bail!(
+        "Cannot parse source '{}'. Use: https://github.com/owner/repo, owner/repo, or skill-id@registry",
+        source
+    )
+}
+
+// ── Public add entry point ────────────────────────────────────────────────────
+
+/// Install a skill by delegating to `npx skills add`.
+/// For registry sources (skill-id@registry), delegates to `claude plugin install`.
+pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
+    let parsed = parse_source(source)?;
+
+    match parsed {
+        SkillSource::Registry { id, registry } => {
+            println!("Installing plugin: claude plugin install {}@{}", id, registry);
+            let status = std::process::Command::new("claude")
+                .args(["plugin", "install", &format!("{}@{}", id, registry)])
+                .status()?;
+            if !status.success() {
+                anyhow::bail!("claude plugin install failed");
+            }
+        }
+        SkillSource::GitHub { .. } => {
+            // Delegate to the `skills` package manager (npx skills add).
+            // See https://skills.sh for the open Agent Skills standard.
+            let mut cmd = std::process::Command::new("npx");
+            cmd.args(["skills", "add", source, "--yes"]);
+            if let Some(id) = skill_id {
+                cmd.args(["--skill", id]);
+            }
+            if global {
+                cmd.arg("--global");
+            }
+            let status = cmd.status()?;
+            if !status.success() {
+                anyhow::bail!("npx skills add failed");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn list() -> Result<()> {
     let mut found = false;
 
@@ -122,4 +214,62 @@ mod tests {
         let ids = collect_skill_ids(dir);
         assert_eq!(ids, vec!["alpha-skill", "beta-skill"]);
     }
+
+    // ── parse_source tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_full_github_url() {
+        let s = parse_source("https://github.com/rivet-dev/skills").unwrap();
+        assert_eq!(
+            s,
+            SkillSource::GitHub {
+                owner: "rivet-dev".into(),
+                repo: "skills".into()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_github_url_with_trailing_slash() {
+        let s = parse_source("https://github.com/cloudflare/skills/").unwrap();
+        assert_eq!(
+            s,
+            SkillSource::GitHub {
+                owner: "cloudflare".into(),
+                repo: "skills".into()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_github_shorthand() {
+        let s = parse_source("org/repo").unwrap();
+        assert_eq!(
+            s,
+            SkillSource::GitHub {
+                owner: "org".into(),
+                repo: "repo".into()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_registry_format() {
+        let s = parse_source("my-skill@ship").unwrap();
+        assert_eq!(
+            s,
+            SkillSource::Registry {
+                id: "my-skill".into(),
+                registry: "ship".into()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_invalid_source_returns_error() {
+        assert!(parse_source("notvalid").is_err());
+        assert!(parse_source("https://github.com/only-owner/").is_err());
+        assert!(parse_source("").is_err());
+    }
+
 }
