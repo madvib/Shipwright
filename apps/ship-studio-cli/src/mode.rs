@@ -2,11 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Profile TOML format — what users author in .ship/agents/presets/<id>.toml
-/// Also accepts the legacy [preset] and [mode] keys for backward compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
-    /// New key: [profile]. Falls back to [preset] then [mode].
-    #[serde(rename = "profile", alias = "preset", alias = "mode")]
+    #[serde(rename = "profile")]
     pub meta: ProfileMeta,
     #[serde(default)]
     pub skills: SkillsConfig,
@@ -176,10 +174,6 @@ pub fn apply_profile_permissions(
     }
 }
 
-/// Backward compat alias — callers using the old `Preset` name still compile.
-pub type Preset = Profile;
-/// Backward compat alias — callers using the old `Mode` name still compile.
-pub type Mode = Profile;
 
 #[cfg(test)]
 mod tests {
@@ -214,50 +208,6 @@ tools_deny = ["Bash(rm -rf *)"]
         assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
         assert_eq!(p.plugins.scope, "project");
         assert_eq!(p.permissions.preset.as_deref(), Some("ship-guarded"));
-    }
-
-    #[test]
-    fn preset_key_backward_compat() {
-        let toml_str = r#"
-[preset]
-name = "CLI Lane"
-id = "cli-lane"
-providers = ["claude"]
-
-[plugins]
-install = ["superpowers@claude-plugins-official"]
-scope = "project"
-
-[permissions]
-preset = "ship-guarded"
-tools_deny = ["Bash(rm -rf *)"]
-"#;
-        let p: Profile = toml::from_str(toml_str).unwrap();
-        assert_eq!(p.meta.id, "cli-lane");
-        assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
-        assert_eq!(p.plugins.scope, "project");
-        assert_eq!(p.permissions.preset.as_deref(), Some("ship-guarded"));
-    }
-
-    #[test]
-    fn mode_key_backward_compat() {
-        let toml_str = r#"
-[mode]
-name = "Rust Expert"
-id = "rust-expert"
-providers = ["claude", "codex"]
-
-[permissions]
-preset = "ship-guarded"
-tools_deny = ["mcp__*__delete*"]
-
-[rules]
-inline = "Keep things deterministic."
-"#;
-        let p: Profile = toml::from_str(toml_str).unwrap();
-        assert_eq!(p.meta.providers, vec!["claude", "codex"]);
-        assert_eq!(p.permissions.preset.as_deref(), Some("ship-guarded"));
-        assert_eq!(p.rules.inline.as_deref(), Some("Keep things deterministic."));
     }
 
     #[test]

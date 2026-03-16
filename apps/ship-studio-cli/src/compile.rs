@@ -431,7 +431,7 @@ deny = ["Bash(rm -rf *)"]
     fn compile_with_mode_applies_permissions() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), ".ship/agents/presets/guarded.toml", r#"
-[preset]
+[profile]
 name = "Guarded"
 id = "guarded"
 providers = ["claude"]
@@ -453,7 +453,7 @@ preset = "ship-guarded"
     fn compile_with_mode_inline_rules_adds_to_context() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), ".ship/agents/presets/strict.toml", r#"
-[preset]
+[profile]
 name = "Strict"
 id = "strict"
 providers = ["claude"]
