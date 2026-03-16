@@ -86,6 +86,9 @@ GEMINI.md
 AGENTS.md
 .mcp.json
 .agents/
+.agent/
+.qwen/
 .claude/
 .gemini/
 .codex/
+skills-lock.json
