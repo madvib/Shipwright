@@ -65,6 +65,9 @@ dist/
 # Added by cargo
 /target
 
+# Leftover Tauri desktop artifacts (archived, not maintained)
+crates/ui/
+
 # Team Coordination
 TEAM.md
 

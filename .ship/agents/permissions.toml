@@ -1,6 +1,6 @@
 [tools]
-allow = ["Read", "Glob", "Grep", "mcp__ship__*", "mcp__*__read*", "mcp__*__list*", "mcp__*__search*"]
-deny = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
+allow = ["*"]
+ask = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
 
 [filesystem]
 allow = ["**/*"]

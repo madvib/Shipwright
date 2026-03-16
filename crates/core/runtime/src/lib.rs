@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod catalog;
 pub mod config;
+pub mod db;
 pub mod events;
 pub mod fs_util;
 pub mod hooks;
