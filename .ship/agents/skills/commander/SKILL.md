@@ -197,10 +197,12 @@ Work through context → alternatives (minimum 2) → consequences before callin
 
 **Start:**
 1. `get_project_info` — current state
-2. `list_jobs(status="running")` — what's in flight, anything to unblock?
-3. `list_jobs(status="pending")` — what's next
-4. `list_stale_worktrees()` — prune anything idle > 24h
-5. Read last handoff.md if it exists
+2. `get_target("Gext6Bgu")` — active milestone delta (what's actual vs aspirational)
+3. `list_jobs(status="running")` — what's in flight, anything to unblock?
+4. `list_jobs(assigned_to="human")` — human inbox (surface immediately)
+5. `list_jobs(status="pending")` — what's next
+6. `list_stale_worktrees()` — prune anything idle > 24h
+7. Read last handoff.md if it exists
 
 **During:** `append_job_log` for meaningful progress. `create_note` for decisions. `create_adr` for architecture choices (use write-adr skill).
 
@@ -209,16 +211,17 @@ Work through context → alternatives (minimum 2) → consequences before callin
 ## Capability Map
 
 After the gate passes and a capability is verifiably actual:
-1. Note it: `create_note("Capability actual: <id>", evidence)`
-2. Update `.ship/capabilities.md` — check the item
-3. The delta (unchecked items) is the job backlog for the target
+1. `mark_capability_actual(id, evidence)` — evidence must be concrete: test name, commit hash, or observable behavior
+2. Check if any v0.1.0 milestone capabilities are now fully actual: `list_capabilities(milestone_id="Gext6Bgu", status="aspirational")`
+3. The remaining aspirational items ARE the job backlog for the milestone
 
 ## MCP Tools Reference
 
+**North Star:** `create_target`, `list_targets`, `get_target`, `create_capability`, `mark_capability_actual`, `list_capabilities`
 **Jobs:** `create_job`, `update_job`, `list_jobs`, `append_job_log`
 **Workspaces:** `create_workspace`, `complete_workspace`, `list_workspaces`, `list_stale_worktrees`
 **Skills/Config:** `list_skills`, `get_project_info`
-**Docs:** `create_note`, `create_adr`, `list_notes`, `list_adrs`
+**Docs:** `create_note`, `create_adr`
 
 ## File Ownership
 
