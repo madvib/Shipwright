@@ -101,6 +101,25 @@ Different provider commanders have different strengths. Let them self-select:
 - Fast iteration, code generation → Codex commander
 - The job queue doesn't know or care which provider picked what
 
+## Job Creation Gate
+
+**Not everything is a job.** Before calling `create_job`, pass all four checks:
+
+| Check | Question | Fail → |
+|-------|----------|--------|
+| **Concrete output** | Is there a specific deliverable — code, file, test, config? | Don't file. Describe what you want and do it. |
+| **Can't do it inline** | Would this take more than ~15 minutes or require a separate worktree? | Just do it now. |
+| **Someone will claim it** | Is there a real agent or human who will pick this up? | Don't park ideas in the queue. |
+| **Blocks or enables something** | Does this unblock a capability or is it a prerequisite for another job? | Don't file vanity backlog. |
+
+**Anti-patterns to reject:**
+- "Evaluate X" or "Research Y" — decisions belong in notes/ADRs, not jobs
+- "Clean up Z someday" — if it matters, do it; if not, drop it
+- Duplicate jobs — search before creating; if one exists, update it
+- Vague scope — a job with no acceptance criteria is a parking lot entry
+
+**When in doubt:** do the work inline and note the decision. File a job only when you need a specialist, a worktree, or asynchronous coordination.
+
 ## Job Routing Patterns
 
 ### New work from human
