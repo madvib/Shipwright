@@ -13,7 +13,7 @@ Dispatch a job to a specialist agent. Follow this sequence exactly — no shortc
 
 ## Prerequisites
 
-- `ANTHROPIC_API_KEY` must be in `~/.bashrc` or `~/.zshrc` (not just the current session — spawned terminals don't inherit session exports)
+- `claude` must be authenticated: run `claude auth login` once per machine. Spawned terminals inherit the auth session — no API key management needed for Claude Code Max.
 - `ship` and `claude` CLIs must be on `$PATH`
 - Job must exist in the queue with a description and profile hint
 
@@ -194,4 +194,4 @@ Or use `list_stale_worktrees()` from the commander to find idle worktrees > 24h.
 
 **Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship-mcp` is installed (`which ship-mcp`) and `.mcp.json` points to it correctly.
 
-**`ANTHROPIC_API_KEY` missing in spawned terminal:** Add `export ANTHROPIC_API_KEY=...` to `~/.bashrc` and reload: `source ~/.bashrc`.
+**Auth missing in spawned terminal:** Run `claude auth login` in the new terminal. With Claude Code Max, auth is per-machine OAuth — no API key needed.
