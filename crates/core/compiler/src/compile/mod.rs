@@ -231,6 +231,11 @@ pub struct CompileOutput {
     /// This is a pure output artifact — the compiler never installs plugins.
     /// The CLI/runtime reads this after compilation and executes the lifecycle.
     pub plugins_manifest: PluginsManifest,
+
+    /// Provider-native agent definition files.
+    /// Key = path relative to project root (e.g. `.claude/agents/monitor.md`).
+    /// Value = file content. Written verbatim by the CLI.
+    pub agent_files: HashMap<String, String>,
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -247,8 +252,16 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
     out.skill_files = build_skill_files(desc, &resolved.skills);
 
     if provider_id == "claude" {
-        out.claude_settings_patch =
-            build_claude_settings_patch(&resolved.permissions, &resolved.hooks, resolved.model.as_deref());
+        out.claude_settings_patch = build_claude_settings_patch(
+            &resolved.permissions,
+            &resolved.hooks,
+            resolved.model.as_deref(),
+            resolved.claude_settings_extra.as_ref(),
+        );
+        for (filename, content) in &resolved.claude_team_agents {
+            out.agent_files
+                .insert(format!(".claude/agents/{}", filename), content.clone());
+        }
     }
 
     if provider_id == "codex" {
@@ -444,14 +457,16 @@ pub fn build_claude_settings_patch(
     permissions: &Permissions,
     hooks: &[HookConfig],
     model: Option<&str>,
+    extra: Option<&Json>,
 ) -> Option<Json> {
     let has_perms = has_permission_overrides(permissions);
     let has_hooks = !hooks.is_empty();
     let has_agent_limits = permissions.agent.max_cost_per_session.is_some()
         || permissions.agent.max_turns.is_some();
     let has_model = model.is_some();
+    let has_extra = extra.map_or(false, |v| !v.is_null());
 
-    if !has_perms && !has_hooks && !has_agent_limits && !has_model {
+    if !has_perms && !has_hooks && !has_agent_limits && !has_model && !has_extra {
         return None;
     }
 
@@ -531,6 +546,14 @@ pub fn build_claude_settings_patch(
     // Model override.
     if let Some(m) = model {
         patch["model"] = serde_json::json!(m);
+    }
+
+    // Extra provider-specific settings — pass through verbatim.
+    // Source: `[provider_settings.claude]` in the active preset TOML.
+    if let Some(extra_obj) = extra.and_then(|v| v.as_object()) {
+        for (k, v) in extra_obj {
+            patch[k] = v.clone();
+        }
     }
 
     Some(patch)
@@ -1031,6 +1054,8 @@ mod tests {
             hooks: vec![],
             active_mode: None,
             plugins: Default::default(),
+            claude_settings_extra: None,
+            claude_team_agents: vec![],
         }
     }
 

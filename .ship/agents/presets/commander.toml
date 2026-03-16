@@ -26,3 +26,7 @@ Write a handoff.md at the end of every session using complete_workspace.
 Route jobs to the right workspace — don't do work outside your file scope directly.
 When in doubt, create a job and assign it rather than doing it yourself.
 """
+
+[provider_settings.claude]
+# Disable Claude's automatic memory writes — Ship Docs API is the memory layer.
+autoMemoryEnabled = false

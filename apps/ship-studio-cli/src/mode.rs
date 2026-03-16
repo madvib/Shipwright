@@ -18,6 +18,11 @@ pub struct Preset {
     pub permissions: PresetPermissions,
     #[serde(default)]
     pub rules: RulesConfig,
+    /// Provider-specific settings merged verbatim into the provider's config file.
+    /// `[provider_settings.claude]` → `.claude/settings.json`.
+    /// Any key/value valid in that file works here — no code change required.
+    #[serde(default)]
+    pub provider_settings: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

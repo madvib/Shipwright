@@ -114,7 +114,38 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         };
     }
 
+    // Provider-specific settings pass-through
+    if let Some(claude_extra) = preset.provider_settings.get("claude") {
+        library.claude_settings_extra = Some(claude_extra.clone());
+    }
+
+    // Team agents from .ship/agents/teams/<provider>/*.md
+    library.claude_team_agents = load_team_agents(project_root, "claude");
+
     Ok(())
+}
+
+fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, String)> {
+    let teams_dir = project_root.join(".ship").join("agents").join("teams").join(provider_id);
+    if !teams_dir.exists() {
+        return vec![];
+    }
+    let mut agents = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&teams_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "md") {
+                if let (Some(name), Ok(content)) = (
+                    path.file_name().map(|n| n.to_string_lossy().to_string()),
+                    std::fs::read_to_string(&path),
+                ) {
+                    agents.push((name, content));
+                }
+            }
+        }
+    }
+    agents.sort_by(|a, b| a.0.cmp(&b.0));
+    agents
 }
 
 /// Search order: agents/presets/ (new) → modes/ (legacy), project then global.
@@ -198,6 +229,14 @@ pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> R
         println!("  {} .claude/settings.json", provider_id);
     }
 
+    // Provider agent files (e.g. .claude/agents/*.md for teams)
+    for (rel_path, content) in &output.agent_files {
+        let path = root.join(rel_path);
+        ensure_parent(&path)?;
+        std::fs::write(&path, content)?;
+        println!("  {} {}", provider_id, rel_path);
+    }
+
     // Codex TOML patch → .codex/config.toml
     if let Some(toml_str) = &output.codex_config_patch {
         let path = root.join(".codex/config.toml");
@@ -243,6 +282,7 @@ fn print_dry_run(provider_id: &str, output: &CompileOutput) {
     for path in output.skill_files.keys() { println!("  would write {}", path); }
     for path in output.rule_files.keys() { println!("  would write {}", path); }
     if output.claude_settings_patch.is_some() { println!("  would merge .claude/settings.json"); }
+    for path in output.agent_files.keys() { println!("  would write {}", path); }
     if output.codex_config_patch.is_some() { println!("  would write .codex/config.toml"); }
     if output.gemini_policy_patch.is_some() { println!("  would write .gemini/policies/ship.toml"); }
     if output.cursor_hooks_patch.is_some() { println!("  would write .cursor/hooks.json"); }

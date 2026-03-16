@@ -38,6 +38,14 @@ pub struct ResolvedConfig {
     /// Plugin install intent declared by the active preset.
     /// Passed through unchanged from `ProjectLibrary::plugins`.
     pub plugins: PluginsManifest,
+    /// Arbitrary extra settings for the Claude provider.
+    /// Pass-through from `[provider_settings.claude]` in the preset TOML.
+    /// Merged verbatim into `.claude/settings.json`.
+    pub claude_settings_extra: Option<serde_json::Value>,
+    /// Team agent files for the Claude provider.
+    /// Source: `.ship/agents/teams/claude/<name>.md`.
+    /// Output: `.claude/agents/<name>.md`.
+    pub claude_team_agents: Vec<(String, String)>,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -75,6 +83,13 @@ pub struct ProjectLibrary {
     /// Plugin install intent from the active preset's `[plugins]` section.
     #[serde(default)]
     pub plugins: PluginsManifest,
+    /// Pass-through from `[provider_settings.claude]` in the active preset.
+    /// Merged verbatim into `.claude/settings.json` on compile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_settings_extra: Option<serde_json::Value>,
+    /// Team agent files: `.ship/agents/teams/claude/<name>.md` → `.claude/agents/<name>.md`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claude_team_agents: Vec<(String, String)>,
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -100,6 +115,8 @@ pub fn resolve_library(
         active_mode_override,
     );
     resolved.plugins = library.plugins.clone();
+    resolved.claude_settings_extra = library.claude_settings_extra.clone();
+    resolved.claude_team_agents = library.claude_team_agents.clone();
     resolved
 }
 
@@ -201,6 +218,8 @@ pub fn resolve(
         hooks: hooks.to_vec(),
         active_mode,
         plugins: PluginsManifest::default(),
+        claude_settings_extra: None,
+        claude_team_agents: Vec::new(),
     }
 }
 
