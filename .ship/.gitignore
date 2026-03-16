@@ -3,5 +3,6 @@ generated/
 agents/discovery-cache.json
 modes/
 vision.md
+targets/
 .tmp-global/
 
