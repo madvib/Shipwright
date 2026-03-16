@@ -204,6 +204,26 @@ pub fn list_capabilities(
     Ok(rows.iter().map(row_to_capability).collect())
 }
 
+/// List capabilities linked to a milestone via milestone_id.
+/// Used by get_target on milestone targets to show the full capability delta.
+pub fn list_capabilities_for_milestone(
+    ship_dir: &Path,
+    milestone_id: &str,
+    status: Option<&str>,
+) -> Result<Vec<Capability>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        if let Some(s) = status {
+            sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE milestone_id = ? AND status = ? ORDER BY target_id ASC, created_at ASC"))
+                .bind(milestone_id).bind(s).fetch_all(&mut conn).await
+        } else {
+            sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE milestone_id = ? ORDER BY status ASC, target_id ASC, created_at ASC"))
+                .bind(milestone_id).fetch_all(&mut conn).await
+        }
+    })?;
+    Ok(rows.iter().map(row_to_capability).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

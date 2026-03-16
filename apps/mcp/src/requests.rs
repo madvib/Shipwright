@@ -313,8 +313,10 @@ pub struct MarkCapabilityActualRequest {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct ListCapabilitiesRequest {
-    /// Filter by target id
+    /// Filter by surface target id
     pub target_id: Option<String>,
+    /// Filter by milestone id — returns capabilities across surfaces linked to this milestone
+    pub milestone_id: Option<String>,
     /// Filter by status: "aspirational" | "actual"
     pub status: Option<String>,
 }

@@ -849,9 +849,18 @@ impl ShipServer {
             Ok(None) => return format!("Target '{}' not found.", req.id),
             Err(e) => return format!("Error: {}", e),
         };
-        let caps = match runtime::db::targets::list_capabilities(&ship_dir, Some(&req.id), None) {
-            Ok(c) => c,
-            Err(e) => return format!("Error loading capabilities: {}", e),
+        // Milestones show capabilities linked via milestone_id (cross-surface delta view).
+        // Surfaces show capabilities owned directly (target_id).
+        let caps = if target.kind == "milestone" {
+            match runtime::db::targets::list_capabilities_for_milestone(&ship_dir, &req.id, None) {
+                Ok(c) => c,
+                Err(e) => return format!("Error loading capabilities: {}", e),
+            }
+        } else {
+            match runtime::db::targets::list_capabilities(&ship_dir, Some(&req.id), None) {
+                Ok(c) => c,
+                Err(e) => return format!("Error loading capabilities: {}", e),
+            }
         };
         let mut out = format!(
             "# {} — {} ({})\n",
@@ -905,16 +914,19 @@ impl ShipServer {
         }
     }
 
-    #[tool(description = "List capabilities. Filter by target_id and/or status ('aspirational' | 'actual').")]
+    #[tool(description = "List capabilities. Filter by target_id (surface), milestone_id (cross-surface delta), and/or status ('aspirational' | 'actual').")]
     async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
         };
         let ship_dir = project_dir.join(".ship");
-        match runtime::db::targets::list_capabilities(
-            &ship_dir, req.target_id.as_deref(), req.status.as_deref(),
-        ) {
+        let result = if let Some(ref mid) = req.milestone_id {
+            runtime::db::targets::list_capabilities_for_milestone(&ship_dir, mid, req.status.as_deref())
+        } else {
+            runtime::db::targets::list_capabilities(&ship_dir, req.target_id.as_deref(), req.status.as_deref())
+        };
+        match result {
             Ok(cs) if cs.is_empty() => "No capabilities found.".to_string(),
             Ok(cs) => {
                 let mut out = String::from("Capabilities:\n");
