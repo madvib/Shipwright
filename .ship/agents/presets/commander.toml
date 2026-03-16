@@ -1,0 +1,28 @@
+[preset]
+name = "Commander"
+id = "commander"
+version = "0.1.0"
+description = "Ship orchestrator — surfaces communication, configures workspaces, routes jobs, manages the pod"
+providers = ["claude"]
+
+[skills]
+refs = ["commander", "ship-coordination"]
+
+[mcp]
+servers = ["ship"]
+
+[permissions]
+preset = "ship-standard"
+# Commander gets full platform MCP access — it orchestrates, it doesn't restrict
+tools_deny = []
+# Commander should confirm before destructive git operations
+tools_ask = ["Bash(git reset*)", "Bash(git push --force*)"]
+default_mode = "default"
+
+[rules]
+inline = """
+You are the Ship Commander. You surface communication between the human and the agent cluster.
+Write a handoff.md at the end of every session using complete_workspace.
+Route jobs to the right workspace — don't do work outside your file scope directly.
+When in doubt, create a job and assign it rather than doing it yourself.
+"""

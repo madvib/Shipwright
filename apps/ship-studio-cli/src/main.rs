@@ -50,6 +50,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
+            Commands::Migrate => run_migrate(),
             Commands::Agent { action } => agent::dispatch_agent(action),
         },
     }
@@ -295,13 +296,12 @@ fn project_ship_dir() -> Result<std::path::PathBuf> {
 
 fn run_adrs() -> Result<()> {
     let ship_dir = project_ship_dir()?;
-    let adrs = ship_module_project::ops::adr::list_adrs(&ship_dir)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let adrs = runtime::db::adrs::list_adrs(&ship_dir)?;
     if adrs.is_empty() {
         println!("No ADRs found.");
     } else {
         for entry in &adrs {
-            println!("{}\t[{}]\t{}", entry.id, entry.status, entry.adr.metadata.title);
+            println!("{}\t[{}]\t{}", entry.id, entry.status, entry.title);
         }
     }
     Ok(())
@@ -309,11 +309,7 @@ fn run_adrs() -> Result<()> {
 
 fn run_notes() -> Result<()> {
     let ship_dir = project_ship_dir()?;
-    let notes = ship_module_project::ops::note::list_notes(
-        ship_module_project::NoteScope::Project,
-        Some(ship_dir.as_path()),
-    )
-    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let notes = runtime::db::notes::list_notes(&ship_dir, None)?;
     if notes.is_empty() {
         println!("No notes found.");
     } else {
@@ -321,6 +317,18 @@ fn run_notes() -> Result<()> {
             println!("{}\t{}", entry.id, entry.title);
         }
     }
+    Ok(())
+}
+
+fn run_migrate() -> Result<()> {
+    let ship_dir = PathBuf::from(".ship");
+    if !ship_dir.exists() {
+        anyhow::bail!(".ship/ not found. Run: ship init");
+    }
+    let report = runtime::db::migrate_from_state_db::migrate_notes_and_adrs(&ship_dir)?;
+    println!("migration complete");
+    println!("  notes:  {} migrated, {} skipped", report.notes_migrated, report.notes_skipped);
+    println!("  adrs:   {} migrated, {} skipped", report.adrs_migrated, report.adrs_skipped);
     Ok(())
 }
 

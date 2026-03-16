@@ -1761,7 +1761,6 @@ dependencies = [
  "runtime",
  "serde",
  "serde_json",
- "ship-module-project",
  "tempfile",
  "toml",
 ]

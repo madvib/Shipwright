@@ -146,6 +146,9 @@ pub enum Commands {
     /// List notes in the current project
     Notes,
 
+    /// Migrate notes and ADRs from old ship.db to platform.db
+    Migrate,
+
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
     /// Agent-facing commands (called from skills/scripts, not user-facing)
     #[command(hide = true)]

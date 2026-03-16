@@ -33,10 +33,8 @@ use runtime::{
         sync_workspace as runtime_sync_workspace,
     },
 };
-use ship_module_project::ops::adr::{create_adr, get_adr_by_id, list_adrs};
-use ship_module_project::ops::note::{
-    create_note, get_note_by_id, list_notes, update_note_content,
-};
+use ship_module_project::ops::adr::{get_adr_by_id, list_adrs};
+use ship_module_project::ops::note::{get_note_by_id, list_notes, update_note_content};
 
 use ship_module_project::{NoteScope, get_project_name, list_registered_projects};
 use std::path::PathBuf;
@@ -118,10 +116,14 @@ impl ShipServer {
             "open_project",
             // Planning
             "create_note",
+            "list_notes_tool",
             "create_adr",
+            "list_adrs_tool",
             // Workspace
             "activate_workspace",
             "create_workspace",
+            "complete_workspace",
+            "list_stale_worktrees",
             "set_mode",
             "sync_workspace",
             "repair_workspace",
@@ -365,24 +367,40 @@ impl ShipServer {
 
     // ─── Notes Tools ────────────────────────────────────────────────────────
 
-    /// Create a standalone note (project- or user-scoped)
-    #[tool(description = "Create a standalone note. Scope can be 'project' or 'user'.")]
+    /// Create a standalone note (project-scoped, stored in platform.db)
+    #[tool(description = "Create a standalone note attached to this project.")]
     async fn create_note(&self, Parameters(req): Parameters<CreateNoteRequest>) -> String {
-        let scope = match parse_note_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
         };
-        let project_dir = match scope {
-            NoteScope::Project => match self.get_effective_project_dir().await {
-                Ok(project_dir) => Some(project_dir),
-                Err(err) => return err,
-            },
-            NoteScope::User => None,
-        };
-        let body = req.content.unwrap_or_default();
-        match create_note(scope, project_dir.as_deref(), &req.title, &body) {
+        let ship_dir = project_dir.join(".ship");
+        let content = req.content.unwrap_or_default();
+        let branch = req.branch.as_deref();
+        match runtime::db::notes::create_note(&ship_dir, &req.title, &content, vec![], branch) {
             Ok(note) => format!("Created note: {} (id: {})", note.title, note.id),
             Err(e) => format!("Error creating note: {}", e),
+        }
+    }
+
+    /// List notes stored in platform.db for this project
+    #[tool(description = "List notes for the current project.")]
+    async fn list_notes_tool(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::notes::list_notes(&ship_dir, None) {
+            Ok(notes) if notes.is_empty() => "No notes found.".to_string(),
+            Ok(notes) => {
+                let mut out = String::from("Notes:\n");
+                for n in &notes {
+                    out.push_str(&format!("- {} (id: {})\n", n.title, n.id));
+                }
+                out
+            }
+            Err(e) => format!("Error listing notes: {}", e),
         }
     }
 
@@ -419,12 +437,31 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        match create_adr(&project_dir, &req.title, "", &req.decision, "proposed") {
-            Ok(entry) => format!(
-                "Created ADR '{}' (id: {})",
-                entry.adr.metadata.title, entry.id
-            ),
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::adrs::create_adr(&ship_dir, &req.title, "", &req.decision, "proposed") {
+            Ok(entry) => format!("Created ADR '{}' (id: {})", entry.title, entry.id),
             Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    /// List Architecture Decision Records stored in platform.db
+    #[tool(description = "List ADRs for the current project.")]
+    async fn list_adrs_tool(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::adrs::list_adrs(&ship_dir) {
+            Ok(adrs) if adrs.is_empty() => "No ADRs found.".to_string(),
+            Ok(adrs) => {
+                let mut out = String::from("ADRs:\n");
+                for a in &adrs {
+                    out.push_str(&format!("- {} [{}] {}\n", a.id, a.status, a.title));
+                }
+                out
+            }
+            Err(e) => format!("Error listing ADRs: {}", e),
         }
     }
 
@@ -829,6 +866,369 @@ impl ShipServer {
             }
             Err(e) => format!("Error listing jobs: {}", e),
         }
+    }
+
+    /// Create a new workspace with an optional git worktree
+    #[tool(
+        description = "Create a new workspace. For 'imperative' and 'declarative' kinds a git worktree \
+        is created under .ship/worktrees/<branch>. For 'service' kind the worktree step is skipped. \
+        Returns the workspace id (branch name) and worktree path."
+    )]
+    async fn create_workspace(
+        &self,
+        Parameters(req): Parameters<CreateWorkspaceRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let Some(project_root) = project_dir.parent() else {
+            return "Error: could not resolve project root from ship dir".to_string();
+        };
+
+        // Derive branch from name if not provided
+        let branch = req.branch.as_deref().map(|b| b.to_string()).unwrap_or_else(|| {
+            req.name
+                .to_ascii_lowercase()
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+                .collect::<String>()
+                .trim_matches('-')
+                .to_string()
+        });
+
+        let worktrees_dir = project_root.join(".ship").join("worktrees");
+        let worktree_path = worktrees_dir.join(&branch);
+        let base_branch = req.base_branch.as_deref().unwrap_or("main");
+        let kind = req.kind.to_ascii_lowercase();
+        let is_service = kind == "service";
+
+        // Create worktree unless this is a service workspace
+        if !is_service {
+            if let Err(e) = std::fs::create_dir_all(&worktrees_dir) {
+                return format!("Error: could not create worktrees dir: {}", e);
+            }
+
+            // Try creating a new branch
+            let status = ProcessCommand::new("git")
+                .args([
+                    "worktree",
+                    "add",
+                    worktree_path.to_str().unwrap_or_default(),
+                    "-b",
+                    &branch,
+                    base_branch,
+                ])
+                .current_dir(project_root)
+                .status();
+
+            let ok = match status {
+                Ok(s) => s.success(),
+                Err(e) => return format!("Error running git worktree add: {}", e),
+            };
+
+            if !ok {
+                // Branch may already exist — try without -b
+                let status2 = ProcessCommand::new("git")
+                    .args([
+                        "worktree",
+                        "add",
+                        worktree_path.to_str().unwrap_or_default(),
+                        &branch,
+                    ])
+                    .current_dir(project_root)
+                    .status();
+                match status2 {
+                    Ok(s) if s.success() => {}
+                    Ok(_) => {
+                        return format!(
+                            "Error: git worktree add failed for branch '{}'. \
+                            The branch may not exist or the worktree path is already in use.",
+                            branch
+                        )
+                    }
+                    Err(e) => return format!("Error running git worktree add: {}", e),
+                }
+            }
+
+            // Write workspace.toml into the worktree
+            let workspace_toml_path = worktree_path.join("workspace.toml");
+            let created_at = chrono::Utc::now().to_rfc3339();
+            let mut toml_content = format!(
+                "name = \"{}\"\nkind = \"{}\"\ncreated_at = \"{}\"\n",
+                req.name, kind, created_at
+            );
+            if let Some(ref pid) = req.preset_id {
+                toml_content.push_str(&format!("preset_id = \"{}\"\n", pid));
+            }
+            if let Some(ref scope) = req.file_scope {
+                toml_content.push_str(&format!("file_scope = \"{}\"\n", scope));
+            }
+            if let Err(e) = std::fs::write(&workspace_toml_path, &toml_content) {
+                return format!(
+                    "Warning: worktree created at '{}' but failed to write workspace.toml: {}",
+                    worktree_path.display(),
+                    e
+                );
+            }
+
+            format!(
+                "Created workspace '{}' (branch: {}, kind: {})\nWorktree: {}",
+                req.name,
+                branch,
+                kind,
+                worktree_path.display()
+            )
+        } else {
+            // Service workspace — record only, no worktree
+            format!(
+                "Created service workspace '{}' (branch: {}, kind: service)\n\
+                No worktree created for service workspaces.",
+                req.name, branch
+            )
+        }
+    }
+
+    /// Complete a workspace and write a handoff document
+    #[tool(
+        description = "Complete a workspace: writes a handoff.md with the session summary and \
+        optionally prunes the git worktree. For imperative workspaces the worktree is pruned by \
+        default; for declarative/service it is kept by default."
+    )]
+    async fn complete_workspace(
+        &self,
+        Parameters(req): Parameters<CompleteWorkspaceRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let Some(project_root) = project_dir.parent() else {
+            return "Error: could not resolve project root from ship dir".to_string();
+        };
+
+        let workspace_id = req.workspace_id.trim();
+        let worktree_path = project_root
+            .join(".ship")
+            .join("worktrees")
+            .join(workspace_id);
+
+        // Read workspace.toml to get kind, name, preset_id
+        let toml_path = worktree_path.join("workspace.toml");
+        let (ws_name, ws_kind, ws_preset) = if toml_path.exists() {
+            match std::fs::read_to_string(&toml_path) {
+                Ok(content) => {
+                    let name = content
+                        .lines()
+                        .find(|l| l.starts_with("name = "))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"').to_string())
+                        .unwrap_or_else(|| workspace_id.to_string());
+                    let kind = content
+                        .lines()
+                        .find(|l| l.starts_with("kind = "))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"').to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let preset = content
+                        .lines()
+                        .find(|l| l.starts_with("preset_id = "))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"').to_string());
+                    (name, kind, preset)
+                }
+                Err(_) => (workspace_id.to_string(), "unknown".to_string(), None),
+            }
+        } else {
+            (workspace_id.to_string(), "unknown".to_string(), None)
+        };
+
+        // Determine whether to prune the worktree
+        let should_prune = req.prune_worktree.unwrap_or(ws_kind == "imperative");
+
+        // Write handoff.md
+        let sessions_dir = project_root
+            .join(".ship")
+            .join("sessions")
+            .join(workspace_id);
+        if let Err(e) = std::fs::create_dir_all(&sessions_dir) {
+            return format!("Error creating sessions dir: {}", e);
+        }
+        let handoff_path = sessions_dir.join("handoff.md");
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let preset_line = ws_preset
+            .as_deref()
+            .map(|p| format!("**Preset:** {}", p))
+            .unwrap_or_else(|| "**Preset:** (none)".to_string());
+        let handoff_content = format!(
+            "# Handoff: {ws_name}\n\n\
+            **Completed:** {timestamp}\n\
+            **Workspace:** {workspace_id}\n\
+            **Kind:** {ws_kind}\n\
+            {preset_line}\n\n\
+            ## Summary\n\n\
+            {summary}\n\n\
+            ## Context for next session\n\n\
+            _Fill this in before ending the session._\n",
+            ws_name = ws_name,
+            timestamp = timestamp,
+            workspace_id = workspace_id,
+            ws_kind = ws_kind,
+            preset_line = preset_line,
+            summary = req.summary,
+        );
+        if let Err(e) = std::fs::write(&handoff_path, &handoff_content) {
+            return format!("Error writing handoff.md: {}", e);
+        }
+
+        // Optionally prune worktree
+        if should_prune && worktree_path.exists() {
+            let status = ProcessCommand::new("git")
+                .args([
+                    "worktree",
+                    "remove",
+                    worktree_path.to_str().unwrap_or_default(),
+                    "--force",
+                ])
+                .current_dir(project_root)
+                .status();
+            return match status {
+                Ok(s) if s.success() => format!(
+                    "Workspace '{}' completed. Worktree pruned.\nHandoff: {}",
+                    workspace_id,
+                    handoff_path.display()
+                ),
+                Ok(_) => format!(
+                    "Workspace '{}' completed. Warning: worktree removal failed (may already be gone).\nHandoff: {}",
+                    workspace_id,
+                    handoff_path.display()
+                ),
+                Err(e) => format!(
+                    "Workspace '{}' completed. Warning: failed to run git worktree remove: {}\nHandoff: {}",
+                    workspace_id,
+                    e,
+                    handoff_path.display()
+                ),
+            };
+        }
+
+        format!(
+            "Workspace '{}' completed.\nHandoff: {}",
+            workspace_id,
+            handoff_path.display()
+        )
+    }
+
+    /// List git worktrees under .ship/worktrees/ that have been idle beyond a threshold
+    #[tool(
+        description = "List git worktrees under .ship/worktrees/ that have been idle (last modified) \
+        longer than idle_hours (default: 24). Returns worktree path, branch, and idle duration."
+    )]
+    async fn list_stale_worktrees(
+        &self,
+        Parameters(req): Parameters<ListStaleWorktreesRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let Some(project_root) = project_dir.parent() else {
+            return "Error: could not resolve project root from ship dir".to_string();
+        };
+
+        let idle_hours = req.idle_hours.unwrap_or(24);
+        let idle_secs = idle_hours as u64 * 3600;
+
+        // Run git worktree list --porcelain
+        let output = match ProcessCommand::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(project_root)
+            .output()
+        {
+            Ok(o) => o,
+            Err(e) => return format!("Error running git worktree list: {}", e),
+        };
+
+        if !output.status.success() {
+            return format!(
+                "Error: git worktree list failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let worktrees_prefix = project_root
+            .join(".ship")
+            .join("worktrees")
+            .to_string_lossy()
+            .to_string();
+
+        // Parse porcelain output into (path, branch) pairs
+        let mut current_path: Option<String> = None;
+        let mut current_wt_branch: Option<String> = None;
+        let mut entries: Vec<(String, Option<String>)> = Vec::new();
+
+        for line in stdout.lines() {
+            if let Some(path) = line.strip_prefix("worktree ") {
+                if let Some(p) = current_path.take() {
+                    entries.push((p, current_wt_branch.take()));
+                }
+                current_path = Some(path.to_string());
+                current_wt_branch = None;
+            } else if let Some(branch) = line.strip_prefix("branch refs/heads/") {
+                current_wt_branch = Some(branch.to_string());
+            } else if line.is_empty() {
+                if let Some(p) = current_path.take() {
+                    entries.push((p, current_wt_branch.take()));
+                }
+            }
+        }
+        if let Some(p) = current_path.take() {
+            entries.push((p, current_wt_branch.take()));
+        }
+
+        // Filter to .ship/worktrees/ and check mtime
+        let now = std::time::SystemTime::now();
+        let mut stale: Vec<(String, Option<String>, u64)> = Vec::new();
+
+        for (path, branch) in &entries {
+            if !path.starts_with(&worktrees_prefix) {
+                continue;
+            }
+            let meta = match std::fs::metadata(path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let modified = match meta.modified() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let elapsed_secs = now
+                .duration_since(modified)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            if elapsed_secs >= idle_secs {
+                let idle_hours_actual = elapsed_secs / 3600;
+                stale.push((path.clone(), branch.clone(), idle_hours_actual));
+            }
+        }
+
+        if stale.is_empty() {
+            return format!(
+                "No stale worktrees found (threshold: {} hours).",
+                idle_hours
+            );
+        }
+
+        let mut out = format!("Stale worktrees (idle > {} hours):\n", idle_hours);
+        for (path, branch, hours) in &stale {
+            let branch_str = branch.as_deref().unwrap_or("(detached)");
+            out.push_str(&format!(
+                "- {} [branch: {}] idle {}h\n",
+                path, branch_str, hours
+            ));
+        }
+        out
     }
 
     /// Append a log entry to a job

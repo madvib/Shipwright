@@ -33,8 +33,8 @@ pub struct CreateNoteRequest {
     pub title: String,
     /// Optional markdown content
     pub content: Option<String>,
-    /// Scope: project (default) or user
-    pub scope: Option<String>,
+    /// Optional git branch to associate with this note
+    pub branch: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -233,4 +233,36 @@ pub struct RepairWorkspaceRequest {
     pub branch: Option<String>,
     /// Preview repair without writing changes.
     pub dry_run: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateWorkspaceRequest {
+    /// Human-readable name for the workspace
+    pub name: String,
+    /// Workspace kind: "imperative" | "declarative" | "service"
+    pub kind: String,
+    /// Optional preset ID to activate in this workspace
+    pub preset_id: Option<String>,
+    /// Branch name. If omitted, derived from name (slugified).
+    pub branch: Option<String>,
+    /// Base branch to create worktree from. Defaults to "main".
+    pub base_branch: Option<String>,
+    /// File scope — paths this workspace should edit (e.g. "crates/")
+    pub file_scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CompleteWorkspaceRequest {
+    /// Workspace id (branch name) to complete
+    pub workspace_id: String,
+    /// Summary of what was accomplished — written to handoff.md
+    pub summary: String,
+    /// Whether to prune the worktree on completion. Defaults true for imperative, false for declarative/service.
+    pub prune_worktree: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListStaleWorktreesRequest {
+    /// Idle threshold in hours. Worktrees not modified within this window are returned. Defaults to 24.
+    pub idle_hours: Option<u32>,
 }
