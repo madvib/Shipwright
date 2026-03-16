@@ -72,10 +72,6 @@ crates/ui/
 TEAM.md
 
 
-# Ship runtime DB artifacts
-**/.ship/ship.db
-**/.ship/ship.db-shm
-**/.ship/ship.db-wal
 
 # Ship worktrees — ephemeral, never commit
 .ship/worktrees/

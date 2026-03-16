@@ -5,7 +5,3 @@ modes/
 vision.md
 .tmp-global/
 
-# Runtime DB
-ship.db
-ship.db-shm
-ship.db-wal
