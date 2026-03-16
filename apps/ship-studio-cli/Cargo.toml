@@ -11,11 +11,13 @@ path = "src/main.rs"
 clap = { version = "4.0", features = ["derive"] }
 cli-framework = { path = "../../crates/core/cli-framework" }
 compiler = { path = "../../crates/core/compiler" }
+runtime = { path = "../../crates/core/runtime" }
 anyhow = "1.0"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3"

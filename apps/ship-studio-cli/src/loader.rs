@@ -178,12 +178,21 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
     if !skills_dir.exists() { return Ok(vec![]); }
     let mut skills = Vec::new();
     for entry in std::fs::read_dir(&skills_dir)?.flatten() {
-        if !entry.path().is_dir() { continue; }
-        let skill_md = entry.path().join("SKILL.md");
-        if !skill_md.exists() { continue; }
-        let id = entry.file_name().to_string_lossy().to_string();
-        let raw = std::fs::read_to_string(&skill_md)?;
-        skills.push(parse_skill(&id, &raw));
+        let path = entry.path();
+        if path.is_dir() {
+            // Subdirectory format: <skill-id>/SKILL.md
+            let skill_md = path.join("SKILL.md");
+            if skill_md.exists() {
+                let id = entry.file_name().to_string_lossy().to_string();
+                let raw = std::fs::read_to_string(&skill_md)?;
+                skills.push(parse_skill(&id, &raw));
+            }
+        } else if path.extension().map_or(false, |x| x == "md") {
+            // Flat format: <skill-id>.md
+            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let raw = std::fs::read_to_string(&path)?;
+            skills.push(parse_skill(&id, &raw));
+        }
     }
     Ok(skills)
 }
@@ -302,6 +311,28 @@ url = "https://api.example.com/mcp"
         assert_eq!(lib.skills[0].name, "My Skill");
         assert_eq!(lib.skills[0].description.as_deref(), Some("Does stuff"));
         assert_eq!(lib.skills[0].content, "Instructions here.");
+    }
+
+    #[test]
+    fn loads_skill_from_flat_md() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "skills/ship-coordination.md",
+            "---\nname: Ship Coordination\ndescription: Coordination skill\n---\n\nContent here.");
+        let lib = load_library(tmp.path()).unwrap();
+        assert_eq!(lib.skills.len(), 1);
+        assert_eq!(lib.skills[0].id, "ship-coordination");
+        assert_eq!(lib.skills[0].name, "Ship Coordination");
+    }
+
+    #[test]
+    fn loads_skills_mixed_formats() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "skills/flat-skill.md",
+            "---\nname: Flat\n---\n\nFlat content.");
+        write(tmp.path(), "skills/dir-skill/SKILL.md",
+            "---\nname: Dir\n---\n\nDir content.");
+        let lib = load_library(tmp.path()).unwrap();
+        assert_eq!(lib.skills.len(), 2);
     }
 
     #[test]

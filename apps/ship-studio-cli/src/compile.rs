@@ -5,7 +5,7 @@ use compiler::{CompileOutput, ProjectLibrary, compile, get_provider, resolve_lib
 use std::path::Path;
 
 use crate::loader::load_library;
-use crate::mode::{Mode, apply_mode_permissions};
+use crate::mode::{Preset, apply_preset_permissions};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -70,20 +70,15 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
 // ── Mode → library ────────────────────────────────────────────────────────────
 
 fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_root: &Path) -> Result<()> {
-    let mode_file = find_mode_file(mode_id, project_root);
-    let Some(path) = mode_file else { return Ok(()); };
+    let Some(path) = find_preset_file(mode_id, project_root) else { return Ok(()); };
 
-    let mode = Mode::load(&path)?;
-
-    // Provider list from mode (only if non-empty)
-    // (The resolver picks this up via ProjectLibrary.modes[] — for now we skip ModeConfig
-    // injection and just apply permissions + inline rules directly)
+    let preset = Preset::load(&path)?;
 
     // Permission overrides
-    library.permissions = apply_mode_permissions(library.permissions.clone(), &mode);
+    library.permissions = apply_preset_permissions(library.permissions.clone(), &preset);
 
     // Inline rules → append as a synthetic rule file
-    if let Some(inline) = &mode.rules.inline {
+    if let Some(inline) = &preset.rules.inline {
         let trimmed = inline.trim();
         if !trimmed.is_empty() {
             library.rules.push(compiler::Rule {
@@ -96,14 +91,14 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         }
     }
 
-    // If mode declares a provider list, inject a ModeConfig so resolve() applies it
-    if !mode.meta.providers.is_empty() {
+    // If preset declares a provider list, inject a ModeConfig so resolve() applies it
+    if !preset.meta.providers.is_empty() {
         library.modes.push(compiler::ModeConfig {
             id: mode_id.to_string(),
-            name: mode.meta.name.clone(),
-            target_agents: mode.meta.providers.clone(),
-            mcp_servers: mode.mcp.servers.clone(),
-            skills: mode.skills.refs.clone(),
+            name: preset.meta.name.clone(),
+            target_agents: preset.meta.providers.clone(),
+            mcp_servers: preset.mcp.servers.clone(),
+            skills: preset.skills.refs.clone(),
             ..Default::default()
         });
     }
@@ -111,11 +106,24 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
     Ok(())
 }
 
-fn find_mode_file(mode_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
-    let p = project_root.join(".ship").join("modes").join(format!("{}.toml", mode_id));
+/// Search order: agents/presets/ (new) → modes/ (legacy), project then global.
+fn find_preset_file(preset_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
+    let ship = project_root.join(".ship");
+    let file = format!("{}.toml", preset_id);
+
+    // Project-local: new location first, then legacy
+    let p = ship.join("agents").join("presets").join(&file);
     if p.exists() { return Some(p); }
-    let g = dirs::home_dir()?.join(".ship").join("modes").join(format!("{}.toml", mode_id));
-    if g.exists() { return Some(g); }
+    let m = ship.join("modes").join(&file);
+    if m.exists() { return Some(m); }
+
+    // Global: ~/.ship
+    let home = dirs::home_dir()?;
+    let gp = home.join(".ship").join("agents").join("presets").join(&file);
+    if gp.exists() { return Some(gp); }
+    let gm = home.join(".ship").join("modes").join(&file);
+    if gm.exists() { return Some(gm); }
+
     None
 }
 
@@ -371,8 +379,8 @@ deny = ["Bash(rm -rf *)"]
     #[test]
     fn compile_with_mode_applies_permissions() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/modes/guarded.toml", r#"
-[mode]
+        write(tmp.path(), ".ship/agents/presets/guarded.toml", r#"
+[preset]
 name = "Guarded"
 id = "guarded"
 providers = ["claude"]
@@ -393,8 +401,8 @@ preset = "ship-guarded"
     #[test]
     fn compile_with_mode_inline_rules_adds_to_context() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/modes/strict.toml", r#"
-[mode]
+        write(tmp.path(), ".ship/agents/presets/strict.toml", r#"
+[preset]
 name = "Strict"
 id = "strict"
 providers = ["claude"]
