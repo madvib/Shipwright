@@ -1,4 +1,4 @@
-[preset]
+[profile]
 id = "server-lane"
 name = "Server Lane — feat/server-auth"
 version = "0.1.0"

@@ -1,4 +1,4 @@
-[preset]
+[profile]
 id = "orchestrator"
 name = "Orchestrator — feat/integration"
 version = "0.1.0"

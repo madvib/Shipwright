@@ -1,6 +1,6 @@
 ---
 name: Configure Agent
-description: Use when setting up a workspace for a specialist agent — selecting preset, permission tier, scope, and worktree path. Ensures agents are productive (not over-restricted) and safe (not under-restricted).
+description: Use when setting up a workspace for a specialist agent — selecting profile, permission tier, scope, and worktree path. Ensures agents are productive (not over-restricted) and safe (not under-restricted).
 ---
 
 ## Permission Tier Selection
@@ -36,10 +36,10 @@ default_mode = "acceptEdits"
 tools_ask = ["Bash(rm -rf*)", "Bash(*--force*)", "Bash(*drop table*)"]
 ```
 
-## Preset → Tier Mapping
+## Profile → Tier Mapping
 
-| Preset | Recommended tier | Rationale |
-|--------|-----------------|-----------|
+| Profile | Recommended tier | Rationale |
+|---------|-----------------|-----------|
 | react-architect | `ship-standard` | Feature work, no infra |
 | react-designer | `ship-standard` | UI only |
 | better-auth | `ship-standard` | App layer, not DB migrations |
@@ -60,7 +60,7 @@ WORKTREE_PATH="$WORKTREE_BASE/<job-id>"
 
 git worktree add "$WORKTREE_PATH" -b job/<job-id>
 cd "$WORKTREE_PATH"
-ship use <preset>
+ship use <profile>
 ```
 
 Never use `../<branch>` — always use the configured path.
@@ -68,7 +68,7 @@ Never use Claude Code's native worktree UI — it won't respect the config.
 
 ## Scope Constraints
 
-Always set explicit file scope in the job spec. The preset constrains capability
+Always set explicit file scope in the job spec. The profile constrains capability
 (what the agent knows how to do). Scope constrains authority (what it's allowed to touch).
 
 ```
@@ -80,10 +80,10 @@ Agents WILL respect explicit scope instructions. Don't rely on preset alone.
 
 ## Checklist Before Starting an Agent
 
-- [ ] Correct preset for the domain?
+- [ ] Correct profile for the domain?
 - [ ] Permission tier matched to blast radius (default to ship-standard)?
 - [ ] Worktree created at canonical path?
-- [ ] `ship use <preset>` run IN the worktree?
+- [ ] `ship use <profile>` run IN the worktree?
 - [ ] Job spec includes scope + off-limits?
 - [ ] Acceptance criteria written (not just "make it work")?
 - [ ] Dependencies noted (what must already be true)?

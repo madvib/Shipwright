@@ -1,4 +1,4 @@
-[preset]
+[profile]
 id = "cli-lane"
 name = "CLI Lane — feat/cli-init"
 version = "0.1.0"

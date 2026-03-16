@@ -13,10 +13,10 @@ Ship manages three versioned artifact types. All follow the same registry model.
 | Type | Format | Atomic? | Description |
 |---|---|---|---|
 | **Skill** | `.md` (frontmatter + markdown) | ✓ | Single-purpose agent instruction |
-| **Preset** | `.toml` | — | Named config: references skills + MCP + permissions |
-| **Workflow** | `.toml` (planned) | — | Orchestration: references presets + execution logic |
+| **Profile** | `.toml` | — | Named config: references skills + MCP + permissions |
+| **Workflow** | `.toml` (planned) | — | Orchestration: references profiles + execution logic |
 
-Skills are atoms. Presets compose skills. Workflows compose presets.
+Skills are atoms. Profiles compose skills. Workflows compose profiles.
 
 ### Versioning and Provenance
 
@@ -33,9 +33,9 @@ installed_at = "2026-03-15T10:00:00Z"
 source = "local"
 # no version, no key — authored locally, not published
 
-[presets."ship-studio-default@2.1.0"]
+[profiles."ship-studio-default@2.1.0"]
 source = "registry"
-r2_key = "presets/ship-studio-default/2.1.0/preset.toml"
+r2_key = "profiles/ship-studio-default/2.1.0/profile.toml"
 checksum = "sha256:def456"
 skills = ["rust-idioms@1.2.0"]
 installed_at = "2026-03-15T10:00:00Z"
@@ -52,33 +52,33 @@ installed_at = "2026-03-15T10:00:00Z"
 Registry (getship.dev)
   R2  — artifact content blobs (immutable, CDN-served)
         skills/:id/:version/SKILL.md
-        presets/:id/:version/preset.toml
+        profiles/:id/:version/profile.toml
         workflows/:id/:version/workflow.toml
   D1  — artifact metadata (queryable)
         skills table: id, name, description, tags, author, version, r2_key, downloads
-        presets table: id, name, description, tags, author, version, r2_key, skill_refs
-        workflows table: id, name, description, tags, author, version, r2_key, preset_refs
+        profiles table: id, name, description, tags, author, version, r2_key, skill_refs
+        workflows table: id, name, description, tags, author, version, r2_key, profile_refs
   DO  — user/org state (Rivet actors, self-hostable)
         UserActor: profile, personal skills (authored), installed manifest, usage
-        OrgActor: members, shared presets, billing
+        OrgActor: members, shared profiles, billing
 
 Local (~/.ship/)
   ship.lock     — installed artifact manifest (source, version, checksum, r2_key)
   skills/       — installed skill content (registry-fetched + locally authored)
-  presets/      — installed preset content (legacy: ~/.ship/modes/)
+  profiles/     — installed profile content (legacy: ~/.ship/modes/)
   cache/        — download cache (R2 objects, keyed by r2_key, LRU eviction)
   config.toml   — identity + defaults
   state/<slug>/platform.db  — per-project SQLite DB (see platform.db section)
   mcp/registry.toml         — named MCP server definitions
 
 Project (.ship/, committed to git)
-  ship.toml               — project identity + active preset ref
+  ship.toml               — project identity + active profile ref
   agents/
-    presets/*.toml         — project-scoped presets
+    presets/*.toml         — project-scoped profiles (directory named presets/ for now)
     skills/<id>/SKILL.md  — project-scoped skills
     rules/*.md             — always-on rules compiled into every output
     mcp.toml               — project MCP server definitions
-    permissions.toml       — base permissions (presets layer on top)
+    permissions.toml       — base permissions (profiles layer on top)
     hooks.toml             — event hook definitions
   modes/                   — legacy (renamed to presets; still read by CLI)
 ```
@@ -100,16 +100,16 @@ Every path under `.ship/`, its owner, format, and who reads/writes it.
 
 | Path | Format | Written by | Read by | Purpose |
 |---|---|---|---|---|
-| `ship.toml` | TOML | `ship init` / user | CLI, compiler, MCP | Project identity, default preset, providers |
-| `agents/presets/<id>.toml` | TOML | user / `ship preset create` | CLI, compiler | Project-scoped preset definitions |
+| `ship.toml` | TOML | `ship init` / user | CLI, compiler, MCP | Project identity, default profile, providers |
+| `agents/presets/<id>.toml` | TOML | user / `ship profile create` | CLI, compiler | Project-scoped profile definitions |
 | `agents/skills/<id>/SKILL.md` | Markdown + frontmatter | user / `ship skill create` | CLI, compiler | Project-scoped skills |
 | `agents/rules/*.md` | Markdown | user | compiler | Always-on rules, included in every output |
 | `agents/mcp.toml` | TOML | user | CLI, compiler | Project MCP server definitions |
-| `agents/permissions.toml` | TOML | user | compiler | Base permissions applied to all presets |
+| `agents/permissions.toml` | TOML | user | compiler | Base permissions applied to all profiles |
 | `agents/hooks.toml` | TOML | user | compiler | Event hook definitions |
-| `modes/<id>.toml` | TOML | legacy | CLI (legacy path) | Legacy preset location; still resolved |
+| `modes/<id>.toml` | TOML | legacy | CLI (legacy path) | Legacy profile location; still resolved |
 | `worktrees/<branch>/` | dir | MCP `create_workspace` | MCP, git | Git worktrees for imperative/declarative workspaces |
-| `worktrees/<branch>/workspace.toml` | TOML | MCP `create_workspace` | MCP `complete_workspace` | Workspace name, kind, preset_id |
+| `worktrees/<branch>/workspace.toml` | TOML | MCP `create_workspace` | MCP `complete_workspace` | Workspace name, kind, profile_id |
 | `sessions/<workspace_id>/handoff.md` | Markdown | MCP `complete_workspace` | agents | Session handoff document |
 
 **Global paths (`~/.ship/`):**
@@ -118,9 +118,9 @@ Every path under `.ship/`, its owner, format, and who reads/writes it.
 |---|---|---|---|---|
 | `config.toml` | TOML | `ship init --global` | CLI | Identity (name, email) + defaults |
 | `ship.lock` | TOML | `ship use` | CLI | Installed artifact manifest |
-| `presets/<id>.toml` | TOML | `ship use` / registry | CLI, compiler | Installed/authored presets |
+| `profiles/<id>.toml` | TOML | `ship use` / registry | CLI, compiler | Installed/authored profiles |
 | `skills/<id>/SKILL.md` | Markdown | `ship use` / user | CLI, compiler | Installed/authored skills |
-| `modes/<id>.toml` | TOML | legacy | CLI (legacy) | Legacy global preset location |
+| `modes/<id>.toml` | TOML | legacy | CLI (legacy) | Legacy global profile location |
 | `mcp/registry.toml` | TOML | user | CLI, compiler | Named MCP server definitions |
 | `cache/` | blobs | `ship use` | CLI | R2 download cache |
 | `state/<slug>/platform.db` | SQLite | runtime | runtime, MCP | Per-project workspace/session/event DB |
@@ -142,7 +142,7 @@ email = "alice@example.com"
 
 [defaults]
 provider = "claude"
-preset = "rust-expert"
+profile = "rust-expert"
 ```
 
 ### `.ship/ship.toml`
@@ -154,7 +154,7 @@ name = "ship"
 description = "..."
 
 [defaults]
-preset = "default"        # fallback preset when no branch-specific preset is set
+profile = "default"       # fallback profile when no branch-specific profile is set
 providers = ["claude"]
 ```
 
@@ -180,12 +180,12 @@ Full `ProjectConfig` fields (from `crates/core/compiler/src/types/config.rs`):
 
 ---
 
-## Preset TOML Schema
+## Profile TOML Schema
 
-File: `.ship/agents/presets/<id>.toml` or `~/.ship/presets/<id>.toml`
+File: `.ship/agents/presets/<id>.toml` or `~/.ship/profiles/<id>.toml`
 
 ```toml
-[preset]
+[profile]
 id = "rust-runtime"           # required; kebab-case identifier
 name = "Rust Runtime"         # required; human display name
 version = "0.1.0"             # optional; semver string
@@ -220,15 +220,15 @@ Freeform rule text injected directly into the context output.
 # files = ["path/to/rule.md"]   # (planned) — file refs not yet implemented in parser
 ```
 
-### Preset section fields
+### Profile section fields
 
 | Section | Field | Type | Default | Notes |
 |---|---|---|---|---|
-| `[preset]` | `id` | string | — | required; kebab-case; unique in scope |
-| `[preset]` | `name` | string | — | required; human display name |
-| `[preset]` | `version` | string | — | semver string |
-| `[preset]` | `description` | string | — | — |
-| `[preset]` | `providers` | string[] | — | overrides project `providers` when set |
+| `[profile]` | `id` | string | — | required; kebab-case; unique in scope |
+| `[profile]` | `name` | string | — | required; human display name |
+| `[profile]` | `version` | string | — | semver string |
+| `[profile]` | `description` | string | — | — |
+| `[profile]` | `providers` | string[] | — | overrides project `providers` when set |
 | `[skills]` | `refs` | string[] | `[]` | skill ids; empty = all installed skills |
 | `[mcp]` | `servers` | string[] | `[]` | server ids; empty = all configured |
 | `[permissions]` | `preset` | string | — | `ship-standard` \| `ship-guarded` \| `read-only` \| `full-access` |
@@ -237,7 +237,7 @@ Freeform rule text injected directly into the context output.
 | `[permissions]` | `default_mode` | string | `"default"` | `default` \| `acceptEdits` \| `plan` \| `bypassPermissions` |
 | `[rules]` | `inline` | string | — | freeform text injected into context output |
 
-**Permission presets:** `ship-standard` = base from `agents/permissions.toml`; `ship-guarded` = base + deny destructive MCPs; `read-only` = Read/Glob/LS only; `full-access` = allow `*`.
+**Permission tiers:** `ship-standard` = base from `agents/permissions.toml`; `ship-guarded` = base + deny destructive MCPs; `read-only` = Read/Glob/LS only; `full-access` = allow `*`.
 
 Skill resolution: `.ship/agents/skills/` → `~/.ship/skills/` → cache → registry.
 Server resolution: `agents/mcp.toml` (project) → `~/.ship/mcp/registry.toml` (global).
@@ -259,8 +259,8 @@ Hook `trigger` values: `PreToolUse` \| `PostToolUse` \| `Notification` \| `Stop`
 
 ### Plugin lifecycle (`ship use` manages automatically)
 
-1. Read `[plugins] install` from incoming preset
-2. Read previously active preset's `[plugins]` from `ship.lock`
+1. Read `[plugins] install` from incoming profile
+2. Read previously active profile's `[plugins]` from `ship.lock`
 3. Install plugins in incoming but not current: `claude plugin install <id> --scope <scope>`
 4. Uninstall plugins in current but not incoming: `claude plugin uninstall <id>`
 5. Record installed plugin manifest in `ship.lock` under `[plugins]`
@@ -396,9 +396,9 @@ Location: `~/.ship/state/<project-slug>/platform.db` (SQLite, WAL mode)
 | `schema_migrations` | `version TEXT PK`, `applied_at TEXT` | Migration tracking |
 | `kv_state` | `(namespace, key) PK`, `value_json`, `updated_at` | Generic key-value store |
 | `event_log` | `seq INTEGER PK AUTOINCREMENT`, `timestamp`, `actor`, `entity`, `action`, `subject`, `details?` | Append-only event log; indexed on timestamp and (timestamp, actor, entity, action, subject) |
-| `workspace` | `id TEXT PK`, `branch TEXT UNIQUE`, `worktree_path?`, `workspace_type`, `status`, `active_preset?`, `providers_json`, `skills_json`, `mcp_servers_json`, `plugins_json`, `compiled_at?`, `compile_error?`, `created_at`, `updated_at` | Workspace records; indexed on status |
-| `workspace_session` | `id TEXT PK`, `workspace_id FK`, `branch`, `status`, `preset_id?`, `primary_provider?`, `goal?`, `summary?`, `started_at`, `ended_at?`, `created_at`, `updated_at` | Session records; indexed on (workspace_id, started_at DESC) and (status, started_at DESC) |
-| `branch_config` | `branch TEXT PK`, `preset_id`, `workspace_id? FK`, `plugins_json`, `compiled_at`, `updated_at` | Last-compiled preset per branch |
+| `workspace` | `id TEXT PK`, `branch TEXT UNIQUE`, `worktree_path?`, `workspace_type`, `status`, `active_profile?`, `providers_json`, `skills_json`, `mcp_servers_json`, `plugins_json`, `compiled_at?`, `compile_error?`, `created_at`, `updated_at` | Workspace records; indexed on status |
+| `workspace_session` | `id TEXT PK`, `workspace_id FK`, `branch`, `status`, `profile_id?`, `primary_provider?`, `goal?`, `summary?`, `started_at`, `ended_at?`, `created_at`, `updated_at` | Session records; indexed on (workspace_id, started_at DESC) and (status, started_at DESC) |
+| `branch_config` | `branch TEXT PK`, `profile_id`, `workspace_id? FK`, `plugins_json`, `compiled_at`, `updated_at` | Last-compiled profile per branch |
 | `job` | `id TEXT PK`, `kind`, `status`, `branch?`, `payload_json`, `created_by?`, `created_at`, `updated_at` | Coordination jobs; indexed on (status, created_at DESC) and (branch, status) |
 | `job_log` | `id INTEGER PK AUTOINCREMENT`, `job_id? FK`, `branch?`, `message`, `actor?`, `created_at` | Job log entries; indexed on (branch, created_at DESC) |
 | `note` | `id TEXT PK`, `title`, `content`, `tags_json`, `branch?`, `synced_at?`, `created_at`, `updated_at` | Project notes; indexed on (branch, updated_at DESC) |
@@ -440,7 +440,7 @@ Server: `ship-mcp` binary (`apps/mcp/`). All tools are available unless gated by
 | `create_adr` | Create an ADR record | `title`, `decision` | ADR id |
 | `list_adrs_tool` | List ADRs | — | ADR list |
 | `activate_workspace` | Activate workspace by branch, optionally set mode | `branch`, `mode_id?` | Workspace JSON |
-| `create_workspace` | Create workspace + git worktree | `name`, `kind`, `branch?`, `base_branch?`, `preset_id?`, `file_scope?` | Workspace id + worktree path |
+| `create_workspace` | Create workspace + git worktree | `name`, `kind`, `branch?`, `base_branch?`, `profile_id?`, `file_scope?` | Workspace id + worktree path |
 | `create_workspace_tool` | Create/update workspace runtime record | `branch?`, `workspace_type?`, `mode_id?`, `activate?`, `is_worktree?`, `worktree_path?` | Workspace JSON |
 | `complete_workspace` | Write handoff.md + optionally prune worktree | `workspace_id`, `summary`, `prune_worktree?` | Confirmation + handoff path |
 | `list_stale_worktrees` | List worktrees idle beyond threshold | `idle_hours?` (default 24) | Worktree list with idle duration |
@@ -469,30 +469,30 @@ Server: `ship-mcp` binary (`apps/mcp/`). All tools are available unless gated by
 ship init [--global]               # scaffold .ship/ or ~/.ship/
 ship login / logout / whoami
 
-ship use [<preset-id>]             # activate preset + emit provider files
-                                   # no args = re-emit current preset
-ship use --list                    # list available presets (local + registry)
-ship status                        # show active preset, providers, last built
+ship use [<profile-id>]            # activate profile + emit provider files
+                                   # no args = re-emit current profile
+ship use --list                    # list available profiles (local + registry)
+ship status                        # show active profile, providers, last built
 
 ship skill list                    # local + registry
 ship skill add <source>            # install from registry or local path
 ship skill create <id>             # scaffold new skill
 ship skill publish <id>            # publish local skill to registry
 
-ship preset list
-ship preset add <id>               # install from registry
-ship preset create <id>
-ship preset publish <id>
+ship profile list
+ship profile add <id>              # install from registry
+ship profile create <id>
+ship profile publish <id>
 
 ship import                        # detect existing provider configs, import to .ship/
 ship mcp list | add | remove
 
 ship publish                       # publish active library to registry (requires auth)
-ship sync                          # sync personal skills/presets to account (requires auth)
+ship sync                          # sync personal skills/profiles to account (requires auth)
 ship cache clean                   # evict ~/.ship/cache/
 ```
 
-`ship use` is the primary command. It installs any missing deps, activates the preset,
+`ship use` is the primary command. It installs any missing deps, activates the profile,
 and emits all provider files. Called automatically on branch switch (git hook).
 
 ---
@@ -505,18 +505,18 @@ Ship tracks workspace state in platform.db (`~/.ship/state/<slug>/platform.db`).
 
 `ship.toml` carries a stable `id` (nanoid). This is the cross-machine project key. When the same repo is cloned on multiple machines, they share the same `id` because `ship.toml` is committed. The DB slug is derived from the `.ship/` directory path.
 
-### Branch-preset tracking
+### Branch-profile tracking
 
-The `branch_config` table records the last preset compiled per branch. The `workspace` table records workspace runtime state keyed by `id` (nanoid), with `branch` as a unique alternate key for git-bound workspaces.
+The `branch_config` table records the last profile compiled per branch. The `workspace` table records workspace runtime state keyed by `id` (nanoid), with `branch` as a unique alternate key for git-bound workspaces.
 
 ### How it works
 
 1. `ship init` — creates project, writes `ship.toml` with nanoid
-2. `ship use <preset>` — compiles preset, upserts `branch_config` for current branch
+2. `ship use <profile>` — compiles profile, upserts `branch_config` for current branch
 3. Post-checkout git hook (installed by `ship init`) — on branch switch:
    - Look up `branch_config` for the new branch
-   - If found: `ship use <stored_preset_id>` (silent, fast)
-   - If not found: inherit from base branch or `[defaults] preset` in `ship.toml`
+   - If found: `ship use <stored_profile_id>` (silent, fast)
+   - If not found: inherit from base branch or `[defaults] profile` in `ship.toml`
 
 ---
 
@@ -564,17 +564,17 @@ Provider files are NOT in the PR — they're generated locally after `ship use`.
 | CLI path helpers | `apps/ship-studio-cli/src/paths.rs` |
 | Workflow types | shipflow package (not yet built) |
 
-**Platform owns:** Workspace, Preset, Session, Skill, MCP, Permission, Hook, Event
+**Platform owns:** Workspace, Profile, Session, Skill, MCP, Permission, Hook, Event
 **Workflow owns:** Feature, Release, Issue, Spec, Vision (guest types — not in platform code)
 
 ---
 
 ## Lookup Order
 
-Resolving a preset or skill by id:
+Resolving a profile or skill by id:
 
 1. `.ship/agents/presets/<id>.toml` — project scope
-2. `~/.ship/presets/<id>.toml` — global installed
+2. `~/.ship/profiles/<id>.toml` — global installed
 3. `~/.ship/cache/` — cached registry fetch
 4. Registry API — network fetch (requires connectivity)
 
@@ -588,16 +588,16 @@ Legacy mode path also checked: `.ship/modes/<id>.toml` (project) → `~/.ship/mo
 
 ```
 .ship/
-  ship.toml             # project identity, no preset active by default
+  ship.toml             # project identity, no profile active by default
   .gitignore            # CLAUDE.md, AGENTS.md, .mcp.json, .cursor/, .codex/, .gemini/
   agents/
     rules/              # always-on rules (.md files)
     skills/             # project-specific skills
-    presets/            # project-specific presets
+    presets/            # project-specific profiles (directory named presets/ for now)
     mcp.toml            # MCP server definitions
     permissions.toml    # base permissions
 ```
 
-`ship init --global` creates `~/.ship/` with config.toml, empty presets/, skills/, modes/, mcp/, cache/.
+`ship init --global` creates `~/.ship/` with config.toml, empty profiles/, skills/, modes/, mcp/, cache/.
 
-Run `ship use <preset-id>` to activate a preset and emit provider files.
+Run `ship use <profile-id>` to activate a profile and emit provider files.

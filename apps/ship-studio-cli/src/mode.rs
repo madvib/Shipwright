@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Preset TOML format — what users author in .ship/agents/presets/<id>.toml
-/// Also accepts the legacy [mode] key for backward compatibility.
+/// Profile TOML format — what users author in .ship/agents/presets/<id>.toml
+/// Also accepts the legacy [preset] and [mode] keys for backward compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Preset {
-    /// New key: [preset]. If absent, falls back to [mode].
-    #[serde(rename = "preset", alias = "mode")]
-    pub meta: PresetMeta,
+pub struct Profile {
+    /// New key: [profile]. Falls back to [preset] then [mode].
+    #[serde(rename = "profile", alias = "preset", alias = "mode")]
+    pub meta: ProfileMeta,
     #[serde(default)]
     pub skills: SkillsConfig,
     #[serde(default)]
@@ -15,7 +15,7 @@ pub struct Preset {
     #[serde(default)]
     pub plugins: PluginsConfig,
     #[serde(default)]
-    pub permissions: PresetPermissions,
+    pub permissions: ProfilePermissions,
     #[serde(default)]
     pub rules: RulesConfig,
     /// Provider-specific settings merged verbatim into the provider's config file.
@@ -26,13 +26,13 @@ pub struct Preset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PresetMeta {
+pub struct ProfileMeta {
     pub name: String,
     pub id: String,
     #[serde(default = "default_version")]
     pub version: String,
     pub description: Option<String>,
-    /// Provider targets for this preset (overrides project ship.toml providers).
+    /// Provider targets for this profile (overrides project ship.toml providers).
     #[serde(default)]
     pub providers: Vec<String>,
 }
@@ -59,10 +59,10 @@ pub struct PluginsConfig {
     pub scope: String,
 }
 
-/// Permission overrides in a preset — merged on top of agents/permissions.toml.
+/// Permission overrides in a profile — merged on top of agents/permissions.toml.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PresetPermissions {
-    /// Preset shorthand: "ship-standard" | "ship-guarded" | "read-only" | "full-access"
+pub struct ProfilePermissions {
+    /// Permission tier shorthand: "ship-standard" | "ship-guarded" | "read-only" | "full-access"
     pub preset: Option<String>,
     #[serde(default)]
     pub tools_deny: Vec<String>,
@@ -80,17 +80,17 @@ pub struct RulesConfig {
 fn default_version() -> String { "0.1.0".to_string() }
 fn default_plugin_scope() -> String { "project".to_string() }
 
-impl Preset {
+impl Profile {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("invalid preset TOML at {}: {}", path.display(), e))
+            .map_err(|e| anyhow::anyhow!("invalid profile TOML at {}: {}", path.display(), e))
     }
 
-    /// Template for a new preset file.
+    /// Template for a new profile file.
     pub fn scaffold(id: &str) -> String {
         format!(
-r#"[preset]
+r#"[profile]
 name = "{name}"
 id = "{id}"
 version = "0.1.0"
@@ -126,14 +126,14 @@ servers = []
     }
 }
 
-/// Apply a preset's permission overrides on top of a base Permissions struct.
-pub fn apply_preset_permissions(
+/// Apply a profile's permission overrides on top of a base Permissions struct.
+pub fn apply_profile_permissions(
     base: compiler::Permissions,
-    preset: &Preset,
+    profile: &Profile,
 ) -> compiler::Permissions {
     use compiler::{Permissions, ToolPermissions};
 
-    let mp = &preset.permissions;
+    let mp = &profile.permissions;
 
     let mut tools = match mp.preset.as_deref() {
         Some("read-only") => ToolPermissions {
@@ -176,23 +176,48 @@ pub fn apply_preset_permissions(
     }
 }
 
+/// Backward compat alias — callers using the old `Preset` name still compile.
+pub type Preset = Profile;
 /// Backward compat alias — callers using the old `Mode` name still compile.
-pub type Mode = Preset;
+pub type Mode = Profile;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn preset_scaffold_parses() {
-        let s = Preset::scaffold("rust-expert");
-        let preset: Preset = toml::from_str(&s).expect("scaffold must be valid TOML");
-        assert_eq!(preset.meta.id, "rust-expert");
-        assert_eq!(preset.meta.providers, vec!["claude"]);
+    fn profile_scaffold_parses() {
+        let s = Profile::scaffold("rust-expert");
+        let profile: Profile = toml::from_str(&s).expect("scaffold must be valid TOML");
+        assert_eq!(profile.meta.id, "rust-expert");
+        assert_eq!(profile.meta.providers, vec!["claude"]);
     }
 
     #[test]
-    fn preset_key_parses() {
+    fn profile_key_parses() {
+        let toml_str = r#"
+[profile]
+name = "CLI Lane"
+id = "cli-lane"
+providers = ["claude"]
+
+[plugins]
+install = ["superpowers@claude-plugins-official"]
+scope = "project"
+
+[permissions]
+preset = "ship-guarded"
+tools_deny = ["Bash(rm -rf *)"]
+"#;
+        let p: Profile = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.meta.id, "cli-lane");
+        assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
+        assert_eq!(p.plugins.scope, "project");
+        assert_eq!(p.permissions.preset.as_deref(), Some("ship-guarded"));
+    }
+
+    #[test]
+    fn preset_key_backward_compat() {
         let toml_str = r#"
 [preset]
 name = "CLI Lane"
@@ -207,7 +232,7 @@ scope = "project"
 preset = "ship-guarded"
 tools_deny = ["Bash(rm -rf *)"]
 "#;
-        let p: Preset = toml::from_str(toml_str).unwrap();
+        let p: Profile = toml::from_str(toml_str).unwrap();
         assert_eq!(p.meta.id, "cli-lane");
         assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
         assert_eq!(p.plugins.scope, "project");
@@ -229,43 +254,43 @@ tools_deny = ["mcp__*__delete*"]
 [rules]
 inline = "Keep things deterministic."
 "#;
-        let p: Preset = toml::from_str(toml_str).unwrap();
+        let p: Profile = toml::from_str(toml_str).unwrap();
         assert_eq!(p.meta.providers, vec!["claude", "codex"]);
         assert_eq!(p.permissions.preset.as_deref(), Some("ship-guarded"));
         assert_eq!(p.rules.inline.as_deref(), Some("Keep things deterministic."));
     }
 
     #[test]
-    fn apply_preset_permissions_guarded_adds_deny() {
+    fn apply_profile_permissions_guarded_adds_deny() {
         use compiler::Permissions;
         let base = Permissions::default();
         let toml_str = r#"
-[preset]
+[profile]
 name = "Guarded"
 id = "guarded"
 providers = ["claude"]
 [permissions]
 preset = "ship-guarded"
 "#;
-        let p: Preset = toml::from_str(toml_str).unwrap();
-        let result = apply_preset_permissions(base, &p);
+        let p: Profile = toml::from_str(toml_str).unwrap();
+        let result = apply_profile_permissions(base, &p);
         assert!(result.tools.deny.contains(&"mcp__*__delete*".to_string()));
     }
 
     #[test]
-    fn apply_preset_permissions_read_only_restricts_allow() {
+    fn apply_profile_permissions_read_only_restricts_allow() {
         use compiler::Permissions;
         let base = Permissions::default();
         let toml_str = r#"
-[preset]
+[profile]
 name = "ReadOnly"
 id = "read-only"
 providers = ["claude"]
 [permissions]
 preset = "read-only"
 "#;
-        let p: Preset = toml::from_str(toml_str).unwrap();
-        let result = apply_preset_permissions(base, &p);
+        let p: Profile = toml::from_str(toml_str).unwrap();
+        let result = apply_profile_permissions(base, &p);
         assert!(result.tools.allow.contains(&"Read".to_string()));
         assert!(!result.tools.allow.contains(&"*".to_string()));
     }

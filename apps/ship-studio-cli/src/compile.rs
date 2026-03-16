@@ -5,7 +5,7 @@ use compiler::{CompileOutput, PluginEntry, PluginsManifest, ProjectLibrary, comp
 use std::path::Path;
 
 use crate::loader::load_library;
-use crate::mode::{Preset, apply_preset_permissions};
+use crate::mode::{Profile, apply_profile_permissions};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -70,15 +70,15 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
 // ── Mode → library ────────────────────────────────────────────────────────────
 
 fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_root: &Path) -> Result<()> {
-    let Some(path) = find_preset_file(mode_id, project_root) else { return Ok(()); };
+    let Some(path) = find_profile_file(mode_id, project_root) else { return Ok(()); };
 
-    let preset = Preset::load(&path)?;
+    let profile = Profile::load(&path)?;
 
     // Permission overrides
-    library.permissions = apply_preset_permissions(library.permissions.clone(), &preset);
+    library.permissions = apply_profile_permissions(library.permissions.clone(), &profile);
 
     // Inline rules → append as a synthetic rule file
-    if let Some(inline) = &preset.rules.inline {
+    if let Some(inline) = &profile.rules.inline {
         let trimmed = inline.trim();
         if !trimmed.is_empty() {
             library.rules.push(compiler::Rule {
@@ -91,31 +91,31 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         }
     }
 
-    // If preset declares a provider list, inject a ModeConfig so resolve() applies it
-    if !preset.meta.providers.is_empty() {
+    // If profile declares a provider list, inject a ModeConfig so resolve() applies it
+    if !profile.meta.providers.is_empty() {
         library.modes.push(compiler::ModeConfig {
             id: mode_id.to_string(),
-            name: preset.meta.name.clone(),
-            target_agents: preset.meta.providers.clone(),
-            mcp_servers: preset.mcp.servers.clone(),
-            skills: preset.skills.refs.clone(),
+            name: profile.meta.name.clone(),
+            target_agents: profile.meta.providers.clone(),
+            mcp_servers: profile.mcp.servers.clone(),
+            skills: profile.skills.refs.clone(),
             ..Default::default()
         });
     }
 
-    // Plugins — convert preset's Vec<String> install list into PluginsManifest
-    if !preset.plugins.install.is_empty() {
+    // Plugins — convert profile's Vec<String> install list into PluginsManifest
+    if !profile.plugins.install.is_empty() {
         library.plugins = PluginsManifest {
-            install: preset.plugins.install.iter().map(|id| PluginEntry {
+            install: profile.plugins.install.iter().map(|id| PluginEntry {
                 id: id.clone(),
                 provider: "claude".to_string(),
             }).collect(),
-            scope: preset.plugins.scope.clone(),
+            scope: profile.plugins.scope.clone(),
         };
     }
 
     // Provider-specific settings pass-through
-    if let Some(claude_extra) = preset.provider_settings.get("claude") {
+    if let Some(claude_extra) = profile.provider_settings.get("claude") {
         library.claude_settings_extra = Some(claude_extra.clone());
     }
 
@@ -149,9 +149,9 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
 }
 
 /// Search order: agents/presets/ (new) → modes/ (legacy), project then global.
-fn find_preset_file(preset_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
+fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
     let ship = project_root.join(".ship");
-    let file = format!("{}.toml", preset_id);
+    let file = format!("{}.toml", profile_id);
 
     // Project-local: new location first, then legacy
     let p = ship.join("agents").join("presets").join(&file);

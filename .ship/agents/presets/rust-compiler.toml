@@ -1,4 +1,4 @@
-[preset]
+[profile]
 name = "Rust Compiler"
 id = "rust-compiler"
 version = "0.1.0"

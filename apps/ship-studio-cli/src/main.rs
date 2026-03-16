@@ -7,7 +7,7 @@ mod loader;
 mod mcp;
 mod mode;
 mod paths;
-mod preset;
+mod profile;
 mod skill;
 
 use anyhow::Result;
@@ -95,14 +95,14 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
                 "# Ship Configuration\n\nThis project uses [Ship](https://getship.dev) \
                  to manage AI agent configuration.\n\n\
                  Install the CLI: `curl -fsSL https://getship.dev/install | sh`\n\
-                 Then: `ship use <preset-id>` to activate.\n"
+                 Then: `ship use <profile-id>` to activate.\n"
             )?;
         }
         println!("✓ initialized .ship/ in current directory");
         println!("  providers: {}", provider.as_deref().unwrap_or("claude"));
         println!("\nNext steps:");
-        println!("  ship use <preset-id>   activate a preset (compiles immediately)");
-        println!("  ship compile           re-compile current preset");
+        println!("  ship use <profile-id>   activate a profile (compiles immediately)");
+        println!("  ship compile            re-compile current profile");
     }
     Ok(())
 }
@@ -126,9 +126,9 @@ fn run_whoami() -> Result<()> {
 
 // ── Use ───────────────────────────────────────────────────────────────────────
 
-/// Activate a preset: load → compile → install plugins → write ship.lock.
-/// `preset_id = None` re-activates the current preset from ship.lock.
-fn run_use(preset_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
+/// Activate a profile: load → compile → install plugins → write ship.lock.
+/// `profile_id = None` re-activates the current profile from ship.lock.
+fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let project_root = path.as_deref()
         .map(std::fs::canonicalize)
         .transpose()?
@@ -138,7 +138,7 @@ fn run_use(preset_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
 
-    preset::activate_preset(preset_id, &project_root)
+    profile::activate_profile(profile_id, &project_root)
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -150,33 +150,33 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
         .unwrap_or_else(|| std::env::current_dir().unwrap());
 
     let ship_dir = target.join(".ship");
-    let lock = preset::ShipLock::load(&ship_dir);
-    match lock.active_preset {
+    let lock = profile::ShipLock::load(&ship_dir);
+    match lock.active_profile {
         Some(ref p) => {
-            println!("active preset: {}", p);
+            println!("active profile: {}", p);
             if let Some(ref at) = lock.compiled_at { println!("compiled: {}", at); }
             if !lock.plugins.installed.is_empty() {
                 println!("plugins: {}", lock.plugins.installed.join(", "));
             }
         }
         None => {
-            println!("No active preset for {}", target.display());
-            println!("Run: ship use <preset-id>");
+            println!("No active profile for {}", target.display());
+            println!("Run: ship use <profile-id>");
         }
     }
     Ok(())
 }
 
-// ── Modes / Presets ───────────────────────────────────────────────────────────
+// ── Modes / Profiles ──────────────────────────────────────────────────────────
 
 fn run_modes(local: bool, project: bool, cloud: bool) -> Result<()> {
     if cloud {
-        println!("Cloud presets require a Ship account. Run: ship login");
+        println!("Cloud profiles require a Ship account. Run: ship login");
         return Ok(());
     }
     let modes = paths::list_mode_ids(local, project);
     if modes.is_empty() {
-        println!("No presets found.");
+        println!("No profiles found.");
         println!("Create one with: ship mode create <name>");
     } else {
         for (id, scope) in &modes {
@@ -195,30 +195,30 @@ fn dispatch_mode(action: ModeCommands) -> Result<()> {
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!("{}.toml", name));
             if path.exists() {
-                anyhow::bail!("Preset '{}' already exists at {}", name, path.display());
+                anyhow::bail!("Profile '{}' already exists at {}", name, path.display());
             }
-            std::fs::write(&path, mode::Preset::scaffold(&name))?;
-            println!("✓ created preset '{}' at {}", name, path.display());
+            std::fs::write(&path, mode::Profile::scaffold(&name))?;
+            println!("✓ created profile '{}' at {}", name, path.display());
         }
         ModeCommands::Edit { name, editor } => {
-            let path = preset::find_preset_file(&name, &std::env::current_dir()?)
-                .ok_or_else(|| anyhow::anyhow!("Preset '{}' not found", name))?;
+            let path = profile::find_profile_file(&name, &std::env::current_dir()?)
+                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             let editor = editor.or_else(|| std::env::var("EDITOR").ok()).unwrap_or_else(|| "vi".to_string());
             std::process::Command::new(&editor).arg(&path).status()?;
         }
         ModeCommands::Delete { name } => {
-            let path = preset::find_preset_file(&name, &std::env::current_dir()?)
-                .ok_or_else(|| anyhow::anyhow!("Preset '{}' not found", name))?;
+            let path = profile::find_profile_file(&name, &std::env::current_dir()?)
+                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             std::fs::remove_file(&path)?;
-            println!("✓ deleted preset '{}'", name);
+            println!("✓ deleted profile '{}'", name);
         }
         ModeCommands::Clone { source, target } => {
             let cwd = std::env::current_dir()?;
-            let src_path = preset::find_preset_file(&source, &cwd)
-                .ok_or_else(|| anyhow::anyhow!("Source preset '{}' not found", source))?;
+            let src_path = profile::find_profile_file(&source, &cwd)
+                .ok_or_else(|| anyhow::anyhow!("Source profile '{}' not found", source))?;
             let dst_path = src_path.parent().unwrap().join(format!("{}.toml", target));
             if dst_path.exists() {
-                anyhow::bail!("Target preset '{}' already exists", target);
+                anyhow::bail!("Target profile '{}' already exists", target);
             }
             let content = std::fs::read_to_string(&src_path)?
                 .replace(&format!("id = \"{}\"", source), &format!("id = \"{}\"", target))
@@ -244,12 +244,12 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
 
-    let lock = preset::ShipLock::load(&project_root.join(".ship"));
+    let lock = profile::ShipLock::load(&project_root.join(".ship"));
     compile::run_compile(compile::CompileOptions {
         project_root: &project_root,
         provider,
         dry_run,
-        active_mode: lock.active_preset.as_deref(),
+        active_mode: lock.active_profile.as_deref(),
     })?;
 
     if watch { println!("--watch not yet implemented. Run compile manually after changes."); }

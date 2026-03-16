@@ -1,4 +1,4 @@
-[preset]
+[profile]
 name = "Commander"
 id = "commander"
 version = "0.1.0"

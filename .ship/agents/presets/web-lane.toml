@@ -1,4 +1,4 @@
-[preset]
+[profile]
 id = "web-lane"
 name = "Web Lane — feat/web-import"
 version = "0.1.0"

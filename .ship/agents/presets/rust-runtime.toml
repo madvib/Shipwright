@@ -1,4 +1,4 @@
-[preset]
+[profile]
 name = "Rust Runtime"
 id = "rust-runtime"
 version = "0.1.0"
