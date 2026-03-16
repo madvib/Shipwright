@@ -392,6 +392,14 @@ fn export_claude_settings(
     hooks: &[HookConfig],
     permissions: &Permissions,
 ) -> Result<()> {
+    // Never write to the user's home directory. This can happen if project_dir is ~/.ship
+    // (global ship config) and project_dir.parent() resolves to ~/. Permissions must only
+    // be written at the project scope.
+    if let Ok(home_dir) = home() {
+        if project_root == home_dir {
+            return Ok(());
+        }
+    }
     let path = project_root.join(".claude").join("settings.json");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

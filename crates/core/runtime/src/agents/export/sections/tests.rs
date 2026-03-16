@@ -1775,4 +1775,29 @@ Use this for incident response.
         let skills = crate::skill::list_skills(&project_dir).unwrap();
         assert!(skills.iter().any(|skill| skill.id == "ops-helper"));
     }
+
+    #[test]
+    fn export_claude_settings_never_writes_to_home_dir() {
+        // When project_dir is ~/.ship (global ship config), project_dir.parent() == ~/
+        // export_claude_settings must not write to ~/.claude/settings.json.
+        let home = tempdir().unwrap();
+        let _home_guard = lock_home_for_test(home.path());
+
+        // Simulate ~/.ship as the project dir (parent = home/)
+        let project_dir = init_project(home.path().to_path_buf()).unwrap();
+
+        let mut perms = Permissions::default();
+        perms.tools.deny = vec!["Bash".to_string()];
+        save_permissions(project_dir.clone(), &perms).unwrap();
+
+        // export_to resolves project_root = project_dir.parent() = home/
+        // The guard must prevent writing to home/.claude/settings.json
+        let _ = export_to(project_dir, "claude");
+
+        let global_settings = home.path().join(".claude").join("settings.json");
+        assert!(
+            !global_settings.exists(),
+            "export_to must not write permissions to home/.claude/settings.json"
+        );
+    }
 }
