@@ -1,18 +1,43 @@
-[tools]
-allow = ["*"]
-ask = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
+# Ship permission presets — referenced by preset [permissions] preset = "<name>"
+#
+# Use default_mode to set the baseline. Pattern lists can't match compound commands
+# (cd dir && ship exec blah) — guard only genuine blast-radius operations.
+# Default to ship-standard. Over-restricting breaks productivity.
 
-[filesystem]
-allow = ["**/*"]
-deny = ["/etc/**", "/sys/**", "/proc/**", "~/.ssh/**", "~/.gnupg/**"]
+[ship-open]
+# Fully trusted — nothing asks. CI agents, service workers, pipelines.
+default_mode = "bypassPermissions"
 
-[commands]
-allow = ["git status", "git diff", "git log", "ls", "cat", "rg", "find", "pwd"]
-deny = ["rm -rf", "git push --force", "npm publish", "cargo publish"]
+[ship-standard]
+# Most specialist workers: web, Rust, docs, tests.
+# File edits never interrupt. Only destructive shell ops ask.
+default_mode = "acceptEdits"
+tools_ask = [
+  "Bash(rm -rf*)",
+  "Bash(*--force*)",
+  "Bash(*drop table*)",
+  "Bash(*truncate *)",
+]
+tools_deny = [
+  "Bash(git push --force*)",
+  "Bash(*npm publish*)",
+  "Bash(*cargo publish*)",
+]
 
-[network]
-policy = "none"
-allow_hosts = []
+[ship-guarded]
+# DB migrations, infra, prod config, deploys. Edits ask. Bash asks.
+default_mode = "default"
+tools_ask = [
+  "Bash(rm -rf*)",
+  "Bash(*deploy*)",
+  "Bash(*--force*)",
+  "Bash(git push*)",
+  "Bash(*wrangler*)",
+]
+tools_deny = [
+  "Bash(git push --force*)",
+]
 
-[agent]
-require_confirmation = ["Bash", "Write", "Edit", "MultiEdit", "mcp__*__write*", "mcp__*__delete*", "mcp__*__exec*"]
+[ship-plan]
+# Reviewer/gate agents. Read-only — no writes execute without approval.
+default_mode = "plan"
