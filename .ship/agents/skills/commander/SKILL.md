@@ -32,11 +32,12 @@ This is the exact sequence every time you assign a job to a specialist agent. Do
 
 4. BUILD the job spec (opening context for the agent)
    - Job title and description
-   - Scope: which files/dirs the agent may touch
+   - Scope: which files/dirs the agent may touch (becomes `file_scope`)
    - Acceptance criteria (checklist or test names)
    - Dependencies: what must already be true
    - Constraints: what NOT to do
    - Handoff from previous work on this capability if any
+   - Risk tier: auto | review | human
 
 5. START the agent in the worktree
    The agent's starting message IS the job spec. Not a summary — the full spec.
@@ -54,14 +55,51 @@ This is the exact sequence every time you assign a job to a specialist agent. Do
    Fail: update_job(status="blocked"), attach failure output, surface to human
 ```
 
+## Risk Tiers
+
+Every job has a risk tier. Set it at creation; don't second-guess it later.
+
+| Tier | Who approves | When to use |
+|------|-------------|-------------|
+| `auto` | Commander, no review needed | Tests, read-only analysis, docs, compile |
+| `review` | Commander's gate agent | Feature code, schema change, config, API integration |
+| `human` | Human must approve before dispatch | Credentials, production deploy, billing, architectural breaks, external accounts |
+
+**`human` tier jobs are never dispatched to an agent.** They sit in the human inbox until acknowledged. Create them with `assigned_to="human"` and `kind="human-action"`.
+
+**Approval flow for `review` jobs:**
+1. Commander dispatches agent
+2. Agent completes → marks done
+3. Commander spawns gate reviewer (ephemeral)
+4. Gate passes → merge, mark actual
+5. Gate fails → block, surface specific failures to human only if commander can't resolve
+
+The human sees gate failures that are unresolvable, not every gate run.
+
+## Human Inbox
+
+At session start, always run `list_jobs(assigned_to="human")` as a distinct step before the pending queue. Surface these immediately — they are waiting on the human, not you.
+
+**Format for the human:**
+```
+Waiting on you:
+  [job-id] Better Auth setup — needs .dev.vars with GitHub OAuth credentials
+  [job-id] Production deploy approval — staging gate passed, awaiting sign-off
+```
+
+When a human acknowledges and completes their action, update the job: `update_job(id, status="done")` or re-assign to an agent for follow-on work.
+
+**Never let human-action jobs age silently.** If one has been pending > 24h, flag it.
+
 ## Gate Protocol
 
 Before a job can be marked done, run the acceptance gate:
 
-1. Read `acceptance_criteria` from the job payload
+1. Read `acceptance_criteria` and `touched_files` from the job payload
 2. For each checklist item: verify it's true (run command, check output, inspect code)
-3. All pass → job done → check if a capability is now provably actual
-4. Any fail → job blocked, attach the specific failing items with evidence
+3. Commits are scoped to `touched_files` only — the gate never commits files outside this list
+4. All pass → job done → check if a capability is now provably actual
+5. Any fail → job blocked, attach the specific failing items with evidence
 
 You are the gate. The agent cannot self-report done without you verifying. This is the only thing keeping capability tracking honest.
 
@@ -181,6 +219,27 @@ After the gate passes and a capability is verifiably actual:
 **Workspaces:** `create_workspace`, `complete_workspace`, `list_workspaces`, `list_stale_worktrees`
 **Skills/Config:** `list_skills`, `get_project_info`
 **Docs:** `create_note`, `create_adr`, `list_notes`, `list_adrs`
+
+## File Ownership
+
+Every job maintains a `touched_files` list — the exact set of files the agent has modified. This is the foundation of safe parallel execution.
+
+**Protocol:**
+- Agent appends to `touched_files` via `append_job_log` as it works (or in the job payload)
+- Commander checks `touched_files` across running jobs before dispatching new agents — no two running jobs may share a file
+- Gate commits are scoped to `touched_files` only: `git add <file1> <file2> ...`
+- If a conflict is detected at dispatch time, the second job waits or is re-scoped
+
+**Why this matters:**
+- Multiple agents on the same working tree don't clobber each other
+- Review is clean: one job = one set of files = one diff
+- Teams gain this automatically — "who last touched this file" is answered by the job log, not git blame
+- The gate commit becomes attribution: commit message names the job, the agent, the spec
+
+**Conflict resolution:**
+- Two jobs want the same file → serialize them (second waits for first's gate to pass)
+- Agent strays outside declared `file_scope` → commander blocks the job, flags it
+- Unowned file modification detected at gate → gate fails, commander investigates
 
 ## Pod Principles
 
