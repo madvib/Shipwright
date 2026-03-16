@@ -48,6 +48,8 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Server { .. } => {
                 stub("server", "Local server (port 7701) — coming soon")
             }
+            Commands::Adrs => run_adrs(),
+            Commands::Notes => run_notes(),
             Commands::Agent { action } => agent::dispatch_agent(action),
         },
     }
@@ -278,6 +280,48 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
         McpCommands::Remove { id } => mcp::remove(&id),
         McpCommands::Probe { id } => stub("mcp probe", &format!("Live probing for {:?} — requires local server", id)),
     }
+}
+
+// ── ADRs / Notes ──────────────────────────────────────────────────────────────
+
+fn project_ship_dir() -> Result<std::path::PathBuf> {
+    let cwd = std::env::current_dir()?;
+    let ship_dir = cwd.join(".ship");
+    if !ship_dir.exists() {
+        anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
+    }
+    Ok(ship_dir)
+}
+
+fn run_adrs() -> Result<()> {
+    let ship_dir = project_ship_dir()?;
+    let adrs = ship_module_project::ops::adr::list_adrs(&ship_dir)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    if adrs.is_empty() {
+        println!("No ADRs found.");
+    } else {
+        for entry in &adrs {
+            println!("{}\t[{}]\t{}", entry.id, entry.status, entry.adr.metadata.title);
+        }
+    }
+    Ok(())
+}
+
+fn run_notes() -> Result<()> {
+    let ship_dir = project_ship_dir()?;
+    let notes = ship_module_project::ops::note::list_notes(
+        ship_module_project::NoteScope::Project,
+        Some(ship_dir.as_path()),
+    )
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    if notes.is_empty() {
+        println!("No notes found.");
+    } else {
+        for entry in &notes {
+            println!("{}\t{}", entry.id, entry.title);
+        }
+    }
+    Ok(())
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

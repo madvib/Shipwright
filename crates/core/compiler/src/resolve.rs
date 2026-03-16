@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use crate::types::{
-    HookConfig, McpServerConfig, ModeConfig, Permissions, ProjectConfig, Rule, Skill,
+    HookConfig, McpServerConfig, ModeConfig, Permissions, PluginsManifest, ProjectConfig, Rule,
+    Skill,
 };
 
 /// Thin overrides that a feature branch can apply on top of project defaults.
@@ -34,6 +35,9 @@ pub struct ResolvedConfig {
     pub permissions: Permissions,
     pub hooks: Vec<HookConfig>,
     pub active_mode: Option<String>,
+    /// Plugin install intent declared by the active preset.
+    /// Passed through unchanged from `ProjectLibrary::plugins`.
+    pub plugins: PluginsManifest,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -68,6 +72,9 @@ pub struct ProjectLibrary {
     /// Hooks from `agents/hooks.toml`.
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
+    /// Plugin install intent from the active preset's `[plugins]` section.
+    #[serde(default)]
+    pub plugins: PluginsManifest,
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -83,7 +90,7 @@ pub fn resolve_library(
         mcp_servers: library.mcp_servers.clone(),
         ..Default::default()
     };
-    resolve(
+    let mut resolved = resolve(
         &config,
         &library.skills,
         &library.rules,
@@ -91,7 +98,9 @@ pub fn resolve_library(
         &library.hooks,
         feature,
         active_mode_override,
-    )
+    );
+    resolved.plugins = library.plugins.clone();
+    resolved
 }
 
 pub fn resolve(
@@ -191,6 +200,7 @@ pub fn resolve(
         permissions: permissions.clone(),
         hooks: hooks.to_vec(),
         active_mode,
+        plugins: PluginsManifest::default(),
     }
 }
 

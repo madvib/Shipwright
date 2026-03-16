@@ -119,6 +119,22 @@ CREATE TABLE IF NOT EXISTS note (
 CREATE INDEX IF NOT EXISTS note_branch_idx ON note(branch, updated_at DESC);
 "#;
 
+const ADRS: &str = r#"
+CREATE TABLE IF NOT EXISTS adr (
+  id            TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'proposed',
+  date          TEXT NOT NULL,
+  context       TEXT NOT NULL DEFAULT '',
+  decision      TEXT NOT NULL DEFAULT '',
+  tags_json     TEXT NOT NULL DEFAULT '[]',
+  supersedes_id TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_adr_status ON adr(status);
+"#;
+
 pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_foundation", FOUNDATION),
     ("0002_event_log", EVENT_LOG),
@@ -126,4 +142,5 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0004_branch_config", BRANCH_CONFIG),
     ("0005_jobs", JOBS),
     ("0006_notes", NOTES),
+    ("0007_adrs", ADRS),
 ];

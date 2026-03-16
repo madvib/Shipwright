@@ -1752,13 +1752,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "chrono",
  "clap",
  "cli-framework",
  "compiler",
  "dirs",
  "predicates",
+ "runtime",
  "serde",
  "serde_json",
+ "ship-module-project",
  "tempfile",
  "toml",
 ]

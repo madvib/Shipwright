@@ -1,7 +1,7 @@
 //! `ship compile` — load the project library, resolve, compile, write.
 
 use anyhow::{Context, Result};
-use compiler::{CompileOutput, ProjectLibrary, compile, get_provider, resolve_library};
+use compiler::{CompileOutput, PluginEntry, PluginsManifest, ProjectLibrary, compile, get_provider, resolve_library};
 use std::path::Path;
 
 use crate::loader::load_library;
@@ -101,6 +101,17 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
             skills: preset.skills.refs.clone(),
             ..Default::default()
         });
+    }
+
+    // Plugins — convert preset's Vec<String> install list into PluginsManifest
+    if !preset.plugins.install.is_empty() {
+        library.plugins = PluginsManifest {
+            install: preset.plugins.install.iter().map(|id| PluginEntry {
+                id: id.clone(),
+                provider: "claude".to_string(),
+            }).collect(),
+            scope: preset.plugins.scope.clone(),
+        };
     }
 
     Ok(())

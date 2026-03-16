@@ -13,8 +13,8 @@ pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, res
 pub use types::{
     AgentLayerConfig, AiConfig, CatalogEntry, CatalogKind, GitConfig, HookConfig, HookTrigger,
     McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig, Permissions,
-    ProjectConfig, Rule, Skill, SkillSource, StatusConfig, ToolPermissions,
-    list_catalog, list_catalog_by_kind, search_catalog,
+    PluginEntry, PluginsManifest, ProjectConfig, Rule, Skill, SkillSource, StatusConfig,
+    ToolPermissions, list_catalog, list_catalog_by_kind, search_catalog,
 };
 
 /// Generate a nanoid using Ship's 56-character alphabet (no ambiguous chars).
@@ -65,6 +65,9 @@ mod wasm {
         cursor_hooks_patch: Option<serde_json::Value>,
         /// Cursor-only: `.cursor/cli.json` permissions (CLI-only, not IDE).
         cursor_cli_permissions: Option<serde_json::Value>,
+        /// Plugin install intent declared by the active preset.
+        /// The CLI/runtime reads this to execute plugin installs — never the compiler.
+        plugins_manifest: crate::PluginsManifest,
     }
 
     /// Compile a [`ProjectLibrary`] for a single provider.
@@ -103,6 +106,7 @@ mod wasm {
             gemini_policy_patch: output.gemini_policy_patch,
             cursor_hooks_patch: output.cursor_hooks_patch,
             cursor_cli_permissions: output.cursor_cli_permissions,
+            plugins_manifest: output.plugins_manifest,
         };
 
         serde_json::to_string(&result)
@@ -138,6 +142,7 @@ mod wasm {
                     gemini_policy_patch: output.gemini_policy_patch,
                     cursor_hooks_patch: output.cursor_hooks_patch,
                     cursor_cli_permissions: output.cursor_cli_permissions,
+                    plugins_manifest: output.plugins_manifest,
                 };
                 if let Ok(v) = serde_json::to_value(&result) {
                     results.insert(provider_id.clone(), v);

@@ -1,6 +1,7 @@
 pub mod catalog;
 pub mod config;
 pub mod permissions;
+pub mod plugin;
 pub mod rule;
 pub mod skill;
 
@@ -13,5 +14,6 @@ pub use permissions::{
     AgentLimits, CommandPermissions, FsPermissions, NetworkPermissions, NetworkPolicy, Permissions,
     ToolPermissions,
 };
+pub use plugin::{PluginEntry, PluginsManifest};
 pub use rule::Rule;
 pub use skill::{Skill, SkillSource, is_valid_skill_name};

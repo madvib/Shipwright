@@ -63,8 +63,52 @@ pub struct UpdateNoteRequest {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct ListSkillsRequest {
-    /// Scope: effective (default), project, or user
-    pub scope: Option<String>,
+    /// Optional search filter (substring match on skill id/name/description)
+    pub query: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListWorkspacesRequest {
+    /// Optional status filter (e.g. "active", "idle", "archived")
+    pub status: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateJobRequest {
+    /// Job kind (e.g. "review", "build", "deploy")
+    pub kind: String,
+    /// Human-readable description of the work
+    pub description: String,
+    /// Git branch this job is associated with
+    pub branch: Option<String>,
+    /// Workspace id/branch that requested this job
+    pub requesting_workspace: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateJobRequest {
+    /// Job id to update
+    pub id: String,
+    /// New status: "pending" | "running" | "complete" | "failed"
+    pub status: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListJobsRequest {
+    /// Filter by branch
+    pub branch: Option<String>,
+    /// Filter by status: "pending" | "running" | "complete" | "failed"
+    pub status: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct AppendJobLogRequest {
+    /// Job id to append a log entry to
+    pub job_id: String,
+    /// Log message
+    pub message: String,
+    /// Log level: "info" | "warn" | "error" (informational only, stored in message prefix)
+    pub level: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]

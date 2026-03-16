@@ -139,6 +139,13 @@ pub enum Commands {
         port: Option<u16>,
     },
 
+    // ── Project visibility ────────────────────────────────────────────────────
+    /// List architecture decision records in the current project
+    Adrs,
+
+    /// List notes in the current project
+    Notes,
+
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
     /// Agent-facing commands (called from skills/scripts, not user-facing)
     #[command(hide = true)]
@@ -153,33 +160,6 @@ pub enum AgentCommands {
     /// Append a timestamped log entry to .ship/agent.log
     Log {
         message: String,
-    },
-    /// Manage agent jobs
-    Job {
-        #[command(subcommand)]
-        action: JobCommands,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum JobCommands {
-    /// Create a new job
-    Create {
-        kind: String,
-        #[arg(long)]
-        branch: Option<String>,
-    },
-    /// Update job status
-    Update {
-        id: String,
-        status: String,
-    },
-    /// List jobs
-    List {
-        #[arg(long)]
-        branch: Option<String>,
-        #[arg(long)]
-        status: Option<String>,
     },
 }
 

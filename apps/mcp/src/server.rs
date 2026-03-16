@@ -125,10 +125,17 @@ impl ShipServer {
             "set_mode",
             "sync_workspace",
             "repair_workspace",
+            "list_workspaces",
             // Session
             "start_session",
             "end_session",
             "log_progress",
+            // Platform
+            "list_skills",
+            "create_job",
+            "update_job",
+            "list_jobs",
+            "append_job_log",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         CORE_TOOLS.contains(&normalized.as_str())
@@ -650,6 +657,207 @@ impl ShipServer {
         match runtime_record_workspace_session_progress(&project_dir, &branch, &req.note) {
             Ok(()) => format!("Progress logged for session on '{}'.", branch),
             Err(e) => format!("Error logging progress: {}", e),
+        }
+    }
+
+    // ─── Platform Tools ───────────────────────────────────────────────────────
+
+    /// List all workspaces with their status and active preset
+    #[tool(
+        description = "List all workspaces for the active project. Optionally filter by status \
+        (e.g. 'active', 'idle', 'archived'). Returns workspace id, branch, kind, status, and \
+        active mode for each workspace."
+    )]
+    async fn list_workspaces(
+        &self,
+        Parameters(req): Parameters<ListWorkspacesRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let workspaces = match runtime_list_workspaces(&project_dir) {
+            Ok(ws) => ws,
+            Err(e) => return format!("Error listing workspaces: {}", e),
+        };
+        let filtered: Vec<_> = if let Some(ref status_filter) = req.status {
+            let lower = status_filter.to_ascii_lowercase();
+            workspaces
+                .into_iter()
+                .filter(|w| format!("{:?}", w.status).to_ascii_lowercase() == lower)
+                .collect()
+        } else {
+            workspaces
+        };
+        if filtered.is_empty() {
+            return "No workspaces found.".to_string();
+        }
+        let mut out = String::from("Workspaces:\n");
+        for w in &filtered {
+            out.push_str(&format!(
+                "- {} [{:?}] status={:?}",
+                w.branch, w.workspace_type, w.status
+            ));
+            if let Some(ref mode) = w.active_mode {
+                out.push_str(&format!(" mode={}", mode));
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    /// List available skills, optionally filtered by a search query
+    #[tool(
+        description = "List skills available to the active project (project-scoped and user-scoped). \
+        Optionally filter by a search query (substring match on id, name, or description). \
+        Returns skill ids with names and descriptions."
+    )]
+    async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let skills = match list_effective_skills(&project_dir) {
+            Ok(s) => s,
+            Err(e) => return format!("Error listing skills: {}", e),
+        };
+        let filtered: Vec<_> = if let Some(ref query) = req.query {
+            let q = query.to_ascii_lowercase();
+            skills
+                .into_iter()
+                .filter(|s| {
+                    s.id.to_ascii_lowercase().contains(&q)
+                        || s.name.to_ascii_lowercase().contains(&q)
+                        || s.description
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_ascii_lowercase()
+                            .contains(&q)
+                })
+                .collect()
+        } else {
+            skills
+        };
+        if filtered.is_empty() {
+            return "No skills found.".to_string();
+        }
+        let mut out = String::from("Skills:\n");
+        for s in &filtered {
+            let desc = s.description.as_deref().unwrap_or("(no description)");
+            out.push_str(&format!("- {} — {} — {}\n", s.id, s.name, desc));
+        }
+        out
+    }
+
+    /// Create a new job for agent coordination
+    #[tool(
+        description = "Create a new coordination job. Jobs are used to coordinate work between \
+        agents and workspaces. The job starts in 'pending' status. Returns the new job id."
+    )]
+    async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let mut payload = serde_json::Map::new();
+        payload.insert(
+            "description".to_string(),
+            serde_json::Value::String(req.description),
+        );
+        if let Some(ref rw) = req.requesting_workspace {
+            payload.insert(
+                "requesting_workspace".to_string(),
+                serde_json::Value::String(rw.clone()),
+            );
+        }
+        match runtime::db::jobs::create_job(
+            &project_dir,
+            &req.kind,
+            req.branch.as_deref(),
+            Some(serde_json::Value::Object(payload)),
+            req.requesting_workspace.as_deref(),
+        ) {
+            Ok(job) => format!("Created job {} (kind={}, status=pending)", job.id, job.kind),
+            Err(e) => format!("Error creating job: {}", e),
+        }
+    }
+
+    /// Update the status of an existing job
+    #[tool(
+        description = "Update a job's status. Valid statuses: 'pending', 'running', 'complete', \
+        'failed'. Use this to track job lifecycle as agents pick up and finish work."
+    )]
+    async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match runtime::db::jobs::update_job_status(&project_dir, &req.id, &req.status) {
+            Ok(()) => format!("Job {} status updated to '{}'", req.id, req.status),
+            Err(e) => format!("Error updating job: {}", e),
+        }
+    }
+
+    /// List jobs, optionally filtered by branch or status
+    #[tool(
+        description = "List coordination jobs. Optionally filter by branch or status \
+        ('pending', 'running', 'complete', 'failed'). Returns jobs ordered newest first."
+    )]
+    async fn list_jobs(&self, Parameters(req): Parameters<ListJobsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match runtime::db::jobs::list_jobs(
+            &project_dir,
+            req.branch.as_deref(),
+            req.status.as_deref(),
+        ) {
+            Ok(jobs) if jobs.is_empty() => "No jobs found.".to_string(),
+            Ok(jobs) => {
+                let mut out = String::from("Jobs:\n");
+                for j in &jobs {
+                    out.push_str(&format!(
+                        "- {} [{}] kind={} created={}\n",
+                        j.id, j.status, j.kind, j.created_at
+                    ));
+                    if let Some(ref branch) = j.branch {
+                        out.push_str(&format!("  branch={}\n", branch));
+                    }
+                }
+                out
+            }
+            Err(e) => format!("Error listing jobs: {}", e),
+        }
+    }
+
+    /// Append a log entry to a job
+    #[tool(
+        description = "Append a log message to a job's log. Use to record progress, warnings, \
+        or errors during job execution. Level is informational: 'info', 'warn', or 'error'."
+    )]
+    async fn append_job_log(
+        &self,
+        Parameters(req): Parameters<AppendJobLogRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let message = if let Some(ref level) = req.level {
+            format!("[{}] {}", level.to_ascii_uppercase(), req.message)
+        } else {
+            req.message.clone()
+        };
+        match runtime::db::jobs::append_log(
+            &project_dir,
+            &message,
+            Some(req.job_id.as_str()),
+            None,
+            None,
+        ) {
+            Ok(()) => format!("Log entry appended to job {}", req.job_id),
+            Err(e) => format!("Error appending job log: {}", e),
         }
     }
 }

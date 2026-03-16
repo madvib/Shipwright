@@ -1,10 +1,12 @@
 //! Platform DB — clean schema, no workflow-layer tables.
 //! Replaces the monolithic state_db.rs.
 
+pub mod adrs;
 pub mod branch;
 pub mod events;
 pub mod jobs;
 pub mod kv;
+pub mod migrate_from_state_db;
 pub mod notes;
 pub mod schema;
 pub mod workspace;

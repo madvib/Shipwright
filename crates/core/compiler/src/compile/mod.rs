@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value as Json;
 use toml;
 
-use crate::types::{HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, Rule, Skill};
+use crate::types::{HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, PluginEntry, PluginsManifest, Rule, Skill};
 use crate::resolve::ResolvedConfig;
 
 // ─── Provider registry ────────────────────────────────────────────────────────
@@ -226,6 +226,11 @@ pub struct CompileOutput {
     /// Key = relative path (e.g. `.cursor/rules/style.mdc`), value = file content.
     /// Populated for Cursor (per-file .mdc). Other providers use `context_content`.
     pub rule_files: HashMap<String, String>,
+
+    /// Plugin install intent declared by the active preset.
+    /// This is a pure output artifact — the compiler never installs plugins.
+    /// The CLI/runtime reads this after compilation and executes the lifecycle.
+    pub plugins_manifest: PluginsManifest,
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -261,7 +266,42 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
         out.cursor_cli_permissions = build_cursor_cli_permissions(&resolved.permissions);
     }
 
+    out.plugins_manifest = build_plugins_manifest(&resolved.plugins, provider_id);
+
     Some(out)
+}
+
+// ─── Plugins manifest ─────────────────────────────────────────────────────────
+
+/// Build the plugins manifest for a given provider.
+/// Plugin entries inherit the provider from the manifest scope or default to
+/// the compile target when no provider hint is encoded in the plugin ID.
+fn build_plugins_manifest(plugins: &PluginsManifest, provider_id: &str) -> PluginsManifest {
+    if plugins.install.is_empty() {
+        return PluginsManifest::default();
+    }
+
+    let entries = plugins
+        .install
+        .iter()
+        .map(|entry| PluginEntry {
+            id: entry.id.clone(),
+            provider: if entry.provider.is_empty() {
+                provider_id.to_string()
+            } else {
+                entry.provider.clone()
+            },
+        })
+        .collect();
+
+    PluginsManifest {
+        install: entries,
+        scope: if plugins.scope.is_empty() {
+            "project".to_string()
+        } else {
+            plugins.scope.clone()
+        },
+    }
 }
 
 // ─── MCP server serialisation ─────────────────────────────────────────────────
@@ -990,6 +1030,7 @@ mod tests {
             permissions: Permissions::default(),
             hooks: vec![],
             active_mode: None,
+            plugins: Default::default(),
         }
     }
 
@@ -2660,5 +2701,75 @@ mod tests {
         assert!(gemini_out.context_content.is_none(), "all-blank rules must not produce a gemini context file");
         let codex_out = compile(&r, "codex").unwrap();
         assert!(codex_out.context_content.is_none(), "all-blank rules must not produce a codex context file");
+    }
+
+    // ── Plugins manifest ──────────────────────────────────────────────────────
+
+    #[test]
+    fn no_plugins_gives_empty_manifest() {
+        let out = compile(&resolved(vec![]), "claude").unwrap();
+        assert!(out.plugins_manifest.install.is_empty());
+        assert!(out.plugins_manifest.scope.is_empty());
+    }
+
+    #[test]
+    fn plugins_manifest_populated_from_resolved() {
+        let r = ResolvedConfig {
+            plugins: PluginsManifest {
+                install: vec![
+                    PluginEntry { id: "superpowers@claude-plugins-official".into(), provider: "claude".into() },
+                    PluginEntry { id: "rust-analyzer-lsp@claude-plugins-official".into(), provider: "claude".into() },
+                ],
+                scope: "project".to_string(),
+            },
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        assert_eq!(out.plugins_manifest.install.len(), 2);
+        assert_eq!(out.plugins_manifest.install[0].id, "superpowers@claude-plugins-official");
+        assert_eq!(out.plugins_manifest.install[0].provider, "claude");
+        assert_eq!(out.plugins_manifest.scope, "project");
+    }
+
+    #[test]
+    fn plugins_manifest_empty_provider_defaults_to_compile_target() {
+        let r = ResolvedConfig {
+            plugins: PluginsManifest {
+                install: vec![
+                    PluginEntry { id: "my-plugin@registry".into(), provider: String::new() },
+                ],
+                scope: "user".to_string(),
+            },
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "gemini").unwrap();
+        assert_eq!(out.plugins_manifest.install[0].provider, "gemini");
+        assert_eq!(out.plugins_manifest.scope, "user");
+    }
+
+    #[test]
+    fn plugins_manifest_empty_scope_defaults_to_project() {
+        let r = ResolvedConfig {
+            plugins: PluginsManifest {
+                install: vec![PluginEntry { id: "p@reg".into(), provider: "claude".into() }],
+                scope: String::new(),
+            },
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        assert_eq!(out.plugins_manifest.scope, "project");
+    }
+
+    #[test]
+    fn plugins_manifest_is_same_across_providers() {
+        let manifest = PluginsManifest {
+            install: vec![PluginEntry { id: "tool@reg".into(), provider: "claude".into() }],
+            scope: "project".to_string(),
+        };
+        let r = ResolvedConfig { plugins: manifest.clone(), ..resolved(vec![]) };
+        for provider in &["claude", "gemini", "codex", "cursor"] {
+            let out = compile(&r, provider).unwrap();
+            assert_eq!(out.plugins_manifest.install.len(), 1, "provider {} must include manifest", provider);
+        }
     }
 }

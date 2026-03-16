@@ -1,16 +1,18 @@
-//! Agent-facing commands: `ship agent log`, `ship agent job`.
+//! Agent-facing commands: `ship agent log`.
 //! Called from skills and scripts; hidden from user help output.
+//!
+//! Job operations (create/update/list) are available internally via
+//! `dispatch_job` but are not exposed through the CLI — they go through MCP.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Utc;
 
-use crate::cli::{AgentCommands, JobCommands};
+use crate::cli::AgentCommands;
 use crate::paths;
 
 pub fn dispatch_agent(action: AgentCommands) -> Result<()> {
     match action {
         AgentCommands::Log { message } => agent_log(&message),
-        AgentCommands::Job { action } => dispatch_job(action),
     }
 }
 
@@ -24,19 +26,54 @@ fn agent_log(message: &str) -> Result<()> {
     Ok(())
 }
 
-fn dispatch_job(action: JobCommands) -> Result<()> {
-    match action {
-        JobCommands::Create { kind, branch } => {
-            println!("[job create] kind={} branch={}", kind, branch.as_deref().unwrap_or("-"));
-            Ok(())
-        }
-        JobCommands::Update { id, status } => {
-            println!("[job update] id={} status={}", id, status);
-            Ok(())
-        }
-        JobCommands::List { branch, status } => {
-            println!("[job list] branch={} status={}", branch.as_deref().unwrap_or("*"), status.as_deref().unwrap_or("*"));
-            Ok(())
+/// Return the `.ship/` directory for the current working directory, or error if absent.
+fn ship_dir() -> Result<std::path::PathBuf> {
+    let cwd = std::env::current_dir()?;
+    let ship_dir = cwd.join(".ship");
+    if !ship_dir.exists() {
+        anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
+    }
+    Ok(ship_dir)
+}
+
+/// Create a job and print its ID. Not wired to CLI — called by MCP or internally.
+#[allow(dead_code)]
+pub fn create_job(kind: &str, branch: Option<&str>) -> Result<()> {
+    let dir = ship_dir()?;
+    let job = runtime::db::jobs::create_job(&dir, kind, branch, None, None)
+        .with_context(|| format!("failed to create job (kind={kind})"))?;
+    println!("{}", job.id);
+    Ok(())
+}
+
+/// Update a job's status. Not wired to CLI — called by MCP or internally.
+#[allow(dead_code)]
+pub fn update_job(id: &str, status: &str) -> Result<()> {
+    let dir = ship_dir()?;
+    runtime::db::jobs::update_job_status(&dir, id, status)
+        .with_context(|| format!("failed to update job {id} to status={status}"))?;
+    println!("updated {id} -> {status}");
+    Ok(())
+}
+
+/// List jobs, optionally filtered by branch and/or status. Not wired to CLI — called by MCP or internally.
+#[allow(dead_code)]
+pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<()> {
+    let dir = ship_dir()?;
+    let jobs = runtime::db::jobs::list_jobs(&dir, branch, status)
+        .context("failed to list jobs")?;
+    if jobs.is_empty() {
+        println!("no jobs found");
+    } else {
+        for job in &jobs {
+            println!(
+                "{}\t{}\t{}\t{}",
+                job.id,
+                job.kind,
+                job.status,
+                job.branch.as_deref().unwrap_or("-"),
+            );
         }
     }
+    Ok(())
 }
