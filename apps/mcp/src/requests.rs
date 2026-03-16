@@ -266,3 +266,55 @@ pub struct ListStaleWorktreesRequest {
     /// Idle threshold in hours. Worktrees not modified within this window are returned. Defaults to 24.
     pub idle_hours: Option<u32>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateTargetRequest {
+    /// Target kind: "milestone" (e.g. v0.1.0) or "surface" (e.g. compiler, studio)
+    pub kind: String,
+    /// Short title
+    pub title: String,
+    /// Optional longer description
+    pub description: Option<String>,
+    /// One-line north star goal
+    pub goal: Option<String>,
+    /// Status: "active" | "planned" | "complete" | "frozen". Defaults to "active".
+    pub status: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListTargetsRequest {
+    /// Filter by kind: "milestone" | "surface"
+    pub kind: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetTargetRequest {
+    /// Target id
+    pub id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateCapabilityRequest {
+    /// Target this capability belongs to
+    pub target_id: String,
+    /// Capability title
+    pub title: String,
+    /// Optional milestone target id this capability is required for
+    pub milestone_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct MarkCapabilityActualRequest {
+    /// Capability id
+    pub id: String,
+    /// Evidence that proves this capability is actual (test name, commit, URL)
+    pub evidence: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListCapabilitiesRequest {
+    /// Filter by target id
+    pub target_id: Option<String>,
+    /// Filter by status: "aspirational" | "actual"
+    pub status: Option<String>,
+}

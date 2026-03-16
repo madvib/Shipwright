@@ -9,6 +9,7 @@ pub mod kv;
 pub mod migrate_from_state_db;
 pub mod notes;
 pub mod schema;
+pub mod targets;
 pub mod workspace;
 
 use anyhow::{Context, Result, anyhow};

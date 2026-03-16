@@ -138,6 +138,13 @@ impl ShipServer {
             "update_job",
             "list_jobs",
             "append_job_log",
+            // Targets + Capabilities
+            "create_target",
+            "list_targets",
+            "get_target",
+            "create_capability",
+            "mark_capability_actual",
+            "list_capabilities",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         CORE_TOOLS.contains(&normalized.as_str())
@@ -785,6 +792,146 @@ impl ShipServer {
         }
         out
     }
+
+    // ─── Target + Capability Tools ─────────────────────────────────────────────
+
+    #[tool(description = "Create a target. kind='milestone' (e.g. v0.1.0) or kind='surface' (e.g. compiler, studio). Milestones are time-bounded goals; surfaces are evergreen capability domains.")]
+    async fn create_target(&self, Parameters(req): Parameters<CreateTargetRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::targets::create_target(
+            &ship_dir, &req.kind, &req.title,
+            req.description.as_deref(), req.goal.as_deref(), req.status.as_deref(),
+        ) {
+            Ok(t) => format!("Created target: {} (id: {}, kind: {})", t.title, t.id, t.kind),
+            Err(e) => format!("Error creating target: {}", e),
+        }
+    }
+
+    #[tool(description = "List targets. Optionally filter by kind: 'milestone' or 'surface'.")]
+    async fn list_targets(&self, Parameters(req): Parameters<ListTargetsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::targets::list_targets(&ship_dir, req.kind.as_deref()) {
+            Ok(ts) if ts.is_empty() => "No targets found.".to_string(),
+            Ok(ts) => {
+                let mut out = String::from("Targets:\n");
+                for t in &ts {
+                    out.push_str(&format!(
+                        "- [{}] {} — {} ({})\n",
+                        t.kind, t.id, t.title, t.status
+                    ));
+                    if let Some(ref g) = t.goal {
+                        out.push_str(&format!("  goal: {}\n", g));
+                    }
+                }
+                out
+            }
+            Err(e) => format!("Error listing targets: {}", e),
+        }
+    }
+
+    #[tool(description = "Get a target with its full capability list (actual and aspirational).")]
+    async fn get_target(&self, Parameters(req): Parameters<GetTargetRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        let target = match runtime::db::targets::get_target(&ship_dir, &req.id) {
+            Ok(Some(t)) => t,
+            Ok(None) => return format!("Target '{}' not found.", req.id),
+            Err(e) => return format!("Error: {}", e),
+        };
+        let caps = match runtime::db::targets::list_capabilities(&ship_dir, Some(&req.id), None) {
+            Ok(c) => c,
+            Err(e) => return format!("Error loading capabilities: {}", e),
+        };
+        let mut out = format!(
+            "# {} — {} ({})\n",
+            target.kind.to_uppercase(), target.title, target.status
+        );
+        if let Some(ref g) = target.goal { out.push_str(&format!("Goal: {}\n", g)); }
+        if let Some(ref d) = target.description { out.push_str(&format!("{}\n", d)); }
+        let actual: Vec<_> = caps.iter().filter(|c| c.status == "actual").collect();
+        let aspirational: Vec<_> = caps.iter().filter(|c| c.status == "aspirational").collect();
+        if !actual.is_empty() {
+            out.push_str("\n## Actual\n");
+            for c in &actual {
+                out.push_str(&format!("- [x] {} (id: {})\n", c.title, c.id));
+            }
+        }
+        if !aspirational.is_empty() {
+            out.push_str("\n## Aspirational\n");
+            for c in &aspirational {
+                out.push_str(&format!("- [ ] {} (id: {})\n", c.title, c.id));
+            }
+        }
+        if caps.is_empty() { out.push_str("\nNo capabilities yet.\n"); }
+        out
+    }
+
+    #[tool(description = "Add an aspirational capability to a target. Optionally link to a milestone target.")]
+    async fn create_capability(&self, Parameters(req): Parameters<CreateCapabilityRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::targets::create_capability(
+            &ship_dir, &req.target_id, &req.title, req.milestone_id.as_deref(),
+        ) {
+            Ok(c) => format!("Created capability: {} (id: {})", c.title, c.id),
+            Err(e) => format!("Error creating capability: {}", e),
+        }
+    }
+
+    #[tool(description = "Mark a capability as actual with evidence. Evidence should be concrete: a test name, commit hash, or observable behavior.")]
+    async fn mark_capability_actual(&self, Parameters(req): Parameters<MarkCapabilityActualRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::targets::mark_capability_actual(&ship_dir, &req.id, &req.evidence) {
+            Ok(()) => format!("Capability {} marked actual.", req.id),
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    #[tool(description = "List capabilities. Filter by target_id and/or status ('aspirational' | 'actual').")]
+    async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let ship_dir = project_dir.join(".ship");
+        match runtime::db::targets::list_capabilities(
+            &ship_dir, req.target_id.as_deref(), req.status.as_deref(),
+        ) {
+            Ok(cs) if cs.is_empty() => "No capabilities found.".to_string(),
+            Ok(cs) => {
+                let mut out = String::from("Capabilities:\n");
+                for c in &cs {
+                    let check = if c.status == "actual" { "x" } else { " " };
+                    out.push_str(&format!("- [{}] {} (id: {}, target: {})\n", check, c.title, c.id, c.target_id));
+                    if let Some(ref e) = c.evidence {
+                        out.push_str(&format!("  evidence: {}\n", e));
+                    }
+                }
+                out
+            }
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    // ─── Job Tools ─────────────────────────────────────────────────────────────
 
     /// Create a new job for agent coordination
     #[tool(

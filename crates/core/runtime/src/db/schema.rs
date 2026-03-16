@@ -135,6 +135,33 @@ CREATE TABLE IF NOT EXISTS adr (
 CREATE INDEX IF NOT EXISTS idx_adr_status ON adr(status);
 "#;
 
+const TARGETS: &str = r#"
+CREATE TABLE IF NOT EXISTS target (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  description TEXT,
+  status      TEXT NOT NULL DEFAULT 'active',
+  goal        TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS target_kind_idx ON target(kind, status);
+
+CREATE TABLE IF NOT EXISTS capability (
+  id           TEXT PRIMARY KEY,
+  target_id    TEXT NOT NULL REFERENCES target(id) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'aspirational',
+  evidence     TEXT,
+  milestone_id TEXT REFERENCES target(id) ON DELETE SET NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS capability_target_idx ON capability(target_id, status);
+CREATE INDEX IF NOT EXISTS capability_milestone_idx ON capability(milestone_id, status);
+"#;
+
 pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_foundation", FOUNDATION),
     ("0002_event_log", EVENT_LOG),
@@ -144,4 +171,5 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0006_notes", NOTES),
     ("0007_adrs", ADRS),
     ("0008_job_claimed_by", "ALTER TABLE job ADD COLUMN claimed_by TEXT;"),
+    ("0009_targets", TARGETS),
 ];
