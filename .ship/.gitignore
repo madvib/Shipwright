@@ -6,3 +6,7 @@ vision.md
 targets/
 .tmp-global/
 
+# Runtime state — never commit
+sessions/
+ship.lock
+
