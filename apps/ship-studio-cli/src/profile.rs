@@ -67,7 +67,7 @@ pub fn activate_profile(profile_id: Option<&str>, project_root: &Path) -> Result
 
     // Locate profile file
     let profile_path = find_profile_file(&id, project_root)
-        .with_context(|| format!("Profile '{}' not found in .ship/agents/presets/", id))?;
+        .with_context(|| format!("Profile '{}' not found in .ship/agents/profiles/", id))?;
 
     let profile = Profile::load(&profile_path)?;
 
@@ -121,19 +121,23 @@ fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
     }
 }
 
-/// Search order: agents/presets/ (new) → modes/ (legacy), project then global.
+/// Search order: agents/profiles/ → agents/presets/ (compat) → modes/ (legacy), project then global.
 pub fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<PathBuf> {
     let ship = project_root.join(".ship");
     let file = format!("{}.toml", profile_id);
 
-    let p = ship.join("agents").join("presets").join(&file);
+    let p = ship.join("agents").join("profiles").join(&file);
     if p.exists() { return Some(p); }
+    let p_compat = ship.join("agents").join("presets").join(&file);
+    if p_compat.exists() { return Some(p_compat); }
     let m = ship.join("modes").join(&file);
     if m.exists() { return Some(m); }
 
     let home = dirs::home_dir()?;
-    let gp = home.join(".ship").join("agents").join("presets").join(&file);
+    let gp = home.join(".ship").join("agents").join("profiles").join(&file);
     if gp.exists() { return Some(gp); }
+    let gp_compat = home.join(".ship").join("agents").join("presets").join(&file);
+    if gp_compat.exists() { return Some(gp_compat); }
     let gm = home.join(".ship").join("modes").join(&file);
     if gm.exists() { return Some(gm); }
 
@@ -192,10 +196,10 @@ mod tests {
     #[test]
     fn find_profile_file_finds_new_location() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/presets/test.toml", "[profile]\nname=\"Test\"\nid=\"test\"\n");
+        write(tmp.path(), ".ship/agents/profiles/test.toml", "[profile]\nname=\"Test\"\nid=\"test\"\n");
         let found = find_profile_file("test", tmp.path());
         assert!(found.is_some());
-        assert!(found.unwrap().to_string_lossy().contains("agents/presets"));
+        assert!(found.unwrap().to_string_lossy().contains("agents/profiles"));
     }
 
     #[test]
@@ -209,9 +213,9 @@ mod tests {
     #[test]
     fn find_profile_file_prefers_presets_over_modes() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/presets/both.toml", "[profile]\nname=\"New\"\nid=\"both\"\n");
+        write(tmp.path(), ".ship/agents/profiles/both.toml", "[profile]\nname=\"New\"\nid=\"both\"\n");
         write(tmp.path(), ".ship/modes/both.toml", "[mode]\nname=\"Old\"\nid=\"both\"\n");
         let found = find_profile_file("both", tmp.path()).unwrap();
-        assert!(found.to_string_lossy().contains("agents/presets"));
+        assert!(found.to_string_lossy().contains("agents/profiles"));
     }
 }

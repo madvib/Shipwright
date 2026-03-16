@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Profile TOML format — what users author in .ship/agents/presets/<id>.toml
+/// Profile TOML format — what users author in .ship/agents/profiles/<id>.toml
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     #[serde(rename = "profile")]

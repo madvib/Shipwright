@@ -1205,10 +1205,15 @@ impl ShipServer {
         // Determine whether to prune the worktree
         let should_prune = req.prune_worktree.unwrap_or(ws_kind == "imperative");
 
-        // Write handoff.md
-        let sessions_dir = project_root
-            .join(".ship")
+        // Write handoff.md to ~/.ship/sessions/<slug>/<workspace_id>/
+        // Project .ship/ is source of truth for config; ~/.ship/ holds all runtime state.
+        let ship_dir = project_root.join(".ship");
+        let slug = runtime::project::project_slug_from_ship_dir(&ship_dir);
+        let global_dir = runtime::project::get_global_dir()
+            .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".ship"));
+        let sessions_dir = global_dir
             .join("sessions")
+            .join(&slug)
             .join(workspace_id);
         if let Err(e) = std::fs::create_dir_all(&sessions_dir) {
             return format!("Error creating sessions dir: {}", e);

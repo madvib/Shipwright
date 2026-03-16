@@ -148,21 +148,25 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     agents
 }
 
-/// Search order: agents/presets/ (new) → modes/ (legacy), project then global.
+/// Search order: agents/profiles/ (new) → modes/ (legacy), project then global.
 fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
     let ship = project_root.join(".ship");
     let file = format!("{}.toml", profile_id);
 
-    // Project-local: new location first, then legacy
-    let p = ship.join("agents").join("presets").join(&file);
+    // Project-local: profiles/ → presets/ (compat) → modes/ (legacy)
+    let p = ship.join("agents").join("profiles").join(&file);
     if p.exists() { return Some(p); }
+    let p_compat = ship.join("agents").join("presets").join(&file);
+    if p_compat.exists() { return Some(p_compat); }
     let m = ship.join("modes").join(&file);
     if m.exists() { return Some(m); }
 
     // Global: ~/.ship
     let home = dirs::home_dir()?;
-    let gp = home.join(".ship").join("agents").join("presets").join(&file);
+    let gp = home.join(".ship").join("agents").join("profiles").join(&file);
     if gp.exists() { return Some(gp); }
+    let gp_compat = home.join(".ship").join("agents").join("presets").join(&file);
+    if gp_compat.exists() { return Some(gp_compat); }
     let gm = home.join(".ship").join("modes").join(&file);
     if gm.exists() { return Some(gm); }
 
@@ -430,7 +434,7 @@ deny = ["Bash(rm -rf *)"]
     #[test]
     fn compile_with_mode_applies_permissions() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/presets/guarded.toml", r#"
+        write(tmp.path(), ".ship/agents/profiles/guarded.toml", r#"
 [profile]
 name = "Guarded"
 id = "guarded"
@@ -452,7 +456,7 @@ preset = "ship-guarded"
     #[test]
     fn compile_with_mode_inline_rules_adds_to_context() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/presets/strict.toml", r#"
+        write(tmp.path(), ".ship/agents/profiles/strict.toml", r#"
 [profile]
 name = "Strict"
 id = "strict"
