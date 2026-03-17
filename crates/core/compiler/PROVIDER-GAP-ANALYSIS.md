@@ -23,7 +23,7 @@ Each provider section lists the **full upstream config surface**, then marks eac
 |---|---|---|---|---|
 | Claude Code | ~80 fields + 18 hook triggers | ~20 fields + 6 triggers | ~25% | model picker, plugins, env, managed settings, 12 hook triggers |
 | Gemini CLI | ~120 fields + 11 hook triggers | ~15 fields + 5 triggers | ~12% | model, approval mode, sandbox, browser agent, extensions, env |
-| Codex CLI | ~90 fields + 50 feature flags | ~5 fields (MCP + rules only) | ~6% | model, approval, sandbox, permissions profiles, multi-agent, plugins |
+| Codex CLI | ~90 fields + 50 feature flags + Starlark rules | ~5 fields (MCP + context only) | ~6% | model, approval/sandbox, Starlark rules, permission profiles (fs+net ACLs), granular approval, multi-agent, per-MCP auth/tools |
 | Cursor | ~30 fields (file-based) + SQLite | ~15 fields | ~50% | model (SQLite), YOLO mode, environment.json, .cursorignore |
 
 ---
@@ -372,21 +372,28 @@ Fields: `ui.*` (theme, footer, spinner, accessibility ~30 fields), `privacy.*`, 
 ### File Tree (full)
 
 ```
+/etc/codex/managed_config.toml          # admin/enterprise policy (highest precedence)
+
 ~/.codex/
 ├── config.toml                         # user settings
 ├── AGENTS.md                           # global instructions
-└── instructions.md                     # alt instructions location
+├── AGENTS.override.md                  # global override (takes precedence)
+├── rules/*.rules                       # execution policy rules (Starlark)
+├── skills/*/SKILL.md                   # user skills
+└── auth.json / keyring                 # credentials
 
 <project>/
 ├── AGENTS.md                           # project instructions (walks git root → CWD)
-├── codex.md                            # alt instructions
+├── AGENTS.override.md                  # override at each directory level
 ├── .codex/
-│   └── config.toml                     # project config
+│   └── config.toml                     # project config (trusted projects only)
 ├── .agents/
-│   └── skills/*/SKILL.md              # skills
+│   └── skills/*/SKILL.md              # repo skills
 └── agents/
     └── *.toml                          # multi-agent role configs
 ```
+
+**Resolution order** (highest wins): CLI `-c` flags > project configs (closest-to-cwd) > user config > managed config > defaults.
 
 ### config.toml — Full Field Map
 
@@ -395,44 +402,77 @@ Fields: `ui.*` (theme, footer, spinner, accessibility ~30 fields), `privacy.*`, 
 |---|---|---|---|
 | `model` | string | 🔴 Gap | Model selection |
 | `model_provider` | string | 🔴 Gap | Provider (openai, azure, etc.) |
+| `model_providers` | map | 🔧 provider_config | Custom provider definitions (name, base_url, env_key, wire_api, headers) |
 | `model_context_window` | int64 | 🔧 provider_config | |
 | `model_reasoning_effort` | enum | 🔧 provider_config | none/minimal/low/medium/high/xhigh |
 | `model_reasoning_summary` | enum | 🔧 provider_config | auto/concise/detailed/none |
-| `model_verbosity` | enum | 🔧 provider_config | low/medium/high |
+| `model_verbosity` | enum | 🔧 provider_config | low/medium/high (GPT-5) |
 | `model_auto_compact_token_limit` | int64 | 🔧 provider_config | |
-| `approval_policy` | enum | 🔴 Gap | suggest/auto-edit/full-auto |
+| `approval_policy` | union | 🔴 Gap | "untrusted"/"on-request"/"never" or `{granular: ...}` |
 | `sandbox_mode` | enum | 🔴 Gap | read-only/workspace-write/danger-full-access |
+| `sandbox_workspace_write` | object | 🔴 Gap | writable_roots, network_access |
 | `profile` | string | 🔧 provider_config | Active config profile |
-| `profiles` | object | 🔧 provider_config | Named config profiles |
+| `profiles` | map | 🔧 provider_config | Named profiles (override almost any field) |
 | `personality` | enum | 🔧 provider_config | none/friendly/pragmatic |
 | `instructions` | string | 🔧 provider_config | System instructions |
 | `developer_instructions` | string | 🔧 provider_config | Developer role message |
 | `compact_prompt` | string | 🔧 provider_config | Compaction prompt |
 | `tool_output_token_limit` | uint | 🔧 provider_config | |
+| `service_tier` | enum | 🔧 provider_config | fast/flex |
+
+#### Approval Policy (granular)
+| Field | Ship Status | Notes |
+|---|---|---|
+| `granular.sandbox_approval` | 🔴 Gap | Shell command approvals |
+| `granular.rules` | 🔴 Gap | Execpolicy prompt rules |
+| `granular.mcp_elicitations` | 🔴 Gap | MCP input prompts |
+| `granular.request_permissions` | 🔴 Gap | Permission requests |
+| `granular.skill_approval` | 🔴 Gap | Skill execution approval |
 
 #### MCP Servers
 | Feature | Ship Status | Notes |
 |---|---|---|
 | `[mcp_servers.<name>]` (stdio) | ✅ Compiled | command/args/env |
 | `[mcp_servers.<name>]` (HTTP) | ✅ Compiled | url field |
-| `startup_timeout_sec` | 🔴 Gap | Per-server timeout |
+| `cwd` | 🔴 Gap | Working directory |
+| `startup_timeout_sec` / `startup_timeout_ms` | 🔴 Gap | Per-server startup timeout |
 | `tool_timeout_sec` | 🔴 Gap | Per-tool timeout |
 | `enabled` | 🔴 Gap | Server enable/disable |
+| `enabled_tools` / `disabled_tools` | 🔴 Gap | Per-server tool allow/block |
+| `required` | 🔴 Gap | Fail-fast if server unavailable |
+| `bearer_token` / `bearer_token_env_var` | 🔴 Gap | Auth token |
+| `oauth_resource` / `scopes` | 🔧 provider_config | OAuth config |
+| `env_vars` | 🔴 Gap | Env var names to pass through |
+| `env_http_headers` / `http_headers` | 🔴 Gap | HTTP headers (static + env-sourced) |
 | `mcp_oauth_callback_port` | 🔧 provider_config | |
 | `mcp_oauth_callback_url` | 🔧 provider_config | |
-| `mcp_oauth_credentials_store` | 🔧 provider_config | |
+| `mcp_oauth_credentials_store` | 🔧 provider_config | auto/file/keyring |
 
 #### Permissions
 | Field | Ship Status | Notes |
 |---|---|---|
 | `default_permissions` | 🔴 Gap | Named permissions profile |
-| `permissions` | 🔴 Gap | `PermissionsToml` object |
+| `permissions` profiles | 🔴 Gap | Per-profile filesystem + network ACLs |
+| `permissions.*.filesystem` | 🔴 Gap | Read/write/none per path |
+| `permissions.*.network.mode` | 🔴 Gap | limited/full |
+| `permissions.*.network.allowed_domains` | 🔴 Gap | Domain allowlist |
+| `permissions.*.network.denied_domains` | 🔴 Gap | Domain denylist |
+
+#### Execution Policy Rules (Starlark)
+| Feature | Ship Status | Notes |
+|---|---|---|
+| `~/.codex/rules/*.rules` | 🔴 Gap | Starlark `prefix_rule()` files |
+| `prefix_rule(pattern, decision, justification)` | 🗺️ Maps to permissions | allow/prompt/forbidden per command prefix |
+| Admin-enforced rules (`requirements.toml`) | ⬜ Managed only | |
 | Feature flags (50+ booleans) | 🔧 provider_config | `features.*` toggles |
 
 #### Multi-Agent
 | Feature | Ship Status | Notes |
 |---|---|---|
-| `agents` config | 🔴 Gap | Agent definitions in TOML |
+| `agents.max_threads` | 🔴 Gap | Parallel agent limit |
+| `agents.max_depth` | 🔴 Gap | Nesting depth |
+| `agents.job_max_runtime_seconds` | 🔴 Gap | Per-job timeout |
+| Agent role entries (`.config_file`, `.description`) | 🔴 Gap | Role configs |
 | `agents/*.toml` files | 🔴 Gap | Role-specific configs |
 | `approvals_reviewer` | 🔧 provider_config | user/guardian_subagent |
 
@@ -440,41 +480,50 @@ Fields: `ui.*` (theme, footer, spinner, accessibility ~30 fields), `privacy.*`, 
 | Feature | Ship Status | Notes |
 |---|---|---|
 | `.agents/skills/*/SKILL.md` | ✅ Compiled | Standard skill format |
-| `skills` config object | 🔧 provider_config | Skill toggle/config |
+| `skills.bundled.enabled` | 🔧 provider_config | Toggle bundled skills |
+| `skills.config[]` | 🔧 provider_config | Per-skill enable/path override |
 
-#### Plugins
+#### Plugins & Apps
 | Feature | Ship Status | Notes |
 |---|---|---|
-| `plugins` | 🔴 Gap | Plugin configurations |
+| `plugins` | 🔴 Gap | Plugin enable/disable map |
+| `apps._default` | 🔧 provider_config | Default app policy |
+| `apps.<name>` | 🔧 provider_config | Per-app tool approval modes |
 
 #### Environment
 | Field | Ship Status | Notes |
 |---|---|---|
-| `shell_environment_policy` | 🔧 provider_config | inherit/clean |
-| `env` (via shell) | 🔴 Gap | No env passthrough |
+| `shell_environment_policy.inherit` | 🔧 provider_config | core/all/none |
+| `shell_environment_policy.set` | 🔴 Gap | Explicit env var overrides |
+| `shell_environment_policy.include_only` / `exclude` | 🔧 provider_config | Regex filters |
 | `openai_base_url` | 🔧 provider_config | |
 | `chatgpt_base_url` | 🔧 provider_config | |
+
+#### Memories
+| Field | Ship Status | Notes |
+|---|---|---|
+| `memories.generate_memories` | 🔧 provider_config | Auto-generate memories |
+| `memories.use_memories` | 🔧 provider_config | Use memories in context |
+| `memories.extract_model` / `consolidation_model` | 🔧 provider_config | |
+| `memories.max_*` / `no_memories_if_mcp_or_web_search` | 🔧 provider_config | Tuning knobs |
+
+#### Enterprise / Admin
+| Feature | Ship Status | Notes |
+|---|---|---|
+| `/etc/codex/managed_config.toml` | ⬜ Managed only | Cannot be overridden |
+| `requirements.toml` | ⬜ Managed only | Allowed policies, sandbox modes, rules |
+| `projects.<name>.trust_level` | 🔧 provider_config | trusted/untrusted per project |
 
 #### Observability
 | Field | Ship Status | Notes |
 |---|---|---|
-| `otel.otlp_endpoint` | 🔧 provider_config | |
 | `otel.*` | 🔧 provider_config | Full OTEL config |
-| `notify` | 🔧 provider_config | External notification command |
+| `notify` | 🔧 provider_config | External notification command (array) |
 | `log_dir` | 🔧 provider_config | |
+| `commit_attribution` | 🔧 provider_config | Commit message attribution |
 
-#### Experimental / Advanced
-| Field | Ship Status | Notes |
-|---|---|---|
-| `audio.*` | ⬜ | Realtime audio |
-| `realtime.*` | ⬜ | WebSocket mode |
-| `web_search` | 🔧 provider_config | disabled/cached/live |
-| `history.*` | 🔧 provider_config | Persistence settings |
-| `memories.*` | 🔧 provider_config | Memory subsystem |
-| `ghost_snapshot.*` | ⬜ | Snapshot feature |
-| `tui.*` | ⬜ | Terminal UI |
-| `apps.*` | 🔧 provider_config | App-specific controls |
-| `tools.*` | 🔧 provider_config | Tool feature toggles |
+#### UX / Experimental (out of scope)
+Fields: `tui.*` (theme, animations, tooltips, alt_screen), `audio.*`, `realtime.*`, `ghost_snapshot.*`, `web_search`, `history.*`, `file_opener`, `check_for_update_on_startup`, `disable_paste_burst`, `hide_agent_reasoning`
 
 ---
 
@@ -577,7 +626,9 @@ Cursor does not publish JSON schemas for any config file.
 | **Environment variables** | Claude (`env`), Gemini (`.env`), Codex (shell policy) | Ship `[env]` section in preset? | **P0** |
 | **Model selection** | Gemini, Codex, Cursor | Already in preset `[profile]` but only compiled for Claude | **P1** |
 | **Approval mode** | Gemini (`defaultApprovalMode`), Codex (`approval_policy`) | Maps to Ship workspace modes | **P1** |
-| **Sandbox mode** | Codex (`sandbox_mode`), Gemini (`tools.sandbox`) | Ship concept TBD | **P2** |
+| **Sandbox mode** | Codex (`sandbox_mode` + `sandbox_workspace_write` with writable_roots/network), Gemini (`tools.sandbox` + Dockerfile) | Ship concept TBD | **P2** |
+| **Codex permission profiles** | Codex (filesystem + network ACLs per profile, Starlark `.rules` files) | Partially maps to Ship permissions but much richer (per-path fs access, domain-level network ACLs) | **P2** |
+| **Codex granular approval** | Codex (`approval_policy.granular` — per-category: sandbox, rules, MCP, permissions, skills) | No Ship equivalent | **P2** |
 | **MCP per-server config** | Codex (timeouts, enabled), Gemini (timeout, cwd, includeTools, excludeTools, headers, trust), Claude (enable/disable lists) | Extend Ship MCP server TOML | **P2** |
 | **Hook triggers (12 new)** | Claude (12 new), Gemini (6 new), Cursor (2 new) | Expand Ship hook trigger enum | **P2** |
 | **Hook types (3 new)** | Claude (`prompt`, `agent`, `http`) | Ship hook type enum | **P2** |
@@ -606,7 +657,7 @@ Cursor does not publish JSON schemas for any config file.
 
 **What we tell users today:** "Ship replaces your provider config files. Define once in `.ship/`, compile to all providers."
 
-**What's actually true:** Ship handles the *structural* config well (MCP, rules, skills, permissions, basic hooks) but misses most *behavioral* config (model selection, approval modes, sandbox, env vars, timeouts, plugins). A user migrating a mature Claude Code setup would lose ~75% of their settings.json fields. A Codex user would lose approval_policy and sandbox_mode — arguably their most important settings.
+**What's actually true:** Ship handles the *structural* config well (MCP, rules, skills, permissions, basic hooks) but misses most *behavioral* config (model selection, approval modes, sandbox, env vars, timeouts, plugins). A user migrating a mature Claude Code setup would lose ~75% of their settings.json fields. A Codex user would lose approval_policy, sandbox_mode, permission profiles (fs+network ACLs), Starlark execution rules, and granular approval — arguably their most important settings. Codex's permission model is actually richer than we assumed — it has per-path filesystem access modes, domain-level network ACLs, and Starlark rules for command-level policy.
 
 **The path forward:**
 1. **P0: `provider_config` passthrough** — Let users put arbitrary provider-specific settings in their preset. Ship passes them through unmodified. This closes the "long tail" gap immediately.
