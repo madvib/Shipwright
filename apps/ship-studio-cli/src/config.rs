@@ -7,6 +7,8 @@ use std::path::PathBuf;
 pub struct ShipConfig {
     pub identity: Option<Identity>,
     pub defaults: Option<Defaults>,
+    pub worktrees: Option<WorktreesConfig>,
+    pub auth: Option<AuthConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +21,16 @@ pub struct Identity {
 pub struct Defaults {
     pub provider: Option<String>,
     pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorktreesConfig {
+    pub dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuthConfig {
+    pub token: Option<String>,
 }
 
 /// ~/.ship/path-context.toml — maps filesystem paths to active modes.
@@ -66,11 +78,43 @@ impl ShipConfig {
         let path = Self::path();
         if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
         std::fs::write(&path, toml::to_string_pretty(self)?)?;
+        // Restrict permissions on Unix — config may contain auth tokens.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
         Ok(())
     }
 
     fn path() -> PathBuf {
         dirs::home_dir().unwrap_or_default().join(".ship").join("config.toml")
+    }
+
+    /// Resolved base directory for git worktrees.
+    ///
+    /// Returns the path from `[worktrees] dir` (expanding `~`), or falls back
+    /// to `~/dev/<project-name>-worktrees/` derived from `project_root`.
+    pub fn worktree_base_dir(&self, project_root: &std::path::Path) -> PathBuf {
+        if let Some(ref wt) = self.worktrees {
+            if let Some(ref dir) = wt.dir {
+                let expanded = if dir.starts_with("~/") {
+                    dirs::home_dir().unwrap_or_default().join(&dir[2..])
+                } else {
+                    PathBuf::from(dir)
+                };
+                return expanded;
+            }
+        }
+        // Fallback: ~/dev/<project>-worktrees/
+        let project_name = project_root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "project".to_string());
+        dirs::home_dir()
+            .unwrap_or_default()
+            .join("dev")
+            .join(format!("{}-worktrees", project_name))
     }
 }
 
@@ -140,6 +184,8 @@ mod tests {
         let cfg = ShipConfig {
             identity: Some(Identity { name: "Alice".into(), email: Some("a@b.com".into()) }),
             defaults: Some(Defaults { provider: Some("claude".into()), mode: None }),
+            worktrees: None,
+            auth: None,
         };
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: ShipConfig = toml::from_str(&s).unwrap();
@@ -158,5 +204,40 @@ mod tests {
     fn ship_project_default_provider_is_claude() {
         let proj = ShipProject::default();
         assert_eq!(proj.providers(), vec!["claude"]);
+    }
+
+    #[test]
+    fn worktree_base_dir_uses_configured_absolute_path() {
+        let cfg = ShipConfig {
+            worktrees: Some(WorktreesConfig { dir: Some("/custom/worktrees".into()) }),
+            ..Default::default()
+        };
+        let root = std::path::Path::new("/home/user/myproject");
+        assert_eq!(cfg.worktree_base_dir(root), std::path::PathBuf::from("/custom/worktrees"));
+    }
+
+    #[test]
+    fn worktree_base_dir_expands_tilde() {
+        let cfg = ShipConfig {
+            worktrees: Some(WorktreesConfig { dir: Some("~/dev/worktrees".into()) }),
+            ..Default::default()
+        };
+        let root = std::path::Path::new("/home/user/myproject");
+        let result = cfg.worktree_base_dir(root);
+        let s = result.to_string_lossy();
+        assert!(s.ends_with("dev/worktrees"), "expected path ending in dev/worktrees, got {s}");
+        assert!(!s.contains('~'), "tilde should be expanded, got {s}");
+    }
+
+    #[test]
+    fn worktree_base_dir_fallback_uses_project_name() {
+        let cfg = ShipConfig::default();
+        let root = std::path::Path::new("/home/user/myproject");
+        let result = cfg.worktree_base_dir(root);
+        assert!(
+            result.to_string_lossy().ends_with("myproject-worktrees"),
+            "fallback should end with <project>-worktrees, got {}",
+            result.display()
+        );
     }
 }
