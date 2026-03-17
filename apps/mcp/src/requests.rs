@@ -83,6 +83,14 @@ pub struct CreateJobRequest {
     pub branch: Option<String>,
     /// Workspace id/branch that requested this job
     pub requesting_workspace: Option<String>,
+    /// Agent id or workspace this job is assigned to
+    pub assigned_to: Option<String>,
+    /// Scheduling priority — higher numbers run first (default 0)
+    pub priority: Option<i32>,
+    /// Job id that must complete before this one can start
+    pub blocked_by: Option<String>,
+    /// File paths this job intends to touch (informational; use claim_file for ownership)
+    pub touched_files: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -90,7 +98,29 @@ pub struct UpdateJobRequest {
     /// Job id to update
     pub id: String,
     /// New status: "pending" | "running" | "complete" | "failed"
-    pub status: String,
+    pub status: Option<String>,
+    /// Reassign to a different agent or workspace
+    pub assigned_to: Option<String>,
+    /// Update scheduling priority
+    pub priority: Option<i32>,
+    /// Set or clear the blocking job id
+    pub blocked_by: Option<String>,
+    /// Replace the touched_files list
+    pub touched_files: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ClaimFileRequest {
+    /// Job id claiming ownership of the file
+    pub job_id: String,
+    /// File path to claim (relative to project root)
+    pub path: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetFileOwnerRequest {
+    /// File path to look up (relative to project root)
+    pub path: String,
 }
 
 #[derive(Deserialize, JsonSchema)]

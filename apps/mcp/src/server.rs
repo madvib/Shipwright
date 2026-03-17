@@ -138,6 +138,8 @@ impl ShipServer {
             "update_job",
             "list_jobs",
             "append_job_log",
+            "claim_file",
+            "get_file_owner",
             // Targets + Capabilities
             "create_target",
             "list_targets",
@@ -948,7 +950,9 @@ impl ShipServer {
     /// Create a new job for agent coordination
     #[tool(
         description = "Create a new coordination job. Jobs are used to coordinate work between \
-        agents and workspaces. The job starts in 'pending' status. Returns the new job id."
+        agents and workspaces. The job starts in 'pending' status. Returns the new job id. \
+        Use assigned_to to route the job to a specific agent, priority (higher = sooner), \
+        blocked_by to express ordering constraints, and touched_files to declare file scope."
     )]
     async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
@@ -972,24 +976,40 @@ impl ShipServer {
             req.branch.as_deref(),
             Some(serde_json::Value::Object(payload)),
             req.requesting_workspace.as_deref(),
+            req.assigned_to.as_deref(),
+            req.priority.unwrap_or(0),
+            req.blocked_by.as_deref(),
+            req.touched_files.unwrap_or_default(),
         ) {
             Ok(job) => format!("Created job {} (kind={}, status=pending)", job.id, job.kind),
             Err(e) => format!("Error creating job: {}", e),
         }
     }
 
-    /// Update the status of an existing job
+    /// Update a job's status and/or metadata fields
     #[tool(
-        description = "Update a job's status. Valid statuses: 'pending', 'running', 'complete', \
-        'failed'. Use this to track job lifecycle as agents pick up and finish work."
+        description = "Update a job. At least one field must be set. \
+        status: 'pending' | 'running' | 'complete' | 'failed' — completing or failing a job \
+        releases all its file claims. assigned_to, priority, blocked_by, and touched_files \
+        can be updated independently."
     )]
     async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
         };
-        match runtime::db::jobs::update_job_status(&project_dir, &req.id, &req.status) {
-            Ok(()) => format!("Job {} status updated to '{}'", req.id, req.status),
+        let patch = runtime::db::jobs::JobPatch {
+            status: req.status.clone(),
+            assigned_to: req.assigned_to,
+            priority: req.priority,
+            blocked_by: req.blocked_by,
+            touched_files: req.touched_files,
+        };
+        match runtime::db::jobs::update_job(&project_dir, &req.id, patch) {
+            Ok(()) => {
+                let status_msg = req.status.as_deref().unwrap_or("(unchanged)");
+                format!("Job {} updated (status={})", req.id, status_msg)
+            }
             Err(e) => format!("Error updating job: {}", e),
         }
     }
@@ -1014,16 +1034,73 @@ impl ShipServer {
                 let mut out = String::from("Jobs:\n");
                 for j in &jobs {
                     out.push_str(&format!(
-                        "- {} [{}] kind={} created={}\n",
-                        j.id, j.status, j.kind, j.created_at
+                        "- {} [{}] kind={} priority={} created={}\n",
+                        j.id, j.status, j.kind, j.priority, j.created_at
                     ));
                     if let Some(ref branch) = j.branch {
                         out.push_str(&format!("  branch={}\n", branch));
+                    }
+                    if let Some(ref a) = j.assigned_to {
+                        out.push_str(&format!("  assigned_to={}\n", a));
+                    }
+                    if let Some(ref b) = j.blocked_by {
+                        out.push_str(&format!("  blocked_by={}\n", b));
+                    }
+                    if !j.touched_files.is_empty() {
+                        out.push_str(&format!("  files={}\n", j.touched_files.join(", ")));
                     }
                 }
                 out
             }
             Err(e) => format!("Error listing jobs: {}", e),
+        }
+    }
+
+    /// Atomically claim a file path for a job (first-wins)
+    #[tool(
+        description = "Claim ownership of a file path for a job. Atomic and first-wins: if another \
+        job already owns the path this returns an error with the current owner. Use get_file_owner \
+        to check ownership without claiming. Claims are released automatically when the job \
+        reaches a terminal status (complete/failed/done)."
+    )]
+    async fn claim_file(&self, Parameters(req): Parameters<ClaimFileRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match runtime::db::jobs::claim_file(&project_dir, &req.job_id, &req.path) {
+            Ok(true) => format!("Claimed {} for job {}", req.path, req.job_id),
+            Ok(false) => {
+                let owner = runtime::db::jobs::get_file_owner(&project_dir, &req.path)
+                    .unwrap_or(None)
+                    .unwrap_or_else(|| "unknown".to_string());
+                format!("Conflict: {} is already owned by job {}", req.path, owner)
+            }
+            Err(e) => format!("Error claiming file: {}", e),
+        }
+    }
+
+    /// Look up which job currently owns a file path
+    #[tool(
+        description = "Return the job that currently owns a file path, or 'unclaimed' if no job \
+        holds it. Use this to check for conflicts before editing a file."
+    )]
+    async fn get_file_owner(&self, Parameters(req): Parameters<GetFileOwnerRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        match runtime::db::jobs::get_file_owner(&project_dir, &req.path) {
+            Ok(None) => format!("{}: unclaimed", req.path),
+            Ok(Some(job_id)) => {
+                let detail = runtime::db::jobs::get_job(&project_dir, &job_id)
+                    .ok()
+                    .flatten()
+                    .map(|j| format!(" (kind={}, status={})", j.kind, j.status))
+                    .unwrap_or_default();
+                format!("{}: owned by job {}{}", req.path, job_id, detail)
+            }
+            Err(e) => format!("Error: {}", e),
         }
     }
 

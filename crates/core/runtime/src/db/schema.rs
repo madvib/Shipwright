@@ -162,6 +162,20 @@ CREATE INDEX IF NOT EXISTS capability_target_idx ON capability(target_id, status
 CREATE INDEX IF NOT EXISTS capability_milestone_idx ON capability(milestone_id, status);
 "#;
 
+const JOB_FILE_OWNERSHIP: &str = r#"
+ALTER TABLE job ADD COLUMN touched_files TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE job ADD COLUMN assigned_to TEXT;
+ALTER TABLE job ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE job ADD COLUMN blocked_by TEXT;
+
+CREATE TABLE IF NOT EXISTS job_file (
+  path       TEXT PRIMARY KEY,
+  job_id     TEXT NOT NULL REFERENCES job(id) ON DELETE CASCADE,
+  claimed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS job_file_job_idx ON job_file(job_id)
+"#;
+
 pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_foundation", FOUNDATION),
     ("0002_event_log", EVENT_LOG),
@@ -172,4 +186,5 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0007_adrs", ADRS),
     ("0008_job_claimed_by", "ALTER TABLE job ADD COLUMN claimed_by TEXT;"),
     ("0009_targets", TARGETS),
+    ("0010_job_file_ownership", JOB_FILE_OWNERSHIP),
 ];
