@@ -1,10 +1,17 @@
+/**
+ * E2E test config for apps/web.
+ *
+ * These tests use jsdom to simulate full page loads without a live
+ * Cloudflare/D1 environment. To run against a real browser, replace
+ * environment with 'happy-dom' or configure Playwright separately.
+ */
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/-*.test.ts', 'src/**/-*.test.tsx'],
+    include: ['e2e/**/*.test.ts', 'e2e/**/*.test.tsx'],
     environmentOptions: {
       jsdom: {
         url: 'http://localhost:3000',
