@@ -14,13 +14,39 @@ type ImportState =
   | { step: 'preview'; library: ProjectLibrary; repoUrl: string }
   | { step: 'error'; message: string }
 
+interface Selection {
+  skills: Set<string>
+  rules: Set<string>
+  mcp_servers: Set<string>
+}
+
+/** Filter a library to only include items present in the selection sets. */
+export function filterLibraryBySelection(library: ProjectLibrary, selection: Selection): ProjectLibrary {
+  return {
+    ...library,
+    skills: library.skills.filter((s) => selection.skills.has(s.id)),
+    rules: library.rules.filter((r) => selection.rules.has(r.file_name)),
+    mcp_servers: library.mcp_servers.filter((s) => selection.mcp_servers.has(s.name)),
+  }
+}
+
+function selectionFromLibrary(library: ProjectLibrary): Selection {
+  return {
+    skills: new Set(library.skills.map((s) => s.id)),
+    rules: new Set(library.rules.map((r) => r.file_name)),
+    mcp_servers: new Set(library.mcp_servers.map((s) => s.name)),
+  }
+}
+
 export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
   const [url, setUrl] = useState('')
   const [state, setState] = useState<ImportState>({ step: 'input' })
+  const [selection, setSelection] = useState<Selection>({ skills: new Set(), rules: new Set(), mcp_servers: new Set() })
 
   const reset = useCallback(() => {
     setUrl('')
     setState({ step: 'input' })
+    setSelection({ skills: new Set(), rules: new Set(), mcp_servers: new Set() })
   }, [])
 
   const handleClose = useCallback(() => {
@@ -49,6 +75,7 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
 
       const library = await res.json() as ProjectLibrary
       setState({ step: 'preview', library, repoUrl: trimmed })
+      setSelection(selectionFromLibrary(library))
     } catch {
       setState({ step: 'error', message: 'Network error — check your connection' })
     }
@@ -56,9 +83,32 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
 
   const handleLoad = useCallback(() => {
     if (state.step !== 'preview') return
-    onImport(state.library)
+    const filtered = filterLibraryBySelection(state.library, selection)
+    const hasAny = filtered.skills.length > 0 || filtered.rules.length > 0 || filtered.mcp_servers.length > 0
+    if (!hasAny) return
+    onImport(filtered)
     handleClose()
-  }, [state, onImport, handleClose])
+  }, [state, selection, onImport, handleClose])
+
+  const toggleItem = useCallback((category: keyof Selection, key: string) => {
+    setSelection((prev) => {
+      const next = new Set(prev[category])
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return { ...prev, [category]: next }
+    })
+  }, [])
+
+  const toggleAll = useCallback((category: keyof Selection, keys: string[]) => {
+    setSelection((prev) => {
+      const allSelected = keys.every((k) => prev[category].has(k))
+      const next = allSelected ? new Set<string>() : new Set(keys)
+      return { ...prev, [category]: next }
+    })
+  }, [])
+
+  const selectedCount =
+    selection.skills.size + selection.rules.size + selection.mcp_servers.size
 
   if (!open) return null
 
@@ -151,16 +201,26 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
                   icon={<ScrollText className="size-3.5" />}
                   label="Rules"
                   items={state.library.rules.map((r) => r.file_name)}
+                  selected={selection.rules}
+                  onToggle={(key) => toggleItem('rules', key)}
+                  onToggleAll={(keys) => toggleAll('rules', keys)}
                 />
                 <PreviewSection
                   icon={<BookOpen className="size-3.5" />}
                   label="Skills"
-                  items={state.library.skills.map((s) => s.name)}
+                  items={state.library.skills.map((s) => s.id)}
+                  labels={state.library.skills.map((s) => s.name)}
+                  selected={selection.skills}
+                  onToggle={(key) => toggleItem('skills', key)}
+                  onToggleAll={(keys) => toggleAll('skills', keys)}
                 />
                 <PreviewSection
                   icon={<Server className="size-3.5" />}
                   label="MCP Servers"
                   items={state.library.mcp_servers.map((s) => s.name)}
+                  selected={selection.mcp_servers}
+                  onToggle={(key) => toggleItem('mcp_servers', key)}
+                  onToggleAll={(keys) => toggleAll('mcp_servers', keys)}
                 />
 
                 {state.library.rules.length === 0 &&
@@ -185,9 +245,15 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
               </button>
               <button
                 onClick={handleLoad}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+                disabled={selectedCount === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40"
               >
                 Load into composer
+                {selectedCount > 0 && (
+                  <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold">
+                    {selectedCount}
+                  </span>
+                )}
                 <ArrowRight className="size-3.5" />
               </button>
             </div>
@@ -198,29 +264,61 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
   )
 }
 
-function PreviewSection({ icon, label, items }: { icon: React.ReactNode; label: string; items: string[] }) {
+interface PreviewSectionProps {
+  icon: React.ReactNode
+  label: string
+  items: string[]
+  labels?: string[]
+  selected: Set<string>
+  onToggle: (key: string) => void
+  onToggleAll: (keys: string[]) => void
+}
+
+function PreviewSection({ icon, label, items, labels, selected, onToggle, onToggleAll }: PreviewSectionProps) {
   if (items.length === 0) return null
+
+  const allSelected = items.every((i) => selected.has(i))
+  const selectedCount = items.filter((i) => selected.has(i)).length
 
   return (
     <div className="mb-3 last:mb-0">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-muted-foreground">{icon}</span>
-        <span className="text-xs font-semibold text-foreground">
-          {label}
-          <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-            {items.length}
+      <div className="flex items-center justify-between gap-1.5 mb-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">{icon}</span>
+          <span className="text-xs font-semibold text-foreground">
+            {label}
+            <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+              {selectedCount}/{items.length}
+            </span>
           </span>
-        </span>
+        </div>
+        <button
+          onClick={() => onToggleAll(items)}
+          className="text-[10px] text-muted-foreground hover:text-foreground transition"
+        >
+          {allSelected ? 'Deselect all' : 'Select all'}
+        </button>
       </div>
-      <div className="flex flex-wrap gap-1.5 pl-5">
-        {items.map((name) => (
-          <span
-            key={name}
-            className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[11px] font-medium text-foreground"
-          >
-            {name}
-          </span>
-        ))}
+      <div className="flex flex-col gap-1 pl-5">
+        {items.map((key, i) => {
+          const displayName = labels?.[i] ?? key
+          return (
+            <label
+              key={key}
+              className="flex items-center gap-2 cursor-pointer group"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(key)}
+                onChange={() => onToggle(key)}
+                className="size-3 rounded border-border/60 accent-primary cursor-pointer"
+              />
+              <span className={`text-[11px] font-medium transition ${selected.has(key) ? 'text-foreground' : 'text-muted-foreground line-through'}`}>
+                {displayName}
+              </span>
+            </label>
+          )
+        })}
       </div>
     </div>
   )
