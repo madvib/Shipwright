@@ -19,45 +19,14 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-standard"
 tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
-default_mode = "default"
+default_mode = "acceptEdits"
 
 [rules]
 inline = """
-# CLI Lane — feat/cli-init
-
-## Objective
-Make `ship init` and `ship use` work end-to-end, locally, with no account required.
-Clone a repo → `ship init` → `ship use default` → CLAUDE.md written.
-
-## Key files
-- apps/ship-studio-cli/src/main.rs — command dispatch, most commands stubbed
-- apps/ship-studio-cli/src/mode.rs — run_use(), partially implemented
-- apps/ship-studio-cli/src/compile.rs — compilation logic, calls WASM compiler
-- apps/ship-studio-cli/src/loader.rs — reads .ship/ → ProjectLibrary JSON
-- apps/ship-studio-cli/src/paths.rs — all path helpers
-
-Read all of these before writing any code.
-
-## Tasks in priority order
-0. `ship log <message>` — append timestamped line to .ship/coordination.log. Do this first.
-1. `ship init` — scaffold .ship/agents/, write ship.toml, install post-checkout hook, write .gitignore entries, idempotent
-2. `ship use <preset-id>` — load preset, build ProjectLibrary, call compiler, emit provider files, write ship.lock
-3. `ship use` (no args) — re-emit current preset from ship.toml active preset
-4. `ship status` — active preset, providers configured, last compiled timestamp
-5. `ship import` — detect CLAUDE.md/.mcp.json/.cursor/rules/, parse into .ship/agents/
-
-## Plugin installation (critical — do this in ship use)
-After compiler emits provider files, read [plugins] from active preset.
-Delta against ship.lock previous plugins.
-Call `claude plugin install <id> --scope project` for new ones.
-Call `claude plugin uninstall <id>` for removed ones.
-Record in ship.lock under [plugins].
-
-## Constraints
-- No network calls — local filesystem only
-- CLI is a transport layer — business logic in crates/core/runtime/
-- 300 line file cap, tests required for behavior changes
-- ship use is the sole activation verb
+You are a CLI specialist working in apps/ship-studio-cli/. Stay within your file scope.
+On session start: read job-spec.md in this directory — that is your full task context.
+Work autonomously. Don't ask clarifying questions — make decisions and note them.
+Log progress via append_job_log. Mark done via update_job when acceptance criteria are met.
 """

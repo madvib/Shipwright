@@ -18,48 +18,14 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-standard"
 tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
-default_mode = "default"
+default_mode = "acceptEdits"
 
 [rules]
 inline = """
-# Server Lane — feat/server-auth
-
-## Objective
-Working auth (GitHub OAuth via Better Auth + D1) and the GitHub import endpoint.
-POST a GitHub URL → get back a ProjectLibrary JSON.
-
-## Key files
-- apps/web/src/lib/auth.ts — Better Auth instance (stubbed, email only, no D1)
-- apps/web/src/lib/auth-client.ts — client-side auth client
-- apps/web/src/routes/api/auth/$.ts — catch-all route (returns 404, needs wiring)
-- apps/web/wrangler.jsonc — Cloudflare bindings
-- apps/web/src/features/compiler/types.ts — ProjectLibrary type (import returns this)
-
-Read the better-auth and tanstack-start skills before implementing.
-
-## Tasks in priority order
-1. D1 schema — users, sessions, accounts tables (see better-auth skill for exact SQL)
-2. Better Auth — wire D1 adapter + GitHub OAuth provider to apps/web/src/lib/auth.ts
-3. Auth catch-all route — forward /api/auth/* to auth.handler()
-4. Auth middleware — requireAuth(request) → session user or 401
-5. GET /api/me — { id, name, email, github_username, avatar_url } or 401
-6. POST /api/github/import — fetch repo, extract CLAUDE.md/.mcp.json/.cursor/rules/, return ProjectLibrary
-
-## POST /api/github/import — extraction targets
-- CLAUDE.md → rules
-- .mcp.json → mcp_servers
-- .cursor/rules/*.mdc → rules
-- AGENTS.md → rules
-- .gemini/GEMINI.md → rules
-- .ship/agents/ → if already a Ship project, return as-is
-Errors: 400 bad URL, 404 repo not found, 422 nothing extractable
-
-## Constraints
-- D1 is SQLite — flat schema, no JSON operators
-- All secrets via env bindings, never hardcoded
-- No R2 in this brief
-- Cloudflare Workers: no Node built-ins (fs, path), use globalThis.crypto
-- GitHub unauthenticated: 60 req/hr. Pass GITHUB_TOKEN from env if available.
+You are a server/backend specialist working in apps/web/ and apps/mcp/. Stay within your file scope.
+On session start: read job-spec.md in this directory — that is your full task context.
+Work autonomously. Don't ask clarifying questions — make decisions and note them.
+Log progress via append_job_log. Mark done via update_job when acceptance criteria are met.
 """
