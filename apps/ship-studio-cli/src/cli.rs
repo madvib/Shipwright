@@ -203,6 +203,11 @@ pub enum JobCommands {
         /// New status: pending, running, done, blocked
         status: String,
     },
+    /// Mark a job complete: stage files in job scope, commit, set status=complete
+    Done {
+        /// Job ID or unique prefix
+        id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
