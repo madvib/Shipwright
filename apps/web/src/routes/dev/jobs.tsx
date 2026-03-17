@@ -34,19 +34,34 @@ const TARGET_NAMES: Record<string, string> = {
 
 // ── DB path ───────────────────────────────────────────────────────────────
 
-const DB_PATH = `${process.env.HOME}/.ship/state/ship-hrvmuz4p/platform.db`
+function getDbPath(): string {
+  const { homedir } = require('os') as typeof import('os')
+  const home = process.env.HOME ?? homedir()
+  return `${home}/.ship/state/ship-hrvmuz4p/platform.db`
+}
+
+async function openDb() {
+  const fs = require('fs') as typeof import('fs')
+  const initSqlJs = (await import('sql.js')).default
+  const SQL = await initSqlJs()
+  const buffer = fs.readFileSync(getDbPath())
+  return new SQL.Database(buffer)
+}
 
 // ── Server functions ──────────────────────────────────────────────────────
 
 const getJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Job[]> => {
   try {
-    const Database = (await import('better-sqlite3')).default
-    const db = new Database(DB_PATH, { readonly: true })
-    const rows = db
-      .prepare<[], { id: string; status: string; branch: string | null; payload_json: string }>(
-        "SELECT id, status, branch, payload_json FROM job WHERE status IN ('running', 'pending') ORDER BY created_at DESC"
-      )
-      .all()
+    const db = await openDb()
+    const stmt = db.prepare(
+      "SELECT id, status, branch, payload_json FROM job WHERE status IN ('running', 'pending') ORDER BY created_at DESC"
+    )
+    const rows: { id: string; status: string; branch: string | null; payload_json: string }[] = []
+    while (stmt.step()) {
+      const r = stmt.getAsObject() as { id: string; status: string; branch: string | null; payload_json: string }
+      rows.push(r)
+    }
+    stmt.free()
     db.close()
     return rows.map((row) => {
       let description = ''
@@ -63,23 +78,28 @@ const getJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Job[
         touched_files: null,
       }
     })
-  } catch {
+  } catch (e) {
+    console.error('[getJobs]', e)
     return []
   }
 })
 
 const getCapabilities = createServerFn({ method: 'GET' }).handler(async (): Promise<Capability[]> => {
   try {
-    const Database = (await import('better-sqlite3')).default
-    const db = new Database(DB_PATH, { readonly: true })
-    const rows = db
-      .prepare<[], { id: string; title: string; target_id: string }>(
-        "SELECT id, title, target_id FROM capability WHERE status = 'aspirational' AND milestone_id = 'Gext6Bgu' ORDER BY target_id, created_at"
-      )
-      .all()
+    const db = await openDb()
+    const stmt = db.prepare(
+      "SELECT id, title, target_id FROM capability WHERE status = 'aspirational' AND milestone_id = 'Gext6Bgu' ORDER BY target_id, created_at"
+    )
+    const rows: { id: string; title: string; target_id: string }[] = []
+    while (stmt.step()) {
+      const r = stmt.getAsObject() as { id: string; title: string; target_id: string }
+      rows.push(r)
+    }
+    stmt.free()
     db.close()
     return rows.map((row) => ({ id: row.id, description: row.title, target_id: row.target_id }))
-  } catch {
+  } catch (e) {
+    console.error('[getCapabilities]', e)
     return []
   }
 })
