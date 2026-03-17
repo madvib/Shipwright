@@ -285,7 +285,11 @@ Communication: JSON on stdin/stdout. Env vars: `GEMINI_PROJECT_DIR`, `GEMINI_SES
 #### Permissions / Policies
 | Feature | Ship Status | Notes |
 |---|---|---|
-| `[[tool_policies]]` TOML | ✅ Compiled | To `.gemini/policies/ship.toml` |
+| `[[tool_policies]]` TOML | ✅ Compiled | To `.gemini/policies/ship.toml` (tool, pattern, decision) |
+| `mcpName` field in policies | 🔴 Gap | Target specific MCP server in policy rules |
+| `argsPattern` field in policies | 🔴 Gap | Regex against JSON-serialized tool args |
+| `priority` field in policies | 🔴 Gap | 0-999 priority within tier (3-tier system) |
+| `commandPrefix` field in policies | 🔴 Gap | Shell command prefix matching |
 | `policyPaths` | 🔧 provider_config | Extra policy directories |
 | `adminPolicyPaths` | ⬜ Managed only | |
 
