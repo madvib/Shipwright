@@ -37,6 +37,20 @@
           "migrations_dir": "migrations"
         }
       ]
+    },
+    "production": {
+      "name": "ship-studio",
+      "routes": [
+        { "pattern": "ship-studio.com/*", "zone_name": "ship-studio.com" }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ship",
+          "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
     }
   }
 }
