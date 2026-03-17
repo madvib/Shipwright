@@ -653,7 +653,6 @@ default_mode = "bypassPermissions"
         ).unwrap();
         let allow = v["permissions"]["allow"].as_array().unwrap();
         assert_eq!(allow.iter().filter(|x| x.as_str() == Some("mcp__ship__*")).count(), 1);
->>>>>>> job/6VeLskRQ
     }
 
     #[test]
