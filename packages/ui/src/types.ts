@@ -1,6 +1,21 @@
 // ── Shared agent config types ────────────────────────────────────────────────
 // These mirror the Rust types in crates/core/compiler and crates/core/runtime.
 
+export type HookTrigger =
+  | 'PreToolUse'
+  | 'PostToolUse'
+  | 'Notification'
+  | 'Stop'
+  | 'SubagentStop'
+  | 'PreCompact'
+
+export interface HookConfig {
+  id: string
+  trigger: HookTrigger
+  matcher?: string | null
+  command: string
+}
+
 export interface McpServerConfig {
   name: string
   command: string
@@ -56,6 +71,8 @@ export interface ProjectLibrary {
   skills: Skill[]
   rules: Rule[]
   permissions?: Permissions | null
+  hooks?: HookConfig[]
+  claude_settings_extra?: Record<string, unknown> | null
 }
 
 // ── MCP Registry types ───────────────────────────────────────────────────────

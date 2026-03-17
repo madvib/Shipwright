@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Search, Plus, Check, Download, Copy, CheckCheck, Upload,
-  Server, BookOpen, ScrollText, Shield, Bot,
+  Server, BookOpen, ScrollText, Shield, Bot, Settings,
   Loader2, Zap, PanelLeft, X,
 } from 'lucide-react'
 import { useCompiler } from '../features/compiler/useCompiler'
@@ -12,6 +12,7 @@ import { McpServersForm } from '../features/compiler/sections/McpServersForm'
 import { SkillsForm } from '../features/compiler/sections/SkillsForm'
 import { RulesForm } from '../features/compiler/sections/RulesForm'
 import { PermissionsForm } from '../features/compiler/sections/PermissionsForm'
+import { SettingsForm } from '../features/compiler/sections/SettingsForm'
 import { DEFAULT_LIBRARY, DEFAULT_PERMISSIONS } from '../features/compiler/types'
 import type { ProjectLibrary, CompileResult } from '../features/compiler/types'
 import { ProviderLogo } from '../features/compiler/ProviderLogo'
@@ -156,7 +157,7 @@ const CURATED_SKILLS: CuratedSkill[] = [
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ComposerSection = 'providers' | 'mcp' | 'skills' | 'rules' | 'permissions'
+type ComposerSection = 'providers' | 'mcp' | 'skills' | 'rules' | 'permissions' | 'settings'
 
 // ── Helper data ───────────────────────────────────────────────────────────────
 
@@ -700,6 +701,7 @@ const COMPOSER_TABS: Array<{ id: ComposerSection; label: string; icon: React.Ele
   { id: 'skills', label: 'Skills', icon: BookOpen },
   { id: 'rules', label: 'Rules', icon: ScrollText },
   { id: 'permissions', label: 'Permissions', icon: Shield },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
 const SECTION_HELP: Record<ComposerSection, { title: string; description: string }> = {
@@ -708,6 +710,7 @@ const SECTION_HELP: Record<ComposerSection, { title: string; description: string
   skills: { title: 'Skills', description: 'Instruction files injected into agent context — workflows, domain knowledge, repeated tasks.' },
   rules: { title: 'Rules', description: 'Always-active instructions included in every session.' },
   permissions: { title: 'Permissions', description: 'Control what tools, paths, and commands your agents can access.' },
+  settings: { title: 'Provider settings', description: 'Model selection, behavior toggles, hooks, env vars, and developer options.' },
 }
 
 interface SectionHeaderProps {
@@ -812,6 +815,14 @@ function ComposerPanel({
               <PermissionsForm
                 permissions={library.permissions ?? DEFAULT_PERMISSIONS}
                 onChange={(permissions) => onLibraryChange({ permissions })}
+              />
+            )}
+            {activeSection === 'settings' && (
+              <SettingsForm
+                claudeSettingsExtra={(library.claude_settings_extra as Record<string, unknown>) ?? {}}
+                hooks={library.hooks ?? []}
+                onClaudeSettingsChange={(claude_settings_extra) => onLibraryChange({ claude_settings_extra })}
+                onHooksChange={(hooks) => onLibraryChange({ hooks })}
               />
             )}
           </div>
