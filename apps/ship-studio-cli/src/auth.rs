@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
 
-use crate::config::{AuthConfig, ShipConfig};
+use crate::config::{Credentials, CredentialsAccount, ShipConfig};
 
 /// Open `url` in the system's default browser.
 fn open_browser(url: &str) {
@@ -120,23 +120,23 @@ pub fn run_login() -> Result<()> {
     // Writing a placeholder so downstream tooling can proceed in CI/local testing.
     let token = format!("stub-{}-{}", &code[..code.len().min(8)], &verifier[..8]);
 
-    let mut cfg = ShipConfig::load();
-    cfg.auth = Some(AuthConfig { token: Some(token) });
-    cfg.save()?;
+    let mut creds = Credentials::load();
+    creds.account = Some(CredentialsAccount { token: Some(token) });
+    creds.save()?;
 
-    println!("✓ Logged in. Token stored in ~/.ship/config.toml (0600).");
+    println!("✓ Logged in. Token stored in ~/.ship/credentials (0600).");
     Ok(())
 }
 
 /// `ship logout` — remove the stored auth token.
 pub fn run_logout() -> Result<()> {
-    let mut cfg = ShipConfig::load();
-    if cfg.auth.as_ref().and_then(|a| a.token.as_ref()).is_none() {
+    let mut creds = Credentials::load();
+    if creds.token().is_none() {
         println!("Not logged in.");
         return Ok(());
     }
-    cfg.auth = Some(AuthConfig { token: None });
-    cfg.save()?;
+    creds.account = None;
+    creds.save()?;
     println!("✓ Logged out.");
     Ok(())
 }
@@ -153,9 +153,10 @@ pub fn run_whoami() -> Result<()> {
         }
         _ => println!("(no identity — run: ship init --global)"),
     }
-    match cfg.auth {
-        Some(ref a) if a.token.is_some() => println!("authenticated"),
-        _ => println!("not logged in"),
+    let creds = Credentials::load();
+    match creds.token() {
+        Some(_) => println!("authenticated"),
+        None => println!("Not logged in."),
     }
     Ok(())
 }

@@ -251,24 +251,17 @@ fn skill_list_shows_global_skill() {
         .stdout(predicate::str::contains("Global skills"));
 }
 
-// ── auth stubs ────────────────────────────────────────────────────────────────
+// ── auth ──────────────────────────────────────────────────────────────────────
 
 #[test]
-fn login_stub_exits_zero_and_prints_message() {
-    ship()
-        .args(["login"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("login"));
-}
-
-#[test]
-fn logout_stub_exits_zero_and_prints_message() {
+fn logout_when_not_logged_in_exits_zero() {
+    let tmp = TempDir::new().unwrap();
     ship()
         .args(["logout"])
+        .env("HOME", tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("logout"));
+        .stdout(predicate::str::contains("Not logged in."));
 }
 
 #[test]

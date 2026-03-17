@@ -118,6 +118,13 @@ pub enum Commands {
         zip: bool,
     },
 
+    // ── Profile sync (account required) ──────────────────────────────────────
+    /// Push and pull agent profiles from the Ship cloud
+    Profile {
+        #[command(subcommand)]
+        action: ProfileSyncCommands,
+    },
+
     // ── Cloud sync (account required) ─────────────────────────────────────────
     /// Sync modes with your Ship cloud library
     Sync {
@@ -206,6 +213,20 @@ pub enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ProfileSyncCommands {
+    /// Upload .ship/agents/profiles/ to the Ship API (requires login)
+    Push,
+    /// Download profiles from the Ship API (requires login)
+    Pull {
+        /// Pull only the named profile
+        name: Option<String>,
+        /// Overwrite existing profiles without prompting
+        #[arg(long)]
+        force: bool,
     },
 }
 
