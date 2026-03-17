@@ -20,6 +20,9 @@ pub enum Commands {
         /// Default provider target (claude, gemini, codex, cursor)
         #[arg(long)]
         provider: Option<String>,
+        /// Overwrite existing .ship/ configuration
+        #[arg(long)]
+        force: bool,
     },
 
     // ── Auth (lazy — no account needed for core features) ────────────────────
