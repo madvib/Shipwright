@@ -6,6 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 pub use server::{ShipServer, run_server};
+pub use http::run_http_server;
 
 pub struct ShipMcpApp;
 
