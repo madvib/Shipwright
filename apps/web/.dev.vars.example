@@ -1,0 +1,8 @@
+# Copy to .dev.vars for local development (never commit .dev.vars)
+
+# GitHub OAuth app credentials (https://github.com/settings/applications/new)
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# Better Auth secret — any random string, e.g. `openssl rand -hex 32`
+BETTER_AUTH_SECRET=
