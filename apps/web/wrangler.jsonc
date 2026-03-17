@@ -1,7 +1,16 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ship-studio",
-  "compatibility_date": "2025-09-02",
-  "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry"
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "ship-studio",
+	"compatibility_date": "2025-09-02",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"main": "@tanstack/react-start/server-entry",
+	"d1_databases": [
+		{
+			"binding": "ship",
+			"database_name": "ship",
+			"database_id": "1d30f1aa-0ea9-417b-9179-d21911404727"
+		}
+	]
 }
