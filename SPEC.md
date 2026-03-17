@@ -368,7 +368,7 @@ compileLibrary(library_json: string, provider: string, active_mode?: string): st
 compileLibraryAll(library_json: string, active_mode?: string): string
 
 // List supported provider ids. Returns string[].
-listProviders(): string[]   // ["claude", "gemini", "codex", "cursor"]
+listProviders(): string[]   // ["claude", "gemini", "codex", "cursor", "windsurf"]
 ```
 
 ### `CompileResult` shape (JSON returned by WASM)
@@ -397,8 +397,28 @@ listProviders(): string[]   // ["claude", "gemini", "codex", "cursor"]
 | `gemini` | `GEMINI.md` | `.gemini/settings.json` (nested) | `.agents/skills/<id>/SKILL.md` | `.gemini/settings.json` + `.gemini/policies/ship.toml` |
 | `codex` | `AGENTS.md` | `.codex/config.toml` | `.agents/skills/<id>/SKILL.md` | — |
 | `cursor` | — (per-file `.mdc`) | `.cursor/mcp.json` | `.cursor/skills/<id>/SKILL.md` | `.cursor/cli.json` + `.cursor/hooks.json` |
+| `windsurf` | `.windsurfrules` | — | `.agents/skills/<id>/SKILL.md` | — |
 
 Cursor uses `.cursor/rules/*.mdc` (one file per rule) instead of a single context file.
+Windsurf uses `.windsurfrules` (single markdown file, same content as other context files).
+
+### Provider Feature Matrix
+
+Defines what the compiler emits per provider. Governed by `ProviderFeatureFlags` in the Rust compiler.
+
+| Provider | `supports_mcp` | `supports_hooks` | `supports_tool_permissions` | `supports_memory` |
+|---|---|---|---|---|
+| `claude` | ✓ | ✓ | ✓ | ✓ (`CLAUDE.md`) |
+| `gemini` | ✓ | ✓ | ✓ | ✓ (`GEMINI.md`) |
+| `codex` | ✓ | — | — | ✓ (`AGENTS.md`) |
+| `cursor` | ✓ | ✓ | ✓ | — (per-file `.mdc` rules) |
+| `windsurf` | — | — | — | ✓ (`.windsurfrules`) |
+
+**Flag semantics:**
+- `supports_mcp` — provider reads an MCP server config file; compiler emits MCP entries and `mcp_config_path`
+- `supports_hooks` — provider supports session hooks (Stop, PreToolUse, etc.)
+- `supports_tool_permissions` — provider supports allow/deny tool lists
+- `supports_memory` — provider has a persistent rules/context file that survives sessions
 
 ---
 
@@ -408,12 +428,13 @@ Cursor uses `.cursor/rules/*.mdc` (one file per rule) instead of a single contex
 CLAUDE.md              ← claude context
 AGENTS.md              ← codex/openai/gemini fallback context
 GEMINI.md              ← gemini context
+.windsurfrules         ← windsurf rules file
 .mcp.json              ← claude MCP config
 .cursor/               ← cursor rules, mcp, hooks, permissions
 .codex/config.toml     ← codex MCP + config patch
 .gemini/               ← gemini settings + policies
 .claude/skills/        ← compiled skills for claude
-.agents/skills/        ← compiled skills for codex/gemini
+.agents/skills/        ← compiled skills for codex/gemini/windsurf
 .cursor/skills/        ← compiled skills for cursor
 ```
 
