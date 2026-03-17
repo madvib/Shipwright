@@ -187,4 +187,5 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0008_job_claimed_by", "ALTER TABLE job ADD COLUMN claimed_by TEXT;"),
     ("0009_targets", TARGETS),
     ("0010_job_file_ownership", JOB_FILE_OWNERSHIP),
+    ("0011_job_file_scope", "ALTER TABLE job ADD COLUMN file_scope TEXT NOT NULL DEFAULT '[]';"),
 ];
