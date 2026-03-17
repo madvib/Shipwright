@@ -1,6 +1,7 @@
 mod agent;
 mod auth;
 mod cli;
+mod cloud;
 mod compile;
 mod config;
 mod diff;
@@ -14,7 +15,7 @@ mod profile;
 mod skill;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, SkillCommands};
+use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -52,6 +53,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Server { .. } => {
                 stub("server", "Local server (port 7701) — coming soon")
             }
+            Commands::Profile { action } => dispatch_profile(action),
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Next { worktrees_dir } => job::next(worktrees_dir),
             Commands::Retry { id, worktrees_dir } => job::retry(&id, worktrees_dir),
@@ -485,6 +487,18 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
 
     if watch { println!("--watch not yet implemented. Run compile manually after changes."); }
     Ok(())
+}
+
+// ── Profile subcommands ───────────────────────────────────────────────────────
+
+fn dispatch_profile(action: ProfileSyncCommands) -> Result<()> {
+    let project_root = std::env::current_dir()?;
+    match action {
+        ProfileSyncCommands::Push => cloud::push_profiles(&project_root),
+        ProfileSyncCommands::Pull { name, force } => {
+            cloud::pull_profiles(name.as_deref(), force, &project_root)
+        }
+    }
 }
 
 // ── Job subcommands ───────────────────────────────────────────────────────────
