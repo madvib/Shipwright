@@ -32,89 +32,37 @@ const TARGET_NAMES: Record<string, string> = {
   JUPHSmmW: 'desktop',
 }
 
-// ── ship-mcp JSON-RPC helper ──────────────────────────────────────────────
+// ── DB path ───────────────────────────────────────────────────────────────
 
-async function callShipMcpTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-  const { spawn } = await import(/* @vite-ignore */ 'node:child_process')
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn('ship-mcp', [], { stdio: ['pipe', 'pipe', 'pipe'] })
-
-    const send = (msg: unknown) => {
-      proc.stdin.write(JSON.stringify(msg) + '\n')
-    }
-
-    let buffer = ''
-    let step = 0
-
-    proc.stdout.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const msg = JSON.parse(line) as {
-            id?: number
-            result?: { content?: Array<{ text?: string }> }
-          }
-          if (step === 0 && msg.id === 1) {
-            send({ jsonrpc: '2.0', method: 'notifications/initialized' })
-            send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: toolName, arguments: args } })
-            step = 1
-          } else if (step === 1 && msg.id === 2) {
-            proc.kill()
-            resolve(msg.result?.content?.[0]?.text ?? '')
-          }
-        } catch { /* ignore parse errors */ }
-      }
-    })
-
-    send({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: 'ship-studio-dev', version: '0.1.0' },
-      },
-    })
-
-    proc.on('error', reject)
-    setTimeout(() => { proc.kill(); reject(new Error('ship-mcp timeout')) }, 5000)
-  })
-}
+const DB_PATH = `${process.env.HOME}/.ship/state/ship-hrvmuz4p/platform.db`
 
 // ── Server functions ──────────────────────────────────────────────────────
 
 const getJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Job[]> => {
   try {
-    const [runningText, pendingText] = await Promise.all([
-      callShipMcpTool('list_jobs', { status: 'running' }),
-      callShipMcpTool('list_jobs', { status: 'pending' }),
-    ])
-
-    const parseLines = (text: string, status: 'running' | 'pending'): Job[] => {
-      const jobs: Job[] = []
-      for (const line of text.split('\n')) {
-        const m = line.match(/^\s*-\s+(\S+)\s+\[(?:running|pending)\]/)
-        if (m) {
-          jobs.push({
-            id: m[1],
-            status,
-            description: '',
-            branch: `job/${m[1]}`,
-            worktree_path: `~/dev/ship-worktrees/${m[1]}`,
-            touched_files: null,
-          })
-        }
+    const Database = (await import('better-sqlite3')).default
+    const db = new Database(DB_PATH, { readonly: true })
+    const rows = db
+      .prepare<[], { id: string; status: string; branch: string | null; payload_json: string }>(
+        "SELECT id, status, branch, payload_json FROM job WHERE status IN ('running', 'pending') ORDER BY created_at DESC"
+      )
+      .all()
+    db.close()
+    return rows.map((row) => {
+      let description = ''
+      try {
+        const payload = JSON.parse(row.payload_json) as Record<string, unknown>
+        if (typeof payload.description === 'string') description = payload.description
+      } catch { /* ignore */ }
+      return {
+        id: row.id,
+        status: row.status as 'pending' | 'running',
+        description,
+        branch: row.branch ?? `job/${row.id}`,
+        worktree_path: `~/dev/ship-worktrees/${row.id}`,
+        touched_files: null,
       }
-      return jobs
-    }
-
-    return [...parseLines(runningText, 'running'), ...parseLines(pendingText, 'pending')]
+    })
   } catch {
     return []
   }
@@ -122,13 +70,15 @@ const getJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Job[
 
 const getCapabilities = createServerFn({ method: 'GET' }).handler(async (): Promise<Capability[]> => {
   try {
-    const text = await callShipMcpTool('list_capabilities', { status: 'aspirational' })
-    const caps: Capability[] = []
-    for (const line of text.split('\n')) {
-      const m = line.match(/^- \[ \] (.+) \(id: (\w+), target: (\w+)\)$/)
-      if (m) caps.push({ description: m[1].trim(), id: m[2], target_id: m[3] })
-    }
-    return caps
+    const Database = (await import('better-sqlite3')).default
+    const db = new Database(DB_PATH, { readonly: true })
+    const rows = db
+      .prepare<[], { id: string; title: string; target_id: string }>(
+        "SELECT id, title, target_id FROM capability WHERE status = 'aspirational' AND milestone_id = 'Gext6Bgu' ORDER BY target_id, created_at"
+      )
+      .all()
+    db.close()
+    return rows.map((row) => ({ id: row.id, description: row.title, target_id: row.target_id }))
   } catch {
     return []
   }
