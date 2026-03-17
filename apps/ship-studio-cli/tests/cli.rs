@@ -251,24 +251,81 @@ fn skill_list_shows_global_skill() {
         .stdout(predicate::str::contains("Global skills"));
 }
 
-// ── auth stubs ────────────────────────────────────────────────────────────────
+// ── ship export ───────────────────────────────────────────────────────────────
 
 #[test]
-fn login_stub_exits_zero_and_prints_message() {
+fn export_gemini_writes_gemini_md() {
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+
     ship()
-        .args(["login"])
+        .args(["export", "gemini"])
+        .current_dir(tmp.path())
         .assert()
-        .success()
-        .stdout(predicate::str::contains("login"));
+        .success();
+
+    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written for gemini export");
+    let content = fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
+    assert!(content.contains("Use explicit types."));
 }
 
 #[test]
-fn logout_stub_exits_zero_and_prints_message() {
+fn export_codex_writes_agents_md() {
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+
+    ship()
+        .args(["export", "codex"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written for codex export");
+    let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+    assert!(content.contains("Use explicit types."));
+}
+
+#[test]
+fn export_codex_writes_codex_config_toml() {
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+
+    ship()
+        .args(["export", "codex"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let path = tmp.path().join(".codex/config.toml");
+    assert!(path.exists(), ".codex/config.toml must be written for codex export");
+    let content = fs::read_to_string(&path).unwrap();
+    assert!(content.contains("mcp_servers"), "config.toml must contain mcp_servers");
+}
+
+// ── auth stubs ────────────────────────────────────────────────────────────────
+
+#[test]
+fn login_opens_browser_flow() {
+    // login starts an OAuth flow — verify it prints the auth URL and exits
+    // (test environment has no browser; the 60 s callback wait is not exercised here
+    //  because the test binary does not trigger the server listen path)
+    ship()
+        .args(["login"])
+        .timeout(std::time::Duration::from_secs(5))
+        .assert()
+        .stdout(predicate::str::contains("Opening browser"));
+}
+
+#[test]
+fn logout_when_not_logged_in_says_not_logged_in() {
+    let tmp = TempDir::new().unwrap();
+
     ship()
         .args(["logout"])
+        .env("HOME", tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("logout"));
+        .stdout(predicate::str::contains("Not logged in."));
 }
 
 #[test]
@@ -281,5 +338,5 @@ fn whoami_not_logged_in_when_no_config() {
         .env("HOME", tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Not logged in."));
+        .stdout(predicate::str::contains("not logged in"));
 }

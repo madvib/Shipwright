@@ -400,6 +400,45 @@ args = ["-y", "@mcp/github"]
     }
 
     #[test]
+    fn compile_gemini_writes_gemini_md_with_rules() {
+        let tmp = TempDir::new().unwrap();
+        setup_minimal_project(&tmp);
+        run_compile(CompileOptions {
+            project_root: tmp.path(), provider: Some("gemini"),
+            dry_run: false, active_mode: None,
+        }).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
+        assert!(content.contains("Use explicit types."), "GEMINI.md must contain rules");
+    }
+
+    #[test]
+    fn compile_codex_writes_agents_md_with_rules() {
+        let tmp = TempDir::new().unwrap();
+        setup_minimal_project(&tmp);
+        run_compile(CompileOptions {
+            project_root: tmp.path(), provider: Some("codex"),
+            dry_run: false, active_mode: None,
+        }).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+        assert!(content.contains("Use explicit types."), "AGENTS.md must contain rules");
+    }
+
+    #[test]
+    fn compile_codex_writes_toml_config_with_mcp_servers() {
+        let tmp = TempDir::new().unwrap();
+        setup_minimal_project(&tmp);
+        run_compile(CompileOptions {
+            project_root: tmp.path(), provider: Some("codex"),
+            dry_run: false, active_mode: None,
+        }).unwrap();
+        let path = tmp.path().join(".codex/config.toml");
+        assert!(path.exists(), ".codex/config.toml must be written for codex");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("mcp_servers"), "config.toml must contain mcp_servers section");
+        assert!(content.contains("ship"), "ship server must appear in codex config");
+    }
+
+    #[test]
     fn compile_cursor_writes_mdc_rule_files() {
         let tmp = TempDir::new().unwrap();
         setup_minimal_project(&tmp);
