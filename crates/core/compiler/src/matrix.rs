@@ -147,10 +147,10 @@ fn claude_capabilities() -> Vec<Capability> {
         },
         Capability {
             id: "team_agents",
-            label: "Team agents (.claude/agents/)",
+            label: "Subagent profiles (.claude/agents/, .gemini/agents/, etc.)",
             provider_supports: true,
             ship_coverage: Coverage::Full,
-            ship_emits: ".claude/agents/<name>.md from .ship/agents/teams/claude/",
+            ship_emits: "Provider-native agent files from .ship/agents/profiles/*.toml",
             gap: "",
         },
         Capability {

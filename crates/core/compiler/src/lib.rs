@@ -7,16 +7,17 @@ pub mod types;
 
 pub use compile::{
     CompileOutput, ContextFile, McpKey, ProviderDescriptor, SkillsDir,
+    agents::compile_agent_profiles,
     build_claude_settings_patch, compile, get_provider, list_providers,
     CURSOR_PERMISSIVE_ALLOW,
 };
 pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
 pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
 pub use types::{
-    AgentLayerConfig, AiConfig, CatalogEntry, CatalogKind, GitConfig, HookConfig, HookTrigger,
-    McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig, Permissions,
-    PluginEntry, PluginsManifest, ProjectConfig, Rule, Skill, SkillSource, StatusConfig,
-    ToolPermissions, list_catalog, list_catalog_by_kind, search_catalog,
+    AgentLayerConfig, AgentProfile, AiConfig, CatalogEntry, CatalogKind, GitConfig, HookConfig,
+    HookTrigger, McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig,
+    Permissions, PluginEntry, PluginsManifest, ProjectConfig, Rule, Skill, SkillSource,
+    StatusConfig, ToolPermissions, list_catalog, list_catalog_by_kind, search_catalog,
 };
 
 /// Generate a nanoid using Ship's 56-character alphabet (no ambiguous chars).
@@ -67,6 +68,9 @@ mod wasm {
         cursor_hooks_patch: Option<serde_json::Value>,
         /// Cursor-only: `.cursor/cli.json` permissions (CLI-only, not IDE).
         cursor_cli_permissions: Option<serde_json::Value>,
+        /// Provider-native agent files: path → content.
+        /// e.g. `.claude/agents/reviewer.md`, `.gemini/agents/reviewer.md`.
+        agent_files: std::collections::HashMap<String, String>,
         /// Plugin install intent declared by the active preset.
         /// The CLI/runtime reads this to execute plugin installs — never the compiler.
         plugins_manifest: crate::PluginsManifest,
@@ -108,6 +112,7 @@ mod wasm {
             gemini_policy_patch: output.gemini_policy_patch,
             cursor_hooks_patch: output.cursor_hooks_patch,
             cursor_cli_permissions: output.cursor_cli_permissions,
+            agent_files: output.agent_files,
             plugins_manifest: output.plugins_manifest,
         };
 

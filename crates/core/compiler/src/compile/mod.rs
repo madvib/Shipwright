@@ -1,3 +1,5 @@
+pub mod agents;
+
 use std::collections::HashMap;
 
 use serde_json::Value as Json;
@@ -251,6 +253,10 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
     out.context_content = build_context_content(desc, resolved);
     out.skill_files = build_skill_files(desc, &resolved.skills);
 
+    // Compile agent profiles for this provider
+    let profile_agents = agents::compile_agent_profiles(&resolved.agent_profiles, provider_id);
+    out.agent_files.extend(profile_agents);
+
     if provider_id == "claude" {
         out.claude_settings_patch = build_claude_settings_patch(
             &resolved.permissions,
@@ -260,6 +266,7 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
             &resolved.env,
             &resolved.available_models,
         );
+        // Legacy team agents (passthrough from .ship/agents/teams/claude/)
         for (filename, content) in &resolved.claude_team_agents {
             out.agent_files
                 .insert(format!(".claude/agents/{}", filename), content.clone());
@@ -1099,6 +1106,7 @@ mod tests {
             active_mode: None,
             plugins: Default::default(),
             claude_settings_extra: None,
+            agent_profiles: vec![],
             claude_team_agents: vec![],
             env: Default::default(),
             available_models: vec![],

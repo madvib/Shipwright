@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use crate::types::{
-    HookConfig, McpServerConfig, ModeConfig, Permissions, PluginsManifest, ProjectConfig, Rule,
-    Skill,
+    AgentProfile, HookConfig, McpServerConfig, ModeConfig, Permissions, PluginsManifest,
+    ProjectConfig, Rule, Skill,
 };
 
 /// Thin overrides that a feature branch can apply on top of project defaults.
@@ -42,7 +42,10 @@ pub struct ResolvedConfig {
     /// Pass-through from `[provider_settings.claude]` in the preset TOML.
     /// Merged verbatim into `.claude/settings.json`.
     pub claude_settings_extra: Option<serde_json::Value>,
-    /// Team agent files for the Claude provider.
+    /// Agent profiles parsed from `.ship/agents/profiles/*.toml`.
+    /// Compiled into provider-native subagent definitions.
+    pub agent_profiles: Vec<AgentProfile>,
+    /// Team agent files for the Claude provider (legacy passthrough).
     /// Source: `.ship/agents/teams/claude/<name>.md`.
     /// Output: `.claude/agents/<name>.md`.
     pub claude_team_agents: Vec<(String, String)>,
@@ -94,6 +97,9 @@ pub struct ProjectLibrary {
     /// Merged verbatim into `.claude/settings.json` on compile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_settings_extra: Option<serde_json::Value>,
+    /// Agent profiles from `.ship/agents/profiles/*.toml`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_profiles: Vec<AgentProfile>,
     /// Team agent files: `.ship/agents/teams/claude/<name>.md` → `.claude/agents/<name>.md`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub claude_team_agents: Vec<(String, String)>,
@@ -129,6 +135,7 @@ pub fn resolve_library(
     );
     resolved.plugins = library.plugins.clone();
     resolved.claude_settings_extra = library.claude_settings_extra.clone();
+    resolved.agent_profiles = library.agent_profiles.clone();
     resolved.claude_team_agents = library.claude_team_agents.clone();
     resolved.env = library.env.clone();
     resolved.available_models = library.available_models.clone();
@@ -234,6 +241,7 @@ pub fn resolve(
         active_mode,
         plugins: PluginsManifest::default(),
         claude_settings_extra: None,
+        agent_profiles: Vec::new(),
         claude_team_agents: Vec::new(),
         env: std::collections::HashMap::new(),
         available_models: Vec::new(),

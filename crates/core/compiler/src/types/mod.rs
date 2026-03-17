@@ -1,3 +1,4 @@
+pub mod agent_profile;
 pub mod catalog;
 pub mod config;
 pub mod permissions;
@@ -5,6 +6,7 @@ pub mod plugin;
 pub mod rule;
 pub mod skill;
 
+pub use agent_profile::AgentProfile;
 pub use catalog::{CatalogEntry, CatalogKind, list_catalog, list_catalog_by_kind, search_catalog};
 pub use config::{
     AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig,

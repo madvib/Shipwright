@@ -25,7 +25,7 @@ Add a `<!-- verified: YYYY-MM-DD source: <url> -->` comment when re-verifying a 
 | Model override | ✅ `model` in settings patch | — needs `provider_config` | — needs `provider_config` | — needs `provider_config` |
 | MCP config path | ✅ `.mcp.json` | ✅ `.gemini/settings.json` | ✅ `.codex/config.toml` | ✅ `.cursor/mcp.json` |
 | Provider-specific settings | — (model ✅, rest needs `provider_config`) | — needs `provider_config` | — needs `provider_config` | — needs `provider_config` |
-| Multi-agent roles | — | — | ⚠️ `agents/*.toml` + `[agents]` in config | — |
+| Subagent profiles | ✅ `.claude/agents/<id>.md` | ✅ `.gemini/agents/<id>.md` | ✅ `.codex/agents/<id>.toml` | ✅ `.cursor/agents/<id>.md` |
 
 **Key:** ✅ implemented · ⚠️ partial/not compiled · — not implemented / out of scope
 
@@ -307,6 +307,37 @@ This must only be emitted when the user has **explicitly selected** a permissive
 **Global permissive** (`~/.cursor/cli-config.json`) must never be written unless the user explicitly selects it at the global level (with additional warnings — it grants full access to all Cursor agents on the machine).
 
 Compiled to `cursor_cli_permissions` field in `CompileOutput`.
+
+---
+
+## Subagent Profiles
+
+Ship compiles `.ship/agents/profiles/*.toml` into provider-native subagent definitions.
+Each profile is emitted for every provider listed in its `providers` field (or all providers if empty).
+
+<!-- verified: 2026-03-17 source: https://code.claude.com/docs/en/sub-agents -->
+<!-- verified: 2026-03-17 source: https://geminicli.com/docs/core/subagents/ -->
+<!-- verified: 2026-03-17 source: https://cursor.com/docs/context/subagents -->
+<!-- verified: 2026-03-17 source: https://developers.openai.com/codex/subagents -->
+
+### Claude Code — `.claude/agents/<id>.md`
+
+YAML frontmatter + Markdown body. Key fields: `name`, `description`, `model` (alias: sonnet/opus/haiku),
+`permissionMode`, `disallowedTools`, `mcpServers`, `skills`.
+
+### Gemini CLI — `.gemini/agents/<id>.md`
+
+YAML frontmatter + Markdown body. Key fields: `name`, `description`, `kind` (always `local`),
+`model`, `tools` (list or `*`), `max_turns`, `max_time`.
+
+### Cursor — `.cursor/agents/<id>.md`
+
+YAML frontmatter + Markdown body. Key fields: `name`, `description`, `model` (`fast`/`default`/name).
+
+### Codex CLI — `.codex/agents/<id>.toml`
+
+TOML agent config. Key fields: `name`, `description`, `model`, `mcp_servers`.
+Referenced from `[agents.<name>]` in `.codex/config.toml`.
 
 ---
 
