@@ -91,6 +91,16 @@ pub struct CreateJobRequest {
     pub blocked_by: Option<String>,
     /// File paths this job intends to touch (informational; use claim_file for ownership)
     pub touched_files: Option<Vec<String>>,
+    /// Capability id this job is delivering (e.g. "csycGZPJ")
+    pub capability_id: Option<String>,
+    /// File or directory paths the agent may touch (scope declaration)
+    pub scope: Option<Vec<String>>,
+    /// Acceptance criteria checklist items
+    pub acceptance_criteria: Option<Vec<String>>,
+    /// Profile name to compile / activate in the worktree
+    pub preset_hint: Option<String>,
+    /// Human-readable worktree label (used as symlink name)
+    pub symlink_name: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]

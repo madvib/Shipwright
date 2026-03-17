@@ -87,12 +87,52 @@ fn write_job_spec(wt_path: &Path, job: &jobs::Job) -> Result<()> {
         .and_then(|v| v.as_str())
         .unwrap_or("default");
 
-    let content = format!(
-        "# Job {} — {}\n\n## Kind\n{}\n\n## Preset hint\n{}\n\n## Description\n{}\n\n\
-         ## Acceptance criteria\n- See description above\n\n\
-         ## Mark done\nMark done via MCP: `update_job(id=\"{}\", status=\"complete\")`\n",
-        job.id, title, job.kind, preset_hint, description, job.id
+    // Optional structured fields (graceful fallback when absent).
+    let capability_id = job.payload.get("capability_id")
+        .and_then(|v| v.as_str());
+    let symlink_name = job.payload.get("symlink_name")
+        .and_then(|v| v.as_str());
+    let scope: Vec<&str> = job.payload.get("scope")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+    let criteria: Vec<&str> = job.payload.get("acceptance_criteria")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+
+    let mut content = format!(
+        "# Job {} — {}\n\n## Kind\n{}\n\n## Preset hint\n{}\n\n",
+        job.id, title, job.kind, preset_hint
     );
+
+    if let Some(cap) = capability_id {
+        content.push_str(&format!("## Capability\n{}\n\n", cap));
+    }
+    if let Some(sym) = symlink_name {
+        content.push_str(&format!("## Symlink name\n{}\n\n", sym));
+    }
+    if !scope.is_empty() {
+        content.push_str("## Scope\n");
+        for s in &scope {
+            content.push_str(&format!("- {}\n", s));
+        }
+        content.push('\n');
+    }
+    content.push_str(&format!("## Description\n{}\n\n", description));
+    content.push_str("## Acceptance criteria\n");
+    if criteria.is_empty() {
+        content.push_str("- See description above\n");
+    } else {
+        for c in &criteria {
+            content.push_str(&format!("- [ ] {}\n", c));
+        }
+    }
+    content.push_str(&format!(
+        "\n## Mark done\nMark done via MCP: `update_job(id=\"{}\", status=\"complete\")`\n",
+        job.id
+    ));
+
     std::fs::write(wt_path.join("job-spec.md"), content)?;
     Ok(())
 }
@@ -586,6 +626,55 @@ mod tests {
         assert!(content.contains("Build the thing"), "spec must contain title");
         assert!(content.contains("rust-expert"), "spec must contain preset_hint");
         assert!(content.contains("Make it work."), "spec must contain description");
+    }
+
+    #[test]
+    fn test_write_job_spec_structured_fields() {
+        let tmp = tempdir().unwrap();
+        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db(&ship_dir).unwrap();
+
+        let payload = serde_json::json!({
+            "title": "Structured job",
+            "description": "Do the thing.",
+            "preset_hint": "default",
+            "capability_id": "abcd1234",
+            "symlink_name": "my-feature",
+            "scope": ["src/lib.rs", "src/main.rs"],
+            "acceptance_criteria": ["Tests pass", "Doc updated"]
+        });
+        let job = jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![]).unwrap();
+
+        let wt = tmp.path().join("wt2");
+        std::fs::create_dir_all(&wt).unwrap();
+        write_job_spec(&wt, &job).unwrap();
+
+        let content = std::fs::read_to_string(wt.join("job-spec.md")).unwrap();
+        assert!(content.contains("abcd1234"), "spec must contain capability_id");
+        assert!(content.contains("my-feature"), "spec must contain symlink_name");
+        assert!(content.contains("src/lib.rs"), "spec must contain scope entries");
+        assert!(content.contains("- [ ] Tests pass"), "spec must contain acceptance criteria with checkbox");
+        assert!(content.contains("- [ ] Doc updated"), "spec must contain second criterion");
+    }
+
+    #[test]
+    fn test_write_job_spec_graceful_fallback_without_structured_fields() {
+        let tmp = tempdir().unwrap();
+        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db(&ship_dir).unwrap();
+
+        // Minimal payload — no structured fields
+        let payload = serde_json::json!({ "description": "Old-style job" });
+        let job = jobs::create_job(&ship_dir, "test", None, Some(payload), None, None, 0, None, vec![]).unwrap();
+
+        let wt = tmp.path().join("wt3");
+        std::fs::create_dir_all(&wt).unwrap();
+        // Must not panic or error
+        write_job_spec(&wt, &job).unwrap();
+
+        let content = std::fs::read_to_string(wt.join("job-spec.md")).unwrap();
+        assert!(content.contains("Old-style job"), "description must appear");
+        assert!(content.contains("See description above"), "fallback criteria must appear");
     }
 
     #[test]
