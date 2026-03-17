@@ -192,6 +192,14 @@ pub enum Commands {
     /// Migrate notes and ADRs from old ship.db to platform.db
     Migrate,
 
+    // ── Capability diff ───────────────────────────────────────────────────────
+    /// Show capability progress delta for the active milestone
+    Diff {
+        /// Milestone target id. If omitted, uses the first active milestone found.
+        #[arg(long)]
+        milestone: Option<String>,
+    },
+
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
     /// Agent-facing commands (called from skills/scripts, not user-facing)
     #[command(hide = true)]

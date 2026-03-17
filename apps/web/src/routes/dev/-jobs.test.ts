@@ -1,109 +1,155 @@
 import { describe, it, expect } from 'vitest'
-
-// ── Extracted pure logic from jobs.tsx for unit testing ────────────────────
-// These mirror the transformations in the route's server functions.
-
-interface RawRow {
-  id: string
-  status: string
-  branch: string | null
-  payload_json: string
-}
-
-function mapJobRow(row: RawRow) {
-  let description = ''
-  try {
-    const payload = JSON.parse(row.payload_json) as Record<string, unknown>
-    if (typeof payload.description === 'string') description = payload.description
-  } catch { /* ignore */ }
-  return {
-    id: row.id,
-    status: row.status as 'pending' | 'running',
-    description,
-    branch: row.branch ?? `job/${row.id}`,
-    worktree_path: `~/dev/ship-worktrees/${row.id}`,
-    touched_files: null,
-  }
-}
-
-const TARGET_NAMES: Record<string, string> = {
-  ShYqMr8e: 'compiler',
-  gbJkmuwY: 'cli',
-  mXTZ4djg: 'studio',
-  MeHin6Fy: 'platform',
-  iu86rzHS: 'mcp',
-  zU6Leq6v: 'infra',
-  JUPHSmmW: 'desktop',
-}
+import { mapJobRowFull, TARGET_NAMES } from './jobs'
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe('mapJobRow', () => {
+describe('mapJobRowFull', () => {
   it('extracts description from payload_json', () => {
-    const row: RawRow = {
+    const result = mapJobRowFull({
       id: 'abc123',
+      kind: 'feature',
       status: 'running',
       branch: 'job/abc123',
       payload_json: JSON.stringify({ description: 'Build feature X' }),
-    }
-    expect(mapJobRow(row).description).toBe('Build feature X')
+      log_entries: [],
+    })
+    expect(result.description).toBe('Build feature X')
   })
 
   it('returns empty description when payload has no description field', () => {
-    const row: RawRow = {
+    const result = mapJobRowFull({
       id: 'abc123',
+      kind: 'feature',
       status: 'pending',
       branch: 'job/abc123',
       payload_json: JSON.stringify({ other: 'data' }),
-    }
-    expect(mapJobRow(row).description).toBe('')
+      log_entries: [],
+    })
+    expect(result.description).toBe('')
   })
 
   it('returns empty description when payload_json is malformed', () => {
-    const row: RawRow = {
+    const result = mapJobRowFull({
       id: 'abc123',
+      kind: 'feature',
       status: 'pending',
       branch: null,
       payload_json: 'not-json',
-    }
-    expect(mapJobRow(row).description).toBe('')
+      log_entries: [],
+    })
+    expect(result.description).toBe('')
   })
 
   it('falls back to job/id when branch is null', () => {
-    const row: RawRow = {
+    const result = mapJobRowFull({
       id: 'xyz999',
+      kind: 'feature',
       status: 'pending',
       branch: null,
       payload_json: '{}',
-    }
-    expect(mapJobRow(row).branch).toBe('job/xyz999')
+      log_entries: [],
+    })
+    expect(result.branch).toBe('job/xyz999')
   })
 
   it('uses provided branch when present', () => {
-    const row: RawRow = {
+    const result = mapJobRowFull({
       id: 'xyz999',
+      kind: 'feature',
       status: 'running',
       branch: 'feat/my-feature',
       payload_json: '{}',
-    }
-    expect(mapJobRow(row).branch).toBe('feat/my-feature')
+      log_entries: [],
+    })
+    expect(result.branch).toBe('feat/my-feature')
   })
 
   it('computes worktree_path from id', () => {
-    const row: RawRow = { id: 'CDPh4Tc2', status: 'running', branch: null, payload_json: '{}' }
-    expect(mapJobRow(row).worktree_path).toBe('~/dev/ship-worktrees/CDPh4Tc2')
-  })
-
-  it('always sets touched_files to null', () => {
-    const row: RawRow = { id: 'a', status: 'pending', branch: null, payload_json: '{}' }
-    expect(mapJobRow(row).touched_files).toBeNull()
+    const result = mapJobRowFull({
+      id: 'CDPh4Tc2',
+      kind: 'feature',
+      status: 'running',
+      branch: null,
+      payload_json: '{}',
+      log_entries: [],
+    })
+    expect(result.worktree_path).toBe('~/dev/ship-worktrees/CDPh4Tc2')
   })
 
   it('preserves status field', () => {
-    const pending: RawRow = { id: 'a', status: 'pending', branch: null, payload_json: '{}' }
-    const running: RawRow = { id: 'b', status: 'running', branch: null, payload_json: '{}' }
-    expect(mapJobRow(pending).status).toBe('pending')
-    expect(mapJobRow(running).status).toBe('running')
+    const pending = mapJobRowFull({ id: 'a', kind: 'f', status: 'pending', branch: null, payload_json: '{}', log_entries: [] })
+    const running = mapJobRowFull({ id: 'b', kind: 'f', status: 'running', branch: null, payload_json: '{}', log_entries: [] })
+    expect(pending.status).toBe('pending')
+    expect(running.status).toBe('running')
+  })
+
+  it('extracts capability_id from payload', () => {
+    const result = mapJobRowFull({
+      id: 'abc',
+      kind: 'feature',
+      status: 'running',
+      branch: null,
+      payload_json: JSON.stringify({ capability_id: 'cap001' }),
+      log_entries: [],
+    })
+    expect(result.capability_id).toBe('cap001')
+  })
+
+  it('returns null capability_id when absent', () => {
+    const result = mapJobRowFull({ id: 'a', kind: 'f', status: 'pending', branch: null, payload_json: '{}', log_entries: [] })
+    expect(result.capability_id).toBeNull()
+  })
+
+  it('extracts scope array from payload', () => {
+    const result = mapJobRowFull({
+      id: 'abc',
+      kind: 'feature',
+      status: 'pending',
+      branch: null,
+      payload_json: JSON.stringify({ scope: ['src/lib.rs', 'src/main.rs'] }),
+      log_entries: [],
+    })
+    expect(result.scope).toEqual(['src/lib.rs', 'src/main.rs'])
+  })
+
+  it('returns empty scope array when absent', () => {
+    const result = mapJobRowFull({ id: 'a', kind: 'f', status: 'pending', branch: null, payload_json: '{}', log_entries: [] })
+    expect(result.scope).toEqual([])
+  })
+
+  it('extracts acceptance_criteria array from payload', () => {
+    const result = mapJobRowFull({
+      id: 'abc',
+      kind: 'feature',
+      status: 'pending',
+      branch: null,
+      payload_json: JSON.stringify({ acceptance_criteria: ['Tests pass', 'Docs updated'] }),
+      log_entries: [],
+    })
+    expect(result.acceptance_criteria).toEqual(['Tests pass', 'Docs updated'])
+  })
+
+  it('extracts symlink_name from payload', () => {
+    const result = mapJobRowFull({
+      id: 'abc',
+      kind: 'feature',
+      status: 'running',
+      branch: null,
+      payload_json: JSON.stringify({ symlink_name: 'my-feature' }),
+      log_entries: [],
+    })
+    expect(result.symlink_name).toBe('my-feature')
+  })
+
+  it('returns null symlink_name when absent', () => {
+    const result = mapJobRowFull({ id: 'a', kind: 'f', status: 'pending', branch: null, payload_json: '{}', log_entries: [] })
+    expect(result.symlink_name).toBeNull()
+  })
+
+  it('attaches log_entries unchanged', () => {
+    const logs = [{ id: 1, message: 'hello', created_at: '2026-03-17T10:00:00Z' }]
+    const result = mapJobRowFull({ id: 'a', kind: 'f', status: 'running', branch: null, payload_json: '{}', log_entries: logs })
+    expect(result.log_entries).toEqual(logs)
   })
 })
 
@@ -124,24 +170,32 @@ describe('TARGET_NAMES', () => {
 })
 
 describe('capability grouping by target', () => {
-  interface Capability {
+  interface CapabilityRow {
     id: string
-    description: string
+    title: string
     target_id: string
+    status: 'aspirational' | 'actual'
+    evidence: string | null
+    running_job_id: string | null
+    running_job_desc: string | null
   }
 
-  function groupByTarget(caps: Capability[]): Record<string, Capability[]> {
-    return caps.reduce<Record<string, Capability[]>>((acc, cap) => {
+  function groupByTarget(caps: CapabilityRow[]): Record<string, CapabilityRow[]> {
+    return caps.reduce<Record<string, CapabilityRow[]>>((acc, cap) => {
       ;(acc[cap.target_id] ??= []).push(cap)
       return acc
     }, {})
   }
 
+  function makeCapRow(id: string, target_id: string): CapabilityRow {
+    return { id, title: `Cap ${id}`, target_id, status: 'aspirational', evidence: null, running_job_id: null, running_job_desc: null }
+  }
+
   it('groups capabilities by target_id', () => {
-    const caps: Capability[] = [
-      { id: '1', description: 'Cap A', target_id: 'ShYqMr8e' },
-      { id: '2', description: 'Cap B', target_id: 'ShYqMr8e' },
-      { id: '3', description: 'Cap C', target_id: 'gbJkmuwY' },
+    const caps = [
+      makeCapRow('1', 'ShYqMr8e'),
+      makeCapRow('2', 'ShYqMr8e'),
+      makeCapRow('3', 'gbJkmuwY'),
     ]
     const grouped = groupByTarget(caps)
     expect(grouped['ShYqMr8e']).toHaveLength(2)
@@ -150,5 +204,15 @@ describe('capability grouping by target', () => {
 
   it('returns empty object for empty capabilities array', () => {
     expect(groupByTarget([])).toEqual({})
+  })
+
+  it('counts actual vs aspirational correctly', () => {
+    const caps: CapabilityRow[] = [
+      { ...makeCapRow('1', 'ShYqMr8e'), status: 'actual', evidence: 'test_ok' },
+      makeCapRow('2', 'ShYqMr8e'),
+    ]
+    const grouped = groupByTarget(caps)
+    expect(grouped['ShYqMr8e'].filter((c) => c.status === 'actual')).toHaveLength(1)
+    expect(grouped['ShYqMr8e'].filter((c) => c.status === 'aspirational')).toHaveLength(1)
   })
 })

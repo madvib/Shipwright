@@ -1021,6 +1021,21 @@ impl ShipServer {
                 serde_json::Value::String(rw.clone()),
             );
         }
+        if let Some(ref cap_id) = req.capability_id {
+            payload.insert("capability_id".to_string(), serde_json::Value::String(cap_id.clone()));
+        }
+        if let Some(ref scope) = req.scope {
+            payload.insert("scope".to_string(), serde_json::json!(scope));
+        }
+        if let Some(ref criteria) = req.acceptance_criteria {
+            payload.insert("acceptance_criteria".to_string(), serde_json::json!(criteria));
+        }
+        if let Some(ref hint) = req.preset_hint {
+            payload.insert("preset_hint".to_string(), serde_json::Value::String(hint.clone()));
+        }
+        if let Some(ref sym) = req.symlink_name {
+            payload.insert("symlink_name".to_string(), serde_json::Value::String(sym.clone()));
+        }
         match runtime::db::jobs::create_job(
             &project_dir,
             &req.kind,

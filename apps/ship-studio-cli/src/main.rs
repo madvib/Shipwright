@@ -3,6 +3,7 @@ mod auth;
 mod cli;
 mod compile;
 mod config;
+mod diff;
 mod job;
 mod loader;
 mod mcp;
@@ -51,6 +52,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Server { .. } => {
                 stub("server", "Local server (port 7701) — coming soon")
             }
+            Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Next { worktrees_dir } => job::next(worktrees_dir),
             Commands::Retry { id, worktrees_dir } => job::retry(&id, worktrees_dir),
             Commands::Gate { id, worktrees_dir } => job::gate(&id, worktrees_dir),
