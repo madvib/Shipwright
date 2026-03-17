@@ -13,6 +13,7 @@ import { Route as StudioRouteImport } from './routes/studio'
 import { Route as CompilerRouteImport } from './routes/compiler'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as DevJobsRouteImport } from './routes/dev/jobs'
 
 const StudioRoute = StudioRouteImport.update({
   id: '/studio',
@@ -34,18 +35,25 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevJobsRoute = DevJobsRouteImport.update({
+  id: '/dev/jobs',
+  path: '/dev/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/compiler': typeof CompilerRoute
   '/studio': typeof StudioRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/dev/jobs': typeof DevJobsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/compiler': typeof CompilerRoute
   '/studio': typeof StudioRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/dev/jobs': typeof DevJobsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,14 @@ export interface FileRoutesById {
   '/compiler': typeof CompilerRoute
   '/studio': typeof StudioRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/dev/jobs': typeof DevJobsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/compiler' | '/studio' | '/api/auth/$'
+  fullPaths: '/' | '/compiler' | '/studio' | '/api/auth/$' | '/dev/jobs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/compiler' | '/studio' | '/api/auth/$'
-  id: '__root__' | '/' | '/compiler' | '/studio' | '/api/auth/$'
+  to: '/' | '/compiler' | '/studio' | '/api/auth/$' | '/dev/jobs'
+  id: '__root__' | '/' | '/compiler' | '/studio' | '/api/auth/$' | '/dev/jobs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +76,7 @@ export interface RootRouteChildren {
   CompilerRoute: typeof CompilerRoute
   StudioRoute: typeof StudioRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  DevJobsRoute: typeof DevJobsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dev/jobs': {
+      id: '/dev/jobs'
+      path: '/dev/jobs'
+      fullPath: '/dev/jobs'
+      preLoaderRoute: typeof DevJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +124,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompilerRoute: CompilerRoute,
   StudioRoute: StudioRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  DevJobsRoute: DevJobsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
