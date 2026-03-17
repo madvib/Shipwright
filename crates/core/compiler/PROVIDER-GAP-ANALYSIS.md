@@ -258,11 +258,14 @@ Each provider section lists the **full upstream config surface**, then marks eac
 | `SessionEnd` | `Stop` | ✅ Compiled | |
 | `PreCompress` | `PreCompact` | ✅ Compiled | |
 | `SessionStart` | — | 🔴 Gap | |
-| `BeforeAgent` | — | 🔴 Gap | Agent lifecycle |
-| `AfterAgent` | — | 🔴 Gap | |
-| `BeforeModel` | — | 🔴 Gap | Model invocation |
-| `AfterModel` | — | 🔴 Gap | |
-| `BeforeToolSelection` | — | 🔴 Gap | Tool routing |
+| `BeforeAgent` | — | 🔴 Gap | Sub-agent lifecycle |
+| `AfterAgent` | — | 🔴 Gap | Per-turn post-model |
+| `BeforeModel` | — | 🔴 Gap | Pre-LLM-request |
+| `AfterModel` | — | 🔴 Gap | Per-chunk post-LLM |
+| `BeforeToolSelection` | — | 🔴 Gap | Tool routing gate |
+
+Hook fields: `matcher` (tool name pattern), `command` (script), `timeout` (default 60s).
+Communication: JSON on stdin/stdout. Env vars: `GEMINI_PROJECT_DIR`, `GEMINI_SESSION_ID`, `GEMINI_CWD`.
 
 #### MCP Servers
 | Feature | Ship Status | Notes |
@@ -270,7 +273,14 @@ Each provider section lists the **full upstream config surface**, then marks eac
 | `mcpServers` (stdio) | ✅ Compiled | command/args/env |
 | `mcpServers` (SSE) | ✅ Compiled | `url` field |
 | `mcpServers` (HTTP) | ✅ Compiled | `httpUrl` field |
-| MCP timeout config | 🔴 Gap | Server-level timeouts |
+| `timeout` per server | 🔴 Gap | Connection timeout (ms) |
+| `cwd` per server | 🔴 Gap | Working directory |
+| `trust` per server | 🔧 provider_config | Trust level |
+| `includeTools` per server | 🔴 Gap | Tool allowlist per MCP server |
+| `excludeTools` per server | 🔴 Gap | Tool blocklist per MCP server |
+| `headers` (HTTP/SSE) | 🔴 Gap | Auth headers |
+| Global `mcp.allowed` | 🔧 provider_config | Server-level allowlist |
+| Global `mcp.excluded` | 🔧 provider_config | Server-level blocklist |
 
 #### Permissions / Policies
 | Feature | Ship Status | Notes |
@@ -279,20 +289,44 @@ Each provider section lists the **full upstream config surface**, then marks eac
 | `policyPaths` | 🔧 provider_config | Extra policy directories |
 | `adminPolicyPaths` | ⬜ Managed only | |
 
+#### Tool Controls
+| Field | Ship Status | Notes |
+|---|---|---|
+| `tools.core` | 🔧 provider_config | Built-in tool allowlist |
+| `tools.allowed` | 🗺️ Maps to permissions | Tools bypassing confirmation e.g. `"run_shell_command(git)"` |
+| `tools.exclude` | 🗺️ Maps to permissions | Tools to disable |
+| `tools.discoveryCommand` | 🔧 provider_config | Custom tool discovery |
+| `tools.callCommand` | 🔧 provider_config | Custom tool call command (JSON stdin/stdout) |
+| `tools.truncateToolOutputThreshold` | 🔧 provider_config | Default 40000 |
+| `tools.shell.*` | 🔧 provider_config | Shell behavior (interactive, pager, timeout) |
+
 #### Context / Discovery
 | Field | Ship Status | Notes |
 |---|---|---|
-| `context.fileName` | ⬜ | Custom context filename |
-| `context.discoveryMaxDirs` | ⬜ | Directory scan limit |
+| `context.fileName` | ⬜ | Custom context filename (default "GEMINI.md") |
+| `context.discoveryMaxDirs` | ⬜ | Directory scan limit (default 200) |
 | `context.includeDirectories` | 🔧 provider_config | Multi-repo context |
+| `context.loadMemoryFromIncludeDirectories` | 🔧 provider_config | |
 | `context.fileFiltering.*` | ⬜ | Gitignore/geminiignore behavior |
+| `@path/to/file.md` imports in GEMINI.md | ⬜ | Context file imports |
+
+#### Security / Enterprise
+| Field | Ship Status | Notes |
+|---|---|---|
+| `security.disableYoloMode` | 🔧 provider_config | Enterprise lockdown |
+| `security.disableAlwaysAllow` | 🔧 provider_config | |
+| `security.enablePermanentToolApproval` | 🔧 provider_config | |
+| `security.folderTrust.enabled` | 🔧 provider_config | |
+| `security.environmentVariableRedaction.*` | 🔧 provider_config | Sensitive var masking |
+| `security.blockGitExtensions` | 🔧 provider_config | |
+| `security.allowedExtensions` | 🔧 provider_config | Regex patterns |
 
 #### Browser Agent
 | Field | Ship Status | Notes |
 |---|---|---|
 | `agents.browser.sessionMode` | 🔧 provider_config | "persistent"/"isolated"/"existing" |
 | `agents.browser.headless` | 🔧 provider_config | |
-| `agents.browser.allowedDomains` | 🔧 provider_config | |
+| `agents.browser.allowedDomains` | 🔧 provider_config | Default: github, google, localhost |
 | `agents.browser.visualModel` | 🔧 provider_config | |
 
 #### Extensions
@@ -302,6 +336,14 @@ Each provider section lists the **full upstream config surface**, then marks eac
 | Extension context | 🔴 Gap | Per-extension GEMINI.md |
 | Extension slash commands | 🔴 Gap | `.toml` command definitions |
 | Extension hooks | 🔴 Gap | `hooks/hooks.json` |
+| Extension policies | 🔴 Gap | Per-extension `policies/*.toml` |
+
+#### Custom Slash Commands
+| Feature | Ship Status | Notes |
+|---|---|---|
+| `.gemini/commands/*.toml` | 🗺️ Maps to skills | Project commands |
+| `~/.gemini/commands/*.toml` | 🗺️ Maps to skills | User commands |
+| Template: `@{path}`, `!{cmd}`, `{{args}}` | 🔴 Gap | Template syntax not in Ship skills |
 
 #### Environment
 | Feature | Ship Status | Notes |
@@ -313,12 +355,12 @@ Each provider section lists the **full upstream config surface**, then marks eac
 #### Sandbox
 | Field | Ship Status | Notes |
 |---|---|---|
-| `tools.sandbox` | 🔧 provider_config | Sandbox mode |
+| `tools.sandbox` | 🔧 provider_config | true/"docker"/"podman"/path/object |
 | `.gemini/sandbox.Dockerfile` | 🔧 provider_config | Custom sandbox image |
-| `security.hideSensitiveEnvVars` | ⬜ | |
+| `.gemini/sandbox-macos-*.sb` | 🔧 provider_config | macOS sandbox profiles |
 
 #### UI/Telemetry (out of scope)
-Fields: `ui.*` (theme, footer, spinner, accessibility), `privacy.*`, `telemetry.*`, `billing.*`, `ide.*`, `output.format`
+Fields: `ui.*` (theme, footer, spinner, accessibility ~30 fields), `privacy.*`, `telemetry.*`, `billing.*`, `ide.*`, `output.format`, `model.summarizeToolOutput`, `model.compressionThreshold`, `model.disableLoopDetection`
 
 ---
 
@@ -536,12 +578,13 @@ Cursor does not publish JSON schemas for any config file.
 | **Model selection** | Gemini, Codex, Cursor | Already in preset `[profile]` but only compiled for Claude | **P1** |
 | **Approval mode** | Gemini (`defaultApprovalMode`), Codex (`approval_policy`) | Maps to Ship workspace modes | **P1** |
 | **Sandbox mode** | Codex (`sandbox_mode`), Gemini (`tools.sandbox`) | Ship concept TBD | **P2** |
-| **MCP timeouts** | Codex (`startup_timeout_sec`, `tool_timeout_sec`) | Ship MCP server config | **P2** |
-| **MCP enable/disable** | Codex (`enabled`), Claude (`enabledMcpjsonServers`) | Ship MCP server config | **P2** |
+| **MCP per-server config** | Codex (timeouts, enabled), Gemini (timeout, cwd, includeTools, excludeTools, headers, trust), Claude (enable/disable lists) | Extend Ship MCP server TOML | **P2** |
 | **Hook triggers (12 new)** | Claude (12 new), Gemini (6 new), Cursor (2 new) | Expand Ship hook trigger enum | **P2** |
 | **Hook types (3 new)** | Claude (`prompt`, `agent`, `http`) | Ship hook type enum | **P2** |
 | **Multi-agent roles** | Codex (`agents`, `*.toml`), Claude (`.claude/agents/`) | Ship team/agent concept | **P2** |
 | **Plugins** | Claude (`enabledPlugins`), Codex (`plugins`) | Ship plugins manifest (partial) | **P2** |
+| **Slash commands** | Gemini (`.toml` commands with templates) | Maps to Ship skills but template syntax (`@{}`, `!{}`, `{{args}}`) not supported | **P2** |
+| **Tool filtering per MCP** | Gemini (`includeTools`/`excludeTools`), Codex (per-server `enabled`) | Ship MCP server config | **P2** |
 | **Extensions** | Gemini (extension system) | No Ship equivalent | **P3** |
 | **.cursorignore** | Cursor | Ship ignore concept TBD | **P3** |
 
