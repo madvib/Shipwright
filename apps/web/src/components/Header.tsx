@@ -18,6 +18,15 @@ export default function Header() {
           >
             Studio
           </Link>
+          {import.meta.env.DEV && (
+            <Link
+              to="/dev/jobs"
+              className="rounded-md px-3 py-1.5 text-muted-foreground/50 transition hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+              activeProps={{ className: 'active' }}
+            >
+              Jobs
+            </Link>
+          )}
         </div>
 
         <div className="ml-auto">
