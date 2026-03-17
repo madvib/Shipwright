@@ -1,4 +1,5 @@
 pub mod compile;
+pub mod matrix;
 pub mod resolve;
 pub mod types;
 
@@ -9,6 +10,7 @@ pub use compile::{
     build_claude_settings_patch, compile, get_provider, list_providers,
     CURSOR_PERMISSIVE_ALLOW,
 };
+pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
 pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
 pub use types::{
     AgentLayerConfig, AiConfig, CatalogEntry, CatalogKind, GitConfig, HookConfig, HookTrigger,

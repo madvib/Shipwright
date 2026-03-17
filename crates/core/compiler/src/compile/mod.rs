@@ -257,6 +257,8 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
             &resolved.hooks,
             resolved.model.as_deref(),
             resolved.claude_settings_extra.as_ref(),
+            &resolved.env,
+            &resolved.available_models,
         );
         for (filename, content) in &resolved.claude_team_agents {
             out.agent_files
@@ -265,11 +267,17 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
     }
 
     if provider_id == "codex" {
-        out.codex_config_patch = build_codex_config_patch(&resolved.mcp_servers);
+        out.codex_config_patch = build_codex_config_patch(
+            &resolved.mcp_servers,
+            resolved.model.as_deref(),
+        );
     }
 
     if provider_id == "gemini" {
-        out.gemini_settings_patch = build_gemini_settings_patch(&resolved.hooks);
+        out.gemini_settings_patch = build_gemini_settings_patch(
+            &resolved.hooks,
+            resolved.model.as_deref(),
+        );
         out.gemini_policy_patch = build_gemini_policy_patch(&resolved.permissions);
     }
 
@@ -458,6 +466,8 @@ pub fn build_claude_settings_patch(
     hooks: &[HookConfig],
     model: Option<&str>,
     extra: Option<&Json>,
+    env: &std::collections::HashMap<String, String>,
+    available_models: &[String],
 ) -> Option<Json> {
     let has_perms = has_permission_overrides(permissions);
     let has_hooks = !hooks.is_empty();
@@ -465,8 +475,12 @@ pub fn build_claude_settings_patch(
         || permissions.agent.max_turns.is_some();
     let has_model = model.is_some();
     let has_extra = extra.map_or(false, |v| !v.is_null());
+    let has_env = !env.is_empty();
+    let has_available_models = !available_models.is_empty();
 
-    if !has_perms && !has_hooks && !has_agent_limits && !has_model && !has_extra {
+    if !has_perms && !has_hooks && !has_agent_limits && !has_model && !has_extra
+        && !has_env && !has_available_models
+    {
         return None;
     }
 
@@ -548,6 +562,20 @@ pub fn build_claude_settings_patch(
         patch["model"] = serde_json::json!(m);
     }
 
+    // Environment variables — KEY=VALUE pairs in Claude's `env` field.
+    if has_env {
+        let env_obj: serde_json::Map<String, Json> = env
+            .iter()
+            .map(|(k, v)| (k.clone(), Json::String(v.clone())))
+            .collect();
+        patch["env"] = Json::Object(env_obj);
+    }
+
+    // Model allowlist — restricts the model picker in Claude Code.
+    if has_available_models {
+        patch["availableModels"] = serde_json::json!(available_models);
+    }
+
     // Extra provider-specific settings — pass through verbatim.
     // Source: `[provider_settings.claude]` in the active preset TOML.
     if let Some(extra_obj) = extra.and_then(|v| v.as_object()) {
@@ -588,9 +616,10 @@ fn gemini_trigger(t: &HookTrigger) -> Option<&'static str> {
     }
 }
 
-/// Build the `hooks` section for `.gemini/settings.json`.
-/// Returns `None` when there are no hooks to emit.
-fn build_gemini_settings_patch(hooks: &[HookConfig]) -> Option<Json> {
+/// Build the settings patch for `.gemini/settings.json`.
+/// Includes `hooks` and `model` when present.
+/// Returns `None` when there is nothing to emit.
+fn build_gemini_settings_patch(hooks: &[HookConfig], model: Option<&str>) -> Option<Json> {
     let mut by_trigger: std::collections::BTreeMap<&str, Vec<Json>> = std::collections::BTreeMap::new();
 
     for h in hooks {
@@ -611,16 +640,28 @@ fn build_gemini_settings_patch(hooks: &[HookConfig]) -> Option<Json> {
         by_trigger.entry(event).or_default().push(entry_with_matcher);
     }
 
-    if by_trigger.is_empty() {
+    let has_hooks = !by_trigger.is_empty();
+    let has_model = model.is_some();
+
+    if !has_hooks && !has_model {
         return None;
     }
 
-    let hooks_obj: serde_json::Map<String, Json> = by_trigger
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), Json::Array(v)))
-        .collect();
+    let mut patch = serde_json::json!({});
 
-    Some(serde_json::json!({ "hooks": hooks_obj }))
+    if has_hooks {
+        let hooks_obj: serde_json::Map<String, Json> = by_trigger
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), Json::Array(v)))
+            .collect();
+        patch["hooks"] = Json::Object(hooks_obj);
+    }
+
+    if let Some(m) = model {
+        patch["model"] = Json::String(m.to_string());
+    }
+
+    Some(patch)
 }
 
 // ─── Gemini policy patch ──────────────────────────────────────────────────────
@@ -934,7 +975,7 @@ fn format_cursor_rule(rule: &Rule) -> String {
 /// Source: https://developers.openai.com/codex/mcp
 /// Codex uses TOML, not JSON. Each server is a `[mcp_servers.<id>]` table.
 /// Returns `None` if there are no enabled servers to write.
-fn build_codex_config_patch(servers: &[McpServerConfig]) -> Option<String> {
+fn build_codex_config_patch(servers: &[McpServerConfig], model: Option<&str>) -> Option<String> {
     let mut mcp = toml::Table::new();
 
     // Ship server always first
@@ -980,6 +1021,9 @@ fn build_codex_config_patch(servers: &[McpServerConfig]) -> Option<String> {
     }
 
     let mut root = toml::Table::new();
+    if let Some(m) = model {
+        root.insert("model".into(), toml::Value::String(m.to_string()));
+    }
     root.insert("mcp_servers".into(), toml::Value::Table(mcp));
     toml::to_string(&root).ok()
 }
@@ -1056,6 +1100,8 @@ mod tests {
             plugins: Default::default(),
             claude_settings_extra: None,
             claude_team_agents: vec![],
+            env: Default::default(),
+            available_models: vec![],
         }
     }
 
@@ -2796,5 +2842,98 @@ mod tests {
             let out = compile(&r, provider).unwrap();
             assert_eq!(out.plugins_manifest.install.len(), 1, "provider {} must include manifest", provider);
         }
+    }
+
+    // ── Env vars ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn env_vars_emitted_in_claude_settings_patch() {
+        let mut env = std::collections::HashMap::new();
+        env.insert("ANTHROPIC_MODEL".to_string(), "claude-sonnet-4-20250514".to_string());
+        env.insert("DEBUG".to_string(), "true".to_string());
+        let r = ResolvedConfig { env, ..resolved(vec![]) };
+        let out = compile(&r, "claude").unwrap();
+        let patch = out.claude_settings_patch.expect("env should trigger settings patch");
+        let env_obj = patch.get("env").expect("patch should have env key");
+        assert_eq!(env_obj["ANTHROPIC_MODEL"], "claude-sonnet-4-20250514");
+        assert_eq!(env_obj["DEBUG"], "true");
+    }
+
+    #[test]
+    fn empty_env_no_settings_patch() {
+        let r = resolved(vec![]);
+        let out = compile(&r, "claude").unwrap();
+        assert!(out.claude_settings_patch.is_none());
+    }
+
+    #[test]
+    fn env_only_for_claude_not_other_providers() {
+        let mut env = std::collections::HashMap::new();
+        env.insert("FOO".to_string(), "bar".to_string());
+        let r = ResolvedConfig { env, ..resolved(vec![]) };
+        for provider in &["gemini", "codex", "cursor"] {
+            let out = compile(&r, provider).unwrap();
+            assert!(
+                out.claude_settings_patch.is_none(),
+                "provider {} should not have claude_settings_patch",
+                provider
+            );
+        }
+    }
+
+    // ── Available models ─────────────────────────────────────────────────────
+
+    #[test]
+    fn available_models_emitted_in_claude_settings_patch() {
+        let r = ResolvedConfig {
+            available_models: vec!["claude-sonnet-4-20250514".into(), "claude-haiku-3-5-20241022".into()],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        let patch = out.claude_settings_patch.expect("availableModels should trigger patch");
+        let models = patch.get("availableModels").expect("patch should have availableModels");
+        let arr = models.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0], "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn empty_available_models_no_patch() {
+        let r = resolved(vec![]);
+        let out = compile(&r, "claude").unwrap();
+        assert!(out.claude_settings_patch.is_none());
+    }
+
+    // ── Model selection for Gemini ───────────────────────────────────────────
+
+    #[test]
+    fn gemini_model_emitted_in_settings_patch() {
+        let r = ResolvedConfig {
+            model: Some("gemini-2.5-pro".to_string()),
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "gemini").unwrap();
+        let patch = out.gemini_settings_patch.expect("model should trigger gemini patch");
+        assert_eq!(patch["model"], "gemini-2.5-pro");
+    }
+
+    #[test]
+    fn gemini_no_model_no_hooks_no_patch() {
+        let r = resolved(vec![]);
+        let out = compile(&r, "gemini").unwrap();
+        assert!(out.gemini_settings_patch.is_none());
+    }
+
+    // ── Model selection for Codex ────────────────────────────────────────────
+
+    #[test]
+    fn codex_model_emitted_in_config_patch() {
+        let r = ResolvedConfig {
+            model: Some("o3".to_string()),
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "codex").unwrap();
+        let patch = out.codex_config_patch.as_ref().expect("model should trigger codex patch");
+        assert!(patch.contains("model = \"o3\""), "codex TOML should contain model field: {}", patch);
     }
 }

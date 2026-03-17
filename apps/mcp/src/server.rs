@@ -665,6 +665,31 @@ impl ShipServer {
         }
     }
 
+    /// Show provider capability matrix — what Ship emits vs what each provider supports
+    #[tool(
+        description = "Show the provider capability matrix. Returns what Ship currently emits for each provider vs what the provider supports, with gap analysis. Use format='diff' for a compact diffable output."
+    )]
+    async fn provider_matrix(
+        &self,
+        Parameters(req): Parameters<ProviderMatrixRequest>,
+    ) -> String {
+        let mut matrix = compiler::build_matrix();
+
+        if let Some(pid) = &req.provider {
+            matrix.providers.retain(|p| p.provider_id == pid);
+            if matrix.providers.is_empty() {
+                return format!("Unknown provider: {}. Options: claude, gemini, codex, cursor", pid);
+            }
+        }
+
+        match req.format.as_deref().unwrap_or("json") {
+            "text" => compiler::render_text(&matrix),
+            "diff" => compiler::render_diffable(&matrix),
+            _ => serde_json::to_string_pretty(&matrix)
+                .unwrap_or_else(|e| format!("Serialization error: {}", e)),
+        }
+    }
+
     /// Start a session on the active workspace (compiles provider context)
     #[tool(
         description = "Start a workspace session for the active compiled context and selected provider."

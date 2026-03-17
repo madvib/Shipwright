@@ -51,6 +51,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 stub("server", "Local server (port 7701) — coming soon")
             }
             Commands::Job { action } => dispatch_job(action),
+            Commands::Matrix { format, provider } => run_matrix(&format, provider.as_deref()),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
@@ -330,6 +331,34 @@ fn run_migrate() -> Result<()> {
     println!("migration complete");
     println!("  notes:  {} migrated, {} skipped", report.notes_migrated, report.notes_skipped);
     println!("  adrs:   {} migrated, {} skipped", report.adrs_migrated, report.adrs_skipped);
+    Ok(())
+}
+
+// ── Matrix ────────────────────────────────────────────────────────────────
+
+fn run_matrix(format: &str, provider: Option<&str>) -> Result<()> {
+    let mut matrix = compiler::build_matrix();
+
+    if let Some(pid) = provider {
+        matrix.providers.retain(|p| p.provider_id == pid);
+        if matrix.providers.is_empty() {
+            anyhow::bail!("Unknown provider: {}. Options: claude, gemini, codex, cursor", pid);
+        }
+    }
+
+    match format {
+        "json" => {
+            let json = serde_json::to_string_pretty(&matrix)?;
+            println!("{}", json);
+        }
+        "diff" => {
+            print!("{}", compiler::render_diffable(&matrix));
+        }
+        _ => {
+            print!("{}", compiler::render_text(&matrix));
+        }
+    }
+
     Ok(())
 }
 

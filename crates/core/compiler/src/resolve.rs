@@ -46,6 +46,13 @@ pub struct ResolvedConfig {
     /// Source: `.ship/agents/teams/claude/<name>.md`.
     /// Output: `.claude/agents/<name>.md`.
     pub claude_team_agents: Vec<(String, String)>,
+    /// Environment variables to inject into provider settings.
+    /// Source: `agents/env.toml` or `[env]` in preset TOML.
+    /// Claude: `env` field in `.claude/settings.json`.
+    pub env: std::collections::HashMap<String, String>,
+    /// Restrict the model picker to these model IDs.
+    /// Claude: `availableModels` in `.claude/settings.json`.
+    pub available_models: Vec<String>,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -90,6 +97,12 @@ pub struct ProjectLibrary {
     /// Team agent files: `.ship/agents/teams/claude/<name>.md` → `.claude/agents/<name>.md`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub claude_team_agents: Vec<(String, String)>,
+    /// Environment variables: KEY=VALUE pairs injected into provider settings.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub env: std::collections::HashMap<String, String>,
+    /// Restrict model picker to these IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub available_models: Vec<String>,
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -117,6 +130,8 @@ pub fn resolve_library(
     resolved.plugins = library.plugins.clone();
     resolved.claude_settings_extra = library.claude_settings_extra.clone();
     resolved.claude_team_agents = library.claude_team_agents.clone();
+    resolved.env = library.env.clone();
+    resolved.available_models = library.available_models.clone();
     resolved
 }
 
@@ -220,6 +235,8 @@ pub fn resolve(
         plugins: PluginsManifest::default(),
         claude_settings_extra: None,
         claude_team_agents: Vec::new(),
+        env: std::collections::HashMap::new(),
+        available_models: Vec::new(),
     }
 }
 

@@ -156,6 +156,17 @@ pub enum Commands {
     /// Migrate notes and ADRs from old ship.db to platform.db
     Migrate,
 
+    // ── Provider matrix ─────────────────────────────────────────────────────
+    /// Show the provider capability matrix (what Ship emits vs what providers support)
+    Matrix {
+        /// Output format: text (default), json, diff
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Filter to a single provider (claude, gemini, codex, cursor)
+        #[arg(long)]
+        provider: Option<String>,
+    },
+
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
     /// Agent-facing commands (called from skills/scripts, not user-facing)
     #[command(hide = true)]
