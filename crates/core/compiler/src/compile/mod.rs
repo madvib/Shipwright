@@ -38,8 +38,6 @@ pub enum ContextFile {
     GeminiMd,
     /// `AGENTS.md` — Codex, Roo, Amp, Goose
     AgentsMd,
-    /// `.windsurfrules` — Windsurf (single rules file, markdown)
-    WindsurfRules,
     /// Provider does not use a context file
     None,
 }
@@ -50,7 +48,6 @@ impl ContextFile {
             Self::ClaudeMd => Some("CLAUDE.md"),
             Self::GeminiMd => Some("GEMINI.md"),
             Self::AgentsMd => Some("AGENTS.md"),
-            Self::WindsurfRules => Some(".windsurfrules"),
             Self::None => None,
         }
     }
@@ -161,20 +158,6 @@ static PROVIDERS: &[ProviderDescriptor] = &[
         http_url_field: "url",
         mcp_config_path: Some(".cursor/mcp.json"),
     },
-    ProviderDescriptor {
-        id: "windsurf",
-        name: "Windsurf",
-        // Source: https://docs.windsurf.com/windsurf/memories#windsurfrules
-        // Windsurf reads .windsurfrules as project-scoped AI rules (single file, markdown).
-        mcp_key: McpKey::McpServers,
-        context_file: ContextFile::WindsurfRules,
-        skills_dir: SkillsDir::Agents,
-        emit_type_field: false,
-        sse_url_field: "url",
-        http_url_field: "url",
-        // Windsurf does not have a standalone MCP config file — no native MCP support yet.
-        mcp_config_path: None,
-    },
 ];
 
 /// Feature support flags for a provider.
@@ -225,12 +208,6 @@ impl ProviderDescriptor {
                 supports_hooks: true,
                 supports_tool_permissions: true,
                 supports_memory: false,
-            },
-            "windsurf" => ProviderFeatureFlags {
-                supports_mcp: false,
-                supports_hooks: false,
-                supports_tool_permissions: false,
-                supports_memory: true,
             },
             // Unknown providers: conservative defaults
             _ => ProviderFeatureFlags {
