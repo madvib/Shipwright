@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use crate::compile::get_provider;
 use crate::types::AgentProfile;
 
 /// Compile agent profiles into provider-native agent files.
@@ -18,12 +19,20 @@ pub fn compile_agent_profiles(
     profiles: &[AgentProfile],
     provider_id: &str,
 ) -> HashMap<String, String> {
+    let desc = match get_provider(provider_id) {
+        Some(d) => d,
+        None => return HashMap::new(),
+    };
     let mut out = HashMap::new();
     for profile in profiles {
         if !profile_targets_provider(profile, provider_id) {
             continue;
         }
-        let (path, content) = match provider_id {
+        let path = match desc.agents_dir.agent_path(&profile.profile.id) {
+            Some(p) => p,
+            None => continue,
+        };
+        let content = match provider_id {
             "claude" => compile_claude_agent(profile),
             "gemini" => compile_gemini_agent(profile),
             "cursor" => compile_cursor_agent(profile),
@@ -52,10 +61,7 @@ fn profile_targets_provider(profile: &AgentProfile, provider_id: &str) -> bool {
 // Format: `.claude/agents/<id>.md`
 // Frontmatter: name, description, model, tools, permissionMode, mcpServers, skills
 
-fn compile_claude_agent(profile: &AgentProfile) -> (String, String) {
-    let id = &profile.profile.id;
-    let path = format!(".claude/agents/{id}.md");
-
+fn compile_claude_agent(profile: &AgentProfile) -> String {
     let mut fm = Vec::new();
     fm.push(format!("name: {}", profile.profile.name));
     if let Some(desc) = &profile.profile.description {
@@ -96,18 +102,14 @@ fn compile_claude_agent(profile: &AgentProfile) -> (String, String) {
     }
 
     let body = profile.rules.inline.as_deref().unwrap_or_default();
-    let content = format!("---\n{}\n---\n\n{}\n", fm.join("\n"), body.trim());
-    (path, content)
+    format!("---\n{}\n---\n\n{}\n", fm.join("\n"), body.trim())
 }
 
 // ─── Gemini CLI ──────────────────────────────────────────────────────────────
 // Format: `.gemini/agents/<id>.md`
 // Frontmatter: name, description, kind, tools, model, max_turns
 
-fn compile_gemini_agent(profile: &AgentProfile) -> (String, String) {
-    let id = &profile.profile.id;
-    let path = format!(".gemini/agents/{id}.md");
-
+fn compile_gemini_agent(profile: &AgentProfile) -> String {
     let mut fm = Vec::new();
     fm.push(format!("name: {}", profile.profile.id));
     if let Some(desc) = &profile.profile.description {
@@ -137,18 +139,14 @@ fn compile_gemini_agent(profile: &AgentProfile) -> (String, String) {
     fm.push(format!("tools:\n{}", yaml_list(&tool_strs)));
 
     let body = profile.rules.inline.as_deref().unwrap_or_default();
-    let content = format!("---\n{}\n---\n\n{}\n", fm.join("\n"), body.trim());
-    (path, content)
+    format!("---\n{}\n---\n\n{}\n", fm.join("\n"), body.trim())
 }
 
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 // Format: `.cursor/agents/<id>.md`
 // Frontmatter: name, description, model
 
-fn compile_cursor_agent(profile: &AgentProfile) -> (String, String) {
-    let id = &profile.profile.id;
-    let path = format!(".cursor/agents/{id}.md");
-
+fn compile_cursor_agent(profile: &AgentProfile) -> String {
     let mut fm = Vec::new();
     fm.push(format!("name: {}", profile.profile.id));
     if let Some(desc) = &profile.profile.description {
@@ -161,18 +159,14 @@ fn compile_cursor_agent(profile: &AgentProfile) -> (String, String) {
     }
 
     let body = profile.rules.inline.as_deref().unwrap_or_default();
-    let content = format!("---\n{}\n---\n\n{}\n", fm.join("\n"), body.trim());
-    (path, content)
+    format!("---\n{}\n---\n\n{}\n", fm.join("\n"), body.trim())
 }
 
 // ─── Codex CLI ───────────────────────────────────────────────────────────────
 // Format: `.codex/agents/<id>.toml`
 // Schema: name, model, description + config keys
 
-fn compile_codex_agent(profile: &AgentProfile) -> (String, String) {
-    let id = &profile.profile.id;
-    let path = format!(".codex/agents/{id}.toml");
-
+fn compile_codex_agent(profile: &AgentProfile) -> String {
     let mut lines = Vec::new();
     lines.push(format!("name = {}", toml_quote(&profile.profile.name)));
     if let Some(desc) = &profile.profile.description {
@@ -194,8 +188,7 @@ fn compile_codex_agent(profile: &AgentProfile) -> (String, String) {
         }
     }
 
-    let content = lines.join("\n") + "\n";
-    (path, content)
+    lines.join("\n") + "\n"
 }
 
 // ─── Provider setting helpers ────────────────────────────────────────────────

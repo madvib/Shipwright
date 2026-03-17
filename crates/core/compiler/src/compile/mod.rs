@@ -81,6 +81,49 @@ impl SkillsDir {
     }
 }
 
+/// Where provider-native subagent definition files are written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentsDir {
+    /// `.claude/agents/<id>.md`
+    Claude,
+    /// `.gemini/agents/<id>.md`
+    Gemini,
+    /// `.codex/agents/<id>.toml`
+    Codex,
+    /// `.cursor/agents/<id>.md`
+    Cursor,
+    None,
+}
+
+impl AgentsDir {
+    pub fn base_path(self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some(".claude/agents"),
+            Self::Gemini => Some(".gemini/agents"),
+            Self::Codex => Some(".codex/agents"),
+            Self::Cursor => Some(".cursor/agents"),
+            Self::None => None,
+        }
+    }
+
+    pub fn ext(self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some("md"),
+            Self::Gemini => Some("md"),
+            Self::Codex => Some("toml"),
+            Self::Cursor => Some("md"),
+            Self::None => None,
+        }
+    }
+
+    /// Build the project-relative path for an agent file: `<base>/<id>.<ext>`.
+    pub fn agent_path(self, id: &str) -> Option<String> {
+        let base = self.base_path()?;
+        let ext = self.ext()?;
+        Some(format!("{base}/{id}.{ext}"))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProviderDescriptor {
     pub id: &'static str,
@@ -88,6 +131,7 @@ pub struct ProviderDescriptor {
     pub mcp_key: McpKey,
     pub context_file: ContextFile,
     pub skills_dir: SkillsDir,
+    pub agents_dir: AgentsDir,
     /// Whether to emit `"type"` field in MCP server entries.
     /// Claude and Cursor: false (no type field).
     /// Gemini and Codex: false — transport is inferred from field presence
@@ -110,6 +154,7 @@ static PROVIDERS: &[ProviderDescriptor] = &[
         mcp_key: McpKey::McpServers,
         context_file: ContextFile::ClaudeMd,
         skills_dir: SkillsDir::Claude,
+        agents_dir: AgentsDir::Claude,
         emit_type_field: false,
         sse_url_field: "url",
         http_url_field: "url",
@@ -122,6 +167,7 @@ static PROVIDERS: &[ProviderDescriptor] = &[
         mcp_key: McpKey::McpServers,
         context_file: ContextFile::GeminiMd,
         skills_dir: SkillsDir::Gemini,
+        agents_dir: AgentsDir::Gemini,
         // Source: https://geminicli.com/docs/tools/mcp-server/
         // No "type" field — transport inferred from field presence.
         emit_type_field: false,
@@ -141,6 +187,7 @@ static PROVIDERS: &[ProviderDescriptor] = &[
         mcp_key: McpKey::McpServersUnderscored,
         context_file: ContextFile::AgentsMd,
         skills_dir: SkillsDir::Agents,
+        agents_dir: AgentsDir::Codex,
         // No "type" field in Codex TOML MCP entries either.
         emit_type_field: false,
         sse_url_field: "url",
@@ -155,6 +202,7 @@ static PROVIDERS: &[ProviderDescriptor] = &[
         // Cursor uses per-file .mdc rules in .cursor/rules/ — not a single context file
         context_file: ContextFile::None,
         skills_dir: SkillsDir::Cursor,
+        agents_dir: AgentsDir::Cursor,
         emit_type_field: false,
         sse_url_field: "url",
         http_url_field: "url",
@@ -267,9 +315,11 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
             &resolved.available_models,
         );
         // Legacy team agents (passthrough from .ship/agents/teams/claude/)
-        for (filename, content) in &resolved.claude_team_agents {
-            out.agent_files
-                .insert(format!(".claude/agents/{}", filename), content.clone());
+        if let Some(base) = desc.agents_dir.base_path() {
+            for (filename, content) in &resolved.claude_team_agents {
+                out.agent_files
+                    .insert(format!("{base}/{filename}"), content.clone());
+            }
         }
     }
 

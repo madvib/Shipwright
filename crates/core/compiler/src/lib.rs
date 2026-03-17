@@ -6,7 +6,7 @@ pub mod types;
 // ─── Top-level re-exports ─────────────────────────────────────────────────────
 
 pub use compile::{
-    CompileOutput, ContextFile, McpKey, ProviderDescriptor, SkillsDir,
+    AgentsDir, CompileOutput, ContextFile, McpKey, ProviderDescriptor, SkillsDir,
     agents::compile_agent_profiles,
     build_claude_settings_patch, compile, get_provider, list_providers,
     CURSOR_PERMISSIVE_ALLOW,
