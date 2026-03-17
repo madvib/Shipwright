@@ -1063,6 +1063,7 @@ fn export_toml(
     root.insert(desc.mcp_key.to_string(), toml::Value::Table(new_mcp));
     if desc.id == "codex" {
         apply_codex_permissions(root, project_root, &payload.permissions);
+        export_codex_execpolicy(project_root, &payload.permissions)?;
     }
 
     let header =

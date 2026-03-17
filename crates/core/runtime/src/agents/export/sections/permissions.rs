@@ -977,6 +977,32 @@ fn import_permissions_from_codex(project_dir: &Path) -> Result<Option<Permission
         }
     }
 
+    // Read native Starlark rules files under .codex/rules/
+    let rules_dir = project_root.join(".codex").join("rules");
+    if rules_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&rules_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("rules") {
+                    continue;
+                }
+                let Ok(content) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                for (words, decision) in parse_starlark_prefix_rules(&content) {
+                    imported = true;
+                    let pattern = format!("{} *", words.join(" "));
+                    match decision.as_str() {
+                        "allow" => permissions.commands.allow.push(pattern),
+                        "forbidden" => permissions.commands.deny.push(pattern),
+                        "prompt" => permissions.agent.require_confirmation.push(pattern),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     if !imported {
         return Ok(None);
     }
@@ -1059,6 +1085,115 @@ fn codex_prefix_to_pattern(prefix: &str) -> String {
     }
 }
 
+fn pattern_to_starlark_words(pattern: &str) -> Option<Vec<String>> {
+    let trimmed = pattern.trim();
+    if !trimmed.ends_with('*') {
+        return None;
+    }
+    let prefix = trimmed.trim_end_matches('*').trim();
+    if prefix.is_empty() {
+        return None;
+    }
+    let words: Vec<String> = prefix.split_whitespace().map(str::to_string).collect();
+    if words.is_empty() { None } else { Some(words) }
+}
+
+fn export_codex_execpolicy(project_root: &Path, permissions: &Permissions) -> Result<()> {
+    let rules_dir = project_root.join(".codex").join("rules");
+    let rules_path = rules_dir.join("ship.rules");
+
+    let mut entries: Vec<(Vec<String>, &str)> = Vec::new();
+    for pattern in &permissions.commands.deny {
+        if let Some(words) = pattern_to_starlark_words(pattern) {
+            entries.push((words, "forbidden"));
+        }
+    }
+    for pattern in &permissions.agent.require_confirmation {
+        if let Some(words) = pattern_to_starlark_words(pattern) {
+            entries.push((words, "prompt"));
+        }
+    }
+    for pattern in &permissions.commands.allow {
+        if let Some(words) = pattern_to_starlark_words(pattern) {
+            entries.push((words, "allow"));
+        }
+    }
+
+    if entries.is_empty() {
+        let _ = fs::remove_file(&rules_path);
+        return Ok(());
+    }
+
+    fs::create_dir_all(&rules_dir)?;
+
+    let mut content =
+        String::from("# managed by ship\n# source: .ship/agents/permissions.toml\n\n");
+    for (words, decision) in &entries {
+        let quoted: Vec<String> = words.iter().map(|w| format!("\"{}\"", w)).collect();
+        content.push_str(&format!(
+            "prefix_rule(\n    pattern = [{}],\n    decision = \"{}\",\n)\n\n",
+            quoted.join(", "),
+            decision
+        ));
+    }
+    let content = content.trim_end_matches('\n').to_string() + "\n";
+    crate::fs_util::write_atomic(&rules_path, content)
+}
+
+fn parse_starlark_prefix_rules(content: &str) -> Vec<(Vec<String>, String)> {
+    let mut results = Vec::new();
+    let mut remaining = content;
+    while let Some(start) = remaining.find("prefix_rule(") {
+        let after_paren = start + "prefix_rule(".len();
+        let rest = &remaining[after_paren..];
+        if let Some(end) = rest.find(')') {
+            let block = &rest[..end];
+            if let Some(entry) = parse_starlark_prefix_rule_block(block) {
+                results.push(entry);
+            }
+            remaining = &rest[end + 1..];
+        } else {
+            break;
+        }
+    }
+    results
+}
+
+fn parse_starlark_prefix_rule_block(block: &str) -> Option<(Vec<String>, String)> {
+    let decision = {
+        let line = block.lines().find(|l| l.trim().starts_with("decision"))?;
+        let after_eq = line.splitn(2, '=').nth(1)?.trim();
+        let inner = after_eq.trim_start_matches('"');
+        let end = inner.find('"')?;
+        inner[..end].to_string()
+    };
+
+    let pattern_line = block.lines().find(|l| l.trim().starts_with("pattern"))?;
+    let bracket_start = pattern_line.find('[')?;
+    let bracket_end = pattern_line.rfind(']')?;
+    if bracket_end <= bracket_start {
+        return None;
+    }
+    let inner = &pattern_line[bracket_start + 1..bracket_end];
+
+    let words: Vec<String> = inner
+        .split(',')
+        .filter_map(|part| {
+            let s = part.trim();
+            if s.len() > 2 && s.starts_with('"') && s.ends_with('"') {
+                Some(s[1..s.len() - 1].to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if words.is_empty() || decision.is_empty() {
+        return None;
+    }
+
+    Some((words, decision))
+}
 
 fn dedupe_strings(values: &mut Vec<String>) {
     let mut seen = HashSet::new();
