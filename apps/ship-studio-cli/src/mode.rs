@@ -16,6 +16,8 @@ pub struct Profile {
     pub permissions: ProfilePermissions,
     #[serde(default)]
     pub rules: RulesConfig,
+    #[serde(default)]
+    pub hooks: ProfileHooks,
     /// Provider-specific settings merged verbatim into the provider's config file.
     /// `[provider_settings.claude]` → `.claude/settings.json`.
     /// Any key/value valid in that file works here — no code change required.
@@ -73,6 +75,17 @@ pub struct ProfilePermissions {
 pub struct RulesConfig {
     /// Inline always-on rules appended after agents/rules/*.md
     pub inline: Option<String>,
+}
+
+/// Hook commands declared in a profile.
+/// Each field corresponds to a Claude Code hook trigger name.
+/// The compiler emits these into `.claude/settings.json` under `hooks`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProfileHooks {
+    /// Command to run when the agent session ends (Claude Code Stop hook).
+    pub stop: Option<String>,
+    /// Command to run when a sub-agent session ends (Claude Code SubagentStop hook).
+    pub subagent_stop: Option<String>,
 }
 
 fn default_version() -> String { "0.1.0".to_string() }

@@ -27,6 +27,11 @@ Route jobs to the right workspace — don't do work outside your file scope dire
 When in doubt, create a job and assign it rather than doing it yourself.
 """
 
+[hooks]
+# Sync session permission decisions back into this profile on session end.
+# Prevents "Allow always" / "Deny" decisions from being lost when ship use recompiles.
+stop = "ship permissions sync"
+
 [provider_settings.claude]
 # Disable Claude's automatic memory writes — Ship Docs API is the memory layer.
 autoMemoryEnabled = false

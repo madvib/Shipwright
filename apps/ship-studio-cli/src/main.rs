@@ -8,11 +8,12 @@ mod loader;
 mod mcp;
 mod mode;
 mod paths;
+mod permissions;
 mod profile;
 mod skill;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, SkillCommands};
+use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -54,6 +55,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Retry { id, worktrees_dir } => job::retry(&id, worktrees_dir),
             Commands::Gate { id, worktrees_dir } => job::gate(&id, worktrees_dir),
             Commands::Job { action } => dispatch_job(action),
+            Commands::Permissions { action } => dispatch_permissions(action),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
@@ -284,6 +286,23 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
         McpCommands::AddStdio { id, command, args, name, .. } => mcp::add_stdio(&id, name, &command, args),
         McpCommands::Remove { id } => mcp::remove(&id),
         McpCommands::Probe { id } => stub("mcp probe", &format!("Live probing for {:?} — requires local server", id)),
+    }
+}
+
+// ── Permissions subcommands ───────────────────────────────────────────────────
+
+fn dispatch_permissions(action: PermissionsCommands) -> Result<()> {
+    match action {
+        PermissionsCommands::Sync { path } => {
+            let project_root = path.as_deref()
+                .map(std::fs::canonicalize)
+                .transpose()?
+                .unwrap_or_else(|| std::env::current_dir().unwrap());
+            if !project_root.join(".ship").exists() {
+                anyhow::bail!(".ship/ not found. Run: ship init");
+            }
+            permissions::run_permissions_sync(&project_root)
+        }
     }
 }
 

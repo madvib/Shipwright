@@ -1,7 +1,7 @@
 //! `ship compile` — load the project library, resolve, compile, write.
 
 use anyhow::{Context, Result};
-use compiler::{CompileOutput, PluginEntry, PluginsManifest, ProjectLibrary, compile, get_provider, resolve_library};
+use compiler::{CompileOutput, HookConfig, HookTrigger, PluginEntry, PluginsManifest, ProjectLibrary, compile, get_provider, resolve_library};
 use std::path::Path;
 
 use crate::loader::load_library;
@@ -112,6 +112,30 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
             }).collect(),
             scope: profile.plugins.scope.clone(),
         };
+    }
+
+    // Hooks declared in [hooks] section of profile TOML
+    if let Some(cmd) = &profile.hooks.stop {
+        let id = format!("{}-stop", mode_id);
+        if !library.hooks.iter().any(|h| h.id == id) {
+            library.hooks.push(HookConfig {
+                id,
+                trigger: HookTrigger::Stop,
+                command: cmd.clone(),
+                matcher: None,
+            });
+        }
+    }
+    if let Some(cmd) = &profile.hooks.subagent_stop {
+        let id = format!("{}-subagent-stop", mode_id);
+        if !library.hooks.iter().any(|h| h.id == id) {
+            library.hooks.push(HookConfig {
+                id,
+                trigger: HookTrigger::SubagentStop,
+                command: cmd.clone(),
+                matcher: None,
+            });
+        }
     }
 
     // Provider-specific settings pass-through
@@ -470,6 +494,33 @@ inline = "Never delete files without explicit confirmation."
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(content.contains("Never delete files without explicit confirmation."));
+    }
+
+    #[test]
+    fn compile_with_profile_stop_hook_emits_to_settings() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), ".ship/agents/profiles/commander.toml", r#"
+[profile]
+name = "Commander"
+id = "commander"
+providers = ["claude"]
+
+[hooks]
+stop = "ship permissions sync"
+"#);
+        run_compile(CompileOptions {
+            project_root: tmp.path(), provider: Some("claude"),
+            dry_run: false, active_mode: Some("commander"),
+        }).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
+        ).unwrap();
+        let stop_hooks = v["hooks"]["Stop"].as_array()
+            .expect("Stop hooks array must be present");
+        assert!(
+            stop_hooks.iter().any(|h| h["command"] == "ship permissions sync"),
+            "stop hook command must be emitted"
+        );
     }
 
     #[test]
