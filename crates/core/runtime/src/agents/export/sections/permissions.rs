@@ -797,25 +797,17 @@ fn import_permissions_from_claude(project_dir: &Path) -> Result<Option<Permissio
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let deny = perms
-        .get("deny")
-        .and_then(|v| v.as_array())
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    if allow.is_empty() && deny.is_empty() {
+    // Never import deny rules from a provider settings file back into the Ship
+    // profile. The provider's deny list is a generated artifact that reflects
+    // what Ship compiled last time — importing it would create a feedback loop
+    // where each `ship use` bakes in whatever deny rules the prior session had.
+    // Only import additive allow rules that the user explicitly added outside Ship.
+    if allow.is_empty() {
         return Ok(None);
     }
 
     let mut permissions = Permissions::default();
-    if !allow.is_empty() {
-        permissions.tools.allow = allow;
-    }
-    permissions.tools.deny = deny;
+    permissions.tools.allow = allow;
     Ok(Some(permissions))
 }
 

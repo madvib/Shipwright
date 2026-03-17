@@ -647,7 +647,11 @@ mod tests {
     }
 
     #[test]
-    fn claude_permissions_round_trip_imports_back_to_canonical() {
+    fn claude_permissions_import_only_imports_allow_rules() {
+        // Deny rules must never be imported from the provider settings file back
+        // into the Ship profile. The provider deny list is a compiled artifact;
+        // reading it back would create a feedback loop where each `ship use` bakes
+        // in whatever deny rules the prior session accumulated.
         let (tmp, project_dir) = project_with_servers(vec![]);
         let home = tempdir().unwrap();
         let _home_guard = lock_home_for_test(home.path());
@@ -667,16 +671,7 @@ mod tests {
         let settings_path = tmp.path().join(".claude").join("settings.json");
         let settings: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
-        let expected_allow = settings["permissions"]["allow"]
-            .as_array()
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(|value| value.as_str().map(str::to_string))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let expected_deny = settings["permissions"]["deny"]
+        let exported_allow = settings["permissions"]["allow"]
             .as_array()
             .map(|values| {
                 values
@@ -686,12 +681,54 @@ mod tests {
             })
             .unwrap_or_default();
 
+        // Wipe the Ship permissions and import back from the Claude settings file.
         save_permissions(project_dir.clone(), &Permissions::default()).unwrap();
         let imported = import_permissions_from_provider("claude", project_dir.clone()).unwrap();
-        assert!(imported);
+        assert!(imported, "allow rules present in settings.json should trigger import");
         let restored = crate::permissions::get_permissions(project_dir).unwrap();
-        assert_eq!(restored.tools.allow, expected_allow);
-        assert_eq!(restored.tools.deny, expected_deny);
+        // Allow rules are imported (user may have added them outside Ship).
+        assert_eq!(restored.tools.allow, exported_allow);
+        // Deny rules from the provider settings file are NOT imported back — they are
+        // compiled output, not user intent. The deny list in permissions.toml should
+        // only contain what was already there (the defaults), not what was in settings.json.
+        assert!(
+            !restored.tools.deny.contains(&"WebFetch(*)".to_string()),
+            "deny rules from settings.json must not be imported back into the profile"
+        );
+    }
+
+    #[test]
+    fn claude_permissions_import_skipped_when_only_deny_in_settings() {
+        // If the settings file contains only deny rules (no explicit allow rules),
+        // the import must return false and must NOT write a permissions.toml file.
+        // This prevents feedback-loop state (accumulated deny rules) from being
+        // persisted as permanent policy.
+        let (tmp, project_dir) = project_with_servers(vec![]);
+        let home = tempdir().unwrap();
+        let _home_guard = lock_home_for_test(home.path());
+
+        // Write a settings.json with only deny entries (simulates feedback-loop state).
+        let settings_path = tmp.path().join(".claude").join("settings.json");
+        std::fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings_path,
+            r#"{"permissions":{"deny":["Bash","Write","Edit"]}}"#,
+        )
+        .unwrap();
+
+        let permissions_path = project_dir.join("agents").join("permissions.toml");
+        assert!(!permissions_path.exists(), "permissions.toml must not exist before import");
+
+        let imported = import_permissions_from_provider("claude", project_dir.clone()).unwrap();
+        assert!(
+            !imported,
+            "import must return false when settings.json has only deny rules"
+        );
+        // permissions.toml must not have been created — deny rules must not be persisted.
+        assert!(
+            !permissions_path.exists(),
+            "permissions.toml must not be written when import returns false"
+        );
     }
 
     #[test]
