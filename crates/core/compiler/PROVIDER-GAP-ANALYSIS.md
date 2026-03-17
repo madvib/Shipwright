@@ -21,7 +21,7 @@ Each provider section lists the **full upstream config surface**, then marks eac
 
 | Provider | Total Config Surfaces | Ship Compiles | Coverage | Critical Gaps |
 |---|---|---|---|---|
-| Claude Code | ~80 fields + 18 hook triggers | ~20 fields + 6 triggers | ~25% | model picker, plugins, env, managed settings, 12 hook triggers |
+| Claude Code | ~90 fields + 24 hook events + sandbox ACLs | ~20 fields + 6 triggers | ~22% | sandbox (fs+net ACLs), 18 hook events, 3 hook types, env, worktree config, glob-scoped rules |
 | Gemini CLI | ~120 fields + 11 hook triggers | ~15 fields + 5 triggers | ~12% | model, approval mode, sandbox, browser agent, extensions, env |
 | Codex CLI | ~90 fields + 50 feature flags + Starlark rules | ~5 fields (MCP + context only) | ~6% | model, approval/sandbox, Starlark rules, permission profiles (fs+net ACLs), granular approval, multi-agent, per-MCP auth/tools |
 | Cursor | ~30 fields (file-based) + SQLite | ~15 fields | ~50% | model (SQLite), YOLO mode, environment.json, .cursorignore |
@@ -91,36 +91,57 @@ Each provider section lists the **full upstream config surface**, then marks eac
 | `permissions.additionalDirectories` | string[] | ✅ Compiled | Extra directories |
 | `permissions.disableBypassPermissionsMode` | "disable" | 🔴 Gap | Enterprise lockdown |
 
-#### Hooks
-| Trigger | Ship Status | Notes |
-|---|---|---|
-| `PreToolUse` | ✅ Compiled | |
-| `PostToolUse` | ✅ Compiled | |
-| `Notification` | ✅ Compiled | |
-| `Stop` | ✅ Compiled | |
-| `SubagentStop` | ✅ Compiled | |
-| `PreCompact` | ✅ Compiled | |
-| `SessionStart` | 🔴 Gap | Workspace setup automation |
-| `SessionEnd` | 🔴 Gap | Cleanup |
-| `PostToolUseFailure` | 🔴 Gap | Error handling |
-| `PermissionRequest` | 🔴 Gap | Permission audit |
-| `UserPromptSubmit` | 🔴 Gap | Input processing |
-| `SubagentStart` | 🔴 Gap | Agent lifecycle |
-| `Setup` | 🔴 Gap | Init/maintenance hooks |
-| `InstructionsLoaded` | 🔴 Gap | Audit/logging |
-| `ConfigChange` | 🔴 Gap | Hot-reload triggers |
-| `WorktreeCreate` | 🔴 Gap | Worktree management |
-| `WorktreeRemove` | 🔴 Gap | Worktree cleanup |
-| `TeammateIdle` | 🔴 Gap | Multi-agent coordination |
-| `TaskCompleted` | 🔴 Gap | Task lifecycle gates |
+#### Hooks (24 events, 4 handler types)
+| Trigger | Ship Status | Can Block? | Notes |
+|---|---|---|---|
+| `PreToolUse` | ✅ Compiled | Yes | Matcher: tool name |
+| `PostToolUse` | ✅ Compiled | No | |
+| `Notification` | ✅ Compiled | No | Matchers: permission_prompt, idle_prompt, auth_success, elicitation_dialog |
+| `Stop` | ✅ Compiled | Yes | |
+| `SubagentStop` | ✅ Compiled | Yes | |
+| `PreCompact` | ✅ Compiled | No | Matchers: manual, auto |
+| `SessionStart` | 🔴 Gap | No | Matchers: startup, resume, clear, compact |
+| `SessionEnd` | 🔴 Gap | No | Matchers: clear, logout, prompt_input_exit |
+| `PostToolUseFailure` | 🔴 Gap | No | Receives error + is_interrupt |
+| `PermissionRequest` | 🔴 Gap | Yes | Permission audit gate |
+| `UserPromptSubmit` | 🔴 Gap | Yes | All 4 handler types |
+| `SubagentStart` | 🔴 Gap | No | Matcher: agent type |
+| `Setup` | 🔴 Gap | — | Matchers: init, maintenance |
+| `InstructionsLoaded` | 🔴 Gap | No | Audit logging |
+| `ConfigChange` | 🔴 Gap | Yes | Matchers: user/project/local/policy_settings, skills |
+| `WorktreeCreate` | 🔴 Gap | Yes | Must print abs path to stdout |
+| `WorktreeRemove` | 🔴 Gap | No | |
+| `TeammateIdle` | 🔴 Gap | Yes | Exit code 2 sends feedback |
+| `TaskCompleted` | 🔴 Gap | Yes | Exit code 2 prevents completion |
+| `PostCompact` | 🔴 Gap | No | Matchers: manual, auto |
+| `Elicitation` | 🔴 Gap | Yes | Matcher: MCP server name |
+| `ElicitationResult` | 🔴 Gap | Yes | Matcher: MCP server name |
 
-**Hook command types (4):**
-| Type | Ship Status | Notes |
-|---|---|---|
-| `command` | ✅ Compiled | Shell command execution |
-| `prompt` | 🔴 Gap | LLM prompt evaluation |
-| `agent` | 🔴 Gap | Multi-turn agent hook |
-| `http` | 🔴 Gap | Webhook/HTTP callback |
+**Hook handler types (4):**
+| Type | Ship Status | Default Timeout | Notes |
+|---|---|---|---|
+| `command` | ✅ Compiled | 600s | Shell command; async option |
+| `prompt` | 🔴 Gap | 30s | LLM eval; `$ARGUMENTS` placeholder |
+| `agent` | 🔴 Gap | 60s | Multi-turn agent with tool access |
+| `http` | 🔴 Gap | 30s | POST webhook; `$VAR` in headers; `allowedEnvVars` |
+
+**Hook stdin:** All events get `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`. Tool events add `tool_name`, `tool_input`, `tool_use_id`. Exit code 2 = blocking error.
+
+#### Sandbox
+| Field | Type | Ship Status | Notes |
+|---|---|---|---|
+| `sandbox.enabled` | boolean | 🔴 Gap | Enable bash sandboxing |
+| `sandbox.autoAllowBashIfSandboxed` | boolean | 🔴 Gap | Auto-approve bash when sandboxed |
+| `sandbox.excludedCommands` | array | 🔧 provider_config | Commands outside sandbox |
+| `sandbox.allowUnsandboxedCommands` | boolean | 🔧 provider_config | Allow escape hatch |
+| `sandbox.filesystem.allowWrite` | array | 🔴 Gap | Writable paths |
+| `sandbox.filesystem.denyWrite` | array | 🔴 Gap | Denied write paths (precedence) |
+| `sandbox.filesystem.denyRead` | array | 🔴 Gap | Denied read paths |
+| `sandbox.filesystem.allowRead` | array | 🔴 Gap | Re-allow reads within deny regions |
+| `sandbox.network.allowedDomains` | array | 🔴 Gap | Outbound domain allowlist (`*.example.com`) |
+| `sandbox.network.allowUnixSockets` | array | 🔧 provider_config | |
+| `sandbox.network.allowLocalBinding` | boolean | 🔧 provider_config | macOS localhost binding |
+| `sandbox.network.httpProxyPort` | integer | 🔧 provider_config | |
 
 #### MCP Server Controls
 | Field | Type | Ship Status | Notes |
@@ -160,20 +181,28 @@ Each provider section lists the **full upstream config surface**, then marks eac
 | `maxCostPerSession` | number | ✅ Compiled | Cost cap |
 | `maxTurns` | number | ✅ Compiled | Turn limit |
 
-#### UX/UI (mostly out of scope)
-| Field | Ship Status | Notes |
+#### Worktree Config
+| Field | Type | Ship Status | Notes |
+|---|---|---|---|
+| `worktree.symlinkDirectories` | string[] | 🔴 Gap | Directories to symlink in worktrees |
+| `worktree.sparsePaths` | string[] | 🔴 Gap | Sparse-checkout paths for worktrees |
+
+#### Model Config (advanced)
+| Field | Type | Ship Status | Notes |
+|---|---|---|---|
+| `modelOverrides` | object | 🔧 provider_config | Map Anthropic model IDs to provider-specific IDs (Bedrock ARNs) |
+| `feedbackSurveyRate` | number (0-1) | ⬜ | |
+
+#### Rules (.claude/rules/*.md with glob frontmatter)
+| Feature | Ship Status | Notes |
 |---|---|---|
-| `statusLine` | ⬜ | Terminal status display |
-| `fileSuggestion` | ⬜ | File suggestion command |
-| `spinnerVerbs` | ⬜ | Loading text |
-| `spinnerTipsEnabled` | ⬜ | |
-| `terminalProgressBarEnabled` | ⬜ | |
-| `showTurnDuration` | ⬜ | |
-| `prefersReducedMotion` | ⬜ | |
-| `autoUpdatesChannel` | ⬜ | |
-| `cleanupPeriodDays` | ⬜ | |
-| `respectGitignore` | ⬜ | |
-| `autoMemoryEnabled` | ⬜ | |
+| `.claude/rules/` directory | 🗺️ Maps to Ship rules | Path-scoped rules |
+| `paths:` frontmatter (glob) | 🔴 Gap | Rules load only when matching files accessed |
+| `excludePaths:` frontmatter | 🔴 Gap | Exclude paths from rule matching |
+| Rules without `paths:` | ✅ | Apply globally (same as Ship rules today) |
+
+#### UX/UI (out of scope)
+Fields: `statusLine`, `fileSuggestion`, `spinnerVerbs`, `spinnerTipsEnabled`, `terminalProgressBarEnabled`, `showTurnDuration`, `prefersReducedMotion`, `autoUpdatesChannel`, `cleanupPeriodDays`, `respectGitignore`, `autoMemoryEnabled`, `autoMemoryDirectory`, `plansDirectory`, `outputStyle`, `language`, `teammateMode`, `companyAnnouncements`
 | `plansDirectory` | ⬜ | |
 | `skipWebFetchPreflight` | ⬜ | |
 | `sandbox` | 🔧 provider_config | Sandbox config |
@@ -654,11 +683,11 @@ Scoping: project (`.cursor/hooks.json`) + global (`~/.cursor/hooks.json`). Both 
 | **Environment variables** | Claude (`env`), Gemini (`.env`), Codex (shell policy) | Ship `[env]` section in preset? | **P0** |
 | **Model selection** | Gemini, Codex, Cursor | Already in preset `[profile]` but only compiled for Claude | **P1** |
 | **Approval mode** | Gemini (`defaultApprovalMode`), Codex (`approval_policy`) | Maps to Ship workspace modes | **P1** |
-| **Sandbox mode** | Codex (`sandbox_mode` + `sandbox_workspace_write` with writable_roots/network), Gemini (`tools.sandbox` + Dockerfile) | Ship concept TBD | **P2** |
+| **Sandbox mode** | Claude (full sandbox: fs read/write ACLs + network domain allowlist), Codex (`sandbox_mode` + `sandbox_workspace_write`), Gemini (`tools.sandbox` + Dockerfile) | Ship concept TBD — all 3 CLI providers now have sandbox | **P1** |
 | **Codex permission profiles** | Codex (filesystem + network ACLs per profile, Starlark `.rules` files) | Partially maps to Ship permissions but much richer (per-path fs access, domain-level network ACLs) | **P2** |
 | **Codex granular approval** | Codex (`approval_policy.granular` — per-category: sandbox, rules, MCP, permissions, skills) | No Ship equivalent | **P2** |
 | **MCP per-server config** | Codex (timeouts, enabled), Gemini (timeout, cwd, includeTools, excludeTools, headers, trust), Claude (enable/disable lists) | Extend Ship MCP server TOML | **P2** |
-| **Hook triggers (12+ new)** | Claude (12 new), Gemini (6 new), Cursor (3 new: `beforeSubmitPrompt`, `afterFileEdit`, `beforeReadFile`) | Expand Ship hook trigger enum | **P2** |
+| **Hook triggers (18+ new)** | Claude (18 new including PostCompact, Elicitation, ElicitationResult), Gemini (6 new), Cursor (3 new) | Expand Ship hook trigger enum | **P2** |
 | **Hook types (3 new)** | Claude (`prompt`, `agent`, `http`) | Ship hook type enum | **P2** |
 | **Multi-agent roles** | Codex (`agents`, `*.toml`), Claude (`.claude/agents/`) | Ship team/agent concept | **P2** |
 | **Plugins** | Claude (`enabledPlugins`), Codex (`plugins`) | Ship plugins manifest (partial) | **P2** |
