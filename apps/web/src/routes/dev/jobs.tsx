@@ -91,26 +91,22 @@ async function callShipMcpTool(toolName: string, args: Record<string, unknown>):
 
 const getJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Job[]> => {
   try {
-    const { execFile } = await import(/* @vite-ignore */ 'node:child_process')
-    const { promisify } = await import(/* @vite-ignore */ 'node:util')
-    const execAsync = promisify(execFile)
-
-    const [r, p] = await Promise.all([
-      execAsync('ship', ['job', 'list', '--status', 'running']).catch(() => ({ stdout: '' })),
-      execAsync('ship', ['job', 'list', '--status', 'pending']).catch(() => ({ stdout: '' })),
+    const [runningText, pendingText] = await Promise.all([
+      callShipMcpTool('list_jobs', { status: 'running' }),
+      callShipMcpTool('list_jobs', { status: 'pending' }),
     ])
 
     const parseLines = (text: string, status: 'running' | 'pending'): Job[] => {
       const jobs: Job[] = []
       for (const line of text.split('\n')) {
-        const m = line.match(/^\s+[●○]\s+(\S+)\s+(.+)$/)
+        const m = line.match(/^\s*-\s+(\S+)\s+\[(?:running|pending)\]/)
         if (m) {
           jobs.push({
             id: m[1],
             status,
-            description: m[2].trim(),
+            description: '',
             branch: `job/${m[1]}`,
-            worktree_path: `.ship/worktrees/job/${m[1]}`,
+            worktree_path: `~/dev/ship-worktrees/${m[1]}`,
             touched_files: null,
           })
         }
@@ -118,7 +114,7 @@ const getJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Job[
       return jobs
     }
 
-    return [...parseLines(r.stdout, 'running'), ...parseLines(p.stdout, 'pending')]
+    return [...parseLines(runningText, 'running'), ...parseLines(pendingText, 'pending')]
   } catch {
     return []
   }
