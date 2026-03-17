@@ -539,17 +539,20 @@ Cursor does not publish JSON schemas for any config file.
 ├── mcp.json                            # global MCP servers
 ├── hooks.json                          # global hooks
 ├── cli-config.json                     # global CLI permissions (DANGEROUS)
+├── commands/*.md                       # global slash commands (plain Markdown)
 ├── skills/*/SKILL.md                   # global skills
 └── state.vscdb                         # SQLite (all AI settings, models, API keys)
 
 <project>/
 ├── .cursor/
 │   ├── mcp.json                        # project MCP servers
-│   ├── rules/*.mdc                     # rules (MDC format)
+│   ├── rules/*.mdc                     # rules (MDC format with YAML frontmatter)
 │   ├── hooks.json                      # project hooks
 │   ├── cli.json                        # project CLI permissions
+│   ├── commands/*.md                   # project slash commands (plain Markdown)
 │   ├── skills/*/SKILL.md              # project skills
-│   └── environment.json                # cloud agent environment
+│   ├── environment.json                # cloud agent environment config
+│   └── Dockerfile                      # custom base image for remote env
 ├── .cursorrules                        # legacy rules (deprecated)
 ├── .cursorignore                       # AI + indexing exclusion
 ├── .cursorindexingignore               # indexing-only exclusion
@@ -576,13 +579,17 @@ Cursor does not publish JSON schemas for any config file.
 #### Hooks (`.cursor/hooks.json`)
 | Trigger | Ship Equivalent | Ship Status | Notes |
 |---|---|---|---|
-| `beforeShellExecution` | `PreToolUse` | ✅ Compiled | |
-| `beforeMCPExecution` | `PreToolUse` | ✅ Compiled | Split from same Ship trigger |
+| `beforeSubmitPrompt` | `UserPromptSubmit` | 🔴 Gap | Blocks before prompt sent to model; stdin includes prompt content |
+| `beforeShellExecution` | `PreToolUse` | ✅ Compiled | Can return allow/deny/ask |
+| `beforeMCPExecution` | `PreToolUse` | ✅ Compiled | stdin: server, tool_name, tool_input |
 | `afterShellExecution` | `PostToolUse` | ✅ Compiled | |
 | `afterMCPExecution` | `PostToolUse` | ✅ Compiled | |
-| `afterFileEdit` | — | 🔴 Gap | Post-edit formatting/staging |
-| `beforeReadFile` | — | 🔴 Gap | Content rewriting |
+| `afterFileEdit` | — | 🔴 Gap | Post-edit formatting/staging; receives old+new content |
+| `beforeReadFile` | — | 🔴 Gap | Can *rewrite* file content before model sees it |
 | `stop` | `Stop` | ✅ Compiled | |
+
+Hook communication: JSON on stdin/stdout. Common fields: `conversation_id`, `generation_id`, `hook_event_name`, `workspace_roots`.
+Scoping: project (`.cursor/hooks.json`) + global (`~/.cursor/hooks.json`). Both layers run.
 
 #### Permissions (`.cursor/cli.json`)
 | Feature | Ship Status | Notes |
@@ -607,12 +614,29 @@ Cursor does not publish JSON schemas for any config file.
 | `.cursorindexingignore` | ⬜ | Indexing performance |
 | `@-mentions` (files, rules, notepads) | ⬜ | Interactive-only |
 
+#### Slash Commands (`.cursor/commands/*.md`)
+| Feature | Ship Status | Notes |
+|---|---|---|
+| `.cursor/commands/*.md` | 🗺️ Maps to skills | Project commands (plain Markdown, no frontmatter) |
+| `~/.cursor/commands/*.md` | 🗺️ Maps to skills | Global commands |
+| `/command-name` invocation | 🗺️ Maps to skills | Filename minus `.md` becomes `/` command |
+
 #### Cloud Agents
 | Feature | Ship Status | Notes |
 |---|---|---|
-| `environment.json` | 🔴 Gap | Cloud agent setup recipe |
-| Background agents | ⬜ | Cloud compute |
+| `environment.json` | 🔴 Gap | Cloud agent env config |
+| `environment.json` fields | 🔴 Gap | `build.context`, `build.dockerfile`, `install`, `start`, `terminals[]` |
+| `.cursor/Dockerfile` | 🔴 Gap | Custom base image for remote env |
+| Background agents | ⬜ | Cloud compute (up to 8 parallel via worktrees) |
 | Shadow workspace | ⬜ | Background verification |
+
+#### Sandbox
+| Feature | Ship Status | Notes |
+|---|---|---|
+| Auto-Run Mode | 🔴 Gap (SQLite) | Ask Every Time / Sandbox / Run Everything |
+| Sandbox policy (macOS Seatbelt) | ⬜ | Dynamic from workspace settings |
+| Sandbox policy (Linux Landlock+seccomp) | ⬜ | |
+| Command allowlist | ⬜ | Partially broken in Cursor 2.0+ |
 
 ---
 
@@ -630,11 +654,11 @@ Cursor does not publish JSON schemas for any config file.
 | **Codex permission profiles** | Codex (filesystem + network ACLs per profile, Starlark `.rules` files) | Partially maps to Ship permissions but much richer (per-path fs access, domain-level network ACLs) | **P2** |
 | **Codex granular approval** | Codex (`approval_policy.granular` — per-category: sandbox, rules, MCP, permissions, skills) | No Ship equivalent | **P2** |
 | **MCP per-server config** | Codex (timeouts, enabled), Gemini (timeout, cwd, includeTools, excludeTools, headers, trust), Claude (enable/disable lists) | Extend Ship MCP server TOML | **P2** |
-| **Hook triggers (12 new)** | Claude (12 new), Gemini (6 new), Cursor (2 new) | Expand Ship hook trigger enum | **P2** |
+| **Hook triggers (12+ new)** | Claude (12 new), Gemini (6 new), Cursor (3 new: `beforeSubmitPrompt`, `afterFileEdit`, `beforeReadFile`) | Expand Ship hook trigger enum | **P2** |
 | **Hook types (3 new)** | Claude (`prompt`, `agent`, `http`) | Ship hook type enum | **P2** |
 | **Multi-agent roles** | Codex (`agents`, `*.toml`), Claude (`.claude/agents/`) | Ship team/agent concept | **P2** |
 | **Plugins** | Claude (`enabledPlugins`), Codex (`plugins`) | Ship plugins manifest (partial) | **P2** |
-| **Slash commands** | Gemini (`.toml` commands with templates) | Maps to Ship skills but template syntax (`@{}`, `!{}`, `{{args}}`) not supported | **P2** |
+| **Slash commands** | Gemini (`.toml` commands with templates), Cursor (`.md` commands) | Maps to Ship skills; Gemini template syntax (`@{}`, `!{}`, `{{args}}`) not supported | **P2** |
 | **Tool filtering per MCP** | Gemini (`includeTools`/`excludeTools`), Codex (per-server `enabled`) | Ship MCP server config | **P2** |
 | **Extensions** | Gemini (extension system) | No Ship equivalent | **P3** |
 | **.cursorignore** | Cursor | Ship ignore concept TBD | **P3** |
