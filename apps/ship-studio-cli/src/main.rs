@@ -50,6 +50,9 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Server { .. } => {
                 stub("server", "Local server (port 7701) — coming soon")
             }
+            Commands::Next { worktrees_dir } => job::next(worktrees_dir),
+            Commands::Retry { id, worktrees_dir } => job::retry(&id, worktrees_dir),
+            Commands::Gate { id, worktrees_dir } => job::gate(&id, worktrees_dir),
             Commands::Job { action } => dispatch_job(action),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
