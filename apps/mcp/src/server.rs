@@ -42,6 +42,57 @@ use std::process::Command as ProcessCommand;
 
 use crate::requests::*;
 
+// ─── Worktree path helpers ─────────────────────────────────────────────────────
+
+/// Read the worktree base directory from `~/.ship/config.toml [worktrees] dir`.
+/// Falls back to `~/dev/<project>-worktrees/` when the setting is absent.
+fn configured_worktree_dir(project_root: &std::path::Path) -> std::path::PathBuf {
+    let home = std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    configured_worktree_dir_impl(project_root, &home)
+}
+
+/// Testable inner implementation that accepts an explicit home path.
+fn configured_worktree_dir_impl(
+    project_root: &std::path::Path,
+    home: &std::path::Path,
+) -> std::path::PathBuf {
+    let config_path = home.join(".ship").join("config.toml");
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        let mut in_worktrees = false;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed == "[worktrees]" {
+                in_worktrees = true;
+            } else if trimmed.starts_with('[') {
+                in_worktrees = false;
+            } else if in_worktrees {
+                if let Some(rest) = trimmed.strip_prefix("dir") {
+                    let rest = rest.trim();
+                    if let Some(val) = rest.strip_prefix('=') {
+                        let dir = val.trim().trim_matches('"');
+                        if !dir.is_empty() {
+                            let expanded = if dir.starts_with("~/") {
+                                home.join(&dir[2..])
+                            } else {
+                                std::path::PathBuf::from(dir)
+                            };
+                            return expanded;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: ~/dev/<project>-worktrees/
+    let project_name = project_root
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "project".to_string());
+    home.join("dev").join(format!("{}-worktrees", project_name))
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -1107,7 +1158,8 @@ impl ShipServer {
     /// Create a new workspace with an optional git worktree
     #[tool(
         description = "Create a new workspace. For 'imperative' and 'declarative' kinds a git worktree \
-        is created under .ship/worktrees/<branch>. For 'service' kind the worktree step is skipped. \
+        is created under the configured worktree base dir (from ~/.ship/config.toml [worktrees] dir, \
+        falling back to ~/dev/<project>-worktrees/). For 'service' kind the worktree step is skipped. \
         Returns the workspace id (branch name) and worktree path."
     )]
     async fn create_workspace(
@@ -1133,7 +1185,7 @@ impl ShipServer {
                 .to_string()
         });
 
-        let worktrees_dir = project_root.join(".ship").join("worktrees");
+        let worktrees_dir = configured_worktree_dir(project_root);
         let worktree_path = worktrees_dir.join(&branch);
         let base_branch = req.base_branch.as_deref().unwrap_or("main");
         let kind = req.kind.to_ascii_lowercase();
@@ -1244,10 +1296,7 @@ impl ShipServer {
         };
 
         let workspace_id = req.workspace_id.trim();
-        let worktree_path = project_root
-            .join(".ship")
-            .join("worktrees")
-            .join(workspace_id);
+        let worktree_path = configured_worktree_dir(project_root).join(workspace_id);
 
         // Read workspace.toml to get kind, name, preset_id
         let toml_path = worktree_path.join("workspace.toml");
@@ -1362,8 +1411,10 @@ impl ShipServer {
 
     /// List git worktrees under .ship/worktrees/ that have been idle beyond a threshold
     #[tool(
-        description = "List git worktrees under .ship/worktrees/ that have been idle (last modified) \
-        longer than idle_hours (default: 24). Returns worktree path, branch, and idle duration."
+        description = "List git worktrees under the configured worktree base dir (from \
+        ~/.ship/config.toml [worktrees] dir, falling back to ~/dev/<project>-worktrees/) that have \
+        been idle (last modified) longer than idle_hours (default: 24). Returns worktree path, branch, \
+        and idle duration."
     )]
     async fn list_stale_worktrees(
         &self,
@@ -1398,9 +1449,7 @@ impl ShipServer {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let worktrees_prefix = project_root
-            .join(".ship")
-            .join("worktrees")
+        let worktrees_prefix = configured_worktree_dir(project_root)
             .to_string_lossy()
             .to_string();
 
@@ -2058,6 +2107,74 @@ mod tests {
             "[]",
             "expected no sessions before start, got {}",
             sessions_before
+        );
+    }
+}
+
+#[cfg(test)]
+mod worktree_dir_tests {
+    use super::configured_worktree_dir_impl;
+    use std::path::PathBuf;
+
+    #[test]
+    fn config_absent_falls_back_to_project_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project_root = PathBuf::from("/home/user/my-project");
+        let result = configured_worktree_dir_impl(&project_root, tmp.path());
+        assert!(
+            result.to_string_lossy().ends_with("my-project-worktrees"),
+            "expected fallback ending in my-project-worktrees, got {}",
+            result.display()
+        );
+    }
+
+    #[test]
+    fn config_present_with_absolute_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        std::fs::write(
+            ship_dir.join("config.toml"),
+            "[worktrees]\ndir = \"/opt/worktrees\"\n",
+        )
+        .unwrap();
+        let project_root = PathBuf::from("/home/user/myproject");
+        let result = configured_worktree_dir_impl(&project_root, tmp.path());
+        assert_eq!(result, PathBuf::from("/opt/worktrees"));
+    }
+
+    #[test]
+    fn config_present_with_tilde_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        std::fs::write(
+            ship_dir.join("config.toml"),
+            "[worktrees]\ndir = \"~/dev/worktrees\"\n",
+        )
+        .unwrap();
+        let project_root = PathBuf::from("/home/user/myproject");
+        let result = configured_worktree_dir_impl(&project_root, tmp.path());
+        let expected = tmp.path().join("dev").join("worktrees");
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn config_present_without_worktrees_section_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        std::fs::write(
+            ship_dir.join("config.toml"),
+            "[identity]\nname = \"Alice\"\n",
+        )
+        .unwrap();
+        let project_root = PathBuf::from("/home/user/cool-project");
+        let result = configured_worktree_dir_impl(&project_root, tmp.path());
+        assert!(
+            result.to_string_lossy().ends_with("cool-project-worktrees"),
+            "expected fallback, got {}",
+            result.display()
         );
     }
 }

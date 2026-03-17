@@ -20,7 +20,7 @@ pub fn create(
     if let Some(d) = description {
         payload["description"] = serde_json::Value::String(d.to_string());
     }
-    let job = jobs::create_job(&ship_dir, kind, branch, Some(payload), Some("human"))?;
+    let job = jobs::create_job(&ship_dir, kind, branch, Some(payload), Some("human"), None, 0, None, vec![])?;
     println!("{}\t[{}]\t{}", job.id, job.kind, title);
     Ok(())
 }
