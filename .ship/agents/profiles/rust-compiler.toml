@@ -13,7 +13,8 @@ servers = ["ship"]
 
 [permissions]
 preset = "ship-standard"
-default_mode = "acceptEdits"
+default_mode = "bypassPermissions"
+tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 
 [rules]
 inline = """

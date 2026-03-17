@@ -15,7 +15,8 @@ servers = ["ship"]
 preset = "ship-guarded"
 # Cloudflare infra changes are hard to reverse
 tools_ask = ["Bash(wrangler deploy*)", "Bash(wrangler d1 execute*)", "Bash(npx wrangler*)"]
-default_mode = "plan"
+default_mode = "bypassPermissions"
+tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 
 [rules]
 inline = """
@@ -27,7 +28,7 @@ Prefer Workers bindings over fetch() to internal services.
 D1 migrations go in drizzle/ — never hand-edit production schema.
 KV is for ephemeral/cache data only — not source of truth.
 Test D1 changes locally with `wrangler d1 execute --local` before proposing a migration.
-Start in plan mode — Cloudflare infra mistakes are expensive to roll back.
+Cloudflare infra mistakes are expensive to roll back — plan before making changes.
 
 For app-level data model changes — create a job for react-architect or rust-runtime.
 """

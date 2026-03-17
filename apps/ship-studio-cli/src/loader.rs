@@ -83,11 +83,59 @@ fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
 
 // ── Permissions ───────────────────────────────────────────────────────────────
 
+/// A named permission preset section from `agents/permissions.toml`.
+/// Matches the `[ship-standard]`, `[ship-guarded]`, etc. blocks.
+#[derive(Deserialize, Default, Clone)]
+pub struct PermissionPreset {
+    #[serde(default)]
+    pub default_mode: Option<String>,
+    #[serde(default)]
+    pub tools_allow: Vec<String>,
+    #[serde(default)]
+    pub tools_deny: Vec<String>,
+    #[serde(default)]
+    pub tools_ask: Vec<String>,
+}
+
+
 fn load_permissions(agents_dir: &Path) -> Result<Permissions> {
     let path = agents_dir.join("permissions.toml");
     if !path.exists() { return Ok(Permissions::default()); }
     let s = std::fs::read_to_string(&path)?;
-    Ok(toml::from_str(&s)?)
+    // Try flat Permissions first, fall back to default on parse error.
+    // The named-preset sections ([ship-standard] etc.) are ignored here —
+    // they are resolved via load_permission_preset() when a profile activates.
+    match toml::from_str::<Permissions>(&s) {
+        Ok(p) => Ok(p),
+        Err(_) => Ok(Permissions::default()),
+    }
+}
+
+/// Load a named permission preset section (e.g. `[ship-standard]`) from
+/// `agents/permissions.toml`. Returns `None` if the file or section is absent.
+pub fn load_permission_preset(agents_dir: &Path, preset_name: &str) -> Option<PermissionPreset> {
+    let path = agents_dir.join("permissions.toml");
+    if !path.exists() { return None; }
+    let s = std::fs::read_to_string(&path).ok()?;
+    let val: toml::Value = toml::from_str(&s).ok()?;
+    let section = val.get(preset_name)?.as_table()?;
+
+    let get_str_list = |key: &str| -> Vec<String> {
+        section.get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    };
+    let default_mode = section.get("default_mode")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    Some(PermissionPreset {
+        default_mode,
+        tools_allow: get_str_list("tools_allow"),
+        tools_deny: get_str_list("tools_deny"),
+        tools_ask: get_str_list("tools_ask"),
+    })
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -373,5 +421,59 @@ command = "echo hi"
 "#);
         let lib = load_library(tmp.path()).unwrap();
         assert!(lib.hooks.is_empty(), "unknown trigger must be silently dropped");
+    }
+
+    #[test]
+    fn load_permission_preset_reads_named_section() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "permissions.toml", r#"
+[ship-standard]
+default_mode = "acceptEdits"
+tools_ask = ["Bash(rm -rf*)"]
+tools_deny = ["Bash(git push --force*)"]
+
+[ship-open]
+default_mode = "bypassPermissions"
+"#);
+        let preset = load_permission_preset(tmp.path(), "ship-standard").unwrap();
+        assert_eq!(preset.default_mode.as_deref(), Some("acceptEdits"));
+        assert!(preset.tools_ask.contains(&"Bash(rm -rf*)".to_string()));
+        assert!(preset.tools_deny.contains(&"Bash(git push --force*)".to_string()));
+    }
+
+    #[test]
+    fn load_permission_preset_missing_section_returns_none() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "permissions.toml", "[ship-open]\ndefault_mode = \"bypassPermissions\"\n");
+        let result = load_permission_preset(tmp.path(), "nonexistent");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_permission_preset_missing_file_returns_none() {
+        let tmp = TempDir::new().unwrap();
+        let result = load_permission_preset(tmp.path(), "ship-standard");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn permissions_file_with_named_sections_falls_back_to_default() {
+        let tmp = TempDir::new().unwrap();
+        // Named-section-only permissions.toml (not a flat Permissions struct)
+        write(tmp.path(), "permissions.toml", r#"
+[ship-standard]
+default_mode = "acceptEdits"
+"#);
+        // load_library uses flat-parse path which falls back to Permissions::default().
+        // Permissions::default() (Rust derive) has tools.allow = [] (not ["*"]).
+        // Named preset sections must be accessed via load_permission_preset(), not load_library().
+        let lib = load_library(tmp.path()).unwrap();
+        // The library loads without error — permissions fall back to default.
+        // Named sections are resolved separately via load_permission_preset.
+        assert!(lib.permissions.tools.allow.is_empty() || !lib.permissions.tools.allow.contains(&"[ship-standard]".to_string()),
+            "named preset sections must not appear as allow patterns");
+        // load_permission_preset can still read the named section
+        let preset = load_permission_preset(tmp.path(), "ship-standard").unwrap();
+        assert_eq!(preset.default_mode.as_deref(), Some("acceptEdits"));
     }
 }

@@ -9,7 +9,7 @@ providers = ["claude"]
 refs = ["tanstack-start", "better-auth", "ship-coordination"]
 
 [mcp]
-servers = []
+servers = ["ship"]
 
 [plugins]
 install = [
@@ -21,7 +21,7 @@ scope = "project"
 [permissions]
 preset = "ship-standard"
 tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
-default_mode = "acceptEdits"
+default_mode = "bypassPermissions"
 
 [rules]
 inline = """

@@ -14,9 +14,9 @@ servers = ["ship"]
 [permissions]
 preset = "ship-guarded"
 # Only this preset touches DB migrations
-tools_deny = []
+tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 tools_ask = ["Bash(rm -rf*)"]
-default_mode = "default"
+default_mode = "bypassPermissions"
 
 [rules]
 inline = """
