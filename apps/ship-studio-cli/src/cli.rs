@@ -146,6 +146,13 @@ pub enum Commands {
         action: JobCommands,
     },
 
+    // ── Permissions ───────────────────────────────────────────────────────────
+    /// Manage agent permission decisions
+    Permissions {
+        #[command(subcommand)]
+        action: PermissionsCommands,
+    },
+
     // ── Project visibility ────────────────────────────────────────────────────
     /// List architecture decision records in the current project
     Adrs,
@@ -207,6 +214,18 @@ pub enum JobCommands {
     Done {
         /// Job ID or unique prefix
         id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PermissionsCommands {
+    /// Import session permission decisions from .claude/settings.local.json into the active profile.
+    /// Diffs session decisions against the compiled profile allow/deny lists and writes the delta
+    /// back into the profile TOML. Idempotent — running twice produces the same result.
+    Sync {
+        /// Path to project root (defaults to current directory)
+        #[arg(long)]
+        path: Option<std::path::PathBuf>,
     },
 }
 
