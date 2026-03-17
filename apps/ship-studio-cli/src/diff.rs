@@ -220,7 +220,7 @@ mod tests {
             "description": "compile gemini provider",
             "capability_id": c_inprog.id
         });
-        jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![]).unwrap();
+        jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![], vec![]).unwrap();
         // claim it to move to running
         let all = jobs::list_jobs(&ship_dir, None, Some("pending")).unwrap();
         jobs::claim_job(&ship_dir, &all[0].id, "test").unwrap();

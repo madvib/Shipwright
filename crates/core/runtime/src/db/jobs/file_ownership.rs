@@ -70,7 +70,7 @@ mod tests {
     }
 
     fn mkjob(ship_dir: &Path, kind: &str) -> String {
-        create_job(ship_dir, kind, None, None, None, None, 0, None, vec![])
+        create_job(ship_dir, kind, None, None, None, None, 0, None, vec![], vec![])
             .unwrap()
             .id
     }

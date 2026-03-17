@@ -27,6 +27,7 @@ pub struct Job {
     pub blocked_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub file_scope: Vec<String>,
 }
 
 /// Fields that can be patched in an [`update_job`] call.
@@ -38,6 +39,7 @@ pub struct JobPatch {
     pub priority: Option<i32>,
     pub blocked_by: Option<String>,
     pub touched_files: Option<Vec<String>>,
+    pub file_scope: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +54,7 @@ pub struct JobLogEntry {
 
 const J_COLS: &str = concat!(
     "id, kind, status, branch, payload_json, created_by, claimed_by,",
-    " touched_files, assigned_to, priority, blocked_by, created_at, updated_at"
+    " touched_files, assigned_to, priority, blocked_by, created_at, updated_at, file_scope"
 );
 
 const L_COLS: &str = "id, job_id, branch, message, actor, created_at";
@@ -67,6 +69,7 @@ pub fn create_job(
     priority: i32,
     blocked_by: Option<&str>,
     touched_files: Vec<String>,
+    file_scope: Vec<String>,
 ) -> Result<Job> {
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
@@ -74,16 +77,17 @@ pub fn create_job(
     let payload = payload.unwrap_or(serde_json::Value::Object(Default::default()));
     let payload_str = serde_json::to_string(&payload)?;
     let files_str = serde_json::to_string(&touched_files)?;
+    let scope_str = serde_json::to_string(&file_scope)?;
     block_on(async {
         sqlx::query(
             "INSERT INTO job \
              (id, kind, status, branch, payload_json, created_by, \
-              assigned_to, priority, blocked_by, touched_files, created_at, updated_at) \
-             VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              assigned_to, priority, blocked_by, touched_files, created_at, updated_at, file_scope) \
+             VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id).bind(kind).bind(branch).bind(&payload_str).bind(created_by)
         .bind(assigned_to).bind(priority).bind(blocked_by).bind(&files_str)
-        .bind(&now).bind(&now)
+        .bind(&now).bind(&now).bind(&scope_str)
         .execute(&mut conn)
         .await
     })?;
@@ -101,6 +105,7 @@ pub fn create_job(
         blocked_by: blocked_by.map(str::to_string),
         created_at: now.clone(),
         updated_at: now,
+        file_scope,
     })
 }
 
@@ -116,15 +121,17 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
     let new_priority = patch.priority.unwrap_or(current.priority);
     let new_blocked = patch.blocked_by.or(current.blocked_by);
     let new_files = patch.touched_files.unwrap_or(current.touched_files);
+    let new_scope = patch.file_scope.unwrap_or(current.file_scope);
     let files_str = serde_json::to_string(&new_files)?;
+    let scope_str = serde_json::to_string(&new_scope)?;
     let mut conn = open_db(ship_dir)?;
     block_on(async {
         sqlx::query(
             "UPDATE job SET status=?, assigned_to=?, priority=?, blocked_by=?, \
-             touched_files=?, updated_at=? WHERE id=?",
+             touched_files=?, file_scope=?, updated_at=? WHERE id=?",
         )
         .bind(&new_status).bind(&new_assigned).bind(new_priority)
-        .bind(&new_blocked).bind(&files_str).bind(&now).bind(job_id)
+        .bind(&new_blocked).bind(&files_str).bind(&scope_str).bind(&now).bind(job_id)
         .execute(&mut conn)
         .await
     })?;
@@ -132,6 +139,18 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
         file_ownership::release_job_files(ship_dir, job_id)?;
     }
     Ok(())
+}
+
+/// Append a single file path to the job's `touched_files` list (deduplicates).
+pub fn append_touched_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<()> {
+    let current = get_job(ship_dir, job_id)?
+        .ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+    let mut files = current.touched_files;
+    let path_owned = path.to_string();
+    if !files.contains(&path_owned) {
+        files.push(path_owned);
+    }
+    update_job(ship_dir, job_id, JobPatch { touched_files: Some(files), ..Default::default() })
 }
 
 /// Atomically claim a pending job. Returns false if already claimed — prevents
@@ -286,9 +305,10 @@ pub fn list_logs(
 fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
     // Column order matches J_COLS:
     // 0:id 1:kind 2:status 3:branch 4:payload_json 5:created_by 6:claimed_by
-    // 7:touched_files 8:assigned_to 9:priority 10:blocked_by 11:created_at 12:updated_at
+    // 7:touched_files 8:assigned_to 9:priority 10:blocked_by 11:created_at 12:updated_at 13:file_scope
     let payload_str: String = row.get(4);
     let files_str: String = row.get(7);
+    let scope_str: String = row.get(13);
     Job {
         id: row.get(0),
         kind: row.get(1),
@@ -303,6 +323,7 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         blocked_by: row.get(10),
         created_at: row.get(11),
         updated_at: row.get(12),
+        file_scope: serde_json::from_str(&scope_str).unwrap_or_default(),
     }
 }
 
@@ -332,14 +353,14 @@ mod tests {
     }
 
     fn mkjob(ship_dir: &std::path::Path, kind: &str, branch: Option<&str>) -> Job {
-        create_job(ship_dir, kind, branch, None, None, None, 0, None, vec![]).unwrap()
+        create_job(ship_dir, kind, branch, None, None, None, 0, None, vec![], vec![]).unwrap()
     }
 
     #[test]
     fn test_create_and_get_job() {
         let (_tmp, ship_dir) = setup();
         let job = create_job(&ship_dir, "compile", Some("feat/x"), None, Some("agent-1"),
-            None, 0, None, vec![]).unwrap();
+            None, 0, None, vec![], vec![]).unwrap();
         assert_eq!(job.status, "pending");
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.kind, "compile");
@@ -351,7 +372,7 @@ mod tests {
         let (_tmp, ship_dir) = setup();
         let job = create_job(
             &ship_dir, "build", Some("feat/fields"), None, None,
-            Some("agent-1"), 5, Some("blocker-id"), vec!["src/lib.rs".to_string()],
+            Some("agent-1"), 5, Some("blocker-id"), vec!["src/lib.rs".to_string()], vec![],
         ).unwrap();
         assert_eq!(job.assigned_to, Some("agent-1".to_string()));
         assert_eq!(job.priority, 5);
@@ -455,6 +476,7 @@ mod tests {
             priority: Some(10),
             blocked_by: None,
             touched_files: Some(vec!["a.rs".to_string()]),
+            file_scope: None,
         }).unwrap();
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.status, "running");
@@ -492,5 +514,32 @@ mod tests {
         // limit=1 returns exactly one entry
         let one = list_logs(&ship_dir, Some("feat/limit"), None, Some(1)).unwrap();
         assert_eq!(one.len(), 1);
+    }
+
+    #[test]
+    fn test_create_job_with_file_scope() {
+        let (_tmp, ship_dir) = setup();
+        let scope = vec!["crates/core/".to_string(), "apps/mcp/".to_string()];
+        let job = create_job(
+            &ship_dir, "build", None, None, None, None, 0, None, vec![], scope.clone(),
+        ).unwrap();
+        assert_eq!(job.file_scope, scope);
+        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        assert_eq!(got.file_scope, scope);
+    }
+
+    #[test]
+    fn test_append_touched_file_deduplicates() {
+        let (_tmp, ship_dir) = setup();
+        let job = mkjob(&ship_dir, "touch-test", None);
+        assert!(job.touched_files.is_empty());
+
+        append_touched_file(&ship_dir, &job.id, "src/lib.rs").unwrap();
+        append_touched_file(&ship_dir, &job.id, "src/main.rs").unwrap();
+        // Duplicate — should not add again.
+        append_touched_file(&ship_dir, &job.id, "src/lib.rs").unwrap();
+
+        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        assert_eq!(got.touched_files, vec!["src/lib.rs".to_string(), "src/main.rs".to_string()]);
     }
 }

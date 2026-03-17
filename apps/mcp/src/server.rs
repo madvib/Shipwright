@@ -1036,6 +1036,9 @@ impl ShipServer {
         if let Some(ref sym) = req.symlink_name {
             payload.insert("symlink_name".to_string(), serde_json::Value::String(sym.clone()));
         }
+        if let Some(ref fs) = req.file_scope {
+            payload.insert("file_scope".to_string(), serde_json::json!(fs));
+        }
         match runtime::db::jobs::create_job(
             &project_dir,
             &req.kind,
@@ -1046,6 +1049,7 @@ impl ShipServer {
             req.priority.unwrap_or(0),
             req.blocked_by.as_deref(),
             req.touched_files.unwrap_or_default(),
+            req.file_scope.unwrap_or_default(),
         ) {
             Ok(job) => format!("Created job {} (kind={}, status=pending)", job.id, job.kind),
             Err(e) => format!("Error creating job: {}", e),
@@ -1070,6 +1074,7 @@ impl ShipServer {
             priority: req.priority,
             blocked_by: req.blocked_by,
             touched_files: req.touched_files,
+            file_scope: None,
         };
         match runtime::db::jobs::update_job(&project_dir, &req.id, patch) {
             Ok(()) => {
@@ -1549,6 +1554,15 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
+        // Accumulate touched files from "touched: <path>" convention.
+        if let Some(path) = req.message.strip_prefix("touched: ") {
+            let path = path.trim();
+            if !path.is_empty() {
+                if let Err(e) = runtime::db::jobs::append_touched_file(&project_dir, &req.job_id, path) {
+                    return format!("Error recording touched file: {}", e);
+                }
+            }
+        }
         let message = if let Some(ref level) = req.level {
             format!("[{}] {}", level.to_ascii_uppercase(), req.message)
         } else {

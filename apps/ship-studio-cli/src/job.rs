@@ -298,7 +298,50 @@ pub fn retry(id_prefix: &str, worktrees_dir: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-// ── ship gate (stretch) ───────────────────────────────────────────────────────
+// ── ship gate ─────────────────────────────────────────────────────────────────
+
+/// Files that must never be modified, regardless of declared file_scope.
+const NEVER_TOUCH: &[&str] = &[
+    "wrangler.jsonc",
+    "package.json",
+    "routeTree.gen.ts",
+    ".dev.vars",
+    "pnpm-lock.yaml",
+];
+
+/// Returns true if `file` is within any declared scope entry.
+/// Matches exactly, or as a path prefix (only at `/` boundaries).
+fn in_scope(file: &str, scope: &[String]) -> bool {
+    scope.iter().any(|s| {
+        if file == s.as_str() {
+            return true;
+        }
+        if file.starts_with(s.as_str()) {
+            let rest = &file[s.len()..];
+            return s.ends_with('/') || rest.starts_with('/');
+        }
+        false
+    })
+}
+
+/// Get changed files in the worktree branch relative to its base (main).
+fn git_diff_files(wt_path: &Path) -> Result<Vec<String>> {
+    let out = std::process::Command::new("git")
+        .args(["diff", "--name-only", "main...HEAD"])
+        .current_dir(wt_path)
+        .output()?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "git diff failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect())
+}
 
 pub fn gate(id_prefix: &str, worktrees_dir: Option<PathBuf>) -> Result<()> {
     let ship_dir = project_ship_dir_required()?;
@@ -322,24 +365,57 @@ pub fn gate(id_prefix: &str, worktrees_dir: Option<PathBuf>) -> Result<()> {
 
     println!("Gating job/{} at {}", &job.id[..8], wt_path.display());
 
-    // Detect test runner: cargo if Cargo.toml exists, pnpm if package.json exists.
-    let (cmd, args): (&str, &[&str]) = if wt_path.join("Cargo.toml").exists() {
-        ("cargo", &["test", "--manifest-path"])
-    } else if wt_path.join("package.json").exists() {
-        ("pnpm", &["test", "--prefix"])
-    } else {
-        anyhow::bail!("Cannot detect test runner — no Cargo.toml or package.json in worktree");
-    };
+    // ── Scope check ───────────────────────────────────────────────────────────
+    let changed = git_diff_files(&wt_path)?;
+    let file_scope = &job.file_scope;
 
-    let test_out = if cmd == "cargo" {
+    let mut never_touch_violations: Vec<&str> = vec![];
+    let mut scope_violations: Vec<&str> = vec![];
+
+    for file in &changed {
+        let basename = std::path::Path::new(file)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(file);
+        if NEVER_TOUCH.contains(&basename) || NEVER_TOUCH.contains(&file.as_str()) {
+            never_touch_violations.push(file);
+        } else if !file_scope.is_empty() && !in_scope(file, file_scope) {
+            scope_violations.push(file);
+        }
+    }
+
+    let scope_ok = never_touch_violations.is_empty() && scope_violations.is_empty();
+
+    if !never_touch_violations.is_empty() {
+        println!("  BLOCKED — never-touch files modified:");
+        for f in &never_touch_violations {
+            println!("    ✗ {}", f);
+        }
+    }
+    if !scope_violations.is_empty() {
+        println!("  BLOCKED — files outside declared scope:");
+        for f in &scope_violations {
+            println!("    ✗ {}", f);
+        }
+        println!("  declared scope: {:?}", file_scope);
+    }
+    if !scope_ok {
+        jobs::update_job_status(&ship_dir, &job.id, "failed")?;
+        anyhow::bail!("gate failed: scope violations detected");
+    }
+
+    // ── Test runner ───────────────────────────────────────────────────────────
+    let test_out = if wt_path.join("Cargo.toml").exists() {
         let manifest = wt_path.join("Cargo.toml");
-        std::process::Command::new(cmd)
+        std::process::Command::new("cargo")
             .args(["test", "--manifest-path", manifest.to_str().unwrap_or("Cargo.toml")])
             .output()?
-    } else {
-        std::process::Command::new(cmd)
+    } else if wt_path.join("package.json").exists() {
+        std::process::Command::new("pnpm")
             .args(["test", "--prefix", wt_path.to_str().unwrap_or(".")])
             .output()?
+    } else {
+        anyhow::bail!("Cannot detect test runner — no Cargo.toml or package.json in worktree");
     };
 
     let pass = test_out.status.success();
@@ -350,7 +426,7 @@ pub fn gate(id_prefix: &str, worktrees_dir: Option<PathBuf>) -> Result<()> {
         let branch = format!("job/{}", job.id);
         let merge_out = std::process::Command::new("git")
             .args(["merge", "--no-ff", "-m",
-                   &format!("Merge job/{} — {}", &job.id[..8],
+                   &format!("merge: job/{} — {}", &job.id[..8],
                        job.payload.get("title").and_then(|v| v.as_str()).unwrap_or(&job.kind)),
                    &branch])
             .output()?;
@@ -394,7 +470,7 @@ pub fn create(
     if let Some(d) = description {
         payload["description"] = serde_json::Value::String(d.to_string());
     }
-    let job = jobs::create_job(&ship_dir, kind, branch, Some(payload), Some("human"), None, 0, None, vec![])?;
+    let job = jobs::create_job(&ship_dir, kind, branch, Some(payload), Some("human"), None, 0, None, vec![], vec![])?;
     println!("{}\t[{}]\t{}", job.id, job.kind, title);
     Ok(())
 }
@@ -534,7 +610,7 @@ mod tests {
 
     fn mk_job(ship_dir: &Path, title: &str) -> jobs::Job {
         let payload = serde_json::json!({ "title": title, "description": "test job" });
-        jobs::create_job(ship_dir, "test", None, Some(payload), Some("test"), None, 0, None, vec![]).unwrap()
+        jobs::create_job(ship_dir, "test", None, Some(payload), Some("test"), None, 0, None, vec![], vec![]).unwrap()
     }
 
     #[test]
@@ -573,7 +649,7 @@ mod tests {
         let j2 = jobs::create_job(
             &ship_dir, "urgent", None,
             Some(serde_json::json!({ "title": "high prio" })),
-            Some("test"), None, 10, None, vec![]
+            Some("test"), None, 10, None, vec![], vec![]
         ).unwrap();
 
         // Highest priority should be claimed first.
@@ -615,7 +691,7 @@ mod tests {
             "description": "Make it work.",
             "preset_hint": "rust-expert"
         });
-        let job = jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![]).unwrap();
+        let job = jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![], vec![]).unwrap();
 
         let wt = tmp.path().join("wt");
         std::fs::create_dir_all(&wt).unwrap();
@@ -643,7 +719,7 @@ mod tests {
             "scope": ["src/lib.rs", "src/main.rs"],
             "acceptance_criteria": ["Tests pass", "Doc updated"]
         });
-        let job = jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![]).unwrap();
+        let job = jobs::create_job(&ship_dir, "feature", None, Some(payload), None, None, 0, None, vec![], vec![]).unwrap();
 
         let wt = tmp.path().join("wt2");
         std::fs::create_dir_all(&wt).unwrap();
@@ -665,7 +741,7 @@ mod tests {
 
         // Minimal payload — no structured fields
         let payload = serde_json::json!({ "description": "Old-style job" });
-        let job = jobs::create_job(&ship_dir, "test", None, Some(payload), None, None, 0, None, vec![]).unwrap();
+        let job = jobs::create_job(&ship_dir, "test", None, Some(payload), None, None, 0, None, vec![], vec![]).unwrap();
 
         let wt = tmp.path().join("wt3");
         std::fs::create_dir_all(&wt).unwrap();
@@ -682,5 +758,82 @@ mod tests {
         let root = PathBuf::from("/dev/worktrees");
         let p = worktree_path(&root, "abc123");
         assert_eq!(p, PathBuf::from("/dev/worktrees/abc123"));
+    }
+
+    #[test]
+    fn test_in_scope_prefix_match() {
+        let scope = vec!["crates/core/".to_string(), "apps/mcp/src/".to_string()];
+        assert!(in_scope("crates/core/runtime/src/lib.rs", &scope));
+        assert!(in_scope("apps/mcp/src/server.rs", &scope));
+        assert!(!in_scope("apps/web/src/lib.ts", &scope));
+        assert!(!in_scope("Cargo.toml", &scope));
+    }
+
+    #[test]
+    fn test_in_scope_exact_match() {
+        let scope = vec!["src/lib.rs".to_string()];
+        assert!(in_scope("src/lib.rs", &scope));
+        assert!(!in_scope("src/lib.rs.bak", &scope));
+    }
+
+    #[test]
+    fn test_in_scope_empty_scope_always_passes() {
+        // Empty scope means no restriction — gate should not block on scope.
+        let scope: Vec<String> = vec![];
+        // in_scope is not called when scope is empty (checked in gate fn),
+        // but verify the function itself returns false for empty (the gate logic handles it).
+        assert!(!in_scope("any/file.rs", &scope));
+    }
+
+    #[test]
+    fn test_never_touch_list_is_correct() {
+        // Verify the never-touch list contains the required entries.
+        assert!(NEVER_TOUCH.contains(&"wrangler.jsonc"));
+        assert!(NEVER_TOUCH.contains(&"package.json"));
+        assert!(NEVER_TOUCH.contains(&"routeTree.gen.ts"));
+        assert!(NEVER_TOUCH.contains(&".dev.vars"));
+        assert!(NEVER_TOUCH.contains(&"pnpm-lock.yaml"));
+    }
+
+    #[test]
+    fn test_gate_scope_check_logic() {
+        // Simulate the gate scope checking logic in isolation.
+        let scope = vec!["crates/".to_string()];
+        let changed = vec![
+            "crates/core/runtime/src/lib.rs".to_string(),
+            "apps/web/src/index.ts".to_string(), // out of scope
+        ];
+        let mut violations: Vec<&str> = vec![];
+        for file in &changed {
+            let basename = std::path::Path::new(file)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(file);
+            if NEVER_TOUCH.contains(&basename) || NEVER_TOUCH.contains(&file.as_str()) {
+                violations.push(file);
+            } else if !scope.is_empty() && !in_scope(file, &scope) {
+                violations.push(file);
+            }
+        }
+        assert_eq!(violations, vec!["apps/web/src/index.ts"]);
+    }
+
+    #[test]
+    fn test_gate_never_touch_blocks_even_in_scope() {
+        let scope = vec!["apps/".to_string()];
+        let changed = vec!["apps/package.json".to_string()];
+        let mut violations: Vec<&str> = vec![];
+        for file in &changed {
+            let basename = std::path::Path::new(file)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(file);
+            if NEVER_TOUCH.contains(&basename) || NEVER_TOUCH.contains(&file.as_str()) {
+                violations.push(file);
+            } else if !scope.is_empty() && !in_scope(file, &scope) {
+                violations.push(file);
+            }
+        }
+        assert_eq!(violations, vec!["apps/package.json"]);
     }
 }

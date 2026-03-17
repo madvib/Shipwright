@@ -93,8 +93,10 @@ pub struct CreateJobRequest {
     pub touched_files: Option<Vec<String>>,
     /// Capability id this job is delivering (e.g. "csycGZPJ")
     pub capability_id: Option<String>,
-    /// File or directory paths the agent may touch (scope declaration)
+    /// File or directory paths the agent may touch (scope declaration, informational)
     pub scope: Option<Vec<String>>,
+    /// File paths / prefixes the agent is allowed to touch — enforced by `ship gate`
+    pub file_scope: Option<Vec<String>>,
     /// Acceptance criteria checklist items
     pub acceptance_criteria: Option<Vec<String>>,
     /// Profile name to compile / activate in the worktree
