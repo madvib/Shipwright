@@ -1,7 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { ThemeToggle } from '@ship/primitives'
+import { authClient } from '#/lib/auth-client'
 
 export default function Header() {
+  const { data: session, isPending } = authClient.useSession()
+
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 px-6 backdrop-blur-md">
       <nav className="mx-auto flex max-w-7xl items-center gap-6 py-3">
@@ -29,7 +32,28 @@ export default function Header() {
           )}
         </div>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          {!isPending && !session?.user && (
+            <button
+              onClick={() => void authClient.signIn.social({ provider: 'github' })}
+              className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            >
+              Sign in with GitHub
+            </button>
+          )}
+          {session?.user && (
+            <div className="flex items-center gap-2">
+              {session.user.image && (
+                <img src={session.user.image} alt="" className="size-6 rounded-full" />
+              )}
+              <button
+                onClick={() => void authClient.signOut()}
+                className="text-xs text-muted-foreground transition hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
           <ThemeToggle />
         </div>
       </nav>

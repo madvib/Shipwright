@@ -1,61 +1,17 @@
 // POST /api/auth/token
-// Accepts a GitHub OAuth code, exchanges it for a GitHub user, creates/updates
-// user + org in D1, and returns a signed JWT.
+// CLI exchanges a server-issued auth code + PKCE verifier for a signed JWT.
+// The auth code is created by /auth/cli-callback after GitHub OAuth completes.
 
 import { createFileRoute } from '@tanstack/react-router'
 import { signJwt, getDb, getSecret } from '#/lib/cloud-auth'
 
-type GitHubUser = {
-  id: number
-  login: string
-  name: string | null
-  email: string | null
-  avatar_url: string
-}
-
-async function exchangeGithubCode(
-  code: string,
-  clientId: string,
-  clientSecret: string,
-): Promise<GitHubUser | null> {
-  const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-  })
-  if (!tokenRes.ok) return null
-
-  const tokenData = (await tokenRes.json()) as Record<string, unknown>
-  const accessToken = tokenData['access_token']
-  if (typeof accessToken !== 'string') return null
-
-  const userRes = await fetch('https://api.github.com/user', {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'ship-studio/1.0',
-    },
-  })
-  if (!userRes.ok) return null
-
-  return (await userRes.json()) as GitHubUser
-}
-
-function getEnv(key: string): string | null {
-  return (
-    ((globalThis as Record<string, unknown>)[key] as string | undefined) ??
-    process.env[key] ??
-    null
-  )
-}
-
-function nanoid(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+async function sha256Base64url(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  const bytes = new Uint8Array(hash)
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
 export const Route = createFileRoute('/api/auth/token')({
@@ -69,26 +25,12 @@ export const Route = createFileRoute('/api/auth/token')({
           return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
         }
 
-        if (
-          !body ||
-          typeof body !== 'object' ||
-          typeof (body as Record<string, unknown>)['code'] !== 'string'
-        ) {
-          return Response.json({ error: 'Missing code field' }, { status: 400 })
+        const b = body as Record<string, unknown>
+        if (!body || typeof b['code'] !== 'string' || typeof b['verifier'] !== 'string') {
+          return Response.json({ error: 'Missing code or verifier' }, { status: 400 })
         }
 
-        const code = (body as { code: string }).code
-
-        const clientId = getEnv('GITHUB_CLIENT_ID')
-        const clientSecret = getEnv('GITHUB_CLIENT_SECRET')
-        if (!clientId || !clientSecret) {
-          return Response.json({ error: 'Server misconfiguration: missing GitHub OAuth credentials' }, { status: 500 })
-        }
-
-        const ghUser = await exchangeGithubCode(code, clientId, clientSecret)
-        if (!ghUser) {
-          return Response.json({ error: 'GitHub OAuth exchange failed' }, { status: 401 })
-        }
+        const { code, verifier } = b as { code: string; verifier: string }
 
         const db = getDb()
         if (!db) {
@@ -97,65 +39,44 @@ export const Route = createFileRoute('/api/auth/token')({
 
         const secret = getSecret()
         if (!secret) {
-          return Response.json({ error: 'Server misconfiguration: missing secret' }, { status: 500 })
+          return Response.json(
+            { error: 'Server misconfiguration: missing secret' },
+            { status: 500 },
+          )
         }
 
-        const now = Date.now()
-        const githubEmail = ghUser.email ?? `${ghUser.login}@users.noreply.github.com`
+        const row = await db
+          .prepare(
+            'SELECT user_id, org_id, code_challenge, created_at, used FROM cli_auth_codes WHERE code = ?',
+          )
+          .bind(code)
+          .first<{
+            user_id: string
+            org_id: string
+            code_challenge: string
+            created_at: number
+            used: number
+          }>()
 
-        // Upsert user
-        const existingUser = await db
-          .prepare('SELECT id, name, email FROM user WHERE email = ?')
-          .bind(githubEmail)
-          .first<{ id: string; name: string; email: string }>()
-
-        const userId = existingUser?.id ?? nanoid()
-        const userName = ghUser.name ?? ghUser.login
-
-        if (existingUser) {
-          await db
-            .prepare('UPDATE user SET name = ?, updatedAt = ? WHERE id = ?')
-            .bind(userName, now, userId)
-            .run()
-        } else {
-          await db
-            .prepare(
-              'INSERT INTO user (id, name, email, emailVerified, image, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            )
-            .bind(userId, userName, githubEmail, 1, ghUser.avatar_url, now, now)
-            .run()
+        if (!row) {
+          return Response.json({ error: 'Invalid auth code' }, { status: 401 })
+        }
+        if (row.used) {
+          return Response.json({ error: 'Auth code already used' }, { status: 401 })
+        }
+        if (Date.now() - row.created_at > 5 * 60 * 1000) {
+          return Response.json({ error: 'Auth code expired' }, { status: 401 })
         }
 
-        // Find or create org (one personal org per GitHub user, slug = login)
-        const orgSlug = ghUser.login.toLowerCase()
-        const existingOrg = await db
-          .prepare('SELECT id FROM orgs WHERE slug = ?')
-          .bind(orgSlug)
-          .first<{ id: string }>()
-
-        const orgId = existingOrg?.id ?? nanoid()
-
-        if (!existingOrg) {
-          await db
-            .prepare('INSERT INTO orgs (id, name, slug, created_at) VALUES (?, ?, ?, ?)')
-            .bind(orgId, ghUser.login, orgSlug, now)
-            .run()
+        // Verify PKCE: SHA256(verifier) must match the stored code_challenge (S256 method)
+        const computed = await sha256Base64url(verifier)
+        if (computed !== row.code_challenge) {
+          return Response.json({ error: 'PKCE verification failed' }, { status: 401 })
         }
 
-        // Ensure org membership
-        const existingMember = await db
-          .prepare('SELECT id FROM org_members WHERE org_id = ? AND user_id = ?')
-          .bind(orgId, userId)
-          .first<{ id: string }>()
+        await db.prepare('UPDATE cli_auth_codes SET used = 1 WHERE code = ?').bind(code).run()
 
-        if (!existingMember) {
-          await db
-            .prepare('INSERT INTO org_members (id, org_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)')
-            .bind(nanoid(), orgId, userId, 'owner', now)
-            .run()
-        }
-
-        const token = await signJwt({ sub: userId, org: orgId }, secret)
+        const token = await signJwt({ sub: row.user_id, org: row.org_id }, secret)
         return Response.json({ token })
       },
     },
