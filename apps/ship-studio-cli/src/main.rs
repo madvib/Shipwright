@@ -251,6 +251,7 @@ fn dispatch_job(action: JobCommands) -> Result<()> {
             job::list(status.as_deref(), branch.as_deref(), milestone.as_deref())
         }
         JobCommands::Update { id, status } => job::update(&id, &status),
+        JobCommands::Done { id } => job::done(&id),
     }
 }
 

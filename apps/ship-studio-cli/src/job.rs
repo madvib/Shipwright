@@ -42,28 +42,78 @@ pub fn list(status: Option<&str>, branch: Option<&str>, milestone: Option<&str>)
         return Ok(());
     }
 
-    let mut current_milestone = String::new();
     // Print oldest-first for queue ordering
     let mut sorted = filtered.clone();
     sorted.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
     for job in sorted {
-        let title = job.payload.get("title").and_then(|v| v.as_str()).unwrap_or(&job.kind);
-        let ms = job.payload.get("milestone").and_then(|v| v.as_str()).unwrap_or("");
-        if ms != current_milestone {
-            if !current_milestone.is_empty() { println!(); }
-            if !ms.is_empty() { println!("  {}", ms); }
-            current_milestone = ms.to_string();
-        }
-        let status_icon = match job.status.as_str() {
-            "pending"  => "○",
-            "running"  => "●",
-            "done"     => "✓",
-            "blocked"  => "✗",
-            _          => "?",
+        let desc = job.payload.get("description")
+            .and_then(|v| v.as_str())
+            .or_else(|| job.payload.get("title").and_then(|v| v.as_str()))
+            .unwrap_or("");
+        let desc_trunc = if desc.len() > 50 {
+            format!("{}…", &desc[..50])
+        } else {
+            desc.to_string()
         };
-        println!("  {} {}  {}", status_icon, &job.id[..8], title);
+        let date = job.created_at.get(..10).unwrap_or(&job.created_at);
+        println!("{}\t{}\t{}\t{}\t{}", job.id, job.status, job.kind, desc_trunc, date);
     }
+    Ok(())
+}
+
+pub fn done(id_prefix: &str) -> Result<()> {
+    let ship_dir = project_ship_dir_required()?;
+    let all = jobs::list_jobs(&ship_dir, None, None)?;
+    let matched: Vec<_> = all.iter().filter(|j| j.id.starts_with(id_prefix)).collect();
+    let job = match matched.len() {
+        0 => anyhow::bail!("No job matching '{}'", id_prefix),
+        1 => matched[0],
+        _ => anyhow::bail!("Ambiguous prefix '{}' — {} matches", id_prefix, matched.len()),
+    };
+    if matches!(job.status.as_str(), "complete" | "failed" | "done") {
+        anyhow::bail!("Job {} is already {}", &job.id[..8], job.status);
+    }
+
+    // Stage files in job's declared scope
+    if !job.touched_files.is_empty() {
+        let ok = std::process::Command::new("git")
+            .args(["add", "--"])
+            .args(&job.touched_files)
+            .status()?
+            .success();
+        if !ok { anyhow::bail!("git add failed"); }
+    } else {
+        let ok = std::process::Command::new("git")
+            .args(["add", "-u"])
+            .status()?
+            .success();
+        if !ok { anyhow::bail!("git add failed"); }
+    }
+
+    // Commit with job reference
+    let desc = job.payload.get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&job.kind);
+    let commit_msg = format!("{} (job/{})", desc, job.id);
+    let out = std::process::Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()?;
+    if !out.status.success() {
+        anyhow::bail!("git commit failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+
+    let hash = String::from_utf8_lossy(
+        &std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()?
+            .stdout,
+    ).trim().to_string();
+
+    jobs::update_job_status(&ship_dir, &job.id, "complete")?;
+
+    println!("✓ job/{} complete", &job.id[..8]);
+    println!("  commit {}", hash);
     Ok(())
 }
 
