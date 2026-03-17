@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  Search, Plus, Check, Download, Copy, CheckCheck,
+  Search, Plus, Check, Download, Copy, CheckCheck, Upload,
   Server, BookOpen, ScrollText, Shield, Bot,
   Loader2, Zap, PanelLeft, X,
 } from 'lucide-react'
@@ -15,6 +15,7 @@ import { PermissionsForm } from '../features/compiler/sections/PermissionsForm'
 import { DEFAULT_LIBRARY, DEFAULT_PERMISSIONS } from '../features/compiler/types'
 import type { ProjectLibrary, CompileResult } from '../features/compiler/types'
 import { ProviderLogo } from '../features/compiler/ProviderLogo'
+import { ImportDialog } from '../components/ImportDialog'
 import type { McpServerConfig, Skill } from '@ship/ui'
 
 export const Route = createFileRoute('/studio')({ component: StudioPage })
@@ -289,6 +290,32 @@ function StudioPage() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [library, selectedProviders, modeName, compile])
 
+  const [importOpen, setImportOpen] = useState(false)
+
+  const handleImport = useCallback((imported: ProjectLibrary) => {
+    setLibrary((prev) => {
+      const existingMcpNames = new Set(prev.mcp_servers.map((s) => s.name))
+      const existingSkillIds = new Set(prev.skills.map((s) => s.id))
+      const existingRuleNames = new Set(prev.rules.map((r) => r.file_name))
+
+      return {
+        ...prev,
+        mcp_servers: [
+          ...prev.mcp_servers,
+          ...imported.mcp_servers.filter((s) => !existingMcpNames.has(s.name)),
+        ],
+        skills: [
+          ...prev.skills,
+          ...imported.skills.filter((s) => !existingSkillIds.has(s.id)),
+        ],
+        rules: [
+          ...prev.rules,
+          ...imported.rules.filter((r) => !existingRuleNames.has(r.file_name)),
+        ],
+      }
+    })
+  }, [])
+
   const addMcpServer = useCallback((config: McpServerConfig) => {
     setLibrary((prev) => {
       if (prev.mcp_servers.some((s) => s.name === config.name)) return prev
@@ -340,6 +367,12 @@ function StudioPage() {
         selectedProviders={selectedProviders}
         showLibrary={showLibrary}
         onToggleLibrary={() => setShowLibrary((v) => !v)}
+        onOpenImport={() => setImportOpen(true)}
+      />
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImport}
       />
 
       {/* Three-panel body */}
@@ -384,6 +417,7 @@ interface ModeHeaderProps {
   selectedProviders: string[]
   showLibrary: boolean
   onToggleLibrary: () => void
+  onOpenImport: () => void
 }
 
 function ModeHeader({
@@ -394,6 +428,7 @@ function ModeHeader({
   selectedProviders,
   showLibrary,
   onToggleLibrary,
+  onOpenImport,
 }: ModeHeaderProps) {
   const isGenerating = state.status === 'compiling'
   const mcpCount = library.mcp_servers.length
@@ -444,6 +479,13 @@ function ModeHeader({
         {state.status === 'ok' && (
           <span className="hidden sm:inline text-[10px] text-muted-foreground">{state.elapsed}ms · WASM</span>
         )}
+        <button
+          onClick={onOpenImport}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+        >
+          <Upload className="size-3" />
+          <span className="hidden sm:inline">Import</span>
+        </button>
         <ExportButton state={state} selectedProviders={selectedProviders} />
       </div>
     </div>
