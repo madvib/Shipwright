@@ -39,6 +39,7 @@ Add a `<!-- verified: YYYY-MM-DD source: <url> -->` comment when re-verifying a 
 |---|---|---|
 | Rules / context | `CLAUDE.md` | Markdown. Also `~/.claude/CLAUDE.md` (user-global) |
 | Skills | `.claude/skills/<id>/SKILL.md` | Markdown + YAML frontmatter |
+| Agents dir | `.claude/agents/<id>.md` | Markdown + YAML frontmatter |
 | MCP config | `.mcp.json` | JSON `{ "mcpServers": { ... } }` |
 | Settings | `.claude/settings.json` | JSON |
 
@@ -81,6 +82,7 @@ HTTP/SSE: `"url"` field. No `type` field — transport inferred from field prese
 |---|---|---|
 | Rules / context | `GEMINI.md` | Markdown |
 | Skills | `.gemini/skills/<id>/SKILL.md` | Markdown + YAML frontmatter. `.agents/skills/` alias takes precedence within same tier |
+| Agents dir | `.gemini/agents/<id>.md` | Markdown + YAML frontmatter |
 | MCP config | `.gemini/settings.json` → `mcpServers` key | JSON nested in project settings file |
 | Settings / hooks | `.gemini/settings.json` | JSON. Global: `~/.gemini/settings.json` |
 | Permissions | `.gemini/policies/ship.toml` | TOML `[[tool_policies]]` array. ✅ compiled to `gemini_policy_patch` |
@@ -119,6 +121,7 @@ Triggers: `SessionStart`, `SessionEnd`, `BeforeAgent`, `AfterAgent`, `BeforeMode
 | Rules / context | `AGENTS.md` | Markdown. Searched from git root → CWD, each level. Also `~/.codex/AGENTS.md` (global) |
 | Approval policy | `~/.codex/config.toml` → `approval_policy` | TOML — `"suggest"`, `"auto-edit"`, or `"full-auto"`. Provider-specific setting. |
 | Skills | `.agents/skills/<id>/SKILL.md` | Markdown + YAML frontmatter. Also `~/.agents/skills/` |
+| Agents dir | `.codex/agents/<id>.toml` | TOML agent config |
 | MCP config | `.codex/config.toml` | **TOML** `[mcp_servers.<name>]` tables |
 | Settings | `~/.codex/config.toml` | TOML. Also `.codex/config.toml` (project) |
 | Multi-agent roles | `.codex/config.toml` → `[agents.<name>]` | TOML. Role configs at e.g. `agents/explorer.toml` |
@@ -154,6 +157,7 @@ that belongs in `provider_config`, not in the permissions model.
 |---|---|---|
 | Rules | `.cursor/rules/<name>.mdc` | Markdown + YAML frontmatter (per-rule file) ✅ compiled |
 | Skills | `.cursor/skills/<id>/SKILL.md` | Markdown + YAML frontmatter |
+| Agents dir | `.cursor/agents/<id>.md` | Markdown + YAML frontmatter |
 | MCP config | `.cursor/mcp.json` | JSON `{ "mcpServers": { ... } }` |
 | Permissions | `.cursor/cli.json` | JSON `{ "version": 1, "permissions": { ... } }` ✅ compiled |
 
