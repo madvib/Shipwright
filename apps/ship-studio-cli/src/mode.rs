@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::loader::load_permission_preset;
+
 /// Profile TOML format — what users author in .ship/agents/profiles/<id>.toml
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
@@ -138,37 +140,74 @@ servers = []
 }
 
 /// Apply a profile's permission overrides on top of a base Permissions struct.
+///
+/// `agents_dir` is optional — when provided, named preset sections from
+/// `agents/permissions.toml` (e.g. `[ship-standard]`) are consulted.
+/// When absent, built-in fallback behaviour applies.
 pub fn apply_profile_permissions(
     base: compiler::Permissions,
     profile: &Profile,
+    agents_dir: Option<&Path>,
 ) -> compiler::Permissions {
     use compiler::{Permissions, ToolPermissions};
 
     let mp = &profile.permissions;
 
-    let mut tools = match mp.preset.as_deref() {
-        Some("read-only") => ToolPermissions {
-            allow: vec!["Read".into(), "Glob".into(), "LS".into()],
-            deny: vec![],
-            ask: vec![],
-        },
-        Some("ship-guarded") => ToolPermissions {
-            allow: base.tools.allow.clone(),
+    // Resolve the named preset. Try permissions.toml first, then built-in fallbacks.
+    let preset_from_file = mp.preset.as_deref().and_then(|name| {
+        agents_dir.and_then(|dir| load_permission_preset(dir, name))
+    });
+
+    let mut tools = if let Some(ref preset) = preset_from_file {
+        // Use data from permissions.toml section
+        ToolPermissions {
+            allow: if preset.tools_allow.is_empty() {
+                base.tools.allow.clone()
+            } else {
+                preset.tools_allow.clone()
+            },
             deny: {
                 let mut d = base.tools.deny.clone();
-                d.extend(["mcp__*__delete*".into(), "mcp__*__drop*".into()]);
+                for p in &preset.tools_deny {
+                    if !d.contains(p) { d.push(p.clone()); }
+                }
                 d
             },
-            ask: base.tools.ask.clone(),
-        },
-        Some("full-access") => ToolPermissions {
-            allow: vec!["*".into()],
-            deny: vec![],
-            ask: vec![],
-        },
-        _ => base.tools.clone(),
+            ask: {
+                let mut a = base.tools.ask.clone();
+                for p in &preset.tools_ask {
+                    if !a.contains(p) { a.push(p.clone()); }
+                }
+                a
+            },
+        }
+    } else {
+        // Built-in fallback — no permissions.toml or section not found
+        match mp.preset.as_deref() {
+            Some("read-only") => ToolPermissions {
+                allow: vec!["Read".into(), "Glob".into(), "LS".into()],
+                deny: vec![],
+                ask: vec![],
+            },
+            Some("ship-guarded") => ToolPermissions {
+                allow: base.tools.allow.clone(),
+                deny: {
+                    let mut d = base.tools.deny.clone();
+                    d.extend(["mcp__*__delete*".into(), "mcp__*__drop*".into()]);
+                    d
+                },
+                ask: base.tools.ask.clone(),
+            },
+            Some("full-access") => ToolPermissions {
+                allow: vec!["*".into()],
+                deny: vec![],
+                ask: vec![],
+            },
+            _ => base.tools.clone(),
+        }
     };
 
+    // Profile-level additions always apply on top of preset
     for p in &mp.tools_deny {
         if !tools.deny.contains(p) {
             tools.deny.push(p.clone());
@@ -180,9 +219,14 @@ pub fn apply_profile_permissions(
         }
     }
 
+    // default_mode: profile field wins, then preset file value, then base
+    let default_mode = mp.default_mode.clone()
+        .or_else(|| preset_from_file.as_ref().and_then(|p| p.default_mode.clone()))
+        .or(base.default_mode);
+
     Permissions {
         tools,
-        default_mode: mp.default_mode.clone().or(base.default_mode),
+        default_mode,
         ..base
     }
 }
@@ -236,7 +280,8 @@ providers = ["claude"]
 preset = "ship-guarded"
 "#;
         let p: Profile = toml::from_str(toml_str).unwrap();
-        let result = apply_profile_permissions(base, &p);
+        // No agents_dir — falls back to built-in behaviour
+        let result = apply_profile_permissions(base, &p, None);
         assert!(result.tools.deny.contains(&"mcp__*__delete*".to_string()));
     }
 
@@ -253,8 +298,35 @@ providers = ["claude"]
 preset = "read-only"
 "#;
         let p: Profile = toml::from_str(toml_str).unwrap();
-        let result = apply_profile_permissions(base, &p);
+        let result = apply_profile_permissions(base, &p, None);
         assert!(result.tools.allow.contains(&"Read".to_string()));
         assert!(!result.tools.allow.contains(&"*".to_string()));
+    }
+
+    #[test]
+    fn apply_profile_permissions_uses_permissions_toml_preset() {
+        use compiler::Permissions;
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        // Write a permissions.toml with a named preset section
+        std::fs::write(tmp.path().join("permissions.toml"), r#"
+[custom-preset]
+default_mode = "bypassPermissions"
+tools_deny = ["Bash(git push --force*)"]
+tools_ask = ["Bash(rm -rf*)"]
+"#).unwrap();
+        let toml_str = r#"
+[profile]
+name = "Custom"
+id = "custom"
+providers = ["claude"]
+[permissions]
+preset = "custom-preset"
+"#;
+        let p: Profile = toml::from_str(toml_str).unwrap();
+        let result = apply_profile_permissions(Permissions::default(), &p, Some(tmp.path()));
+        assert_eq!(result.default_mode.as_deref(), Some("bypassPermissions"));
+        assert!(result.tools.deny.contains(&"Bash(git push --force*)".to_string()));
+        assert!(result.tools.ask.contains(&"Bash(rm -rf*)".to_string()));
     }
 }

@@ -231,13 +231,47 @@ Freeform rule text injected directly into the context output.
 | `[profile]` | `providers` | string[] | — | overrides project `providers` when set |
 | `[skills]` | `refs` | string[] | `[]` | skill ids; empty = all installed skills |
 | `[mcp]` | `servers` | string[] | `[]` | server ids; empty = all configured |
-| `[permissions]` | `preset` | string | — | `ship-standard` \| `ship-guarded` \| `read-only` \| `full-access` |
-| `[permissions]` | `tools_deny` | string[] | `[]` | additional deny glob patterns |
-| `[permissions]` | `tools_ask` | string[] | `[]` | confirmation-required patterns |
-| `[permissions]` | `default_mode` | string | `"default"` | `default` \| `acceptEdits` \| `plan` \| `bypassPermissions` |
+| `[plugins]` | `install` | string[] | `[]` | plugin ids in `<id>@<marketplace>` format |
+| `[plugins]` | `scope` | string | `"project"` | `"project"` or `"user"` |
+| `[permissions]` | `preset` | string | — | named preset from `agents/permissions.toml`; built-in: `ship-standard` \| `ship-guarded` \| `read-only` \| `full-access` |
+| `[permissions]` | `tools_deny` | string[] | `[]` | additional deny glob patterns (layered on top of preset) |
+| `[permissions]` | `tools_ask` | string[] | `[]` | confirmation-required patterns (layered on top of preset) |
+| `[permissions]` | `default_mode` | string | from preset | overrides preset `default_mode`; values: `default` \| `acceptEdits` \| `plan` \| `bypassPermissions` |
 | `[rules]` | `inline` | string | — | freeform text injected into context output |
+| `[provider_settings.claude]` | any | object | — | merged verbatim into `.claude/settings.json` |
 
-**Permission tiers:** `ship-standard` = base from `agents/permissions.toml`; `ship-guarded` = base + deny destructive MCPs; `read-only` = Read/Glob/LS only; `full-access` = allow `*`.
+**Permission resolution order** (highest wins):
+1. `[permissions] default_mode` in profile TOML
+2. `default_mode` in the named preset section in `agents/permissions.toml`
+3. Base `Permissions::default()`
+
+**Named preset sections** in `agents/permissions.toml` (resolved when profile sets `preset = "<name>"`):
+
+```toml
+[ship-standard]
+default_mode = "acceptEdits"
+tools_ask = ["Bash(rm -rf*)", "Bash(*--force*)", ...]
+tools_deny = ["Bash(git push --force*)", ...]
+
+[ship-guarded]
+default_mode = "default"
+tools_ask = ["Bash(rm -rf*)", "Bash(*deploy*)", ...]
+tools_deny = ["Bash(git push --force*)"]
+
+[ship-open]
+default_mode = "bypassPermissions"
+
+[ship-plan]
+default_mode = "plan"
+```
+
+**Built-in fallback tiers** (used when `agents/permissions.toml` section is absent):
+- `ship-standard` = base tools from `Permissions::default()`
+- `ship-guarded` = base + deny `mcp__*__delete*` and `mcp__*__drop*`
+- `read-only` = allow `Read`, `Glob`, `LS` only
+- `full-access` = allow `*`
+
+**Global Claude approval:** when ship is in a profile's MCP servers list and the `claude` provider is compiled, `ship use` writes `mcp__ship__*` to `~/.claude/settings.json` permissions allow. This is a one-time global allow — avoids per-session approval prompts.
 
 Skill resolution: `.ship/agents/skills/` → `~/.ship/skills/` → cache → registry.
 Server resolution: `agents/mcp.toml` (project) → `~/.ship/mcp/registry.toml` (global).

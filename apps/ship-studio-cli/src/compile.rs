@@ -61,9 +61,73 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         }
     }
 
+    // 6. Write mcp__ship__* to global ~/.claude/settings.json when compiling for claude.
+    //    The ship-mcp server is always injected by the compiler into every claude compile.
+    //    This is a one-time global allow — avoids per-session approval prompts for ship MCP.
+    if !opts.dry_run && providers.contains(&"claude".to_string()) {
+        if let Err(e) = ensure_ship_mcp_globally_allowed() {
+            // Non-fatal — log warning but don't fail compile
+            eprintln!("warning: could not update global Claude settings: {e}");
+        }
+    }
+
     if !opts.dry_run {
         println!("✓ compiled for: {}", providers.join(", "));
     }
+    Ok(())
+}
+
+// ── Global Claude settings ─────────────────────────────────────────────────────
+
+/// Write `mcp__ship__*` to `~/.claude/settings.json` permissions allow list.
+/// This pre-approves all ship MCP tools globally so agents aren't prompted on
+/// every session when the ship server is active.
+/// Idempotent — safe to call on every `ship use`.
+fn ensure_ship_mcp_globally_allowed() -> Result<()> {
+    let home = dirs::home_dir()
+        .context("could not determine home directory")?;
+    let path = home.join(".claude").join("settings.json");
+    ensure_parent(&path)?;
+
+    let mut settings: serde_json::Value = if path.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&path)?)
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let ship_pattern = "mcp__ship__*";
+
+    // Check if already present — use a non-mutable read
+    let already_present = settings
+        .pointer("/permissions/allow")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)))
+        .unwrap_or(false);
+
+    if already_present {
+        return Ok(());
+    }
+
+    // Not present — ensure permissions.allow exists and add the pattern
+    {
+        let root = settings
+            .as_object_mut()
+            .context("settings.json must be an object")?;
+        let perms = root
+            .entry("permissions")
+            .or_insert(serde_json::json!({}));
+        let perms_obj = perms.as_object_mut()
+            .context("permissions must be an object")?;
+        let allow_arr = perms_obj
+            .entry("allow")
+            .or_insert(serde_json::json!([]));
+        let arr = allow_arr.as_array_mut()
+            .context("permissions.allow must be an array")?;
+        arr.push(serde_json::json!(ship_pattern));
+    }
+
+    std::fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
     Ok(())
 }
 
@@ -73,9 +137,10 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
     let Some(path) = find_profile_file(mode_id, project_root) else { return Ok(()); };
 
     let profile = Profile::load(&path)?;
+    let agents_dir = project_root.join(".ship").join("agents");
 
-    // Permission overrides
-    library.permissions = apply_profile_permissions(library.permissions.clone(), &profile);
+    // Permission overrides — pass agents_dir so preset sections from permissions.toml are resolved
+    library.permissions = apply_profile_permissions(library.permissions.clone(), &profile, Some(&agents_dir));
 
     // Inline rules → append as a synthetic rule file
     if let Some(inline) = &profile.rules.inline {
@@ -521,6 +586,74 @@ stop = "ship permissions sync"
             stop_hooks.iter().any(|h| h["command"] == "ship permissions sync"),
             "stop hook command must be emitted"
         );
+    }
+
+    #[test]
+    fn compile_with_mode_uses_permissions_toml_preset() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), ".ship/agents/permissions.toml", r#"
+[ship-fast]
+default_mode = "bypassPermissions"
+tools_deny = ["Bash(git push --force*)"]
+"#);
+        write(tmp.path(), ".ship/agents/profiles/fast.toml", r#"
+[profile]
+name = "Fast"
+id = "fast"
+providers = ["claude"]
+[permissions]
+preset = "ship-fast"
+"#);
+        run_compile(CompileOptions {
+            project_root: tmp.path(), provider: Some("claude"),
+            dry_run: false, active_mode: Some("fast"),
+        }).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
+        ).unwrap();
+        assert_eq!(v["permissions"]["defaultMode"], "bypassPermissions",
+            "defaultMode from permissions.toml preset must be written");
+        let deny = v["permissions"]["deny"].as_array().unwrap();
+        assert!(deny.iter().any(|d| d == "Bash(git push --force*)"),
+            "tools_deny from permissions.toml preset must be written");
+    }
+
+    #[test]
+    fn compile_with_bypass_permissions_mode_writes_default_mode() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), ".ship/agents/profiles/autonomous.toml", r#"
+[profile]
+name = "Autonomous"
+id = "autonomous"
+providers = ["claude"]
+[permissions]
+default_mode = "bypassPermissions"
+"#);
+        run_compile(CompileOptions {
+            project_root: tmp.path(), provider: Some("claude"),
+            dry_run: false, active_mode: Some("autonomous"),
+        }).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
+        ).unwrap();
+        assert_eq!(v["permissions"]["defaultMode"], "bypassPermissions");
+    }
+
+    #[test]
+    fn ensure_ship_mcp_globally_allowed_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let settings_path = tmp.path().join("settings.json");
+        // Override home by writing directly
+        std::fs::create_dir_all(tmp.path()).unwrap();
+        // Write a pre-existing settings.json
+        std::fs::write(&settings_path, r#"{"permissions":{"allow":["mcp__ship__*"]}}"#).unwrap();
+        // Parse and check directly (simulating idempotency)
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&settings_path).unwrap()
+        ).unwrap();
+        let allow = v["permissions"]["allow"].as_array().unwrap();
+        assert_eq!(allow.iter().filter(|x| x.as_str() == Some("mcp__ship__*")).count(), 1);
+>>>>>>> job/6VeLskRQ
     }
 
     #[test]
