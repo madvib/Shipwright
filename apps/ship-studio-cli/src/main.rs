@@ -13,6 +13,7 @@ mod paths;
 mod permissions;
 mod profile;
 mod skill;
+mod validate;
 
 use anyhow::Result;
 use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
@@ -54,6 +55,12 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 stub("server", "Local server (port 7701) — coming soon")
             }
             Commands::Profile { action } => dispatch_profile(action),
+            Commands::Validate { profile, json, path } => {
+                let project_root = path.as_deref()
+                    .map(std::fs::canonicalize).transpose()?
+                    .unwrap_or_else(|| std::env::current_dir().unwrap());
+                validate::run_validate(profile.as_deref(), json, &project_root)
+            }
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Next { worktrees_dir } => job::next(worktrees_dir),
             Commands::Retry { id, worktrees_dir } => job::retry(&id, worktrees_dir),
@@ -371,6 +378,7 @@ fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
 
+    validate::run_validate(profile_id, false, &project_root)?;
     profile::activate_profile(profile_id, &project_root)
 }
 
@@ -478,6 +486,7 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
     }
 
     let lock = profile::ShipLock::load(&project_root.join(".ship"));
+    validate::run_validate(lock.active_profile.as_deref(), false, &project_root)?;
     compile::run_compile(compile::CompileOptions {
         project_root: &project_root,
         provider,
