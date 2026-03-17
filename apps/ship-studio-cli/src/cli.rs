@@ -139,6 +139,32 @@ pub enum Commands {
         port: Option<u16>,
     },
 
+    // ── Job coordination loop ─────────────────────────────────────────────────
+    /// Claim the next pending job, create a worktree, and print a ready message
+    Next {
+        /// Override the worktrees root directory (default: ~/dev/ship-worktrees)
+        #[arg(long)]
+        worktrees_dir: Option<std::path::PathBuf>,
+    },
+
+    /// Reset a failed or stalled job so it can be re-claimed by `ship next`
+    Retry {
+        /// Job ID or unique prefix
+        id: String,
+        /// Override the worktrees root directory (default: ~/dev/ship-worktrees)
+        #[arg(long)]
+        worktrees_dir: Option<std::path::PathBuf>,
+    },
+
+    /// Run tests on the job branch; merge into current branch on pass
+    Gate {
+        /// Job ID or unique prefix
+        id: String,
+        /// Override the worktrees root directory (default: ~/dev/ship-worktrees)
+        #[arg(long)]
+        worktrees_dir: Option<std::path::PathBuf>,
+    },
+
     // ── Job queue ─────────────────────────────────────────────────────────────
     /// Manage the agent job queue
     Job {
