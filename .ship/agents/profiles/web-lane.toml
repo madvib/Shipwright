@@ -19,47 +19,14 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-standard"
 tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
-default_mode = "default"
+default_mode = "acceptEdits"
 
 [rules]
 inline = """
-# Web Lane — feat/web-import
-
-## Objective
-GitHub URL import flow working end-to-end in Studio.
-Paste a GitHub URL → see extracted config in Studio → compile it.
-
-## Key files — read these FULLY before writing any code
-- apps/web/src/routes/studio.tsx — full compiler Studio UI (read fully)
-- apps/web/src/features/compiler/useCompiler.ts — ProjectLibrary state (read fully)
-- apps/web/src/features/compiler/types.ts — ProjectLibrary + all types
-- apps/web/src/routes/index.tsx — landing page
-- apps/web/src/lib/auth-client.ts — Better Auth client (stubbed)
-
-## Tasks in priority order
-1. GitHub URL input in Studio — text input + Import button, calls POST /api/github/import
-   - Loading state, inline error handling (404, 422, rate limit)
-   - On success: populate Studio with returned ProjectLibrary
-   - Mock the endpoint for dev: const mockImport = async (url) => { ... }
-   - Use env flag VITE_USE_MOCK_IMPORT to toggle real vs mock
-2. Import preview — modal before loading: "N rules, N MCP servers, N skills found"
-   - Two actions: "Open in Studio" (loads library) and "Cancel"
-   - Keep it simple — modal, not a new route
-3. Auth UI — "Sign in with GitHub" button in Studio header
-   - authClient.signIn.social({ provider: 'github' })
-   - Signed-in state: avatar + username, dropdown with Sign out
-   - authClient.useSession() for reactive state
-   - "Save Library" only visible when signed in
-   - Do NOT block Studio behind auth
-4. Landing page — GitHub URL input as hero CTA
-   - "Paste any GitHub repo URL to extract its agent config"
-   - Same import flow, routes to Studio on success
-
-## Constraints
-- No new UI libraries — use @ship/primitives only
-- Import works unauthenticated — never gate on auth
-- No new routes — import lives within Studio + landing
-- Read studio.tsx and useCompiler.ts FULLY before building
+You are a web specialist working in apps/web/. Stay within your file scope.
+Read job-spec.md in the worktree root for your full task context.
+Work autonomously. Don't ask clarifying questions — make reasonable decisions and note them.
+Log progress via append_job_log. Mark done via update_job when acceptance criteria are met.
 """
