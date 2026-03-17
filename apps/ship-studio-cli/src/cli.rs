@@ -192,6 +192,20 @@ pub enum Commands {
     /// Migrate notes and ADRs from old ship.db to platform.db
     Migrate,
 
+    // ── Validation ────────────────────────────────────────────────────────────
+    /// Validate .ship/ config before compile — checks TOML, skill refs, MCP fields, permissions
+    Validate {
+        /// Validate a single profile (omit to validate all)
+        #[arg(long)]
+        profile: Option<String>,
+        /// Emit errors as JSON array instead of human-readable output
+        #[arg(long)]
+        json: bool,
+        /// Path to project root (defaults to current directory)
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
+
     // ── Capability diff ───────────────────────────────────────────────────────
     /// Show capability progress delta for the active milestone
     Diff {
