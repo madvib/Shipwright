@@ -6,68 +6,16 @@ async fn start_test_server_with_token(token: Option<&str>) -> (u16, Cancellation
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    let tmp_dir = if let Some(tok) = token {
-        let dir = tempfile::TempDir::new().unwrap();
-        let config_path = dir.path().join("config.toml");
-        std::fs::write(&config_path, format!("[auth]\ntoken = \"{tok}\"")).unwrap();
-        // SAFETY: single-threaded test setup, no concurrent env access
-        unsafe { std::env::set_var("SHIP_GLOBAL_DIR", dir.path()) };
-        Some(dir)
-    } else {
-        // Use a temp dir with no config.toml so there's no stale token
+    // Set a temp SHIP_GLOBAL_DIR so read_auth_token won't pick up stale config
+    let tmp_dir = {
         let dir = tempfile::TempDir::new().unwrap();
         // SAFETY: single-threaded test setup, no concurrent env access
-        unsafe { std::env::set_var("SHIP_GLOBAL_DIR", dir.path()) };
+        unsafe { std::env::set_var("SHIP_GLOBAL_DIR", dir.path()); }
         Some(dir)
-    };
-
-    use axum::Router;
-    use mcp::ShipServer;
-    use rmcp::transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService,
-        session::local::LocalSessionManager,
     };
 
     let ct = CancellationToken::new();
-    let service: StreamableHttpService<ShipServer, LocalSessionManager> =
-        StreamableHttpService::new(
-            || Ok(ShipServer::new()),
-            Default::default(),
-            StreamableHttpServerConfig {
-                cancellation_token: ct.child_token(),
-                ..Default::default()
-            },
-        );
-
-    let mcp_router = Router::new().nest_service("/mcp", service);
-
-    let app = if let Some(tok) = token {
-        use axum::{
-            body::Body,
-            extract::State,
-            http::{Request, StatusCode},
-            middleware::{self, Next},
-            response::Response,
-        };
-        async fn auth(
-            State(expected): State<String>,
-            req: Request<Body>,
-            next: Next,
-        ) -> Result<Response, StatusCode> {
-            let h = req
-                .headers()
-                .get(axum::http::header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok());
-            if h == Some(&format!("Bearer {expected}")) {
-                Ok(next.run(req).await)
-            } else {
-                Err(StatusCode::UNAUTHORIZED)
-            }
-        }
-        mcp_router.route_layer(middleware::from_fn_with_state(tok.to_string(), auth))
-    } else {
-        mcp_router
-    };
+    let app = mcp::http::build_mcp_app(token.map(|s| s.to_string()), ct.child_token());
 
     let ct_clone = ct.clone();
     tokio::spawn(async move {

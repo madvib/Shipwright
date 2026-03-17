@@ -45,9 +45,48 @@ async fn bearer_auth(
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
 
-    match auth_header {
-        Some(val) if val == format!("Bearer {}", expected) => Ok(next.run(req).await),
-        _ => Err(StatusCode::UNAUTHORIZED),
+    let authorized = match auth_header {
+        Some(val) => {
+            let expected_header = format!("Bearer {}", expected);
+            // Constant-time comparison to prevent timing side-channel attacks.
+            // Both strings are compared in full before returning.
+            let a = val.as_bytes();
+            let b = expected_header.as_bytes();
+            if a.len() != b.len() {
+                false
+            } else {
+                a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+            }
+        }
+        None => false,
+    };
+
+    if authorized {
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+/// Build the axum Router for the MCP HTTP server.
+/// If `token` is Some, bearer token auth is required on all requests.
+pub fn build_mcp_app(token: Option<String>, ct: CancellationToken) -> Router {
+    let service: StreamableHttpService<ShipServer, LocalSessionManager> =
+        StreamableHttpService::new(
+            || Ok(ShipServer::new()),
+            Default::default(),
+            StreamableHttpServerConfig {
+                cancellation_token: ct,
+                ..Default::default()
+            },
+        );
+
+    let mcp_router = Router::new().nest_service("/mcp", service);
+
+    if let Some(tok) = token {
+        mcp_router.route_layer(middleware::from_fn_with_state(tok, bearer_auth))
+    } else {
+        mcp_router
     }
 }
 
@@ -56,27 +95,16 @@ pub async fn run_http_server(port: u16) -> Result<()> {
     let token = read_auth_token()?;
 
     let ct = CancellationToken::new();
-    let service: StreamableHttpService<ShipServer, LocalSessionManager> =
-        StreamableHttpService::new(
-            || Ok(ShipServer::new()),
-            Default::default(),
-            StreamableHttpServerConfig {
-                cancellation_token: ct.child_token(),
-                ..Default::default()
-            },
-        );
 
-    let mcp_router = Router::new().nest_service("/mcp", service);
-
-    let app = if let Some(tok) = token {
+    if token.is_some() {
         eprintln!("ship-mcp HTTP: bearer token auth enabled");
-        mcp_router.route_layer(middleware::from_fn_with_state(tok, bearer_auth))
     } else {
         eprintln!(
             "ship-mcp HTTP: WARNING — no [auth] token in ~/.ship/config.toml, server is unauthenticated"
         );
-        mcp_router
-    };
+    }
+
+    let app = build_mcp_app(token, ct.child_token());
 
     let addr = format!("0.0.0.0:{port}");
     eprintln!("ship-mcp HTTP server listening on {addr}");
