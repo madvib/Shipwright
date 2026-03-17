@@ -9,8 +9,8 @@ default:
 
 # Build and install `ship` + `ship-mcp` to ~/.cargo/bin (adds to PATH)
 install: build
-    cargo install --path crates/cli --locked
-    cargo install --path crates/mcp --locked
+    cargo install --path apps/ship-studio-cli --locked
+    cargo install --path apps/mcp --locked
 
 # Alias: same as install
 reinstall: install
@@ -19,11 +19,11 @@ reinstall: install
 
 # Build cli + mcp (skips Tauri — needs glib-2.0 not available in WSL)
 build:
-    cargo build --release -p cli -p mcp
+    cargo build --release -p ship-studio-cli -p mcp
 
 # Build in debug mode (faster iteration)
 build-dev:
-    cargo build -p cli -p mcp
+    cargo build -p ship-studio-cli -p mcp
 
 # Build everything including Tauri UI (requires native libs)
 build-all:
@@ -56,7 +56,7 @@ build-migrate: build migrate
 
 # Watch for changes and rebuild (requires cargo-watch)
 watch:
-    cargo watch -x "build -p cli -p mcp"
+    cargo watch -x "build -p ship-studio-cli -p mcp"
 
 # ── Tauri ──────────────────────────────────────────────────────────────────────
 

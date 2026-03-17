@@ -3,26 +3,32 @@
   "image": "ghcr.io/prulloac/base:ubuntu-24.04",
 
   "features": {
-    "ghcr.io/devcontainers/features/rust:1": {
-      "version": "1.93.1",
-      "profile": "default"
-    },
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "24"
-    },
+    "ghcr.io/devcontainers/features/rust:1": {},
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {},
     "ghcr.io/devcontainers-extra/features/pnpm:2": {},
-    "ghcr.io/devcontainers-extra/features/claude-code:1": {},
-    "ghcr.io/devcontainers-extra/features/just:1": {}
+    "ghcr.io/guiyomh/features/just:0": {},
+    "ghcr.io/stu-bell/devcontainer-features/claude-code:0": {}
   },
 
-  "onCreateCommand": "rustup target add wasm32-unknown-unknown && cargo install wasm-pack --locked",
-  "postCreateCommand": "pnpm install",
+  "onCreateCommand": "sudo chown -R vscode:vscode /usr/local/cargo/registry /usr/local/cargo/git /workspaces/ship/target 2>/dev/null; rustup target add wasm32-unknown-unknown && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && sudo apt-get update && sudo apt-get install -y tmux",
+  "postCreateCommand": "pnpm install && cargo build -p ship-studio-cli -p mcp",
+  "postStartCommand": "git pull --ff-only origin main 2>/dev/null || true",
 
   "mounts": [
     "source=ship-cargo-registry,target=/usr/local/cargo/registry,type=volume",
     "source=ship-cargo-git,target=/usr/local/cargo/git,type=volume",
-    "source=ship-target,target=${containerWorkspaceFolder}/target,type=volume"
+    "source=ship-cargo-target,target=/workspaces/ship/target,type=volume",
+    "source=ship-pnpm-store,target=/home/vscode/.local/share/pnpm/store,type=volume",
+    "source=${localEnv:HOME}/.ship,target=/home/vscode/.ship,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/dev/worktrees,target=/workspaces/worktrees,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
   ],
+
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:${containerWorkspaceFolder}/target/debug:/home/vscode/.local/bin"
+  },
 
   "forwardPorts": [3000, 7701],
   "portsAttributes": {
