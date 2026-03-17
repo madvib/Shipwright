@@ -21,6 +21,13 @@ export default function Header() {
           >
             Studio
           </Link>
+          <Link
+            to="/canvas"
+            className="rounded-md px-3 py-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            activeProps={{ className: 'active' }}
+          >
+            Canvas
+          </Link>
           {import.meta.env.DEV && (
             <Link
               to="/dev/jobs"
