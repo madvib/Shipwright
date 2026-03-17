@@ -50,7 +50,8 @@ pub fn project_ship_dir_required() -> anyhow::Result<std::path::PathBuf> {
 
 pub fn ensure_project_dirs() -> anyhow::Result<()> {
     for dir in [project_dir(), project_modes_dir(), agents_dir(),
-                agents_rules_dir(), agents_skills_dir()] {
+                agents_rules_dir(), agents_skills_dir(),
+                project_profiles_dir(), project_presets_dir()] {
         fs::create_dir_all(dir)?;
     }
     Ok(())
