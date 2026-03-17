@@ -38,6 +38,8 @@ pub enum ContextFile {
     GeminiMd,
     /// `AGENTS.md` — Codex, Roo, Amp, Goose
     AgentsMd,
+    /// `.windsurfrules` — Windsurf (single rules file, markdown)
+    WindsurfRules,
     /// Provider does not use a context file
     None,
 }
@@ -48,6 +50,7 @@ impl ContextFile {
             Self::ClaudeMd => Some("CLAUDE.md"),
             Self::GeminiMd => Some("GEMINI.md"),
             Self::AgentsMd => Some("AGENTS.md"),
+            Self::WindsurfRules => Some(".windsurfrules"),
             Self::None => None,
         }
     }
@@ -158,7 +161,87 @@ static PROVIDERS: &[ProviderDescriptor] = &[
         http_url_field: "url",
         mcp_config_path: Some(".cursor/mcp.json"),
     },
+    ProviderDescriptor {
+        id: "windsurf",
+        name: "Windsurf",
+        // Source: https://docs.windsurf.com/windsurf/memories#windsurfrules
+        // Windsurf reads .windsurfrules as project-scoped AI rules (single file, markdown).
+        mcp_key: McpKey::McpServers,
+        context_file: ContextFile::WindsurfRules,
+        skills_dir: SkillsDir::Agents,
+        emit_type_field: false,
+        sse_url_field: "url",
+        http_url_field: "url",
+        // Windsurf does not have a standalone MCP config file — no native MCP support yet.
+        mcp_config_path: None,
+    },
 ];
+
+/// Feature support flags for a provider.
+///
+/// These govern what the compiler emits for a given provider:
+/// - `supports_mcp` — provider reads an MCP server config file
+/// - `supports_hooks` — provider supports session hooks (Stop, PreToolUse, etc.)
+/// - `supports_tool_permissions` — provider supports allow/deny tool lists
+/// - `supports_memory` — provider has persistent memory / context file
+///
+/// See SPEC.md §Provider Feature Matrix for the full per-provider table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderFeatureFlags {
+    /// Does this provider read an MCP server config file?
+    pub supports_mcp: bool,
+    /// Does this provider support session hooks?
+    pub supports_hooks: bool,
+    /// Can you configure allow/deny tool permission lists for this provider?
+    pub supports_tool_permissions: bool,
+    /// Does this provider have a persistent memory / context file?
+    pub supports_memory: bool,
+}
+
+impl ProviderDescriptor {
+    /// Return the feature flags for this provider.
+    pub fn feature_flags(&self) -> ProviderFeatureFlags {
+        match self.id {
+            "claude" => ProviderFeatureFlags {
+                supports_mcp: true,
+                supports_hooks: true,
+                supports_tool_permissions: true,
+                supports_memory: true,
+            },
+            "gemini" => ProviderFeatureFlags {
+                supports_mcp: true,
+                supports_hooks: true,
+                supports_tool_permissions: true,
+                supports_memory: true,
+            },
+            "codex" => ProviderFeatureFlags {
+                supports_mcp: true,
+                supports_hooks: false,
+                supports_tool_permissions: false,
+                supports_memory: true,
+            },
+            "cursor" => ProviderFeatureFlags {
+                supports_mcp: true,
+                supports_hooks: true,
+                supports_tool_permissions: true,
+                supports_memory: false,
+            },
+            "windsurf" => ProviderFeatureFlags {
+                supports_mcp: false,
+                supports_hooks: false,
+                supports_tool_permissions: false,
+                supports_memory: true,
+            },
+            // Unknown providers: conservative defaults
+            _ => ProviderFeatureFlags {
+                supports_mcp: false,
+                supports_hooks: false,
+                supports_tool_permissions: false,
+                supports_memory: false,
+            },
+        }
+    }
+}
 
 pub fn get_provider(id: &str) -> Option<&'static ProviderDescriptor> {
     PROVIDERS.iter().find(|p| p.id == id)
@@ -244,10 +327,16 @@ pub struct CompileOutput {
 /// Returns `None` if the provider ID is not recognised.
 pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOutput> {
     let desc = get_provider(provider_id)?;
+    let flags = desc.feature_flags();
     let mut out = CompileOutput::default();
 
-    out.mcp_servers = build_mcp_servers(desc, &resolved.mcp_servers);
-    out.mcp_config_path = desc.mcp_config_path;
+    // Only emit MCP config for providers that support it.
+    if flags.supports_mcp {
+        out.mcp_servers = build_mcp_servers(desc, &resolved.mcp_servers);
+        out.mcp_config_path = desc.mcp_config_path;
+    } else {
+        out.mcp_servers = serde_json::json!({});
+    }
     out.context_content = build_context_content(desc, resolved);
     out.skill_files = build_skill_files(desc, &resolved.skills);
 
@@ -2795,6 +2884,169 @@ mod tests {
         for provider in &["claude", "gemini", "codex", "cursor"] {
             let out = compile(&r, provider).unwrap();
             assert_eq!(out.plugins_manifest.install.len(), 1, "provider {} must include manifest", provider);
+        }
+    }
+
+    // ── Windsurf provider ─────────────────────────────────────────────────────
+
+    #[test]
+    fn windsurf_provider_exists() {
+        let desc = get_provider("windsurf").expect("windsurf provider must be registered");
+        assert_eq!(desc.name, "Windsurf");
+        assert_eq!(desc.context_file, ContextFile::WindsurfRules);
+        assert_eq!(desc.context_file.file_name(), Some(".windsurfrules"));
+        assert!(desc.mcp_config_path.is_none(), "windsurf has no standalone MCP config");
+    }
+
+    #[test]
+    fn windsurf_emits_context_content_from_rules() {
+        // .windsurfrules is emitted via context_content — same path as CLAUDE.md/AGENTS.md.
+        let r = ResolvedConfig {
+            rules: vec![make_rule("style.md", "Follow clean code principles.")],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "windsurf").unwrap();
+        let content = out.context_content.expect("windsurf must emit context_content (.windsurfrules)");
+        assert!(content.contains("Follow clean code principles."), "rule content must appear in .windsurfrules");
+    }
+
+    #[test]
+    fn windsurf_no_context_content_when_rules_empty() {
+        let out = compile(&resolved(vec![]), "windsurf").unwrap();
+        assert!(out.context_content.is_none(), "empty rules must not produce a windsurf rules file");
+    }
+
+    #[test]
+    fn windsurf_no_mcp_servers_emitted() {
+        // Windsurf does not support MCP — mcp_servers must be empty, mcp_config_path None.
+        let r = resolved(vec![make_server("github")]);
+        let out = compile(&r, "windsurf").unwrap();
+        assert!(
+            out.mcp_servers.as_object().map(|o| o.is_empty()).unwrap_or(false),
+            "windsurf must not emit any MCP server entries"
+        );
+        assert!(out.mcp_config_path.is_none(), "windsurf has no MCP config path");
+    }
+
+    #[test]
+    fn windsurf_no_rule_files() {
+        // Windsurf uses context_content (.windsurfrules), not per-file .mdc rule_files.
+        let r = ResolvedConfig {
+            rules: vec![make_rule("style.md", "Use consistent naming.")],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "windsurf").unwrap();
+        assert!(out.rule_files.is_empty(), "windsurf must not emit per-file rule_files");
+    }
+
+    #[test]
+    fn windsurf_no_settings_patch() {
+        // Windsurf has no structured settings config.
+        let r = ResolvedConfig {
+            permissions: Permissions {
+                tools: ToolPermissions {
+                    deny: vec!["Bash(rm -rf *)".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            hooks: vec![make_hook(HookTrigger::PreToolUse, "cmd", None)],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "windsurf").unwrap();
+        assert!(out.claude_settings_patch.is_none(), "windsurf must not receive a Claude settings patch");
+        assert!(out.gemini_settings_patch.is_none(), "windsurf must not receive a Gemini settings patch");
+        assert!(out.codex_config_patch.is_none(), "windsurf must not receive a Codex config patch");
+        assert!(out.cursor_hooks_patch.is_none(), "windsurf must not receive Cursor hooks");
+        assert!(out.cursor_cli_permissions.is_none(), "windsurf must not receive Cursor permissions");
+    }
+
+    #[test]
+    fn windsurf_skill_files_in_agents_dir() {
+        let r = ResolvedConfig {
+            skills: vec![make_skill("refactor")],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "windsurf").unwrap();
+        assert!(
+            out.skill_files.contains_key(".agents/skills/refactor/SKILL.md"),
+            "windsurf skills must go in .agents/skills/"
+        );
+    }
+
+    // ── ProviderFeatureFlags ──────────────────────────────────────────────────
+
+    #[test]
+    fn claude_feature_flags() {
+        let flags = get_provider("claude").unwrap().feature_flags();
+        assert!(flags.supports_mcp, "claude supports MCP");
+        assert!(flags.supports_hooks, "claude supports hooks");
+        assert!(flags.supports_tool_permissions, "claude supports tool permissions");
+        assert!(flags.supports_memory, "claude supports memory (CLAUDE.md)");
+    }
+
+    #[test]
+    fn gemini_feature_flags() {
+        let flags = get_provider("gemini").unwrap().feature_flags();
+        assert!(flags.supports_mcp, "gemini supports MCP");
+        assert!(flags.supports_hooks, "gemini supports hooks");
+        assert!(flags.supports_tool_permissions, "gemini supports tool permissions");
+        assert!(flags.supports_memory, "gemini supports memory (GEMINI.md)");
+    }
+
+    #[test]
+    fn codex_feature_flags() {
+        let flags = get_provider("codex").unwrap().feature_flags();
+        assert!(flags.supports_mcp, "codex supports MCP");
+        assert!(!flags.supports_hooks, "codex does not support hooks");
+        assert!(!flags.supports_tool_permissions, "codex does not support tool permissions");
+        assert!(flags.supports_memory, "codex supports memory (AGENTS.md)");
+    }
+
+    #[test]
+    fn cursor_feature_flags() {
+        let flags = get_provider("cursor").unwrap().feature_flags();
+        assert!(flags.supports_mcp, "cursor supports MCP");
+        assert!(flags.supports_hooks, "cursor supports hooks");
+        assert!(flags.supports_tool_permissions, "cursor supports tool permissions");
+        assert!(!flags.supports_memory, "cursor uses per-file .mdc rules, not persistent memory file");
+    }
+
+    #[test]
+    fn windsurf_feature_flags() {
+        let flags = get_provider("windsurf").unwrap().feature_flags();
+        assert!(!flags.supports_mcp, "windsurf does not support MCP");
+        assert!(!flags.supports_hooks, "windsurf does not support hooks");
+        assert!(!flags.supports_tool_permissions, "windsurf does not support tool permissions");
+        assert!(flags.supports_memory, "windsurf supports memory (.windsurfrules)");
+    }
+
+    #[test]
+    fn feature_flags_govern_mcp_emission() {
+        // Providers with supports_mcp=true must emit a non-empty mcp_servers object.
+        // Providers with supports_mcp=false must emit an empty object and no mcp_config_path.
+        let r = resolved(vec![make_server("github")]);
+        for desc in list_providers() {
+            let flags = desc.feature_flags();
+            let out = compile(&r, desc.id).unwrap();
+            if flags.supports_mcp {
+                assert!(
+                    out.mcp_servers.as_object().map(|o| o.contains_key("ship")).unwrap_or(false),
+                    "provider {} (supports_mcp=true) must include ship server",
+                    desc.id
+                );
+            } else {
+                assert!(
+                    out.mcp_servers.as_object().map(|o| o.is_empty()).unwrap_or(false),
+                    "provider {} (supports_mcp=false) must not emit MCP entries",
+                    desc.id
+                );
+                assert!(
+                    out.mcp_config_path.is_none(),
+                    "provider {} (supports_mcp=false) must not emit a mcp_config_path",
+                    desc.id
+                );
+            }
         }
     }
 }

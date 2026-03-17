@@ -62,7 +62,7 @@ fn rich_library() -> ProjectLibrary {
 #[test]
 fn compile_is_deterministic() {
     let library = rich_library();
-    let providers = ["claude", "gemini", "codex", "cursor"];
+    let providers = ["claude", "gemini", "codex", "cursor", "windsurf"];
 
     for provider in providers {
         let resolved = resolve_library(&library, None, None);
