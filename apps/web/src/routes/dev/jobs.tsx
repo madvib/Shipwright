@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -67,23 +67,46 @@ export const TARGET_NAMES: Record<string, string> = {
 // ── DB path ───────────────────────────────────────────────────────────────
 
 function getDbPath(): string {
-  const { homedir } = require('os') as typeof import('os')
-  const home = process.env.HOME ?? homedir()
-  return `${home}/.ship/state/ship-hrvmuz4p/platform.db`
-}
-
-async function openDb() {
+  const os = require('os') as typeof import('os')
   const fs = require('fs') as typeof import('fs')
-  const initSqlJs = (await import('sql.js')).default
-  const SQL = await initSqlJs()
-  const buffer = fs.readFileSync(getDbPath())
-  return new SQL.Database(buffer)
+  const path = require('path') as typeof import('path')
+  const home = process.env.HOME ?? os.homedir()
+  const appStatePath = path.join(home, '.ship', 'app_state.json')
+
+  try {
+    const appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8')) as { active_project?: string }
+    const projectDir = appState.active_project?.replace(/\/.ship\/?$/, '')
+    if (projectDir) {
+      const shipToml = fs.readFileSync(path.join(projectDir, '.ship', 'ship.toml'), 'utf8')
+      const idMatch = shipToml.match(/^id\s*=\s*"([^"]+)"/m)
+      if (idMatch) {
+        const wsId = idMatch[1].toLowerCase()
+        return path.join(home, '.ship', 'state', `ship-${wsId}`, 'platform.db')
+      }
+    }
+  } catch { /* fall through to default */ }
+
+  // fallback: most recently modified platform.db
+  const stateDir = path.join(home, '.ship', 'state')
+  try {
+    const entries = fs.readdirSync(stateDir)
+    let best = { path: '', mtime: 0 }
+    for (const entry of entries) {
+      const dbPath = path.join(stateDir, entry, 'platform.db')
+      try {
+        const stat = fs.statSync(dbPath)
+        if (stat.mtimeMs > best.mtime) best = { path: dbPath, mtime: stat.mtimeMs }
+      } catch { /* not a dir with platform.db */ }
+    }
+    if (best.path) return best.path
+  } catch { /* ignore */ }
+
+  return path.join(home, '.ship', 'state', 'ship-hrvmuz4p', 'platform.db')
 }
 
-// ── Data loading helpers ──────────────────────────────────────────────────
+// ── Map DB row → Job ──────────────────────────────────────────────────────
 
-/** Map a raw job DB row into a typed Job with all payload fields extracted. */
-export function mapJobRowFull(row: {
+export function mapJobRow(row: {
   id: string
   kind: string
   status: string
@@ -92,9 +115,7 @@ export function mapJobRowFull(row: {
   log_entries: LogEntry[]
 }): Job {
   let payload: JobPayload = {}
-  try {
-    payload = JSON.parse(row.payload_json) as JobPayload
-  } catch { /* ignore */ }
+  try { payload = JSON.parse(row.payload_json) as JobPayload } catch { /* ignore */ }
 
   return {
     id: row.id,
@@ -113,7 +134,7 @@ export function mapJobRowFull(row: {
   }
 }
 
-// ── Server functions ──────────────────────────────────────────────────────
+// ── Server function ───────────────────────────────────────────────────────
 
 const loadDashboard = createServerFn({ method: 'GET' }).handler(async (): Promise<{
   jobs: Job[]
@@ -121,29 +142,20 @@ const loadDashboard = createServerFn({ method: 'GET' }).handler(async (): Promis
   capabilities: CapabilityRow[]
 }> => {
   try {
-    const db = await openDb()
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database = require('better-sqlite3') as typeof import('better-sqlite3')
+    const dbPath = getDbPath()
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true })
 
-    // Load jobs — all non-archived statuses
-    const jobStmt = db.prepare(
-      "SELECT id, kind, status, branch, payload_json FROM job WHERE status IN ('running', 'pending', 'blocked', 'failed') ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'blocked' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
-    )
-    const jobRows: { id: string; kind: string; status: string; branch: string | null; payload_json: string }[] = []
-    while (jobStmt.step()) {
-      const r = jobStmt.getAsObject() as typeof jobRows[0]
-      jobRows.push(r)
-    }
-    jobStmt.free()
+    // Load jobs — active statuses, ordered by priority
+    const jobRows = db.prepare(
+      "SELECT id, kind, status, branch, payload_json FROM job WHERE status IN ('running', 'pending', 'blocked', 'failed', 'complete') ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'blocked' THEN 1 WHEN 'pending' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END, created_at DESC"
+    ).all() as { id: string; kind: string; status: string; branch: string | null; payload_json: string }[]
 
-    // Load last 5 log entries per job
-    const logStmt = db.prepare(
-      'SELECT job_id, id, message, created_at FROM job_log WHERE job_id IS NOT NULL ORDER BY created_at DESC'
-    )
-    const allLogs: { job_id: string; id: number; message: string; created_at: string }[] = []
-    while (logStmt.step()) {
-      const r = logStmt.getAsObject() as typeof allLogs[0]
-      allLogs.push(r)
-    }
-    logStmt.free()
+    // Load last 5 log entries per job (ordered DESC so we get most recent first)
+    const allLogs = db.prepare(
+      'SELECT job_id, id, message, created_at FROM job_log ORDER BY created_at DESC'
+    ).all() as { job_id: string; id: number; message: string; created_at: string }[]
 
     // Group logs by job_id, keep last 5
     const logsByJob: Record<string, LogEntry[]> = {}
@@ -155,49 +167,29 @@ const loadDashboard = createServerFn({ method: 'GET' }).handler(async (): Promis
       }
     }
 
-    const jobs = jobRows.map((row) =>
-      mapJobRowFull({ ...row, log_entries: logsByJob[row.id] ?? [] })
-    )
+    const jobs = jobRows.map((row) => mapJobRow({ ...row, log_entries: logsByJob[row.id] ?? [] }))
 
-    // Load milestones + capabilities
-    const msStmt = db.prepare("SELECT id, title FROM target WHERE kind = 'milestone' AND status = 'active' ORDER BY created_at")
-    const milestoneRows: { id: string; title: string }[] = []
-    while (msStmt.step()) {
-      const r = msStmt.getAsObject() as { id: string; title: string }
-      milestoneRows.push(r)
-    }
-    msStmt.free()
+    // Load milestones + capabilities (db still open)
+    const milestoneRows = db.prepare(
+      "SELECT id, title FROM target WHERE kind = 'milestone' AND status = 'active' ORDER BY created_at"
+    ).all() as { id: string; title: string }[]
 
-    const capStmt = db.prepare(
+    const capRows = db.prepare(
       'SELECT id, target_id, title, status, evidence, milestone_id FROM capability ORDER BY target_id, created_at'
-    )
-    const capRows: { id: string; target_id: string; title: string; status: string; evidence: string | null; milestone_id: string | null }[] = []
-    while (capStmt.step()) {
-      const r = capStmt.getAsObject() as typeof capRows[0]
-      capRows.push(r)
-    }
-    capStmt.free()
+    ).all() as { id: string; target_id: string; title: string; status: string; evidence: string | null; milestone_id: string | null }[]
     db.close()
 
     // Build running-job lookup by capability_id
     const runningByCapId: Record<string, Job> = {}
     for (const job of jobs) {
-      if (job.capability_id && job.status === 'running') {
-        runningByCapId[job.capability_id] = job
-      }
+      if (job.capability_id && job.status === 'running') runningByCapId[job.capability_id] = job
     }
 
-    // Use first active milestone (hardcoded v0.1.0 id Gext6Bgu or first found)
     const activeMilestone = milestoneRows[0]
 
     const milestones: MilestoneProgress[] = milestoneRows.map((ms) => {
       const linked = capRows.filter((c) => c.milestone_id === ms.id)
-      return {
-        id: ms.id,
-        title: ms.title,
-        total: linked.length,
-        actual: linked.filter((c) => c.status === 'actual').length,
-      }
+      return { id: ms.id, title: ms.title, total: linked.length, actual: linked.filter((c) => c.status === 'actual').length }
     })
 
     const capabilities: CapabilityRow[] = activeMilestone
@@ -206,13 +198,9 @@ const loadDashboard = createServerFn({ method: 'GET' }).handler(async (): Promis
           .map((c) => {
             const rj = runningByCapId[c.id]
             return {
-              id: c.id,
-              title: c.title,
-              target_id: c.target_id,
-              status: c.status as CapabilityRow['status'],
-              evidence: c.evidence,
-              running_job_id: rj?.id ?? null,
-              running_job_desc: rj?.description ?? null,
+              id: c.id, title: c.title, target_id: c.target_id,
+              status: c.status as CapabilityRow['status'], evidence: c.evidence,
+              running_job_id: rj?.id ?? null, running_job_desc: rj?.description ?? null,
             }
           })
       : []
@@ -244,7 +232,15 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   complete: { label: '✓ complete', cls: 'bg-green-500/10 text-green-600 dark:text-green-400' },
 }
 
-const STATUS_ORDER: Job['status'][] = ['running', 'blocked', 'pending', 'failed']
+type StatusFilter = 'all' | 'pending' | 'running' | 'blocked' | 'failed' | 'complete'
+const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+  { key: 'all',      label: 'All' },
+  { key: 'running',  label: 'Running' },
+  { key: 'pending',  label: 'Pending' },
+  { key: 'blocked',  label: 'Blocked' },
+  { key: 'failed',   label: 'Failed' },
+  { key: 'complete', label: 'Complete' },
+]
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -252,10 +248,7 @@ function ProgressBar({ value, max }: { value: number; max: number }) {
   const pct = max === 0 ? 0 : Math.round((value / max) * 100)
   return (
     <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
-      <div
-        className="h-full rounded-full bg-green-500 transition-all"
-        style={{ width: `${pct}%` }}
-      />
+      <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
     </div>
   )
 }
@@ -307,7 +300,6 @@ function JobRow({ job }: { job: Job }) {
         <tr className="border-b border-border/60 bg-muted/5">
           <td colSpan={4} className="px-4 py-3">
             <div className="grid gap-3 text-[11px]">
-              {/* Acceptance criteria */}
               {job.acceptance_criteria.length > 0 && (
                 <div>
                   <div className="mb-1 font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
@@ -323,7 +315,6 @@ function JobRow({ job }: { job: Job }) {
                   </ul>
                 </div>
               )}
-              {/* Log entries */}
               {job.log_entries.length > 0 && (
                 <div>
                   <div className="mb-1 font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
@@ -339,7 +330,6 @@ function JobRow({ job }: { job: Job }) {
                   </ul>
                 </div>
               )}
-              {/* Full scope */}
               {job.scope.length > 0 && (
                 <div>
                   <div className="mb-1 font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
@@ -350,7 +340,6 @@ function JobRow({ job }: { job: Job }) {
                   </div>
                 </div>
               )}
-              {/* Capability link */}
               {job.capability_id && (
                 <div className="text-muted-foreground">
                   capability: <span className="font-mono">{job.capability_id}</span>
@@ -369,7 +358,14 @@ function JobRow({ job }: { job: Job }) {
 function DevJobsPage() {
   const { jobs, milestones, capabilities } = Route.useLoaderData()
   const [refreshing, setRefreshing] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const router = useRouter()
+
+  // Auto-refresh every 10s
+  useEffect(() => {
+    const id = setInterval(() => { void router.invalidate() }, 10_000)
+    return () => clearInterval(id)
+  }, [router])
 
   const refresh = async () => {
     setRefreshing(true)
@@ -377,13 +373,15 @@ function DevJobsPage() {
     setRefreshing(false)
   }
 
-  // Group jobs by status
-  const byStatus = STATUS_ORDER.reduce<Record<string, Job[]>>((acc, s) => {
-    acc[s] = jobs.filter((j) => j.status === s)
-    return acc
-  }, {} as Record<string, Job[]>)
+  const filteredJobs = statusFilter === 'all' ? jobs : jobs.filter((j) => j.status === statusFilter)
 
-  // Group capabilities by target
+  // Count per status for tab badges
+  const countByStatus = jobs.reduce<Record<string, number>>((acc, j) => {
+    acc[j.status] = (acc[j.status] ?? 0) + 1
+    return acc
+  }, {})
+
+  // Group by target for capability section
   const byTarget = capabilities.reduce<Record<string, CapabilityRow[]>>((acc, cap) => {
     ;(acc[cap.target_id] ??= []).push(cap)
     return acc
@@ -400,7 +398,7 @@ function DevJobsPage() {
             </span>
           </div>
           <h1 className="font-display text-xl font-semibold text-foreground">Job Control Panel</h1>
-          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">/dev/jobs</p>
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">/dev/jobs · auto-refreshes every 10s</p>
         </div>
         <div className="flex items-center gap-3">
           <a href="/studio" className="text-[11px] text-muted-foreground hover:text-foreground transition">
@@ -428,9 +426,7 @@ function DevJobsPage() {
               <div key={ms.id} className="rounded-xl border border-border/60 px-4 py-3">
                 <div className="flex items-baseline justify-between">
                   <span className="font-medium text-[13px] text-foreground">{ms.title}</span>
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {ms.actual}/{ms.total}
-                  </span>
+                  <span className="font-mono text-[11px] text-muted-foreground">{ms.actual}/{ms.total}</span>
                 </div>
                 <ProgressBar value={ms.actual} max={ms.total} />
                 <p className="mt-1 text-[10px] text-muted-foreground/60">
@@ -442,44 +438,59 @@ function DevJobsPage() {
         </section>
       )}
 
-      {/* Job table grouped by status */}
+      {/* Jobs section */}
       <section className="mb-10">
-        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Jobs
-          <span className="ml-1.5 normal-case tracking-normal font-normal">({jobs.length})</span>
-        </h2>
-        {jobs.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">No active jobs.</p>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Jobs
+            <span className="ml-1.5 normal-case tracking-normal font-normal">({jobs.length})</span>
+          </h2>
+        </div>
+
+        {/* Status filter tabs */}
+        <div className="mb-4 flex gap-1 flex-wrap">
+          {STATUS_TABS.map((tab) => {
+            const count = tab.key === 'all' ? jobs.length : (countByStatus[tab.key] ?? 0)
+            const active = statusFilter === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key)}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
+                  active
+                    ? 'bg-foreground/10 text-foreground border border-border/80'
+                    : 'text-muted-foreground hover:text-foreground border border-transparent'
+                }`}
+              >
+                {tab.label}
+                {count > 0 && (
+                  <span className="ml-1 font-mono opacity-60">{count}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {filteredJobs.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">No jobs{statusFilter !== 'all' ? ` with status "${statusFilter}"` : ''}.</p>
         ) : (
-          <div className="space-y-6">
-            {STATUS_ORDER.filter((s) => byStatus[s]?.length > 0).map((statusKey) => (
-              <div key={statusKey}>
-                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                  {statusKey}
-                  <span className="ml-1.5 normal-case tracking-normal font-normal opacity-60">
-                    ({byStatus[statusKey].length})
-                  </span>
-                </h3>
-                <div className="rounded-xl border border-border/60 overflow-x-auto">
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="border-b border-border/60 bg-muted/30">
-                        {['Name', 'Status', 'Description', 'Scope'].map((h) => (
-                          <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {byStatus[statusKey].map((job) => (
-                        <JobRow key={job.id} job={job} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+          <div className="rounded-xl border border-border/60 overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/30">
+                  {['Name', 'Status', 'Description', 'Scope'].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredJobs.map((job) => (
+                  <JobRow key={job.id} job={job} />
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
