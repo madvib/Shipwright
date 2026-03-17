@@ -1,5 +1,6 @@
 mod requests;
 mod server;
+pub mod http;
 
 use anyhow::Result;
 use async_trait::async_trait;
