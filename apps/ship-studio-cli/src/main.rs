@@ -1,4 +1,5 @@
 mod agent;
+mod auth;
 mod cli;
 mod compile;
 mod config;
@@ -25,9 +26,9 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
         None => run_status(None),
         Some(cmd) => match cmd {
             Commands::Init { global, provider } => run_init(global, provider),
-            Commands::Login  => stub("login",  "Run: open https://getship.dev/login"),
-            Commands::Logout => stub("logout", "Removed local session token."),
-            Commands::Whoami => run_whoami(),
+            Commands::Login  => auth::run_login(),
+            Commands::Logout => auth::run_logout(),
+            Commands::Whoami => auth::run_whoami(),
             Commands::Use { mode, path, compile: _ } => run_use(Some(&mode), path),
             Commands::Status { path } => run_status(path),
             Commands::Modes { local, project, cloud } => run_modes(local, project, cloud),
@@ -103,23 +104,6 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
         println!("\nNext steps:");
         println!("  ship use <profile-id>   activate a profile (compiles immediately)");
         println!("  ship compile            re-compile current profile");
-    }
-    Ok(())
-}
-
-// ── Auth stubs ────────────────────────────────────────────────────────────────
-
-fn run_whoami() -> Result<()> {
-    let cfg = config::ShipConfig::load();
-    match cfg.identity {
-        Some(id) if !id.name.is_empty() => {
-            println!("{}", id.name);
-            if let Some(email) = id.email { println!("{}", email); }
-        }
-        _ => {
-            println!("Not logged in.");
-            println!("Run: ship init --global");
-        }
     }
     Ok(())
 }
