@@ -12,8 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as StudioRouteImport } from './routes/studio'
 import { Route as CompilerRouteImport } from './routes/compiler'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as DevJobsRouteImport } from './routes/dev/jobs'
+import { Route as ApiGithubImportRouteImport } from './routes/api/github/import'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const StudioRoute = StudioRouteImport.update({
   id: '/studio',
@@ -30,14 +31,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DevJobsRoute = DevJobsRouteImport.update({
   id: '/dev/jobs',
   path: '/dev/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubImportRoute = ApiGithubImportRouteImport.update({
+  id: '/api/github/import',
+  path: '/api/github/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -45,38 +51,61 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/compiler': typeof CompilerRoute
   '/studio': typeof StudioRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/dev/jobs': typeof DevJobsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/github/import': typeof ApiGithubImportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/compiler': typeof CompilerRoute
   '/studio': typeof StudioRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/dev/jobs': typeof DevJobsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/github/import': typeof ApiGithubImportRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/compiler': typeof CompilerRoute
   '/studio': typeof StudioRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/dev/jobs': typeof DevJobsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/github/import': typeof ApiGithubImportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/compiler' | '/studio' | '/api/auth/$' | '/dev/jobs'
+  fullPaths:
+    | '/'
+    | '/compiler'
+    | '/studio'
+    | '/dev/jobs'
+    | '/api/auth/$'
+    | '/api/github/import'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/compiler' | '/studio' | '/api/auth/$' | '/dev/jobs'
-  id: '__root__' | '/' | '/compiler' | '/studio' | '/api/auth/$' | '/dev/jobs'
+  to:
+    | '/'
+    | '/compiler'
+    | '/studio'
+    | '/dev/jobs'
+    | '/api/auth/$'
+    | '/api/github/import'
+  id:
+    | '__root__'
+    | '/'
+    | '/compiler'
+    | '/studio'
+    | '/dev/jobs'
+    | '/api/auth/$'
+    | '/api/github/import'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompilerRoute: typeof CompilerRoute
   StudioRoute: typeof StudioRoute
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   DevJobsRoute: typeof DevJobsRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiGithubImportRoute: typeof ApiGithubImportRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -102,18 +131,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/dev/jobs': {
       id: '/dev/jobs'
       path: '/dev/jobs'
       fullPath: '/dev/jobs'
       preLoaderRoute: typeof DevJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/import': {
+      id: '/api/github/import'
+      path: '/api/github/import'
+      fullPath: '/api/github/import'
+      preLoaderRoute: typeof ApiGithubImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -123,8 +159,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompilerRoute: CompilerRoute,
   StudioRoute: StudioRoute,
-  ApiAuthSplatRoute: ApiAuthSplatRoute,
   DevJobsRoute: DevJobsRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiGithubImportRoute: ApiGithubImportRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
