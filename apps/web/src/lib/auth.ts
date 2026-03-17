@@ -1,8 +1,6 @@
 import { betterAuth } from 'better-auth'
-import { d1 } from 'better-auth/adapters/d1'
 import { github } from 'better-auth/providers/github'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
-import { getDb } from '#/lib/cloud-auth'
 
 function getEnv(key: string): string {
   return (
@@ -13,9 +11,7 @@ function getEnv(key: string): string {
 }
 
 function makeAuth() {
-  const db = getDb()
   return betterAuth({
-    ...(db ? { database: d1(db as Parameters<typeof d1>[0]) } : {}),
     socialProviders: {
       github: {
         clientId: getEnv('GITHUB_APP_CLIENT_ID'),
