@@ -1,3 +1,4 @@
+mod add;
 mod agent;
 mod auth;
 mod cli;
@@ -6,6 +7,7 @@ mod compile;
 mod config;
 mod diff;
 mod import;
+mod install;
 mod job;
 mod loader;
 mod mcp;
@@ -19,7 +21,7 @@ mod validate;
 
 use anyhow::Result;
 use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands, SyncCommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() -> Result<()> {
     use clap::Parser;
@@ -44,6 +46,14 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
+            Commands::Install { frozen } => {
+                let project_root = resolve_project_root(None)?;
+                install::run_install(&project_root, frozen)
+            }
+            Commands::Add { package } => {
+                let project_root = resolve_project_root(None)?;
+                add::run_add(&project_root, &package)
+            }
             Commands::Import { source } => import::run_import(&source),
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
@@ -365,8 +375,8 @@ default_mode = "plan"
 
 // ── Use ───────────────────────────────────────────────────────────────────────
 
-/// Activate a profile: load → compile → install plugins → write ship.lock.
-/// `profile_id = None` re-activates the current profile from ship.lock.
+/// Activate a profile: load → compile → install plugins → write ship.state.
+/// `profile_id = None` re-activates the current profile from ship.state.
 fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let project_root = path.as_deref()
         .map(std::fs::canonicalize)
@@ -659,6 +669,17 @@ fn run_matrix(format: &str, provider: Option<&str>) -> Result<()> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn resolve_project_root(path: Option<&Path>) -> Result<PathBuf> {
+    let root = match path {
+        Some(p) => std::fs::canonicalize(p)?,
+        None => std::env::current_dir()?,
+    };
+    if !root.join(".ship").exists() {
+        anyhow::bail!(".ship/ not found. Run: ship init");
+    }
+    Ok(root)
+}
 
 fn stub(command: &str, note: &str) -> Result<()> {
     println!("[{}] {}", command, note);

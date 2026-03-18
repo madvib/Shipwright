@@ -102,6 +102,20 @@ pub enum Commands {
         action: McpCommands,
     },
 
+    // ── Registry ─────────────────────────────────────────────────────────────
+    /// Install all dependencies declared in .ship/ship.toml
+    Install {
+        /// Fail if the lockfile would change rather than updating it
+        #[arg(long)]
+        frozen: bool,
+    },
+
+    /// Add a package dependency to .ship/ship.toml and install it
+    Add {
+        /// Package path with optional version: github.com/owner/repo[@version]
+        package: String,
+    },
+
     // ── Import / Export ───────────────────────────────────────────────────────
     /// Import a profile from a getship.dev URL, local path, or provider config
     Import {
