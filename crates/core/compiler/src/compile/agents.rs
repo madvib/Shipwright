@@ -63,7 +63,8 @@ fn profile_targets_provider(profile: &AgentProfile, provider_id: &str) -> bool {
 
 fn compile_claude_agent(profile: &AgentProfile) -> String {
     let mut fm = Vec::new();
-    fm.push(format!("name: {}", profile.profile.name));
+    // Use id as name so Claude Code can match it as a subagent_type by filename
+    fm.push(format!("name: {}", profile.profile.id));
     if let Some(desc) = &profile.profile.description {
         fm.push(format!("description: {}", yaml_quote(desc)));
     }
@@ -72,6 +73,9 @@ fn compile_claude_agent(profile: &AgentProfile) -> String {
     if let Some(model) = claude_setting(profile, "model") {
         fm.push(format!("model: {model}"));
     }
+
+    // Default tools — all tools available unless restricted
+    fm.push("tools: \"*\"".to_string());
 
     // Permission mode
     if let Some(mode) = &profile.permissions.default_mode {
@@ -314,7 +318,7 @@ mod tests {
         assert_eq!(files.len(), 1);
         let content = &files[".claude/agents/reviewer.md"];
         assert!(content.starts_with("---\n"));
-        assert!(content.contains("name: Code Reviewer"));
+        assert!(content.contains("name: reviewer"));
         assert!(content.contains("description: Code Reviewer agent"));
         assert!(content.contains("permissionMode: acceptEdits"));
         assert!(content.contains("mcpServers:"));
