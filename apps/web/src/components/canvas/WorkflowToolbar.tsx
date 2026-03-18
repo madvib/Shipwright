@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronLeft, Plus, Download } from 'lucide-react'
 
-const FONT_DISPLAY = '"Syne Variable", "Syne", sans-serif'
-const FONT_BODY = '"DM Sans Variable", "DM Sans", sans-serif'
-
 interface Props {
   name: string
   onBack: () => void
@@ -11,9 +8,9 @@ interface Props {
 }
 
 const ADD_OPTIONS = [
-  { label: 'Artifact D0 (Target)', type: 'artifact', data: { label: 'New Target', depth: 0 as const, status: 'planned' as const } },
-  { label: 'Artifact D1 (Capability)', type: 'artifact', data: { label: 'New Capability', depth: 1 as const, status: 'planned' as const, accentColor: '#3b82f6' } },
-  { label: 'Artifact D2 (Job)', type: 'artifact', data: { label: 'New Job', depth: 2 as const, status: 'planned' as const } },
+  { label: 'Target (D0)', type: 'artifact', data: { label: 'New Target', depth: 0 as const, status: 'planned' as const } },
+  { label: 'Capability (D1)', type: 'artifact', data: { label: 'New Capability', depth: 1 as const, status: 'planned' as const, accentColor: '#3b82f6' } },
+  { label: 'Job (D2)', type: 'artifact', data: { label: 'New Job', depth: 2 as const, status: 'planned' as const } },
   { label: 'Agent', type: 'agent', data: { name: 'New Agent', profile: 'default', agentType: 'specialist' as const, icon: '🤖' } },
   { label: 'MCP Server', type: 'platform', data: { nodeKind: 'mcp' as const, title: 'mcp-server', detail: 'tools: 0' } },
   { label: 'Hook', type: 'platform', data: { nodeKind: 'hook' as const, title: 'PostToolUse', detail: 'command' } },
@@ -23,7 +20,6 @@ export function WorkflowToolbar({ name, onBack, onAddNode }: Props) {
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Close menu on outside click
   useEffect(() => {
     if (!showMenu) return
     const handler = (e: MouseEvent) => {
@@ -34,89 +30,41 @@ export function WorkflowToolbar({ name, onBack, onAddNode }: Props) {
   }, [showMenu])
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-      height: 44,
-      padding: '0 14px',
-      background: '#0d0d14e8',
-      backdropFilter: 'blur(12px)',
-      borderBottom: '1px solid #1e2030',
-      flexShrink: 0,
-    }}>
-      {/* Back */}
+    <div className="flex items-center gap-3 h-11 px-3.5 border-b border-border/60 bg-background/90 backdrop-blur-md shrink-0">
       <button
         onClick={onBack}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          background: 'none', border: 'none',
-          fontFamily: FONT_BODY, color: '#64748b',
-          fontSize: 12, cursor: 'pointer', padding: '4px 8px', borderRadius: 4,
-          transition: 'color 0.15s',
-          fontWeight: 500,
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = '#e2e8f0' }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b' }}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-medium px-2 py-1 rounded"
       >
         <ChevronLeft size={14} />
         Workflows
       </button>
 
-      {/* Separator */}
-      <div style={{ width: 1, height: 18, background: '#1e2030' }} />
+      <div className="w-px h-4.5 bg-border/60" />
 
-      {/* Name */}
-      <span style={{
-        fontFamily: FONT_DISPLAY, fontSize: 13, fontWeight: 700,
-        color: '#e2e8f0', letterSpacing: '-0.01em',
-      }}>
-        {name}
-      </span>
+      <span className="text-sm font-bold text-foreground tracking-tight">{name}</span>
 
-      <div style={{ flex: 1 }} />
+      <div className="flex-1" />
 
       {/* Add node dropdown */}
-      <div style={{ position: 'relative' }} ref={menuRef}>
+      <div className="relative" ref={menuRef}>
         <button
           onClick={() => setShowMenu(!showMenu)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            background: showMenu ? '#1a1a2e' : 'transparent',
-            border: '1px solid #1e2030', borderRadius: 6,
-            fontFamily: FONT_BODY, color: '#94a3b8',
-            fontSize: 11, fontWeight: 600, cursor: 'pointer',
-            padding: '5px 10px',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={(e) => { if (!showMenu) e.currentTarget.style.background = '#12121e' }}
-          onMouseLeave={(e) => { if (!showMenu) e.currentTarget.style.background = 'transparent' }}
+          className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-md border transition-colors ${
+            showMenu
+              ? 'bg-muted border-border text-foreground'
+              : 'bg-transparent border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+          }`}
         >
           <Plus size={12} />
           Add node
         </button>
         {showMenu && (
-          <div style={{
-            position: 'absolute', top: '100%', right: 0, marginTop: 6,
-            background: '#0d0d14f0', backdropFilter: 'blur(16px)',
-            border: '1px solid #1e2030', borderRadius: 8,
-            padding: 4, minWidth: 200, zIndex: 50,
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03)',
-          }}>
+          <div className="absolute top-full right-0 mt-1.5 bg-popover/95 backdrop-blur-xl border border-border rounded-lg p-1 min-w-[200px] z-50 shadow-lg">
             {ADD_OPTIONS.map((opt) => (
               <button
                 key={opt.label}
                 onClick={() => { onAddNode(opt.type, opt.data); setShowMenu(false) }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left',
-                  background: 'none', border: 'none',
-                  fontFamily: FONT_BODY, color: '#94a3b8',
-                  fontSize: 11, padding: '7px 10px', borderRadius: 4,
-                  cursor: 'pointer', fontWeight: 500,
-                  transition: 'all 0.1s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#1a1a2e'; e.currentTarget.style.color = '#e2e8f0' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#94a3b8' }}
+                className="block w-full text-left text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded px-2.5 py-1.5 transition-colors"
               >
                 {opt.label}
               </button>
@@ -125,15 +73,8 @@ export function WorkflowToolbar({ name, onBack, onAddNode }: Props) {
         )}
       </div>
 
-      {/* Export (placeholder) */}
       <button
-        style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          background: 'transparent', border: '1px solid #1e2030', borderRadius: 6,
-          fontFamily: FONT_BODY, color: '#334155',
-          fontSize: 11, fontWeight: 600, cursor: 'not-allowed',
-          padding: '5px 10px', opacity: 0.4,
-        }}
+        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-md border border-border/60 text-muted-foreground/40 cursor-not-allowed opacity-40"
         disabled
       >
         <Download size={12} />

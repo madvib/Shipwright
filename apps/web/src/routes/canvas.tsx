@@ -20,7 +20,7 @@ function CanvasPage() {
 
   if (selected) {
     return (
-      <div className="flex flex-col" style={{ height: 'calc(100vh - 53px)' }}>
+      <div className="flex flex-col h-screen">
         <WorkflowCanvas
           preset={selected.preset}
           presetName={selected.name}
@@ -31,7 +31,7 @@ function CanvasPage() {
   }
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 53px)' }}>
+    <div className="flex flex-col h-screen">
       <WorkflowGallery onSelect={handleSelect} />
     </div>
   )

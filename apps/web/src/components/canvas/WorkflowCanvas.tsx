@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -9,20 +9,34 @@ import {
   useEdgesState,
   BackgroundVariant,
 } from '@xyflow/react'
-import type { Connection, NodeTypes, EdgeTypes } from '@xyflow/react'
+import type { Connection, NodeTypes, EdgeTypes, Node, NodeChange } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ArtifactNode } from './nodes/ArtifactNode'
 import { AgentNode } from './nodes/AgentNode'
 import { PlatformNode } from './nodes/PlatformNode'
 import { ChannelEdge } from './edges/ChannelEdge'
 import { WorkflowToolbar } from './WorkflowToolbar'
+import { NodeInspector } from './NodeInspector'
 import type { WorkflowPreset } from './types'
 
-/* Keyframes used by canvas node components */
 const CANVAS_STYLES = `
   @keyframes node-pulse {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.4; }
+  }
+  .react-flow__controls button {
+    background: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--muted-foreground)) !important;
+  }
+  .react-flow__controls button:hover {
+    background: hsl(var(--muted)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  .react-flow__minimap {
+    background: hsl(var(--card)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: 8px !important;
   }
 `
 
@@ -41,8 +55,11 @@ interface Props {
 }
 
 export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
-  const [nodes, , onNodesChange] = useNodesState(preset.nodes)
+  const [nodes, setNodes, onNodesChange] = useNodesState(preset.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(preset.edges)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+
+  const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) : null
 
   const onConnect = useCallback(
     (connection: Connection) =>
@@ -55,9 +72,38 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
   const addNode = useCallback(
     (type: string, data: Record<string, unknown>) => {
       const id = `${type}-${Date.now()}`
-      onNodesChange([
-        { type: 'add', item: { id, type, position: { x: 400, y: 300 }, data } },
-      ])
+      const item: Node = { id, type, position: { x: 400, y: 300 }, data }
+      setNodes((nds) => [...nds, item])
+      setSelectedNodeId(id)
+    },
+    [setNodes],
+  )
+
+  const updateNodeData = useCallback(
+    (id: string, data: Record<string, unknown>) => {
+      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data } : n)))
+    },
+    [setNodes],
+  )
+
+  const deleteNode = useCallback(
+    (id: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== id))
+      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
+      setSelectedNodeId(null)
+    },
+    [setNodes, setEdges],
+  )
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes)
+      // Track selection changes
+      for (const change of changes) {
+        if (change.type === 'select' && change.selected) {
+          setSelectedNodeId(change.id)
+        }
+      }
     },
     [onNodesChange],
   )
@@ -66,23 +112,34 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
     <div className="flex flex-col flex-1 min-h-0">
       <style>{CANVAS_STYLES}</style>
       <WorkflowToolbar name={presetName} onBack={onBack} onAddNode={addNode} />
-      <div className="flex-1 min-h-0">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          nodeTypes={NODE_TYPES}
-          edgeTypes={EDGE_TYPES}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          style={{ background: '#0a0a0f' }}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1e2030" />
-          <Controls className="[&_button]:!bg-[#0d0d14] [&_button]:!border-[#1e2030] [&_button]:!text-[#94a3b8]" />
-          <MiniMap className="!bg-[#0d0d14] !border !border-[#1e2030] !rounded-lg" nodeColor="#1e2535" />
-        </ReactFlow>
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-h-0">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            onPaneClick={() => setSelectedNodeId(null)}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            className="bg-background"
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} className="!fill-muted-foreground/10" />
+            <Controls />
+            <MiniMap nodeColor="hsl(var(--muted))" />
+          </ReactFlow>
+        </div>
+        {selectedNode && (
+          <NodeInspector
+            node={selectedNode}
+            onUpdate={updateNodeData}
+            onDelete={deleteNode}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )}
       </div>
     </div>
   )
