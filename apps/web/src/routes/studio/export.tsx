@@ -5,16 +5,23 @@ import { useLibrary } from '#/features/compiler/useLibrary'
 import { getInspectorTabs } from '#/features/compiler/components/InspectorPanel'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import { PROVIDER_SHORT, triggerDownload } from '#/features/compiler/components/ModeHeader'
+import { authClient } from '#/lib/auth-client'
 
 export const Route = createFileRoute('/studio/export')({ component: ExportPage })
 
-// CLI detection is not possible from the browser — default to no-CLI state.
-// When auth is wired, we can check session.user.hasCli and switch states.
+// CLI detection: use auth session to determine state.
+// Signed-in users see the auto-sync state; anonymous users see install instructions.
 type CliState = 'cli-and-account' | 'cli-no-account' | 'no-cli'
-const cliState: CliState = 'no-cli'
+
+function useCliState(): CliState {
+  const { data: session } = authClient.useSession()
+  if (session?.user) return 'cli-and-account'
+  return 'no-cli'
+}
 
 function ExportPage() {
   const { modeName, selectedProviders, compileState } = useLibrary()
+  const cliState = useCliState()
   const output = compileState.status === 'ok' ? compileState.output : null
   const hasOutput = Boolean(output)
 
