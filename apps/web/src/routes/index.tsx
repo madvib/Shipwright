@@ -281,7 +281,7 @@ function HomePage() {
       {/* Hero */}
       <section className="relative overflow-hidden px-6 pb-20 pt-24 sm:px-10 sm:pt-32">
         <div className="absolute inset-0 -z-10">
-          <DotGrid color="hsl(var(--primary))" gap={32} radius={200} dotSize={1.2} />
+          <DotGrid gap={32} radius={200} dotSize={1.2} />
         </div>
 
         <div className="relative mx-auto max-w-4xl text-center">

@@ -129,7 +129,7 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} className="!fill-muted-foreground/10" />
             <Controls />
-            <MiniMap nodeColor="hsl(var(--muted))" />
+            <MiniMap nodeColor="hsl(var(--muted))" maskColor="hsl(var(--background) / 0.7)" />
           </ReactFlow>
         </div>
         {selectedNode && (

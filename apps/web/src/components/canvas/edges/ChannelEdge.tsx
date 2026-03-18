@@ -59,19 +59,10 @@ export function ChannelEdge(props: EdgeProps) {
             style={{
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              background: '#0d0d14',
               border: `1px solid ${color}25`,
-              borderRadius: 4,
-              padding: '2px 8px',
-              fontFamily: '"DM Sans Variable", "DM Sans", sans-serif',
-              fontSize: 9,
-              fontWeight: 600,
               color: `${color}aa`,
-              letterSpacing: '0.02em',
-              pointerEvents: 'all',
-              whiteSpace: 'nowrap',
             }}
-            className="nodrag nopan"
+            className="nodrag nopan rounded bg-background px-2 py-0.5 font-sans text-[9px] font-semibold tracking-wide whitespace-nowrap pointer-events-auto"
           >
             {data.label}
           </div>
