@@ -29,14 +29,12 @@ function ExportPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 overflow-auto p-5">
-        <div className="max-w-2xl">
-
       {/* State: no CLI */}
       {cliState === 'no-cli' && <NoCLIState hasOutput={hasOutput} onDownloadAll={downloadAll} />}
       {cliState === 'cli-no-account' && <CliNoAccountState modeName={modeName} />}
       {cliState === 'cli-and-account' && <CliAndAccountState output={output} selectedProviders={selectedProviders} />}
 
-      {/* Escape hatch: per-file downloads (all states) */}
+      {/* Per-file downloads (all states) */}
       {hasOutput && output && (
         <div className="mt-8">
           <div className="mb-3 flex items-center justify-between">
@@ -49,7 +47,7 @@ function ExportPage() {
               Download all
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             {selectedProviders.map((p) => {
               const result = output[p]
               if (!result) return null
@@ -87,8 +85,6 @@ function ExportPage() {
           </div>
         </div>
       )}
-
-        </div>
       </div>
     </div>
   )

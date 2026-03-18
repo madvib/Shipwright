@@ -5,6 +5,14 @@ import { authClient } from '#/lib/auth-client'
 
 type ThemeMode = 'light' | 'dark'
 
+function applyTheme(mode: ThemeMode) {
+  document.documentElement.classList.remove('light', 'dark')
+  document.documentElement.classList.add(mode)
+  document.documentElement.setAttribute('data-theme', mode)
+  document.documentElement.style.colorScheme = mode
+  window.localStorage.setItem('theme', mode)
+}
+
 function ThemeToggle() {
   const [mode, setMode] = useState<ThemeMode>('dark')
   useEffect(() => {
@@ -15,36 +23,20 @@ function ThemeToggle() {
     setMode(initial)
     applyTheme(initial)
   }, [])
-  const set = (next: ThemeMode) => {
+  const toggle = () => {
+    const next = mode === 'dark' ? 'light' : 'dark'
     setMode(next)
     applyTheme(next)
   }
   return (
-    <div className="flex items-center gap-1 rounded-full border bg-muted/20 p-1">
-      <button
-        onClick={() => set('light')}
-        className={`flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 transition-all ${mode === 'light' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-      >
-        <Sun className="size-3.5" />
-        <span className="text-[10px] font-bold uppercase tracking-tighter">Light</span>
-      </button>
-      <button
-        onClick={() => set('dark')}
-        className={`flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 transition-all ${mode === 'dark' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-      >
-        <Moon className="size-3.5" />
-        <span className="text-[10px] font-bold uppercase tracking-tighter">Dark</span>
-      </button>
-    </div>
+    <button
+      onClick={toggle}
+      className="flex items-center justify-center size-8 rounded-md border border-border/60 bg-card text-muted-foreground transition hover:text-foreground hover:border-border"
+      title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+    </button>
   )
-}
-
-function applyTheme(mode: ThemeMode) {
-  document.documentElement.classList.remove('light', 'dark')
-  document.documentElement.classList.add(mode)
-  document.documentElement.setAttribute('data-theme', mode)
-  document.documentElement.style.colorScheme = mode
-  window.localStorage.setItem('theme', mode)
 }
 
 const STUDIO_TABS = [
@@ -52,7 +44,7 @@ const STUDIO_TABS = [
   { to: '/studio/skills', label: 'Skills' },
   { to: '/studio/mcp', label: 'MCP' },
   { to: '/studio/export', label: 'Export' },
-  { to: '/studio/templates', label: 'Templates' },
+  { to: '/studio/templates', label: 'Registry' },
 ] as const
 
 export default function Header() {
