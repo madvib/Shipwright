@@ -1,3 +1,7 @@
+# Brainstorm / visual companion (local only, not for git)
+.superpowers/
+docs/brainstorm/
+
 # Dependencies
 **/node_modules/
 node_modules/
@@ -89,3 +93,4 @@ AGENTS.md
 .codex/
 skills-lock.json
 .gstack/
+SESSION.json
