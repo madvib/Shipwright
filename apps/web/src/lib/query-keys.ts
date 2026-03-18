@@ -19,3 +19,21 @@ export const githubKeys = {
   all: ['github'] as const,
   repos: (page?: number) => ['github', 'repos', page ?? 1] as const,
 } as const
+
+export const libraryKeys = {
+  all: () => ['libraries'] as const,
+  list: () => [...libraryKeys.all(), 'list'] as const,
+  detail: (id: string) => [...libraryKeys.all(), id] as const,
+}
+
+export const profileKeys = {
+  all: () => ['profiles'] as const,
+  list: () => [...profileKeys.all(), 'list'] as const,
+  detail: (id: string) => [...profileKeys.all(), id] as const,
+}
+
+export const workflowKeys = {
+  all: () => ['workflows'] as const,
+  list: () => [...workflowKeys.all(), 'list'] as const,
+  detail: (id: string) => [...workflowKeys.all(), id] as const,
+}
