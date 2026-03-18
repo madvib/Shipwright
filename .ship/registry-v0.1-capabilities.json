@@ -1,0 +1,283 @@
+{
+  "spec": "ship-registry-capabilities",
+  "version": "0.1",
+  "adr": "G2Zbb6iz",
+  "description": "Capability map for Ship registry v0.1. Targets are implementation surfaces. Features are atomic deliverables with acceptance criteria. All v0.1 capabilities are required for the milestone.",
+
+  "targets": {
+
+    "manifest": {
+      "description": "ship.toml — three sections only: [module], [dependencies], [exports]. Located at .ship/ship.toml. TOML only.",
+      "agent": "rust-compiler",
+      "file_scope": ["crates/core/compiler/src/manifest.rs", "crates/core/compiler/src/types/manifest.rs"],
+      "features": {
+        "module_section": {
+          "description": "Parse and validate [module] section",
+          "acceptance_criteria": [
+            "[module].name is required — namespaced path string (e.g. github.com/owner/repo)",
+            "[module].version is required — semver string, no 'v' prefix in manifest",
+            "[module].description is optional string",
+            "[module].license is optional SPDX identifier string",
+            "Missing name or version → hard parse error with location",
+            "Invalid semver → hard parse error"
+          ]
+        },
+        "dependencies_section": {
+          "description": "Parse and validate [dependencies] section",
+          "acceptance_criteria": [
+            "Keys are package paths (strings)",
+            "Values: inline table with 'version' (required) and 'grant' (optional string array)",
+            "Shorthand: string value = version only, no grants",
+            "Version forms accepted: semver range (^, ~, =, >=, <=, >), branch name, 40-char hex SHA",
+            "Invalid version constraint → parse error naming the dep",
+            "Empty [dependencies] is valid"
+          ]
+        },
+        "exports_section": {
+          "description": "Parse and validate [exports] section",
+          "acceptance_criteria": [
+            "[exports].skills — optional array of paths relative to .ship/",
+            "[exports].agents — optional array of paths relative to .ship/",
+            "Omitting [exports] is valid (no public surface)",
+            "Each exported skill path must point to a directory containing SKILL.md — validated at ship publish time, not parse time",
+            "Each exported agent path must end in .toml — validated at ship publish time"
+          ]
+        },
+        "lockfile_format": {
+          "description": "ship.lock — direct deps only for v0.1, TOML, committed alongside ship.toml",
+          "acceptance_criteria": [
+            "Located at .ship/ship.lock",
+            "Top-level: version = 1",
+            "[[package]] entries: path (string), version (string), commit (40-char hex), hash ('sha256:' prefixed hex)",
+            "Only direct dependencies locked in v0.1 (transitive deferred to v0.2)",
+            "Human-readable TOML, deterministic field order",
+            "Modifying ship.toml deps without running ship install → mismatch error listing added/removed deps"
+          ]
+        },
+        "ship_state_rename": {
+          "description": "Rename existing .ship/ship.lock workspace-state file to .ship/ship.state to free the path for the registry lockfile",
+          "acceptance_criteria": [
+            ".ship/ship.state contains: active_profile, compiled_at, plugins (same fields as old ship.lock)",
+            "All code that reads/writes ship.lock workspace state is updated to use ship.state",
+            "ship use and ship compile read/write ship.state not ship.lock",
+            "ship.lock is now exclusively the registry dependency lockfile",
+            "No data loss — existing ship.lock content migrated to ship.state on first run"
+          ]
+        }
+      }
+    },
+
+    "agent_format": {
+      "description": "Agent TOML definition — .ship/agents/<name>.toml. Publishable composition: rules + skills + permissions + MCP + provider config.",
+      "agent": "rust-compiler",
+      "file_scope": ["crates/core/compiler/src/types/agent.rs", "crates/core/compiler/src/agent_parser.rs"],
+      "features": {
+        "agent_toml_schema": {
+          "description": "Parse agent TOML files",
+          "acceptance_criteria": [
+            "[agent].name matches filename without .toml extension",
+            "[agent].description is optional",
+            "rules = array of strings (local .ship/-relative paths or dep references 'github.com/owner/pkg/rules/file.md')",
+            "skills = array of strings (local .ship/-relative paths or dep references 'github.com/owner/pkg/skills/name')",
+            "An agent with only rules and no skills is valid",
+            "An agent with only skills and no rules is valid",
+            "Missing [agent].name → error"
+          ]
+        },
+        "permissions_section": {
+          "description": "Parse [permissions] section in agent TOML",
+          "acceptance_criteria": [
+            "[permissions].allow = array of tool permission strings",
+            "Empty or absent [permissions] is valid (agent uses no tools)",
+            "Permission string formats: 'Bash', 'Bash(git:*)', 'Bash(npm:install)', 'Read', 'Write', 'Glob', 'WebFetch', '*'",
+            "Unknown permission string is stored as-is (forward compat) with a warning"
+          ]
+        },
+        "mcp_section": {
+          "description": "Parse [[mcp]] array in agent TOML",
+          "acceptance_criteria": [
+            "[[mcp]].id required string",
+            "[[mcp]].command required string",
+            "[[mcp]].args optional string array",
+            "[[mcp]].env optional string map",
+            "Env values support ${VAR} substitution at compile time",
+            "Multiple [[mcp]] entries supported"
+          ]
+        },
+        "providers_section": {
+          "description": "Parse [providers] section",
+          "acceptance_criteria": [
+            "[providers].targets = string array of provider ids",
+            "[providers.<name>] per-provider override tables supported",
+            "[providers.claude].model optional string",
+            "[providers.claude].context_window optional integer",
+            "Unknown provider override keys stored as-is"
+          ]
+        }
+      }
+    },
+
+    "resolver": {
+      "description": "Dependency resolver — direct deps only. Reads ship.toml [dependencies], resolves to exact commits, writes ship.lock. Direct git fetch only (no proxy in v0.1).",
+      "agent": "rust-runtime",
+      "file_scope": ["crates/core/runtime/src/registry/"],
+      "features": {
+        "version_constraint_parsing": {
+          "description": "Parse and evaluate version constraints against available tags",
+          "acceptance_criteria": [
+            "Semver ranges: ^, ~, =, >=, <=, > evaluate correctly per semver spec",
+            "Tags with and without 'v' prefix are treated as equivalent (v1.0.0 == 1.0.0)",
+            "Branch name constraint resolves to current HEAD commit of that branch",
+            "40-char hex SHA constraint used verbatim",
+            "No matching tag → error listing available tags",
+            "Resolution is deterministic given the same remote state"
+          ]
+        },
+        "git_fetch": {
+          "description": "Fetch package content from git for a specific commit",
+          "acceptance_criteria": [
+            "Fetch via git archive or git clone --depth=1 for the resolved commit",
+            "Works with GitHub, GitLab, Codeberg, self-hosted git",
+            "Auth via git credential store (no Ship-specific auth in v0.1)",
+            "Network error → clear error, no partial state written",
+            "Fetch respects git config for proxies, SSH keys"
+          ]
+        },
+        "content_hash": {
+          "description": "Compute deterministic SHA-256 content hash for a package tree",
+          "acceptance_criteria": [
+            "Hash algorithm: SHA-256 over sorted file list: for each file (sorted by path): path + NUL + length + NUL + sha256(content), concatenated, then SHA-256 of the whole",
+            "Excluded from hash: .git/, .DS_Store, Thumbs.db, *.swp, ship.lock",
+            "Two fetches of the same commit always produce identical hash",
+            "Hash stored as 'sha256:<lowercase-hex>'",
+            "Hash mismatch vs lockfile → hard error, do not use cached content"
+          ]
+        },
+        "lockfile_write": {
+          "description": "Write resolved deps to .ship/ship.lock",
+          "acceptance_criteria": [
+            "Writes [[package]] entries for all direct deps in ship.toml [dependencies]",
+            "Fields: path, version, commit, hash",
+            "Output is deterministic — same inputs = identical file bytes",
+            "Existing lockfile replaced atomically (write temp + rename)",
+            "ship install with existing valid lockfile skips resolution entirely"
+          ]
+        },
+        "lockfile_mismatch_detection": {
+          "description": "Detect when ship.toml and ship.lock are out of sync",
+          "acceptance_criteria": [
+            "On every ship install: compare [dependencies] keys with [[package]] paths in ship.lock",
+            "Added dep (in toml, not in lock) → error listing the new dep, suggest 'ship install'",
+            "Removed dep (in lock, not in toml) → error listing removed dep, suggest 'ship install'",
+            "ship install --frozen fails if lockfile would change (for CI)"
+          ]
+        }
+      }
+    },
+
+    "cache": {
+      "description": "Content-addressed package cache at ~/.ship/cache/. pnpm model: one entry per unique content hash, shared across all projects.",
+      "agent": "rust-runtime",
+      "file_scope": ["crates/core/runtime/src/registry/cache.rs"],
+      "features": {
+        "cache_store": {
+          "description": "Store fetched package content by content hash",
+          "acceptance_criteria": [
+            "Cache root: ~/.ship/cache/objects/<sha256-hex>/",
+            "Package files stored verbatim under the hash directory",
+            "Two packages with identical content share exactly one cache entry",
+            "Write is atomic — partial writes on crash do not leave corrupt entries",
+            "Directory created on first use"
+          ]
+        },
+        "cache_lookup": {
+          "description": "Look up cached packages before fetching",
+          "acceptance_criteria": [
+            "Cache index: ~/.ship/cache/index/<url-encoded-dep-path>@<version> → sha256 hex",
+            "Cache hit: verify stored content hash matches index entry before returning",
+            "Cache miss: proceed to git fetch",
+            "Hash mismatch (corruption): delete entry, re-fetch, do not use bad content",
+            "Warm cache + unchanged lockfile = zero network requests"
+          ]
+        }
+      }
+    },
+
+    "permissions_enforcement": {
+      "description": "Compiler validates that every required tool permission from every referenced skill is explicitly granted by the consuming agent. Hard error on violation.",
+      "agent": "rust-compiler",
+      "file_scope": ["crates/core/compiler/src/permissions.rs"],
+      "features": {
+        "skill_allowed_tools_parsing": {
+          "description": "Read allowed-tools from SKILL.md frontmatter",
+          "acceptance_criteria": [
+            "Parse YAML frontmatter in SKILL.md",
+            "allowed-tools field: space-delimited string → Vec<String>",
+            "Absent allowed-tools → empty (skill requires no tools)",
+            "Unknown tool strings preserved as-is"
+          ]
+        },
+        "compiler_grant_check": {
+          "description": "Validate agent grants cover all skill requirements at compile time",
+          "acceptance_criteria": [
+            "Collect allowed-tools from every skill referenced by the agent",
+            "Check each required tool is in agent [permissions].allow",
+            "Missing grant → compilation error naming the skill, the tool, and the fix",
+            "No transitive escalation: skill A uses skill B's allowed-tools only if skill A also declares them",
+            "Passes with zero skills (no tools required)",
+            "Passes when permissions.allow contains '*' (grants all)"
+          ]
+        },
+        "dep_grant_propagation": {
+          "description": "Permission grants declared in ship.toml [dependencies] are applied to agent compilation",
+          "acceptance_criteria": [
+            "dep { grant = [\"Bash(git:*)\"] } in ship.toml propagates as if agent listed those in [permissions].allow for that dep's skills only",
+            "Grant scope is per-dep — grants for dep A do not apply to dep B's skills",
+            "Grants in ship.toml supplement (not replace) grants in agent TOML"
+          ]
+        }
+      }
+    },
+
+    "cli": {
+      "description": "CLI commands for v0.1: ship install, ship add, ship use. Idempotent. Non-zero exit on error with actionable message.",
+      "agent": "cli-lane",
+      "file_scope": ["apps/ship-studio-cli/src/"],
+      "features": {
+        "ship_install": {
+          "description": "ship install — resolve (or use lockfile) + fetch to cache + compile to provider targets",
+          "acceptance_criteria": [
+            "No ship.toml → error 'No ship.toml found. Run ship init or create .ship/ship.toml'",
+            "ship.toml + ship.lock in sync → fetch missing packages, compile, exit 0",
+            "ship.toml + ship.lock out of sync → error listing delta, suggest 'ship install' (which re-resolves)",
+            "No ship.lock → resolve from constraints, write ship.lock, fetch, compile",
+            "ship install --frozen → fail if lockfile would change",
+            "All provider target files written to correct locations",
+            "Idempotent: run twice with no changes → identical output"
+          ]
+        },
+        "ship_add": {
+          "description": "ship add <path>[@version] — add dependency and install",
+          "acceptance_criteria": [
+            "ship add github.com/owner/repo → adds to [dependencies] with version='main', resolves, updates lock, compiles",
+            "ship add github.com/owner/repo@^1.0.0 → uses provided constraint",
+            "ship add github.com/owner/repo@abc123 → uses commit SHA",
+            "Duplicate dep → error 'already in dependencies'",
+            "Resolution failure → error, ship.toml unchanged",
+            "On success: ship.toml updated, ship.lock updated, provider targets recompiled"
+          ]
+        },
+        "ship_use": {
+          "description": "ship use [<preset>] — activate a preset/agent and compile (existing command, update for new terminology)",
+          "acceptance_criteria": [
+            "Existing ship use behavior preserved",
+            "Writes ship.state (not ship.lock) for workspace state",
+            "ship use with no args lists available agents",
+            "ship use <name> activates agent, compiles provider targets"
+          ]
+        }
+      }
+    }
+
+  }
+}
