@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const user = sqliteTable('user', {
   id: text('id').notNull().primaryKey(),
@@ -49,3 +49,63 @@ export const verification = sqliteTable('verification', {
   createdAt: integer('createdAt', { mode: 'timestamp' }),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 })
+
+// ---------------------------------------------------------------------------
+// User data tables
+// ---------------------------------------------------------------------------
+
+export const libraries = sqliteTable(
+  'libraries',
+  {
+    id: text('id').notNull().primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    name: text('name').notNull(),
+    slug: text('slug'),
+    data: text('data').notNull().default('{}'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('libraries_org_user').on(t.orgId, t.userId),
+    uniqueIndex('libraries_org_slug').on(t.orgId, t.slug),
+  ],
+)
+
+export type Library = typeof libraries.$inferSelect
+export type InsertLibrary = typeof libraries.$inferInsert
+
+export const profiles = sqliteTable(
+  'profiles',
+  {
+    id: text('id').notNull().primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    name: text('name').notNull(),
+    content: text('content').notNull(),
+    provider: text('provider'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('profiles_org_user').on(t.orgId, t.userId)],
+)
+
+export type Profile = typeof profiles.$inferSelect
+export type InsertProfile = typeof profiles.$inferInsert
+
+export const workflows = sqliteTable(
+  'workflows',
+  {
+    id: text('id').notNull().primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    name: text('name').notNull(),
+    definition: text('definition').notNull().default('{}'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('workflows_org_user').on(t.orgId, t.userId)],
+)
+
+export type Workflow = typeof workflows.$inferSelect
+export type InsertWorkflow = typeof workflows.$inferInsert
