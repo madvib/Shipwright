@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { shouldRetry } from '#/lib/should-retry'
 
 let context:
   | {
@@ -12,7 +13,17 @@ export function getContext() {
     return context
   }
 
-  const queryClient = new QueryClient()
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 1000 * 60, // 1 minute
+        retry: shouldRetry,
+      },
+      mutations: {
+        retry: false,
+      },
+    },
+  })
 
   context = {
     queryClient,

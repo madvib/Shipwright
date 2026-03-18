@@ -1,8 +1,10 @@
-// GET /api/workspaces — list workspaces for user's org
-// POST /api/workspaces — create a workspace record in D1
+// GET /api/workspaces — list workspaces for the authenticated user
+// POST /api/workspaces — create a workspace record
 
 import { createFileRoute } from '@tanstack/react-router'
-import { requireAuth, getDb } from '#/lib/cloud-auth'
+import { z } from 'zod/v4'
+import { requireSession } from '#/lib/session-auth'
+import { getDb } from '#/lib/cloud-auth'
 
 function nanoid(): string {
   const bytes = new Uint8Array(16)
@@ -10,11 +12,16 @@ function nanoid(): string {
   return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 }
 
+const CreateWorkspaceInput = z.object({
+  name: z.string().min(1, 'Workspace name is required').max(128),
+  branch: z.string().max(256).default('main'),
+})
+
 export const Route = createFileRoute('/api/workspaces')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const auth = await requireAuth(request)
+        const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
         const db = getDb()
@@ -31,7 +38,7 @@ export const Route = createFileRoute('/api/workspaces')({
       },
 
       POST: async ({ request }) => {
-        const auth = await requireAuth(request)
+        const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
         let body: unknown
@@ -41,19 +48,13 @@ export const Route = createFileRoute('/api/workspaces')({
           return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
         }
 
-        if (
-          !body ||
-          typeof body !== 'object' ||
-          typeof (body as Record<string, unknown>)['name'] !== 'string'
-        ) {
-          return Response.json({ error: 'Missing name field' }, { status: 400 })
+        const parsed = CreateWorkspaceInput.safeParse(body)
+        if (!parsed.success) {
+          const message = parsed.error.issues.map((i) => i.message).join('; ')
+          return Response.json({ error: message }, { status: 400 })
         }
 
-        const { name, branch = 'main' } = body as { name: string; branch?: string }
-
-        if (typeof branch !== 'string') {
-          return Response.json({ error: 'branch must be a string' }, { status: 400 })
-        }
+        const { name, branch } = parsed.data
 
         const db = getDb()
         if (!db) {
@@ -68,7 +69,10 @@ export const Route = createFileRoute('/api/workspaces')({
           .bind(id, auth.org, name, branch, 'idle', now)
           .run()
 
-        return Response.json({ workspace: { id, org_id: auth.org, name, branch, status: 'idle', created_at: now } }, { status: 201 })
+        return Response.json(
+          { workspace: { id, org_id: auth.org, name, branch, status: 'idle', created_at: now } },
+          { status: 201 },
+        )
       },
     },
   },
