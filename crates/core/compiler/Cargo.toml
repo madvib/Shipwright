@@ -23,7 +23,7 @@ toml = { version = "0.8", features = ["preserve_order"] }
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 nanoid = "0.4"
-specta = { version = "=2.0.0-rc.22", features = ["derive", "chrono"], optional = true }
+specta = { version = "=2.0.0-rc.22", features = ["derive", "chrono", "serde_json"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2", optional = true }

@@ -14,9 +14,11 @@ pub use compile::{
 pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
 pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
 pub use types::{
-    AgentLayerConfig, AgentProfile, AiConfig, CatalogEntry, CatalogKind, GitConfig, HookConfig,
-    HookTrigger, McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, PermissionConfig,
-    Permissions, PluginEntry, PluginsManifest, ProjectConfig, Rule, Skill, SkillSource,
+    AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogEntry, CatalogKind,
+    CommandPermissions, FsPermissions, GitConfig, HookConfig, HookTrigger, McpRefs,
+    McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, NetworkPermissions, NetworkPolicy,
+    PermissionConfig, Permissions, PluginEntry, PluginRefs, PluginsManifest, ProfileMeta,
+    ProfilePermissions, ProfileRules, ProjectConfig, Rule, Skill, SkillRefs, SkillSource,
     StatusConfig, ToolPermissions, list_catalog, list_catalog_by_kind, search_catalog,
 };
 
@@ -50,7 +52,7 @@ mod wasm {
         mcp_servers: serde_json::Value,
         /// Project-relative path where the MCP config file should be written.
         /// e.g. `".mcp.json"` (Claude) or `".cursor/mcp.json"` (Cursor).
-        mcp_config_path: Option<&'static str>,
+        mcp_config_path: Option<String>,
         /// Skill files: relative path → file content.
         skill_files: std::collections::HashMap<String, String>,
         /// Per-file rule output for providers that use individual rule files.

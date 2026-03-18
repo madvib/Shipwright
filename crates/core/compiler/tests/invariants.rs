@@ -173,7 +173,7 @@ fn gemini_output_has_context_and_mcp_path() {
         "gemini must emit context_content"
     );
     assert_eq!(
-        output.mcp_config_path,
+        output.mcp_config_path.as_deref(),
         Some(".gemini/settings.json"),
         "gemini mcp_config_path mismatch"
     );

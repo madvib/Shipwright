@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { ProjectLibrary, CompileOutput } from './types'
+import type { ProjectLibrary, CompileOutputMap } from './types'
 
 type WasmModule = {
   compileLibraryAll: (library_json: string, active_mode?: string | null) => string
@@ -24,7 +24,7 @@ async function loadWasm(): Promise<WasmModule> {
 export type CompileState =
   | { status: 'idle' }
   | { status: 'compiling' }
-  | { status: 'ok'; output: CompileOutput; elapsed: number }
+  | { status: 'ok'; output: CompileOutputMap; elapsed: number }
   | { status: 'error'; message: string }
 
 export function useCompiler() {
@@ -47,7 +47,7 @@ export function useCompiler() {
       const raw = wasm.compileLibraryAll(json, library.active_mode ?? null)
       if (ctrl.signal.aborted) return
 
-      const output = JSON.parse(raw) as CompileOutput
+      const output = JSON.parse(raw) as CompileOutputMap
       const elapsed = Math.round(performance.now() - t0)
       setState({ status: 'ok', output, elapsed })
     } catch (e) {

@@ -1,64 +1,46 @@
-// ── Shared agent config types ────────────────────────────────────────────────
-// These mirror the Rust types in crates/core/compiler and crates/core/runtime.
+// ── Generated types (source of truth: Rust crate `compiler`) ─────────────────
+// Re-exported from the specta-generated file. Run `cargo xtask gen-types` to
+// regenerate after changing Rust types.
 
-export interface McpServerConfig {
-  name: string
-  command: string
-  args?: string[]
-  env?: Record<string, string>
-  server_type?: 'stdio' | 'sse' | 'http'
-  scope?: 'global' | 'project'
-  disabled?: boolean
-  url?: string | null
-  timeout_secs?: number | null
-}
+export type {
+  AgentLayerConfig,
+  AgentLimits,
+  AgentProfile,
+  AiConfig,
+  CatalogEntry,
+  CatalogKind,
+  CommandPermissions,
+  CompileOutput,
+  FsPermissions,
+  GitConfig,
+  HookConfig,
+  HookTrigger,
+  McpRefs,
+  McpServerConfig,
+  McpServerType,
+  ModeConfig,
+  NamespaceConfig,
+  NetworkPermissions,
+  NetworkPolicy,
+  PermissionConfig,
+  Permissions,
+  PluginEntry,
+  PluginRefs,
+  PluginsManifest,
+  ProfileMeta,
+  ProfilePermissions,
+  ProfileRules,
+  ProjectConfig,
+  ProjectLibrary,
+  Rule,
+  Skill,
+  SkillRefs,
+  SkillSource,
+  StatusConfig,
+  ToolPermissions,
+} from './generated'
 
-export interface Skill {
-  id: string
-  name: string
-  content: string
-  description?: string | null
-  source?: string
-  author?: string | null
-  version?: string | null
-}
-
-export interface Rule {
-  file_name: string
-  content: string
-}
-
-export interface Permissions {
-  tools: { allow: string[]; deny: string[] }
-  filesystem: { allow: string[]; deny: string[] }
-  commands: { allow: string[]; deny: string[] }
-  network: {
-    policy: 'none' | 'localhost' | 'allow-list' | 'unrestricted'
-    allow_hosts: string[]
-  }
-  agent: { require_confirmation: string[] }
-}
-
-export interface ModeConfig {
-  name: string
-  description?: string | null
-  mcp_servers?: McpServerConfig[]
-  skills?: Skill[]
-  rules?: Rule[]
-  permissions?: Permissions
-  active_tools?: string[]
-}
-
-export interface ProjectLibrary {
-  modes: ModeConfig[]
-  active_mode?: string | null
-  mcp_servers: McpServerConfig[]
-  skills: Skill[]
-  rules: Rule[]
-  permissions?: Permissions | null
-}
-
-// ── MCP Registry types ───────────────────────────────────────────────────────
+// ── MCP Registry types (not from Rust — external schema) ─────────────────────
 
 export interface McpRegistryServer {
   id: string
@@ -81,7 +63,9 @@ export interface McpRegistryServer {
   }
 }
 
-// ── Defaults ─────────────────────────────────────────────────────────────────
+// ── Runtime defaults ─────────────────────────────────────────────────────────
+
+import type { Permissions, ProjectLibrary } from './generated'
 
 export const DEFAULT_PERMISSIONS: Permissions = {
   tools: { allow: [], deny: [] },
@@ -98,4 +82,10 @@ export const DEFAULT_LIBRARY: ProjectLibrary = {
   skills: [],
   rules: [],
   permissions: DEFAULT_PERMISSIONS,
+  hooks: [],
+  plugins: { install: [], scope: 'project' },
+  agent_profiles: [],
+  claude_team_agents: [],
+  env: {},
+  available_models: [],
 }

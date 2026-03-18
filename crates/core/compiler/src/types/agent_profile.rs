@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Profiles define specialist agents that the compiler emits as
 /// provider-native subagent definitions (`.claude/agents/`, `.gemini/agents/`,
 /// `.cursor/agents/`, `.codex/agents/`).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentProfile {
     pub profile: ProfileMeta,
@@ -19,9 +20,11 @@ pub struct AgentProfile {
     #[serde(default)]
     pub rules: ProfileRules,
     #[serde(default)]
+    #[cfg_attr(feature = "specta", specta(skip))]
     pub provider_settings: std::collections::HashMap<String, toml::Value>,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileMeta {
     pub id: String,
@@ -34,18 +37,21 @@ pub struct ProfileMeta {
     pub providers: Vec<String>,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SkillRefs {
     #[serde(default)]
     pub refs: Vec<String>,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct McpRefs {
     #[serde(default)]
     pub servers: Vec<String>,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PluginRefs {
     #[serde(default)]
@@ -54,6 +60,7 @@ pub struct PluginRefs {
     pub scope: Option<String>,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProfilePermissions {
     /// Permission preset name (e.g. "ship-standard", "ship-guarded").
@@ -70,6 +77,7 @@ pub struct ProfilePermissions {
     pub default_mode: Option<String>,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProfileRules {
     /// Inline rules body — becomes the agent's system prompt.
