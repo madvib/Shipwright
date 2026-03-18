@@ -33,8 +33,7 @@ use runtime::{
         sync_workspace as runtime_sync_workspace,
     },
 };
-use ship_module_project::ops::adr::{get_adr_by_id, list_adrs};
-use ship_module_project::ops::note::{get_note_by_id, list_notes, update_note_content};
+use ship_module_project::ops::note::update_note_content;
 
 use ship_module_project::{NoteScope, get_project_name, list_registered_projects};
 use std::path::PathBuf;
@@ -110,6 +109,9 @@ impl ShipServer {
         }
     }
 
+    /// Returns the **project root** (parent of `.ship/`), not the `.ship/` dir itself.
+    /// `get_project_dir()` returns the `.ship/` dir, so we strip it here so that
+    /// callers can consistently do `project_dir.join(".ship")` to get the ship dir.
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
         let active = self.active_project.lock().await;
         if let Some(ref path) = *active {
@@ -117,34 +119,47 @@ impl ShipServer {
         }
         drop(active);
 
-        if let Ok(project_dir) = get_project_dir(None) {
-            return Ok(project_dir);
+        let resolve = |ship_dir: PathBuf| -> PathBuf {
+            // get_project_dir returns .ship/ dir; callers expect the project root.
+            if ship_dir.file_name().and_then(|n| n.to_str()) == Some(".ship") {
+                ship_dir.parent().unwrap_or(&ship_dir).to_path_buf()
+            } else {
+                ship_dir
+            }
+        };
+
+        if let Ok(dir) = get_project_dir(None) {
+            return Ok(resolve(dir));
         }
 
         if let Ok(Some(global_active)) = get_active_project_global() {
-            if let Ok(project_dir) = get_project_dir(Some(global_active.clone())) {
+            if let Ok(dir) = get_project_dir(Some(global_active.clone())) {
+                let project_root = resolve(dir);
                 let mut active = self.active_project.lock().await;
-                *active = Some(project_dir.clone());
-                return Ok(project_dir);
+                *active = Some(project_root.clone());
+                return Ok(project_root);
             }
         }
 
         if let Ok(registry) = list_registered_projects() {
             if registry.len() == 1 {
-                if let Ok(project_dir) = get_project_dir(Some(registry[0].path.clone())) {
+                if let Ok(dir) = get_project_dir(Some(registry[0].path.clone())) {
+                    let project_root = resolve(dir);
                     let mut active = self.active_project.lock().await;
-                    *active = Some(project_dir.clone());
-                    return Ok(project_dir);
+                    *active = Some(project_root.clone());
+                    return Ok(project_root);
                 }
             }
         }
 
-        get_project_dir(None).map_err(|e| {
-            format!(
-                "No active project and auto-detection failed: {}. Checked process cwd, global active project, and registered projects.",
-                e
-            )
-        })
+        get_project_dir(None)
+            .map(resolve)
+            .map_err(|e| {
+                format!(
+                    "No active project and auto-detection failed: {}. Checked process cwd, global active project, and registered projects.",
+                    e
+                )
+            })
     }
 
     fn normalize_mode_tool_id(raw: &str) -> String {
@@ -167,9 +182,7 @@ impl ShipServer {
             "open_project",
             // Planning
             "create_note",
-            "list_notes_tool",
             "create_adr",
-            "list_adrs_tool",
             // Workspace
             "activate_workspace",
             "create_workspace",
@@ -313,7 +326,8 @@ impl ShipServer {
         let name = get_project_name(&project_dir);
         let config = get_config(Some(project_dir.clone())).unwrap_or_default();
 
-        let adrs = list_adrs(&project_dir).unwrap_or_default();
+        let ship_dir = project_dir.join(".ship");
+        let adrs = runtime::db::adrs::list_adrs(&ship_dir).unwrap_or_default();
 
         let mut out = format!("# Project: {}\n\n", name);
 
@@ -373,10 +387,7 @@ impl ShipServer {
             out.push_str("No ADRs.\n");
         } else {
             for a in &adrs {
-                out.push_str(&format!(
-                    "- [{}] {} ({})\n",
-                    a.status, a.adr.metadata.title, a.id
-                ));
+                out.push_str(&format!("- {} [{}] {}\n", a.id, a.status, a.title));
             }
         }
 
@@ -444,25 +455,7 @@ impl ShipServer {
     }
 
     /// List notes stored in platform.db for this project
-    #[tool(description = "List notes for the current project.")]
-    async fn list_notes_tool(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::notes::list_notes(&ship_dir, None) {
-            Ok(notes) if notes.is_empty() => "No notes found.".to_string(),
-            Ok(notes) => {
-                let mut out = String::from("Notes:\n");
-                for n in &notes {
-                    out.push_str(&format!("- {} (id: {})\n", n.title, n.id));
-                }
-                out
-            }
-            Err(e) => format!("Error listing notes: {}", e),
-        }
-    }
+    // list_notes_tool removed — use ship://notes resource for reads
 
     /// Update a standalone note
     #[tool(description = "Replace a note's markdown content by filename.")]
@@ -504,26 +497,7 @@ impl ShipServer {
         }
     }
 
-    /// List Architecture Decision Records stored in platform.db
-    #[tool(description = "List ADRs for the current project.")]
-    async fn list_adrs_tool(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::adrs::list_adrs(&ship_dir) {
-            Ok(adrs) if adrs.is_empty() => "No ADRs found.".to_string(),
-            Ok(adrs) => {
-                let mut out = String::from("ADRs:\n");
-                for a in &adrs {
-                    out.push_str(&format!("- {} [{}] {}\n", a.id, a.status, a.title));
-                }
-                out
-            }
-            Err(e) => format!("Error listing ADRs: {}", e),
-        }
-    }
+    // list_adrs_tool removed — use ship://adrs resource for reads
 
     // ─── Mode / Workspace Control Plane Tools ──────────────────────────────
 
@@ -662,6 +636,31 @@ impl ShipServer {
             Ok(report) => serde_json::to_string_pretty(&report)
                 .unwrap_or_else(|e| format!("Error serializing workspace repair report: {}", e)),
             Err(err) => format!("Error: {}", err),
+        }
+    }
+
+    /// Show provider capability matrix — what Ship emits vs what each provider supports
+    #[tool(
+        description = "Show the provider capability matrix. Returns what Ship currently emits for each provider vs what the provider supports, with gap analysis. Use format='diff' for a compact diffable output."
+    )]
+    async fn provider_matrix(
+        &self,
+        Parameters(req): Parameters<ProviderMatrixRequest>,
+    ) -> String {
+        let mut matrix = compiler::build_matrix();
+
+        if let Some(pid) = &req.provider {
+            matrix.providers.retain(|p| p.provider_id == pid);
+            if matrix.providers.is_empty() {
+                return format!("Unknown provider: {}. Options: claude, gemini, codex, cursor", pid);
+            }
+        }
+
+        match req.format.as_deref().unwrap_or("json") {
+            "text" => compiler::render_text(&matrix),
+            "diff" => compiler::render_diffable(&matrix),
+            _ => serde_json::to_string_pretty(&matrix)
+                .unwrap_or_else(|e| format!("Serialization error: {}", e)),
         }
     }
 
@@ -1588,51 +1587,58 @@ impl ShipServer {
         if uri == "ship://project_info" {
             return Some(self.get_project_info().await);
         }
-        // ship://adrs
+        // ship://adrs — read from platform.db
         if uri == "ship://adrs" {
-            let entries = list_adrs(dir).ok()?;
-            if entries.is_empty() {
-                return Some("No ADRs found.".to_string());
-            }
-            let mut out = String::from("ADRs:\n");
-            for a in &entries {
-                out.push_str(&format!(
-                    "- [{}] {} ({})\n",
-                    a.status, a.adr.metadata.title, a.file_name
-                ));
-            }
-            return Some(out);
+            let ship_dir = dir.join(".ship");
+            return match runtime::db::adrs::list_adrs(&ship_dir) {
+                Ok(adrs) if adrs.is_empty() => Some("No ADRs found.".to_string()),
+                Ok(adrs) => {
+                    let mut out = String::from("ADRs:\n");
+                    for a in &adrs {
+                        out.push_str(&format!("- {} [{}] {}\n", a.id, a.status, a.title));
+                    }
+                    Some(out)
+                }
+                Err(_) => Some("No ADRs found.".to_string()),
+            };
         }
         // ship://adrs/{id}
         if let Some(id) = uri.strip_prefix("ship://adrs/") {
-            return get_adr_by_id(dir, id).ok().map(|entry| {
-                format!(
-                    "Title: {}\nStatus: {}\nDate: {}\n\n## Context\n\n{}\n\n## Decision\n\n{}",
-                    entry.adr.metadata.title,
-                    entry.status,
-                    entry.adr.metadata.date,
-                    entry.adr.context,
-                    entry.adr.decision
-                )
-            });
+            let ship_dir = dir.join(".ship");
+            return runtime::db::adrs::get_adr(&ship_dir, id)
+                .ok()
+                .flatten()
+                .map(|a| {
+                    format!(
+                        "Title: {}\nStatus: {}\nDate: {}\n\n## Context\n\n{}\n\n## Decision\n\n{}",
+                        a.title, a.status, a.date, a.context, a.decision
+                    )
+                });
         }
-        // ship://notes
+        // ship://notes — read from platform.db
         if uri == "ship://notes" {
-            let entries = list_notes(NoteScope::Project, Some(&dir)).ok()?;
-            if entries.is_empty() {
-                return Some("No notes found.".to_string());
-            }
-            let mut out = String::from("Notes:\n");
-            for entry in entries {
-                out.push_str(&format!("- {} ({})\n", entry.title, entry.id));
-            }
-            return Some(out);
+            let ship_dir = dir.join(".ship");
+            return match runtime::db::notes::list_notes(&ship_dir, None) {
+                Ok(notes) if notes.is_empty() => Some("No notes found.".to_string()),
+                Ok(notes) => {
+                    let mut out = String::from("Notes:\n");
+                    for n in &notes {
+                        out.push_str(&format!("- {} {}\n", n.id, n.title));
+                    }
+                    Some(out)
+                }
+                Err(_) => Some("No notes found.".to_string()),
+            };
         }
-
-        // ship://notes/{file}
+        // ship://notes/{id}
         if let Some(id) = uri.strip_prefix("ship://notes/") {
-            let note = get_note_by_id(NoteScope::Project, Some(&dir), id).ok()?;
-            return Some(note.content);
+            let ship_dir = dir.join(".ship");
+            return runtime::db::notes::get_note(&ship_dir, id)
+                .ok()
+                .flatten()
+                .map(|n| {
+                    format!("Title: {}\n\n{}", n.title, n.content)
+                });
         }
         // ship://skills
         if uri == "ship://skills" {

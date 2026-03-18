@@ -5,6 +5,7 @@ mod cloud;
 mod compile;
 mod config;
 mod diff;
+mod import;
 mod job;
 mod loader;
 mod mcp;
@@ -16,7 +17,7 @@ mod skill;
 mod validate;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
+use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -42,9 +43,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
-            Commands::Import { path } => {
-                stub("import", &format!("Would import from {:?}", path.as_deref().unwrap_or(std::path::Path::new("."))))
-            }
+            Commands::Import { source } => import::run_import(&source),
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
             }
@@ -67,6 +66,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Gate { id, worktrees_dir } => job::gate(&id, worktrees_dir),
             Commands::Job { action } => dispatch_job(action),
             Commands::Permissions { action } => dispatch_permissions(action),
+            Commands::Matrix { format, provider } => run_matrix(&format, provider.as_deref()),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
@@ -617,6 +617,34 @@ fn run_migrate() -> Result<()> {
     println!("migration complete");
     println!("  notes:  {} migrated, {} skipped", report.notes_migrated, report.notes_skipped);
     println!("  adrs:   {} migrated, {} skipped", report.adrs_migrated, report.adrs_skipped);
+    Ok(())
+}
+
+// ── Matrix ────────────────────────────────────────────────────────────────
+
+fn run_matrix(format: &str, provider: Option<&str>) -> Result<()> {
+    let mut matrix = compiler::build_matrix();
+
+    if let Some(pid) = provider {
+        matrix.providers.retain(|p| p.provider_id == pid);
+        if matrix.providers.is_empty() {
+            anyhow::bail!("Unknown provider: {}. Options: claude, gemini, codex, cursor", pid);
+        }
+    }
+
+    match format {
+        "json" => {
+            let json = serde_json::to_string_pretty(&matrix)?;
+            println!("{}", json);
+        }
+        "diff" => {
+            print!("{}", compiler::render_diffable(&matrix));
+        }
+        _ => {
+            print!("{}", compiler::render_text(&matrix));
+        }
+    }
+
     Ok(())
 }
 

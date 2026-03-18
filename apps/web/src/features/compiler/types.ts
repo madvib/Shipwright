@@ -1,4 +1,4 @@
-// Re-export shared types from @ship/ui
+// Re-export shared types from @ship/ui (generated from Rust via specta)
 export type {
   McpServerConfig,
   Skill,
@@ -9,23 +9,12 @@ export type {
 } from '@ship/ui'
 export { DEFAULT_PERMISSIONS, DEFAULT_LIBRARY } from '@ship/ui'
 
-// Compile output types (web-specific — from @ship/compiler WASM)
-export interface CompileResult {
-  provider: string
-  context_content: string | null
-  mcp_servers: Record<string, unknown> | null
-  mcp_config_path: string | null
-  skill_files: Record<string, string>
-  rule_files: Record<string, string>
-  claude_settings_patch: Record<string, unknown> | null
-  codex_config_patch: string | null
-  gemini_settings_patch: Record<string, unknown> | null
-  gemini_policy_patch: string | null
-  cursor_hooks_patch: Record<string, unknown> | null
-  cursor_cli_permissions: Record<string, unknown> | null
-}
+// Compile output types — generated from Rust `CompileOutput`.
+// The TS codebase calls the per-provider result "CompileResult".
+import type { CompileOutput as _CompileOutput } from '@ship/ui'
+export type CompileResult = _CompileOutput
 
-export type CompileOutput = Record<string, CompileResult>
+export type CompileOutputMap = Record<string, CompileResult>
 
 // Provider metadata
 export interface Provider {

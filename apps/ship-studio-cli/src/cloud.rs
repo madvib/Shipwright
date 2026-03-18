@@ -49,7 +49,7 @@ fn push_with_token(token: &str, base_url: &str, project_root: &Path) -> Result<(
         let url = format!("{}/api/profiles", base_url);
 
         ureq::post(&url)
-            .set("Authorization", &format!("Bearer {}", token))
+            .header("Authorization", &format!("Bearer {}", token))
             .send_json(body)
             .map_err(|e| anyhow::anyhow!("Push failed for '{}': {}", name, e))?;
 
@@ -80,12 +80,15 @@ fn pull_with_token(
     project_root: &Path,
 ) -> Result<()> {
     let url = format!("{}/api/profiles", base_url);
-    let response = ureq::get(&url)
-        .set("Authorization", &format!("Bearer {}", token))
+    let body = ureq::get(&url)
+        .header("Authorization", &format!("Bearer {}", token))
         .call()
-        .map_err(|e| anyhow::anyhow!("Pull failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Pull failed: {}", e))?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| anyhow::anyhow!("Failed to read response: {}", e))?;
 
-    let profiles: Vec<serde_json::Value> = response.into_json()?;
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&body)?;
 
     let profiles_dir = project_root.join(".ship").join("agents").join("profiles");
     std::fs::create_dir_all(&profiles_dir)?;

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum CatalogKind {
@@ -11,6 +12,7 @@ pub enum CatalogKind {
 ///
 /// The embedded list is the baseline. The web product will supplement this
 /// via API (agentskills.io, mcp.so, or the Ship-hosted registry).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CatalogEntry {
     pub id: String,

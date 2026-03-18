@@ -270,6 +270,14 @@ pub struct LogProgressRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct ProviderMatrixRequest {
+    /// Filter to a single provider ID (claude, gemini, codex, cursor). Omit for all.
+    pub provider: Option<String>,
+    /// Output format: "json" (default), "text", or "diff".
+    pub format: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct RepairWorkspaceRequest {
     /// Workspace branch/id. If omitted, resolves from current git branch.
     pub branch: Option<String>,

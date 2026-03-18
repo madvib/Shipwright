@@ -103,10 +103,10 @@ pub enum Commands {
     },
 
     // ── Import / Export ───────────────────────────────────────────────────────
-    /// Detect and import existing provider configs into .ship/agents/
+    /// Import a profile from a getship.dev URL, local path, or provider config
     Import {
-        #[arg(long)]
-        path: Option<PathBuf>,
+        /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config directory
+        source: String,
     },
 
     /// Export compiled output for a specific provider (alias for compile --provider)
@@ -219,6 +219,17 @@ pub enum Commands {
         /// Milestone target id. If omitted, uses the first active milestone found.
         #[arg(long)]
         milestone: Option<String>,
+    },
+
+    // ── Provider matrix ─────────────────────────────────────────────────────
+    /// Show the provider capability matrix (what Ship emits vs what providers support)
+    Matrix {
+        /// Output format: text (default), json, diff
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Filter to a single provider (claude, gemini, codex, cursor)
+        #[arg(long)]
+        provider: Option<String>,
     },
 
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────

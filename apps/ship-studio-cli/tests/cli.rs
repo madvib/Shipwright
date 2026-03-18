@@ -305,19 +305,19 @@ fn export_codex_writes_codex_config_toml() {
 // ── auth ──────────────────────────────────────────────────────────────────────
 
 #[test]
-fn login_opens_browser_flow() {
-    // login starts an OAuth flow — verify it prints the auth URL and exits
-    // (test environment has no browser; the 60 s callback wait is not exercised here
-    //  because the test binary does not trigger the server listen path)
+fn login_opens_browser_and_waits() {
+    // login now does real PKCE — it times out after 60s waiting for callback.
+    // Just verify it starts and prints the auth URL.
     ship()
         .args(["login"])
         .timeout(std::time::Duration::from_secs(5))
         .assert()
-        .stdout(predicate::str::contains("Opening browser"));
+        .failure() // times out → exit 1
+        .stdout(predicate::str::contains("getship.dev/auth/cli"));
 }
 
 #[test]
-fn logout_when_not_logged_in_exits_zero() {
+fn logout_when_not_logged_in() {
     let tmp = TempDir::new().unwrap();
 
     ship()
@@ -325,7 +325,7 @@ fn logout_when_not_logged_in_exits_zero() {
         .env("HOME", tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Not logged in."));
+        .stdout(predicate::str::contains("Not logged in"));
 }
 
 #[test]
@@ -338,5 +338,5 @@ fn whoami_not_logged_in_when_no_config() {
         .env("HOME", tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("not logged in"));
+        .stdout(predicate::str::contains("Not logged in"));
 }

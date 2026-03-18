@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Dev-time tasks: type generation, code-gen, etc."
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+compiler = { path = "../core/compiler", features = ["specta"] }
+specta = { version = "=2.0.0-rc.22", features = ["derive", "chrono", "serde_json"] }
+specta-typescript = "0.0.9"
