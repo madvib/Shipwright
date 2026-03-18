@@ -107,11 +107,18 @@ export function DotGrid({
 
     const handleResize = () => buildDots()
 
+    // Re-resolve color when theme changes (class mutation on <html>)
+    const observer = new MutationObserver(() => {
+      if (canvasRef.current) colorRef.current = resolveColor(canvasRef.current)
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
     window.addEventListener('mousemove', handleMouseMove, { passive: true })
     window.addEventListener('resize', handleResize)
 
     return () => {
       cancelAnimationFrame(rafRef.current)
+      observer.disconnect()
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('resize', handleResize)
     }
