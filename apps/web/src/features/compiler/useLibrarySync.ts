@@ -1,104 +1,147 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useAuth } from '#/lib/components/protected-route'
-import { studioKeys } from '#/lib/query-keys'
 import { fetchApi } from '#/lib/api-errors'
 
 const LOCAL_STORAGE_KEY = 'ship-studio-v1'
+const LIBRARY_ID_KEY = 'ship-studio-library-id'
 const DEBOUNCE_MS = 2000
 
-interface ServerWorkspace {
+export type SyncStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+interface ServerLibrary {
   id: string
+  org_id: string
+  user_id: string
   name: string
-  branch: string
-  status: string
-  created_at: number
+  slug: string
+  data: unknown
+  created_at: string
+  updated_at: string
 }
 
 function getSnapshot(): string | null {
   return window.localStorage.getItem(LOCAL_STORAGE_KEY)
 }
 
-function subscribeStorage(cb: () => void): () => void {
-  const handler = (e: StorageEvent) => {
-    if (e.key === LOCAL_STORAGE_KEY) cb()
-  }
+function subscribe(cb: () => void): () => void {
+  const handler = (e: StorageEvent) => { if (e.key === LOCAL_STORAGE_KEY) cb() }
   window.addEventListener('storage', handler)
   return () => window.removeEventListener('storage', handler)
 }
 
+function parseSnapshot(raw: string): { name: string; data: unknown } {
+  let parsed: Record<string, unknown> = {}
+  try { parsed = JSON.parse(raw) as Record<string, unknown> } catch { /* default */ }
+  return {
+    name: typeof parsed.modeName === 'string' ? parsed.modeName : 'untitled',
+    data: parsed,
+  }
+}
+
+async function createLibrary(name: string, data: unknown): Promise<ServerLibrary> {
+  const { library } = await fetchApi<{ library: ServerLibrary }>('/api/libraries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name, data }),
+  })
+  return library
+}
+
 /**
- * Sync library state to the server when authenticated.
- * Observes localStorage (written by useLibrary via StorageEvent)
- * and debounces a POST to /api/workspaces on changes.
+ * Sync library to the server when authenticated. Falls back to localStorage-only
+ * when unauthenticated or the API is unreachable (silent fallback — no errors shown).
  *
- * Falls back to localStorage-only when not authenticated.
- * Mount in the studio layout to enable server persistence.
+ * On mount: GET /api/libraries. Server wins if data exists (seeds localStorage).
+ * If empty, push local content up. After that, local changes are the source of truth.
  */
 export function useLibrarySync() {
   const { isAuthenticated, isPending: authPending } = useAuth()
-  const queryClient = useQueryClient()
-  const syncedRef = useRef(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const libraryIdRef = useRef<string | null>(null)
+  const initialSyncDoneRef = useRef(false)
+  const isFirstSnapshotRef = useRef(true)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const initialRef = useRef(true)
 
-  const snapshot = useSyncExternalStore(subscribeStorage, getSnapshot, () => null)
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => null)
 
-  // Fetch workspaces when authenticated
-  const { data: workspaces } = useQuery({
-    queryKey: studioKeys.workspaces(),
-    queryFn: () =>
-      fetchApi<{ workspaces: ServerWorkspace[] }>('/api/workspaces', {
-        credentials: 'include',
-      }),
-    enabled: isAuthenticated && !authPending,
-  })
-
-  // Mark synced once workspaces load or immediately if unauthenticated
+  // Restore persisted library id on mount
   useEffect(() => {
-    if (authPending || syncedRef.current) return
-    if (!isAuthenticated) {
-      syncedRef.current = true
-      return
-    }
-    if (workspaces) syncedRef.current = true
-  }, [authPending, isAuthenticated, workspaces])
+    const stored = window.localStorage.getItem(LIBRARY_ID_KEY)
+    if (stored) libraryIdRef.current = stored
+  }, [])
 
-  // Debounced POST when authenticated and library state changes
+  // Initial server sync: server wins if data exists, else push local up
   useEffect(() => {
-    // Skip initial snapshot — only sync on subsequent changes
-    if (initialRef.current) {
-      initialRef.current = false
-      return
-    }
+    if (authPending || !isAuthenticated || initialSyncDoneRef.current) return
+    initialSyncDoneRef.current = true
+
+    void (async () => {
+      try {
+        const { libraries } = await fetchApi<{ libraries: ServerLibrary[] }>(
+          '/api/libraries', { credentials: 'include' },
+        )
+
+        if (libraries.length > 0) {
+          const serverLib = libraries[0]
+          libraryIdRef.current = serverLib.id
+          window.localStorage.setItem(LIBRARY_ID_KEY, serverLib.id)
+          const value = JSON.stringify(serverLib.data)
+          window.localStorage.setItem(LOCAL_STORAGE_KEY, value)
+          window.dispatchEvent(new StorageEvent('storage', { key: LOCAL_STORAGE_KEY, newValue: value }))
+        } else {
+          const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY)
+          if (!raw) return
+          const { name, data } = parseSnapshot(raw)
+          const lib = await createLibrary(name, data)
+          libraryIdRef.current = lib.id
+          window.localStorage.setItem(LIBRARY_ID_KEY, lib.id)
+        }
+      } catch {
+        // API unreachable — localStorage is authoritative
+        const stored = window.localStorage.getItem(LIBRARY_ID_KEY)
+        if (stored) libraryIdRef.current = stored
+      }
+    })()
+  }, [authPending, isAuthenticated])
+
+  // Debounced PUT on library changes when authenticated
+  useEffect(() => {
+    if (isFirstSnapshotRef.current) { isFirstSnapshotRef.current = false; return }
     if (!isAuthenticated || authPending || !snapshot) return
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
-
-    let modeName = 'untitled'
-    try {
-      const parsed = JSON.parse(snapshot) as { modeName?: string }
-      if (parsed.modeName) modeName = parsed.modeName
-    } catch { /* use default */ }
+    setSyncStatus('saving')
 
     debounceRef.current = setTimeout(() => {
-      void fetchApi<{ workspace: ServerWorkspace }>('/api/workspaces', {
-        method: 'POST',
+      const libId = libraryIdRef.current
+      if (!libId) { setSyncStatus('idle'); return }
+
+      const { name, data } = parseSnapshot(snapshot)
+
+      void fetchApi<{ library: ServerLibrary }>(`/api/libraries/${libId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: modeName }),
+        body: JSON.stringify({ name, data }),
       })
-        .then(() => queryClient.invalidateQueries({ queryKey: studioKeys.workspaces() }))
-        .catch(() => { /* server sync failed — localStorage is the fallback */ })
+        .then(() => { setSyncStatus('saved') })
+        .catch(async (err: unknown) => {
+          if ((err as { status?: number }).status === 404) {
+            try {
+              const lib = await createLibrary(name, data)
+              libraryIdRef.current = lib.id
+              window.localStorage.setItem(LIBRARY_ID_KEY, lib.id)
+              setSyncStatus('saved')
+            } catch { setSyncStatus('idle') }
+          } else {
+            setSyncStatus('idle')
+          }
+        })
     }, DEBOUNCE_MS)
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [snapshot, isAuthenticated, authPending, queryClient])
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [snapshot, isAuthenticated, authPending])
 
-  return {
-    isSynced: isAuthenticated && syncedRef.current,
-    serverWorkspaces: workspaces?.workspaces ?? [],
-  }
+  return { syncStatus }
 }
