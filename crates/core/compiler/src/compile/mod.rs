@@ -394,6 +394,7 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
         out.codex_config_patch = build_codex_config_patch(
             &resolved.mcp_servers,
             resolved.model.as_deref(),
+            resolved.codex_sandbox.as_deref(),
         );
     }
 
@@ -1099,7 +1100,11 @@ fn format_cursor_rule(rule: &Rule) -> String {
 /// Source: https://developers.openai.com/codex/mcp
 /// Codex uses TOML, not JSON. Each server is a `[mcp_servers.<id>]` table.
 /// Returns `None` if there are no enabled servers to write.
-fn build_codex_config_patch(servers: &[McpServerConfig], model: Option<&str>) -> Option<String> {
+fn build_codex_config_patch(
+    servers: &[McpServerConfig],
+    model: Option<&str>,
+    sandbox: Option<&str>,
+) -> Option<String> {
     let mut mcp = toml::Table::new();
 
     // Ship server always first
@@ -1147,6 +1152,9 @@ fn build_codex_config_patch(servers: &[McpServerConfig], model: Option<&str>) ->
     let mut root = toml::Table::new();
     if let Some(m) = model {
         root.insert("model".into(), toml::Value::String(m.to_string()));
+    }
+    if let Some(s) = sandbox {
+        root.insert("sandbox".into(), toml::Value::String(s.to_string()));
     }
     root.insert("mcp_servers".into(), toml::Value::Table(mcp));
     toml::to_string(&root).ok()
@@ -1227,6 +1235,7 @@ mod tests {
             claude_team_agents: vec![],
             env: Default::default(),
             available_models: vec![],
+            codex_sandbox: None,
         }
     }
 
@@ -3264,5 +3273,47 @@ mod tests {
         let out = compile(&r, "codex").unwrap();
         let patch = out.codex_config_patch.as_ref().expect("model should trigger codex patch");
         assert!(patch.contains("model = \"o3\""), "codex TOML should contain model field: {}", patch);
+    }
+
+    // ── Codex sandbox mode ──────────────────────────────────────────────────
+
+    #[test]
+    fn codex_sandbox_emitted_in_config_patch() {
+        let r = ResolvedConfig {
+            codex_sandbox: Some("network-only".to_string()),
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "codex").unwrap();
+        let patch = out.codex_config_patch.as_ref().expect("sandbox should trigger codex patch");
+        assert!(
+            patch.contains("sandbox = \"network-only\""),
+            "codex TOML should contain sandbox field: {}", patch
+        );
+    }
+
+    #[test]
+    fn codex_sandbox_none_omitted() {
+        let r = resolved(vec![]);
+        let out = compile(&r, "codex").unwrap();
+        let patch = out.codex_config_patch.as_ref().expect("ship MCP always triggers patch");
+        assert!(
+            !patch.contains("sandbox"),
+            "codex TOML should not contain sandbox when None: {}", patch
+        );
+    }
+
+    #[test]
+    fn codex_sandbox_not_emitted_for_other_providers() {
+        let r = ResolvedConfig {
+            codex_sandbox: Some("full".to_string()),
+            ..resolved(vec![])
+        };
+        for provider in &["claude", "gemini", "cursor"] {
+            let out = compile(&r, provider).unwrap();
+            assert!(
+                out.codex_config_patch.is_none(),
+                "{provider} must not get codex config patch"
+            );
+        }
     }
 }

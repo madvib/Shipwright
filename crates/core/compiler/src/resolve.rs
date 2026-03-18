@@ -56,6 +56,10 @@ pub struct ResolvedConfig {
     /// Restrict the model picker to these model IDs.
     /// Claude: `availableModels` in `.claude/settings.json`.
     pub available_models: Vec<String>,
+    /// Codex sandbox mode: "full", "network-only", or "off".
+    /// Source: `[provider_settings.codex] sandbox` in preset TOML.
+    /// Emitted as `sandbox = "..."` in `.codex/config.toml`.
+    pub codex_sandbox: Option<String>,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -110,6 +114,9 @@ pub struct ProjectLibrary {
     /// Restrict model picker to these IDs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub available_models: Vec<String>,
+    /// Codex sandbox mode: "full", "network-only", or "off".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_sandbox: Option<String>,
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -140,6 +147,7 @@ pub fn resolve_library(
     resolved.claude_team_agents = library.claude_team_agents.clone();
     resolved.env = library.env.clone();
     resolved.available_models = library.available_models.clone();
+    resolved.codex_sandbox = library.codex_sandbox.clone();
     resolved
 }
 
@@ -246,6 +254,7 @@ pub fn resolve(
         claude_team_agents: Vec::new(),
         env: std::collections::HashMap::new(),
         available_models: Vec::new(),
+        codex_sandbox: None,
     }
 }
 

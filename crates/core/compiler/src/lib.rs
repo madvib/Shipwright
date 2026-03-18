@@ -18,7 +18,8 @@ pub use compile::{
 pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
 pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
 pub use types::{
-    AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogEntry, CatalogKind,
+    AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogCategory, CatalogEntry,
+    CatalogKind,
     CommandPermissions, FsPermissions, GitConfig, HookConfig, HookTrigger, McpRefs,
     McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, NetworkPermissions, NetworkPolicy,
     PermissionConfig, Permissions, PluginEntry, PluginRefs, PluginsManifest, ProfileMeta,

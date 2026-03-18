@@ -389,9 +389,9 @@ fn codex_capabilities() -> Vec<Capability> {
             id: "sandbox",
             label: "Sandbox mode",
             provider_supports: true,
-            ship_coverage: Coverage::None,
-            ship_emits: "",
-            gap: "sandbox field in .codex/config.toml (full, network-only, off)",
+            ship_coverage: Coverage::Full,
+            ship_emits: "sandbox field in .codex/config.toml (full, network-only, off)",
+            gap: "",
         },
     ]
 }

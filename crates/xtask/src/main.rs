@@ -56,6 +56,7 @@ fn collect_types() -> TypeCollection {
 
     // types/catalog.rs
     c.register::<compiler::CatalogKind>();
+    c.register::<compiler::CatalogCategory>();
     c.register::<compiler::CatalogEntry>();
 
     // types/agent_profile.rs
