@@ -246,15 +246,17 @@ export function WorkflowGallery({ onSelect }: Props) {
   return (
     <>
       <style>{GALLERY_STYLES}</style>
-      <div className="h-full overflow-auto p-5">
-        <h2 className="font-display text-lg font-bold text-foreground mb-1">Choose a workflow</h2>
-        <p className="text-xs text-muted-foreground mb-5">
-          Shipped as presets. Activate via CLI:{' '}
-          <code className="text-violet-500 dark:text-violet-400 bg-violet-500/5 px-1.5 py-0.5 rounded text-[11px] font-mono">
-            ship use workflow/shipflow
-          </code>
-        </p>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 max-w-[1000px]">
+      <div className="h-full overflow-auto p-5 pb-20">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="font-display text-lg font-bold text-foreground mb-1">Choose a workflow</h2>
+          <p className="text-xs text-muted-foreground mb-5">
+            Shipped as presets. Activate via CLI:{' '}
+            <code className="text-violet-500 dark:text-violet-400 bg-violet-500/5 px-1.5 py-0.5 rounded text-[11px] font-mono">
+              ship use workflow/shipflow
+            </code>
+          </p>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
           {PRESETS.map((preset, i) => (
             <PresetCard key={preset.id} preset={preset} onSelect={onSelect} index={i} />
           ))}
