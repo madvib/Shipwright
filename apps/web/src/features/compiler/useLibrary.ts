@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { DEFAULT_LIBRARY } from '#/features/compiler/types'
 import type { ProjectLibrary } from '#/features/compiler/types'
@@ -104,6 +105,11 @@ export function useLibrary() {
     )
   }, [])
 
+  const clearLibrary = useCallback(() => {
+    setLibrary(DEFAULT_LIBRARY)
+    toast.success('Library cleared')
+  }, [])
+
   return {
     library,
     modeName,
@@ -115,5 +121,6 @@ export function useLibrary() {
     addMcpServer,
     addSkill,
     toggleProvider,
+    clearLibrary,
   }
 }

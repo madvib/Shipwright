@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Loader2, Upload, X, Server, BookOpen, ScrollText, AlertCircle, ArrowRight, Github } from 'lucide-react'
+import { toast } from 'sonner'
 import type { ProjectLibrary } from '../features/compiler/types'
 
 interface ImportDialogProps {
@@ -69,7 +70,9 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'Request failed' })) as { error?: string }
-        setState({ step: 'error', message: data.error ?? `HTTP ${res.status}` })
+        const msg = data.error ?? `HTTP ${res.status}`
+        setState({ step: 'error', message: msg })
+        toast.error(`Import failed: ${msg}`)
         return
       }
 
@@ -78,6 +81,7 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
       setSelection(selectionFromLibrary(library))
     } catch {
       setState({ step: 'error', message: 'Network error — check your connection' })
+      toast.error('Network error — check your connection')
     }
   }, [url])
 
@@ -87,6 +91,8 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
     const hasAny = filtered.skills.length > 0 || filtered.rules.length > 0 || filtered.mcp_servers.length > 0
     if (!hasAny) return
     onImport(filtered)
+    const total = filtered.skills.length + filtered.rules.length + filtered.mcp_servers.length
+    toast.success(`Imported ${total} item${total !== 1 ? 's' : ''} from GitHub`)
     handleClose()
   }, [state, selection, onImport, handleClose])
 
@@ -131,6 +137,7 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
             </div>
             <button
               onClick={handleClose}
+              aria-label="Close import dialog"
               className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition"
             >
               <X className="size-4" />
@@ -182,7 +189,7 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
                 )}
 
                 {state.step === 'loading' && (
-                  <p className="mt-3 text-xs text-muted-foreground">
+                  <p className="mt-3 text-xs text-muted-foreground" aria-busy="true" aria-label="Scanning repository">
                     Fetching repository tree and extracting agent config…
                   </p>
                 )}

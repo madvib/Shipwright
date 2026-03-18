@@ -114,6 +114,7 @@ export function SkillsForm({ skills, onChange }: Props) {
                     onClick={(e) => { e.stopPropagation(); remove(realIdx) }}
                     className="hidden size-4 items-center justify-center rounded text-muted-foreground/40 transition hover:text-destructive group-hover:flex"
                     title="Remove"
+                    aria-label="Remove skill"
                   >
                     <Trash2 className="size-2.5" />
                   </button>

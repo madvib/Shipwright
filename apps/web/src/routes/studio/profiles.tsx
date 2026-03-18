@@ -1,8 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback } from 'react'
+import { toast } from 'sonner'
 import { useProfiles } from '#/features/studio/useProfiles'
 import { ProfileList } from '#/features/studio/ProfileList'
 import { ProfileEditor } from '#/features/studio/ProfileEditor'
+import { ConfirmDialog } from '#/components/ConfirmDialog'
 import { FirstRunBanner, useFirstRunBanner } from '#/features/studio/FirstRunBanner'
 import { usePresetInit } from '#/features/studio/usePresetInit'
 import type { ProjectLibrary } from '#/features/compiler/types'
@@ -10,17 +12,20 @@ import type { ProjectLibrary } from '#/features/compiler/types'
 export const Route = createFileRoute('/studio/profiles')({ component: ProfilesPage })
 
 function ProfilesPage() {
-  const { profiles, activeId, setActiveId, addProfile, updateProfile } = useProfiles()
+  const { profiles, activeId, setActiveId, addProfile, updateProfile, removeProfile } = useProfiles()
   const [editing, setEditing] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const banner = useFirstRunBanner()
   const { initFromPreset } = usePresetInit({ addProfile, updateProfile, setActiveId })
 
   const editingProfile = editing ? profiles.find((p) => p.id === editing) ?? null : null
+  const deleteTargetProfile = deleteTarget ? profiles.find((p) => p.id === deleteTarget) : null
 
   const handleNew = () => {
     const id = addProfile()
     setEditing(id)
     setActiveId(id)
+    toast.success('Profile created')
   }
 
   const handleSelect = (id: string) => {
@@ -45,7 +50,6 @@ function ProfilesPage() {
       throw new Error(data.error ?? `HTTP ${res.status}`)
     }
     const library = await res.json() as ProjectLibrary
-    // Create a profile from imported data
     const id = addProfile()
     const repoName = url.split('/').pop() ?? 'imported'
     updateProfile(id, {
@@ -59,6 +63,19 @@ function ProfilesPage() {
     banner.dismiss()
   }, [addProfile, updateProfile, setActiveId, banner])
 
+  const handleDelete = (id: string) => {
+    setDeleteTarget(id)
+  }
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return
+    const name = deleteTargetProfile?.name || 'profile'
+    removeProfile(deleteTarget)
+    if (editing === deleteTarget) setEditing(null)
+    setDeleteTarget(null)
+    toast.success(`Deleted "${name}"`)
+  }
+
   return (
     <div className="h-full flex flex-col">
       {editingProfile ? (
@@ -66,6 +83,7 @@ function ProfilesPage() {
           profile={editingProfile}
           onChange={(patch) => updateProfile(editingProfile.id, patch)}
           onBack={() => setEditing(null)}
+          onDelete={() => handleDelete(editingProfile.id)}
         />
       ) : (
         <>
@@ -83,9 +101,19 @@ function ProfilesPage() {
             activeId={activeId}
             onSelect={handleSelect}
             onNew={handleNew}
+            onDelete={handleDelete}
           />
         </>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete profile"
+        message={`Are you sure you want to delete "${deleteTargetProfile?.name || 'this profile'}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   )
 }

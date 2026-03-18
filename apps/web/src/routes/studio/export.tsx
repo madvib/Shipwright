@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Download, Copy, CheckCheck, Terminal, ArrowRight } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { getInspectorTabs } from '#/features/compiler/components/InspectorPanel'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
@@ -27,10 +28,16 @@ function ExportPage() {
 
   const downloadAll = () => {
     if (!output) return
+    let fileCount = 0
     selectedProviders.forEach((p) => {
       const result = output[p]
-      if (result) getInspectorTabs(p, result).forEach((tab) => triggerDownload(tab.content, tab.filename))
+      if (result) {
+        const tabs = getInspectorTabs(p, result)
+        tabs.forEach((tab) => triggerDownload(tab.content, tab.filename))
+        fileCount += tabs.length
+      }
     })
+    toast.success(`Exported ${fileCount} file${fileCount !== 1 ? 's' : ''}`)
   }
 
   return (
@@ -107,6 +114,7 @@ function NoCLIState({ hasOutput, onDownloadAll }: { hasOutput: boolean; onDownlo
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+      toast.success('Copied to clipboard')
     })
   }
 
@@ -195,6 +203,7 @@ function CliNoAccountState({ modeName }: { modeName: string }) {
     void navigator.clipboard.writeText(cmd).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+      toast.success('Copied to clipboard')
     })
   }
 

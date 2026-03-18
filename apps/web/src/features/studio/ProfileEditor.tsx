@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Trash2, Plus } from 'lucide-react'
 import { IconPicker } from './IconPicker'
 import { PermissionsEditor } from './PermissionsEditor'
 import { PROVIDERS } from '#/features/compiler/types'
@@ -13,9 +13,10 @@ interface ProfileEditorProps {
   profile: Profile
   onChange: (patch: Partial<Profile>) => void
   onBack: () => void
+  onDelete?: () => void
 }
 
-export function ProfileEditor({ profile, onChange, onBack }: ProfileEditorProps) {
+export function ProfileEditor({ profile, onChange, onBack, onDelete }: ProfileEditorProps) {
   const [tab, setTab] = useState<Tab>('overview')
 
   return (
@@ -38,8 +39,19 @@ export function ProfileEditor({ profile, onChange, onBack }: ProfileEditorProps)
           live
         </span>
 
-        {/* Tabs inline */}
-        <div className="flex ml-auto -mb-px">
+        {/* Delete + Tabs inline */}
+        <div className="flex ml-auto items-center gap-2 -mb-px">
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive"
+            title="Delete profile"
+            aria-label="Delete profile"
+          >
+            <Trash2 className="size-3" />
+          </button>
+        )}
+        <div className="flex">
           {(['overview', 'providers', 'permissions'] as Tab[]).map((t) => {
             const active = tab === t
             const label = t === 'overview' ? 'Overview' : t === 'providers' ? 'Providers' : 'Permissions'
@@ -57,6 +69,7 @@ export function ProfileEditor({ profile, onChange, onBack }: ProfileEditorProps)
               </button>
             )
           })}
+        </div>
         </div>
       </div>
 
@@ -137,9 +150,10 @@ function OverviewTab({ profile, onChange }: { profile: Profile; onChange: (p: Pa
           </SectionLabel>
           <Link
             to="/studio/skills"
-            className="inline-flex items-center rounded bg-violet-600 hover:bg-violet-500 transition-colors px-2 py-0.5 text-[9px] text-white no-underline"
+            className="inline-flex items-center gap-1 rounded bg-violet-600 hover:bg-violet-500 transition-colors px-2 py-0.5 text-[9px] text-white no-underline"
           >
-            + Add
+            <Plus className="size-2.5" />
+            Add
           </Link>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -167,9 +181,10 @@ function OverviewTab({ profile, onChange }: { profile: Profile; onChange: (p: Pa
           </SectionLabel>
           <Link
             to="/studio/mcp"
-            className="inline-flex items-center rounded bg-violet-600 hover:bg-violet-500 transition-colors px-2 py-0.5 text-[9px] text-white no-underline"
+            className="inline-flex items-center gap-1 rounded bg-violet-600 hover:bg-violet-500 transition-colors px-2 py-0.5 text-[9px] text-white no-underline"
           >
-            + Add
+            <Plus className="size-2.5" />
+            Add
           </Link>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -287,9 +302,10 @@ function RulesBlock({ rules, onChange }: { rules: string[]; onChange: (r: string
       ))}
       <button
         onClick={add}
-        className="mt-1 bg-transparent border-none cursor-pointer font-mono text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors p-0"
+        className="mt-1 inline-flex items-center gap-1 bg-transparent border-none cursor-pointer font-mono text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors p-0"
       >
-        + Add rule
+        <Plus className="size-2.5" />
+        Add rule
       </button>
     </div>
   )
@@ -304,6 +320,7 @@ function Chip({ children, dotClass, onRemove }: { children: React.ReactNode; dot
       {children}
       <button
         onClick={onRemove}
+        aria-label="Remove"
         className="text-muted-foreground/40 hover:text-muted-foreground transition-colors leading-none"
       >
         ×
