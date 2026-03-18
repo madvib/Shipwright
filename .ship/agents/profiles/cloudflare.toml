@@ -6,7 +6,7 @@ description = "Cloudflare Workers, D1, R2, KV, Durable Objects, Pages, wrangler 
 providers = ["claude"]
 
 [skills]
-refs = ["cloudflare-platform", "tanstack-start"]
+refs = ["cloudflare", "workers-best-practices", "durable-objects", "wrangler", "tanstack-start"]
 
 [mcp]
 servers = ["ship"]

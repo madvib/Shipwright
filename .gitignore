@@ -88,3 +88,4 @@ AGENTS.md
 .gemini/
 .codex/
 skills-lock.json
+.gstack/

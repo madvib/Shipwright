@@ -6,7 +6,7 @@ description = "App structure, data flow, TanStack Router/Query/Start, state mana
 providers = ["claude"]
 
 [skills]
-refs = ["react-patterns", "tanstack-start"]
+refs = ["tanstack-start", "tanstack-router", "tanstack-query", "tanstack-integration"]
 
 [mcp]
 servers = ["ship"]

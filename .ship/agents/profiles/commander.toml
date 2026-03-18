@@ -6,7 +6,7 @@ description = "Ship orchestrator — surfaces communication, configures workspac
 providers = ["claude"]
 
 [skills]
-refs = ["commander", "ship-coordination", "write-adr", "configure-agent", "spawn-agent"]
+refs = ["commander", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "find-skills"]
 
 [mcp]
 servers = ["ship"]

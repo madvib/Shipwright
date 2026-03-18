@@ -42,7 +42,8 @@
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
         "oxc.oxc-vscode",
-        "bradlc.vscode-tailwindcss"
+        "bradlc.vscode-tailwindcss",
+        "Anthropic.claude-code"
       ],
       "settings": {
         "[rust]": {

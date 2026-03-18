@@ -1,0 +1,37 @@
+[profile]
+name = "gstack"
+id = "gstack"
+version = "0.1.0"
+description = "QA, code review, retro, and design review skills from garrytan/gstack"
+providers = ["claude"]
+
+[skills]
+refs = [
+  "gstack/qa",
+  "gstack/review",
+  "gstack/retro",
+  "gstack/design-review",
+  "gstack/design-consultation",
+  "gstack/plan-ceo-review",
+  "gstack/plan-eng-review",
+  "gstack/plan-design-review",
+  "gstack/qa-only",
+  "gstack/browse",
+  "gstack/document-release",
+  "gstack/ship",
+]
+
+[mcp]
+servers = []
+
+[permissions]
+preset = "ship-standard"
+default_mode = "default"
+
+[rules]
+inline = """
+You have access to gstack skills: /qa, /review, /retro, /design-review, /design-consultation,
+/plan-ceo-review, /plan-eng-review, /plan-design-review, /qa-only, /browse, /document-release.
+
+Browse binary is at: ~/.claude/skills/gstack/browse/dist/browse
+"""

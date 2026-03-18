@@ -6,10 +6,10 @@ description = "UI component work — shadcn/ui, @ship/primitives, Tailwind, acce
 providers = ["claude"]
 
 [skills]
-refs = ["shadcn-ui", "react-patterns", "tanstack-start"]
+refs = ["tanstack-start", "tanstack-router", "web-perf"]
 
 [mcp]
-servers = ["ship"]
+servers = ["ship", "shadcn"]
 
 [permissions]
 preset = "ship-standard"
