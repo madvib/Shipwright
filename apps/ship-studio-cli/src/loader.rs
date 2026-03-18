@@ -2,7 +2,7 @@
 //! No compilation or resolution occurs here — pure filesystem loading.
 
 use anyhow::Result;
-use compiler::{HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, ProjectLibrary, Rule, Skill, SkillSource};
+use compiler::{AgentProfile, HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, ProjectLibrary, Rule, Skill, SkillSource};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -18,6 +18,7 @@ pub fn load_library(agents_dir: &Path) -> Result<ProjectLibrary> {
         hooks: load_hooks(agents_dir)?,
         rules: load_rules(agents_dir)?,
         skills: load_skills(agents_dir)?,
+        agent_profiles: load_agent_profiles(agents_dir)?,
         ..Default::default()
     })
 }
@@ -269,6 +270,32 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
             content, source: SkillSource::default() }
 }
 
+// ── Agent profiles ────────────────────────────────────────────────────────────
+
+fn load_agent_profiles(agents_dir: &Path) -> Result<Vec<AgentProfile>> {
+    let profiles_dir = agents_dir.join("profiles");
+    if !profiles_dir.exists() { return Ok(vec![]); }
+    let mut profiles = Vec::new();
+    for entry in std::fs::read_dir(&profiles_dir)?.flatten() {
+        let path = entry.path();
+        if path.extension().map_or(false, |x| x == "toml") {
+            let content = std::fs::read_to_string(&path)?;
+            match toml::from_str::<AgentProfile>(&content) {
+                Ok(profile) => profiles.push(profile),
+                Err(e) => {
+                    eprintln!(
+                        "warning: skipping {}: {}",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        e,
+                    );
+                }
+            }
+        }
+    }
+    profiles.sort_by(|a, b| a.profile.id.cmp(&b.profile.id));
+    Ok(profiles)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -454,6 +481,56 @@ default_mode = "bypassPermissions"
         let tmp = TempDir::new().unwrap();
         let result = load_permission_preset(tmp.path(), "ship-standard");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn loads_agent_profiles_from_profiles_dir() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "profiles/web-lane.toml", r#"
+[profile]
+id = "web-lane"
+name = "Web Lane"
+providers = ["claude"]
+
+[skills]
+refs = ["tanstack-start"]
+
+[permissions]
+preset = "ship-standard"
+"#);
+        write(tmp.path(), "profiles/server-lane.toml", r#"
+[profile]
+id = "server-lane"
+name = "Server Lane"
+providers = ["claude"]
+"#);
+        let lib = load_library(tmp.path()).unwrap();
+        assert_eq!(lib.agent_profiles.len(), 2);
+        // Sorted by id
+        assert_eq!(lib.agent_profiles[0].profile.id, "server-lane");
+        assert_eq!(lib.agent_profiles[1].profile.id, "web-lane");
+        assert_eq!(lib.agent_profiles[1].skills.refs, vec!["tanstack-start"]);
+    }
+
+    #[test]
+    fn agent_profiles_empty_when_dir_missing() {
+        let tmp = TempDir::new().unwrap();
+        let lib = load_library(tmp.path()).unwrap();
+        assert!(lib.agent_profiles.is_empty());
+    }
+
+    #[test]
+    fn agent_profiles_skips_invalid_toml() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "profiles/good.toml", r#"
+[profile]
+id = "good"
+name = "Good"
+"#);
+        write(tmp.path(), "profiles/bad.toml", "this is not valid toml { { {");
+        let lib = load_library(tmp.path()).unwrap();
+        assert_eq!(lib.agent_profiles.len(), 1);
+        assert_eq!(lib.agent_profiles[0].profile.id, "good");
     }
 
     #[test]
