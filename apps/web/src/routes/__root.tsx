@@ -41,7 +41,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isAppView = pathname.startsWith('/studio') || pathname.startsWith('/canvas')
+  const isAppView = pathname.startsWith('/studio')
 
   return (
     <html lang="en" suppressHydrationWarning>

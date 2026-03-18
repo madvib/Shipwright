@@ -63,10 +63,10 @@ export const AGENT_STYLES: Record<
   AgentNodeData['agentType'],
   { stroke: string; fill: string; dashed: boolean; glow: boolean }
 > = {
-  human: { stroke: '#a855f7', fill: '#0d1117', dashed: true, glow: false },
-  commander: { stroke: '#f59e0b', fill: '#0d1117', dashed: false, glow: true },
-  specialist: { stroke: '#3b82f6', fill: '#0d1117', dashed: false, glow: false },
-  gate: { stroke: '#10b981', fill: '#0d1117', dashed: false, glow: false },
+  human: { stroke: '#a855f7', fill: 'transparent', dashed: true, glow: false },
+  commander: { stroke: '#f59e0b', fill: 'transparent', dashed: false, glow: true },
+  specialist: { stroke: '#3b82f6', fill: 'transparent', dashed: false, glow: false },
+  gate: { stroke: '#10b981', fill: 'transparent', dashed: false, glow: false },
 }
 
 // ── Preset data shape ──
