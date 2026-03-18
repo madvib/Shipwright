@@ -305,7 +305,7 @@ const NEVER_TOUCH: &[&str] = &[
     "wrangler.jsonc",
     "package.json",
     "routeTree.gen.ts",
-    ".dev.vars",
+    ".env.local",
     "pnpm-lock.yaml",
 ];
 
@@ -791,7 +791,7 @@ mod tests {
         assert!(NEVER_TOUCH.contains(&"wrangler.jsonc"));
         assert!(NEVER_TOUCH.contains(&"package.json"));
         assert!(NEVER_TOUCH.contains(&"routeTree.gen.ts"));
-        assert!(NEVER_TOUCH.contains(&".dev.vars"));
+        assert!(NEVER_TOUCH.contains(&".env.local"));
         assert!(NEVER_TOUCH.contains(&"pnpm-lock.yaml"));
     }
 

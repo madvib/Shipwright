@@ -1,7 +1,7 @@
 /**
  * GitHub App OAuth utilities.
  *
- * Environment variables (set in .dev.vars / wrangler secrets):
+ * Environment variables (set in .env.local):
  *   GITHUB_APP_CLIENT_ID  — GitHub App OAuth client ID
  *   GITHUB_APP_CLIENT_SECRET — GitHub App OAuth client secret
  */
