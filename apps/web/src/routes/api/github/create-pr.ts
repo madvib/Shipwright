@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getTokenFromCookie, createConfigPr } from '#/lib/github-app'
-import { parseGithubUrl, extractLibrary, type RepoFiles } from '#/lib/github-import'
+import { extractLibrary, type RepoFiles } from '#/lib/github-import'
 import { libraryToShipFiles } from '#/lib/ship-config'
 
 type GitHubTreeItem = { path: string; type: string; url: string }

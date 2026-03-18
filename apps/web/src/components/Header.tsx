@@ -1,13 +1,50 @@
 import { Link } from '@tanstack/react-router'
-import { ThemeToggle } from '@ship/primitives'
+import { Sun, Moon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { authClient } from '#/lib/auth-client'
+
+type ThemeMode = 'light' | 'dark'
+
+function applyTheme(mode: ThemeMode) {
+  document.documentElement.classList.remove('light', 'dark')
+  document.documentElement.classList.add(mode)
+  document.documentElement.setAttribute('data-theme', mode)
+  document.documentElement.style.colorScheme = mode
+  window.localStorage.setItem('theme', mode)
+}
+
+function ThemeToggle() {
+  const [mode, setMode] = useState<ThemeMode>('dark')
+  useEffect(() => {
+    const stored = window.localStorage.getItem('theme')
+    const initial: ThemeMode = stored === 'light' || stored === 'dark'
+      ? stored
+      : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    setMode(initial)
+    applyTheme(initial)
+  }, [])
+  const toggle = () => {
+    const next = mode === 'dark' ? 'light' : 'dark'
+    setMode(next)
+    applyTheme(next)
+  }
+  return (
+    <button
+      onClick={toggle}
+      className="flex items-center justify-center size-8 rounded-md border border-border/60 bg-card text-muted-foreground transition hover:text-foreground hover:border-border"
+      title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+    </button>
+  )
+}
 
 export default function Header() {
   const { data: session, isPending } = authClient.useSession()
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 px-6 backdrop-blur-md">
-      <nav className="mx-auto flex max-w-7xl items-center gap-6 py-3">
+    <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
+      <nav className="flex items-center gap-6 px-6 py-3">
         <Link to="/" className="flex items-center gap-2.5 no-underline">
           <img src="/ship-logos/ship_logo.svg" alt="Ship" className="size-6" />
           <span className="font-display text-lg font-bold tracking-[-0.05em] leading-none">SHIP</span>
@@ -26,7 +63,7 @@ export default function Header() {
             className="rounded-md px-3 py-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             activeProps={{ className: 'active' }}
           >
-            Canvas
+            Workflow
           </Link>
           {import.meta.env.DEV && (
             <Link

@@ -1,36 +1,76 @@
-export interface WorkflowRole {
-  id: string
+import type { Node, Edge } from '@xyflow/react'
+
+// ── Artifact Node (D0 / D1 / D2) ──
+export interface ArtifactNodeData {
+  label: string
+  depth: 0 | 1 | 2
+  accentColor?: string
+  status?: 'actual' | 'in-flight' | 'planned' | 'blocked'
+  subtitle?: string
+  [key: string]: unknown
+}
+export type ArtifactNodeType = Node<ArtifactNodeData, 'artifact'>
+
+// ── Agent Node ──
+export interface AgentNodeData {
+  name: string
   profile: string
-  default?: boolean
-  description?: string
+  agentType: 'human' | 'commander' | 'specialist' | 'gate'
+  badge?: string
+  icon?: string
+  detail?: string
+  [key: string]: unknown
+}
+export type AgentNodeType = Node<AgentNodeData, 'agent'>
+
+// ── Platform Node (MCP / Hook) ──
+export interface PlatformNodeData {
+  nodeKind: 'mcp' | 'hook'
+  title: string
+  detail: string
+  [key: string]: unknown
+}
+export type PlatformNodeType = Node<PlatformNodeData, 'platform'>
+
+// ── Channel Edge ──
+export type ChannelType = 'planning' | 'dispatch' | 'output' | 'gate' | 'blocked'
+export interface ChannelEdgeData {
+  channelType: ChannelType
+  label?: string
+  [key: string]: unknown
+}
+export type ChannelEdgeType = Edge<ChannelEdgeData>
+
+// ── Status colors ──
+export const STATUS_COLORS: Record<string, string> = {
+  actual: '#10b981',
+  'in-flight': '#f59e0b',
+  planned: '#475569',
+  blocked: '#ef4444',
 }
 
-export interface RoutingRule {
-  from: string
-  jobKind: string
-  to: string
-  gate: boolean
+// ── Channel style config ──
+export const CHANNEL_STYLES: Record<ChannelType, { color: string; dashed: boolean }> = {
+  planning: { color: '#7c3aed', dashed: true },
+  dispatch: { color: '#f59e0b', dashed: false },
+  output: { color: '#10b981', dashed: true },
+  gate: { color: '#3b82f6', dashed: false },
+  blocked: { color: '#ef4444', dashed: true },
 }
 
-export interface DocKind {
-  kind: string
-  requiredFields: string[]
+// ── Agent type style config ──
+export const AGENT_STYLES: Record<
+  AgentNodeData['agentType'],
+  { stroke: string; fill: string; dashed: boolean; glow: boolean }
+> = {
+  human: { stroke: '#a855f7', fill: '#0d1117', dashed: true, glow: false },
+  commander: { stroke: '#f59e0b', fill: '#0d1117', dashed: false, glow: true },
+  specialist: { stroke: '#3b82f6', fill: '#0d1117', dashed: false, glow: false },
+  gate: { stroke: '#10b981', fill: '#0d1117', dashed: false, glow: false },
 }
 
-export const INITIAL_ROLES: WorkflowRole[] = [
-  { id: 'commander', profile: 'commander', default: true },
-  { id: 'web-lane', profile: 'web-lane' },
-  { id: 'rust-compiler', profile: 'rust-compiler' },
-]
-
-export const INITIAL_ROUTING: RoutingRule[] = [
-  { from: 'commander', jobKind: 'feature', to: 'web-lane', gate: true },
-  { from: 'commander', jobKind: 'bug', to: 'web-lane', gate: true },
-  { from: 'commander', jobKind: 'human-action', to: 'human', gate: false },
-]
-
-export const INITIAL_DOC_KINDS: DocKind[] = [
-  { kind: 'spec', requiredFields: ['title', 'scope', 'acceptance_criteria'] },
-  { kind: 'adr', requiredFields: ['context', 'decision', 'consequences'] },
-  { kind: 'job', requiredFields: ['title', 'description', 'assigned_role'] },
-]
+// ── Preset data shape ──
+export interface WorkflowPreset {
+  nodes: Node[]
+  edges: Edge[]
+}

@@ -85,7 +85,13 @@ describe('libraryToShipFiles', () => {
   it('generates permissions.toml when permissions provided', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
-      permissions: { allow: ['Bash(npm test)', 'Read'], deny: ['Bash(rm)'] },
+      permissions: {
+        tools: { allow: ['Bash(npm test)', 'Read'], deny: ['Bash(rm)'] },
+        filesystem: { allow: ['**/*'], deny: [] },
+        commands: { allow: [], deny: [] },
+        network: { policy: 'none', allow_hosts: [] },
+        agent: { require_confirmation: [] },
+      },
     }
     const files = libraryToShipFiles(lib)
     expect(files['.ship/agents/permissions.toml']).toContain('allow = ["Bash(npm test)", "Read"]')

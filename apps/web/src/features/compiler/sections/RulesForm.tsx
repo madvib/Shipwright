@@ -1,17 +1,10 @@
 import { useState } from 'react'
 import { Plus, Trash2, ScrollText, ChevronDown, ChevronRight } from 'lucide-react'
-import { MarkdownEditor, AutocompleteInput } from '@ship/primitives'
-import type { Rule } from '@ship/ui'
+import type { Rule } from '#/features/compiler/types'
 
 const RULE_FILENAME_SUGGESTIONS = [
-  { value: 'AGENTS.md' },
-  { value: 'CLAUDE.md' },
-  { value: 'CURSOR.md' },
-  { value: 'code-style.md' },
-  { value: 'commit-conventions.md' },
-  { value: 'project-guidelines.md' },
-  { value: 'testing-rules.md' },
-  { value: 'architecture.md' },
+  'AGENTS.md', 'CLAUDE.md', 'CURSOR.md', 'code-style.md',
+  'commit-conventions.md', 'project-guidelines.md', 'testing-rules.md', 'architecture.md',
 ]
 
 interface Props {
@@ -21,6 +14,7 @@ interface Props {
 
 export function RulesForm({ rules, onChange }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const add = () => {
     const next = [...rules, { file_name: `rule-${rules.length + 1}.md`, content: '' }]
@@ -78,26 +72,42 @@ export function RulesForm({ rules, onChange }: Props) {
                 <label className="block text-[11px] font-medium text-muted-foreground">
                   Filename <span className="font-normal opacity-60">— included in agent context as this path</span>
                 </label>
-                <AutocompleteInput
-                  value={rule.file_name}
-                  options={RULE_FILENAME_SUGGESTIONS}
-                  onValueChange={(v) => update(idx, { file_name: v })}
-                  placeholder="e.g. code-style.md"
-                  allowCustom
-                  syncOnInput
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="h-7 font-mono text-xs"
-                />
+                <div className="relative">
+                  <input
+                    value={rule.file_name}
+                    onChange={(e) => update(idx, { file_name: e.target.value })}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    placeholder="e.g. code-style.md"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="h-7 w-full rounded-md border border-border/60 bg-background px-2 font-mono text-xs focus:outline-none focus:border-border"
+                  />
+                  {showSuggestions && expanded === idx && (
+                    <div className="absolute left-0 top-full z-10 mt-1 w-full rounded-md border border-border/60 bg-card shadow-lg">
+                      {RULE_FILENAME_SUGGESTIONS
+                        .filter((s) => s.toLowerCase().includes(rule.file_name.toLowerCase()))
+                        .map((s) => (
+                          <button
+                            key={s}
+                            onMouseDown={() => update(idx, { file_name: s })}
+                            className="block w-full px-2 py-1.5 text-left font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            {s}
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
               </div>
-              <MarkdownEditor
+              <textarea
                 value={rule.content}
-                onChange={(v) => update(idx, { content: v })}
+                onChange={(e) => update(idx, { content: e.target.value })}
                 placeholder={'# Code Style\n\nAlways use explicit types...'}
                 rows={10}
-                showStats={false}
-                showFrontmatter={false}
-                showAiActions={false}
+                spellCheck={false}
+                className="w-full resize-y rounded-lg border border-border/60 bg-background p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border"
               />
             </div>
           )}
