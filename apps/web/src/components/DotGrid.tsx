@@ -36,8 +36,9 @@ export function DotGrid({
 
   const buildDots = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const { width, height } = canvas.getBoundingClientRect()
+    if (!canvas?.parentElement) return
+    // Measure the parent — not the canvas — to avoid feedback loops
+    const { width, height } = canvas.parentElement.getBoundingClientRect()
     canvas.width = width * devicePixelRatio
     canvas.height = height * devicePixelRatio
 
@@ -99,7 +100,7 @@ export function DotGrid({
 
     // Track mouse at window level so the canvas works even behind other content
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect()
+      const rect = canvasRef.current?.parentElement?.getBoundingClientRect()
       if (!rect) return
       mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
     }
@@ -119,8 +120,7 @@ export function DotGrid({
   return (
     <canvas
       ref={canvasRef}
-      className={`absolute inset-0 pointer-events-none ${className}`}
-      style={{ width: '100%', height: '100%' }}
+      className={`absolute inset-0 size-full pointer-events-none ${className}`}
     />
   )
 }

@@ -79,7 +79,11 @@ export default function Header() {
         <div className="ml-auto flex items-center gap-3">
           {!isPending && !session?.user && (
             <button
-              onClick={() => void authClient.signIn.social({ provider: 'github' })}
+              onClick={() => void authClient.signIn.social({
+                provider: 'github',
+                callbackURL: window.location.href,
+                fetchOptions: { onSuccess: (ctx) => { window.open(ctx.response.url, '_blank') } },
+              })}
               className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
               <svg className="size-4" viewBox="0 0 24 24" fill="currentColor">
