@@ -155,7 +155,7 @@ export function InspectorPanel({ state, selectedProviders }: InspectorPanelProps
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {state.status === 'idle' && (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-border/60 bg-muted/40">
+            <div className="flex size-12 items-center justify-center rounded-xl border border-border/60 bg-muted/40">
               <Zap className="size-4 text-muted-foreground" />
             </div>
             <div>

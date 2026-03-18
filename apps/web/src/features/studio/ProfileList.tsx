@@ -40,7 +40,7 @@ export function ProfileList({ profiles, activeId, onSelect, onNew, onDelete }: P
           </span>
           <button
             onClick={onNew}
-            className="h-7 px-2.5 rounded bg-primary text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 inline-flex items-center gap-1"
+            className="h-7 px-2.5 rounded bg-primary text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 inline-flex items-center gap-1"
           >
             <Plus className="size-3" />
             New profile
@@ -74,17 +74,16 @@ export function ProfileList({ profiles, activeId, onSelect, onNew, onDelete }: P
 }
 
 function ProfileCard({ profile, active, onClick, onDelete }: { profile: Profile; active: boolean; onClick: () => void; onDelete?: () => void }) {
-  const accent = profile.accentColor
   const providerLabel = profile.selectedProviders[0] ?? '---'
 
   return (
     <div
-      className="group relative rounded-lg border bg-card p-3.5 cursor-pointer text-left transition-colors"
-      style={{
-        borderColor: active ? accent + '55' : accent + '22',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = accent + '55' }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = active ? accent + '55' : accent + '22' }}
+      data-active={active || undefined}
+      className={`group relative rounded-lg border bg-card p-3.5 cursor-pointer text-left transition-all duration-150 hover:border-border ${
+        active
+          ? 'ring-2 ring-primary/40 border-primary/40'
+          : 'border-border/30 hover:shadow-sm'
+      }`}
       onClick={onClick}
     >
       {onDelete && (
@@ -125,7 +124,7 @@ function ProfileCard({ profile, active, onClick, onDelete }: { profile: Profile;
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[8px] bg-muted rounded px-1.5 py-0.5 text-muted-foreground/60 leading-tight">
+    <span className="text-[10px] bg-muted rounded px-1.5 py-0.5 text-muted-foreground/60 leading-tight">
       {children}
     </span>
   )

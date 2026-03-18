@@ -195,7 +195,7 @@ export function LibraryPanel({ library, onAddMcp, onAddSkill }: LibraryPanelProp
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search library…"
-            className="flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none min-w-0"
+            className="flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 min-w-0"
           />
           {query && (
             <button onClick={() => setQuery('')} className="text-muted-foreground hover:text-foreground">

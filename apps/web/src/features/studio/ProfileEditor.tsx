@@ -50,7 +50,7 @@ export function ProfileEditor({ profile, onChange, onBack, onDelete }: ProfileEd
         <span className="text-muted-foreground/20">/</span>
         <span className="text-xs font-semibold text-foreground">{profile.name || 'Untitled'}</span>
         <span
-          className="rounded px-1.5 py-px text-[8px] font-bold"
+          className="rounded px-1.5 py-px text-[10px] font-bold"
           style={{ background: profile.accentColor + '20', color: profile.accentColor }}
         >
           live
@@ -68,13 +68,15 @@ export function ProfileEditor({ profile, onChange, onBack, onDelete }: ProfileEd
             <Trash2 className="size-3" />
           </button>
         )}
-        <div className="flex">
+        <div className="flex" role="tablist">
           {(['overview', 'providers', 'permissions'] as Tab[]).map((t) => {
             const active = tab === t
             const label = t === 'overview' ? 'Overview' : t === 'providers' ? 'Providers' : 'Permissions'
             return (
               <button
                 key={t}
+                role="tab"
+                aria-selected={active}
                 onClick={() => setTab(t)}
                 className={`px-3 py-2.5 text-[11px] font-medium border-b-2 transition-colors ${
                   active

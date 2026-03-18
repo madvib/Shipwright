@@ -37,7 +37,7 @@ export function ProvidersForm({ selected, onToggle }: Props) {
             </div>
             <div className="flex shrink-0 flex-col gap-0.5 pt-0.5">
               {p.files.map((f) => (
-                <span key={f} className="block text-right font-mono text-[9px] text-muted-foreground/60">{f}</span>
+                <span key={f} className="block text-right font-mono text-[11px] text-muted-foreground/60">{f}</span>
               ))}
             </div>
           </label>

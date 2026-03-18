@@ -9,7 +9,7 @@ import type { Profile } from './useProfiles'
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+    <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
       {children}
     </div>
   )
@@ -19,7 +19,7 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function OverviewTab({ profile, onChange }: { profile: Profile; onChange: (p: Partial<Profile>) => void }) {
   return (
-    <div className="space-y-4 max-w-xl">
+    <div className="space-y-5 max-w-xl">
 
       {/* Name + icon row */}
       <div className="flex items-center gap-3">
@@ -34,7 +34,7 @@ export function OverviewTab({ profile, onChange }: { profile: Profile; onChange:
           onChange={(e) => onChange({ name: e.target.value })}
           placeholder="Profile name"
           spellCheck={false}
-          className="flex-1 bg-muted/30 border border-border/60 rounded-md px-3 py-1.5 text-sm font-semibold text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/50 transition-colors"
+          className="flex-1 bg-muted/30 border border-border/60 rounded-md px-3 py-1.5 text-sm font-semibold text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus:border-violet-500/50 transition-colors"
         />
       </div>
 
@@ -47,7 +47,7 @@ export function OverviewTab({ profile, onChange }: { profile: Profile; onChange:
           rows={2}
           placeholder="React + TailwindCSS frontend specialist. Prefer composition, keep components under 200 lines, strict TypeScript."
           spellCheck={false}
-          className="w-full bg-muted/30 border border-border/60 rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/40 leading-relaxed resize-none focus:outline-none focus:border-violet-500/50 transition-colors"
+          className="w-full bg-muted/30 border border-border/60 rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/40 leading-relaxed resize-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus:border-violet-500/50 transition-colors"
         />
       </div>
 
@@ -67,7 +67,7 @@ export function OverviewTab({ profile, onChange }: { profile: Profile; onChange:
           </SectionLabel>
           <Link
             to="/studio/skills"
-            className="inline-flex items-center gap-1 rounded bg-violet-600 hover:bg-violet-500 transition-colors px-2 py-0.5 text-[9px] text-white no-underline"
+            className="inline-flex items-center gap-1 rounded bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors px-2 py-0.5 text-[11px] text-primary-foreground no-underline"
           >
             <Plus className="size-2.5" />
             Add
@@ -98,7 +98,7 @@ export function OverviewTab({ profile, onChange }: { profile: Profile; onChange:
           </SectionLabel>
           <Link
             to="/studio/mcp"
-            className="inline-flex items-center gap-1 rounded bg-violet-600 hover:bg-violet-500 transition-colors px-2 py-0.5 text-[9px] text-white no-underline"
+            className="inline-flex items-center gap-1 rounded bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors px-2 py-0.5 text-[11px] text-primary-foreground no-underline"
           >
             <Plus className="size-2.5" />
             Add

@@ -65,13 +65,13 @@ function ExportButton({ state, selectedProviders, getInspectorTabs }: ExportButt
       {open && output && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-xl border border-border/60 bg-card shadow-lg overflow-hidden">
+          <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-xl border border-border/60 bg-card shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
             {selectedProviders.map((p) =>
               output[p] ? (
                 <button
                   key={p}
                   onClick={() => downloadProvider(p)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition text-left"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                 >
                   <ProviderLogo provider={p} />
                   {PROVIDER_SHORT[p] ?? p}
@@ -81,7 +81,7 @@ function ExportButton({ state, selectedProviders, getInspectorTabs }: ExportButt
             <div className="border-t border-border/60" />
             <button
               onClick={downloadAll}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-muted transition text-left"
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors text-left"
             >
               <Download className="size-3" />
               All providers
@@ -135,7 +135,7 @@ export function ModeHeader({
       <input
         value={modeName}
         onChange={(e) => onModeNameChange(e.target.value)}
-        className="min-w-0 rounded px-1.5 py-0.5 font-display text-sm font-semibold text-foreground bg-transparent border border-transparent focus:border-border/60 focus:bg-card focus:outline-none transition w-40"
+        className="min-w-0 rounded px-1.5 py-0.5 font-display text-sm font-semibold text-foreground bg-transparent border border-transparent focus:border-border/60 focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition w-40"
         placeholder="untitled-mode"
         spellCheck={false}
       />

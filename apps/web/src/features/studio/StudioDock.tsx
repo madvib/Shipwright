@@ -20,7 +20,7 @@ export function StudioDock() {
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-      <nav className="flex items-end gap-1 rounded-2xl border border-border/50 bg-card/80 px-2 py-1.5 shadow-lg shadow-foreground/[0.04] backdrop-blur-xl">
+      <nav aria-label="Studio navigation" className="flex items-end gap-1 rounded-2xl border border-border/50 bg-card/80 px-2 py-1.5 shadow-lg shadow-foreground/[0.04] backdrop-blur-xl">
         {DOCK_ITEMS.map((item, i) => {
           const isActive = item.exact
             ? pathname === item.to
@@ -41,7 +41,7 @@ export function StudioDock() {
               onClick={() => void navigate({ to: item.to })}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
-              className={`group relative flex items-center justify-center size-9 rounded-xl outline-none transition-all duration-200 ease-out ${
+              className={`group relative flex items-center justify-center size-9 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all duration-200 ease-out ${
                 isActive
                   ? 'bg-primary/12 text-primary'
                   : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -57,7 +57,7 @@ export function StudioDock() {
 
               {/* Tooltip */}
               {hoverIdx === i && (
-                <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[10px] font-semibold text-popover-foreground shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150 pointer-events-none">
+                <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[11px] font-semibold text-popover-foreground shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150 pointer-events-none">
                   {item.label}
                 </span>
               )}

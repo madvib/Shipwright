@@ -134,7 +134,7 @@ function NoCLIState({ hasOutput, onDownloadAll }: { hasOutput: boolean; onDownlo
 
         <ol className="space-y-3">
           <li className="flex items-start gap-3">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">1</span>
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">1</span>
             <div className="flex-1">
               <p className="text-xs text-muted-foreground mb-1.5">Install the CLI</p>
               <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 pl-3 pr-1 py-1.5">
@@ -149,14 +149,14 @@ function NoCLIState({ hasOutput, onDownloadAll }: { hasOutput: boolean; onDownlo
             </div>
           </li>
           <li className="flex items-start gap-3">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">2</span>
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">2</span>
             <div className="flex-1">
               <p className="text-xs text-muted-foreground mb-1.5">Link your account</p>
               <code className="block rounded-lg border border-border/60 bg-muted/30 px-3 py-1.5 font-mono text-[11px] text-foreground">ship login</code>
             </div>
           </li>
           <li className="flex items-start gap-3">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">3</span>
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">3</span>
             <div className="flex-1">
               <p className="text-xs text-muted-foreground">Config syncs automatically when you save</p>
             </div>
