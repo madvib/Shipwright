@@ -1,6 +1,3 @@
-// Centralized API error handling for Ship Studio.
-// Maps HTTP status codes and network errors to actionable UI states.
-
 export interface ApiError {
   status: number
   message: string
@@ -97,15 +94,4 @@ export async function fetchApi<T>(
   return (await response.json()) as T
 }
 
-/**
- * Whether TanStack Query should retry on this error.
- * Don't retry 401 (auth) or 4xx client errors.
- */
-export function shouldRetry(failureCount: number, error: unknown): boolean {
-  if (isApiError(error)) {
-    if (error.status === 401 || (error.status >= 400 && error.status < 500)) {
-      return false
-    }
-  }
-  return failureCount < 2
-}
+export { shouldRetry } from './should-retry'

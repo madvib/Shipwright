@@ -1,17 +1,11 @@
-import { useEffect, useRef, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '#/lib/components/protected-route'
 import { studioKeys } from '#/lib/query-keys'
 import { fetchApi } from '#/lib/api-errors'
-import type { ProjectLibrary } from '#/features/compiler/types'
 
 const LOCAL_STORAGE_KEY = 'ship-studio-v1'
-
-interface StoredLibrary {
-  library: ProjectLibrary
-  modeName: string
-  selectedProviders: string[]
-}
+const DEBOUNCE_MS = 2000
 
 interface ServerWorkspace {
   id: string
@@ -21,73 +15,90 @@ interface ServerWorkspace {
   created_at: number
 }
 
+function getSnapshot(): string | null {
+  return window.localStorage.getItem(LOCAL_STORAGE_KEY)
+}
+
+function subscribeStorage(cb: () => void): () => void {
+  const handler = (e: StorageEvent) => {
+    if (e.key === LOCAL_STORAGE_KEY) cb()
+  }
+  window.addEventListener('storage', handler)
+  return () => window.removeEventListener('storage', handler)
+}
+
 /**
  * Sync library state to the server when authenticated.
- * Falls back to localStorage-only when not authenticated.
+ * Observes localStorage (written by useLibrary via StorageEvent)
+ * and debounces a POST to /api/workspaces on changes.
  *
- * This hook does NOT replace useLibrary — it layers on top of it.
- * Call it from the studio layout to enable server persistence.
+ * Falls back to localStorage-only when not authenticated.
+ * Mount in the studio layout to enable server persistence.
  */
-export function useLibrarySync(current: StoredLibrary) {
+export function useLibrarySync() {
   const { isAuthenticated, isPending: authPending } = useAuth()
   const queryClient = useQueryClient()
   const syncedRef = useRef(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialRef = useRef(true)
+
+  const snapshot = useSyncExternalStore(subscribeStorage, getSnapshot, () => null)
 
   // Fetch workspaces when authenticated
   const { data: workspaces } = useQuery({
     queryKey: studioKeys.workspaces(),
-    queryFn: () => fetchApi<{ workspaces: ServerWorkspace[] }>('/api/workspaces', {
-      credentials: 'include',
-    }),
+    queryFn: () =>
+      fetchApi<{ workspaces: ServerWorkspace[] }>('/api/workspaces', {
+        credentials: 'include',
+      }),
     enabled: isAuthenticated && !authPending,
   })
 
-  // Save workspace mutation
-  const saveMutation = useMutation({
-    mutationFn: (payload: { name: string; branch?: string }) =>
-      fetchApi<{ workspace: ServerWorkspace }>('/api/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: studioKeys.workspaces() })
-    },
-  })
-
-  // On mount, when authenticated and workspaces loaded, mark as synced.
-  // Future: merge server state with local state here.
+  // Mark synced once workspaces load or immediately if unauthenticated
   useEffect(() => {
     if (authPending || syncedRef.current) return
     if (!isAuthenticated) {
       syncedRef.current = true
       return
     }
-    if (workspaces) {
-      syncedRef.current = true
-    }
+    if (workspaces) syncedRef.current = true
   }, [authPending, isAuthenticated, workspaces])
 
-  // Auto-save to localStorage always (baseline persistence)
+  // Debounced POST when authenticated and library state changes
   useEffect(() => {
-    try {
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(current))
-    } catch { /* quota exceeded — ignore */ }
-  }, [current])
+    // Skip initial snapshot — only sync on subsequent changes
+    if (initialRef.current) {
+      initialRef.current = false
+      return
+    }
+    if (!isAuthenticated || authPending || !snapshot) return
 
-  const saveToServer = useCallback(
-    (name: string) => {
-      if (!isAuthenticated) return
-      saveMutation.mutate({ name })
-    },
-    [isAuthenticated, saveMutation],
-  )
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    let modeName = 'untitled'
+    try {
+      const parsed = JSON.parse(snapshot) as { modeName?: string }
+      if (parsed.modeName) modeName = parsed.modeName
+    } catch { /* use default */ }
+
+    debounceRef.current = setTimeout(() => {
+      void fetchApi<{ workspace: ServerWorkspace }>('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: modeName }),
+      })
+        .then(() => queryClient.invalidateQueries({ queryKey: studioKeys.workspaces() }))
+        .catch(() => { /* server sync failed — localStorage is the fallback */ })
+    }, DEBOUNCE_MS)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [snapshot, isAuthenticated, authPending, queryClient])
 
   return {
-    isSyncing: saveMutation.isPending,
     isSynced: isAuthenticated && syncedRef.current,
     serverWorkspaces: workspaces?.workspaces ?? [],
-    saveToServer,
   }
 }

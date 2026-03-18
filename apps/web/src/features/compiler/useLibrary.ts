@@ -25,10 +25,12 @@ export function useLibrary() {
   )
   const { state, compile } = useCompiler()
 
-  // Persist to localStorage
+  // Persist to localStorage and notify sync listeners
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ library, modeName, selectedProviders }))
+      const value = JSON.stringify({ library, modeName, selectedProviders })
+      window.localStorage.setItem(STORAGE_KEY, value)
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: value }))
     } catch { /* ignore */ }
   }, [library, modeName, selectedProviders])
 

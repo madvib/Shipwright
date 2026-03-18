@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { shouldRetry } from '#/lib/api-errors'
+import { shouldRetry } from '#/lib/should-retry'
 
 let context:
   | {
