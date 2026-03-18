@@ -117,9 +117,9 @@ function CompilerAnimation() {
       </div>
 
       {/* Body: input | engine | output */}
-      <div className="grid min-h-[260px] grid-cols-[1fr_72px_1fr]">
+      <div className="grid h-[360px] grid-cols-[1fr_72px_1fr]">
         {/* Input */}
-        <div className="bg-[oklch(0.13_0.01_270)] p-5">
+        <div className="bg-[oklch(0.13_0.01_270)] p-5 overflow-hidden">
           <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
             library.yml
           </p>
@@ -170,7 +170,7 @@ function CompilerAnimation() {
         </div>
 
         {/* Output */}
-        <div className="bg-[oklch(0.12_0.01_270)] p-5">
+        <div className="bg-[oklch(0.12_0.01_270)] p-5 overflow-hidden">
           <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
             generated
           </p>
