@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Sun, Moon, LogOut } from 'lucide-react'
+import { Sun, Moon, LogOut, User } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { authClient } from '#/lib/auth-client'
 
@@ -39,7 +39,18 @@ function ThemeToggle() {
   )
 }
 
-function UserMenu({ user }: { user: { name: string; image?: string | null } }) {
+function UserAvatar({ name, image }: { name: string; image?: string | null }) {
+  if (image) {
+    return <img src={image} alt="" className="size-6 rounded-full object-cover" />
+  }
+  return (
+    <span className="size-6 rounded-full bg-primary/15 flex items-center justify-center text-[11px] font-bold text-primary">
+      {name.charAt(0).toUpperCase()}
+    </span>
+  )
+}
+
+function UserMenu({ user }: { user: { name: string; email?: string | null; image?: string | null } }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -50,34 +61,61 @@ function UserMenu({ user }: { user: { name: string; image?: string | null } }) {
         setOpen(false)
       }
     }
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleEsc)
+    }
   }, [open])
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2 py-1 transition hover:border-border"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2 py-1.5 transition hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
       >
-        {user.image ? (
-          <img src={user.image} alt="" className="size-5 rounded-full" />
-        ) : (
-          <span className="size-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">
-            {user.name.charAt(0).toUpperCase()}
-          </span>
-        )}
-        <span className="text-xs font-medium text-foreground max-w-[100px] truncate">
+        <UserAvatar name={user.name} image={user.image} />
+        <span className="text-xs font-medium text-foreground max-w-[88px] truncate hidden sm:block">
           {user.name}
         </span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-44 rounded-lg border border-border/60 bg-card shadow-lg shadow-foreground/[0.04] py-1 animate-in fade-in slide-in-from-top-1 duration-150 z-50">
-          <div className="px-3 py-2 border-b border-border/40">
-            <p className="text-xs font-medium text-foreground truncate">{user.name}</p>
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-border/60 bg-card shadow-lg shadow-foreground/[0.06] py-1 animate-in fade-in slide-in-from-top-1 duration-150 z-50"
+        >
+          {/* Identity row */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40">
+            <UserAvatar name={user.name} image={user.image} />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-foreground truncate">{user.name}</p>
+              {user.email && (
+                <p className="text-[10px] text-muted-foreground/70 truncate">{user.email}</p>
+              )}
+            </div>
           </div>
+
+          {/* Account link */}
+          <Link
+            to="/account"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors no-underline"
+          >
+            <User className="size-3.5" />
+            Account
+          </Link>
+
+          {/* Sign out */}
           <button
+            role="menuitem"
             onClick={() => {
               setOpen(false)
               void authClient.signOut()
@@ -95,6 +133,7 @@ function UserMenu({ user }: { user: { name: string; image?: string | null } }) {
 
 export default function Header() {
   const { data: session, isPending } = authClient.useSession()
+  const user = session?.user
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
@@ -131,7 +170,7 @@ export default function Header() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          {!isPending && !session?.user && (
+          {!isPending && !user && (
             <button
               onClick={() => void authClient.signIn.social({
                 provider: 'github',
@@ -145,8 +184,14 @@ export default function Header() {
               Sign in
             </button>
           )}
-          {session?.user && (
-            <UserMenu user={{ name: session.user.name, image: session.user.image }} />
+          {user && (
+            <UserMenu
+              user={{
+                name: user.name,
+                email: user.email,
+                image: user.image,
+              }}
+            />
           )}
           <ThemeToggle />
         </div>

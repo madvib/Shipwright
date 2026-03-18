@@ -1,8 +1,9 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '#/lib/components/protected-route'
 import { studioKeys } from '#/lib/query-keys'
 import { fetchApi } from '#/lib/api-errors'
+import type { SyncStatusValue } from '#/features/studio/SyncStatus'
 
 const LOCAL_STORAGE_KEY = 'ship-studio-v1'
 const DEBOUNCE_MS = 2000
@@ -41,6 +42,7 @@ export function useLibrarySync() {
   const syncedRef = useRef(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialRef = useRef(true)
+  const [syncStatus, setSyncStatus] = useState<SyncStatusValue>('idle')
 
   const snapshot = useSyncExternalStore(subscribeStorage, getSnapshot, () => null)
 
@@ -75,6 +77,8 @@ export function useLibrarySync() {
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
 
+    setSyncStatus('saving')
+
     let modeName = 'untitled'
     try {
       const parsed = JSON.parse(snapshot) as { modeName?: string }
@@ -88,8 +92,14 @@ export function useLibrarySync() {
         credentials: 'include',
         body: JSON.stringify({ name: modeName }),
       })
-        .then(() => queryClient.invalidateQueries({ queryKey: studioKeys.workspaces() }))
-        .catch(() => { /* server sync failed — localStorage is the fallback */ })
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: studioKeys.workspaces() })
+          setSyncStatus('saved')
+        })
+        .catch(() => {
+          // Server sync failed — localStorage is the fallback. Do not surface error.
+          setSyncStatus('idle')
+        })
     }, DEBOUNCE_MS)
 
     return () => {
@@ -100,5 +110,6 @@ export function useLibrarySync() {
   return {
     isSynced: isAuthenticated && syncedRef.current,
     serverWorkspaces: workspaces?.workspaces ?? [],
+    syncStatus,
   }
 }
