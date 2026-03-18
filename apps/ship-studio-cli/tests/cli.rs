@@ -92,10 +92,10 @@ providers = ["claude"]
         .success()
         .stdout(predicate::str::contains("activated profile 'my-profile'"));
 
-    let lock = fs::read_to_string(tmp.path().join(".ship/ship.lock")).unwrap();
+    let state = fs::read_to_string(tmp.path().join(".ship/ship.state")).unwrap();
     assert!(
-        lock.contains("active_profile") && lock.contains("my-profile"),
-        "ship.lock must record active_profile"
+        state.contains("active_profile") && state.contains("my-profile"),
+        "ship.state must record active_profile"
     );
     assert!(tmp.path().join("CLAUDE.md").exists(), "CLAUDE.md must be written");
 }
@@ -120,8 +120,8 @@ providers = ["claude"]
     ship().args(args).assert().success();
     ship().args(args).assert().success();
 
-    let lock = fs::read_to_string(tmp.path().join(".ship/ship.lock")).unwrap();
-    assert!(lock.contains("my-profile"));
+    let state = fs::read_to_string(tmp.path().join(".ship/ship.state")).unwrap();
+    assert!(state.contains("my-profile"));
 }
 
 #[test]
