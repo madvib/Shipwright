@@ -58,15 +58,40 @@ fn parse_code_from_request(request: &str) -> Option<String> {
     None
 }
 
-/// `ship login` — PKCE OAuth flow (plain method; stub pending server deployment).
+/// Exchange an authorization code + PKCE verifier for a token via POST.
+fn exchange_code_for_token(code: &str, verifier: &str, port: u16) -> Result<String> {
+    let body = serde_json::json!({
+        "code": code,
+        "code_verifier": verifier,
+        "redirect_uri": format!("http://127.0.0.1:{}/callback", port),
+    });
+
+    let resp: String = ureq::post("https://getship.dev/api/auth/token")
+        .header("Content-Type", "application/json")
+        .send(body.to_string().as_bytes())
+        .map_err(|e| anyhow::anyhow!("Token exchange failed: {}", e))?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| anyhow::anyhow!("Failed to read token response: {e}"))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&resp)
+        .map_err(|_| anyhow::anyhow!("Invalid response from auth server"))?;
+
+    if let Some(err) = parsed.get("error").and_then(|v| v.as_str()) {
+        anyhow::bail!("Auth failed: {}", err);
+    }
+
+    parsed.get("token")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .ok_or_else(|| anyhow::anyhow!("No token in auth response"))
+}
+
+/// `ship login` — PKCE OAuth flow.
 ///
 /// Opens the browser to getship.dev/auth/cli, starts a local callback server,
-/// waits up to 60 s for the redirect, then writes the token to
-/// `~/.ship/config.toml` with 0600 permissions.
-///
-/// TODO: POST the authorization code + verifier to the token endpoint once
-/// `https://getship.dev/api/auth/token` is deployed. The stub token written
-/// here is not a real credential.
+/// waits up to 60 s for the redirect, exchanges the code for a token, then
+/// writes it to `~/.ship/config.toml` with 0600 permissions.
 pub fn run_login() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .map_err(|e| anyhow::anyhow!("Could not start callback server: {}", e))?;
@@ -116,9 +141,7 @@ pub fn run_login() -> Result<()> {
         Err(_) => anyhow::bail!("Login timed out (60 s). Run `ship login` to try again."),
     };
 
-    // TODO: exchange (code, verifier) with POST /api/auth/token for a real token.
-    // Writing a placeholder so downstream tooling can proceed in CI/local testing.
-    let token = format!("stub-{}-{}", &code[..code.len().min(8)], &verifier[..8]);
+    let token = exchange_code_for_token(&code, &verifier, port)?;
 
     let mut cfg = ShipConfig::load();
     cfg.auth = Some(AuthConfig { token: Some(token) });

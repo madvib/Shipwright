@@ -3,6 +3,7 @@ mod auth;
 mod cli;
 mod compile;
 mod config;
+mod import;
 mod job;
 mod loader;
 mod mcp;
@@ -38,9 +39,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
-            Commands::Import { path } => {
-                stub("import", &format!("Would import from {:?}", path.as_deref().unwrap_or(std::path::Path::new("."))))
-            }
+            Commands::Import { source } => import::run_import(&source),
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
             }

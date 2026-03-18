@@ -100,10 +100,10 @@ pub enum Commands {
     },
 
     // ── Import / Export ───────────────────────────────────────────────────────
-    /// Detect and import existing provider configs into .ship/agents/
+    /// Import a profile from a getship.dev URL, local path, or provider config
     Import {
-        #[arg(long)]
-        path: Option<PathBuf>,
+        /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config directory
+        source: String,
     },
 
     /// Export compiled output for a specific provider (alias for compile --provider)

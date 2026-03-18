@@ -254,21 +254,24 @@ fn skill_list_shows_global_skill() {
 // ── auth stubs ────────────────────────────────────────────────────────────────
 
 #[test]
-fn login_stub_exits_zero_and_prints_message() {
+fn login_opens_browser_and_waits() {
+    // login now does real PKCE — it times out after 60s waiting for callback.
+    // Just verify it starts and prints the auth URL.
     ship()
         .args(["login"])
+        .timeout(std::time::Duration::from_secs(5))
         .assert()
-        .success()
-        .stdout(predicate::str::contains("login"));
+        .failure() // times out → exit 1
+        .stdout(predicate::str::contains("getship.dev/auth/cli"));
 }
 
 #[test]
-fn logout_stub_exits_zero_and_prints_message() {
+fn logout_when_not_logged_in() {
     ship()
         .args(["logout"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("logout"));
+        .stdout(predicate::str::contains("Not logged in"));
 }
 
 #[test]
@@ -281,5 +284,5 @@ fn whoami_not_logged_in_when_no_config() {
         .env("HOME", tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Not logged in."));
+        .stdout(predicate::str::contains("not logged in"));
 }
