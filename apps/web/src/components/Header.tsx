@@ -1,4 +1,4 @@
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { Sun, Moon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { authClient } from '#/lib/auth-client'
@@ -39,18 +39,8 @@ function ThemeToggle() {
   )
 }
 
-const STUDIO_TABS = [
-  { to: '/studio/profiles', label: 'Profiles' },
-  { to: '/studio/skills', label: 'Skills' },
-  { to: '/studio/mcp', label: 'MCP' },
-  { to: '/studio/export', label: 'Export' },
-  { to: '/studio/templates', label: 'Registry' },
-] as const
-
 export default function Header() {
   const { data: session, isPending } = authClient.useSession()
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isStudio = pathname.startsWith('/studio')
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
@@ -85,31 +75,6 @@ export default function Header() {
             </Link>
           )}
         </div>
-
-        {/* Studio sub-tabs — inline when on /studio/* */}
-        {isStudio && (
-          <>
-            <div className="w-px h-5 bg-border/60" />
-            <div className="flex items-center gap-0.5">
-              {STUDIO_TABS.map((tab) => {
-                const active = pathname === tab.to || (tab.to === '/studio/profiles' && pathname === '/studio')
-                return (
-                  <Link
-                    key={tab.to}
-                    to={tab.to as '/'}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                      active
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50'
-                    }`}
-                  >
-                    {tab.label}
-                  </Link>
-                )
-              })}
-            </div>
-          </>
-        )}
 
         <div className="ml-auto flex items-center gap-3">
           {!isPending && !session?.user && (
