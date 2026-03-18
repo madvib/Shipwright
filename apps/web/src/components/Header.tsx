@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { Sun, Moon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Sun, Moon, LogOut } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
 import { authClient } from '#/lib/auth-client'
 
 type ThemeMode = 'light' | 'dark'
@@ -36,6 +36,60 @@ function ThemeToggle() {
     >
       {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
     </button>
+  )
+}
+
+function UserMenu({ user }: { user: { name: string; image?: string | null } }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2 py-1 transition hover:border-border"
+      >
+        {user.image ? (
+          <img src={user.image} alt="" className="size-5 rounded-full" />
+        ) : (
+          <span className="size-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">
+            {user.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="text-xs font-medium text-foreground max-w-[100px] truncate">
+          {user.name}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-44 rounded-lg border border-border/60 bg-card shadow-lg shadow-foreground/[0.04] py-1 animate-in fade-in slide-in-from-top-1 duration-150 z-50">
+          <div className="px-3 py-2 border-b border-border/40">
+            <p className="text-xs font-medium text-foreground truncate">{user.name}</p>
+          </div>
+          <button
+            onClick={() => {
+              setOpen(false)
+              void authClient.signOut()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <LogOut className="size-3.5" />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -82,7 +136,6 @@ export default function Header() {
               onClick={() => void authClient.signIn.social({
                 provider: 'github',
                 callbackURL: window.location.href,
-                fetchOptions: { onSuccess: (ctx) => { window.open(ctx.response.url, '_blank') } },
               })}
               className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
@@ -93,17 +146,7 @@ export default function Header() {
             </button>
           )}
           {session?.user && (
-            <div className="flex items-center gap-2">
-              {session.user.image && (
-                <img src={session.user.image} alt="" className="size-6 rounded-full" />
-              )}
-              <button
-                onClick={() => void authClient.signOut()}
-                className="text-xs text-muted-foreground transition hover:text-foreground"
-              >
-                Sign out
-              </button>
-            </div>
+            <UserMenu user={{ name: session.user.name, image: session.user.image }} />
           )}
           <ThemeToggle />
         </div>

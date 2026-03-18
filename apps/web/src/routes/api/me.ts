@@ -1,13 +1,14 @@
 // GET /api/me — return { user, org } for the authenticated user
 
 import { createFileRoute } from '@tanstack/react-router'
-import { requireAuth, getDb } from '#/lib/cloud-auth'
+import { requireSession } from '#/lib/session-auth'
+import { getDb } from '#/lib/cloud-auth'
 
 export const Route = createFileRoute('/api/me')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const auth = await requireAuth(request)
+        const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
         const db = getDb()
