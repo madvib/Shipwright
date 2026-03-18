@@ -19,9 +19,8 @@ scope = "project"
 
 [permissions]
 preset = "ship-standard"
-tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
+tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)", "Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 default_mode = "bypassPermissions"
-tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 
 [rules]
 inline = """
