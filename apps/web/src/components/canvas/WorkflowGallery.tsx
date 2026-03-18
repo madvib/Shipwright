@@ -1,10 +1,38 @@
 import { PRESETS, type PresetInfo } from './presets'
 
+/* ── Injected styles for gallery animations ── */
+
+const GALLERY_STYLES = `
+  @keyframes wf-card-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes wf-glow-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 0.8; }
+  }
+  .wf-card {
+    animation: wf-card-in 0.4s ease both;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  }
+  .wf-card:hover {
+    transform: translateY(-2px);
+  }
+  .wf-card:hover .wf-use-btn {
+    background: var(--wf-accent) !important;
+    border-color: var(--wf-accent) !important;
+    color: #000 !important;
+  }
+  .wf-card:hover .wf-preview-glow {
+    opacity: 1;
+  }
+`
+
 /* ── Mini SVG previews (static, per preset) ── */
 
 function ShipflowPreview() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 230 170">
       <line x1="75" y1="38" x2="100" y2="65" stroke="#7c3aed44" strokeWidth="1.5" strokeDasharray="4,3"/>
       <line x1="105" y1="95" x2="68" y2="115" stroke="#f59e0b66" strokeWidth="1.5"/>
       <line x1="115" y1="95" x2="152" y2="115" stroke="#f59e0b66" strokeWidth="1.5"/>
@@ -27,7 +55,7 @@ function ShipflowPreview() {
 
 function SuperpowersPreview() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 230 170">
       <circle cx="110" cy="28" r="14" fill="#7c3aed11" stroke="#7c3aed" strokeWidth="1.5"/>
       <text x="110" y="32" textAnchor="middle" fontSize="11">👤</text>
       <line x1="110" y1="42" x2="75" y2="60" stroke="#7c3aed55" strokeWidth="1.5" strokeDasharray="4,3"/>
@@ -50,7 +78,7 @@ function SuperpowersPreview() {
 
 function GstackPreview() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 230 170">
       <circle cx="22" cy="80" r="12" fill="#7c3aed11" stroke="#7c3aed" strokeWidth="1.5"/>
       <text x="22" y="84" textAnchor="middle" fontSize="9">👤</text>
       <rect x="42" y="68" width="36" height="24" rx="4" fill="#38bdf80a" stroke="#38bdf844" strokeWidth="1"/>
@@ -75,7 +103,7 @@ function GstackPreview() {
 
 function ShipflowSoloPreview() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 230 170">
       <circle cx="110" cy="30" r="14" fill="#7c3aed11" stroke="#7c3aed" strokeWidth="1.5"/>
       <text x="110" y="34" textAnchor="middle" fontSize="11">👤</text>
       <line x1="110" y1="44" x2="110" y2="70" stroke="#7c3aed44" strokeWidth="1.5" strokeDasharray="4,3"/>
@@ -92,7 +120,7 @@ function ShipflowSoloPreview() {
 
 function SuperpowersSoloPreview() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 230 170">
       <circle cx="110" cy="28" r="14" fill="#7c3aed11" stroke="#7c3aed" strokeWidth="1.5"/>
       <text x="110" y="32" textAnchor="middle" fontSize="11">👤</text>
       <line x1="110" y1="42" x2="110" y2="65" stroke="#7c3aed55" strokeWidth="1.5" strokeDasharray="4,3"/>
@@ -133,76 +161,116 @@ const PREVIEW_MAP: Record<string, () => React.ReactNode> = {
 
 /* ── Card ── */
 
-function PresetCard({ preset, onSelect }: { preset: PresetInfo; onSelect: (id: string) => void }) {
+function PresetCard({ preset, onSelect, index }: { preset: PresetInfo; onSelect: (id: string) => void; index: number }) {
   const preview = PREVIEW_MAP[preset.id]
 
   return (
     <div
+      className="wf-card"
       onClick={() => onSelect(preset.id)}
       style={{
+        '--wf-accent': preset.accentColor,
         background: '#0d0d0d',
-        border: '1px solid #1e1e1e',
+        border: '1px solid #1a1a1a',
         borderRadius: 12,
         overflow: 'hidden',
         cursor: 'pointer',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
+        animationDelay: `${index * 60}ms`,
+      } as React.CSSProperties}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = preset.accentColor + '66'
+        e.currentTarget.style.boxShadow = `0 4px 24px ${preset.accentColor}15, 0 0 0 1px ${preset.accentColor}22`
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#333' }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e1e1e' }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = '#1a1a1a'
+        e.currentTarget.style.boxShadow = 'none'
+      }}
     >
       {/* Graph preview */}
       <div style={{
         height: 160,
-        background: '#080808',
-        borderBottom: '1px solid #1a1a1a',
+        background: '#060608',
+        borderBottom: '1px solid #141418',
         position: 'relative',
         overflow: 'hidden',
         display: preset.id === 'blank' ? 'flex' : undefined,
         alignItems: preset.id === 'blank' ? 'center' : undefined,
         justifyContent: preset.id === 'blank' ? 'center' : undefined,
       }}>
+        {/* Subtle radial glow behind the preview on hover */}
+        <div
+          className="wf-preview-glow"
+          style={{
+            position: 'absolute', inset: 0, opacity: 0, transition: 'opacity 0.3s',
+            background: `radial-gradient(ellipse at 50% 60%, ${preset.accentColor}08 0%, transparent 70%)`,
+          }}
+        />
         {preview?.()}
       </div>
 
       {/* Card body */}
-      <div style={{ padding: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{preset.name}</span>
+      <div style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span style={{
+            fontFamily: 'var(--font-display-app)',
+            fontSize: 14,
+            fontWeight: 700,
+            color: '#f0f0f0',
+            letterSpacing: '-0.01em',
+          }}>
+            {preset.name}
+          </span>
           {preset.badge && (
             <span style={{
+              fontFamily: 'var(--font-body-app)',
               fontSize: 8,
               fontWeight: 700,
-              letterSpacing: '0.06em',
-              padding: '2px 6px',
+              letterSpacing: '0.08em',
+              padding: '2px 7px',
               borderRadius: 3,
               textTransform: 'uppercase',
               ...(preset.badge === 'ship'
-                ? { background: '#7c3aed22', color: '#7c3aed', border: '1px solid #7c3aed33' }
-                : { background: '#38bdf822', color: '#38bdf8', border: '1px solid #38bdf833' }),
+                ? { background: '#7c3aed18', color: '#a78bfa', border: '1px solid #7c3aed28' }
+                : { background: '#38bdf818', color: '#7dd3fc', border: '1px solid #38bdf828' }),
             }}>
               {preset.badge === 'ship' ? 'SHIP' : 'COMMUNITY'}
             </span>
           )}
         </div>
 
-        <p style={{ fontSize: 10, color: '#555', lineHeight: 1.5, marginBottom: 10 }}>{preset.description}</p>
+        <p style={{
+          fontFamily: 'var(--font-body-app)',
+          fontSize: 11,
+          color: '#555',
+          lineHeight: 1.6,
+          marginBottom: 12,
+        }}>
+          {preset.description}
+        </p>
 
         {/* Agents row */}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
           {preset.agents.length > 0 ? preset.agents.map((a) => (
             <div key={a.name} style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              background: '#111', border: '1px solid #1e1e1e', borderRadius: 4,
-              padding: '3px 7px', fontSize: 9, color: '#666',
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: '#0a0a0e', border: '1px solid #1a1a1e', borderRadius: 4,
+              padding: '3px 8px',
+              fontFamily: 'var(--font-body-app)',
+              fontSize: 9, color: '#666',
             }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: a.color }} />
+              <span style={{
+                width: 5, height: 5, borderRadius: '50%', background: a.color,
+                boxShadow: `0 0 4px ${a.color}66`,
+              }} />
               {a.name}
             </div>
           )) : (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              background: '#111', border: '1px dashed #1e1e1e', borderRadius: 4,
-              padding: '3px 7px', fontSize: 9, color: '#444',
+              background: '#0a0a0e', border: '1px dashed #1a1a1e', borderRadius: 4,
+              padding: '3px 8px',
+              fontFamily: 'var(--font-body-app)',
+              fontSize: 9, color: '#3a3a3a',
             }}>
               + you design it
             </div>
@@ -210,18 +278,23 @@ function PresetCard({ preset, onSelect }: { preset: PresetInfo; onSelect: (id: s
         </div>
 
         {/* Use button */}
-        <div style={{
-          width: '100%',
-          padding: 7,
-          background: '#1a1a1a',
-          border: '1px solid #2a2a2a',
-          borderRadius: 6,
-          fontSize: 11,
-          fontWeight: 600,
-          color: '#888',
-          textAlign: 'center',
-          transition: 'all 0.12s',
-        }}>
+        <div
+          className="wf-use-btn"
+          style={{
+            width: '100%',
+            padding: 8,
+            background: '#111114',
+            border: '1px solid #1e1e24',
+            borderRadius: 6,
+            fontFamily: 'var(--font-body-app)',
+            fontSize: 11,
+            fontWeight: 600,
+            color: '#666',
+            textAlign: 'center',
+            transition: 'all 0.15s',
+            letterSpacing: '0.01em',
+          }}
+        >
           {preset.id === 'blank' ? 'Start blank' : `Use ${preset.name}`}
         </div>
       </div>
@@ -237,19 +310,64 @@ interface Props {
 
 export function WorkflowGallery({ onSelect }: Props) {
   return (
-    <div style={{ background: '#0a0a0a', minHeight: '100%', padding: 24 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4 }}>Choose a workflow</h2>
-      <p style={{ fontSize: 12, color: '#555', marginBottom: 24 }}>
-        Shipped as presets. Activate via CLI:{' '}
-        <code style={{ color: '#7c3aed', background: '#7c3aed11', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>
-          ship use workflow/shipflow
-        </code>
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, maxWidth: 960 }}>
-        {PRESETS.map((preset) => (
-          <PresetCard key={preset.id} preset={preset} onSelect={onSelect} />
-        ))}
+    <>
+      <style>{GALLERY_STYLES}</style>
+      <div style={{
+        background: '#08080a',
+        minHeight: '100%',
+        padding: '32px 32px 48px',
+        overflowY: 'auto',
+      }}>
+        {/* Subtle top gradient */}
+        <div style={{
+          position: 'fixed', top: 53, left: 0, right: 0, height: 120,
+          background: 'linear-gradient(to bottom, #08080a 0%, transparent 100%)',
+          pointerEvents: 'none', zIndex: 1,
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 2 }}>
+          <h2 style={{
+            fontFamily: 'var(--font-display-app)',
+            fontSize: 22,
+            fontWeight: 800,
+            color: '#f0f0f0',
+            marginBottom: 6,
+            letterSpacing: '-0.02em',
+          }}>
+            Choose a workflow
+          </h2>
+          <p style={{
+            fontFamily: 'var(--font-body-app)',
+            fontSize: 12,
+            color: '#444',
+            marginBottom: 28,
+            lineHeight: 1.6,
+          }}>
+            Shipped as presets. Activate via CLI:{' '}
+            <code style={{
+              fontFamily: 'ui-monospace, "Fira Code", monospace',
+              color: '#a78bfa',
+              background: '#7c3aed0c',
+              padding: '2px 7px',
+              borderRadius: 4,
+              fontSize: 11,
+              border: '1px solid #7c3aed15',
+            }}>
+              ship use workflow/shipflow
+            </code>
+          </p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 16,
+            maxWidth: 980,
+          }}>
+            {PRESETS.map((preset, i) => (
+              <PresetCard key={preset.id} preset={preset} onSelect={onSelect} index={i} />
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

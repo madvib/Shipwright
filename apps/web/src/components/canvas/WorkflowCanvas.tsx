@@ -18,6 +18,14 @@ import { ChannelEdge } from './edges/ChannelEdge'
 import { WorkflowToolbar } from './WorkflowToolbar'
 import type { WorkflowPreset } from './types'
 
+/* Keyframes used by canvas node components */
+const CANVAS_STYLES = `
+  @keyframes node-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+`
+
 const NODE_TYPES: NodeTypes = {
   artifact: ArtifactNode,
   agent: AgentNode,
@@ -56,6 +64,7 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      <style>{CANVAS_STYLES}</style>
       <WorkflowToolbar name={presetName} onBack={onBack} onAddNode={addNode} />
       <div className="flex-1 min-h-0">
         <ReactFlow
