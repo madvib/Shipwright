@@ -14,8 +14,6 @@ export { DEFAULT_PERMISSIONS, DEFAULT_LIBRARY } from '@ship/ui'
 import type { CompileOutput as _CompileOutput } from '@ship/ui'
 export type CompileResult = _CompileOutput
 
-export type CompileOutputMap = Record<string, CompileResult>
-
 // Provider metadata
 export interface Provider {
   id: string
