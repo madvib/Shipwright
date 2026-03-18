@@ -149,7 +149,7 @@ export function FirstRunBanner({ onDismiss, onPresetInit, onImportUrl }: FirstRu
                 onKeyDown={(e) => { if (e.key === 'Enter' && url.trim()) void handleImport() }}
                 placeholder="https://github.com/org/repo"
                 disabled={importing}
-                className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none transition disabled:opacity-50"
+                className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition disabled:opacity-50"
               />
               <button
                 onClick={() => void handleImport()}

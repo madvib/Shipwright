@@ -48,7 +48,7 @@ export function ProviderLogo({ provider, size = 'sm', className = '' }: Props) {
   const color = PROVIDER_COLOR[provider] ?? 'bg-muted text-muted-foreground'
   const short = PROVIDER_SHORT[provider] ?? provider
   return (
-    <span className={`inline-flex items-center justify-center rounded text-[9px] font-bold px-1 ${color} ${className}`}>
+    <span className={`inline-flex items-center justify-center rounded text-[11px] font-bold px-1 ${color} ${className}`}>
       {short.slice(0, 2).toUpperCase()}
     </span>
   )

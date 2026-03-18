@@ -33,7 +33,7 @@ function RegistryPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search registry..."
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-w-0"
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 min-w-0"
             />
             {query && (
               <button onClick={() => setQuery('')} className="text-muted-foreground hover:text-foreground">
@@ -77,7 +77,7 @@ function RegistryPage() {
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">{item.description}</p>
                   <div className="mt-auto">
-                    <code className="text-[9px] font-mono text-muted-foreground/50 bg-muted/30 rounded px-1.5 py-0.5">
+                    <code className="text-[11px] font-mono text-muted-foreground/50 bg-muted/30 rounded px-1.5 py-0.5">
                       {item.config.command} {item.config.args?.[1] ?? item.config.args?.[0] ?? ''}
                     </code>
                   </div>

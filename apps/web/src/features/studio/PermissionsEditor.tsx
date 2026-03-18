@@ -79,7 +79,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
     <div className="space-y-5">
       {/* Presets */}
       <div>
-        <p className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Preset</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Preset</p>
         <div className="flex gap-2">
           {PRESET_LABELS.map(({ id, label }) => (
             <button
@@ -100,7 +100,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
 
       {/* Allow rules */}
       <div>
-        <p className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Allow rules</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Allow rules</p>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {permissions.tools.allow.map((rule) => (
             <span
@@ -121,7 +121,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
             onChange={(e) => setAllowInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addAllow()}
             placeholder="Bash(git:*)"
-            className="flex-1 bg-transparent font-mono text-[11px] text-foreground placeholder-muted-foreground/40 focus:outline-none"
+            className="flex-1 bg-transparent font-mono text-[11px] text-foreground placeholder-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           />
           <button
             onClick={addAllow}
@@ -135,7 +135,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
 
       {/* Deny rules */}
       <div>
-        <p className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">Deny rules</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">Deny rules</p>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {permissions.tools.deny.map((rule) => (
             <span
@@ -159,7 +159,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
             onChange={(e) => setDenyInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addDeny()}
             placeholder="Bash(rm -rf:*)"
-            className="flex-1 bg-transparent font-mono text-[11px] text-foreground placeholder-muted-foreground/40 focus:outline-none"
+            className="flex-1 bg-transparent font-mono text-[11px] text-foreground placeholder-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           />
           <button
             onClick={addDeny}

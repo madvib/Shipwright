@@ -39,7 +39,7 @@ export function TutorialStepper({ currentStep, onDismiss }: TutorialStepperProps
                   ? 'text-muted-foreground'
                   : 'text-muted-foreground/50'
               }`}>
-                <span className={`flex size-3.5 items-center justify-center rounded-full text-[8px] font-bold shrink-0 ${
+                <span className={`flex size-3.5 items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${
                   done
                     ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                     : active

@@ -81,7 +81,7 @@ export function SkillsForm({ skills, onChange }: Props) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search..."
-                className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               />
             </div>
           </div>
@@ -146,7 +146,7 @@ export function SkillsForm({ skills, onChange }: Props) {
                     value={selected.name}
                     onChange={(e) => update(selectedIdx, { name: e.target.value })}
                     placeholder="Skill name"
-                    className="min-w-0 bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+                    className="min-w-0 bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     spellCheck={false}
                   />
                   <span className="text-[10px] text-muted-foreground/40">/ SKILL.md</span>
@@ -167,7 +167,7 @@ export function SkillsForm({ skills, onChange }: Props) {
                     value={selected.id}
                     onChange={(e) => update(selectedIdx, { id: e.target.value })}
                     placeholder="slug"
-                    className="w-28 bg-transparent font-mono text-[11px] text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                    className="w-28 bg-transparent font-mono text-[11px] text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     spellCheck={false}
                   />
                 </div>
@@ -178,7 +178,7 @@ export function SkillsForm({ skills, onChange }: Props) {
                     value={selected.description ?? ''}
                     onChange={(e) => update(selectedIdx, { description: e.target.value || null })}
                     placeholder="when to use this skill..."
-                    className="flex-1 min-w-0 bg-transparent text-[11px] text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                    className="flex-1 min-w-0 bg-transparent text-[11px] text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     spellCheck={false}
                   />
                 </div>
@@ -192,7 +192,7 @@ export function SkillsForm({ skills, onChange }: Props) {
                   onChange={(e) => handleContentChange(e.target.value)}
                   placeholder={'# Instructions\n\nDescribe what the agent should do and when to use this skill...'}
                   spellCheck={false}
-                  className="h-full w-full resize-none rounded-lg border border-border/60 bg-background p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/30"
+                  className="h-full w-full resize-none rounded-lg border border-border/60 bg-background p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/30"
                 />
               </div>
             </>

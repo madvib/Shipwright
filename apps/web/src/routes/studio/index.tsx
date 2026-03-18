@@ -30,7 +30,7 @@ function StudioDashboard() {
             <div className="flex gap-2 shrink-0">
               <Link
                 to="/studio/profiles"
-                className="h-8 px-4 rounded-lg bg-violet-600 hover:bg-violet-500 transition-colors text-xs font-medium text-white flex items-center no-underline"
+                className="h-8 px-4 rounded-lg bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors text-xs font-medium text-primary-foreground flex items-center no-underline"
               >
                 Import
               </Link>
@@ -73,7 +73,7 @@ function StudioDashboard() {
                         </p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
                           {p.selectedProviders.slice(0, 3).map((pid) => (
-                            <span key={pid} className="text-[8px] bg-muted rounded px-1 py-0.5 text-muted-foreground/60">{pid}</span>
+                            <span key={pid} className="text-[10px] bg-muted rounded px-1 py-0.5 text-muted-foreground/60">{pid}</span>
                           ))}
                         </div>
                       </div>
@@ -124,7 +124,7 @@ function StudioDashboard() {
                     {active && (
                       <div className="flex gap-1 mt-1.5 pl-3.5 flex-wrap">
                         {p.files.slice(0, 2).map((f) => (
-                          <span key={f} className="font-mono text-[8px] bg-muted rounded px-1 py-0.5 text-muted-foreground/60">{f}</span>
+                          <span key={f} className="font-mono text-[10px] bg-muted rounded px-1 py-0.5 text-muted-foreground/60">{f}</span>
                         ))}
                       </div>
                     )}

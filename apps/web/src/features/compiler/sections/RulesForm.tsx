@@ -43,7 +43,7 @@ export function RulesForm({ rules, onChange }: Props) {
       {rules.map((rule, idx) => (
         <div
           key={idx}
-          className={`overflow-hidden rounded-xl border transition ${expanded === idx ? 'border-border bg-card' : 'border-border/60 bg-card/50'}`}
+          className={`overflow-hidden rounded-xl border transition-all ${expanded === idx ? 'border-border bg-card' : 'border-border/60 bg-card/50'}`}
         >
           <div className="flex items-center gap-2 px-3 py-2.5">
             <button
@@ -84,7 +84,7 @@ export function RulesForm({ rules, onChange }: Props) {
                     placeholder="e.g. code-style.md"
                     autoCorrect="off"
                     spellCheck={false}
-                    className="h-7 w-full rounded-md border border-border/60 bg-background px-2 font-mono text-xs focus:outline-none focus:border-border"
+                    className="h-7 w-full rounded-md border border-border/60 bg-background px-2 font-mono text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-border"
                   />
                   {showSuggestions && expanded === idx && (
                     <div className="absolute left-0 top-full z-10 mt-1 w-full rounded-md border border-border/60 bg-card shadow-lg">
@@ -110,7 +110,7 @@ export function RulesForm({ rules, onChange }: Props) {
                 placeholder={'# Code Style\n\nAlways use explicit types...'}
                 rows={10}
                 spellCheck={false}
-                className="w-full resize-y rounded-lg border border-border/60 bg-background p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border"
+                className="w-full resize-y rounded-lg border border-border/60 bg-background p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-border"
               />
             </div>
           )}

@@ -58,12 +58,14 @@ export function ComposerPanel({
 
   return (
     <div className="flex flex-1 min-w-0 flex-col border-r border-border/60">
-      <div className="flex items-center gap-0.5 border-b border-border/60 bg-muted/20 px-2 py-1.5 shrink-0 overflow-x-auto [scrollbar-width:none]">
+      <div className="flex items-center gap-0.5 border-b border-border/60 bg-muted/20 px-2 py-1.5 shrink-0 overflow-x-auto [scrollbar-width:none]" role="tablist">
         {COMPOSER_TABS.map(({ id, label, icon: Icon }) => {
           const count = id === 'mcp' ? mcpCount : id === 'skills' ? skillCount : id === 'rules' ? ruleCount : 0
           return (
             <button
               key={id}
+              role="tab"
+              aria-selected={activeSection === id}
               onClick={() => onSectionChange(id)}
               className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
                 activeSection === id
@@ -74,7 +76,7 @@ export function ComposerPanel({
               <Icon className="size-3.5" />
               {label}
               {count > 0 && (
-                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-bold text-primary">
                   {count}
                 </span>
               )}

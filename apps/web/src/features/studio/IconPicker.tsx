@@ -66,14 +66,14 @@ export function IconPicker({ icon, accentColor, name, onChange }: IconPickerProp
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search icons... (react, rust, python...)"
-                className="w-full bg-muted/30 border border-border/60 rounded px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/50 transition-colors"
+                className="w-full bg-muted/30 border border-border/60 rounded px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus:border-violet-500/50 transition-colors"
               />
             </div>
 
             {/* Body */}
             <div className="px-3 pt-3 pb-2">
               {/* Color accent */}
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
                 COLOR ACCENT
               </div>
               <div className="flex gap-1.5 mb-3">
@@ -92,7 +92,7 @@ export function IconPicker({ icon, accentColor, name, onChange }: IconPickerProp
               </div>
 
               {/* Tech icons */}
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
                 TECH ICONS
               </div>
               <div className="grid grid-cols-8 gap-1 mb-2 max-h-36 overflow-y-auto">
@@ -126,7 +126,7 @@ export function IconPicker({ icon, accentColor, name, onChange }: IconPickerProp
               </span>
               <button
                 onClick={apply}
-                className="h-7 px-3 bg-violet-600 hover:bg-violet-500 transition-colors rounded text-[10px] text-white font-medium"
+                className="h-7 px-3 bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors rounded text-[10px] text-primary-foreground font-medium"
               >
                 Apply
               </button>
