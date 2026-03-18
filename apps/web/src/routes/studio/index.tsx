@@ -164,14 +164,14 @@ function StudioDashboard() {
 
             {/* Presets */}
             <Link
-              to="/studio/presets"
+              to="/studio/templates"
               className="group rounded-xl border border-border/60 bg-card p-4 hover:border-border transition-colors no-underline block"
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Presets</span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Templates</span>
                 <span className="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground transition-colors">&#8250;</span>
               </div>
-              <p className="text-[11px] text-muted-foreground mb-3">Community configs</p>
+              <p className="text-[11px] text-muted-foreground mb-3">Community templates</p>
               <p className="text-[11px] text-muted-foreground">Browse &#8250;</p>
             </Link>
 

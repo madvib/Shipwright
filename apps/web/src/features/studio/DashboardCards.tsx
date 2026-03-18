@@ -125,11 +125,11 @@ export function DashboardCards({ profileCount, workflowJobCount }: DashboardCard
         lockReason="Create a profile to unlock export"
       />
       <DashboardCard
-        title="Presets"
-        description="Community presets for common stacks — import a ready-made config in one click."
+        title="Templates"
+        description="Community templates for common stacks — import a ready-made config in one click."
         accent="neutral"
         emptyLabel="Browse →"
-        href="/studio/presets"
+        href="/studio/templates"
       />
     </div>
   )
