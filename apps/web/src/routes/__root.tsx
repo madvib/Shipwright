@@ -40,7 +40,8 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const isStudio = useRouterState({ select: (s) => s.location.pathname.startsWith('/studio') })
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isAppView = pathname.startsWith('/studio') || pathname.startsWith('/canvas')
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -48,11 +49,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
-      <body className={`font-sans antialiased [overflow-wrap:anywhere]${isStudio ? ' flex flex-col h-screen overflow-hidden' : ''}`}>
+      <body className={`font-sans antialiased [overflow-wrap:anywhere]${isAppView ? ' flex flex-col h-screen overflow-hidden' : ''}`}>
         <TanStackQueryProvider>
           <Header />
           {children}
-          {!isStudio && <Footer />}
+          {!isAppView && <Footer />}
         </TanStackQueryProvider>
         <Scripts />
       </body>

@@ -11,20 +11,20 @@ interface ProfileListProps {
 export function ProfileList({ profiles, activeId, onSelect, onNew }: ProfileListProps) {
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 h-11 border-b border-border/60 bg-card/30 flex items-center justify-between shrink-0">
-        <span className="text-sm font-semibold text-foreground">Profiles</span>
-        <button
-          onClick={onNew}
-          className="h-7 px-2.5 rounded bg-primary text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 inline-flex items-center gap-1"
-        >
-          + New profile
-        </button>
-      </div>
-
       {/* Grid */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="flex-1 overflow-auto p-5">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
+            {profiles.length > 0 ? `${profiles.length} profile${profiles.length !== 1 ? 's' : ''}` : 'No profiles yet'}
+          </span>
+          <button
+            onClick={onNew}
+            className="h-7 px-2.5 rounded bg-primary text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 inline-flex items-center gap-1"
+          >
+            + New profile
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {profiles.map((profile) => (
             <ProfileCard
               key={profile.id}

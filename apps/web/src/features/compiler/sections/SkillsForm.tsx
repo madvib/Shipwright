@@ -70,21 +70,6 @@ export function SkillsForm({ skills, onChange }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* View header */}
-      <div className="flex items-center px-4 h-11 border-b border-border/60 bg-card/30 shrink-0">
-        <span className="text-sm font-semibold text-foreground mr-2">Skills</span>
-        <span className="text-[11px] text-muted-foreground/50">{skills.length} in collection</span>
-        <div className="ml-auto flex gap-1.5">
-          <button
-            onClick={add}
-            className="h-7 px-2.5 rounded bg-primary text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 inline-flex items-center gap-1"
-          >
-            <Plus className="size-3" />
-            New skill
-          </button>
-        </div>
-      </div>
-
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: skill list */}
         <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-muted/20">
@@ -154,7 +139,7 @@ export function SkillsForm({ skills, onChange }: Props) {
           {selected && selectedIdx !== null ? (
             <>
               {/* Detail header */}
-              <div className="flex items-center justify-between border-b border-border/60 bg-card/30 px-4 py-2.5 shrink-0">
+              <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <input
                     value={selected.name}
