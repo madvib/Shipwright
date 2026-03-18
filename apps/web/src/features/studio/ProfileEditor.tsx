@@ -19,53 +19,49 @@ export function ProfileEditor({ profile, onChange, onBack }: ProfileEditorProps)
   const [tab, setTab] = useState<Tab>('overview')
 
   return (
-    <div className="flex flex-col h-full bg-background">
-
-      {/* Header bar */}
-      <div className="px-4 h-10 border-b border-border bg-card flex items-center gap-2 shrink-0">
+    <div className="flex flex-col h-full">
+      {/* Compact breadcrumb + tabs in one row */}
+      <div className="flex items-center gap-3 border-b border-border/60 px-5 shrink-0">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-2.5"
         >
           <ChevronLeft className="size-3.5" />
           Profiles
         </button>
-        <span className="text-muted-foreground/30">/</span>
-        <span className="text-sm font-semibold text-foreground">{profile.name || 'Untitled'}</span>
+        <span className="text-muted-foreground/20">/</span>
+        <span className="text-xs font-semibold text-foreground">{profile.name || 'Untitled'}</span>
         <span
-          className="rounded px-1.5 py-px text-[9px] font-bold"
-          style={{
-            background: profile.accentColor + '20',
-            color: profile.accentColor,
-          }}
+          className="rounded px-1.5 py-px text-[8px] font-bold"
+          style={{ background: profile.accentColor + '20', color: profile.accentColor }}
         >
           live
         </span>
-      </div>
 
-      {/* Tab strip */}
-      <div className="flex border-b border-border bg-card/50 px-4 shrink-0">
-        {(['overview', 'providers', 'permissions'] as Tab[]).map((t) => {
-          const active = tab === t
-          const label = t === 'overview' ? 'Overview' : t === 'providers' ? 'Providers' : 'Permissions'
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-[11px] font-medium border-b-2 -mb-px transition-colors ${
-                active
-                  ? 'border-violet-500 text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {label}
-            </button>
-          )
-        })}
+        {/* Tabs inline */}
+        <div className="flex ml-auto -mb-px">
+          {(['overview', 'providers', 'permissions'] as Tab[]).map((t) => {
+            const active = tab === t
+            const label = t === 'overview' ? 'Overview' : t === 'providers' ? 'Providers' : 'Permissions'
+            return (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-3 py-2.5 text-[11px] font-medium border-b-2 transition-colors ${
+                  active
+                    ? 'border-violet-500 text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-5">
         {tab === 'overview' && <OverviewTab profile={profile} onChange={onChange} />}
         {tab === 'providers' && <ProvidersTab profile={profile} onChange={onChange} />}
         {tab === 'permissions' && (
@@ -93,7 +89,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function OverviewTab({ profile, onChange }: { profile: Profile; onChange: (p: Partial<Profile>) => void }) {
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-xl">
 
       {/* Name + icon row */}
       <div className="flex items-center gap-3">
@@ -320,15 +316,15 @@ function Chip({ children, dotClass, onRemove }: { children: React.ReactNode; dot
 
 function ProvidersTab({ profile }: { profile: Profile; onChange: (p: Partial<Profile>) => void }) {
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-xl">
       {/* Provider sub-nav */}
-      <div className="flex border-b border-border bg-muted/20 -mx-4 -mt-4 mb-4 px-4">
+      <div className="flex border-b border-border mb-4">
         {PROVIDERS.map((p) => {
           const active = profile.selectedProviders.includes(p.id)
           return (
             <div
               key={p.id}
-              className={`flex items-center gap-1.5 px-3 py-2 text-[10px] border-b -mb-px transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-2 text-[10px] border-b-2 -mb-px transition-colors ${
                 active
                   ? 'border-violet-500 text-violet-400'
                   : 'border-transparent text-muted-foreground/40'
