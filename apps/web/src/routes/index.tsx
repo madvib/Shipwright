@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect, useRef } from 'react'
 import { Layers, Zap, Bot, ArrowRight, ChevronDown, Sparkles, Check } from 'lucide-react'
 import { ProviderLogo } from '../features/compiler/ProviderLogo'
+import { DotGrid } from '../components/DotGrid'
 
 export const Route = createFileRoute('/')({ component: HomePage })
 
@@ -279,8 +280,9 @@ function HomePage() {
     <main className="min-h-screen">
       {/* Hero */}
       <section className="relative overflow-hidden px-6 pb-20 pt-24 sm:px-10 sm:pt-32">
-        <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-[radial-gradient(circle,oklch(0.67_0.16_58_/_18%),transparent_66%)]" />
-        <div className="pointer-events-none absolute -right-32 -top-16 h-96 w-96 rounded-full bg-[radial-gradient(circle,oklch(0.61_0.23_303_/_14%),transparent_66%)]" />
+        <div className="absolute inset-0 -z-10">
+          <DotGrid color="hsl(var(--primary))" gap={32} radius={200} dotSize={1.2} />
+        </div>
 
         <div className="relative mx-auto max-w-4xl text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-3 py-1.5 text-xs font-semibold tracking-wide text-primary uppercase">

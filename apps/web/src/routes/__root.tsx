@@ -41,8 +41,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isAppView = pathname.startsWith('/studio') || pathname.startsWith('/canvas')
-  const isFullscreen = pathname.startsWith('/canvas')
+  const isAppView = pathname.startsWith('/studio')
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -52,7 +51,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className={`font-sans antialiased [overflow-wrap:anywhere]${isAppView ? ' flex flex-col h-screen overflow-hidden' : ''}`}>
         <TanStackQueryProvider>
-          {!isFullscreen && <Header />}
+          <Header />
           {children}
           {!isAppView && <Footer />}
         </TanStackQueryProvider>

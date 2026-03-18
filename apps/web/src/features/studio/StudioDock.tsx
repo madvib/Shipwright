@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import {
-  User, Puzzle, Server, Download, Package, LayoutGrid,
+  User, Puzzle, Server, Download, Package, LayoutGrid, GitBranch,
 } from 'lucide-react'
 
 const DOCK_ITEMS = [
@@ -11,6 +11,7 @@ const DOCK_ITEMS = [
   { to: '/studio/mcp', icon: Server, label: 'MCP', exact: false as const },
   { to: '/studio/export', icon: Download, label: 'Export', exact: false as const },
   { to: '/studio/templates', icon: Package, label: 'Registry', exact: false as const },
+  { to: '/studio/workflow', icon: GitBranch, label: 'Workflow', exact: false as const },
 ] as const
 
 export function StudioDock() {
