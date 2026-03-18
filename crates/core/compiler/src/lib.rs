@@ -1,5 +1,9 @@
+pub mod agent_parser;
 pub mod compile;
+pub mod lockfile;
+pub mod manifest;
 pub mod matrix;
+pub mod permissions;
 pub mod resolve;
 pub mod types;
 
