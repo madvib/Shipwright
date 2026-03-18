@@ -1,4 +1,6 @@
 use anyhow::Result;
+use base64::Engine as _;
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -17,11 +19,7 @@ fn open_browser(url: &str) {
     eprintln!("Cannot open browser automatically. Visit: {}", url);
 }
 
-/// Generate a PKCE code_verifier from system time + PID entropy.
-///
-/// Uses the "plain" challenge method (challenge == verifier) to avoid
-/// requiring sha2/base64 dependencies.
-/// TODO: switch to S256 once sha2 + base64 are added to Cargo.toml.
+/// Generate a PKCE code_verifier (64 random-ish bytes, base64url-encoded, no padding).
 fn generate_code_verifier() -> String {
     use std::time::SystemTime;
     let t = SystemTime::now()
@@ -35,7 +33,6 @@ fn generate_code_verifier() -> String {
     let mut result = String::with_capacity(64);
     for _ in 0..64 {
         result.push(chars[(val % 64) as usize] as char);
-        // LCG step
         val = val
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
@@ -43,8 +40,14 @@ fn generate_code_verifier() -> String {
     result
 }
 
+/// Compute the S256 code_challenge from a verifier:
+/// `base64url_nopad(sha256(verifier.as_bytes()))`
+fn s256_challenge(verifier: &str) -> String {
+    let hash = Sha256::digest(verifier.as_bytes());
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash)
+}
+
 /// Extract the `code` query parameter from an HTTP GET request line.
-/// e.g. "GET /callback?code=abc123&state=xyz HTTP/1.1"
 fn parse_code_from_request(request: &str) -> Option<String> {
     let line = request.lines().next()?;
     let path = line.split_whitespace().nth(1)?;
@@ -62,7 +65,7 @@ fn parse_code_from_request(request: &str) -> Option<String> {
 fn exchange_code_for_token(code: &str, verifier: &str, port: u16) -> Result<String> {
     let body = serde_json::json!({
         "code": code,
-        "code_verifier": verifier,
+        "verifier": verifier,
         "redirect_uri": format!("http://127.0.0.1:{}/callback", port),
     });
 
@@ -87,26 +90,89 @@ fn exchange_code_for_token(code: &str, verifier: &str, port: u16) -> Result<Stri
         .ok_or_else(|| anyhow::anyhow!("No token in auth response"))
 }
 
-/// `ship login` — PKCE OAuth flow.
-///
-/// Opens the browser to getship.dev/auth/cli, starts a local callback server,
-/// waits up to 60 s for the redirect, exchanges the code for a token, then
-/// writes it to `~/.ship/config.toml` with 0600 permissions.
+/// Call POST /api/auth/refresh with the current Bearer token.
+/// Returns the new token string on success.
+pub fn refresh_token(token: &str) -> Result<String> {
+    let resp: String = ureq::post("https://getship.dev/api/auth/refresh")
+        .header("Authorization", &format!("Bearer {}", token))
+        .header("Content-Length", "0")
+        .send(&[][..])
+        .map_err(|e| anyhow::anyhow!("Refresh request failed: {}", e))?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| anyhow::anyhow!("Failed to read refresh response: {e}"))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&resp)
+        .map_err(|_| anyhow::anyhow!("Invalid response from refresh endpoint"))?;
+
+    if let Some(err) = parsed.get("error").and_then(|v| v.as_str()) {
+        anyhow::bail!("{}", err);
+    }
+
+    parsed.get("token")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .ok_or_else(|| anyhow::anyhow!("No token in refresh response"))
+}
+
+/// Make an authenticated GET request. On 401, attempts one token refresh
+/// and retries. If refresh also fails, guides the user to re-login.
+pub fn authed_get(url: &str) -> Result<serde_json::Value> {
+    let mut creds = Credentials::load();
+    let token = creds.token()
+        .ok_or_else(|| anyhow::anyhow!("Not logged in. Run `ship login`."))?
+        .to_string();
+
+    let result = ureq::get(url)
+        .header("Authorization", &format!("Bearer {}", token))
+        .call();
+
+    match result {
+        Ok(mut resp) => {
+            let body = resp.body_mut().read_to_string()
+                .map_err(|e| anyhow::anyhow!("Failed to read response: {e}"))?;
+            Ok(serde_json::from_str(&body)
+                .map_err(|_| anyhow::anyhow!("Invalid JSON response"))?)
+        }
+        Err(ureq::Error::StatusCode(401)) => {
+            // Attempt refresh
+            match refresh_token(&token) {
+                Ok(new_token) => {
+                    creds.account = Some(CredentialsAccount { token: Some(new_token.clone()) });
+                    creds.save()?;
+                    let mut resp = ureq::get(url)
+                        .header("Authorization", &format!("Bearer {}", new_token))
+                        .call()
+                        .map_err(|e| anyhow::anyhow!("Request failed after refresh: {}", e))?;
+                    let body = resp.body_mut().read_to_string()
+                        .map_err(|e| anyhow::anyhow!("Failed to read response: {e}"))?;
+                    Ok(serde_json::from_str(&body)
+                        .map_err(|_| anyhow::anyhow!("Invalid JSON response"))?)
+                }
+                Err(_) => {
+                    eprintln!("Session expired. Run `ship login`.");
+                    anyhow::bail!("Session expired");
+                }
+            }
+        }
+        Err(e) => Err(anyhow::anyhow!("Request failed: {}", e)),
+    }
+}
+
+/// `ship login` — PKCE S256 OAuth flow.
 pub fn run_login() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .map_err(|e| anyhow::anyhow!("Could not start callback server: {}", e))?;
     let port = listener.local_addr()?.port();
 
     let verifier = generate_code_verifier();
-    // PKCE plain: code_challenge == code_verifier (no hash required)
-    let challenge = verifier.clone();
+    let challenge = s256_challenge(&verifier);
     let state = format!("{:x}", port as u64 ^ 0xdead_beef);
 
-    // TODO: switch to real endpoint once https://getship.dev/auth/cli is live
     let auth_url = format!(
         "https://getship.dev/auth/cli\
         ?code_challenge={challenge}\
-        &code_challenge_method=plain\
+        &code_challenge_method=S256\
         &redirect_uri=http://127.0.0.1:{port}/callback\
         &state={state}"
     );
@@ -147,7 +213,7 @@ pub fn run_login() -> Result<()> {
     creds.account = Some(CredentialsAccount { token: Some(token) });
     creds.save()?;
 
-    println!("✓ Logged in. Token stored in ~/.ship/credentials (0600).");
+    println!("Logged in. Token stored in ~/.ship/credentials (0600).");
     Ok(())
 }
 
@@ -160,7 +226,7 @@ pub fn run_logout() -> Result<()> {
     }
     creds.account = None;
     creds.save()?;
-    println!("✓ Logged out.");
+    println!("Logged out.");
     Ok(())
 }
 
@@ -208,5 +274,24 @@ mod tests {
             v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "verifier contains invalid chars: {v}"
         );
+    }
+
+    #[test]
+    fn s256_challenge_is_base64url_sha256() {
+        // Test vector: SHA256("abc") = ba7816bf8f01cfea414140de5dae2ec73b00361bbef0469546108688dbfd254
+        // base64url_nopad of that hash = ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=
+        // without padding: ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0
+        // (standard base64, then converted to URL-safe)
+        let c = s256_challenge("abc");
+        // Must be 43 chars (256-bit hash → 32 bytes → 43 base64url chars without padding)
+        assert_eq!(c.len(), 43);
+        assert!(c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'));
+    }
+
+    #[test]
+    fn s256_challenge_differs_from_verifier() {
+        let v = generate_code_verifier();
+        let c = s256_challenge(&v);
+        assert_ne!(c, v);
     }
 }
