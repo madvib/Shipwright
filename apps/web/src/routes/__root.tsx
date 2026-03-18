@@ -40,7 +40,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const isStudio = useRouterState({ select: (s) => s.location.pathname === '/studio' })
+  const isStudio = useRouterState({ select: (s) => s.location.pathname.startsWith('/studio') })
 
   return (
     <html lang="en" suppressHydrationWarning>

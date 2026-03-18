@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Github, Lock, Unlock, Loader2, ExternalLink, GitPullRequest, AlertCircle, ChevronRight } from 'lucide-react'
-import type { ProjectLibrary } from '../compiler/types'
+import type { ProjectLibrary } from '#/features/compiler/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,12 +29,11 @@ type GhState =
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface GitHubPanelProps {
-  library: ProjectLibrary
   modeName: string
   onImport: (library: ProjectLibrary) => void
 }
 
-export function GitHubPanel({ library, modeName, onImport }: GitHubPanelProps) {
+export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
   const [state, setState] = useState<GhState>({ step: 'disconnected' })
   const [search, setSearch] = useState('')
 

@@ -1,6 +1,51 @@
 import { Link } from '@tanstack/react-router'
-import { ThemeToggle } from '@ship/primitives'
+import { Sun, Moon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { authClient } from '#/lib/auth-client'
+
+type ThemeMode = 'light' | 'dark'
+
+function ThemeToggle() {
+  const [mode, setMode] = useState<ThemeMode>('dark')
+  useEffect(() => {
+    const stored = window.localStorage.getItem('theme')
+    const initial: ThemeMode = stored === 'light' || stored === 'dark'
+      ? stored
+      : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    setMode(initial)
+    applyTheme(initial)
+  }, [])
+  const set = (next: ThemeMode) => {
+    setMode(next)
+    applyTheme(next)
+  }
+  return (
+    <div className="flex items-center gap-1 rounded-full border bg-muted/20 p-1">
+      <button
+        onClick={() => set('light')}
+        className={`flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 transition-all ${mode === 'light' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+      >
+        <Sun className="size-3.5" />
+        <span className="text-[10px] font-bold uppercase tracking-tighter">Light</span>
+      </button>
+      <button
+        onClick={() => set('dark')}
+        className={`flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 transition-all ${mode === 'dark' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+      >
+        <Moon className="size-3.5" />
+        <span className="text-[10px] font-bold uppercase tracking-tighter">Dark</span>
+      </button>
+    </div>
+  )
+}
+
+function applyTheme(mode: ThemeMode) {
+  document.documentElement.classList.remove('light', 'dark')
+  document.documentElement.classList.add(mode)
+  document.documentElement.setAttribute('data-theme', mode)
+  document.documentElement.style.colorScheme = mode
+  window.localStorage.setItem('theme', mode)
+}
 
 export default function Header() {
   const { data: session, isPending } = authClient.useSession()
@@ -26,7 +71,7 @@ export default function Header() {
             className="rounded-md px-3 py-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             activeProps={{ className: 'active' }}
           >
-            Canvas
+            Workflow
           </Link>
           {import.meta.env.DEV && (
             <Link

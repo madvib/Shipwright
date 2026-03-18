@@ -97,7 +97,7 @@ describe('filterLibraryBySelection', () => {
 
   it('preserves non-filtered fields on the library', () => {
     const lib = makeLibrary({
-      modes: [{ id: 'default', name: 'default', description: '', target_agents: [], mcp_servers: [], skills: [], rules: [] }],
+      modes: [{ name: 'default', description: '', mcp_servers: [], skills: [], rules: [] }],
       active_mode: 'default',
     })
     const result = filterLibraryBySelection(lib, {

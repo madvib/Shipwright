@@ -3,7 +3,7 @@
  * Returns a map of file paths (relative to repo root) to their contents.
  */
 
-import type { ProjectLibrary, McpServerConfig, Skill, Rule, Permissions } from '@ship/ui'
+import type { ProjectLibrary, McpServerConfig, Permissions } from '@ship/ui'
 
 export function libraryToShipFiles(library: ProjectLibrary, modeName = 'default'): Record<string, string> {
   const files: Record<string, string> = {}
@@ -80,12 +80,12 @@ function buildMcpToml(servers: McpServerConfig[]): string {
 function buildPermissionsToml(permissions: Permissions): string {
   const lines: string[] = []
 
-  if (permissions.allow && permissions.allow.length > 0) {
-    const items = permissions.allow.map((a) => `"${a}"`).join(', ')
+  if (permissions.tools.allow.length > 0) {
+    const items = permissions.tools.allow.map((a) => `"${a}"`).join(', ')
     lines.push(`allow = [${items}]`)
   }
-  if (permissions.deny && permissions.deny.length > 0) {
-    const items = permissions.deny.map((d) => `"${d}"`).join(', ')
+  if (permissions.tools.deny.length > 0) {
+    const items = permissions.tools.deny.map((d) => `"${d}"`).join(', ')
     lines.push(`deny = [${items}]`)
   }
 
