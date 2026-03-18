@@ -2,12 +2,31 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Cloud connectivity settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CloudConfig {
+    /// Base URL for the Ship API. Defaults to "https://ship-studio.com".
+    pub base_url: Option<String>,
+}
+
+impl CloudConfig {
+    /// Return `<base_url><path>`, using the default base URL when none is configured.
+    pub fn get_api_url(&self, path: &str) -> String {
+        let base = self
+            .base_url
+            .as_deref()
+            .unwrap_or("https://ship-studio.com");
+        format!("{}{}", base.trim_end_matches('/'), path)
+    }
+}
+
 /// Global ~/.ship/config.toml
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ShipConfig {
     pub identity: Option<Identity>,
     pub defaults: Option<Defaults>,
     pub worktrees: Option<WorktreesConfig>,
+    pub cloud: Option<CloudConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,11 +244,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cloud_config_default_url() {
+        let cfg = CloudConfig::default();
+        assert_eq!(cfg.get_api_url("/api/profiles"), "https://ship-studio.com/api/profiles");
+    }
+
+    #[test]
+    fn cloud_config_custom_url() {
+        let cfg = CloudConfig { base_url: Some("https://staging.example.com".into()) };
+        assert_eq!(cfg.get_api_url("/api/profiles"), "https://staging.example.com/api/profiles");
+    }
+
+    #[test]
+    fn cloud_config_strips_trailing_slash() {
+        let cfg = CloudConfig { base_url: Some("https://staging.example.com/".into()) };
+        assert_eq!(cfg.get_api_url("/api/profiles"), "https://staging.example.com/api/profiles");
+    }
+
+    #[test]
     fn ship_config_round_trips() {
         let cfg = ShipConfig {
             identity: Some(Identity { name: "Alice".into(), email: Some("a@b.com".into()) }),
             defaults: Some(Defaults { provider: Some("claude".into()), mode: None }),
             worktrees: None,
+            cloud: None,
         };
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: ShipConfig = toml::from_str(&s).unwrap();

@@ -14,10 +14,11 @@ mod paths;
 mod permissions;
 mod profile;
 mod skill;
+mod sync;
 mod validate;
 
 use anyhow::Result;
-use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
+use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands, SyncCommand};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -47,9 +48,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
             }
-            Commands::Sync { pull: _, push: _ } => {
-                stub("sync", "Cloud sync requires a Ship account. Run: ship login")
-            }
+            Commands::Sync { cmd } => dispatch_sync(cmd),
             Commands::Server { .. } => {
                 stub("server", "Local server (port 7701) — coming soon")
             }
@@ -507,6 +506,17 @@ fn dispatch_profile(action: ProfileSyncCommands) -> Result<()> {
         ProfileSyncCommands::Pull { name, force } => {
             cloud::pull_profiles(name.as_deref(), force, &project_root)
         }
+    }
+}
+
+// ── Sync subcommands ──────────────────────────────────────────────────────────
+
+fn dispatch_sync(cmd: Option<SyncCommand>) -> Result<()> {
+    let project_root = std::env::current_dir()?;
+    match cmd {
+        None => sync::run_sync_status(&project_root),
+        Some(SyncCommand::Push) => sync::run_sync_push(&project_root),
+        Some(SyncCommand::Pull { force }) => sync::run_sync_pull(force, &project_root),
     }
 }
 

@@ -126,14 +126,10 @@ pub enum Commands {
     },
 
     // ── Cloud sync (account required) ─────────────────────────────────────────
-    /// Sync modes with your Ship cloud library
+    /// Sync agent profiles with the Ship cloud (push/pull)
     Sync {
-        /// Download cloud modes to ~/.ship/modes/
-        #[arg(long)]
-        pull: bool,
-        /// Upload local modes to cloud
-        #[arg(long)]
-        push: bool,
+        #[command(subcommand)]
+        cmd: Option<SyncCommand>,
     },
 
     // ── Local server ──────────────────────────────────────────────────────────
@@ -238,6 +234,18 @@ pub enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SyncCommand {
+    /// Upload .ship/agents/profiles/ to the Ship cloud (requires login)
+    Push,
+    /// Download profiles from the Ship cloud (requires login)
+    Pull {
+        /// Overwrite local files even when the local copy is newer
+        #[arg(long)]
+        force: bool,
     },
 }
 
