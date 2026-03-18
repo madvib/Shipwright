@@ -107,12 +107,12 @@ function ProfilesPage() {
       )}
       <ConfirmDialog
         open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
         title="Delete profile"
         message={`Are you sure you want to delete "${deleteTargetProfile?.name || 'this profile'}"? This action cannot be undone.`}
         confirmLabel="Delete"
-        variant="danger"
+        destructive
       />
     </div>
   )

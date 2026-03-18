@@ -3,30 +3,30 @@ import { AlertTriangle, X } from 'lucide-react'
 
 interface ConfirmDialogProps {
   open: boolean
-  onClose: () => void
+  onCancel: () => void
   onConfirm: () => void
   title: string
   message: string
   confirmLabel?: string
   cancelLabel?: string
-  variant?: 'danger' | 'default'
+  destructive?: boolean
 }
 
 export function ConfirmDialog({
   open,
-  onClose,
+  onCancel,
   onConfirm,
   title,
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
-  variant = 'default',
+  destructive = false,
 }: ConfirmDialogProps) {
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCancel()
     },
-    [onClose],
+    [onCancel],
   )
 
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -40,14 +40,14 @@ export function ConfirmDialog({
 
   if (!open) return null
 
-  const isDanger = variant === 'danger'
+  const isDanger = destructive
 
   return (
     <>
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={onCancel}
       />
 
       {/* Dialog */}
@@ -69,7 +69,7 @@ export function ConfirmDialog({
               </h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={onCancel}
               aria-label="Close"
               className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition"
             >
@@ -86,7 +86,7 @@ export function ConfirmDialog({
           <div className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3.5">
             <button
               ref={cancelRef}
-              onClick={onClose}
+              onClick={onCancel}
               className="rounded-lg border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
               {cancelLabel}
@@ -94,7 +94,7 @@ export function ConfirmDialog({
             <button
               onClick={() => {
                 onConfirm()
-                onClose()
+                onCancel()
               }}
               className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                 isDanger
