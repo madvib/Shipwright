@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Copy, CheckCheck, Download, Zap, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import { PROVIDER_SHORT, triggerDownload } from '#/features/compiler/components/ModeHeader'
 import type { CompileState } from '#/features/compiler/useCompiler'
@@ -90,6 +91,7 @@ export function InspectorPanel({ state, selectedProviders }: InspectorPanelProps
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+      toast.success('Copied to clipboard')
     })
   }
 

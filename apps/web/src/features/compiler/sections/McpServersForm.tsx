@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Layers } from 'lucide-react'
+import { Layers, Server } from 'lucide-react'
 import { McpServerListEditor, McpRegistryBrowser } from '@ship/ui'
 import type { McpServerConfig } from '@ship/ui'
 
@@ -43,7 +43,14 @@ export function McpServersForm({ servers, onChange }: Props) {
       </div>
 
       {tab === 'manual' ? (
-        <McpServerListEditor servers={servers} onChange={onChange} />
+        servers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-8 px-4 text-center">
+            <Server className="size-5 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">No MCP servers yet. Add one or browse the registry.</p>
+          </div>
+        ) : (
+          <McpServerListEditor servers={servers} onChange={onChange} />
+        )
       ) : (
         <McpRegistryBrowser onAdd={addFromRegistry} addedIds={addedIds} />
       )}

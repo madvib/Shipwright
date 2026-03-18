@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Upload, Download, PanelLeft, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import type { CompileState } from '#/features/compiler/useCompiler'
 import type { ProjectLibrary } from '#/features/compiler/types'
@@ -34,13 +35,21 @@ function ExportButton({ state, selectedProviders, getInspectorTabs }: ExportButt
   const output = state.status === 'ok' ? state.output : null
 
   const downloadProvider = (p: string) => {
-    getInspectorTabs(p).forEach((tab) => triggerDownload(tab.content, tab.filename))
+    const tabs = getInspectorTabs(p)
+    tabs.forEach((tab) => triggerDownload(tab.content, tab.filename))
     setOpen(false)
+    toast.success(`Exported ${tabs.length} file${tabs.length !== 1 ? 's' : ''} for ${PROVIDER_SHORT[p] ?? p}`)
   }
 
   const downloadAll = () => {
-    selectedProviders.forEach((p) => downloadProvider(p))
+    let fileCount = 0
+    selectedProviders.forEach((p) => {
+      const tabs = getInspectorTabs(p)
+      tabs.forEach((tab) => triggerDownload(tab.content, tab.filename))
+      fileCount += tabs.length
+    })
     setOpen(false)
+    toast.success(`Exported ${fileCount} file${fileCount !== 1 ? 's' : ''}`)
   }
 
   return (
@@ -117,6 +126,7 @@ export function ModeHeader({
       <button
         onClick={onToggleLibrary}
         title={showLibrary ? 'Hide library' : 'Show library'}
+        aria-label={showLibrary ? 'Hide library' : 'Show library'}
         className={`flex size-7 items-center justify-center rounded-md transition hover:bg-muted ${showLibrary ? 'text-foreground' : 'text-muted-foreground'}`}
       >
         <PanelLeft className="size-3.5" />
@@ -142,7 +152,7 @@ export function ModeHeader({
       </div>
       <div className="ml-auto flex items-center gap-2">
         {isGenerating && (
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" aria-label="Compiling configuration" aria-busy="true">
             <Loader2 className="size-3 animate-spin" />
             <span className="hidden sm:inline">Generating…</span>
           </div>
@@ -152,6 +162,7 @@ export function ModeHeader({
         )}
         <button
           onClick={onOpenImport}
+          aria-label="Import"
           className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
         >
           <Upload className="size-3" />

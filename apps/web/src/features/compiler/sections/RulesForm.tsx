@@ -34,9 +34,10 @@ export function RulesForm({ rules, onChange }: Props) {
   return (
     <div className="space-y-2">
       {rules.length === 0 && (
-        <p className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
-          No rules added yet.
-        </p>
+        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-8 px-4 text-center">
+          <ScrollText className="size-5 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">No rules added yet.</p>
+        </div>
       )}
 
       {rules.map((rule, idx) => (
@@ -60,6 +61,8 @@ export function RulesForm({ rules, onChange }: Props) {
             </button>
             <button
               onClick={() => remove(idx)}
+              title="Remove rule"
+              aria-label="Remove rule"
               className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 className="size-3" />

@@ -3,9 +3,13 @@ import {
   Scripts,
   createRootRouteWithContext,
   useRouterState,
+  type ErrorComponentProps,
 } from '@tanstack/react-router'
+import { Toaster } from 'sonner'
 import Footer from '../components/Footer'
 import Header from '../components/Header'
+import { DefaultCatchBoundary } from '../components/error/DefaultCatchBoundary'
+import { NotFound } from '../components/error/NotFound'
 
 import TanStackQueryProvider from '../integrations/tanstack-query/root-provider'
 
@@ -36,6 +40,8 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
     ],
   }),
+  errorComponent: (props: ErrorComponentProps) => <DefaultCatchBoundary {...props} />,
+  notFoundComponent: () => <NotFound />,
   shellComponent: RootDocument,
 })
 
@@ -54,6 +60,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           <Header />
           {children}
           {!isAppView && <Footer />}
+          <Toaster theme="system" position="bottom-right" richColors />
         </TanStackQueryProvider>
         <Scripts />
       </body>

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Search, Plus, Check, Server, BookOpen, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { CURATED_MCP, CURATED_SKILLS } from '#/features/compiler/components/LibraryPanel'
 
@@ -63,7 +64,7 @@ function RegistryPage() {
                       <span className="text-sm font-semibold text-foreground">{item.displayName}</span>
                     </div>
                     <button
-                      onClick={() => addMcpServer(item.config)}
+                      onClick={() => { addMcpServer(item.config); toast.success(`Added "${item.displayName}"`) }}
                       disabled={isAdded}
                       className={`shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
                         isAdded
@@ -104,7 +105,7 @@ function RegistryPage() {
                   <div className="flex items-start justify-between mb-2">
                     <span className="text-sm font-semibold text-foreground">{item.displayName}</span>
                     <button
-                      onClick={() => addSkill(item.skill)}
+                      onClick={() => { addSkill(item.skill); toast.success(`Added "${item.displayName}"`) }}
                       disabled={isAdded}
                       className={`shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
                         isAdded

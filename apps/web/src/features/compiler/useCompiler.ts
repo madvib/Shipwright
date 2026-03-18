@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
+import { toast } from 'sonner'
 import type { ProjectLibrary, CompileOutputMap } from './types'
 
 type WasmModule = {
@@ -52,7 +53,9 @@ export function useCompiler() {
       setState({ status: 'ok', output, elapsed })
     } catch (e) {
       if (ctrl.signal.aborted) return
-      setState({ status: 'error', message: e instanceof Error ? e.message : String(e) })
+      const message = e instanceof Error ? e.message : String(e)
+      setState({ status: 'error', message })
+      toast.error('Compile failed', { description: message })
     }
   }, [])
 

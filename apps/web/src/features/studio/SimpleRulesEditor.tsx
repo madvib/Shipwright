@@ -51,7 +51,7 @@ export function SimpleRulesEditor({ rules, onChange }: SimpleRulesEditorProps) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 font-mono text-[11px]">
       {rules.length === 0 && editIdx === null && (
-        <p className="text-muted-foreground/50 italic py-1">No rules — click + Add to start</p>
+        <p className="text-muted-foreground/50 italic py-1">No rules yet — click Add to start</p>
       )}
       {rules.map((rule, idx) => (
         <div key={idx} className="group flex items-baseline gap-1.5 py-0.5">
