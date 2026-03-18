@@ -12,8 +12,8 @@
   },
 
   "onCreateCommand": "sudo chown -R vscode:vscode /usr/local/cargo/registry /usr/local/cargo/git /workspaces/ship/target 2>/dev/null; rustup target add wasm32-unknown-unknown && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && sudo apt-get update && sudo apt-get install -y tmux",
-  "postCreateCommand": "pnpm install && cargo build -p ship-studio-cli -p mcp",
-  "postStartCommand": "git pull --ff-only origin main 2>/dev/null || true",
+  "postCreateCommand": "pnpm install && cargo build -p ship-studio-cli -p mcp && cargo install --path apps/mcp --bin ship-mcp",
+  "postStartCommand": "git pull --ff-only origin main 2>/dev/null || true && cargo install --path apps/mcp --bin ship-mcp 2>/dev/null || true",
 
   "mounts": [
     "source=ship-cargo-registry,target=/usr/local/cargo/registry,type=volume",
