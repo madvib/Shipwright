@@ -2147,6 +2147,119 @@ mod tests {
 }
 
 #[cfg(test)]
+mod normalization_tests {
+    use super::ShipServer;
+
+    // ── normalize_mode_tool_id ──────────────────────────────────────────
+
+    #[test]
+    fn strips_ship_prefix() {
+        assert_eq!(ShipServer::normalize_mode_tool_id("ship_create_note"), "create_note");
+    }
+
+    #[test]
+    fn strips_tool_suffix() {
+        assert_eq!(ShipServer::normalize_mode_tool_id("list_notes_tool"), "list_notes");
+    }
+
+    #[test]
+    fn strips_both_prefix_and_suffix() {
+        assert_eq!(
+            ShipServer::normalize_mode_tool_id("ship_create_workspace_tool"),
+            "create_workspace"
+        );
+    }
+
+    #[test]
+    fn lowercases_and_replaces_hyphens() {
+        assert_eq!(
+            ShipServer::normalize_mode_tool_id("Ship-Create-Note"),
+            "create_note"
+        );
+    }
+
+    #[test]
+    fn already_normalized_unchanged() {
+        assert_eq!(ShipServer::normalize_mode_tool_id("create_note"), "create_note");
+    }
+
+    #[test]
+    fn trims_whitespace() {
+        assert_eq!(ShipServer::normalize_mode_tool_id("  ship_foo_tool  "), "foo");
+    }
+
+    // ── is_core_tool ────────────────────────────────────────────────────
+
+    #[test]
+    fn core_tools_are_recognized() {
+        let core_tools = [
+            "open_project",
+            "create_note",
+            "list_notes_tool",
+            "create_adr",
+            "activate_workspace",
+            "create_workspace",
+            "complete_workspace",
+            "set_mode",
+            "start_session",
+            "end_session",
+            "log_progress",
+            "list_skills",
+            "create_job",
+            "update_job",
+            "list_jobs",
+        ];
+        for tool in core_tools {
+            assert!(
+                ShipServer::is_core_tool(tool),
+                "{tool} should be a core tool"
+            );
+        }
+    }
+
+    #[test]
+    fn core_tool_with_prefix_and_suffix() {
+        assert!(ShipServer::is_core_tool("ship_create_workspace_tool"));
+        assert!(ShipServer::is_core_tool("ship_log_progress_tool"));
+    }
+
+    #[test]
+    fn non_core_tool_is_not_core() {
+        assert!(!ShipServer::is_core_tool("create_spec"));
+        assert!(!ShipServer::is_core_tool("update_note"));
+        assert!(!ShipServer::is_core_tool("random_tool"));
+    }
+
+    // ── mode_allows_tool ────────────────────────────────────────────────
+
+    #[test]
+    fn empty_active_tools_allows_everything() {
+        assert!(ShipServer::mode_allows_tool("anything", &[]));
+        assert!(ShipServer::mode_allows_tool("create_spec", &[]));
+    }
+
+    #[test]
+    fn tool_in_active_tools_allowed() {
+        let active = vec!["create_spec".to_string(), "list_notes".to_string()];
+        assert!(ShipServer::mode_allows_tool("create_spec", &active));
+        assert!(ShipServer::mode_allows_tool("list_notes", &active));
+    }
+
+    #[test]
+    fn tool_not_in_active_tools_blocked() {
+        let active = vec!["create_spec".to_string()];
+        assert!(!ShipServer::mode_allows_tool("delete_everything", &active));
+    }
+
+    #[test]
+    fn normalization_applied_to_both_sides() {
+        let active = vec!["ship_create_spec_tool".to_string()];
+        assert!(ShipServer::mode_allows_tool("create_spec", &active));
+        assert!(ShipServer::mode_allows_tool("ship_create_spec_tool", &active));
+    }
+}
+
+#[cfg(test)]
 mod worktree_dir_tests {
     use super::configured_worktree_dir_impl;
     use std::path::PathBuf;

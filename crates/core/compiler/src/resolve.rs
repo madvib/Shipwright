@@ -313,7 +313,7 @@ fn apply_feature_skill_filter(skills: &mut Vec<Skill>, feature: &FeatureOverride
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ModeConfig, ProjectConfig};
+    use crate::types::{AiConfig, ModeConfig, ProjectConfig};
 
     fn make_skill(id: &str) -> Skill {
         Skill {
@@ -391,6 +391,344 @@ mod tests {
         assert_eq!(resolved.mcp_servers[0].id, "github");
         assert_eq!(resolved.skills.len(), 1);
         assert_eq!(resolved.skills[0].id, "alpha");
+    }
+
+    // ── Provider normalization ─────────────────────────────────────────────
+
+    #[test]
+    fn providers_normalized_to_lowercase() {
+        let config = ProjectConfig {
+            providers: vec!["CLAUDE".to_string(), "Gemini".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.providers, vec!["claude", "gemini"]);
+    }
+
+    #[test]
+    fn duplicate_providers_deduplicated() {
+        let config = ProjectConfig {
+            providers: vec![
+                "claude".to_string(),
+                "Claude".to_string(),
+                "CLAUDE".to_string(),
+            ],
+            ..Default::default()
+        };
+        let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.providers, vec!["claude"]);
+    }
+
+    #[test]
+    fn unknown_providers_dropped() {
+        let config = ProjectConfig {
+            providers: vec!["claude".to_string(), "unknown-ai".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.providers, vec!["claude"]);
+    }
+
+    #[test]
+    fn empty_and_whitespace_providers_dropped() {
+        let config = ProjectConfig {
+            providers: vec!["".to_string(), "  ".to_string(), "claude".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.providers, vec!["claude"]);
+    }
+
+    #[test]
+    fn all_invalid_providers_falls_back_to_claude() {
+        let config = ProjectConfig {
+            providers: vec!["invalid".to_string(), "".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.providers, vec!["claude"]);
+    }
+
+    // ── Mode target_agents ─────────────────────────────────────────────────
+
+    #[test]
+    fn mode_target_agents_overrides_project_providers() {
+        let config = ProjectConfig {
+            providers: vec!["gemini".to_string()],
+            modes: vec![ModeConfig {
+                id: "cursor-mode".to_string(),
+                name: "Cursor Mode".to_string(),
+                target_agents: vec!["cursor".to_string()],
+                ..Default::default()
+            }],
+            active_mode: Some("cursor-mode".to_string()),
+            ..Default::default()
+        };
+        let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.providers, vec!["cursor"]);
+    }
+
+    #[test]
+    fn feature_providers_override_mode_target_agents() {
+        let config = ProjectConfig {
+            modes: vec![ModeConfig {
+                id: "mode1".to_string(),
+                name: "Mode 1".to_string(),
+                target_agents: vec!["gemini".to_string()],
+                ..Default::default()
+            }],
+            active_mode: Some("mode1".to_string()),
+            ..Default::default()
+        };
+        let feature = FeatureOverrides {
+            providers: vec!["codex".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(
+            &config,
+            &[],
+            &[],
+            &Permissions::default(),
+            &[],
+            Some(&feature),
+            None,
+        );
+        assert_eq!(resolved.providers, vec!["codex"]);
+    }
+
+    // ── Rule normalization ────────────────────────────────────────────────
+
+    #[test]
+    fn mode_rules_strip_numeric_prefix_and_md_suffix() {
+        let config = ProjectConfig {
+            modes: vec![ModeConfig {
+                id: "strict".to_string(),
+                name: "Strict".to_string(),
+                rules: vec!["style".to_string()],
+                ..Default::default()
+            }],
+            active_mode: Some("strict".to_string()),
+            ..Default::default()
+        };
+        let rules = vec![
+            Rule {
+                file_name: "001-style.md".to_string(),
+                content: "Style rules".to_string(),
+                always_apply: true,
+                globs: vec![],
+                description: None,
+            },
+            Rule {
+                file_name: "002-workflow.md".to_string(),
+                content: "Workflow rules".to_string(),
+                always_apply: true,
+                globs: vec![],
+                description: None,
+            },
+        ];
+        let resolved = resolve(&config, &[], &rules, &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.rules.len(), 1);
+        assert_eq!(resolved.rules[0].file_name, "001-style.md");
+    }
+
+    // ── Feature overrides for servers and skills ─────────────────────────
+
+    #[test]
+    fn feature_overrides_filter_servers() {
+        let config = ProjectConfig {
+            mcp_servers: vec![make_server("github"), make_server("linear"), make_server("slack")],
+            ..Default::default()
+        };
+        let feature = FeatureOverrides {
+            mcp_servers: vec!["github".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(
+            &config,
+            &[],
+            &[],
+            &Permissions::default(),
+            &[],
+            Some(&feature),
+            None,
+        );
+        assert_eq!(resolved.mcp_servers.len(), 1);
+        assert_eq!(resolved.mcp_servers[0].id, "github");
+    }
+
+    #[test]
+    fn feature_overrides_filter_skills() {
+        let skills = vec![make_skill("alpha"), make_skill("beta"), make_skill("gamma")];
+        let config = ProjectConfig::default();
+        let feature = FeatureOverrides {
+            skills: vec!["beta".to_string()],
+            ..Default::default()
+        };
+        let resolved = resolve(
+            &config,
+            &skills,
+            &[],
+            &Permissions::default(),
+            &[],
+            Some(&feature),
+            None,
+        );
+        assert_eq!(resolved.skills.len(), 1);
+        assert_eq!(resolved.skills[0].id, "beta");
+    }
+
+    #[test]
+    fn empty_feature_filter_does_not_restrict() {
+        let skills = vec![make_skill("alpha"), make_skill("beta")];
+        let config = ProjectConfig {
+            mcp_servers: vec![make_server("github")],
+            ..Default::default()
+        };
+        let feature = FeatureOverrides::default(); // all empty
+        let resolved = resolve(
+            &config,
+            &skills,
+            &[],
+            &Permissions::default(),
+            &[],
+            Some(&feature),
+            None,
+        );
+        assert_eq!(resolved.skills.len(), 2);
+        assert_eq!(resolved.mcp_servers.len(), 1);
+    }
+
+    // ── Feature model override ──────────────────────────────────────────
+
+    #[test]
+    fn feature_model_overrides_project_model() {
+        let config = ProjectConfig {
+            ai: Some(AiConfig {
+                model: Some("project-model".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let feature = FeatureOverrides {
+            model: Some("feature-model".to_string()),
+            ..Default::default()
+        };
+        let resolved = resolve(
+            &config,
+            &[],
+            &[],
+            &Permissions::default(),
+            &[],
+            Some(&feature),
+            None,
+        );
+        assert_eq!(resolved.model.as_deref(), Some("feature-model"));
+    }
+
+    // ── Empty mode filter arrays ────────────────────────────────────────
+
+    #[test]
+    fn mode_with_empty_filters_passes_all_through() {
+        let config = ProjectConfig {
+            mcp_servers: vec![make_server("a"), make_server("b")],
+            modes: vec![ModeConfig {
+                id: "open".to_string(),
+                name: "Open".to_string(),
+                // All filter arrays empty — should not restrict anything
+                mcp_servers: vec![],
+                skills: vec![],
+                rules: vec![],
+                ..Default::default()
+            }],
+            active_mode: Some("open".to_string()),
+            ..Default::default()
+        };
+        let skills = vec![make_skill("x"), make_skill("y")];
+        let resolved = resolve(&config, &skills, &[], &Permissions::default(), &[], None, None);
+        assert_eq!(resolved.mcp_servers.len(), 2);
+        assert_eq!(resolved.skills.len(), 2);
+    }
+
+    // ── Nonexistent mode override ignored ───────────────────────────────
+
+    #[test]
+    fn nonexistent_mode_override_falls_back_to_project_mode() {
+        let config = ProjectConfig {
+            modes: vec![ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                skills: vec!["plan-skill".to_string()],
+                ..Default::default()
+            }],
+            active_mode: Some("planning".to_string()),
+            ..Default::default()
+        };
+        let skills = vec![make_skill("plan-skill"), make_skill("other")];
+        let resolved = resolve(
+            &config,
+            &skills,
+            &[],
+            &Permissions::default(),
+            &[],
+            None,
+            Some("nonexistent"),
+        );
+        // nonexistent mode override is discarded, falls back to project active_mode
+        assert_eq!(resolved.active_mode.as_deref(), Some("planning"));
+    }
+
+    // ── resolve_library passthrough fields ─────────────────────────────
+
+    #[test]
+    fn resolve_library_passes_through_all_fields() {
+        use crate::types::{AgentProfile, PluginEntry, PluginsManifest};
+        use crate::types::agent_profile::*;
+
+        let library = super::ProjectLibrary {
+            plugins: PluginsManifest {
+                install: vec![PluginEntry {
+                    id: "test-plugin".to_string(),
+                    provider: "claude".to_string(),
+                }],
+                scope: "project".to_string(),
+            },
+            claude_settings_extra: Some(serde_json::json!({"customKey": true})),
+            agent_profiles: vec![AgentProfile {
+                profile: ProfileMeta {
+                    id: "test-agent".to_string(),
+                    name: "Test Agent".to_string(),
+                    version: None,
+                    description: None,
+                    providers: vec![],
+                },
+                skills: SkillRefs::default(),
+                mcp: McpRefs::default(),
+                plugins: PluginRefs::default(),
+                permissions: ProfilePermissions::default(),
+                rules: ProfileRules::default(),
+                provider_settings: Default::default(),
+            }],
+            claude_team_agents: vec![("team-lead.md".to_string(), "# Team Lead".to_string())],
+            env: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("KEY".to_string(), "VALUE".to_string());
+                m
+            },
+            available_models: vec!["model-a".to_string()],
+            ..Default::default()
+        };
+
+        let resolved = super::resolve_library(&library, None, None);
+
+        assert_eq!(resolved.plugins.install.len(), 1);
+        assert_eq!(resolved.plugins.install[0].id, "test-plugin");
+        assert!(resolved.claude_settings_extra.is_some());
+        assert_eq!(resolved.agent_profiles.len(), 1);
+        assert_eq!(resolved.agent_profiles[0].profile.id, "test-agent");
+        assert_eq!(resolved.claude_team_agents.len(), 1);
+        assert_eq!(resolved.claude_team_agents[0].0, "team-lead.md");
+        assert_eq!(resolved.env.get("KEY").map(String::as_str), Some("VALUE"));
+        assert_eq!(resolved.available_models, vec!["model-a"]);
     }
 
     #[test]

@@ -1517,6 +1517,145 @@ mod tests {
         assert_eq!(desc.mcp_key.as_str(), "mcp_servers");
     }
 
+    // ── Active mode in context ───────────────────────────────────────────
+
+    #[test]
+    fn active_mode_appears_in_context_content() {
+        let r = ResolvedConfig {
+            rules: vec![make_rule("style.md", "Be concise.")],
+            active_mode: Some("planning".to_string()),
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        let content = out.context_content.expect("must have context");
+        assert!(
+            content.contains("planning"),
+            "context must include active mode notice"
+        );
+    }
+
+    #[test]
+    fn no_active_mode_no_mode_notice() {
+        let r = ResolvedConfig {
+            rules: vec![make_rule("style.md", "Be concise.")],
+            active_mode: None,
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        let content = out.context_content.expect("must have context");
+        assert!(
+            !content.contains("active mode"),
+            "no mode → no mode notice in context"
+        );
+    }
+
+    // ── Agent profiles thread through compile ───────────────────────────
+
+    #[test]
+    fn agent_profiles_compiled_into_agent_files() {
+        use crate::types::agent_profile::*;
+
+        let profile = AgentProfile {
+            profile: ProfileMeta {
+                id: "reviewer".to_string(),
+                name: "Code Reviewer".to_string(),
+                version: None,
+                description: Some("Reviews code".to_string()),
+                providers: vec!["claude".to_string()],
+            },
+            skills: SkillRefs::default(),
+            mcp: McpRefs::default(),
+            plugins: PluginRefs::default(),
+            permissions: ProfilePermissions::default(),
+            rules: ProfileRules {
+                inline: Some("Review carefully.".to_string()),
+            },
+            provider_settings: Default::default(),
+        };
+
+        let r = ResolvedConfig {
+            agent_profiles: vec![profile],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        assert!(
+            out.agent_files.contains_key(".claude/agents/reviewer.md"),
+            "agent profile must be compiled into agent_files"
+        );
+        let content = &out.agent_files[".claude/agents/reviewer.md"];
+        assert!(content.contains("Code Reviewer"));
+        assert!(content.contains("Review carefully."));
+    }
+
+    // ── Team agents passthrough ─────────────────────────────────────────
+
+    #[test]
+    fn claude_team_agents_passed_through_to_agent_files() {
+        let r = ResolvedConfig {
+            claude_team_agents: vec![(
+                "lead.md".to_string(),
+                "# Team Lead\nYou lead the team.".to_string(),
+            )],
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        assert!(
+            out.agent_files.contains_key(".claude/agents/lead.md"),
+            "team agent must appear in agent_files"
+        );
+        assert_eq!(
+            out.agent_files[".claude/agents/lead.md"],
+            "# Team Lead\nYou lead the team."
+        );
+    }
+
+    #[test]
+    fn team_agents_only_for_claude() {
+        let r = ResolvedConfig {
+            claude_team_agents: vec![("lead.md".to_string(), "content".to_string())],
+            ..resolved(vec![])
+        };
+        for provider in &["gemini", "codex", "cursor"] {
+            let out = compile(&r, provider).unwrap();
+            assert!(
+                !out.agent_files.contains_key(".claude/agents/lead.md"),
+                "{provider} must not get claude team agents"
+            );
+        }
+    }
+
+    // ── claude_settings_extra passthrough ────────────────────────────────
+
+    #[test]
+    fn claude_settings_extra_merged_into_patch() {
+        let r = ResolvedConfig {
+            claude_settings_extra: Some(serde_json::json!({
+                "customFeature": true,
+                "experimentalMode": "fast"
+            })),
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        let patch = out
+            .claude_settings_patch
+            .expect("extra settings must trigger patch");
+        assert_eq!(patch["customFeature"], true);
+        assert_eq!(patch["experimentalMode"], "fast");
+    }
+
+    #[test]
+    fn claude_settings_extra_null_no_patch() {
+        let r = ResolvedConfig {
+            claude_settings_extra: Some(serde_json::Value::Null),
+            ..resolved(vec![])
+        };
+        let out = compile(&r, "claude").unwrap();
+        assert!(
+            out.claude_settings_patch.is_none(),
+            "null extra must not trigger patch"
+        );
+    }
+
     // ── Codex TOML output ─────────────────────────────────────────────────────
 
     /// Source: https://developers.openai.com/codex/mcp
