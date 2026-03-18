@@ -223,10 +223,7 @@ fn skill_ref_exists(skills_dir: &Path, skill_id: &str) -> bool {
 }
 
 fn load_mcp_file(path: &Path) -> McpFile {
-    if !path.exists() { return McpFile::default(); }
-    std::fs::read_to_string(path).ok()
-        .and_then(|s| toml::from_str::<McpFile>(&s).ok())
-        .unwrap_or_default()
+    McpFile::load(path).unwrap_or_default()
 }
 
 /// Returns an error message if the entry is missing required fields; None if valid.

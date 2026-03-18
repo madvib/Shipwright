@@ -25,41 +25,9 @@ pub fn load_library(agents_dir: &Path) -> Result<ProjectLibrary> {
 
 // ── MCP servers ───────────────────────────────────────────────────────────────
 
-#[derive(Deserialize, Default)]
-struct McpFile {
-    #[serde(default)]
-    servers: Vec<McpEntry>,
-}
-
-#[derive(Deserialize)]
-struct McpEntry {
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    command: Option<String>,
-    #[serde(default)]
-    args: Vec<String>,
-    #[serde(default)]
-    env: HashMap<String, String>,
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default = "default_scope")]
-    scope: String,
-    #[serde(default)]
-    server_type: Option<String>,
-    #[serde(default)]
-    disabled: bool,
-    #[serde(default)]
-    timeout_secs: Option<u32>,
-}
-
-fn default_scope() -> String { "project".to_string() }
-
 fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
     let path = agents_dir.join("mcp.toml");
-    if !path.exists() { return Ok(vec![]); }
-    let file: McpFile = toml::from_str(&std::fs::read_to_string(&path)?)?;
+    let file = crate::mcp::McpFile::load(&path)?;
     Ok(file.servers.into_iter().map(|e| {
         let server_type = match e.server_type.as_deref() {
             Some("http") => McpServerType::Http,
@@ -77,7 +45,7 @@ fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
             server_type,
             url: e.url,
             disabled: e.disabled,
-            timeout_secs: e.timeout_secs,
+            timeout_secs: None,
         }
     }).collect())
 }

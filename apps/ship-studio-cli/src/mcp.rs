@@ -29,21 +29,68 @@ pub struct McpEntry {
 
 fn default_scope() -> String { "project".to_string() }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct McpFile {
+/// On-disk format: `[mcp.servers.<key>]` tables keyed by server id.
+#[derive(Debug, Clone, Deserialize, Default)]
+struct RawMcpFile {
     #[serde(default)]
+    mcp: RawMcpSection,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct RawMcpSection {
+    #[serde(default)]
+    servers: HashMap<String, McpEntry>,
+}
+
+/// Legacy flat array format: `servers = [{ id = "ship", ... }]`
+#[derive(Debug, Clone, Deserialize, Default)]
+struct LegacyMcpFile {
+    #[serde(default)]
+    servers: Vec<McpEntry>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct McpFile {
     pub servers: Vec<McpEntry>,
 }
 
 impl McpFile {
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() { return Ok(Self::default()); }
-        Ok(toml::from_str(&std::fs::read_to_string(path)?)?)
+        let text = std::fs::read_to_string(path)?;
+        // Try keyed table format first: [mcp.servers.<key>]
+        if let Ok(raw) = toml::from_str::<RawMcpFile>(&text) {
+            if !raw.mcp.servers.is_empty() {
+                let servers = raw.mcp.servers.into_iter().map(|(key, mut entry)| {
+                    if entry.id.is_empty() { entry.id = key; }
+                    entry
+                }).collect();
+                return Ok(Self { servers });
+            }
+        }
+        // Fallback: flat array format { servers = [{...}] }
+        if let Ok(legacy) = toml::from_str::<LegacyMcpFile>(&text) {
+            return Ok(Self { servers: legacy.servers });
+        }
+        Ok(Self::default())
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
-        std::fs::write(path, toml::to_string_pretty(self)?)?;
+        // Write back in keyed table format: [mcp.servers.<id>]
+        let mut map = HashMap::new();
+        for s in &self.servers {
+            map.insert(s.id.clone(), s.clone());
+        }
+        let raw = toml::Value::Table({
+            let mut root = toml::map::Map::new();
+            let mut mcp = toml::map::Map::new();
+            let servers_val = toml::Value::try_from(map)?;
+            mcp.insert("servers".into(), servers_val);
+            root.insert("mcp".into(), toml::Value::Table(mcp));
+            root
+        });
+        std::fs::write(path, toml::to_string_pretty(&raw)?)?;
         Ok(())
     }
 }
