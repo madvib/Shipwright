@@ -7,6 +7,8 @@ import { getInspectorTabs } from '#/features/compiler/components/InspectorPanel'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import { PROVIDER_SHORT, triggerDownload } from '#/features/compiler/components/ModeHeader'
 import { authClient } from '#/lib/auth-client'
+import { PushToGitHub } from '#/components/github/PushToGitHub'
+import { ConnectGitHub } from '#/components/github/ConnectGitHub'
 
 export const Route = createFileRoute('/studio/export')({ component: ExportPage })
 
@@ -189,6 +191,9 @@ function NoCLIState({ hasOutput, onDownloadAll }: { hasOutput: boolean; onDownlo
           </Link>
         </div>
       )}
+
+      {/* GitHub connect nudge */}
+      <ConnectGitHub variant="inline" />
     </div>
   )
 }
@@ -228,6 +233,9 @@ function CliNoAccountState({ modeName }: { modeName: string }) {
           <Link to="/studio" className="text-primary no-underline hover:underline">Sign in →</Link>
         </p>
       </div>
+
+      {/* GitHub connect nudge */}
+      <ConnectGitHub variant="inline" />
     </div>
   )
 }
@@ -241,18 +249,25 @@ function CliAndAccountState({
   output: Record<string, unknown> | null
   selectedProviders: string[]
 }) {
+  const hasOutput = Boolean(output && selectedProviders.length > 0)
+
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-        <p className="text-sm font-medium text-foreground">Auto-syncing</p>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border/60 bg-card p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+          <p className="text-sm font-medium text-foreground">Auto-syncing</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Changes sync automatically when saved.{' '}
+          {hasOutput && (
+            <span>{selectedProviders.length} provider{selectedProviders.length !== 1 ? 's' : ''} active.</span>
+          )}
+        </p>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Changes sync automatically when saved.{' '}
-        {output && selectedProviders.length > 0 && (
-          <span>{selectedProviders.length} provider{selectedProviders.length !== 1 ? 's' : ''} active.</span>
-        )}
-      </p>
+
+      {/* Push to GitHub */}
+      <PushToGitHub hasOutput={hasOutput} />
     </div>
   )
 }
