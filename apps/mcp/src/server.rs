@@ -4,92 +4,25 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters},
     model::{
-        AnnotateAble, CallToolRequestParams, CallToolResult, Content, Implementation,
+        CallToolRequestParams, CallToolResult, Content, Implementation,
         ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
-        ProtocolVersion, RawResource, RawResourceTemplate, ReadResourceRequestParams,
-        ReadResourceResult, ResourceContents, ServerCapabilities, ServerInfo, Tool,
+        ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, ResourceContents,
+        ServerCapabilities, ServerInfo, Tool,
     },
     service::RequestContext,
     tool, tool_router,
 };
-use runtime::project::{get_active_project_global, get_project_dir, set_active_project_global};
-use runtime::{
-    get_active_agent, get_config, get_effective_skill, list_effective_skills, list_events_since,
-    list_models, list_providers, read_log, set_active_agent,
-    workspace::{
-        CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest,
-        EndWorkspaceSessionRequest as RuntimeEndWorkspaceSessionRequest, ShipWorkspaceKind,
-        activate_workspace as runtime_activate_workspace,
-        create_workspace as runtime_create_workspace,
-        end_workspace_session as runtime_end_workspace_session,
-        get_active_workspace_session as runtime_get_active_workspace_session,
-        get_workspace as runtime_get_workspace,
-        get_workspace_provider_matrix as runtime_get_workspace_provider_matrix,
-        list_workspace_sessions as runtime_list_workspace_sessions,
-        list_workspaces as runtime_list_workspaces,
-        record_workspace_session_progress as runtime_record_workspace_session_progress,
-        repair_workspace as runtime_repair_workspace, set_workspace_active_agent,
-        start_workspace_session as runtime_start_workspace_session,
-        sync_workspace as runtime_sync_workspace,
-    },
-};
-use ship_docs::ops::note::update_note_content;
-use ship_docs::{NoteScope, get_project_name, list_registered_projects};
+use runtime::{get_active_agent, workspace::get_active_workspace_type};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use crate::requests::*;
+use crate::resources;
+use crate::tools::{
+    adr, agent, job, notes, project, session, skills, target, workspace, workspace_ops,
+};
 
-// ─── Worktree path helpers ─────────────────────────────────────────────────────
-
-/// Read the worktree base directory from `~/.ship/config.toml [worktrees] dir`.
-/// Falls back to `~/dev/<project>-worktrees/` when the setting is absent.
-fn configured_worktree_dir(project_root: &std::path::Path) -> std::path::PathBuf {
-    let home = std::env::var("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default();
-    configured_worktree_dir_impl(project_root, &home)
-}
-
-/// Testable inner implementation that accepts an explicit home path.
-fn configured_worktree_dir_impl(
-    project_root: &std::path::Path,
-    home: &std::path::Path,
-) -> std::path::PathBuf {
-    let config_path = home.join(".ship").join("config.toml");
-    if let Ok(content) = std::fs::read_to_string(&config_path) {
-        let mut in_worktrees = false;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed == "[worktrees]" {
-                in_worktrees = true;
-            } else if trimmed.starts_with('[') {
-                in_worktrees = false;
-            } else if in_worktrees
-                && let Some(rest) = trimmed.strip_prefix("dir")
-                && let Some(val) = rest.trim().strip_prefix('=')
-            {
-                let dir = val.trim().trim_matches('"');
-                if !dir.is_empty() {
-                    let expanded = if let Some(rest) = dir.strip_prefix("~/") {
-                        home.join(rest)
-                    } else {
-                        std::path::PathBuf::from(dir)
-                    };
-                    return expanded;
-                }
-            }
-        }
-    }
-    // Fallback: ~/dev/<project>-worktrees/
-    let project_name = project_root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "project".to_string());
-    home.join("dev").join(format!("{}-worktrees", project_name))
-}
-
-// ─── Server ───────────────────────────────────────────────────────────────────
+// ─── Server struct ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct ShipServer {
@@ -107,59 +40,11 @@ impl ShipServer {
         }
     }
 
-    /// Returns the **project root** (parent of `.ship/`), not the `.ship/` dir itself.
-    /// `get_project_dir()` returns the `.ship/` dir, so we strip it here so that
-    /// callers can consistently do `project_dir.join(".ship")` to get the ship dir.
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
-        let active = self.active_project.lock().await;
-        if let Some(ref path) = *active {
-            return Ok(path.clone());
-        }
-        drop(active);
-
-        let resolve = |ship_dir: PathBuf| -> PathBuf {
-            // get_project_dir returns .ship/ dir; callers expect the project root.
-            if ship_dir.file_name().and_then(|n| n.to_str()) == Some(".ship") {
-                ship_dir.parent().unwrap_or(&ship_dir).to_path_buf()
-            } else {
-                ship_dir
-            }
-        };
-
-        if let Ok(dir) = get_project_dir(None) {
-            return Ok(resolve(dir));
-        }
-
-        if let Ok(Some(global_active)) = get_active_project_global()
-            && let Ok(dir) = get_project_dir(Some(global_active.clone()))
-        {
-            let project_root = resolve(dir);
-            let mut active = self.active_project.lock().await;
-            *active = Some(project_root.clone());
-            return Ok(project_root);
-        }
-
-        if let Ok(registry) = list_registered_projects()
-            && registry.len() == 1
-            && let Ok(dir) = get_project_dir(Some(registry[0].path.clone()))
-        {
-            let project_root = resolve(dir);
-            let mut active = self.active_project.lock().await;
-            *active = Some(project_root.clone());
-            return Ok(project_root);
-        }
-
-        get_project_dir(None)
-            .map(resolve)
-            .map_err(|e| {
-                format!(
-                    "No active project and auto-detection failed: {}. Checked process cwd, global active project, and registered projects.",
-                    e
-                )
-            })
+        project::get_effective_project_dir(&self.active_project).await
     }
 
-    fn normalize_mode_tool_id(raw: &str) -> String {
+    pub fn normalize_mode_tool_id(raw: &str) -> String {
         let mut normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
         if let Some(stripped) = normalized.strip_prefix("ship_") {
             normalized = stripped.to_string();
@@ -170,81 +55,48 @@ impl ShipServer {
         normalized
     }
 
-    fn is_core_tool(tool_name: &str) -> bool {
-        // Core workflow tools always available regardless of active mode.
-        // These cover the three-stage Ship workflow: Planning → Workspace → Session.
-        // Extended tools (specs, releases, etc.) require a mode OR a service workspace.
+    pub fn is_core_tool(tool_name: &str) -> bool {
         const CORE_TOOLS: &[&str] = &[
-            // Project context
-            "open_project",
-            // Planning
-            "create_note",
-            "create_adr",
-            // Workspace
-            "activate_workspace",
-            "create_workspace",
-            "complete_workspace",
-            "list_stale_worktrees",
-            "set_agent",
-            "sync_workspace",
-            "repair_workspace",
-            "list_workspaces",
-            // Session
-            "start_session",
-            "end_session",
-            "log_progress",
-            // Platform
-            "list_skills",
-            "create_job",
-            "update_job",
-            "list_jobs",
-            "append_job_log",
-            "claim_file",
-            "get_file_owner",
-            // Targets + Capabilities
-            "create_target",
-            "list_targets",
-            "get_target",
-            "create_capability",
-            "mark_capability_actual",
-            "list_capabilities",
+            "open_project", "create_note", "create_adr",
+            "activate_workspace", "create_workspace", "complete_workspace",
+            "list_stale_worktrees", "set_agent", "sync_workspace", "repair_workspace",
+            "list_workspaces", "start_session", "end_session", "log_progress",
+            "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
+            "claim_file", "get_file_owner",
+            "create_target", "list_targets", "get_target",
+            "create_capability", "mark_capability_actual", "list_capabilities",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         CORE_TOOLS.contains(&normalized.as_str())
     }
 
-    fn is_project_workspace_tool(_tool_name: &str) -> bool {
+    pub fn is_project_workspace_tool(_tool_name: &str) -> bool {
         false
     }
 
-    fn mode_allows_tool(tool_name: &str, active_tools: &[String]) -> bool {
+    pub fn mode_allows_tool(tool_name: &str, active_tools: &[String]) -> bool {
         if active_tools.is_empty() {
             return true;
         }
-
         let normalized_tool = Self::normalize_mode_tool_id(tool_name);
         active_tools
             .iter()
-            .map(|tool| Self::normalize_mode_tool_id(tool))
+            .map(|t| Self::normalize_mode_tool_id(t))
             .any(|allowed| allowed == normalized_tool)
     }
 
-    fn enforce_mode_tool_gate(project_dir: &Path, tool_name: &str) -> Result<(), String> {
+    pub fn enforce_mode_tool_gate(project_dir: &Path, tool_name: &str) -> Result<(), String> {
         if Self::is_core_tool(tool_name) {
             return Ok(());
         }
-
-        // Service workspace auto-unlocks the PM tool surface without needing a mode.
         if Self::is_project_workspace_tool(tool_name) {
-            let active_type =
-                runtime::workspace::get_active_workspace_type(project_dir).unwrap_or(None);
+            let active_type = get_active_workspace_type(project_dir).unwrap_or(None);
             if matches!(active_type, Some(runtime::ShipWorkspaceKind::Service)) {
                 return Ok(());
             }
         }
-
-        let active_agent = get_active_agent(Some(project_dir.to_path_buf())).map_err(|e| e.to_string())?;
-
+        let active_agent = get_active_agent(Some(project_dir.to_path_buf()))
+            .map_err(|e| e.to_string())?;
         if let Some(ref mode) = active_agent {
             if Self::mode_allows_tool(tool_name, &mode.active_tools) {
                 return Ok(());
@@ -259,10 +111,6 @@ impl ShipServer {
                 tool_name, mode.id, allowed
             ));
         }
-
-        // No mode active: only core tools are available.
-        // Activate a service workspace (`ship` branch) to unlock PM tools,
-        // or create a mode with active_tools set to unlock specific tools.
         Err(format!(
             "Tool '{}' is not in the core workflow surface. \
              Activate the service workspace ('ship') or a mode with this tool in its \
@@ -275,1542 +123,252 @@ impl ShipServer {
         project_dir: &Path,
         branch: Option<&str>,
     ) -> Result<String, String> {
-        if let Some(branch) = branch {
-            let trimmed = branch.trim();
+        if let Some(b) = branch {
+            let trimmed = b.trim();
             if !trimmed.is_empty() {
                 return Ok(trimmed.to_string());
             }
         }
-        let Some(project_root) = project_dir.parent() else {
+        let Some(root) = project_dir.parent() else {
             return Err("Error: Could not resolve project root".to_string());
         };
-        current_branch(project_root).map_err(|e| e.to_string())
+        current_branch(root).map_err(|e| e.to_string())
     }
 
-    // ─── Project Tools ────────────────────────────────────────────────────────
+    // ─── Project ──────────────────────────────────────────────────────────────
 
-    /// Set the active project for subsequent commands
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
-        let path = PathBuf::from(&req.path);
-        match get_project_dir(Some(path.clone())) {
-            Ok(ship_dir) => {
-                let mut active = self.active_project.lock().await;
-                *active = Some(ship_dir.clone());
-                drop(active);
-
-                if let Err(e) = set_active_project_global(ship_dir.clone()) {
-                    return format!(
-                        "Opened project at {} (warning: failed to persist global active project: {})",
-                        ship_dir.display(),
-                        e
-                    );
-                }
-
-                format!("Opened project at {}", ship_dir.display())
-            }
-            Err(e) => format!("Error: {}", e),
-        }
+        let (msg, _) = project::open_project(&req.path, &self.active_project).await;
+        msg
     }
 
-    /// Build full project context snapshot used by resources.
-    async fn get_project_info(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
+    // ─── Notes ────────────────────────────────────────────────────────────────
 
-        let name = get_project_name(&project_dir);
-        let config = get_config(Some(project_dir.clone())).unwrap_or_default();
-
-        let ship_dir = project_dir.join(".ship");
-        let adrs = runtime::db::adrs::list_adrs(&ship_dir).unwrap_or_default();
-
-        let mut out = format!("# Project: {}\n\n", name);
-
-        // ── Active workspace & session ────────────────────────────────────────
-        out.push_str("## Current Context\n");
-        let workspaces = runtime_list_workspaces(&project_dir).unwrap_or_default();
-        let active_workspace = workspaces
-            .iter()
-            .find(|w| matches!(w.status, runtime::WorkspaceStatus::Active));
-        if let Some(ws) = active_workspace {
-            out.push_str(&format!(
-                "- Workspace: {} [{:?}]",
-                ws.branch, ws.workspace_type
-            ));
-            if let Some(ref mode) = ws.active_agent {
-                out.push_str(&format!(" mode={}", mode));
-            }
-            if let Some(ref fid) = ws.feature_id {
-                out.push_str(&format!(" feature={}", fid));
-            }
-            out.push('\n');
-
-            // Active session for this workspace
-            match runtime_get_active_workspace_session(&project_dir, &ws.branch) {
-                Ok(Some(session)) => {
-                    out.push_str(&format!("- Session: ACTIVE (id: {})", session.id));
-                    if let Some(ref goal) = session.goal {
-                        out.push_str(&format!(" — goal: {}", goal));
-                    }
-                    if let Some(ref provider) = session.primary_provider {
-                        out.push_str(&format!(" [{}]", provider));
-                    }
-                    out.push('\n');
-                }
-                Ok(None) => out.push_str("- Session: none (call start_session to begin)\n"),
-                Err(_) => {}
-            }
-        } else {
-            out.push_str("- Workspace: none active (call activate_workspace to begin)\n");
-        }
-
-        // Agent mode
-        if let Some(active_id) = config.active_agent.as_deref() {
-            if let Some(mode) = config.modes.iter().find(|m| m.id == active_id) {
-                out.push_str(&format!("- Mode: {} ({})\n", mode.name, mode.id));
-            }
-        } else if !config.modes.is_empty() {
-            out.push_str("- Mode: none (available: ");
-            let names: Vec<_> = config.modes.iter().map(|m| m.id.as_str()).collect();
-            out.push_str(&names.join(", "));
-            out.push_str(")\n");
-        }
-
-        // ADRs
-        out.push_str("\n## ADRs\n");
-        if adrs.is_empty() {
-            out.push_str("No ADRs.\n");
-        } else {
-            for a in &adrs {
-                out.push_str(&format!("- {} [{}] {}\n", a.id, a.status, a.title));
-            }
-        }
-
-        // Recent log (last 10 lines)
-        if let Ok(log) = read_log(&project_dir) {
-            let recent: Vec<&str> = log
-                .lines()
-                .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-                .rev()
-                .take(10)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect();
-            if !recent.is_empty() {
-                out.push_str("\n## Recent Activity\n");
-                for line in recent {
-                    out.push_str(&format!("{}\n", line));
-                }
-            }
-        }
-
-        if let Ok(events) = list_events_since(&project_dir, 0, Some(10))
-            && !events.is_empty()
-        {
-            out.push_str("\n## Recent Events\n");
-            for e in events {
-                let details = e
-                    .details
-                    .as_ref()
-                    .map(|d| format!(" — {}", d))
-                    .unwrap_or_default();
-                out.push_str(&format!(
-                    "- #{} {} [{}] {:?}.{:?} {}{}\n",
-                    e.seq,
-                    e.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                    e.actor,
-                    e.entity,
-                    e.action,
-                    e.subject,
-                    details
-                ));
-            }
-        }
-
-        out
-    }
-
-    // ─── Notes Tools ────────────────────────────────────────────────────────
-
-    /// Create a standalone note (project-scoped, stored in platform.db)
     #[tool(description = "Create a standalone note attached to this project.")]
     async fn create_note(&self, Parameters(req): Parameters<CreateNoteRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        let content = req.content.unwrap_or_default();
-        let branch = req.branch.as_deref();
-        match runtime::db::notes::create_note(&ship_dir, &req.title, &content, vec![], branch) {
-            Ok(note) => format!("Created note: {} (id: {})", note.title, note.id),
-            Err(e) => format!("Error creating note: {}", e),
-        }
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        notes::create_note(&project_dir, &req.title, req.content, req.branch.as_deref())
     }
 
-    // list_notes_tool removed — use ship://notes resource for reads
-
-    /// Update a standalone note
     #[tool(description = "Replace a note's markdown content by filename.")]
     async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
-        let scope = match parse_note_scope(req.scope.as_deref()) {
-            Ok(scope) => scope,
-            Err(err) => return format!("Error: {}", err),
-        };
-        let project_dir = match scope {
-            NoteScope::Project => match self.get_effective_project_dir().await {
-                Ok(project_dir) => Some(project_dir),
-                Err(err) => return err,
-            },
-            NoteScope::User => None,
-        };
-        match update_note_content(scope, project_dir.as_deref(), &req.file_name, &req.content) {
-            Ok(note) => format!("Updated note: {}", note.title),
-            Err(e) => format!("Error updating note: {}", e),
-        }
+        let scope = match notes::parse_note_scope(req.scope.as_deref()) { Ok(s) => s, Err(e) => return format!("Error: {}", e) };
+        use ship_docs::NoteScope;
+        let dir = match scope { NoteScope::Project => match self.get_effective_project_dir().await { Ok(d) => Some(d), Err(e) => return e }, NoteScope::User => None };
+        notes::update_note(scope, dir.as_deref(), &req.file_name, &req.content)
     }
 
-    // ─── ADR Tools ────────────────────────────────────────────────────────────
+    // ─── ADR ──────────────────────────────────────────────────────────────────
 
-    /// Create a new Architecture Decision Record
-    #[tool(
-        description = "Create a new Architecture Decision Record (ADR). Use when committing to a \
-        technical approach, trade-off, or design choice that future contributors need to understand. \
-        Captures the decision and reasoning in the project record."
-    )]
+    #[tool(description = "Create a new Architecture Decision Record (ADR). Use when committing to a \
+        technical approach, trade-off, or design choice that future contributors need to understand.")]
     async fn create_adr(&self, Parameters(req): Parameters<LogDecisionRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::adrs::create_adr(&ship_dir, &req.title, "", &req.decision, "proposed") {
-            Ok(entry) => format!("Created ADR '{}' (id: {})", entry.title, entry.id),
-            Err(e) => format!("Error: {}", e),
-        }
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        adr::create_adr(&project_dir, &req.title, &req.decision)
     }
 
-    // list_adrs_tool removed — use ship://adrs resource for reads
+    // ─── Agent ────────────────────────────────────────────────────────────────
 
-    // ─── Mode / Workspace Control Plane Tools ──────────────────────────────
-
-    /// Activate an agent profile or clear active agent
-    #[tool(
-        description = "Activate an agent profile by id, or clear active agent by passing null/omitting id."
-    )]
+    #[tool(description = "Activate an agent profile by id, or clear active agent by passing null/omitting id.")]
     async fn set_agent(&self, Parameters(req): Parameters<SetModeRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        match set_active_agent(Some(project_dir), req.id.as_deref()) {
-            Ok(()) => match req.id {
-                Some(id) => format!("Active agent set to '{}'", id),
-                None => "Active agent cleared".to_string(),
-            },
-            Err(err) => format!("Error: {}", err),
-        }
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        agent::set_agent(project_dir, req.id.as_deref())
     }
 
-    /// Create or update a workspace record
+    // ─── Workspace ────────────────────────────────────────────────────────────
+
     #[tool(description = "Create or update a workspace runtime record (feature/patch/service).")]
-    async fn create_workspace_tool(
-        &self,
-        Parameters(req): Parameters<CreateWorkspaceToolRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-
-        let parsed_workspace_type = match req.workspace_type {
-            Some(workspace_type) => match workspace_type.parse::<ShipWorkspaceKind>() {
-                Ok(parsed) => Some(parsed),
-                Err(err) => return format!("Error: {}", err),
-            },
-            None => None,
-        };
-
-        let workspace_request = RuntimeCreateWorkspaceRequest {
-            branch: req.branch.clone(),
-            workspace_type: parsed_workspace_type,
-            status: None,
-            environment_id: req.environment_id,
-            feature_id: req.feature_id,
-            target_id: req.target_id,
-            active_agent: req.agent_id,
-            providers: None,
-            mcp_servers: None,
-            skills: None,
-            is_worktree: req.is_worktree,
-            worktree_path: req.worktree_path,
-            context_hash: None,
-        };
-
-        let workspace = match runtime_create_workspace(&project_dir, workspace_request) {
-            Ok(workspace) => workspace,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        let workspace = if req.activate.unwrap_or_default() {
-            match runtime_activate_workspace(&project_dir, &workspace.branch) {
-                Ok(active) => active,
-                Err(err) => return format!("Error: {}", err),
-            }
-        } else {
-            workspace
-        };
-
-        serde_json::to_string_pretty(&workspace)
-            .unwrap_or_else(|e| format!("Error serializing workspace: {}", e))
+    async fn create_workspace_tool(&self, Parameters(req): Parameters<CreateWorkspaceToolRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        workspace::create_workspace_tool(&project_dir, req)
     }
 
-    /// Activate workspace and optionally apply a mode override
     #[tool(description = "Activate a workspace by branch/id and optionally set its mode override.")]
-    async fn activate_workspace(
-        &self,
-        Parameters(req): Parameters<ActivateWorkspaceRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let mut workspace = match runtime_activate_workspace(&project_dir, &req.branch) {
-            Ok(workspace) => workspace,
-            Err(err) => return format!("Error: {}", err),
-        };
-        if let Some(agent_id) = req.agent_id.as_deref() {
-            workspace = match set_workspace_active_agent(&project_dir, &req.branch, Some(agent_id)) {
-                Ok(workspace) => workspace,
-                Err(err) => return format!("Error: {}", err),
-            };
-        }
-        serde_json::to_string_pretty(&workspace)
-            .unwrap_or_else(|e| format!("Error serializing workspace: {}", e))
+    async fn activate_workspace(&self, Parameters(req): Parameters<ActivateWorkspaceRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        workspace::activate_workspace(&project_dir, req)
     }
 
-    /// Sync workspace state with current branch context
     #[tool(description = "Sync the workspace for a branch/id (or current git branch if omitted).")]
     async fn sync_workspace(&self, Parameters(req): Parameters<SyncWorkspaceRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_sync_workspace(&project_dir, &branch) {
-            Ok(workspace) => serde_json::to_string_pretty(&workspace)
-                .unwrap_or_else(|e| format!("Error serializing workspace: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
+        workspace::sync_workspace(&project_dir, req, &branch)
     }
 
-    /// Repair workspace compile/config drift and report actions taken
-    #[tool(
-        description = "Repair workspace compile/config drift. Defaults to dry-run unless dry_run=false."
-    )]
-    async fn repair_workspace(
-        &self,
-        Parameters(req): Parameters<RepairWorkspaceRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_repair_workspace(&project_dir, &branch, req.dry_run.unwrap_or(true)) {
-            Ok(report) => serde_json::to_string_pretty(&report)
-                .unwrap_or_else(|e| format!("Error serializing workspace repair report: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
+    #[tool(description = "Repair workspace compile/config drift. Defaults to dry-run unless dry_run=false.")]
+    async fn repair_workspace(&self, Parameters(req): Parameters<RepairWorkspaceRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
+        workspace::repair_workspace(&project_dir, req, &branch)
     }
 
-    /// Show provider capability matrix — what Ship emits vs what each provider supports
-    #[tool(
-        description = "Show the provider capability matrix. Returns what Ship currently emits for each provider vs what the provider supports, with gap analysis. Use format='diff' for a compact diffable output."
-    )]
-    async fn provider_matrix(
-        &self,
-        Parameters(req): Parameters<ProviderMatrixRequest>,
-    ) -> String {
+    #[tool(description = "List all workspaces for the active project. Optionally filter by status.")]
+    async fn list_workspaces(&self, Parameters(req): Parameters<ListWorkspacesRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        workspace::list_workspaces(&project_dir, req)
+    }
+
+    #[tool(description = "Create a new workspace with a git worktree. For 'service' kind the worktree step is skipped.")]
+    async fn create_workspace(&self, Parameters(req): Parameters<CreateWorkspaceRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        workspace::create_workspace(&project_dir, req)
+    }
+
+    #[tool(description = "Complete a workspace: writes a handoff.md and optionally prunes the git worktree.")]
+    async fn complete_workspace(&self, Parameters(req): Parameters<CompleteWorkspaceRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        workspace_ops::complete_workspace(&project_dir, req)
+    }
+
+    #[tool(description = "List git worktrees that have been idle longer than idle_hours (default: 24).")]
+    async fn list_stale_worktrees(&self, Parameters(req): Parameters<ListStaleWorktreesRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        workspace_ops::list_stale_worktrees(&project_dir, req)
+    }
+
+    // ─── Session ──────────────────────────────────────────────────────────────
+
+    #[tool(description = "Start a workspace session for the active compiled context and selected provider.")]
+    async fn start_session(&self, Parameters(req): Parameters<StartSessionRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
+        session::start_session(&project_dir, req, &branch)
+    }
+
+    #[tool(description = "End the active workspace session and record a summary. Emits a session-end event.")]
+    async fn end_session(&self, Parameters(req): Parameters<EndSessionRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
+        session::end_session(&project_dir, req, &branch)
+    }
+
+    #[tool(description = "Record a progress note for the active session. Requires an active session.")]
+    async fn log_progress(&self, Parameters(req): Parameters<LogProgressRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
+        session::log_progress(&project_dir, req, &branch)
+    }
+
+    // ─── Skills ───────────────────────────────────────────────────────────────
+
+    #[tool(description = "List skills available to the active project. Optionally filter by search query.")]
+    async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        skills::list_skills(&project_dir, req)
+    }
+
+    // ─── Targets ──────────────────────────────────────────────────────────────
+
+    #[tool(description = "Create a target. kind='milestone' (e.g. v0.1.0) or kind='surface' (e.g. compiler, studio).")]
+    async fn create_target(&self, Parameters(req): Parameters<CreateTargetRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        target::create_target(&project_dir, req)
+    }
+
+    #[tool(description = "List targets. Optionally filter by kind: 'milestone' or 'surface'.")]
+    async fn list_targets(&self, Parameters(req): Parameters<ListTargetsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        target::list_targets(&project_dir, req)
+    }
+
+    #[tool(description = "Get a target with its full capability list (actual and aspirational).")]
+    async fn get_target(&self, Parameters(req): Parameters<GetTargetRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        target::get_target(&project_dir, req)
+    }
+
+    #[tool(description = "Add an aspirational capability to a target. Optionally link to a milestone.")]
+    async fn create_capability(&self, Parameters(req): Parameters<CreateCapabilityRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        target::create_capability(&project_dir, req)
+    }
+
+    #[tool(description = "Mark a capability as actual with evidence (test name, commit hash, or behavior).")]
+    async fn mark_capability_actual(&self, Parameters(req): Parameters<MarkCapabilityActualRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        target::mark_capability_actual(&project_dir, req)
+    }
+
+    #[tool(description = "List capabilities. Filter by target_id, milestone_id, and/or status.")]
+    async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        target::list_capabilities(&project_dir, req)
+    }
+
+    // ─── Jobs ─────────────────────────────────────────────────────────────────
+
+    #[tool(description = "Create a new coordination job. Returns the new job id.")]
+    async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        job::create_job(&project_dir, req)
+    }
+
+    #[tool(description = "Update a job status, priority, assignment, or touched_files.")]
+    async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        job::update_job(&project_dir, req)
+    }
+
+    #[tool(description = "List coordination jobs. Optionally filter by branch or status.")]
+    async fn list_jobs(&self, Parameters(req): Parameters<ListJobsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        job::list_jobs(&project_dir, req)
+    }
+
+    #[tool(description = "Append a log message to a job's log. Level: 'info', 'warn', or 'error'.")]
+    async fn append_job_log(&self, Parameters(req): Parameters<AppendJobLogRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        job::append_job_log(&project_dir, req)
+    }
+
+    #[tool(description = "Claim ownership of a file path for a job. Atomic and first-wins.")]
+    async fn claim_file(&self, Parameters(req): Parameters<ClaimFileRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        job::claim_file(&project_dir, &req.job_id, &req.path)
+    }
+
+    #[tool(description = "Return the job that currently owns a file path, or 'unclaimed'.")]
+    async fn get_file_owner(&self, Parameters(req): Parameters<GetFileOwnerRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        job::get_file_owner(&project_dir, &req.path)
+    }
+
+    // ─── Provider matrix ─────────────────────────────────────────────────────
+
+    #[tool(description = "Show the provider capability matrix with gap analysis.")]
+    async fn provider_matrix(&self, Parameters(req): Parameters<ProviderMatrixRequest>) -> String {
         let mut matrix = compiler::build_matrix();
-
         if let Some(pid) = &req.provider {
             matrix.providers.retain(|p| p.provider_id == pid);
             if matrix.providers.is_empty() {
                 return format!("Unknown provider: {}. Options: claude, gemini, codex, cursor", pid);
             }
         }
-
         match req.format.as_deref().unwrap_or("json") {
             "text" => compiler::render_text(&matrix),
             "diff" => compiler::render_diffable(&matrix),
-            _ => serde_json::to_string_pretty(&matrix)
-                .unwrap_or_else(|e| format!("Serialization error: {}", e)),
-        }
-    }
-
-    /// Start a session on the active workspace (compiles provider context)
-    #[tool(
-        description = "Start a workspace session for the active compiled context and selected provider."
-    )]
-    async fn start_session(&self, Parameters(req): Parameters<StartSessionRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_start_workspace_session(
-            &project_dir,
-            &branch,
-            req.goal,
-            req.agent_id,
-            req.provider_id,
-        ) {
-            Ok(session) => serde_json::to_string_pretty(&session)
-                .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e)),
-            Err(err) => format!("Error: {}", err),
-        }
-    }
-
-    /// End the active session, record what was accomplished, and update feature metadata
-    #[tool(
-        description = "End the active workspace session. Provide a summary of what was accomplished \
-        and the IDs of any features that were updated. This emits a session-end event visible in \
-        get_project_info and records the session \
-        history. Call this when work is complete or paused for the day."
-    )]
-    async fn end_session(&self, Parameters(req): Parameters<EndSessionRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-
-        let updated_feature_ids = req.updated_feature_ids.unwrap_or_default();
-
-        let end_req = RuntimeEndWorkspaceSessionRequest {
-            summary: req.summary,
-            updated_feature_ids,
-        };
-        let session = match runtime_end_workspace_session(&project_dir, &branch, end_req) {
-            Ok(session) => session,
-            Err(err) => return format!("Error: {}", err),
-        };
-
-        serde_json::to_string_pretty(&session)
-            .unwrap_or_else(|e| format!("Error serializing workspace session: {}", e))
-    }
-
-    /// Log a progress note within the active session
-    #[tool(
-        description = "Record a progress note for the active session. Use mid-session to log \
-        what you did, decisions made, or blockers encountered. Notes are recorded in the unified \
-        workspace session event stream. Requires an active session (call start_session first)."
-    )]
-    async fn log_progress(&self, Parameters(req): Parameters<LogProgressRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(project_dir) => project_dir,
-            Err(err) => return err,
-        };
-        let branch =
-            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
-                Ok(branch) => branch,
-                Err(err) => return format!("Error: {}", err),
-            };
-        match runtime_get_active_workspace_session(&project_dir, &branch) {
-            Ok(None) => {
-                return format!(
-                    "No active session for '{}'. Call start_session first.",
-                    branch
-                );
-            }
-            Err(err) => return format!("Error checking session: {}", err),
-            Ok(Some(_)) => {}
-        }
-        match runtime_record_workspace_session_progress(&project_dir, &branch, &req.note) {
-            Ok(()) => format!("Progress logged for session on '{}'.", branch),
-            Err(e) => format!("Error logging progress: {}", e),
-        }
-    }
-
-    // ─── Platform Tools ───────────────────────────────────────────────────────
-
-    /// List all workspaces with their status and active preset
-    #[tool(
-        description = "List all workspaces for the active project. Optionally filter by status \
-        (e.g. 'active', 'idle', 'archived'). Returns workspace id, branch, kind, status, and \
-        active mode for each workspace."
-    )]
-    async fn list_workspaces(
-        &self,
-        Parameters(req): Parameters<ListWorkspacesRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let workspaces = match runtime_list_workspaces(&project_dir) {
-            Ok(ws) => ws,
-            Err(e) => return format!("Error listing workspaces: {}", e),
-        };
-        let filtered: Vec<_> = if let Some(ref status_filter) = req.status {
-            let lower = status_filter.to_ascii_lowercase();
-            workspaces
-                .into_iter()
-                .filter(|w| format!("{:?}", w.status).to_ascii_lowercase() == lower)
-                .collect()
-        } else {
-            workspaces
-        };
-        if filtered.is_empty() {
-            return "No workspaces found.".to_string();
-        }
-        let mut out = String::from("Workspaces:\n");
-        for w in &filtered {
-            out.push_str(&format!(
-                "- {} [{:?}] status={:?}",
-                w.branch, w.workspace_type, w.status
-            ));
-            if let Some(ref mode) = w.active_agent {
-                out.push_str(&format!(" mode={}", mode));
-            }
-            out.push('\n');
-        }
-        out
-    }
-
-    /// List available skills, optionally filtered by a search query
-    #[tool(
-        description = "List skills available to the active project (project-scoped and user-scoped). \
-        Optionally filter by a search query (substring match on id, name, or description). \
-        Returns skill ids with names and descriptions."
-    )]
-    async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let skills = match list_effective_skills(&project_dir) {
-            Ok(s) => s,
-            Err(e) => return format!("Error listing skills: {}", e),
-        };
-        let filtered: Vec<_> = if let Some(ref query) = req.query {
-            let q = query.to_ascii_lowercase();
-            skills
-                .into_iter()
-                .filter(|s| {
-                    s.id.to_ascii_lowercase().contains(&q)
-                        || s.name.to_ascii_lowercase().contains(&q)
-                        || s.description
-                            .as_deref()
-                            .unwrap_or("")
-                            .to_ascii_lowercase()
-                            .contains(&q)
-                })
-                .collect()
-        } else {
-            skills
-        };
-        if filtered.is_empty() {
-            return "No skills found.".to_string();
-        }
-        let mut out = String::from("Skills:\n");
-        for s in &filtered {
-            let desc = s.description.as_deref().unwrap_or("(no description)");
-            out.push_str(&format!("- {} — {} — {}\n", s.id, s.name, desc));
-        }
-        out
-    }
-
-    // ─── Target + Capability Tools ─────────────────────────────────────────────
-
-    #[tool(description = "Create a target. kind='milestone' (e.g. v0.1.0) or kind='surface' (e.g. compiler, studio). Milestones are time-bounded goals; surfaces are evergreen capability domains.")]
-    async fn create_target(&self, Parameters(req): Parameters<CreateTargetRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::targets::create_target(
-            &ship_dir, &req.kind, &req.title,
-            req.description.as_deref(), req.goal.as_deref(), req.status.as_deref(),
-        ) {
-            Ok(t) => format!("Created target: {} (id: {}, kind: {})", t.title, t.id, t.kind),
-            Err(e) => format!("Error creating target: {}", e),
-        }
-    }
-
-    #[tool(description = "List targets. Optionally filter by kind: 'milestone' or 'surface'.")]
-    async fn list_targets(&self, Parameters(req): Parameters<ListTargetsRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::targets::list_targets(&ship_dir, req.kind.as_deref()) {
-            Ok(ts) if ts.is_empty() => "No targets found.".to_string(),
-            Ok(ts) => {
-                let mut out = String::from("Targets:\n");
-                for t in &ts {
-                    out.push_str(&format!(
-                        "- [{}] {} — {} ({})\n",
-                        t.kind, t.id, t.title, t.status
-                    ));
-                    if let Some(ref g) = t.goal {
-                        out.push_str(&format!("  goal: {}\n", g));
-                    }
-                }
-                out
-            }
-            Err(e) => format!("Error listing targets: {}", e),
-        }
-    }
-
-    #[tool(description = "Get a target with its full capability list (actual and aspirational).")]
-    async fn get_target(&self, Parameters(req): Parameters<GetTargetRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        let target = match runtime::db::targets::get_target(&ship_dir, &req.id) {
-            Ok(Some(t)) => t,
-            Ok(None) => return format!("Target '{}' not found.", req.id),
-            Err(e) => return format!("Error: {}", e),
-        };
-        // Milestones show capabilities linked via milestone_id (cross-surface delta view).
-        // Surfaces show capabilities owned directly (target_id).
-        let caps = if target.kind == "milestone" {
-            match runtime::db::targets::list_capabilities_for_milestone(&ship_dir, &req.id, None) {
-                Ok(c) => c,
-                Err(e) => return format!("Error loading capabilities: {}", e),
-            }
-        } else {
-            match runtime::db::targets::list_capabilities(&ship_dir, Some(&req.id), None) {
-                Ok(c) => c,
-                Err(e) => return format!("Error loading capabilities: {}", e),
-            }
-        };
-        let mut out = format!(
-            "# {} — {} ({})\n",
-            target.kind.to_uppercase(), target.title, target.status
-        );
-        if let Some(ref g) = target.goal { out.push_str(&format!("Goal: {}\n", g)); }
-        if let Some(ref d) = target.description { out.push_str(&format!("{}\n", d)); }
-        let actual: Vec<_> = caps.iter().filter(|c| c.status == "actual").collect();
-        let aspirational: Vec<_> = caps.iter().filter(|c| c.status == "aspirational").collect();
-        if !actual.is_empty() {
-            out.push_str("\n## Actual\n");
-            for c in &actual {
-                out.push_str(&format!("- [x] {} (id: {})\n", c.title, c.id));
-            }
-        }
-        if !aspirational.is_empty() {
-            out.push_str("\n## Aspirational\n");
-            for c in &aspirational {
-                out.push_str(&format!("- [ ] {} (id: {})\n", c.title, c.id));
-            }
-        }
-        if caps.is_empty() { out.push_str("\nNo capabilities yet.\n"); }
-        out
-    }
-
-    #[tool(description = "Add an aspirational capability to a target. Optionally link to a milestone target.")]
-    async fn create_capability(&self, Parameters(req): Parameters<CreateCapabilityRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::targets::create_capability(
-            &ship_dir, &req.target_id, &req.title, req.milestone_id.as_deref(),
-        ) {
-            Ok(c) => format!("Created capability: {} (id: {})", c.title, c.id),
-            Err(e) => format!("Error creating capability: {}", e),
-        }
-    }
-
-    #[tool(description = "Mark a capability as actual with evidence. Evidence should be concrete: a test name, commit hash, or observable behavior.")]
-    async fn mark_capability_actual(&self, Parameters(req): Parameters<MarkCapabilityActualRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        match runtime::db::targets::mark_capability_actual(&ship_dir, &req.id, &req.evidence) {
-            Ok(()) => format!("Capability {} marked actual.", req.id),
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    #[tool(description = "List capabilities. Filter by target_id (surface), milestone_id (cross-surface delta), and/or status ('aspirational' | 'actual').")]
-    async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let ship_dir = project_dir.join(".ship");
-        let result = if let Some(ref mid) = req.milestone_id {
-            runtime::db::targets::list_capabilities_for_milestone(&ship_dir, mid, req.status.as_deref())
-        } else {
-            runtime::db::targets::list_capabilities(&ship_dir, req.target_id.as_deref(), req.status.as_deref())
-        };
-        match result {
-            Ok(cs) if cs.is_empty() => "No capabilities found.".to_string(),
-            Ok(cs) => {
-                let mut out = String::from("Capabilities:\n");
-                for c in &cs {
-                    let check = if c.status == "actual" { "x" } else { " " };
-                    out.push_str(&format!("- [{}] {} (id: {}, target: {})\n", check, c.title, c.id, c.target_id));
-                    if let Some(ref e) = c.evidence {
-                        out.push_str(&format!("  evidence: {}\n", e));
-                    }
-                }
-                out
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    // ─── Job Tools ─────────────────────────────────────────────────────────────
-
-    /// Create a new job for agent coordination
-    #[tool(
-        description = "Create a new coordination job. Jobs are used to coordinate work between \
-        agents and workspaces. The job starts in 'pending' status. Returns the new job id. \
-        Use assigned_to to route the job to a specific agent, priority (higher = sooner), \
-        blocked_by to express ordering constraints, and touched_files to declare file scope."
-    )]
-    async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let mut payload = serde_json::Map::new();
-        payload.insert(
-            "description".to_string(),
-            serde_json::Value::String(req.description),
-        );
-        if let Some(ref rw) = req.requesting_workspace {
-            payload.insert(
-                "requesting_workspace".to_string(),
-                serde_json::Value::String(rw.clone()),
-            );
-        }
-        if let Some(ref cap_id) = req.capability_id {
-            payload.insert("capability_id".to_string(), serde_json::Value::String(cap_id.clone()));
-        }
-        if let Some(ref scope) = req.scope {
-            payload.insert("scope".to_string(), serde_json::json!(scope));
-        }
-        if let Some(ref criteria) = req.acceptance_criteria {
-            payload.insert("acceptance_criteria".to_string(), serde_json::json!(criteria));
-        }
-        if let Some(ref hint) = req.preset_hint {
-            payload.insert("preset_hint".to_string(), serde_json::Value::String(hint.clone()));
-        }
-        if let Some(ref sym) = req.symlink_name {
-            payload.insert("symlink_name".to_string(), serde_json::Value::String(sym.clone()));
-        }
-        if let Some(ref fs) = req.file_scope {
-            payload.insert("file_scope".to_string(), serde_json::json!(fs));
-        }
-        match runtime::db::jobs::create_job(
-            &project_dir,
-            &req.kind,
-            req.branch.as_deref(),
-            Some(serde_json::Value::Object(payload)),
-            req.requesting_workspace.as_deref(),
-            req.assigned_to.as_deref(),
-            req.priority.unwrap_or(0),
-            req.blocked_by.as_deref(),
-            req.touched_files.unwrap_or_default(),
-            req.file_scope.unwrap_or_default(),
-        ) {
-            Ok(job) => format!("Created job {} (kind={}, status=pending)", job.id, job.kind),
-            Err(e) => format!("Error creating job: {}", e),
-        }
-    }
-
-    /// Update a job's status and/or metadata fields
-    #[tool(
-        description = "Update a job. At least one field must be set. \
-        status: 'pending' | 'running' | 'complete' | 'failed' — completing or failing a job \
-        releases all its file claims. assigned_to, priority, blocked_by, and touched_files \
-        can be updated independently."
-    )]
-    async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let patch = runtime::db::jobs::JobPatch {
-            status: req.status.clone(),
-            assigned_to: req.assigned_to,
-            priority: req.priority,
-            blocked_by: req.blocked_by,
-            touched_files: req.touched_files,
-            file_scope: None,
-        };
-        match runtime::db::jobs::update_job(&project_dir, &req.id, patch) {
-            Ok(()) => {
-                let status_msg = req.status.as_deref().unwrap_or("(unchanged)");
-                format!("Job {} updated (status={})", req.id, status_msg)
-            }
-            Err(e) => format!("Error updating job: {}", e),
-        }
-    }
-
-    /// List jobs, optionally filtered by branch or status
-    #[tool(
-        description = "List coordination jobs. Optionally filter by branch or status \
-        ('pending', 'running', 'complete', 'failed'). Returns jobs ordered newest first."
-    )]
-    async fn list_jobs(&self, Parameters(req): Parameters<ListJobsRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match runtime::db::jobs::list_jobs(
-            &project_dir,
-            req.branch.as_deref(),
-            req.status.as_deref(),
-        ) {
-            Ok(jobs) if jobs.is_empty() => "No jobs found.".to_string(),
-            Ok(jobs) => {
-                let mut out = String::from("Jobs:\n");
-                for j in &jobs {
-                    out.push_str(&format!(
-                        "- {} [{}] kind={} priority={} created={}\n",
-                        j.id, j.status, j.kind, j.priority, j.created_at
-                    ));
-                    if let Some(ref branch) = j.branch {
-                        out.push_str(&format!("  branch={}\n", branch));
-                    }
-                    if let Some(ref a) = j.assigned_to {
-                        out.push_str(&format!("  assigned_to={}\n", a));
-                    }
-                    if let Some(ref b) = j.blocked_by {
-                        out.push_str(&format!("  blocked_by={}\n", b));
-                    }
-                    if !j.touched_files.is_empty() {
-                        out.push_str(&format!("  files={}\n", j.touched_files.join(", ")));
-                    }
-                }
-                out
-            }
-            Err(e) => format!("Error listing jobs: {}", e),
-        }
-    }
-
-    /// Atomically claim a file path for a job (first-wins)
-    #[tool(
-        description = "Claim ownership of a file path for a job. Atomic and first-wins: if another \
-        job already owns the path this returns an error with the current owner. Use get_file_owner \
-        to check ownership without claiming. Claims are released automatically when the job \
-        reaches a terminal status (complete/failed/done)."
-    )]
-    async fn claim_file(&self, Parameters(req): Parameters<ClaimFileRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match runtime::db::jobs::claim_file(&project_dir, &req.job_id, &req.path) {
-            Ok(true) => format!("Claimed {} for job {}", req.path, req.job_id),
-            Ok(false) => {
-                let owner = runtime::db::jobs::get_file_owner(&project_dir, &req.path)
-                    .unwrap_or(None)
-                    .unwrap_or_else(|| "unknown".to_string());
-                format!("Conflict: {} is already owned by job {}", req.path, owner)
-            }
-            Err(e) => format!("Error claiming file: {}", e),
-        }
-    }
-
-    /// Look up which job currently owns a file path
-    #[tool(
-        description = "Return the job that currently owns a file path, or 'unclaimed' if no job \
-        holds it. Use this to check for conflicts before editing a file."
-    )]
-    async fn get_file_owner(&self, Parameters(req): Parameters<GetFileOwnerRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        match runtime::db::jobs::get_file_owner(&project_dir, &req.path) {
-            Ok(None) => format!("{}: unclaimed", req.path),
-            Ok(Some(job_id)) => {
-                let detail = runtime::db::jobs::get_job(&project_dir, &job_id)
-                    .ok()
-                    .flatten()
-                    .map(|j| format!(" (kind={}, status={})", j.kind, j.status))
-                    .unwrap_or_default();
-                format!("{}: owned by job {}{}", req.path, job_id, detail)
-            }
-            Err(e) => format!("Error: {}", e),
-        }
-    }
-
-    /// Create a new workspace with an optional git worktree
-    #[tool(
-        description = "Create a new workspace. For 'imperative' and 'declarative' kinds a git worktree \
-        is created under the configured worktree base dir (from ~/.ship/config.toml [worktrees] dir, \
-        falling back to ~/dev/<project>-worktrees/). For 'service' kind the worktree step is skipped. \
-        Returns the workspace id (branch name) and worktree path."
-    )]
-    async fn create_workspace(
-        &self,
-        Parameters(req): Parameters<CreateWorkspaceRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let Some(project_root) = project_dir.parent() else {
-            return "Error: could not resolve project root from ship dir".to_string();
-        };
-
-        // Derive branch from name if not provided
-        let branch = req.branch.as_deref().map(|b| b.to_string()).unwrap_or_else(|| {
-            req.name
-                .to_ascii_lowercase()
-                .chars()
-                .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
-                .collect::<String>()
-                .trim_matches('-')
-                .to_string()
-        });
-
-        let worktrees_dir = configured_worktree_dir(project_root);
-        let worktree_path = worktrees_dir.join(&branch);
-        let base_branch = req.base_branch.as_deref().unwrap_or("main");
-        let kind = req.kind.to_ascii_lowercase();
-        let is_service = kind == "service";
-
-        // Create worktree unless this is a service workspace
-        if !is_service {
-            if let Err(e) = std::fs::create_dir_all(&worktrees_dir) {
-                return format!("Error: could not create worktrees dir: {}", e);
-            }
-
-            // Try creating a new branch
-            let status = ProcessCommand::new("git")
-                .args([
-                    "worktree",
-                    "add",
-                    worktree_path.to_str().unwrap_or_default(),
-                    "-b",
-                    &branch,
-                    base_branch,
-                ])
-                .current_dir(project_root)
-                .status();
-
-            let ok = match status {
-                Ok(s) => s.success(),
-                Err(e) => return format!("Error running git worktree add: {}", e),
-            };
-
-            if !ok {
-                // Branch may already exist — try without -b
-                let status2 = ProcessCommand::new("git")
-                    .args([
-                        "worktree",
-                        "add",
-                        worktree_path.to_str().unwrap_or_default(),
-                        &branch,
-                    ])
-                    .current_dir(project_root)
-                    .status();
-                match status2 {
-                    Ok(s) if s.success() => {}
-                    Ok(_) => {
-                        return format!(
-                            "Error: git worktree add failed for branch '{}'. \
-                            The branch may not exist or the worktree path is already in use.",
-                            branch
-                        )
-                    }
-                    Err(e) => return format!("Error running git worktree add: {}", e),
-                }
-            }
-
-            // Write workspace.toml into the worktree
-            let workspace_toml_path = worktree_path.join("workspace.toml");
-            let created_at = chrono::Utc::now().to_rfc3339();
-            let mut toml_content = format!(
-                "name = \"{}\"\nkind = \"{}\"\ncreated_at = \"{}\"\n",
-                req.name, kind, created_at
-            );
-            if let Some(ref pid) = req.preset_id {
-                toml_content.push_str(&format!("preset_id = \"{}\"\n", pid));
-            }
-            if let Some(ref scope) = req.file_scope {
-                toml_content.push_str(&format!("file_scope = \"{}\"\n", scope));
-            }
-            if let Err(e) = std::fs::write(&workspace_toml_path, &toml_content) {
-                return format!(
-                    "Warning: worktree created at '{}' but failed to write workspace.toml: {}",
-                    worktree_path.display(),
-                    e
-                );
-            }
-
-            format!(
-                "Created workspace '{}' (branch: {}, kind: {})\nWorktree: {}",
-                req.name,
-                branch,
-                kind,
-                worktree_path.display()
-            )
-        } else {
-            // Service workspace — record only, no worktree
-            format!(
-                "Created service workspace '{}' (branch: {}, kind: service)\n\
-                No worktree created for service workspaces.",
-                req.name, branch
-            )
-        }
-    }
-
-    /// Complete a workspace and write a handoff document
-    #[tool(
-        description = "Complete a workspace: writes a handoff.md with the session summary and \
-        optionally prunes the git worktree. For imperative workspaces the worktree is pruned by \
-        default; for declarative/service it is kept by default."
-    )]
-    async fn complete_workspace(
-        &self,
-        Parameters(req): Parameters<CompleteWorkspaceRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let Some(project_root) = project_dir.parent() else {
-            return "Error: could not resolve project root from ship dir".to_string();
-        };
-
-        let workspace_id = req.workspace_id.trim();
-        let worktree_path = configured_worktree_dir(project_root).join(workspace_id);
-
-        // Read workspace.toml to get kind, name, preset_id
-        let toml_path = worktree_path.join("workspace.toml");
-        let (ws_name, ws_kind, ws_preset) = if toml_path.exists() {
-            match std::fs::read_to_string(&toml_path) {
-                Ok(content) => {
-                    let name = content
-                        .lines()
-                        .find(|l| l.starts_with("name = "))
-                        .and_then(|l| l.split('=').nth(1))
-                        .map(|v| v.trim().trim_matches('"').to_string())
-                        .unwrap_or_else(|| workspace_id.to_string());
-                    let kind = content
-                        .lines()
-                        .find(|l| l.starts_with("kind = "))
-                        .and_then(|l| l.split('=').nth(1))
-                        .map(|v| v.trim().trim_matches('"').to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let preset = content
-                        .lines()
-                        .find(|l| l.starts_with("preset_id = "))
-                        .and_then(|l| l.split('=').nth(1))
-                        .map(|v| v.trim().trim_matches('"').to_string());
-                    (name, kind, preset)
-                }
-                Err(_) => (workspace_id.to_string(), "unknown".to_string(), None),
-            }
-        } else {
-            (workspace_id.to_string(), "unknown".to_string(), None)
-        };
-
-        // Determine whether to prune the worktree
-        let should_prune = req.prune_worktree.unwrap_or(ws_kind == "imperative");
-
-        // Write handoff.md to ~/.ship/sessions/<slug>/<workspace_id>/
-        // Project .ship/ is source of truth for config; ~/.ship/ holds all runtime state.
-        let ship_dir = project_root.join(".ship");
-        let slug = runtime::project::project_slug_from_ship_dir(&ship_dir);
-        let global_dir = runtime::project::get_global_dir()
-            .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".ship"));
-        let sessions_dir = global_dir
-            .join("sessions")
-            .join(&slug)
-            .join(workspace_id);
-        if let Err(e) = std::fs::create_dir_all(&sessions_dir) {
-            return format!("Error creating sessions dir: {}", e);
-        }
-        let handoff_path = sessions_dir.join("handoff.md");
-        let timestamp = chrono::Utc::now().to_rfc3339();
-        let preset_line = ws_preset
-            .as_deref()
-            .map(|p| format!("**Preset:** {}", p))
-            .unwrap_or_else(|| "**Preset:** (none)".to_string());
-        let handoff_content = format!(
-            "# Handoff: {ws_name}\n\n\
-            **Completed:** {timestamp}\n\
-            **Workspace:** {workspace_id}\n\
-            **Kind:** {ws_kind}\n\
-            {preset_line}\n\n\
-            ## Summary\n\n\
-            {summary}\n\n\
-            ## Context for next session\n\n\
-            _Fill this in before ending the session._\n",
-            ws_name = ws_name,
-            timestamp = timestamp,
-            workspace_id = workspace_id,
-            ws_kind = ws_kind,
-            preset_line = preset_line,
-            summary = req.summary,
-        );
-        if let Err(e) = std::fs::write(&handoff_path, &handoff_content) {
-            return format!("Error writing handoff.md: {}", e);
-        }
-
-        // Optionally prune worktree
-        if should_prune && worktree_path.exists() {
-            let status = ProcessCommand::new("git")
-                .args([
-                    "worktree",
-                    "remove",
-                    worktree_path.to_str().unwrap_or_default(),
-                    "--force",
-                ])
-                .current_dir(project_root)
-                .status();
-            return match status {
-                Ok(s) if s.success() => format!(
-                    "Workspace '{}' completed. Worktree pruned.\nHandoff: {}",
-                    workspace_id,
-                    handoff_path.display()
-                ),
-                Ok(_) => format!(
-                    "Workspace '{}' completed. Warning: worktree removal failed (may already be gone).\nHandoff: {}",
-                    workspace_id,
-                    handoff_path.display()
-                ),
-                Err(e) => format!(
-                    "Workspace '{}' completed. Warning: failed to run git worktree remove: {}\nHandoff: {}",
-                    workspace_id,
-                    e,
-                    handoff_path.display()
-                ),
-            };
-        }
-
-        format!(
-            "Workspace '{}' completed.\nHandoff: {}",
-            workspace_id,
-            handoff_path.display()
-        )
-    }
-
-    /// List git worktrees under .ship/worktrees/ that have been idle beyond a threshold
-    #[tool(
-        description = "List git worktrees under the configured worktree base dir (from \
-        ~/.ship/config.toml [worktrees] dir, falling back to ~/dev/<project>-worktrees/) that have \
-        been idle (last modified) longer than idle_hours (default: 24). Returns worktree path, branch, \
-        and idle duration."
-    )]
-    async fn list_stale_worktrees(
-        &self,
-        Parameters(req): Parameters<ListStaleWorktreesRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let Some(project_root) = project_dir.parent() else {
-            return "Error: could not resolve project root from ship dir".to_string();
-        };
-
-        let idle_hours = req.idle_hours.unwrap_or(24);
-        let idle_secs = idle_hours as u64 * 3600;
-
-        // Run git worktree list --porcelain
-        let output = match ProcessCommand::new("git")
-            .args(["worktree", "list", "--porcelain"])
-            .current_dir(project_root)
-            .output()
-        {
-            Ok(o) => o,
-            Err(e) => return format!("Error running git worktree list: {}", e),
-        };
-
-        if !output.status.success() {
-            return format!(
-                "Error: git worktree list failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let worktrees_prefix = configured_worktree_dir(project_root)
-            .to_string_lossy()
-            .to_string();
-
-        // Parse porcelain output into (path, branch) pairs
-        let mut current_path: Option<String> = None;
-        let mut current_wt_branch: Option<String> = None;
-        let mut entries: Vec<(String, Option<String>)> = Vec::new();
-
-        for line in stdout.lines() {
-            if let Some(path) = line.strip_prefix("worktree ") {
-                if let Some(p) = current_path.take() {
-                    entries.push((p, current_wt_branch.take()));
-                }
-                current_path = Some(path.to_string());
-                current_wt_branch = None;
-            } else if let Some(branch) = line.strip_prefix("branch refs/heads/") {
-                current_wt_branch = Some(branch.to_string());
-            } else if line.is_empty()
-                && let Some(p) = current_path.take()
-            {
-                entries.push((p, current_wt_branch.take()));
-            }
-        }
-        if let Some(p) = current_path.take() {
-            entries.push((p, current_wt_branch.take()));
-        }
-
-        // Filter to .ship/worktrees/ and check mtime
-        let now = std::time::SystemTime::now();
-        let mut stale: Vec<(String, Option<String>, u64)> = Vec::new();
-
-        for (path, branch) in &entries {
-            if !path.starts_with(&worktrees_prefix) {
-                continue;
-            }
-            let meta = match std::fs::metadata(path) {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            let modified = match meta.modified() {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            let elapsed_secs = now
-                .duration_since(modified)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            if elapsed_secs >= idle_secs {
-                let idle_hours_actual = elapsed_secs / 3600;
-                stale.push((path.clone(), branch.clone(), idle_hours_actual));
-            }
-        }
-
-        if stale.is_empty() {
-            return format!(
-                "No stale worktrees found (threshold: {} hours).",
-                idle_hours
-            );
-        }
-
-        let mut out = format!("Stale worktrees (idle > {} hours):\n", idle_hours);
-        for (path, branch, hours) in &stale {
-            let branch_str = branch.as_deref().unwrap_or("(detached)");
-            out.push_str(&format!(
-                "- {} [branch: {}] idle {}h\n",
-                path, branch_str, hours
-            ));
-        }
-        out
-    }
-
-    /// Append a log entry to a job
-    #[tool(
-        description = "Append a log message to a job's log. Use to record progress, warnings, \
-        or errors during job execution. Level is informational: 'info', 'warn', or 'error'."
-    )]
-    async fn append_job_log(
-        &self,
-        Parameters(req): Parameters<AppendJobLogRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        // Accumulate touched files from "touched: <path>" convention.
-        if let Some(path) = req.message.strip_prefix("touched: ") {
-            let path = path.trim();
-            if !path.is_empty()
-                && let Err(e) = runtime::db::jobs::append_touched_file(&project_dir, &req.job_id, path)
-            {
-                return format!("Error recording touched file: {}", e);
-            }
-        }
-        let message = if let Some(ref level) = req.level {
-            format!("[{}] {}", level.to_ascii_uppercase(), req.message)
-        } else {
-            req.message.clone()
-        };
-        match runtime::db::jobs::append_log(
-            &project_dir,
-            &message,
-            Some(req.job_id.as_str()),
-            None,
-            None,
-        ) {
-            Ok(()) => format!("Log entry appended to job {}", req.job_id),
-            Err(e) => format!("Error appending job log: {}", e),
+            _ => serde_json::to_string_pretty(&matrix).unwrap_or_else(|e| format!("Serialization error: {}", e)),
         }
     }
 }
+
+// ─── Resource resolution ──────────────────────────────────────────────────────
 
 impl ShipServer {
-    /// Resolve a `ship://` URI to its text content, or `None` if not found.
-    async fn resolve_resource_uri(&self, uri: &str, dir: &Path) -> Option<String> {
-        // ship://project_info
-        if uri == "ship://project_info" {
-            return Some(self.get_project_info().await);
-        }
-        // ship://adrs — read from platform.db
-        if uri == "ship://adrs" {
-            let ship_dir = dir.join(".ship");
-            return match runtime::db::adrs::list_adrs(&ship_dir) {
-                Ok(adrs) if adrs.is_empty() => Some("No ADRs found.".to_string()),
-                Ok(adrs) => {
-                    let mut out = String::from("ADRs:\n");
-                    for a in &adrs {
-                        out.push_str(&format!("- {} [{}] {}\n", a.id, a.status, a.title));
-                    }
-                    Some(out)
-                }
-                Err(_) => Some("No ADRs found.".to_string()),
-            };
-        }
-        // ship://adrs/{id}
-        if let Some(id) = uri.strip_prefix("ship://adrs/") {
-            let ship_dir = dir.join(".ship");
-            return runtime::db::adrs::get_adr(&ship_dir, id)
-                .ok()
-                .flatten()
-                .map(|a| {
-                    format!(
-                        "Title: {}\nStatus: {}\nDate: {}\n\n## Context\n\n{}\n\n## Decision\n\n{}",
-                        a.title, a.status, a.date, a.context, a.decision
-                    )
-                });
-        }
-        // ship://notes — read from platform.db
-        if uri == "ship://notes" {
-            let ship_dir = dir.join(".ship");
-            return match runtime::db::notes::list_notes(&ship_dir, None) {
-                Ok(notes) if notes.is_empty() => Some("No notes found.".to_string()),
-                Ok(notes) => {
-                    let mut out = String::from("Notes:\n");
-                    for n in &notes {
-                        out.push_str(&format!("- {} {}\n", n.id, n.title));
-                    }
-                    Some(out)
-                }
-                Err(_) => Some("No notes found.".to_string()),
-            };
-        }
-        // ship://notes/{id}
-        if let Some(id) = uri.strip_prefix("ship://notes/") {
-            let ship_dir = dir.join(".ship");
-            return runtime::db::notes::get_note(&ship_dir, id)
-                .ok()
-                .flatten()
-                .map(|n| {
-                    format!("Title: {}\n\n{}", n.title, n.content)
-                });
-        }
-        // ship://skills
-        if uri == "ship://skills" {
-            let entries = list_effective_skills(dir).ok()?;
-            if entries.is_empty() {
-                return Some("No skills found.".to_string());
-            }
-            let mut out = String::from("Skills:\n");
-            for s in &entries {
-                out.push_str(&format!("- {} ({})\n", s.id, s.name));
-            }
-            return Some(out);
-        }
-        // ship://skills/{id}
-        if let Some(id) = uri.strip_prefix("ship://skills/") {
-            return get_effective_skill(dir, id).ok().map(|s| s.content);
-        }
-        // ship://log
-        if uri == "ship://log" {
-            return match read_log(dir) {
-                Ok(content) if content.trim().is_empty() || content.trim() == "# Project Log" => {
-                    Some("No log entries yet.".to_string())
-                }
-                Ok(content) => Some(content),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://events
-        if uri == "ship://events" {
-            return render_events_resource(dir, 0, 100);
-        }
-        // ship://events/{since}
-        if let Some(since) = uri.strip_prefix("ship://events/") {
-            let Ok(since) = since.parse::<u64>() else {
-                return Some(format!("Error: invalid event sequence '{}'", since));
-            };
-            return render_events_resource(dir, since, 100);
-        }
-        // ship://workspaces
-        if uri == "ship://workspaces" {
-            return match runtime_list_workspaces(dir) {
-                Ok(workspaces) => serde_json::to_string_pretty(&workspaces).ok(),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://workspaces/{branch}/provider-matrix
-        if let Some(rest) = uri.strip_prefix("ship://workspaces/")
-            && let Some(branch) = rest.strip_suffix("/provider-matrix")
-        {
-            return match runtime_get_workspace_provider_matrix(dir, branch, None) {
-                Ok(matrix) => serde_json::to_string_pretty(&matrix).ok(),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://workspaces/{branch}/session
-        if let Some(rest) = uri.strip_prefix("ship://workspaces/")
-            && let Some(branch) = rest.strip_suffix("/session")
-        {
-            return match runtime_get_active_workspace_session(dir, branch) {
-                Ok(Some(session)) => serde_json::to_string_pretty(&session).ok(),
-                Ok(None) => Some(format!("No active workspace session for '{}'", branch)),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://workspaces/{branch}
-        if let Some(branch) = uri.strip_prefix("ship://workspaces/") {
-            return match runtime_get_workspace(dir, branch) {
-                Ok(Some(workspace)) => serde_json::to_string_pretty(&workspace).ok(),
-                Ok(None) => Some(format!("Workspace '{}' not found", branch)),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://sessions
-        if uri == "ship://sessions" {
-            return match runtime_list_workspace_sessions(dir, None, 50) {
-                Ok(sessions) => serde_json::to_string_pretty(&sessions).ok(),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://sessions/{workspace}
-        if let Some(workspace) = uri.strip_prefix("ship://sessions/") {
-            return match runtime_list_workspace_sessions(dir, Some(workspace), 50) {
-                Ok(sessions) => serde_json::to_string_pretty(&sessions).ok(),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://modes
-        if uri == "ship://modes" {
-            return match get_config(Some(dir.to_path_buf())) {
-                Ok(config) => {
-                    let payload = serde_json::json!({
-                        "active_mode": config.active_agent,
-                        "modes": config.modes,
-                    });
-                    serde_json::to_string_pretty(&payload).ok()
-                }
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://providers
-        if uri == "ship://providers" {
-            return match list_providers(dir) {
-                Ok(providers) => serde_json::to_string_pretty(&providers).ok(),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        // ship://providers/{id}/models
-        if let Some(rest) = uri.strip_prefix("ship://providers/")
-            && let Some(provider_id) = rest.strip_suffix("/models")
-        {
-            return match list_models(provider_id) {
-                Ok(models) => serde_json::to_string_pretty(&models).ok(),
-                Err(err) => Some(format!("Error: {}", err)),
-            };
-        }
-        None
+    pub async fn resolve_resource_uri(&self, uri: &str, dir: &Path) -> Option<String> {
+        resources::resolve_resource_uri(uri, dir, project::get_project_info(dir)).await
     }
 }
 
-fn current_branch(project_root: &std::path::Path) -> Result<String> {
-    let output = ProcessCommand::new("git")
-        .args(["branch", "--show-current"])
-        .current_dir(project_root)
-        .output()?;
-    if !output.status.success() {
-        anyhow::bail!("Failed to determine current git branch");
-    }
-    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if branch.is_empty() {
-        anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
-    }
-    Ok(branch)
-}
-
-fn parse_note_scope(raw: Option<&str>) -> Result<NoteScope> {
-    raw.unwrap_or("project").parse::<NoteScope>()
-}
-
-fn render_events_resource(project_dir: &Path, since: u64, limit: usize) -> Option<String> {
-    match list_events_since(project_dir, since, Some(limit)) {
-        Ok(events) => {
-            if events.is_empty() {
-                return Some("No events found.".to_string());
-            }
-            let mut out = String::from("Events:\n");
-            for e in events {
-                let details = e
-                    .details
-                    .as_ref()
-                    .map(|d| format!(" — {}", d))
-                    .unwrap_or_default();
-                out.push_str(&format!(
-                    "- #{} {} [{}] {:?}.{:?} {}{}\n",
-                    e.seq,
-                    e.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                    e.actor,
-                    e.entity,
-                    e.action,
-                    e.subject,
-                    details
-                ));
-            }
-            Some(out)
-        }
-        Err(err) => Some(format!("Error: {}", err)),
-    }
-}
+// ─── ServerHandler ────────────────────────────────────────────────────────────
 
 impl ServerHandler for ShipServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .enable_resources()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().enable_resources().build(),
             server_info: Implementation {
                 name: "Ship Project Tracker".into(),
                 version: "0.2.0".into(),
@@ -1823,8 +381,8 @@ impl ServerHandler for ShipServer {
                  SESSION: start_session → (work) → log_progress → end_session\n\n\
                  By default only core workflow tools are visible. To access extended tools, \
                  activate a mode that includes them in its active_tools list. \
-                 Call open_project first if the project is not \
-                 auto-detected. Use resources (ship://) for read-heavy workflows."
+                 Call open_project first if the project is not auto-detected. \
+                 Use resources (ship://) for read-heavy workflows."
                     .into(),
             ),
         }
@@ -1836,16 +394,12 @@ impl ServerHandler for ShipServer {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let tool_name = request.name.to_string();
-
         if let Ok(project_dir) = self.get_effective_project_dir().await
             && let Err(message) = Self::enforce_mode_tool_gate(&project_dir, &tool_name)
         {
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         }
-
-        self.tool_router
-            .call(ToolCallContext::new(self, request, context))
-            .await
+        self.tool_router.call(ToolCallContext::new(self, request, context)).await
     }
 
     async fn list_tools(
@@ -1854,40 +408,21 @@ impl ServerHandler for ShipServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let all_tools = self.tool_router.list_all();
-
-        // Filter tool list to match what enforce_mode_tool_gate allows.
-        // Agents should only see tools they can actually call.
         let visible = if let Ok(project_dir) = self.get_effective_project_dir().await {
             let active_agent = get_active_agent(Some(project_dir.clone())).unwrap_or(None);
-            let in_project_workspace = matches!(
-                runtime::workspace::get_active_workspace_type(&project_dir).unwrap_or(None),
+            let in_svc = matches!(
+                get_active_workspace_type(&project_dir).unwrap_or(None),
                 Some(runtime::ShipWorkspaceKind::Service)
             );
-            all_tools
-                .into_iter()
-                .filter(|tool| {
-                    let name = tool.name.as_ref();
-                    if Self::is_core_tool(name) {
-                        return true;
-                    }
-                    if in_project_workspace && Self::is_project_workspace_tool(name) {
-                        return true;
-                    }
-                    if let Some(ref mode) = active_agent {
-                        Self::mode_allows_tool(name, &mode.active_tools)
-                    } else {
-                        false
-                    }
-                })
-                .collect()
+            all_tools.into_iter().filter(|t| {
+                let n = t.name.as_ref();
+                if Self::is_core_tool(n) { return true; }
+                if in_svc && Self::is_project_workspace_tool(n) { return true; }
+                active_agent.as_ref().map_or(false, |m| Self::mode_allows_tool(n, &m.active_tools))
+            }).collect()
         } else {
-            // No project resolved — show core tools only.
-            all_tools
-                .into_iter()
-                .filter(|tool| Self::is_core_tool(tool.name.as_ref()))
-                .collect()
+            all_tools.into_iter().filter(|t| Self::is_core_tool(t.name.as_ref())).collect()
         };
-
         Ok(ListToolsResult::with_all_items(visible))
     }
 
@@ -1900,19 +435,7 @@ impl ServerHandler for ShipServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        Ok(ListResourcesResult::with_all_items(vec![
-            RawResource::new("ship://project_info", "Project Info").no_annotation(),
-            RawResource::new("ship://specs", "Specs").no_annotation(),
-            RawResource::new("ship://adrs", "ADRs").no_annotation(),
-            RawResource::new("ship://notes", "Project Notes").no_annotation(),
-            RawResource::new("ship://skills", "Skills").no_annotation(),
-            RawResource::new("ship://workspaces", "Workspaces").no_annotation(),
-            RawResource::new("ship://sessions", "Workspace Sessions").no_annotation(),
-            RawResource::new("ship://modes", "Modes").no_annotation(),
-            RawResource::new("ship://providers", "Providers").no_annotation(),
-            RawResource::new("ship://log", "Project Log").no_annotation(),
-            RawResource::new("ship://events", "Event Stream").no_annotation(),
-        ]))
+        Ok(ListResourcesResult::with_all_items(resources::static_resource_list()))
     }
 
     async fn list_resource_templates(
@@ -1920,98 +443,7 @@ impl ServerHandler for ShipServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, ErrorData> {
-        Ok(ListResourceTemplatesResult::with_all_items(vec![
-            RawResourceTemplate {
-                uri_template: "ship://specs/{id}".to_string(),
-                name: "Spec".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("text/markdown".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://adrs/{id}".to_string(),
-                name: "ADR".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("text/markdown".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://notes/{id}".to_string(),
-                name: "Note".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("text/markdown".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://workspaces/{branch}".to_string(),
-                name: "Workspace".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("application/json".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://workspaces/{branch}/provider-matrix".to_string(),
-                name: "Workspace Provider Matrix".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("application/json".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://workspaces/{branch}/session".to_string(),
-                name: "Workspace Active Session".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("application/json".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://sessions/{workspace}".to_string(),
-                name: "Workspace Sessions".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("application/json".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://providers/{id}/models".to_string(),
-                name: "Provider Models".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("application/json".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://events/{since}".to_string(),
-                name: "Event Stream Since Seq".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("text/plain".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-            RawResourceTemplate {
-                uri_template: "ship://skills/{id}".to_string(),
-                name: "Skill".to_string(),
-                title: None,
-                description: None,
-                mime_type: Some("text/markdown".to_string()),
-                icons: None,
-            }
-            .no_annotation(),
-        ]))
+        Ok(ListResourceTemplatesResult::with_all_items(resources::static_resource_template_list()))
     }
 
     async fn read_resource(
@@ -2034,290 +466,38 @@ impl ServerHandler for ShipServer {
     }
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+fn current_branch(project_root: &Path) -> Result<String> {
+    let output = ProcessCommand::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(project_root)
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("Failed to determine current git branch");
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
+    }
+    Ok(branch)
+}
+
 pub async fn run_server() -> Result<()> {
     let service = ShipServer::new();
-
     let running = service
         .serve(stdio())
         .await
         .map_err(|e| anyhow!("MCP Server initialization error: {:?}", e))?;
-
     running
         .waiting()
         .await
         .map_err(|e| anyhow!("MCP Server runtime error: {:?}", e))?;
-
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use runtime::{AgentProfile, add_agent};
-    use ship_docs::init_project;
-    use tempfile::tempdir;
-
-    #[test]
-    fn mode_gate_normalizes_and_blocks_disallowed_tools() {
-        let tmp = tempdir().expect("tempdir");
-        let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
-
-        add_agent(
-            Some(project_dir.clone()),
-            AgentProfile {
-                id: "mode-gate-test".to_string(),
-                name: "Mode Gate Test".to_string(),
-                active_tools: vec!["ship_list_notes".to_string()],
-                ..Default::default()
-            },
-        )
-        .expect("add agent");
-        set_active_agent(Some(project_dir.clone()), Some("mode-gate-test"))
-            .expect("set active agent");
-
-        ShipServer::enforce_mode_tool_gate(&project_dir, "list_notes").expect("list_notes allowed");
-        ShipServer::enforce_mode_tool_gate(&project_dir, "ship_list_notes_tool")
-            .expect("prefixed note tool allowed");
-        ShipServer::enforce_mode_tool_gate(&project_dir, "create_workspace_tool")
-            .expect("create workspace must remain control-plane allowed");
-        ShipServer::enforce_mode_tool_gate(&project_dir, "repair_workspace")
-            .expect("workspace repair must remain control-plane allowed");
-
-        let blocked = ShipServer::enforce_mode_tool_gate(&project_dir, "update_note")
-            .expect_err("update_note should be blocked");
-        assert!(
-            blocked.contains("blocked by active mode"),
-            "unexpected mode gate message: {}",
-            blocked
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn mcp_workspace_control_plane_round_trip() {
-        let tmp = tempdir().expect("tempdir");
-        let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
-
-        let server = ShipServer::new();
-        *server.active_project.lock().await = Some(project_dir.clone());
-
-        let created = server
-            .create_workspace_tool(Parameters(CreateWorkspaceToolRequest {
-                branch: "feature/mode-control-plane".to_string(),
-                workspace_type: Some("feature".to_string()),
-                environment_id: None,
-                feature_id: None,
-                target_id: None,
-                agent_id: None,
-                is_worktree: Some(false),
-                worktree_path: None,
-                activate: Some(true),
-            }))
-            .await;
-        assert!(
-            created.contains("\"branch\": \"feature/mode-control-plane\""),
-            "unexpected create workspace response: {}",
-            created
-        );
-
-        let fetched = server
-            .resolve_resource_uri("ship://workspaces/feature/mode-control-plane", &project_dir)
-            .await
-            .expect("workspace resource");
-        assert!(
-            fetched.contains("\"id\": \"feature-mode-control-plane\""),
-            "unexpected get workspace response: {}",
-            fetched
-        );
-
-        let sessions_before = server
-            .resolve_resource_uri("ship://sessions/feature/mode-control-plane", &project_dir)
-            .await;
-        let sessions_before = sessions_before.expect("sessions resource");
-        assert_eq!(
-            sessions_before.trim(),
-            "[]",
-            "expected no sessions before start, got {}",
-            sessions_before
-        );
-    }
-}
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod normalization_tests {
-    use super::ShipServer;
-
-    // ── normalize_mode_tool_id ──────────────────────────────────────────
-
-    #[test]
-    fn strips_ship_prefix() {
-        assert_eq!(ShipServer::normalize_mode_tool_id("ship_create_note"), "create_note");
-    }
-
-    #[test]
-    fn strips_tool_suffix() {
-        assert_eq!(ShipServer::normalize_mode_tool_id("list_notes_tool"), "list_notes");
-    }
-
-    #[test]
-    fn strips_both_prefix_and_suffix() {
-        assert_eq!(
-            ShipServer::normalize_mode_tool_id("ship_create_workspace_tool"),
-            "create_workspace"
-        );
-    }
-
-    #[test]
-    fn lowercases_and_replaces_hyphens() {
-        assert_eq!(
-            ShipServer::normalize_mode_tool_id("Ship-Create-Note"),
-            "create_note"
-        );
-    }
-
-    #[test]
-    fn already_normalized_unchanged() {
-        assert_eq!(ShipServer::normalize_mode_tool_id("create_note"), "create_note");
-    }
-
-    #[test]
-    fn trims_whitespace() {
-        assert_eq!(ShipServer::normalize_mode_tool_id("  ship_foo_tool  "), "foo");
-    }
-
-    // ── is_core_tool ────────────────────────────────────────────────────
-
-    #[test]
-    fn core_tools_are_recognized() {
-        let core_tools = [
-            "open_project",
-            "create_note",
-            "create_adr",
-            "activate_workspace",
-            "create_workspace",
-            "complete_workspace",
-            "set_agent",
-            "start_session",
-            "end_session",
-            "log_progress",
-            "list_skills",
-            "create_job",
-            "update_job",
-            "list_jobs",
-        ];
-        for tool in core_tools {
-            assert!(
-                ShipServer::is_core_tool(tool),
-                "{tool} should be a core tool"
-            );
-        }
-    }
-
-    #[test]
-    fn core_tool_with_prefix_and_suffix() {
-        assert!(ShipServer::is_core_tool("ship_create_workspace_tool"));
-        assert!(ShipServer::is_core_tool("ship_log_progress_tool"));
-    }
-
-    #[test]
-    fn non_core_tool_is_not_core() {
-        assert!(!ShipServer::is_core_tool("create_spec"));
-        assert!(!ShipServer::is_core_tool("update_note"));
-        assert!(!ShipServer::is_core_tool("random_tool"));
-    }
-
-    // ── mode_allows_tool ────────────────────────────────────────────────
-
-    #[test]
-    fn empty_active_tools_allows_everything() {
-        assert!(ShipServer::mode_allows_tool("anything", &[]));
-        assert!(ShipServer::mode_allows_tool("create_spec", &[]));
-    }
-
-    #[test]
-    fn tool_in_active_tools_allowed() {
-        let active = vec!["create_spec".to_string(), "list_notes".to_string()];
-        assert!(ShipServer::mode_allows_tool("create_spec", &active));
-        assert!(ShipServer::mode_allows_tool("list_notes", &active));
-    }
-
-    #[test]
-    fn tool_not_in_active_tools_blocked() {
-        let active = vec!["create_spec".to_string()];
-        assert!(!ShipServer::mode_allows_tool("delete_everything", &active));
-    }
-
-    #[test]
-    fn normalization_applied_to_both_sides() {
-        let active = vec!["ship_create_spec_tool".to_string()];
-        assert!(ShipServer::mode_allows_tool("create_spec", &active));
-        assert!(ShipServer::mode_allows_tool("ship_create_spec_tool", &active));
-    }
-}
-
-#[cfg(test)]
-mod worktree_dir_tests {
-    use super::configured_worktree_dir_impl;
-    use std::path::PathBuf;
-
-    #[test]
-    fn config_absent_falls_back_to_project_name() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project_root = PathBuf::from("/home/user/my-project");
-        let result = configured_worktree_dir_impl(&project_root, tmp.path());
-        assert!(
-            result.to_string_lossy().ends_with("my-project-worktrees"),
-            "expected fallback ending in my-project-worktrees, got {}",
-            result.display()
-        );
-    }
-
-    #[test]
-    fn config_present_with_absolute_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir).unwrap();
-        std::fs::write(
-            ship_dir.join("config.toml"),
-            "[worktrees]\ndir = \"/opt/worktrees\"\n",
-        )
-        .unwrap();
-        let project_root = PathBuf::from("/home/user/myproject");
-        let result = configured_worktree_dir_impl(&project_root, tmp.path());
-        assert_eq!(result, PathBuf::from("/opt/worktrees"));
-    }
-
-    #[test]
-    fn config_present_with_tilde_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir).unwrap();
-        std::fs::write(
-            ship_dir.join("config.toml"),
-            "[worktrees]\ndir = \"~/dev/worktrees\"\n",
-        )
-        .unwrap();
-        let project_root = PathBuf::from("/home/user/myproject");
-        let result = configured_worktree_dir_impl(&project_root, tmp.path());
-        let expected = tmp.path().join("dev").join("worktrees");
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn config_present_without_worktrees_section_falls_back() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir).unwrap();
-        std::fs::write(
-            ship_dir.join("config.toml"),
-            "[identity]\nname = \"Alice\"\n",
-        )
-        .unwrap();
-        let project_root = PathBuf::from("/home/user/cool-project");
-        let result = configured_worktree_dir_impl(&project_root, tmp.path());
-        assert!(
-            result.to_string_lossy().ends_with("cool-project-worktrees"),
-            "expected fallback, got {}",
-            result.display()
-        );
-    }
-}
+#[path = "server_tests.rs"]
+mod server_tests;

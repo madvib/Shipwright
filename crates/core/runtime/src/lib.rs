@@ -10,6 +10,7 @@ pub mod log;
 pub mod migration;
 pub mod plugin;
 pub mod project;
+#[path = "state_db/mod.rs"]
 pub mod state_db;
 pub mod workspace;
 
