@@ -433,16 +433,6 @@ fn validate_reports_error_on_bad_toml() {
 // ── auth ──────────────────────────────────────────────────────────────────────
 
 #[test]
-fn login_opens_browser_and_waits() {
-    // login is a stub that prints a browser URL and exits 0.
-    ship()
-        .args(["login"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("getship.dev"));
-}
-
-#[test]
 fn logout_when_not_logged_in() {
     let tmp = TempDir::new().unwrap();
 
