@@ -7,7 +7,8 @@ description = "Compiler and package manager for AI agent configuration"
 license = "MIT"
 
 [dependencies]
-# gstack and better-auth canonical repos unverified — see .ship/PENDING_DEPS.md
+"github.com/garrytan/gstack" = "main"
+"github.com/better-auth/skills" = "main"
 
 [exports]
 skills = [
