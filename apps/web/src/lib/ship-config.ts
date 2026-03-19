@@ -12,20 +12,20 @@ export function libraryToShipFiles(library: ProjectLibrary, modeName = 'default'
   files['.ship/ship.toml'] = buildShipToml(modeName)
 
   // agents/rules/*.md
-  for (const rule of library.rules) {
-    const filename = rule.file_name ?? `rule-${library.rules.indexOf(rule)}.md`
+  for (const rule of (library.rules ?? [])) {
+    const filename = rule.file_name ?? `rule-${(library.rules ?? []).indexOf(rule)}.md`
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '-')
     files[`.ship/agents/rules/${safeName}`] = rule.content
   }
 
   // agents/skills/<id>/SKILL.md
-  for (const skill of library.skills) {
+  for (const skill of (library.skills ?? [])) {
     files[`.ship/agents/skills/${skill.id}/SKILL.md`] = skill.content
   }
 
   // agents/mcp.toml
-  if (library.mcp_servers.length > 0) {
-    files['.ship/agents/mcp.toml'] = buildMcpToml(library.mcp_servers)
+  if ((library.mcp_servers ?? []).length > 0) {
+    files['.ship/agents/mcp.toml'] = buildMcpToml(library.mcp_servers ?? [])
   }
 
   // agents/permissions.toml
@@ -80,12 +80,12 @@ function buildMcpToml(servers: McpServerConfig[]): string {
 function buildPermissionsToml(permissions: Permissions): string {
   const lines: string[] = []
 
-  if (permissions.tools.allow.length > 0) {
-    const items = permissions.tools.allow.map((a) => `"${a}"`).join(', ')
+  if ((permissions.tools?.allow ?? []).length > 0) {
+    const items = (permissions.tools?.allow ?? []).map((a) => `"${a}"`).join(', ')
     lines.push(`allow = [${items}]`)
   }
-  if (permissions.tools.deny.length > 0) {
-    const items = permissions.tools.deny.map((d) => `"${d}"`).join(', ')
+  if ((permissions.tools?.deny ?? []).length > 0) {
+    const items = (permissions.tools?.deny ?? []).map((d) => `"${d}"`).join(', ')
     lines.push(`deny = [${items}]`)
   }
 
@@ -99,13 +99,13 @@ function buildPresetToml(library: ProjectLibrary, modeName: string): string {
     '',
   ]
 
-  if (library.mcp_servers.length > 0) {
-    const refs = library.mcp_servers.map((s) => `"${s.name}"`).join(', ')
+  if ((library.mcp_servers ?? []).length > 0) {
+    const refs = (library.mcp_servers ?? []).map((s) => `"${s.name}"`).join(', ')
     lines.push(`mcp_servers = [${refs}]`)
   }
 
-  if (library.skills.length > 0) {
-    const refs = library.skills.map((s) => `"${s.id}"`).join(', ')
+  if ((library.skills ?? []).length > 0) {
+    const refs = (library.skills ?? []).map((s) => `"${s.id}"`).join(', ')
     lines.push(`skills = [${refs}]`)
   }
 

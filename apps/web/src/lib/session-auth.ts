@@ -2,7 +2,7 @@
 // Uses Better Auth's cookie session (via getAuth().api) as the primary check.
 // Returns a lightweight SessionUser or a 401 Response.
 
-import { auth } from '#/lib/auth'
+import { getAuth } from '#/lib/auth'
 
 export interface SessionUser {
   sub: string
@@ -18,6 +18,7 @@ export async function requireSession(
   request: Request,
 ): Promise<SessionUser | Response> {
   try {
+    const auth = await getAuth()
     const sessionResponse = await auth.api.getSession({
       headers: request.headers,
     })
@@ -46,6 +47,7 @@ export async function optionalSession(
   request: Request,
 ): Promise<SessionUser | null> {
   try {
+    const auth = await getAuth()
     const sessionResponse = await auth.api.getSession({
       headers: request.headers,
     })

@@ -52,9 +52,9 @@ export function ComposerPanel({
   onLibraryChange,
   onToggleProvider,
 }: ComposerPanelProps) {
-  const mcpCount = library.mcp_servers.length
-  const skillCount = library.skills.length
-  const ruleCount = library.rules.length
+  const mcpCount = (library.mcp_servers ?? []).length
+  const skillCount = (library.skills ?? []).length
+  const ruleCount = (library.rules ?? []).length
 
   return (
     <div className="flex flex-1 min-w-0 flex-col border-r border-border/60">
@@ -90,7 +90,7 @@ export function ComposerPanel({
           <SectionHeader section={activeSection} />
           <div className="flex-1 min-h-0">
             <SkillsForm
-              skills={library.skills}
+              skills={library.skills ?? []}
               onChange={(skills) => onLibraryChange({ skills })}
             />
           </div>
@@ -104,13 +104,13 @@ export function ComposerPanel({
             )}
             {activeSection === 'mcp' && (
               <McpServersForm
-                servers={library.mcp_servers}
+                servers={library.mcp_servers ?? []}
                 onChange={(mcp_servers) => onLibraryChange({ mcp_servers })}
               />
             )}
             {activeSection === 'rules' && (
               <RulesForm
-                rules={library.rules}
+                rules={library.rules ?? []}
                 onChange={(rules) => onLibraryChange({ rules })}
               />
             )}

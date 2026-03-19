@@ -147,7 +147,7 @@ function StudioDashboard() {
             <p className="text-[11px] text-muted-foreground mb-3">in collection</p>
             {skillCount > 0 ? (
               <div className="flex-1 flex flex-col gap-1">
-                {library.skills.slice(0, 5).map((s) => (
+                {(library.skills ?? []).slice(0, 5).map((s) => (
                   <div key={s.id} className="flex items-center gap-2 rounded px-2 py-1 bg-muted/30">
                     <span className="size-1 rounded-full bg-emerald-500/60" />
                     <span className="text-[10px] text-foreground/80 truncate">{s.name}</span>
@@ -177,7 +177,7 @@ function StudioDashboard() {
             <p className="text-[11px] text-muted-foreground mb-3">configured</p>
             {mcpCount > 0 ? (
               <div className="flex-1 flex flex-col gap-1">
-                {library.mcp_servers.slice(0, 5).map((s) => (
+                {(library.mcp_servers ?? []).slice(0, 5).map((s) => (
                   <div key={s.name} className="flex items-center gap-2 rounded px-2 py-1 bg-muted/30">
                     <span className="size-1 rounded-full bg-sky-500/60" />
                     <span className="font-mono text-[10px] text-foreground/80 truncate">{s.name}</span>

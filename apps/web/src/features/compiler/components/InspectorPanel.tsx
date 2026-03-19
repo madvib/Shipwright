@@ -51,7 +51,7 @@ export function getInspectorTabs(provider: string, result: CompileResult): Inspe
 
   if (Object.keys(result.rule_files ?? {}).length > 0 && provider === 'cursor') {
     Object.entries(result.rule_files ?? {}).forEach(([path, content]) => {
-      tabs.push({ id: `rule-${path}`, filename: path, content })
+      tabs.push({ id: `rule-${path}`, filename: path, content: content ?? '' })
     })
   }
 

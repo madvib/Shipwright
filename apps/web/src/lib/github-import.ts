@@ -60,7 +60,7 @@ export function extractLibrary(files: RepoFiles): ProjectLibrary | null {
 
   if (rules.length === 0 && mcpServers.length === 0) return null
 
-  return { modes: [], active_mode: null, mcp_servers: mcpServers, skills: [], rules, permissions: null }
+  return { modes: [], active_mode: null, mcp_servers: mcpServers, skills: [], rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
 }
 
 function extractFromShipProject(files: RepoFiles): ProjectLibrary {
@@ -84,7 +84,7 @@ function extractFromShipProject(files: RepoFiles): ProjectLibrary {
     mcpServers.push(...parseShipMcpToml(files['.ship/agents/mcp.toml']))
   }
 
-  return { modes: [], active_mode: null, mcp_servers: mcpServers, skills, rules, permissions: null }
+  return { modes: [], active_mode: null, mcp_servers: mcpServers, skills, rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
 }
 
 function parseMcpJson(content: string): McpServerConfig[] {
@@ -94,9 +94,10 @@ function parseMcpJson(content: string): McpServerConfig[] {
     return Object.entries(servers).map(([name, cfg]) => ({
       name,
       command: typeof cfg.command === 'string' ? cfg.command : '',
+      url: typeof cfg.url === 'string' ? cfg.url : null,
+      timeout_secs: null,
       ...(Array.isArray(cfg.args) ? { args: cfg.args as string[] } : {}),
       ...(cfg.env && typeof cfg.env === 'object' ? { env: cfg.env as Record<string, string> } : {}),
-      ...(typeof cfg.url === 'string' ? { url: cfg.url } : {}),
     }))
   } catch {
     return []
@@ -128,7 +129,7 @@ function parseShipMcpToml(content: string): McpServerConfig[] {
     }
 
     if (name && (command || url)) {
-      servers.push({ name, command, ...(args ? { args } : {}), ...(url ? { url } : {}) })
+      servers.push({ name, command, url: url ?? null, timeout_secs: null, ...(args ? { args } : {}) })
     }
   }
 

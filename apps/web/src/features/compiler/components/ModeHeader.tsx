@@ -117,9 +117,9 @@ export function ModeHeader({
   getInspectorTabs,
 }: ModeHeaderProps) {
   const isGenerating = state.status === 'compiling'
-  const mcpCount = library.mcp_servers.length
-  const skillCount = library.skills.length
-  const ruleCount = library.rules.length
+  const mcpCount = (library.mcp_servers ?? []).length
+  const skillCount = (library.skills ?? []).length
+  const ruleCount = (library.rules ?? []).length
 
   return (
     <div className="flex items-center gap-2 border-b border-border/60 bg-card/50 px-3 py-2 shrink-0 backdrop-blur-sm">

@@ -11,7 +11,7 @@ import { getD1 } from '#/lib/d1'
 export const Route = createFileRoute('/api/registry/$path/install')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
+      POST: async ({ params }) => {
         const d1 = getD1()
         if (!d1)
           return Response.json(

@@ -17,56 +17,56 @@ export const CURATED_MCP: CuratedMcp[] = [
     displayName: 'GitHub',
     description: 'Search repos, manage PRs, create issues',
     icon: '⬡',
-    config: { name: 'github', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { GITHUB_TOKEN: '$GITHUB_TOKEN' } },
+    config: { name: 'github', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { GITHUB_TOKEN: '$GITHUB_TOKEN' }, url: null, timeout_secs: null },
   },
   {
     id: 'filesystem',
     displayName: 'Filesystem',
     description: 'Read and write local files safely',
     icon: '📁',
-    config: { name: 'filesystem', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    config: { name: 'filesystem', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'], url: null, timeout_secs: null },
   },
   {
     id: 'brave-search',
     displayName: 'Brave Search',
     description: 'Web search via Brave API',
     icon: '🔍',
-    config: { name: 'brave-search', command: 'npx', args: ['-y', '@modelcontextprotocol/server-brave-search'], env: { BRAVE_API_KEY: '$BRAVE_API_KEY' } },
+    config: { name: 'brave-search', command: 'npx', args: ['-y', '@modelcontextprotocol/server-brave-search'], env: { BRAVE_API_KEY: '$BRAVE_API_KEY' }, url: null, timeout_secs: null },
   },
   {
     id: 'slack',
     displayName: 'Slack',
     description: 'Read channels, send messages',
     icon: '💬',
-    config: { name: 'slack', command: 'npx', args: ['-y', '@modelcontextprotocol/server-slack'], env: { SLACK_BOT_TOKEN: '$SLACK_BOT_TOKEN', SLACK_TEAM_ID: '$SLACK_TEAM_ID' } },
+    config: { name: 'slack', command: 'npx', args: ['-y', '@modelcontextprotocol/server-slack'], env: { SLACK_BOT_TOKEN: '$SLACK_BOT_TOKEN', SLACK_TEAM_ID: '$SLACK_TEAM_ID' }, url: null, timeout_secs: null },
   },
   {
     id: 'linear',
     displayName: 'Linear',
     description: 'Manage issues and project cycles',
     icon: '◈',
-    config: { name: 'linear', command: 'npx', args: ['-y', '@linear/mcp-server'], env: { LINEAR_API_KEY: '$LINEAR_API_KEY' } },
+    config: { name: 'linear', command: 'npx', args: ['-y', '@linear/mcp-server'], env: { LINEAR_API_KEY: '$LINEAR_API_KEY' }, url: null, timeout_secs: null },
   },
   {
     id: 'playwright',
     displayName: 'Playwright',
     description: 'Browser automation and testing',
     icon: '🎭',
-    config: { name: 'playwright', command: 'npx', args: ['-y', '@executeautomation/playwright-mcp-server'] },
+    config: { name: 'playwright', command: 'npx', args: ['-y', '@executeautomation/playwright-mcp-server'], url: null, timeout_secs: null },
   },
   {
     id: 'postgres',
     displayName: 'PostgreSQL',
     description: 'Query and inspect your database',
     icon: '🐘',
-    config: { name: 'postgres', command: 'npx', args: ['-y', '@modelcontextprotocol/server-postgres'], env: { DATABASE_URL: '$DATABASE_URL' } },
+    config: { name: 'postgres', command: 'npx', args: ['-y', '@modelcontextprotocol/server-postgres'], env: { DATABASE_URL: '$DATABASE_URL' }, url: null, timeout_secs: null },
   },
   {
     id: 'memory',
     displayName: 'Memory',
     description: 'Persistent knowledge graph for context',
     icon: '🧠',
-    config: { name: 'memory', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] },
+    config: { name: 'memory', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'], url: null, timeout_secs: null },
   },
 ]
 
@@ -176,8 +176,8 @@ export interface LibraryPanelProps {
 export function LibraryPanel({ library, onAddMcp, onAddSkill }: LibraryPanelProps) {
   const [query, setQuery] = useState('')
 
-  const addedMcpIds = new Set(library.mcp_servers.map((s) => s.name))
-  const addedSkillIds = new Set(library.skills.map((s) => s.id))
+  const addedMcpIds = new Set((library.mcp_servers ?? []).map((s) => s.name))
+  const addedSkillIds = new Set((library.skills ?? []).map((s) => s.id))
 
   const filteredMcp = CURATED_MCP.filter(
     (m) => !query || m.displayName.toLowerCase().includes(query.toLowerCase()) || m.description.toLowerCase().includes(query.toLowerCase()),

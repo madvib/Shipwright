@@ -1,5 +1,5 @@
 import { Shield, FileSearch, ShieldAlert } from 'lucide-react'
-import type { Permissions } from '../types'
+import type { NetworkPolicy, Permissions } from '../types'
 
 interface Props {
   permissions: Permissions
@@ -101,8 +101,8 @@ export function PermissionsEditor({ permissions, onChange }: Props) {
       <PatternSection
         title="Tools"
         subtitle="Allow or deny specific tools by name or glob."
-        allow={permissions.tools.allow}
-        deny={permissions.tools.deny}
+        allow={permissions.tools?.allow ?? []}
+        deny={permissions.tools?.deny ?? []}
         suggestions={TOOL_SUGGESTIONS}
         sectionKey="tools"
         onAllow={(allow) => update({ tools: { ...permissions.tools, allow } })}
@@ -112,8 +112,8 @@ export function PermissionsEditor({ permissions, onChange }: Props) {
       <PatternSection
         title="Filesystem"
         subtitle="Glob patterns for allowed/denied file paths."
-        allow={permissions.filesystem.allow}
-        deny={permissions.filesystem.deny}
+        allow={permissions.filesystem?.allow ?? []}
+        deny={permissions.filesystem?.deny ?? []}
         suggestions={FILESYSTEM_SUGGESTIONS}
         sectionKey="fs"
         onAllow={(allow) => update({ filesystem: { ...permissions.filesystem, allow } })}
@@ -123,8 +123,8 @@ export function PermissionsEditor({ permissions, onChange }: Props) {
       <PatternSection
         title="Shell commands"
         subtitle="Shell command patterns the agent may or may not run."
-        allow={permissions.commands.allow}
-        deny={permissions.commands.deny}
+        allow={permissions.commands?.allow ?? []}
+        deny={permissions.commands?.deny ?? []}
         suggestions={COMMAND_SUGGESTIONS}
         sectionKey="cmd"
         onAllow={(allow) => update({ commands: { ...permissions.commands, allow } })}
@@ -136,12 +136,12 @@ export function PermissionsEditor({ permissions, onChange }: Props) {
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-muted-foreground w-16 shrink-0">Policy</label>
           <select
-            value={permissions.network.policy}
+            value={permissions.network?.policy ?? 'none'}
             onChange={(e) =>
               update({
                 network: {
                   ...permissions.network,
-                  policy: e.target.value as Permissions['network']['policy'],
+                  policy: e.target.value as NetworkPolicy,
                 },
               })
             }
@@ -152,11 +152,11 @@ export function PermissionsEditor({ permissions, onChange }: Props) {
             ))}
           </select>
         </div>
-        {permissions.network.policy === 'allow-list' && (
+        {permissions.network?.policy === 'allow-list' && (
           <div className="space-y-1">
             <label className="text-[11px] text-muted-foreground">Allowed hosts (one per line)</label>
             <textarea
-              value={permissions.network.allow_hosts.join('\n')}
+              value={(permissions.network?.allow_hosts ?? []).join('\n')}
               onChange={(e) =>
                 update({
                   network: {

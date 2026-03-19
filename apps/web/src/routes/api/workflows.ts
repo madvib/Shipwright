@@ -9,7 +9,7 @@ import { getD1, nanoid } from '#/lib/d1'
 
 const CreateWorkflowInput = z.object({
   name: z.string().min(1, 'Name is required').max(128),
-  definition: z.record(z.unknown()).optional(),
+  definition: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const Route = createFileRoute('/api/workflows')({

@@ -8,7 +8,10 @@ const EMPTY_LIB: ProjectLibrary = {
   mcp_servers: [],
   skills: [],
   rules: [],
-  permissions: null,
+  agent_profiles: [],
+  claude_team_agents: [],
+  env: {},
+  available_models: [],
 }
 
 describe('libraryToShipFiles', () => {
@@ -46,8 +49,8 @@ describe('libraryToShipFiles', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
       mcp_servers: [
-        { name: 'github', command: 'npx', args: ['-y', '@mcp/server-github'] },
-        { name: 'memory', command: 'npx', args: ['-y', '@mcp/server-memory'] },
+        { name: 'github', command: 'npx', args: ['-y', '@mcp/server-github'], url: null, timeout_secs: null },
+        { name: 'memory', command: 'npx', args: ['-y', '@mcp/server-memory'], url: null, timeout_secs: null },
       ],
     }
     const files = libraryToShipFiles(lib)
@@ -62,7 +65,7 @@ describe('libraryToShipFiles', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
       mcp_servers: [
-        { name: 'github', command: 'npx', args: [], env: { GITHUB_TOKEN: '$GITHUB_TOKEN' } },
+        { name: 'github', command: 'npx', args: [], env: { GITHUB_TOKEN: '$GITHUB_TOKEN' }, url: null, timeout_secs: null },
       ],
     }
     const files = libraryToShipFiles(lib)
@@ -72,7 +75,7 @@ describe('libraryToShipFiles', () => {
   it('generates preset toml referencing mcp and skills', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
-      mcp_servers: [{ name: 'github', command: 'npx' }],
+      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null }],
       skills: [{ id: 'commit', name: 'Commit', content: '...' }],
     }
     const files = libraryToShipFiles(lib, 'dev')

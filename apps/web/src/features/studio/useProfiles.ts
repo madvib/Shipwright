@@ -41,12 +41,12 @@ export function profileToLibrary(profile: Profile): ProjectLibrary {
     : []
   return {
     modes: [{
+      id: profile.id,
       name: profile.name,
       description: profile.persona || null,
-      skills: profile.skills,
-      mcp_servers: profile.mcpServers,
-      rules,
-      permissions: profile.permissions,
+      skills: profile.skills.map((s) => s.id),
+      mcp_servers: profile.mcpServers.map((s) => s.name),
+      rules: rules.map((r) => r.file_name),
       active_tools: profile.selectedProviders,
     }],
     active_mode: profile.name,
@@ -54,6 +54,10 @@ export function profileToLibrary(profile: Profile): ProjectLibrary {
     skills: profile.skills,
     rules,
     permissions: profile.permissions,
+    agent_profiles: [],
+    claude_team_agents: [],
+    env: {},
+    available_models: [],
   }
 }
 

@@ -9,7 +9,10 @@ function makeLibrary(overrides: Partial<ProjectLibrary> = {}): ProjectLibrary {
     skills: [],
     rules: [],
     mcp_servers: [],
-    permissions: null,
+    agent_profiles: [],
+    claude_team_agents: [],
+    env: {},
+    available_models: [],
     ...overrides,
   }
 }
@@ -19,7 +22,7 @@ describe('filterLibraryBySelection', () => {
     const lib = makeLibrary({
       skills: [{ id: 'foo', name: 'Foo', content: '# Foo' }],
       rules: [{ file_name: 'CLAUDE.md', content: '# Rules' }],
-      mcp_servers: [{ name: 'github', command: 'npx' }],
+      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null }],
     })
     const result = filterLibraryBySelection(lib, {
       skills: new Set(),
@@ -35,7 +38,7 @@ describe('filterLibraryBySelection', () => {
     const lib = makeLibrary({
       skills: [{ id: 'foo', name: 'Foo', content: '# Foo' }, { id: 'bar', name: 'Bar', content: '# Bar' }],
       rules: [{ file_name: 'CLAUDE.md', content: '# Rules' }],
-      mcp_servers: [{ name: 'github', command: 'npx' }],
+      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null }],
     })
     const result = filterLibraryBySelection(lib, {
       skills: new Set(['foo', 'bar']),
@@ -60,7 +63,7 @@ describe('filterLibraryBySelection', () => {
       mcp_servers: new Set(),
     })
     expect(result.skills).toHaveLength(1)
-    expect(result.skills[0].id).toBe('foo')
+    expect(result.skills?.[0].id).toBe('foo')
   })
 
   it('filters rules by file_name', () => {
@@ -76,14 +79,14 @@ describe('filterLibraryBySelection', () => {
       mcp_servers: new Set(),
     })
     expect(result.rules).toHaveLength(1)
-    expect(result.rules[0].file_name).toBe('AGENTS.md')
+    expect(result.rules?.[0].file_name).toBe('AGENTS.md')
   })
 
   it('filters mcp_servers by name', () => {
     const lib = makeLibrary({
       mcp_servers: [
-        { name: 'github', command: 'npx' },
-        { name: 'filesystem', command: 'npx' },
+        { name: 'github', command: 'npx', url: null, timeout_secs: null },
+        { name: 'filesystem', command: 'npx', url: null, timeout_secs: null },
       ],
     })
     const result = filterLibraryBySelection(lib, {
@@ -92,12 +95,12 @@ describe('filterLibraryBySelection', () => {
       mcp_servers: new Set(['filesystem']),
     })
     expect(result.mcp_servers).toHaveLength(1)
-    expect(result.mcp_servers[0].name).toBe('filesystem')
+    expect(result.mcp_servers?.[0].name).toBe('filesystem')
   })
 
   it('preserves non-filtered fields on the library', () => {
     const lib = makeLibrary({
-      modes: [{ name: 'default', description: '', mcp_servers: [], skills: [], rules: [] }],
+      modes: [{ id: 'test-mode', name: 'default', description: '', mcp_servers: [], skills: [], rules: [] }],
       active_mode: 'default',
     })
     const result = filterLibraryBySelection(lib, {

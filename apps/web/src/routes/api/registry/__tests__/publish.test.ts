@@ -33,7 +33,8 @@ import * as registryGithub from '#/lib/registry-github'
 import * as registryRepositories from '#/db/registry-repositories'
 import * as d1Lib from '#/lib/d1'
 
-const POST = Route.options.server!.handlers!.POST!
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const POST = (Route.options.server!.handlers as any).POST!
 
 function makeRepos(overrides: Record<string, unknown> = {}) {
   return {

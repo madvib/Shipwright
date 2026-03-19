@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Cloud, CloudOff, Check, Loader2 } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 
 export type SyncStatusValue = 'idle' | 'saving' | 'saved' | 'error'
 

@@ -26,17 +26,17 @@ interface Selection {
 export function filterLibraryBySelection(library: ProjectLibrary, selection: Selection): ProjectLibrary {
   return {
     ...library,
-    skills: library.skills.filter((s) => selection.skills.has(s.id)),
-    rules: library.rules.filter((r) => selection.rules.has(r.file_name)),
-    mcp_servers: library.mcp_servers.filter((s) => selection.mcp_servers.has(s.name)),
+    skills: (library.skills ?? []).filter((s) => selection.skills.has(s.id)),
+    rules: (library.rules ?? []).filter((r) => selection.rules.has(r.file_name)),
+    mcp_servers: (library.mcp_servers ?? []).filter((s) => selection.mcp_servers.has(s.name)),
   }
 }
 
 function selectionFromLibrary(library: ProjectLibrary): Selection {
   return {
-    skills: new Set(library.skills.map((s) => s.id)),
-    rules: new Set(library.rules.map((r) => r.file_name)),
-    mcp_servers: new Set(library.mcp_servers.map((s) => s.name)),
+    skills: new Set((library.skills ?? []).map((s) => s.id)),
+    rules: new Set((library.rules ?? []).map((r) => r.file_name)),
+    mcp_servers: new Set((library.mcp_servers ?? []).map((s) => s.name)),
   }
 }
 
@@ -89,10 +89,10 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
   const handleLoad = useCallback(() => {
     if (state.step !== 'preview') return
     const filtered = filterLibraryBySelection(state.library, selection)
-    const hasAny = filtered.skills.length > 0 || filtered.rules.length > 0 || filtered.mcp_servers.length > 0
+    const hasAny = (filtered.skills ?? []).length > 0 || (filtered.rules ?? []).length > 0 || (filtered.mcp_servers ?? []).length > 0
     if (!hasAny) return
     onImport(filtered)
-    const total = filtered.skills.length + filtered.rules.length + filtered.mcp_servers.length
+    const total = (filtered.skills ?? []).length + (filtered.rules ?? []).length + (filtered.mcp_servers ?? []).length
     toast.success(`Imported ${total} item${total !== 1 ? 's' : ''} from GitHub`)
     handleClose()
   }, [state, selection, onImport, handleClose])
@@ -208,7 +208,7 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
                 <PreviewSection
                   icon={<ScrollText className="size-3.5" />}
                   label="Rules"
-                  items={state.library.rules.map((r) => r.file_name)}
+                  items={(state.library.rules ?? []).map((r) => r.file_name)}
                   selected={selection.rules}
                   onToggle={(key) => toggleItem('rules', key)}
                   onToggleAll={(keys) => toggleAll('rules', keys)}
@@ -216,8 +216,8 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
                 <PreviewSection
                   icon={<BookOpen className="size-3.5" />}
                   label="Skills"
-                  items={state.library.skills.map((s) => s.id)}
-                  labels={state.library.skills.map((s) => s.name)}
+                  items={(state.library.skills ?? []).map((s) => s.id)}
+                  labels={(state.library.skills ?? []).map((s) => s.name)}
                   selected={selection.skills}
                   onToggle={(key) => toggleItem('skills', key)}
                   onToggleAll={(keys) => toggleAll('skills', keys)}
@@ -225,15 +225,15 @@ export function ImportDialog({ open, onClose, onImport }: ImportDialogProps) {
                 <PreviewSection
                   icon={<Server className="size-3.5" />}
                   label="MCP Servers"
-                  items={state.library.mcp_servers.map((s) => s.name)}
+                  items={(state.library.mcp_servers ?? []).map((s) => s.name)}
                   selected={selection.mcp_servers}
                   onToggle={(key) => toggleItem('mcp_servers', key)}
                   onToggleAll={(keys) => toggleAll('mcp_servers', keys)}
                 />
 
-                {state.library.rules.length === 0 &&
-                  state.library.skills.length === 0 &&
-                  state.library.mcp_servers.length === 0 && (
+                {(state.library.rules ?? []).length === 0 &&
+                  (state.library.skills ?? []).length === 0 &&
+                  (state.library.mcp_servers ?? []).length === 0 && (
                     <p className="text-xs text-muted-foreground py-4 text-center">
                       No agent configuration found in this repository.
                     </p>

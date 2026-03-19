@@ -64,22 +64,22 @@ export function useLibrary() {
 
   const handleImport = useCallback((imported: ProjectLibrary) => {
     setLibrary((prev) => {
-      const existingMcpNames = new Set(prev.mcp_servers.map((s) => s.name))
-      const existingSkillIds = new Set(prev.skills.map((s) => s.id))
-      const existingRuleNames = new Set(prev.rules.map((r) => r.file_name))
+      const existingMcpNames = new Set((prev.mcp_servers ?? []).map((s) => s.name))
+      const existingSkillIds = new Set((prev.skills ?? []).map((s) => s.id))
+      const existingRuleNames = new Set((prev.rules ?? []).map((r) => r.file_name))
       return {
         ...prev,
         mcp_servers: [
-          ...prev.mcp_servers,
-          ...imported.mcp_servers.filter((s) => !existingMcpNames.has(s.name)),
+          ...(prev.mcp_servers ?? []),
+          ...(imported.mcp_servers ?? []).filter((s) => !existingMcpNames.has(s.name)),
         ],
         skills: [
-          ...prev.skills,
-          ...imported.skills.filter((s) => !existingSkillIds.has(s.id)),
+          ...(prev.skills ?? []),
+          ...(imported.skills ?? []).filter((s) => !existingSkillIds.has(s.id)),
         ],
         rules: [
-          ...prev.rules,
-          ...imported.rules.filter((r) => !existingRuleNames.has(r.file_name)),
+          ...(prev.rules ?? []),
+          ...(imported.rules ?? []).filter((r) => !existingRuleNames.has(r.file_name)),
         ],
       }
     })
@@ -87,15 +87,15 @@ export function useLibrary() {
 
   const addMcpServer = useCallback((config: McpServerConfig) => {
     setLibrary((prev) => {
-      if (prev.mcp_servers.some((s) => s.name === config.name)) return prev
-      return { ...prev, mcp_servers: [...prev.mcp_servers, config] }
+      if ((prev.mcp_servers ?? []).some((s) => s.name === config.name)) return prev
+      return { ...prev, mcp_servers: [...(prev.mcp_servers ?? []), config] }
     })
   }, [])
 
   const addSkill = useCallback((skill: Skill) => {
     setLibrary((prev) => {
-      if (prev.skills.some((s) => s.id === skill.id)) return prev
-      return { ...prev, skills: [...prev.skills, skill] }
+      if ((prev.skills ?? []).some((s) => s.id === skill.id)) return prev
+      return { ...prev, skills: [...(prev.skills ?? []), skill] }
     })
   }, [])
 

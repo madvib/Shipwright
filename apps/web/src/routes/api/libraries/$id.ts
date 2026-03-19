@@ -9,7 +9,7 @@ import { getD1 } from '#/lib/d1'
 
 const UpdateLibraryInput = z.object({
   name: z.string().min(1).max(128).optional(),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const Route = createFileRoute('/api/libraries/$id')({

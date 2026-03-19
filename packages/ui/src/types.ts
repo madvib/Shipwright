@@ -7,7 +7,6 @@ export type {
   AgentLimits,
   AgentProfile,
   AiConfig,
-  CatalogCategory,
   CatalogEntry,
   CatalogKind,
   CommandPermissions,
@@ -89,5 +88,4 @@ export const DEFAULT_LIBRARY: ProjectLibrary = {
   claude_team_agents: [],
   env: {},
   available_models: [],
-  codex_sandbox: null,
 }

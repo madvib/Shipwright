@@ -4,7 +4,6 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { getD1 } from '#/lib/d1'
-import { createRegistryRepositories } from '#/db/registry-repositories'
 
 export const Route = createFileRoute('/api/registry/duplicates')({
   server: {
@@ -28,7 +27,6 @@ export const Route = createFileRoute('/api/registry/duplicates')({
         const d1 = getD1()
         if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })
 
-        const repos = createRegistryRepositories(d1)
         // Search for skills with matching content hash across all packages
         // TODO: Add getSkillDuplicates to RegistryRepositories interface
         const stmt = d1.prepare(

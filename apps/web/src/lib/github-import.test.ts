@@ -47,28 +47,28 @@ describe('extractLibrary', () => {
     const mcp = JSON.stringify({ mcpServers: { 'my-server': { command: 'npx', args: ['my-pkg'] } } })
     const lib = extractLibrary({ '.mcp.json': mcp })
     expect(lib!.mcp_servers).toHaveLength(1)
-    expect(lib!.mcp_servers[0]).toMatchObject({ name: 'my-server', command: 'npx', args: ['my-pkg'] })
+    expect((lib!.mcp_servers ?? [])[0]).toMatchObject({ name: 'my-server', command: 'npx', args: ['my-pkg'] })
   })
 
   it('extracts .mcp.json mcp_servers (mcp_servers key)', () => {
     const mcp = JSON.stringify({ mcp_servers: { 'srv': { command: 'node', args: [] } } })
     const lib = extractLibrary({ '.mcp.json': mcp })
-    expect(lib!.mcp_servers[0].name).toBe('srv')
+    expect((lib!.mcp_servers ?? [])[0].name).toBe('srv')
   })
 
   it('extracts .cursor/rules/*.mdc as rules', () => {
     const lib = extractLibrary({ '.cursor/rules/react.mdc': '# React' })
-    expect(lib!.rules[0]).toEqual({ file_name: 'react.mdc', content: '# React' })
+    expect((lib!.rules ?? [])[0]).toEqual({ file_name: 'react.mdc', content: '# React' })
   })
 
   it('extracts AGENTS.md as a rule', () => {
     const lib = extractLibrary({ 'AGENTS.md': 'Be an agent.' })
-    expect(lib!.rules[0].file_name).toBe('AGENTS.md')
+    expect((lib!.rules ?? [])[0].file_name).toBe('AGENTS.md')
   })
 
   it('extracts .gemini/GEMINI.md as a rule with filename GEMINI.md', () => {
     const lib = extractLibrary({ '.gemini/GEMINI.md': '# Gemini' })
-    expect(lib!.rules[0].file_name).toBe('GEMINI.md')
+    expect((lib!.rules ?? [])[0].file_name).toBe('GEMINI.md')
   })
 
   it('returns null when nothing extractable', () => {
@@ -87,7 +87,7 @@ describe('extractLibrary', () => {
     expect(lib).not.toBeNull()
     expect(lib!.rules).toEqual([{ file_name: 'base.md', content: '# Base rules' }])
     expect(lib!.skills).toHaveLength(1)
-    expect(lib!.skills[0]).toMatchObject({ id: 'ship-coordination', name: 'ship-coordination' })
+    expect((lib!.skills ?? [])[0]).toMatchObject({ id: 'ship-coordination', name: 'ship-coordination' })
   })
 
   it('ship project takes priority over other files', () => {
@@ -96,7 +96,7 @@ describe('extractLibrary', () => {
       'CLAUDE.md': '# Claude rule',
     })
     expect(lib!.rules).toHaveLength(1)
-    expect(lib!.rules[0].file_name).toBe('base.md')
+    expect((lib!.rules ?? [])[0].file_name).toBe('base.md')
   })
 
   it('parses mcp.toml [[servers]] from ship project', () => {
@@ -108,7 +108,7 @@ args = ["@my/tool"]
 `
     const lib = extractLibrary({ '.ship/agents/mcp.toml': toml })
     expect(lib!.mcp_servers).toHaveLength(1)
-    expect(lib!.mcp_servers[0]).toMatchObject({ name: 'my-tool', command: 'npx', args: ['@my/tool'] })
+    expect((lib!.mcp_servers ?? [])[0]).toMatchObject({ name: 'my-tool', command: 'npx', args: ['@my/tool'] })
   })
 
   it('collects multiple rules in priority order', () => {
@@ -118,6 +118,6 @@ args = ["@my/tool"]
       '.cursor/rules/b.mdc': 'cursor-b',
       'AGENTS.md': 'agents',
     })
-    expect(lib!.rules.map(r => r.file_name)).toEqual(['CLAUDE.md', 'a.mdc', 'b.mdc', 'AGENTS.md'])
+    expect((lib!.rules ?? []).map(r => r.file_name)).toEqual(['CLAUDE.md', 'a.mdc', 'b.mdc', 'AGENTS.md'])
   })
 })

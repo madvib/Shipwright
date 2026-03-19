@@ -31,7 +31,8 @@ import * as githubApp from '#/lib/github-app'
 import * as registryRepositories from '#/db/registry-repositories'
 import * as d1Lib from '#/lib/d1'
 
-const POST = Route.options.server!.handlers!.POST!
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const POST = (Route.options.server!.handlers as any).POST!
 
 const VALID_PACKAGE = {
   id: 'pkg-1',

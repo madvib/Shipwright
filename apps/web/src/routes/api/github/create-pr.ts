@@ -92,7 +92,7 @@ export const Route = createFileRoute('/api/github/create-pr')({
 
           // 3. Convert to .ship/ format (even if no existing config, create minimal)
           const shipFiles = libraryToShipFiles(
-            library ?? { modes: [], active_mode: null, mcp_servers: [], skills: [], rules: [], permissions: null },
+            library ?? { modes: [], active_mode: null, mcp_servers: [], skills: [], rules: [], agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] },
             mode_name ?? 'default',
           )
 

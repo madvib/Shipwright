@@ -83,7 +83,7 @@ function ServerRow({
   onRemove: () => void
 }) {
   const argsStr = (server.args ?? []).join(' ')
-  const envEntries = Object.entries(server.env ?? {})
+  const envEntries = Object.entries(server.env ?? {}).filter((e): e is [string, string] => e[1] !== undefined)
 
   return (
     <div className={`overflow-hidden rounded-xl border transition ${isExpanded ? 'border-border bg-card' : 'border-border/60 bg-card/50'}`}>

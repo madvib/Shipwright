@@ -15,7 +15,8 @@ import { Route } from '../search'
 import * as registryRepositories from '#/db/registry-repositories'
 import * as d1Lib from '#/lib/d1'
 
-const GET = Route.options.server!.handlers!.GET!
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const GET = (Route.options.server!.handlers as any).GET!
 
 function makePackage(overrides: Record<string, unknown> = {}) {
   return {

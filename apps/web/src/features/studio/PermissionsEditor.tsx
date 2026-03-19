@@ -49,23 +49,23 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
   const addAllow = () => {
     const val = allowInput.trim()
     if (!val) return
-    onChange({ ...permissions, tools: { ...permissions.tools, allow: [...permissions.tools.allow, val] } })
+    onChange({ ...permissions, tools: { ...permissions.tools, allow: [...(permissions.tools?.allow ?? []), val] } })
     setAllowInput('')
   }
 
   const removeAllow = (rule: string) => {
-    onChange({ ...permissions, tools: { ...permissions.tools, allow: permissions.tools.allow.filter((r) => r !== rule) } })
+    onChange({ ...permissions, tools: { ...permissions.tools, allow: (permissions.tools?.allow ?? []).filter((r) => r !== rule) } })
   }
 
   const addDeny = () => {
     const val = denyInput.trim()
     if (!val) return
-    onChange({ ...permissions, tools: { ...permissions.tools, deny: [...permissions.tools.deny, val] } })
+    onChange({ ...permissions, tools: { ...permissions.tools, deny: [...(permissions.tools?.deny ?? []), val] } })
     setDenyInput('')
   }
 
   const removeDeny = (rule: string) => {
-    onChange({ ...permissions, tools: { ...permissions.tools, deny: permissions.tools.deny.filter((r) => r !== rule) } })
+    onChange({ ...permissions, tools: { ...permissions.tools, deny: (permissions.tools?.deny ?? []).filter((r) => r !== rule) } })
   }
 
   const PRESET_LABELS: { id: Preset; label: string }[] = [
@@ -102,7 +102,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
       <div>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Allow rules</p>
         <div className="flex flex-wrap gap-1.5 mb-2">
-          {permissions.tools.allow.map((rule) => (
+          {(permissions.tools?.allow ?? []).map((rule) => (
             <span
               key={rule}
               className="flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300"
@@ -137,7 +137,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
       <div>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">Deny rules</p>
         <div className="flex flex-wrap gap-1.5 mb-2">
-          {permissions.tools.deny.map((rule) => (
+          {(permissions.tools?.deny ?? []).map((rule) => (
             <span
               key={rule}
               className="flex items-center gap-1 rounded border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 font-mono text-[10px] text-rose-700 dark:text-rose-300"
@@ -148,7 +148,7 @@ export function PermissionsEditor({ permissions, onChange }: PermissionsEditorPr
               </button>
             </span>
           ))}
-          {permissions.tools.deny.length === 0 && (
+          {(permissions.tools?.deny ?? []).length === 0 && (
             <span className="text-[10px] text-muted-foreground/50 italic">No deny rules</span>
           )}
         </div>

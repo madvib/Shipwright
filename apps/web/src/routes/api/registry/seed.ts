@@ -71,7 +71,7 @@ async function importRepo(
 
   // Index skills: rules become skills in the package
   // Note: no version record for imported packages (no git tag)
-  for (const rule of library.rules) {
+  for (const rule of (library.rules ?? [])) {
     const hash = await computeContentHash(rule.content)
     await db.createPackageSkill({
       id: nanoid(),
@@ -86,7 +86,7 @@ async function importRepo(
   }
 
   // Index native skills from .ship/ projects
-  for (const skill of library.skills) {
+  for (const skill of (library.skills ?? [])) {
     const hash = await computeContentHash(skill.content)
     await db.createPackageSkill({
       id: nanoid(),
