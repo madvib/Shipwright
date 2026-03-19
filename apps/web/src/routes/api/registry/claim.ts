@@ -9,6 +9,7 @@ import { requireSession } from '#/lib/session-auth'
 import { getTokenFromCookie, getUser } from '#/lib/github-app'
 import { getD1 } from '#/lib/d1'
 import { createRegistryRepositories } from '#/db/registry-repositories'
+import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
 interface ClaimBody {
   package_path: string
@@ -64,6 +65,9 @@ export const Route = createFileRoute('/api/registry/claim')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const rl = await checkRateLimit(request, 'claim', 5, 3600)
+        if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
         // Require authenticated session
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth

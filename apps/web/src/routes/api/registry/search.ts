@@ -25,7 +25,16 @@ export const Route = createFileRoute('/api/registry/search')({
           )
 
         const url = new URL(request.url)
-        const query = url.searchParams.get('q') || undefined
+        const rawQuery = url.searchParams.get('q')
+
+        if (rawQuery !== null && rawQuery.length > 200) {
+          return Response.json(
+            { error: 'Query too long (max 200 characters)' },
+            { status: 400 },
+          )
+        }
+
+        const query = rawQuery || undefined
         const scope = url.searchParams.get('scope') || undefined
 
         if (scope && !VALID_SCOPES.has(scope)) {

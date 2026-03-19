@@ -18,6 +18,19 @@
     }
   ],
 
+  // KV namespace for rate limiting — run `wrangler kv namespace create RATE_LIMIT_KV` to provision
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMIT_KV",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ],
+
+  // Vars with placeholder values — set real secrets in the Cloudflare dashboard (never commit secrets)
+  "vars": {
+    "GITHUB_WEBHOOK_SECRET": ""
+  },
+
   // Production: update pattern and zone_name to match your domain
   "routes": [
     { "pattern": "ship-studio.com/*", "zone_name": "ship-studio.com" }
@@ -36,7 +49,16 @@
           "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
           "migrations_dir": "migrations"
         }
-      ]
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "RATE_LIMIT_KV",
+          "id": "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+        }
+      ],
+      "vars": {
+        "GITHUB_WEBHOOK_SECRET": ""
+      }
     },
     "production": {
       "name": "ship-studio",
@@ -50,7 +72,16 @@
           "database_id": "REPLACE_WITH_D1_DATABASE_ID",
           "migrations_dir": "migrations"
         }
-      ]
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "RATE_LIMIT_KV",
+          "id": "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
+        }
+      ],
+      "vars": {
+        "GITHUB_WEBHOOK_SECRET": ""
+      }
     }
   }
 }

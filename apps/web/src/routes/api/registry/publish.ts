@@ -11,11 +11,16 @@ import { z } from 'zod/v4'
 import { createRegistryRepositories } from '#/db/registry-repositories'
 import { getD1, nanoid } from '#/lib/d1'
 import { optionalSession } from '#/lib/session-auth'
+import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 import {
   parseGithubUrl,
   fetchFileFromGitHub,
   parseShipToml,
 } from '#/lib/registry-github'
+
+const TOML_MAX_BYTES = 102400 // 100 KB
+const SKILL_MAX_BYTES = 51200 // 50 KB
+const SKILL_ID_RE = /^[a-z0-9][a-z0-9\-_]{0,62}[a-z0-9]$/i
 
 const PublishInput = z.object({
   repo_url: z.string().min(1, 'repo_url is required'),
@@ -26,6 +31,9 @@ export const Route = createFileRoute('/api/registry/publish')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const rl = await checkRateLimit(request, 'publish', 10, 3600)
+        if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
         let body: unknown
         try {
           body = await request.json()
@@ -75,6 +83,14 @@ export const Route = createFileRoute('/api/registry/publish')({
                 'No .ship/ship.toml found in this repository. ' +
                 'Create a .ship/ship.toml with [module] and [exports] sections to publish.',
             },
+            { status: 422 },
+          )
+        }
+
+        const tomlBytes = new TextEncoder().encode(tomlContent).length
+        if (tomlBytes > TOML_MAX_BYTES) {
+          return Response.json(
+            { error: 'ship.toml exceeds maximum size of 100KB' },
             { status: 422 },
           )
         }
@@ -141,6 +157,16 @@ export const Route = createFileRoute('/api/registry/publish')({
           indexedAt: now,
         })
 
+        // Validate skill ID format before indexing
+        for (const skillId of skillIds) {
+          if (!SKILL_ID_RE.test(skillId)) {
+            return Response.json(
+              { error: `Invalid skill ID: ${skillId}` },
+              { status: 422 },
+            )
+          }
+        }
+
         // Index exported skills
         let skillsIndexed = 0
         for (const skillId of skillIds) {
@@ -152,6 +178,15 @@ export const Route = createFileRoute('/api/registry/publish')({
             ref,
           )
           if (!content) continue
+
+          const skillBytes = new TextEncoder().encode(content).length
+          if (skillBytes > SKILL_MAX_BYTES) {
+            // Skip oversized skill files with a warning — don't fail the whole publish
+            console.warn(
+              `Skipping skill ${skillId}: file size ${skillBytes} bytes exceeds limit of ${SKILL_MAX_BYTES} bytes`,
+            )
+            continue
+          }
 
           const hash = await computeContentHash(content)
           await repos.createPackageSkill({

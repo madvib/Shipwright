@@ -4,12 +4,18 @@
 declare namespace Cloudflare {
 	interface StagingEnv {
 		DB: D1Database;
+		RATE_LIMIT_KV: KVNamespace;
+		GITHUB_WEBHOOK_SECRET: string;
 	}
 	interface ProductionEnv {
 		DB: D1Database;
+		RATE_LIMIT_KV: KVNamespace;
+		GITHUB_WEBHOOK_SECRET: string;
 	}
 	interface Env {
 		DB: D1Database;
+		RATE_LIMIT_KV: KVNamespace;
+		GITHUB_WEBHOOK_SECRET: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

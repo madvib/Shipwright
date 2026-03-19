@@ -7,6 +7,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createRegistryRepositories } from '#/db/registry-repositories'
 import { getD1, nanoid } from '#/lib/d1'
+import { env as cloudflareEnv } from 'cloudflare:workers'
 import {
   fetchFileFromGitHub,
   parseShipToml,
@@ -16,9 +17,7 @@ export const Route = createFileRoute('/api/registry/webhook')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const secret = (globalThis as Record<string, unknown>)[
-          'GITHUB_WEBHOOK_SECRET'
-        ] as string | undefined
+        const secret = (cloudflareEnv as Partial<Env>).GITHUB_WEBHOOK_SECRET
 
         if (!secret) {
           return Response.json(
