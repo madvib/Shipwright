@@ -90,7 +90,8 @@ pub fn build_claude_settings_patch(
                 HookTrigger::SubagentStop => "SubagentStop",
                 HookTrigger::PreCompact => "PreCompact",
             };
-            let mut entry = serde_json::json!({ "type": "command", "command": hook.command });
+            let hook_obj = serde_json::json!({ "type": "command", "command": hook.command });
+            let mut entry = serde_json::json!({ "hooks": [hook_obj] });
             if let Some(m) = &hook.matcher {
                 entry["matcher"] = Json::String(m.clone());
             }

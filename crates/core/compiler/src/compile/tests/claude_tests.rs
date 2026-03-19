@@ -134,8 +134,11 @@ fn hooks_compile_into_settings_patch() {
     let patch = out.claude_settings_patch.expect("hooks must emit a patch");
     let hooks = patch["hooks"]["PreToolUse"].as_array().unwrap();
     assert_eq!(hooks.len(), 1);
-    assert_eq!(hooks[0]["command"], "ship hooks check");
+    // Each entry is { matcher?, hooks: [{ type, command }] }
     assert_eq!(hooks[0]["matcher"], "Bash");
+    let inner = hooks[0]["hooks"].as_array().unwrap();
+    assert_eq!(inner.len(), 1);
+    assert_eq!(inner[0]["command"], "ship hooks check");
 }
 
 #[test]

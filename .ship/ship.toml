@@ -30,6 +30,7 @@ agents = [
     "agents/profiles/react-designer.toml",
     "agents/profiles/reviewer.toml",
     "agents/profiles/rust-compiler.toml",
+    "agents/profiles/rust-lane.toml",
     "agents/profiles/rust-runtime.toml",
     "agents/profiles/server-lane.toml",
     "agents/profiles/test-writer.toml",
