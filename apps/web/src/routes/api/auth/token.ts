@@ -3,7 +3,8 @@
 // The auth code is created by /auth/cli-callback after GitHub OAuth completes.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { signJwt, getDb, getSecret } from '#/lib/cloud-auth'
+import { signJwt, getSecret } from '#/lib/cloud-auth'
+import { getD1 } from '#/lib/d1'
 
 async function sha256Base64url(input: string): Promise<string> {
   const data = new TextEncoder().encode(input)
@@ -32,7 +33,7 @@ export const Route = createFileRoute('/api/auth/token')({
 
         const { code, verifier } = b as { code: string; verifier: string }
 
-        const db = getDb()
+        const db = getD1()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }

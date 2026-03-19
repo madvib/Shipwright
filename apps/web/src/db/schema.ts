@@ -109,3 +109,84 @@ export const workflows = sqliteTable(
 
 export type Workflow = typeof workflows.$inferSelect
 export type InsertWorkflow = typeof workflows.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Registry tables
+// ---------------------------------------------------------------------------
+
+export const packages = sqliteTable(
+  'packages',
+  {
+    id: text('id').notNull().primaryKey(),
+    path: text('path').notNull().unique(),
+    scope: text('scope').notNull(), // 'official' | 'unofficial' | 'community'
+    name: text('name').notNull(),
+    description: text('description'),
+    repoUrl: text('repo_url').notNull(),
+    defaultBranch: text('default_branch').notNull().default('main'),
+    latestVersion: text('latest_version'),
+    contentHash: text('content_hash'),
+    sourceType: text('source_type').notNull().default('native'), // 'native' | 'imported'
+    claimedBy: text('claimed_by').references(() => user.id),
+    deprecatedBy: text('deprecated_by'),
+    stars: integer('stars').notNull().default(0),
+    installs: integer('installs').notNull().default(0),
+    indexedAt: integer('indexed_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('packages_scope_installs').on(t.scope, t.installs),
+    index('packages_path').on(t.path),
+  ],
+)
+
+export type Package = typeof packages.$inferSelect
+export type InsertPackage = typeof packages.$inferInsert
+
+export const packageVersions = sqliteTable(
+  'package_versions',
+  {
+    id: text('id').notNull().primaryKey(),
+    packageId: text('package_id')
+      .notNull()
+      .references(() => packages.id),
+    version: text('version').notNull(),
+    gitTag: text('git_tag').notNull(),
+    commitSha: text('commit_sha').notNull(),
+    contentHash: text('content_hash'),
+    skillsJson: text('skills_json'),
+    agentsJson: text('agents_json'),
+    indexedAt: integer('indexed_at').notNull(),
+  },
+  (t) => [
+    index('pkg_versions_package_indexed').on(t.packageId, t.indexedAt),
+  ],
+)
+
+export type PackageVersion = typeof packageVersions.$inferSelect
+export type InsertPackageVersion = typeof packageVersions.$inferInsert
+
+export const packageSkills = sqliteTable(
+  'package_skills',
+  {
+    id: text('id').notNull().primaryKey(),
+    packageId: text('package_id')
+      .notNull()
+      .references(() => packages.id),
+    versionId: text('version_id')
+      .notNull()
+      .references(() => packageVersions.id),
+    skillId: text('skill_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    contentHash: text('content_hash').notNull(),
+    contentLength: integer('content_length').notNull().default(0),
+  },
+  (t) => [
+    index('pkg_skills_content_hash').on(t.contentHash),
+    index('pkg_skills_package').on(t.packageId),
+  ],
+)
+
+export type PackageSkill = typeof packageSkills.$inferSelect
+export type InsertPackageSkill = typeof packageSkills.$inferInsert

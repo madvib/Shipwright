@@ -5,10 +5,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod/v4'
 import { requireSession } from '#/lib/session-auth'
 import { createRepositories } from '#/db/repositories'
-
-function getD1(): D1Database | null {
-  return (globalThis as Record<string, unknown>)['DB'] as D1Database | undefined ?? null
-}
+import { getD1 } from '#/lib/d1'
 
 const UpdateLibraryInput = z.object({
   name: z.string().min(1).max(128).optional(),

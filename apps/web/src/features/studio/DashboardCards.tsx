@@ -125,11 +125,11 @@ export function DashboardCards({ profileCount, workflowJobCount }: DashboardCard
         lockReason="Create a profile to unlock export"
       />
       <DashboardCard
-        title="Templates"
-        description="Community templates for common stacks — import a ready-made config in one click."
+        title="Registry"
+        description="Browse agent packages — skills, MCP servers, and presets for your AI workflow."
         accent="neutral"
         emptyLabel="Browse →"
-        href="/studio/templates"
+        href="/studio/registry"
       />
     </div>
   )

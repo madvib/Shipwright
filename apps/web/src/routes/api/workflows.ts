@@ -5,16 +5,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod/v4'
 import { requireSession } from '#/lib/session-auth'
 import { createRepositories } from '#/db/repositories'
-
-function nanoid(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function getD1(): D1Database | null {
-  return (globalThis as Record<string, unknown>)['DB'] as D1Database | undefined ?? null
-}
+import { getD1, nanoid } from '#/lib/d1'
 
 const CreateWorkflowInput = z.object({
   name: z.string().min(1, 'Name is required').max(128),

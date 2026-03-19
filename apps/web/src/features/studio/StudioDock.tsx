@@ -10,7 +10,7 @@ const DOCK_ITEMS = [
   { to: '/studio/skills', icon: Puzzle, label: 'Skills', exact: false as const },
   { to: '/studio/mcp', icon: Server, label: 'MCP', exact: false as const },
   { to: '/studio/export', icon: Download, label: 'Export', exact: false as const },
-  { to: '/studio/templates', icon: Package, label: 'Registry', exact: false as const },
+  { to: '/studio/registry', icon: Package, label: 'Registry', exact: false as const },
 ] as const
 
 export function StudioDock() {

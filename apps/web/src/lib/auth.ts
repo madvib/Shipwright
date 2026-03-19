@@ -1,4 +1,4 @@
-import { getDb } from '#/lib/cloud-auth'
+import { getD1 } from '#/lib/d1'
 
 function getEnv(key: string): string {
   return (
@@ -12,7 +12,7 @@ async function makeAuth() {
   const { betterAuth } = await import('better-auth')
   const { tanstackStartCookies } = await import('better-auth/tanstack-start')
 
-  const d1 = getDb()
+  const d1 = getD1()
   let database: ReturnType<typeof import('better-auth/adapters/drizzle').drizzleAdapter> | undefined
 
   if (d1) {
@@ -21,8 +21,7 @@ async function makeAuth() {
       import('better-auth/adapters/drizzle'),
       import('#/db/schema'),
     ])
-    type AnyD1 = Parameters<typeof drizzle>[0]
-    const db = drizzle(d1 as unknown as AnyD1, { schema })
+    const db = drizzle(d1, { schema })
     database = drizzleAdapter(db, { provider: 'sqlite', schema })
   }
 
