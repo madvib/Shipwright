@@ -3,6 +3,7 @@
 // and indexes them as @unofficial packages.
 
 import { createFileRoute } from '@tanstack/react-router'
+import { env as cloudflareEnv } from 'cloudflare:workers'
 import { requireSession } from '#/lib/session-auth'
 import { getD1, nanoid } from '#/lib/d1'
 import { parseGithubUrl, extractLibrary } from '#/lib/github-import'
@@ -109,6 +110,12 @@ export const Route = createFileRoute('/api/registry/seed')({
       POST: async ({ request }) => {
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
+
+        const seedSecret = (cloudflareEnv as Partial<Env>).SEED_SECRET
+        const providedSecret = request.headers.get('X-Seed-Secret')
+        if (!seedSecret || !providedSecret || providedSecret !== seedSecret) {
+          return Response.json({ error: 'Unauthorized' }, { status: 401 })
+        }
 
         const d1 = getD1()
         if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })

@@ -7,11 +7,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createRegistryRepositories } from '#/db/registry-repositories'
 import { getD1 } from '#/lib/d1'
+import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
 export const Route = createFileRoute('/api/registry/$path/install')({
   server: {
     handlers: {
-      POST: async ({ params }) => {
+      POST: async ({ request, params }) => {
+        const rl = await checkRateLimit(request, 'install', 60, 60)
+        if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
         const d1 = getD1()
         if (!d1)
           return Response.json(

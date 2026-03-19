@@ -115,6 +115,20 @@ export const Route = createFileRoute('/api/registry/publish')({
           )
         }
 
+        // Dedup: if a version with the same gitTag already exists, return it without re-fetching
+        if (existing) {
+          const existingVersions = await repos.getPackageVersions(existing.id)
+          const duplicate = existingVersions.find((v) => v.gitTag === ref)
+          if (duplicate) {
+            const skills = await repos.getPackageSkills(existing.id, duplicate.id)
+            return Response.json({
+              package_id: existing.id,
+              version: duplicate.version,
+              skills_indexed: skills.length,
+            })
+          }
+        }
+
         const now = Date.now()
         const pkg = await repos.upsertPackage({
           id: existing?.id || nanoid(),

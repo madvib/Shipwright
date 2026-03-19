@@ -28,7 +28,8 @@
 
   // Vars with placeholder values — set real secrets in the Cloudflare dashboard (never commit secrets)
   "vars": {
-    "GITHUB_WEBHOOK_SECRET": ""
+    "GITHUB_WEBHOOK_SECRET": "",
+    "SEED_SECRET": ""
   },
 
   // Production: update pattern and zone_name to match your domain
@@ -57,7 +58,8 @@
         }
       ],
       "vars": {
-        "GITHUB_WEBHOOK_SECRET": ""
+        "GITHUB_WEBHOOK_SECRET": "",
+        "SEED_SECRET": ""
       }
     },
     "production": {
@@ -80,7 +82,8 @@
         }
       ],
       "vars": {
-        "GITHUB_WEBHOOK_SECRET": ""
+        "GITHUB_WEBHOOK_SECRET": "",
+        "SEED_SECRET": ""
       }
     }
   }
