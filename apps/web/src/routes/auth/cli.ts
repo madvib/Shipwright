@@ -41,7 +41,7 @@ export const Route = createFileRoute('/auth/cli')({
           )
         }
 
-        const clientId = getEnv('GITHUB_APP_CLIENT_ID')
+        const clientId = getEnv('GITHUB_CLIENT_ID')
         if (!clientId) {
           return Response.json({ error: 'GitHub OAuth not configured' }, { status: 500 })
         }

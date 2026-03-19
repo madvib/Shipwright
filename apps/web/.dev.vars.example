@@ -1,9 +1,17 @@
-# Copy to .dev.vars and fill in values for local development.
-# Production secrets are set via: wrangler secret put <NAME>
-# Never commit .dev.vars
+# Local dev secrets — copy to .dev.vars (gitignored) and fill in values.
+# Production secrets go in: wrangler secret put <NAME>
 
+# Better Auth
+BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_SECRET=
+
+# GitHub App — https://github.com/settings/apps
+# Callback URL (dev):  http://localhost:3000/api/github/callback
+# Callback URL (prod): https://getship.dev/api/github/callback
+# Webhook URL (prod):  https://getship.dev/api/registry/webhook
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GITHUB_WEBHOOK_SECRET=
+
+# Registry seed endpoint auth
 SEED_SECRET=
-BETTER_AUTH_SECRET=

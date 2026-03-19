@@ -40,8 +40,8 @@ export const Route = createFileRoute('/api/github/callback')({
           })
         }
 
-        const clientId = process.env.GITHUB_APP_CLIENT_ID
-        const clientSecret = process.env.GITHUB_APP_CLIENT_SECRET
+        const clientId = process.env.GITHUB_CLIENT_ID
+        const clientSecret = process.env.GITHUB_CLIENT_SECRET
         if (!clientId || !clientSecret) {
           return new Response(null, {
             status: 302,

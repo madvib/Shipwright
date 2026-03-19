@@ -5,15 +5,13 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
 
-  // Replace with your Cloudflare account ID, or set CLOUDFLARE_ACCOUNT_ID env var
-  "account_id": "REPLACE_WITH_ACCOUNT_ID",
 
   // D1 database — run `wrangler d1 create ship` to provision and fill in database_id
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "ship",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "1d30f1aa-0ea9-417b-9179-d21911404727",
       "migrations_dir": "migrations"
     }
   ],
@@ -27,20 +25,20 @@
 
   // Production: update pattern and zone_name to match your domain
   "routes": [
-    { "pattern": "ship-studio.com/*", "zone_name": "ship-studio.com" }
+    { "pattern": "getship.dev/*", "zone_name": "getship.dev" }
   ],
 
   "env": {
     "staging": {
       "name": "ship-studio-staging",
       "routes": [
-        { "pattern": "staging.ship-studio.com/*", "zone_name": "ship-studio.com" }
+        { "pattern": "staging.getship.dev/*", "zone_name": "getship.dev" }
       ],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "ship-staging",
-          "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
+          "database_id": "a7811f35-5a14-4719-a476-e9fc4d9ddede",
           "migrations_dir": "migrations"
         }
       ],
@@ -53,13 +51,13 @@
     "production": {
       "name": "ship-studio",
       "routes": [
-        { "pattern": "ship-studio.com/*", "zone_name": "ship-studio.com" }
+        { "pattern": "getship.dev/*", "zone_name": "getship.dev" }
       ],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "ship",
-          "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+          "database_id": "1d30f1aa-0ea9-417b-9179-d21911404727",
           "migrations_dir": "migrations"
         }
       ],

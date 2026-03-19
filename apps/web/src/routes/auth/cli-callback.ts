@@ -86,8 +86,8 @@ export const Route = createFileRoute('/auth/cli-callback')({
           return errorRedirect('state_expired')
         }
 
-        const clientId = getEnv('GITHUB_APP_CLIENT_ID')
-        const clientSecret = getEnv('GITHUB_APP_CLIENT_SECRET')
+        const clientId = getEnv('GITHUB_CLIENT_ID')
+        const clientSecret = getEnv('GITHUB_CLIENT_SECRET')
         if (!clientId || !clientSecret) return errorRedirect('not_configured')
 
         const ghUser = await exchangeGithubCode(code, clientId, clientSecret)

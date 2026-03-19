@@ -6,6 +6,15 @@
 > **Rule**: If something you're building isn't in the Platform Layer, it belongs in a Workflow Definition.
 > **Updated**: 2026-03-19
 
+## Canonical URLs — Do Not Invent These
+
+| Service | URL |
+|---------|-----|
+| Ship Studio (web app) | https://getship.dev |
+| Staging | https://staging.getship.dev |
+
+All hardcoded domain references in source, docs, and config must use `getship.dev`. Never use `ship-studio.com`, `shipstudio.com`, or any other variant.
+
 ---
 
 ## First Principles

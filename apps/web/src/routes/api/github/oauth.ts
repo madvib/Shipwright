@@ -6,7 +6,7 @@ export const Route = createFileRoute('/api/github/oauth')({
     handlers: {
       /** Redirect to GitHub OAuth authorization page. */
       GET: ({ request }) => {
-        const clientId = process.env.GITHUB_APP_CLIENT_ID
+        const clientId = process.env.GITHUB_CLIENT_ID
         if (!clientId) {
           return Response.json({ error: 'GitHub App not configured' }, { status: 500 })
         }
