@@ -123,7 +123,7 @@ scripts/setup.sh — fresh machine setup (run this first)
 
 ## Status
 
-Early. Used to build itself. The compiler and Studio UI work end-to-end. CLI and server lanes are active now.
+Early. Used to build itself. The compiler and Studio UI work end-to-end.
 
 **Working:**
 - WASM compiler: ProjectLibrary → CLAUDE.md / GEMINI.md / AGENTS.md / .mcp.json
@@ -131,8 +131,8 @@ Early. Used to build itself. The compiler and Studio UI work end-to-end. CLI and
 - ship-mcp: workspace, session, skill, note tools
 
 **In progress:**
-- `ship init` + `ship use` (CLI lane)
-- Better Auth + GitHub OAuth + `/api/github/import` (server lane)
-- Studio import UI + auth (web lane)
+- `ship init` + `ship use` (CLI)
+- Better Auth + GitHub OAuth + `/api/github/import` (server)
+- Studio import UI + auth (web)
 - Branch-preset tracking with post-checkout hook
 - Plugin lifecycle management via `ship use`
