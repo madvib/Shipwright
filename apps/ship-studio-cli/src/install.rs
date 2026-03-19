@@ -19,7 +19,7 @@ use runtime::registry::{
 };
 
 use crate::compile::{CompileOptions, run_compile};
-use crate::profile::ShipLock;
+use crate::profile::WorkspaceState;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
     // Compile: trigger the standard compile pipeline.
     // The resolved packages are in the cache but integrating them into the
     // compiler library pipeline is a TODO — we run the standard compile here.
-    let state = ShipLock::load(&ship_dir);
+    let state = WorkspaceState::load(&ship_dir);
     run_compile(CompileOptions {
         project_root,
         provider: None,

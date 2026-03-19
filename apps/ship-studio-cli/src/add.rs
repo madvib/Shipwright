@@ -172,7 +172,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
         .with_context(|| format!("resolving {pkg_path}"))?;
 
     // Compile.
-    let state = crate::profile::ShipLock::load(&ship_dir);
+    let state = crate::profile::WorkspaceState::load(&ship_dir);
     crate::compile::run_compile(crate::compile::CompileOptions {
         project_root,
         provider: None,

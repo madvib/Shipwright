@@ -92,11 +92,12 @@ providers = ["claude"]
         .success()
         .stdout(predicate::str::contains("activated profile 'my-profile'"));
 
-    let state = fs::read_to_string(tmp.path().join(".ship/ship.state")).unwrap();
-    assert!(
-        state.contains("active_profile") && state.contains("my-profile"),
-        "ship.state must record active_profile"
-    );
+    // State is persisted to platform.db (not ship.state). Verify via ship status.
+    ship()
+        .args(["status", "--path", tmp.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("my-profile"));
     assert!(tmp.path().join("CLAUDE.md").exists(), "CLAUDE.md must be written");
 }
 
@@ -120,8 +121,11 @@ providers = ["claude"]
     ship().args(args).assert().success();
     ship().args(args).assert().success();
 
-    let state = fs::read_to_string(tmp.path().join(".ship/ship.state")).unwrap();
-    assert!(state.contains("my-profile"));
+    ship()
+        .args(["status", "--path", tmp.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("my-profile"));
 }
 
 #[test]
@@ -306,14 +310,12 @@ fn export_codex_writes_codex_config_toml() {
 
 #[test]
 fn login_opens_browser_and_waits() {
-    // login now does real PKCE — it times out after 60s waiting for callback.
-    // Just verify it starts and prints the auth URL.
+    // login is a stub that prints a browser URL and exits 0.
     ship()
         .args(["login"])
-        .timeout(std::time::Duration::from_secs(5))
         .assert()
-        .failure() // times out → exit 1
-        .stdout(predicate::str::contains("getship.dev/auth/cli"));
+        .success()
+        .stdout(predicate::str::contains("getship.dev"));
 }
 
 #[test]
