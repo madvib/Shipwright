@@ -24,7 +24,7 @@ Your `.ship/` directory is the source. Provider files are generated artifacts �
 ## Quick start
 
 ```bash
-# Fresh machine — handles Rust, ship binary, Node, pnpm, plugins, worktrees
+# Fresh machine — handles Rust, ship binary, Node, pnpm, plugins
 bash scripts/setup.sh
 
 # In your project
@@ -32,7 +32,6 @@ ship init
 ship use default
 # → CLAUDE.md, .mcp.json, .claude/skills/ written
 # → Claude Code plugins declared in preset installed
-# → git post-checkout hook installed (branch switches auto-trigger ship use)
 ```
 
 ---
@@ -72,16 +71,38 @@ default_mode = "plan"
 
 ## Branch-aware config
 
-Ship tracks which preset is active per branch in a local SQLite DB (`.ship/state/ship.db`).
+Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/state/<slug>/platform.db`).
 
 ```bash
-git checkout feat/payments    # post-checkout hook fires
+git checkout feature/payments    # post-checkout hook fires (planned)
 # → ship looks up stored preset for this branch
 # → runs ship use <preset> silently
 # → your agent stack switches without any manual steps
 ```
 
-The DB syncs across machines via Syncthing (or any file sync). All your machines know the branch → preset mapping. No markdown files store this state — only `ship.toml` (project ID, committed) and the DB (runtime state, synced).
+The post-checkout hook is planned — `ship init` will install it automatically. Until then, run `ship use <preset>` manually after switching branches.
+
+---
+
+## Registry
+
+Ship uses a git-native package model. Skills and presets are published from git repos, not a central blob store:
+
+```toml
+# .ship/ship.toml
+[module]
+name = "github.com/owner/repo"
+version = "0.1.0"
+
+[dependencies]
+# "github.com/org/skill-pack" = "v1.0.0"
+
+[exports]
+skills = ["agents/skills/my-skill"]
+agents = ["agents/profiles/default.toml"]
+```
+
+`ship install` resolves dependencies, writes `ship.lock`, and fetches to `~/.ship/cache/`.
 
 ---
 
@@ -89,7 +110,7 @@ The DB syncs across machines via Syncthing (or any file sync). All your machines
 
 Ship participates in the [agentskills.io](https://agentskills.io) open standard. Skills emitted to `.agents/skills/` are automatically readable by all compliant providers — no per-marketplace submissions.
 
-The viral loop: anyone can paste a GitHub URL into Ship Studio → extract the repo's agent config → compile it for their stack. For project owners, `ship use` + a PR that adds `.ship/` = every collaborator gets your agent config on checkout.
+The viral loop: anyone can paste a GitHub URL into Ship Studio, extract the repo's agent config, compile it for their stack. For project owners, `ship use` + a PR that adds `.ship/` means every collaborator gets your agent config on checkout.
 
 ---
 
@@ -116,33 +137,25 @@ The compiler is WASM — runs in the browser (Studio) and on the server (CLI via
 
 ```
 ARCHITECTURE.md  — platform principles, layer separation, naming conventions
-SPEC.md          — config formats, preset schema, CLI contracts, storage model
-TASKS.md         — sprint board: CLI / Server / Web lanes
+REFERENCE.md     — provider matrix, CLI commands, MCP tools, schemas
 scripts/setup.sh — fresh machine setup (run this first)
-```
-
-Work happens in parallel worktrees at `~/dev/worktrees/`:
-
-```
-ship-cli     feat/cli-init      — ship init, ship use, ship log
-ship-server  feat/server-auth   — Better Auth + D1 + GitHub import endpoint
-ship-web     feat/web-import    — Studio GitHub URL import flow
 ```
 
 ---
 
 ## Status
 
-Early. Used to build itself. The compiler and Studio UI work end-to-end. CLI and server lanes are active now.
+Early. Used to build itself. The compiler and Studio UI work end-to-end.
 
 **Working:**
 - WASM compiler: ProjectLibrary → CLAUDE.md / GEMINI.md / AGENTS.md / .mcp.json
 - Ship Studio: paste any GitHub URL → extract agent config → compile → download
-- ship-mcp: workspace, session, skill, note tools
+- ship-mcp: workspace, session, skill, note, job coordination tools
 
 **In progress:**
-- `ship init` + `ship use` (CLI lane)
-- Better Auth + GitHub OAuth + `/api/github/import` (server lane)
-- Studio import UI + auth (web lane)
+- `ship init` + `ship use` (CLI)
+- Better Auth + GitHub OAuth + `/api/github/import`
+- Studio import UI + auth
 - Branch-preset tracking with post-checkout hook
 - Plugin lifecycle management via `ship use`
+- Registry: `ship install` dep resolution from git sources

@@ -2,9 +2,10 @@
 
 ## Context Firewall — Read Before Touching Code
 
-> **Status**: v0.2 — Current Intent
+> **Status**: v0.1.0 — Current Intent
 > **Rule**: If something you're building isn't in the Platform Layer, it belongs in a Workflow Definition.
-> **Updated**: 2026-03-15
+> **Updated**: 2026-03-18
+> **Reference tables** (schemas, provider matrix, CLI commands, MCP tools): see REFERENCE.md
 
 ---
 
@@ -171,6 +172,68 @@ The plugin is how users get Ship behavior inside their existing provider UX. Bui
 
 ---
 
+## Registry — Git-Native Package Model
+
+Ship uses a git-native registry model. Dependencies are git repositories, not a central blob store. There is no R2, D1, or Durable Objects in the registry path.
+
+### ship.toml — Project Manifest
+
+Every `.ship/` directory contains a `ship.toml` with three sections:
+
+```toml
+[module]
+name = "github.com/owner/repo"
+version = "0.1.0"
+description = "..."
+license = "MIT"
+
+[dependencies]
+# Dep skill packages by git path. Resolved by `ship install`.
+# "github.com/org/pkg" = "v1.2.0"
+
+[exports]
+# Paths to first-party skills and agents published from this repo.
+skills = [
+  "agents/skills/my-skill",
+]
+agents = [
+  "agents/profiles/default.toml",
+]
+```
+
+### ship.lock — Dependency Lockfile
+
+`ship.lock` is committed to git. It pins every resolved dependency:
+
+```toml
+[deps."github.com/org/pkg"]
+path = "github.com/org/pkg"
+version = "v1.2.0"
+commit = "abc123def456..."
+hash = "sha256:..."
+```
+
+- `path` — canonical module path (matches `[dependencies]` key)
+- `version` — resolved semver tag
+- `commit` — exact git commit SHA (reproducible fetch)
+- `hash` — sha256 of fetched content tree (integrity check)
+
+Fetched package content is stored at `~/.ship/cache/objects/<sha256>/`.
+
+### Dep skill resolution
+
+A skill ref in an agent TOML prefixed with `github.com/` is a dep ref:
+- `github.com/owner/pkg/skills/name` → resolved via `ship.lock` → fetched to cache
+- Unprefixed refs resolve from `.ship/agents/skills/` (local scope)
+
+Cache miss during compile produces an actionable error: `dependency not in cache — run ship install`.
+
+### Post-checkout hook (planned, not yet implemented)
+
+`ship init` will install a git post-checkout hook that runs `ship use <stored-profile>` on branch switch. When implemented: `branch_config` table in platform.db stores the last profile per branch; the hook looks it up and re-emits provider files silently.
+
+---
+
 ## Skill Filtering — Platform Differentiator
 
 Presets control which skills are active via `active_tools[]`. This is architecturally significant:
@@ -309,19 +372,24 @@ The loop above, sessions, documents, ADRs, idea queue, basic hooks. No embedded 
 
 ## ProjectConfig — Intended Separation
 
-`ProjectConfig` currently conflates platform config, preset config, and agent config. The intended separation:
+`ProjectConfig` currently conflates platform config, preset config, and agent config. The target separation mirrors the registry manifest format:
 
-**`ship.toml` (ProjectConfig) — platform config only:**
+**`ship.toml` — registry manifest (new format):**
 ```toml
-id = "..."
-name = "ship"
+[module]
+name = "github.com/owner/repo"
+version = "0.1.0"
 description = "..."
-providers = ["claude", "gemini"]
-active_preset = "default"
-workflow = "shipflow"        # references a WorkflowDefinition
+
+[dependencies]
+# dep skill packages
+
+[exports]
+skills = ["agents/skills/..."]
+agents = ["agents/profiles/..."]
 ```
 
-**Preset definitions** — separate, referenced by id, live in `.ship/presets/`
+**Preset definitions** — separate, referenced by id, live in `.ship/agents/presets/`
 
 **Agent layer config** — already broken out correctly as `AgentLayerConfig`, keep as-is
 
@@ -378,8 +446,14 @@ Types that **are** load-bearing and should be ported (with renames noted above):
 - DocumentVersion is append-only. Drift = diff(versions[-1], versions[-2]).
 - WorkflowDefinition is a guest on the platform. The platform does not
   know what a Feature or Release is.
+- Profile/preset files live in .ship/agents/presets/ (not modes/).
+  Use profiles/ or agents/ when referring to these paths in docs and code.
+- ship.toml uses [module]/[dependencies]/[exports] format. Legacy fields
+  (statuses, namespaces, active_mode) are transitional — do not add new ones.
+- Registry is git-native: no R2, D1, or Durable Objects in the registry path.
 - File length cap: 300 lines. If a file needs more, it needs review.
 - No shipping untested code for new modules. Existing code is exempt.
+- See REFERENCE.md for provider matrix, platform.db schema, MCP tools, CLI commands.
 ```
 
 ---
