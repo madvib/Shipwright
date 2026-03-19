@@ -45,6 +45,13 @@ fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
             url: e.url,
             disabled: e.disabled,
             timeout_secs: None,
+            codex_enabled_tools: vec![],
+            codex_disabled_tools: vec![],
+            gemini_trust: None,
+            gemini_include_tools: vec![],
+            gemini_exclude_tools: vec![],
+            gemini_timeout_ms: None,
+            cursor_env_file: None,
         }
     }).collect())
 }
@@ -137,7 +144,7 @@ fn load_hooks(agents_dir: &Path) -> Result<Vec<HookConfig>> {
             "pre_compact"   | "PreCompact"  => HookTrigger::PreCompact,
             _ => return None,
         };
-        Some(HookConfig { id: e.id, trigger, command: e.command, matcher: e.matcher })
+        Some(HookConfig { id: e.id, trigger, command: e.command, matcher: e.matcher, cursor_event: None, gemini_event: None })
     }).collect())
 }
 

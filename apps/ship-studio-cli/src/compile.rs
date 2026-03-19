@@ -207,6 +207,8 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
                 trigger: HookTrigger::Stop,
                 command: cmd.clone(),
                 matcher: None,
+                cursor_event: None,
+                gemini_event: None,
             });
         }
     }
@@ -218,6 +220,8 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
                 trigger: HookTrigger::SubagentStop,
                 command: cmd.clone(),
                 matcher: None,
+                cursor_event: None,
+                gemini_event: None,
             });
         }
     }
