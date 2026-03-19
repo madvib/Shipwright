@@ -1,6 +1,11 @@
 use serde_json::Value as Json;
 
-use crate::types::{HookConfig, HookTrigger, Permissions};
+use crate::resolve::ResolvedConfig;
+use crate::types::{HookTrigger, McpServerConfig, Permissions};
+
+use super::provider::ProviderDescriptor;
+
+// ── Trigger mapping ───────────────────────────────────────────────────────────
 
 /// Map our internal `HookTrigger` to Gemini's event name.
 /// Source: https://geminicli.com/docs/hooks
@@ -16,56 +21,170 @@ fn gemini_trigger(t: &HookTrigger) -> Option<&'static str> {
     }
 }
 
+/// Translate our internal approval mode to Gemini's `defaultApprovalMode` value.
+///
+/// - `"default"` → `"suggest"`
+/// - `"auto_edit"` → `"auto-edit"`
+/// - `"plan"` → `"yolo"`
+fn translate_approval_mode(val: &str) -> &str {
+    match val {
+        "default" => "suggest",
+        "auto_edit" => "auto-edit",
+        "plan" => "yolo",
+        other => other,
+    }
+}
+
+// ── Settings patch ────────────────────────────────────────────────────────────
+
 /// Build the settings patch for `.gemini/settings.json`.
-/// Includes `hooks` and `model` when present.
+///
+/// Includes hooks, model, and all new Gemini-specific fields.
 /// Returns `None` when there is nothing to emit.
-pub(super) fn build_gemini_settings_patch(
-    hooks: &[HookConfig],
-    model: Option<&str>,
-) -> Option<Json> {
-    let mut by_trigger: std::collections::BTreeMap<&str, Vec<Json>> =
+pub(super) fn build_gemini_settings_patch(resolved: &ResolvedConfig) -> Option<Json> {
+    let hooks = &resolved.hooks;
+    let model = resolved.model.as_deref();
+
+    let mut by_trigger: std::collections::BTreeMap<String, Vec<Json>> =
         std::collections::BTreeMap::new();
 
     for h in hooks {
-        let Some(event) = gemini_trigger(&h.trigger) else { continue };
-        let mut hook_obj = serde_json::json!({
+        // Raw event override — bypass trigger mapping.
+        let event_key: Option<String> = if let Some(raw) = &h.gemini_event {
+            Some(raw.clone())
+        } else {
+            gemini_trigger(&h.trigger).map(str::to_string)
+        };
+        let Some(event) = event_key else { continue };
+
+        let hook_obj = serde_json::json!({
             "type": "command",
             "command": h.command,
         });
-        if let Some(m) = &h.matcher {
-            hook_obj["matcher"] = Json::String(m.clone());
-        }
-        // Gemini schema: { "matcher": "...", "hooks": [{ "type": "command", "command": "..." }] }
-        let entry_with_matcher = if let Some(m) = &h.matcher {
+        let entry = if let Some(m) = &h.matcher {
             serde_json::json!({ "matcher": m, "hooks": [hook_obj] })
         } else {
             serde_json::json!({ "hooks": [hook_obj] })
         };
-        by_trigger.entry(event).or_default().push(entry_with_matcher);
+        by_trigger.entry(event).or_default().push(entry);
     }
 
     let has_hooks = !by_trigger.is_empty();
-    let has_model = model.is_some();
+    let has_model_name = model.is_some();
+    let has_approval_mode = resolved.gemini_default_approval_mode.is_some();
+    let has_max_session_turns = resolved.gemini_max_session_turns.is_some();
+    let has_disable_yolo = resolved.gemini_disable_yolo_mode.is_some();
+    let has_disable_always_allow = resolved.gemini_disable_always_allow.is_some();
+    let has_tools_sandbox = resolved.gemini_tools_sandbox.is_some();
+    let has_extra = resolved.gemini_settings_extra.as_ref().is_some_and(|v| !v.is_null());
 
-    if !has_hooks && !has_model {
+    if !has_hooks && !has_model_name && !has_approval_mode && !has_max_session_turns
+        && !has_disable_yolo && !has_disable_always_allow && !has_tools_sandbox && !has_extra
+    {
         return None;
     }
 
     let mut patch = serde_json::json!({});
 
+    // model.name
+    if let Some(m) = model {
+        patch["model"] = serde_json::json!({ "name": m });
+    }
+
+    // general.*
+    let has_general = has_approval_mode || has_max_session_turns;
+    if has_general {
+        let mut general = serde_json::json!({});
+        if let Some(mode) = resolved.gemini_default_approval_mode.as_deref() {
+            general["defaultApprovalMode"] = Json::String(translate_approval_mode(mode).to_string());
+        }
+        if let Some(turns) = resolved.gemini_max_session_turns {
+            general["maxSessionTurns"] = serde_json::json!(turns);
+        }
+        patch["general"] = general;
+    }
+
+    // security.*
+    let has_security = has_disable_yolo || has_disable_always_allow;
+    if has_security {
+        let mut security = serde_json::json!({});
+        if let Some(v) = resolved.gemini_disable_yolo_mode {
+            security["disableYoloMode"] = serde_json::json!(v);
+        }
+        if let Some(v) = resolved.gemini_disable_always_allow {
+            security["disableAlwaysAllow"] = serde_json::json!(v);
+        }
+        patch["security"] = security;
+    }
+
+    // tools.sandbox
+    if let Some(sandbox) = resolved.gemini_tools_sandbox.as_deref() {
+        patch["tools"] = serde_json::json!({ "sandbox": sandbox });
+    }
+
+    // hooks
     if has_hooks {
         let hooks_obj: serde_json::Map<String, Json> = by_trigger
             .into_iter()
-            .map(|(k, v)| (k.to_string(), Json::Array(v)))
+            .map(|(k, v)| (k, Json::Array(v)))
             .collect();
         patch["hooks"] = Json::Object(hooks_obj);
     }
 
-    if let Some(m) = model {
-        patch["model"] = Json::String(m.to_string());
+    // settings_extra — merged verbatim last
+    if let Some(extra) = &resolved.gemini_settings_extra {
+        if let Some(obj) = extra.as_object() {
+            for (k, v) in obj {
+                patch[k] = v.clone();
+            }
+        }
     }
 
     Some(patch)
+}
+
+// ── MCP server entry (Gemini-specific fields) ─────────────────────────────────
+
+/// Build a Gemini MCP server entry with Gemini-specific per-server fields.
+pub(super) fn build_gemini_server_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> Json {
+    let mut entry = super::mcp::server_entry(desc, s);
+
+    // Gemini-specific per-server fields.
+    if let Some(trust) = s.gemini_trust {
+        entry["trust"] = serde_json::json!(trust);
+    }
+    if !s.gemini_include_tools.is_empty() {
+        entry["includeTools"] = serde_json::json!(s.gemini_include_tools);
+    }
+    if !s.gemini_exclude_tools.is_empty() {
+        entry["excludeTools"] = serde_json::json!(s.gemini_exclude_tools);
+    }
+    if let Some(timeout) = s.gemini_timeout_ms {
+        entry["timeout"] = serde_json::json!(timeout);
+    }
+
+    entry
+}
+
+// ── Gemini MCP servers object ─────────────────────────────────────────────────
+
+pub(super) fn build_gemini_mcp_servers(
+    desc: &ProviderDescriptor,
+    servers: &[McpServerConfig],
+) -> Json {
+    let mut map = serde_json::Map::new();
+
+    // Ship server always first.
+    map.insert("ship".to_string(), super::mcp::ship_server_entry(desc.emit_type_field));
+
+    for s in servers {
+        if s.disabled {
+            continue;
+        }
+        map.insert(s.id.clone(), build_gemini_server_entry(desc, s));
+    }
+
+    Json::Object(map)
 }
 
 // ─── Gemini policy patch ──────────────────────────────────────────────────────

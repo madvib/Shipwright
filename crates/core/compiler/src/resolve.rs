@@ -56,10 +56,31 @@ pub struct ResolvedConfig {
     /// Restrict the model picker to these model IDs.
     /// Claude: `availableModels` in `.claude/settings.json`.
     pub available_models: Vec<String>,
-    /// Codex sandbox mode: "full", "network-only", or "off".
-    /// Source: `[provider_settings.codex] sandbox` in preset TOML.
-    /// Emitted as `sandbox = "..."` in `.codex/config.toml`.
+    /// Codex sandbox mode — translated key/value before emit.
     pub codex_sandbox: Option<String>,
+    // ── Gemini provider settings ───────────────────────────────────────────────
+    pub gemini_default_approval_mode: Option<String>,
+    pub gemini_max_session_turns: Option<u32>,
+    pub gemini_disable_yolo_mode: Option<bool>,
+    pub gemini_disable_always_allow: Option<bool>,
+    pub gemini_tools_sandbox: Option<String>,
+    pub gemini_settings_extra: Option<serde_json::Value>,
+    // ── Codex provider settings ────────────────────────────────────────────────
+    pub codex_approval_policy: Option<String>,
+    pub codex_reasoning_effort: Option<String>,
+    pub codex_max_threads: Option<u32>,
+    pub codex_max_depth: Option<u32>,
+    pub codex_job_max_runtime_seconds: Option<u64>,
+    pub codex_shell_env_policy: Option<String>,
+    pub codex_notify: Option<serde_json::Value>,
+    pub codex_settings_extra: Option<serde_json::Value>,
+    // ── Cursor provider settings ───────────────────────────────────────────────
+    pub cursor_environment: Option<serde_json::Value>,
+    pub cursor_settings_extra: Option<serde_json::Value>,
+    // ── Claude provider settings ───────────────────────────────────────────────
+    pub claude_theme: Option<String>,
+    pub claude_auto_updates: Option<bool>,
+    pub claude_include_co_authored_by: Option<bool>,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -115,9 +136,55 @@ pub struct ProjectLibrary {
     /// Restrict model picker to these IDs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub available_models: Vec<String>,
-    /// Codex sandbox mode: "full", "network-only", or "off".
+    /// Codex sandbox mode — translated key/value before emit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_sandbox: Option<String>,
+    // ── Model ─────────────────────────────────────────────────────────────────
+    /// Shared model override used by Gemini + Codex when no feature override present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    // ── Gemini provider settings ───────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_default_approval_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_max_session_turns: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_disable_yolo_mode: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_disable_always_allow: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_tools_sandbox: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_settings_extra: Option<serde_json::Value>,
+    // ── Codex provider settings ────────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_approval_policy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_max_threads: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_max_depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_job_max_runtime_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_shell_env_policy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_notify: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_settings_extra: Option<serde_json::Value>,
+    // ── Cursor provider settings ───────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_environment: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_settings_extra: Option<serde_json::Value>,
+    // ── Claude provider settings ───────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_theme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_auto_updates: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_include_co_authored_by: Option<bool>,
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -149,6 +216,33 @@ pub fn resolve_library(
     resolved.env = library.env.clone();
     resolved.available_models = library.available_models.clone();
     resolved.codex_sandbox = library.codex_sandbox.clone();
+    // Phase 1A: model falls back to library.model when no feature/project override
+    if resolved.model.is_none() {
+        resolved.model = library.model.clone();
+    }
+    // Gemini settings
+    resolved.gemini_default_approval_mode = library.gemini_default_approval_mode.clone();
+    resolved.gemini_max_session_turns = library.gemini_max_session_turns;
+    resolved.gemini_disable_yolo_mode = library.gemini_disable_yolo_mode;
+    resolved.gemini_disable_always_allow = library.gemini_disable_always_allow;
+    resolved.gemini_tools_sandbox = library.gemini_tools_sandbox.clone();
+    resolved.gemini_settings_extra = library.gemini_settings_extra.clone();
+    // Codex settings
+    resolved.codex_approval_policy = library.codex_approval_policy.clone();
+    resolved.codex_reasoning_effort = library.codex_reasoning_effort.clone();
+    resolved.codex_max_threads = library.codex_max_threads;
+    resolved.codex_max_depth = library.codex_max_depth;
+    resolved.codex_job_max_runtime_seconds = library.codex_job_max_runtime_seconds;
+    resolved.codex_shell_env_policy = library.codex_shell_env_policy.clone();
+    resolved.codex_notify = library.codex_notify.clone();
+    resolved.codex_settings_extra = library.codex_settings_extra.clone();
+    // Cursor settings
+    resolved.cursor_environment = library.cursor_environment.clone();
+    resolved.cursor_settings_extra = library.cursor_settings_extra.clone();
+    // Claude settings
+    resolved.claude_theme = library.claude_theme.clone();
+    resolved.claude_auto_updates = library.claude_auto_updates;
+    resolved.claude_include_co_authored_by = library.claude_include_co_authored_by;
     resolved
 }
 
@@ -256,6 +350,25 @@ pub fn resolve(
         env: std::collections::HashMap::new(),
         available_models: Vec::new(),
         codex_sandbox: None,
+        gemini_default_approval_mode: None,
+        gemini_max_session_turns: None,
+        gemini_disable_yolo_mode: None,
+        gemini_disable_always_allow: None,
+        gemini_tools_sandbox: None,
+        gemini_settings_extra: None,
+        codex_approval_policy: None,
+        codex_reasoning_effort: None,
+        codex_max_threads: None,
+        codex_max_depth: None,
+        codex_job_max_runtime_seconds: None,
+        codex_shell_env_policy: None,
+        codex_notify: None,
+        codex_settings_extra: None,
+        cursor_environment: None,
+        cursor_settings_extra: None,
+        claude_theme: None,
+        claude_auto_updates: None,
+        claude_include_co_authored_by: None,
     }
 }
 
@@ -349,6 +462,13 @@ mod tests {
             url: None,
             disabled: false,
             timeout_secs: None,
+            codex_enabled_tools: vec![],
+            codex_disabled_tools: vec![],
+            gemini_trust: None,
+            gemini_include_tools: vec![],
+            gemini_exclude_tools: vec![],
+            gemini_timeout_ms: None,
+            cursor_env_file: None,
         }
     }
 

@@ -4,7 +4,7 @@ use serde_json::Value as Json;
 
 use crate::types::{HookConfig, HookTrigger, Permissions};
 
-/// Build the `.claude/settings.json` patch from permissions, hooks, and model.
+/// Build the `.claude/settings.json` patch from permissions, hooks, model, and provider settings.
 ///
 /// Returns `None` when nothing needs to be written — i.e. when all permissions
 /// are at their safe defaults and there are no hooks. This is intentional: Ship
@@ -18,18 +18,24 @@ pub fn build_claude_settings_patch(
     extra: Option<&Json>,
     env: &std::collections::HashMap<String, String>,
     available_models: &[String],
+    theme: Option<&str>,
+    auto_updates: Option<bool>,
+    include_co_authored_by: Option<bool>,
 ) -> Option<Json> {
     let has_perms = has_permission_overrides(permissions);
     let has_hooks = !hooks.is_empty();
     let has_agent_limits = permissions.agent.max_cost_per_session.is_some()
         || permissions.agent.max_turns.is_some();
     let has_model = model.is_some();
-    let has_extra = extra.is_some_and(|v| !v.is_null());
+    let has_extra = extra.is_some_and(|v: &Json| !v.is_null());
     let has_env = !env.is_empty();
     let has_available_models = !available_models.is_empty();
+    let has_theme = theme.is_some();
+    let has_auto_updates = auto_updates.is_some();
+    let has_co_authored = include_co_authored_by.is_some();
 
     if !has_perms && !has_hooks && !has_agent_limits && !has_model && !has_extra
-        && !has_env && !has_available_models
+        && !has_env && !has_available_models && !has_theme && !has_auto_updates && !has_co_authored
     {
         return None;
     }
@@ -127,7 +133,22 @@ pub fn build_claude_settings_patch(
         patch["availableModels"] = serde_json::json!(available_models);
     }
 
-    // Extra provider-specific settings — pass through verbatim.
+    // Theme.
+    if let Some(t) = theme {
+        patch["theme"] = Json::String(t.to_string());
+    }
+
+    // Auto-updates.
+    if let Some(au) = auto_updates {
+        patch["autoUpdates"] = serde_json::json!(au);
+    }
+
+    // Include co-authored-by.
+    if let Some(co) = include_co_authored_by {
+        patch["includeCoAuthoredBy"] = serde_json::json!(co);
+    }
+
+    // Extra provider-specific settings — pass through verbatim (must be last).
     // Source: `[provider_settings.claude]` in the active preset TOML.
     if let Some(extra_obj) = extra.and_then(|v| v.as_object()) {
         for (k, v) in extra_obj {

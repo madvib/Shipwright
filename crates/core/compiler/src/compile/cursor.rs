@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use serde_json::Value as Json;
 
-use crate::types::{HookConfig, HookTrigger, Permissions, Rule};
+use crate::resolve::ResolvedConfig;
+use crate::types::{HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, Rule};
 
 // ─── Cursor hooks patch ───────────────────────────────────────────────────────
 
@@ -23,16 +24,26 @@ fn cursor_triggers(t: &HookTrigger) -> &'static [&'static str] {
 /// Build the full `.cursor/hooks.json` content.
 /// Returns `None` when there are no mappable hooks.
 pub(super) fn build_cursor_hooks_patch(hooks: &[HookConfig]) -> Option<Json> {
-    let mut by_event: std::collections::BTreeMap<&str, Vec<Json>> =
+    let mut by_event: std::collections::BTreeMap<String, Vec<Json>> =
         std::collections::BTreeMap::new();
 
     for h in hooks {
+        if let Some(raw_event) = &h.cursor_event {
+            // Raw event override — emit directly, skip trigger mapping.
+            let mut entry = serde_json::json!({ "command": h.command });
+            if let Some(m) = &h.matcher {
+                entry["matcher"] = Json::String(m.clone());
+            }
+            by_event.entry(raw_event.clone()).or_default().push(entry);
+            continue;
+        }
+
         for &event in cursor_triggers(&h.trigger) {
             let mut entry = serde_json::json!({ "command": h.command });
             if let Some(m) = &h.matcher {
                 entry["matcher"] = Json::String(m.clone());
             }
-            by_event.entry(event).or_default().push(entry);
+            by_event.entry(event.to_string()).or_default().push(entry);
         }
     }
 
@@ -42,7 +53,7 @@ pub(super) fn build_cursor_hooks_patch(hooks: &[HookConfig]) -> Option<Json> {
 
     let obj: serde_json::Map<String, Json> = by_event
         .into_iter()
-        .map(|(k, v)| (k.to_string(), Json::Array(v)))
+        .map(|(k, v)| (k, Json::Array(v)))
         .collect();
 
     Some(Json::Object(obj))
@@ -77,6 +88,18 @@ pub fn translate_to_cursor_permission(pattern: &str) -> Option<String> {
         }
         return None; // malformed — skip
     }
+
+    // Phase 3: Read(glob) and Write(glob)/Edit(glob) pass-through.
+    if let Some(inner) = pattern.strip_prefix("Read(").and_then(|s| s.strip_suffix(')')) {
+        return Some(format!("Read({inner})"));
+    }
+    if let Some(inner) = pattern.strip_prefix("Write(").and_then(|s| s.strip_suffix(')')) {
+        return Some(format!("Write({inner})"));
+    }
+    if let Some(inner) = pattern.strip_prefix("Edit(").and_then(|s| s.strip_suffix(')')) {
+        return Some(format!("Write({inner})"));
+    }
+
     // Bash(cmd) → Shell(cmd)
     if let Some(inner) = pattern.strip_prefix("Bash(").and_then(|s| s.strip_suffix(')')) {
         return Some(format!("Shell({inner})"));
@@ -145,6 +168,78 @@ pub(super) fn build_cursor_cli_permissions(permissions: &Permissions) -> Option<
     }
 
     Some(serde_json::json!({ "version": 1, "permissions": perms }))
+}
+
+// ─── Cursor environment.json ──────────────────────────────────────────────────
+
+/// Build the `.cursor/environment.json` content from `cursor_environment`.
+/// Returns `None` when not set.
+pub(super) fn build_cursor_environment(resolved: &ResolvedConfig) -> Option<Json> {
+    resolved.cursor_environment.clone()
+}
+
+// ─── Cursor cli.json (settings_extra merge) ───────────────────────────────────
+
+/// Build the full `.cursor/cli.json` by merging permissions and cursor_settings_extra.
+pub(super) fn build_cursor_cli_json(resolved: &ResolvedConfig) -> Option<Json> {
+    let permissions_json = build_cursor_cli_permissions(&resolved.permissions);
+    let has_extra = resolved.cursor_settings_extra.as_ref().is_some_and(|v| !v.is_null());
+
+    if permissions_json.is_none() && !has_extra {
+        return None;
+    }
+
+    let mut out = permissions_json.unwrap_or_else(|| serde_json::json!({ "version": 1 }));
+
+    // Merge cursor_settings_extra verbatim.
+    if let Some(extra) = &resolved.cursor_settings_extra {
+        if let Some(obj) = extra.as_object() {
+            for (k, v) in obj {
+                out[k] = v.clone();
+            }
+        }
+    }
+
+    Some(out)
+}
+
+// ─── Cursor MCP servers ───────────────────────────────────────────────────────
+
+/// Build Cursor MCP server entry with Cursor-specific per-server fields.
+pub(super) fn build_cursor_server_entry(
+    desc: &super::provider::ProviderDescriptor,
+    s: &McpServerConfig,
+) -> Json {
+    let mut entry = super::mcp::server_entry(desc, s);
+
+    // envFile for stdio servers.
+    if matches!(s.server_type, McpServerType::Stdio) {
+        if let Some(env_file) = &s.cursor_env_file {
+            entry["envFile"] = Json::String(env_file.clone());
+        }
+    }
+
+    entry
+}
+
+/// Build the Cursor MCP servers object with Cursor-specific fields.
+pub(super) fn build_cursor_mcp_servers(
+    desc: &super::provider::ProviderDescriptor,
+    servers: &[McpServerConfig],
+) -> Json {
+    let mut map = serde_json::Map::new();
+
+    // Ship server always first.
+    map.insert("ship".to_string(), super::mcp::ship_server_entry(desc.emit_type_field));
+
+    for s in servers {
+        if s.disabled {
+            continue;
+        }
+        map.insert(s.id.clone(), build_cursor_server_entry(desc, s));
+    }
+
+    Json::Object(map)
 }
 
 // ─── Cursor rule files (.cursor/rules/*.mdc) ──────────────────────────────────
