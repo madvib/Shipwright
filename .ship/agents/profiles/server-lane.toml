@@ -6,7 +6,7 @@ description = "Active context for the Server lane agent"
 providers = ["claude"]
 
 [skills]
-refs = ["better-auth", "tanstack-start", "ship-coordination"]
+refs = ["github.com/better-auth/skills/better-auth", "ship-coordination"]
 
 [mcp]
 servers = ["ship"]
