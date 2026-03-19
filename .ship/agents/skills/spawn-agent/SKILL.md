@@ -23,20 +23,22 @@ Dispatch a job to a specialist agent. Follow this sequence exactly — no shortc
 
 Get the full job payload: title, description, acceptance criteria, scope, profile hint.
 
+**Option A — MCP tool (preferred when running inside Claude Code with Ship MCP active):**
+
 ```
-python3 -c "
-import sqlite3, os, json
-db = os.path.expanduser('~/.ship/state/ship-hrvmuz4p/platform.db')
-conn = sqlite3.connect(db)
-cur = conn.cursor()
-cur.execute('SELECT payload_json FROM job WHERE id=?', ('<JOB_ID>',))
-row = cur.fetchone()
-print(json.dumps(json.loads(row[0]), indent=2))
-conn.close()
-"
+Use the MCP tool: list_jobs()
+Find the job with the matching ID in the results to get its full payload.
 ```
 
-> Note: replace `ship-hrvmuz4p` with the actual slug for this project. Run `ls ~/.ship/state/` and look for the entry matching this repo.
+**Option B — CLI fallback (when MCP is not available):**
+
+```bash
+ship job list
+```
+
+Find the job by ID prefix in the output. For full payload detail when CLI output is truncated, ask the human to run `ship job list` and share the relevant row.
+
+> **Never use raw sqlite3 to access Ship data.** The database schema evolves across releases. Always use the MCP tools or `ship` CLI — they are the stable interface.
 
 ### 2. Resolve the worktree path
 

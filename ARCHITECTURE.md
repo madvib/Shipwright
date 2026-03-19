@@ -64,6 +64,54 @@ The CLI and local SQLite database are the runtime. The platform (registry, analy
 
 ---
 
+## Current State vs Target (v0.1.0 → v0.2.0)
+
+### Known Violations — Workflow Types in the Platform Layer
+
+The following SDLC/workflow types currently exist in platform code. They should not be there. Do not add new references to them in platform code. They are scheduled for extraction in 0.2.0.
+
+**`state_db/schema_ext.rs`** contains tables that are Shipflow document types, not platform primitives:
+- `feature`, `feature_todo`, `feature_criterion`
+- `release`, `release_breaking_change`
+- `feature_doc`, `feature_doc_revision`
+- `spec`, `adr`, `adr_option`
+
+**`WorkspaceDbRow`** carries `feature_id` and `updated_feature_ids` — workflow-layer foreign keys on a platform type.
+
+**`git_workspace` table** has `feature_id` and `release_id` columns — workflow-layer joins in a platform table.
+
+**`feature_capability` and `target_feature`** are workflow-layer join tables that have no place in the platform schema.
+
+**Rule:** Do not add new references to these types in platform code. Do not add new SDLC concepts (`feature_id`, `release_id`, `spec_id`, etc.) to any platform type. These will be extracted in 0.2.0.
+
+---
+
+### Data Access Rule
+
+Agents and tooling must access Ship data through the MCP server tools or the `ship` CLI. Direct SQLite3 queries against the platform database are prohibited. The schema is not a stable API — it evolves across releases.
+
+**Allowed:**
+- MCP tools (`list_jobs`, `list_workspaces`, `list_capabilities`, etc.)
+- `ship` CLI commands
+
+**Not allowed:**
+- `sqlite3` CLI against the platform DB
+- Python or any language's sqlite3 bindings against the platform DB
+- Any raw SQL outside of the runtime crate itself
+
+---
+
+### 0.2.0 Cleanup Plan
+
+The following changes will complete the platform/workflow separation:
+
+- `schema_ext.rs` becomes Shipflow's schema extension, loaded conditionally when Shipflow is the active workflow — not compiled into the platform unconditionally.
+- `workspace` loses hardcoded `feature_id`/`target_id` columns, replaced by a generic `workflow_context_json` field that workflows populate with their own keying.
+- `workflow.toml` introduced as the customization layer for the project management platform — the boundary file that separates what the platform owns from what a workflow package provides.
+- Shipflow declared as a workflow package that extends the platform via `workflow.toml`, making the guest/host relationship structurally enforced rather than just documented.
+
+---
+
 ## Platform Layer — Canonical Types
 
 These types are stable platform contracts. Agents working on Ship core should only reference these.
