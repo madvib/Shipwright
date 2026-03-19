@@ -673,7 +673,10 @@ stop = "ship permissions sync"
         let stop_hooks = v["hooks"]["Stop"].as_array()
             .expect("Stop hooks array must be present");
         assert!(
-            stop_hooks.iter().any(|h| h["command"] == "ship permissions sync"),
+            stop_hooks.iter().any(|entry| {
+                entry["hooks"].as_array()
+                    .is_some_and(|hooks| hooks.iter().any(|h| h["command"] == "ship permissions sync"))
+            }),
             "stop hook command must be emitted"
         );
     }
