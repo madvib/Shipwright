@@ -14,8 +14,8 @@ use rmcp::{
 };
 use runtime::project::{get_active_project_global, get_project_dir, set_active_project_global};
 use runtime::{
-    get_active_mode, get_config, get_effective_skill, list_effective_skills, list_events_since,
-    list_models, list_providers, read_log, set_active_mode,
+    get_active_agent, get_config, get_effective_skill, list_effective_skills, list_events_since,
+    list_models, list_providers, read_log, set_active_agent,
     workspace::{
         CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest,
         EndWorkspaceSessionRequest as RuntimeEndWorkspaceSessionRequest, ShipWorkspaceKind,
@@ -28,7 +28,7 @@ use runtime::{
         list_workspace_sessions as runtime_list_workspace_sessions,
         list_workspaces as runtime_list_workspaces,
         record_workspace_session_progress as runtime_record_workspace_session_progress,
-        repair_workspace as runtime_repair_workspace, set_workspace_active_mode,
+        repair_workspace as runtime_repair_workspace, set_workspace_active_agent,
         start_workspace_session as runtime_start_workspace_session,
         sync_workspace as runtime_sync_workspace,
     },
@@ -185,7 +185,7 @@ impl ShipServer {
             "create_workspace",
             "complete_workspace",
             "list_stale_worktrees",
-            "set_mode",
+            "set_agent",
             "sync_workspace",
             "repair_workspace",
             "list_workspaces",
@@ -243,9 +243,9 @@ impl ShipServer {
             }
         }
 
-        let active_mode = get_active_mode(Some(project_dir.to_path_buf())).map_err(|e| e.to_string())?;
+        let active_agent = get_active_agent(Some(project_dir.to_path_buf())).map_err(|e| e.to_string())?;
 
-        if let Some(ref mode) = active_mode {
+        if let Some(ref mode) = active_agent {
             if Self::mode_allows_tool(tool_name, &mode.active_tools) {
                 return Ok(());
             }
@@ -339,7 +339,7 @@ impl ShipServer {
                 "- Workspace: {} [{:?}]",
                 ws.branch, ws.workspace_type
             ));
-            if let Some(ref mode) = ws.active_mode {
+            if let Some(ref mode) = ws.active_agent {
                 out.push_str(&format!(" mode={}", mode));
             }
             if let Some(ref fid) = ws.feature_id {
@@ -367,7 +367,7 @@ impl ShipServer {
         }
 
         // Agent mode
-        if let Some(active_id) = config.active_mode.as_deref() {
+        if let Some(active_id) = config.active_agent.as_deref() {
             if let Some(mode) = config.modes.iter().find(|m| m.id == active_id) {
                 out.push_str(&format!("- Mode: {} ({})\n", mode.name, mode.id));
             }
@@ -497,19 +497,19 @@ impl ShipServer {
 
     // ─── Mode / Workspace Control Plane Tools ──────────────────────────────
 
-    /// Activate a mode or clear active mode
+    /// Activate an agent profile or clear active agent
     #[tool(
-        description = "Activate a mode by id, or clear active mode by passing null/omitting id."
+        description = "Activate an agent profile by id, or clear active agent by passing null/omitting id."
     )]
-    async fn set_mode(&self, Parameters(req): Parameters<SetModeRequest>) -> String {
+    async fn set_agent(&self, Parameters(req): Parameters<SetModeRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(project_dir) => project_dir,
             Err(err) => return err,
         };
-        match set_active_mode(Some(project_dir), req.id.as_deref()) {
+        match set_active_agent(Some(project_dir), req.id.as_deref()) {
             Ok(()) => match req.id {
-                Some(id) => format!("Active mode set to '{}'", id),
-                None => "Active mode cleared".to_string(),
+                Some(id) => format!("Active agent set to '{}'", id),
+                None => "Active agent cleared".to_string(),
             },
             Err(err) => format!("Error: {}", err),
         }
@@ -541,7 +541,7 @@ impl ShipServer {
             environment_id: req.environment_id,
             feature_id: req.feature_id,
             target_id: req.target_id,
-            active_mode: req.mode_id,
+            active_agent: req.agent_id,
             providers: None,
             mcp_servers: None,
             skills: None,
@@ -582,8 +582,8 @@ impl ShipServer {
             Ok(workspace) => workspace,
             Err(err) => return format!("Error: {}", err),
         };
-        if let Some(mode_id) = req.mode_id.as_deref() {
-            workspace = match set_workspace_active_mode(&project_dir, &req.branch, Some(mode_id)) {
+        if let Some(agent_id) = req.agent_id.as_deref() {
+            workspace = match set_workspace_active_agent(&project_dir, &req.branch, Some(agent_id)) {
                 Ok(workspace) => workspace,
                 Err(err) => return format!("Error: {}", err),
             };
@@ -678,7 +678,7 @@ impl ShipServer {
             &project_dir,
             &branch,
             req.goal,
-            req.mode_id,
+            req.agent_id,
             req.provider_id,
         ) {
             Ok(session) => serde_json::to_string_pretty(&session)
@@ -790,7 +790,7 @@ impl ShipServer {
                 "- {} [{:?}] status={:?}",
                 w.branch, w.workspace_type, w.status
             ));
-            if let Some(ref mode) = w.active_mode {
+            if let Some(ref mode) = w.active_agent {
                 out.push_str(&format!(" mode={}", mode));
             }
             out.push('\n');
@@ -1726,7 +1726,7 @@ impl ShipServer {
             return match get_config(Some(dir.to_path_buf())) {
                 Ok(config) => {
                     let payload = serde_json::json!({
-                        "active_mode": config.active_mode,
+                        "active_mode": config.active_agent,
                         "modes": config.modes,
                     });
                     serde_json::to_string_pretty(&payload).ok()
@@ -1819,7 +1819,7 @@ impl ServerHandler for ShipServer {
             instructions: Some(
                 "Ship project intelligence — three-stage workflow:\n\n\
                  PLANNING: get_project_info → create_note / create_adr\n\
-                 WORKSPACE: list_workspaces → activate_workspace → set_mode\n\
+                 WORKSPACE: list_workspaces → activate_workspace → set_agent\n\
                  SESSION: start_session → (work) → log_progress → end_session\n\n\
                  By default only core workflow tools are visible. To access extended tools, \
                  activate a mode that includes them in its active_tools list. \
@@ -1858,7 +1858,7 @@ impl ServerHandler for ShipServer {
         // Filter tool list to match what enforce_mode_tool_gate allows.
         // Agents should only see tools they can actually call.
         let visible = if let Ok(project_dir) = self.get_effective_project_dir().await {
-            let active_mode = get_active_mode(Some(project_dir.clone())).unwrap_or(None);
+            let active_agent = get_active_agent(Some(project_dir.clone())).unwrap_or(None);
             let in_project_workspace = matches!(
                 runtime::workspace::get_active_workspace_type(&project_dir).unwrap_or(None),
                 Some(runtime::ShipWorkspaceKind::Service)
@@ -1873,7 +1873,7 @@ impl ServerHandler for ShipServer {
                     if in_project_workspace && Self::is_project_workspace_tool(name) {
                         return true;
                     }
-                    if let Some(ref mode) = active_mode {
+                    if let Some(ref mode) = active_agent {
                         Self::mode_allows_tool(name, &mode.active_tools)
                     } else {
                         false
@@ -2053,7 +2053,7 @@ pub async fn run_server() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::{ModeConfig, add_mode};
+    use runtime::{AgentProfile, add_agent};
     use ship_docs::init_project;
     use tempfile::tempdir;
 
@@ -2062,18 +2062,18 @@ mod tests {
         let tmp = tempdir().expect("tempdir");
         let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
 
-        add_mode(
+        add_agent(
             Some(project_dir.clone()),
-            ModeConfig {
+            AgentProfile {
                 id: "mode-gate-test".to_string(),
                 name: "Mode Gate Test".to_string(),
                 active_tools: vec!["ship_list_notes".to_string()],
                 ..Default::default()
             },
         )
-        .expect("add mode");
-        set_active_mode(Some(project_dir.clone()), Some("mode-gate-test"))
-            .expect("set active mode");
+        .expect("add agent");
+        set_active_agent(Some(project_dir.clone()), Some("mode-gate-test"))
+            .expect("set active agent");
 
         ShipServer::enforce_mode_tool_gate(&project_dir, "list_notes").expect("list_notes allowed");
         ShipServer::enforce_mode_tool_gate(&project_dir, "ship_list_notes_tool")
@@ -2107,7 +2107,7 @@ mod tests {
                 environment_id: None,
                 feature_id: None,
                 target_id: None,
-                mode_id: None,
+                agent_id: None,
                 is_worktree: Some(false),
                 worktree_path: None,
                 activate: Some(true),
@@ -2195,7 +2195,7 @@ mod normalization_tests {
             "activate_workspace",
             "create_workspace",
             "complete_workspace",
-            "set_mode",
+            "set_agent",
             "start_session",
             "end_session",
             "log_progress",

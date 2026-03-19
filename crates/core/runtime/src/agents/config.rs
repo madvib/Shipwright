@@ -1,6 +1,6 @@
 use crate::config::{McpServerConfig, get_config};
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
-pub struct FeatureAgentConfig {
+pub struct WorkspaceAgentSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default)]
@@ -22,21 +22,21 @@ use std::path::Path;
 
 // ─── Resolved config ──────────────────────────────────────────────────────────
 
-/// Fully resolved, in-memory agent configuration for the current branch/feature.
+/// Fully resolved, in-memory provider settings for the current branch/feature.
 ///
-/// Not stored as a file. Computed by [`resolve_agent_config`] from:
+/// Not stored as a file. Computed by [`resolve_provider_settings`] from:
 /// 1. Project defaults (`ship.toml` + `agents/` directory)
-/// 2. Active mode overrides
+/// 2. Active agent profile overrides
 /// 3. Feature `[agent]` block (thin overrides)
 ///
 /// A snapshot of key IDs is stored in the Workspace SQLite record for the UI.
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
-pub struct AgentConfig {
+pub struct ProviderSettings {
     /// Active provider IDs (e.g. `["claude"]`). Inherited from project or overridden by feature.
     pub providers: Vec<String>,
     /// Model override — `None` means use the provider's default.
     pub model: Option<String>,
-    /// Resolved MCP servers (project list, filtered by mode + feature).
+    /// Resolved MCP servers (project list, filtered by agent profile + feature).
     pub mcp_servers: Vec<McpServerConfig>,
     /// Resolved skills (project + user effective list, filtered by feature).
     pub skills: Vec<Skill>,
@@ -44,8 +44,8 @@ pub struct AgentConfig {
     pub rules: Vec<Rule>,
     /// Resolved permissions from `agents/permissions.toml`.
     pub permissions: Permissions,
-    /// Active mode ID if one is set in `ship.toml`.
-    pub active_mode: Option<String>,
+    /// Active agent ID if one is set in `ship.toml`.
+    pub active_agent: Option<String>,
 }
 
 fn normalize_provider_ids(ids: &[String]) -> Vec<String> {
@@ -82,59 +82,60 @@ fn normalize_rule_id(id: &str) -> String {
 
 // ─── Resolution ───────────────────────────────────────────────────────────────
 
-/// Resolve the effective [`AgentConfig`] for the current project state.
+/// Resolve the effective [`ProviderSettings`] for the current project state.
 ///
 /// Resolution order (highest wins):
 /// 1. Project defaults (`ship.toml` + `agents/` directory)
-/// 2. Active mode overrides (mode's `mcp_servers` filter, instruction skill via `prompt_id`)
+/// 2. Active agent profile overrides (profile's `mcp_servers` filter, instruction skill via `prompt_id`)
 /// 3. Feature `[agent]` block — thin overrides: `model`, `providers`, filtered server/skill IDs
 ///
-/// Pass `None` for `feature_agent` when not on a feature branch.
-pub fn resolve_agent_config(
+/// Pass `None` for `workspace_agent` when not on a feature branch.
+pub fn resolve_provider_settings(
     ship_dir: &Path,
-    feature_agent: Option<&FeatureAgentConfig>,
-) -> Result<AgentConfig> {
-    resolve_agent_config_with_mode_override(ship_dir, feature_agent, None)
+    workspace_agent: Option<&WorkspaceAgentSettings>,
+) -> Result<ProviderSettings> {
+    resolve_provider_settings_with_agent_override(ship_dir, workspace_agent, None)
 }
 
-/// Resolve effective agent config with an optional mode override.
+/// Resolve effective provider settings with an optional agent profile override.
 ///
-/// `active_mode_override` is intended for workspace-level mode selection.
-/// When provided and valid, it takes precedence over project `active_mode`.
-pub fn resolve_agent_config_with_mode_override(
+/// `active_agent_override` is intended for workspace-level agent selection.
+/// When provided and valid, it takes precedence over project `active_agent`.
+pub fn resolve_provider_settings_with_agent_override(
     ship_dir: &Path,
-    feature_agent: Option<&FeatureAgentConfig>,
-    active_mode_override: Option<&str>,
-) -> Result<AgentConfig> {
+    workspace_agent: Option<&WorkspaceAgentSettings>,
+    active_agent_override: Option<&str>,
+) -> Result<ProviderSettings> {
     let config = get_config(Some(ship_dir.to_path_buf()))?;
 
-    // ── Active mode ───────────────────────────────────────────────────────────
-    let override_mode = active_mode_override
+    // ── Active agent ──────────────────────────────────────────────────────────
+    let override_agent = active_agent_override
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .filter(|value| config.modes.iter().any(|mode| mode.id == *value))
         .map(str::to_string);
-    let active_mode = override_mode.or_else(|| config.active_mode.clone());
+    let active_agent = override_agent.or_else(|| config.active_agent.clone());
     let mode = config
         .modes
         .iter()
-        .find(|m| active_mode.as_deref() == Some(m.id.as_str()));
+        .find(|m| active_agent.as_deref() == Some(m.id.as_str()));
 
     // ── Providers ─────────────────────────────────────────────────────────────
     // Resolution priority (highest wins):
-    // 1. Feature/workspace explicit providers — if they specified any (even if all unknown),
+    // 1. Workspace explicit providers — if they specified any (even if all unknown),
     //    use the normalized result rather than falling back. An empty result from all-invalid
     //    providers propagates as a no-valid-providers error rather than silently using "claude".
-    // 2. Mode target_agents — when a mode is active and specifies target agents.
+    // 2. Agent profile target_agents — when an agent is active and specifies target agents.
     // 3. Project-level providers from ship.toml.
     // 4. Default: ["claude"].
-    let feature_has_explicit_providers = feature_agent.is_some_and(|fa| !fa.providers.is_empty());
-    let feature_override_providers = feature_agent
-        .filter(|fa| !fa.providers.is_empty())
-        .map(|fa| normalize_provider_ids(&fa.providers))
+    let workspace_has_explicit_providers =
+        workspace_agent.is_some_and(|wa| !wa.providers.is_empty());
+    let workspace_override_providers = workspace_agent
+        .filter(|wa| !wa.providers.is_empty())
+        .map(|wa| normalize_provider_ids(&wa.providers))
         .unwrap_or_default();
-    let providers = if feature_has_explicit_providers {
-        feature_override_providers
+    let providers = if workspace_has_explicit_providers {
+        workspace_override_providers
     } else {
         let mode_providers = mode
             .filter(|m| !m.target_agents.is_empty())
@@ -153,43 +154,43 @@ pub fn resolve_agent_config_with_mode_override(
     };
 
     // ── Model ─────────────────────────────────────────────────────────────────
-    let model = feature_agent
-        .and_then(|fa| fa.model.clone())
+    let model = workspace_agent
+        .and_then(|wa| wa.model.clone())
         .or_else(|| config.ai.as_ref().and_then(|ai| ai.model.clone()));
 
     // ── MCP servers ───────────────────────────────────────────────────────────
     let mut mcp_servers = config.mcp_servers.clone();
 
-    // Mode filter: if mode restricts servers, retain only allowed IDs.
+    // Agent profile filter: if profile restricts servers, retain only allowed IDs.
     if let Some(m) = mode
         && !m.mcp_servers.is_empty()
     {
         mcp_servers.retain(|s| m.mcp_servers.contains(&s.id));
     }
 
-    // Feature filter: if feature specifies server IDs, retain only those.
-    if let Some(fa) = feature_agent
-        && !fa.mcp_servers.is_empty()
+    // Workspace filter: if workspace specifies server IDs, retain only those.
+    if let Some(wa) = workspace_agent
+        && !wa.mcp_servers.is_empty()
     {
-        let ids: Vec<&str> = fa.mcp_servers.iter().map(|r| r.as_str()).collect();
+        let ids: Vec<&str> = wa.mcp_servers.iter().map(|r| r.as_str()).collect();
         mcp_servers.retain(|s| ids.contains(&s.id.as_str()));
     }
 
     // ── Skills ────────────────────────────────────────────────────────────────
     let mut skills = list_effective_skills(ship_dir)?;
 
-    // Mode filter: if mode restricts skills, retain only allowed IDs.
+    // Agent profile filter: if profile restricts skills, retain only allowed IDs.
     if let Some(m) = mode
         && !m.skills.is_empty()
     {
         skills.retain(|s| m.skills.contains(&s.id));
     }
 
-    // Feature filter: if feature specifies skill IDs, retain only those.
-    if let Some(fa) = feature_agent
-        && !fa.skills.is_empty()
+    // Workspace filter: if workspace specifies skill IDs, retain only those.
+    if let Some(wa) = workspace_agent
+        && !wa.skills.is_empty()
     {
-        let ids: Vec<&str> = fa.skills.iter().map(|r| r.as_str()).collect();
+        let ids: Vec<&str> = wa.skills.iter().map(|r| r.as_str()).collect();
         skills.retain(|s| ids.contains(&s.id.as_str()));
     }
 
@@ -205,21 +206,21 @@ pub fn resolve_agent_config_with_mode_override(
     // ── Permissions ───────────────────────────────────────────────────────────
     let permissions = get_permissions(ship_dir.to_path_buf())?;
 
-    Ok(AgentConfig {
+    Ok(ProviderSettings {
         providers,
         model,
         mcp_servers,
         skills,
         rules,
         permissions,
-        active_mode,
+        active_agent,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AiConfig, McpServerType, ModeConfig, ProjectConfig, save_config};
+    use crate::config::{AgentProfile, AiConfig, McpServerType, ProjectConfig, save_config};
     use crate::project::init_project;
     use crate::rule::create_rule;
     use crate::skill::create_skill;
@@ -261,14 +262,14 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let feature_agent = FeatureAgentConfig {
+        let feature_agent = WorkspaceAgentSettings {
             model: Some("feature-model".to_string()),
             mcp_servers: vec!["github".to_string()],
             skills: vec!["rt-beta-skill".to_string()],
             providers: vec!["codex".to_string()],
         };
 
-        let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
+        let resolved = resolve_provider_settings(&ship_dir, Some(&feature_agent))?;
         assert_eq!(resolved.providers, vec!["codex".to_string()]);
         assert_eq!(resolved.model.as_deref(), Some("feature-model"));
         assert_eq!(
@@ -289,14 +290,14 @@ mod tests {
 
         create_skill(&ship_dir, "rt-only-skill", "Only", "only body")?;
 
-        let feature_agent = FeatureAgentConfig {
+        let feature_agent = WorkspaceAgentSettings {
             model: None,
             mcp_servers: vec![],
             skills: vec!["rt-missing-skill".to_string(), "rt-only-skill".to_string()],
             providers: vec![],
         };
 
-        let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
+        let resolved = resolve_provider_settings(&ship_dir, Some(&feature_agent))?;
         assert_eq!(
             resolved
                 .skills
@@ -318,18 +319,18 @@ mod tests {
                 stdio_server("github", "github-bin"),
                 stdio_server("linear", "linear-bin"),
             ],
-            modes: vec![ModeConfig {
+            modes: vec![AgentProfile {
                 id: "planning".to_string(),
                 name: "Planning".to_string(),
                 mcp_servers: vec!["github".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let resolved = resolve_agent_config(&ship_dir, None)?;
+        let resolved = resolve_provider_settings(&ship_dir, None)?;
         assert_eq!(resolved.mcp_servers.len(), 1);
         assert_eq!(resolved.mcp_servers[0].id, "github");
         Ok(())
@@ -382,7 +383,7 @@ mod tests {
         })?;
         std::fs::write(crate::project::mcp_config_path(&ship_dir), mcp_toml)?;
 
-        let resolved = resolve_agent_config(&ship_dir, None)?;
+        let resolved = resolve_provider_settings(&ship_dir, None)?;
         let github = resolved
             .mcp_servers
             .iter()
@@ -410,25 +411,25 @@ mod tests {
                 stdio_server("linear", "linear-bin"),
                 stdio_server("figma", "figma-bin"),
             ],
-            modes: vec![ModeConfig {
+            modes: vec![AgentProfile {
                 id: "planning".to_string(),
                 name: "Planning".to_string(),
                 mcp_servers: vec!["github".to_string(), "linear".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let feature_agent = FeatureAgentConfig {
+        let feature_agent = WorkspaceAgentSettings {
             model: None,
             mcp_servers: vec!["linear".to_string(), "figma".to_string()],
             skills: vec![],
             providers: vec![],
         };
 
-        let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
+        let resolved = resolve_provider_settings(&ship_dir, Some(&feature_agent))?;
         let ids: Vec<&str> = resolved
             .mcp_servers
             .iter()
@@ -450,14 +451,14 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let feature_agent = FeatureAgentConfig {
+        let feature_agent = WorkspaceAgentSettings {
             model: Some("feature-model".to_string()),
             mcp_servers: vec![],
             skills: vec![],
             providers: vec![],
         };
 
-        let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
+        let resolved = resolve_provider_settings(&ship_dir, Some(&feature_agent))?;
         assert_eq!(
             resolved.providers,
             vec!["claude".to_string(), "gemini".to_string()]
@@ -477,7 +478,7 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let feature_agent = FeatureAgentConfig {
+        let feature_agent = WorkspaceAgentSettings {
             model: None,
             mcp_servers: vec![],
             skills: vec![],
@@ -489,7 +490,7 @@ mod tests {
             ],
         };
 
-        let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
+        let resolved = resolve_provider_settings(&ship_dir, Some(&feature_agent))?;
         assert_eq!(
             resolved.providers,
             vec!["codex".to_string(), "claude".to_string()]
@@ -508,7 +509,7 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let feature_agent = FeatureAgentConfig {
+        let feature_agent = WorkspaceAgentSettings {
             model: None,
             mcp_servers: vec![],
             skills: vec![],
@@ -517,7 +518,7 @@ mod tests {
 
         // Invalid feature-level providers are no longer silently ignored —
         // an empty provider list propagates so callers can surface the error.
-        let resolved = resolve_agent_config(&ship_dir, Some(&feature_agent))?;
+        let resolved = resolve_provider_settings(&ship_dir, Some(&feature_agent))?;
         assert!(resolved.providers.is_empty());
         Ok(())
     }
@@ -533,7 +534,7 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let resolved = resolve_agent_config(&ship_dir, None)?;
+        let resolved = resolve_provider_settings(&ship_dir, None)?;
         assert_eq!(resolved.providers, vec!["claude".to_string()]);
         Ok(())
     }
@@ -552,8 +553,8 @@ mod tests {
         )?;
 
         let config = ProjectConfig {
-            active_mode: Some("planning".to_string()),
-            modes: vec![ModeConfig {
+            active_agent: Some("planning".to_string()),
+            modes: vec![AgentProfile {
                 id: "planning".to_string(),
                 name: "Planning".to_string(),
                 skills: vec!["rt-alpha-skill".to_string()],
@@ -564,7 +565,7 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let resolved = resolve_agent_config(&ship_dir, None)?;
+        let resolved = resolve_provider_settings(&ship_dir, None)?;
         assert_eq!(
             resolved
                 .skills
@@ -593,15 +594,15 @@ mod tests {
         create_skill(&ship_dir, "rt-code-skill", "Code Skill", "code body")?;
 
         let config = ProjectConfig {
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             modes: vec![
-                ModeConfig {
+                AgentProfile {
                     id: "planning".to_string(),
                     name: "Planning".to_string(),
                     skills: vec!["rt-plan-skill".to_string()],
                     ..Default::default()
                 },
-                ModeConfig {
+                AgentProfile {
                     id: "code".to_string(),
                     name: "Code".to_string(),
                     skills: vec!["rt-code-skill".to_string()],
@@ -612,8 +613,8 @@ mod tests {
         };
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let baseline = resolve_agent_config(&ship_dir, None)?;
-        assert_eq!(baseline.active_mode.as_deref(), Some("planning"));
+        let baseline = resolve_provider_settings(&ship_dir, None)?;
+        assert_eq!(baseline.active_agent.as_deref(), Some("planning"));
         assert_eq!(
             baseline
                 .skills
@@ -623,8 +624,8 @@ mod tests {
             vec!["rt-plan-skill"]
         );
 
-        let overridden = resolve_agent_config_with_mode_override(&ship_dir, None, Some("code"))?;
-        assert_eq!(overridden.active_mode.as_deref(), Some("code"));
+        let overridden = resolve_provider_settings_with_agent_override(&ship_dir, None, Some("code"))?;
+        assert_eq!(overridden.active_agent.as_deref(), Some("code"));
         assert_eq!(
             overridden
                 .skills
@@ -636,8 +637,8 @@ mod tests {
 
         // Invalid workspace override should not clobber the project active mode.
         let invalid_override =
-            resolve_agent_config_with_mode_override(&ship_dir, None, Some("missing-mode"))?;
-        assert_eq!(invalid_override.active_mode.as_deref(), Some("planning"));
+            resolve_provider_settings_with_agent_override(&ship_dir, None, Some("missing-mode"))?;
+        assert_eq!(invalid_override.active_agent.as_deref(), Some("planning"));
         assert_eq!(
             invalid_override
                 .skills

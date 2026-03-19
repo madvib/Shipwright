@@ -18,7 +18,7 @@ pub struct CompileOptions<'a> {
     /// Print what would be written without touching the filesystem.
     pub dry_run: bool,
     /// Active mode id (already resolved from PathContext / ship.toml).
-    pub active_mode: Option<&'a str>,
+    pub active_agent: Option<&'a str>,
 }
 
 pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
@@ -29,10 +29,10 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         .context("failed to load .ship/agents/")?;
 
     // 2. Apply mode overrides (permissions, inline rules, provider list)
-    if let Some(mode_id) = opts.active_mode {
+    if let Some(mode_id) = opts.active_agent {
         apply_mode_to_library(&mut library, mode_id, opts.project_root)?;
     }
-    library.active_mode = opts.active_mode.map(str::to_string);
+    library.active_agent = opts.active_agent.map(str::to_string);
 
     // 2b. Resolve dep skill refs from cached packages.
     //     Collect all skill refs declared across agent profiles and mode configs,
@@ -53,7 +53,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     }
 
     // 3. Resolve (mode filtering, provider selection)
-    let resolved = resolve_library(&library, None, opts.active_mode);
+    let resolved = resolve_library(&library, None, opts.active_agent);
 
     // 4. Determine providers to compile for
     let providers: Vec<String> = match opts.provider {
@@ -493,7 +493,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(content.contains("Use explicit types."));
@@ -505,7 +505,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -519,7 +519,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: true, active_mode: None,
+            dry_run: true, active_agent: None,
         }).unwrap();
         assert!(!tmp.path().join("CLAUDE.md").exists(), "dry-run must not write files");
         assert!(!tmp.path().join(".mcp.json").exists());
@@ -531,7 +531,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("gemini"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let path = tmp.path().join(".gemini/settings.json");
         assert!(path.exists(), ".gemini/settings.json must be written for gemini");
@@ -545,7 +545,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("gemini"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
         assert!(content.contains("Use explicit types."), "GEMINI.md must contain rules");
@@ -557,7 +557,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("codex"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("Use explicit types."), "AGENTS.md must contain rules");
@@ -569,7 +569,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("codex"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let path = tmp.path().join(".codex/config.toml");
         assert!(path.exists(), ".codex/config.toml must be written for codex");
@@ -584,7 +584,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("cursor"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let mdc = tmp.path().join(".cursor/rules/style.mdc");
         assert!(mdc.exists(), ".cursor/rules/style.mdc must be written");
@@ -602,7 +602,7 @@ deny = ["Bash(rm -rf *)"]
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let settings_path = tmp.path().join(".claude/settings.json");
         assert!(settings_path.exists());
@@ -623,7 +623,7 @@ preset = "ship-guarded"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("guarded"),
+            dry_run: false, active_agent: Some("guarded"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
@@ -645,7 +645,7 @@ inline = "Never delete files without explicit confirmation."
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("strict"),
+            dry_run: false, active_agent: Some("strict"),
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(content.contains("Never delete files without explicit confirmation."));
@@ -665,7 +665,7 @@ stop = "ship permissions sync"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("commander"),
+            dry_run: false, active_agent: Some("commander"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
@@ -696,7 +696,7 @@ preset = "ship-fast"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("fast"),
+            dry_run: false, active_agent: Some("fast"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
@@ -721,7 +721,7 @@ default_mode = "bypassPermissions"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("autonomous"),
+            dry_run: false, active_agent: Some("autonomous"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()

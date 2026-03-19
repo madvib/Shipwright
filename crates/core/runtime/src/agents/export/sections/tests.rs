@@ -2,7 +2,7 @@
 mod tests {
     use super::*;
     use crate::config::{
-        HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
+        HookConfig, HookTrigger, McpServerConfig, McpServerType, AgentProfile, PermissionConfig,
         ProjectConfig, save_config,
     };
     use crate::permissions::{Permissions, ToolPermissions, save_permissions};
@@ -173,7 +173,7 @@ mod tests {
             description: None,
             command: "echo global".to_string(),
         }];
-        config.modes = vec![ModeConfig {
+        config.modes = vec![AgentProfile {
             id: "focus".to_string(),
             name: "Focus".to_string(),
             description: None,
@@ -196,13 +196,13 @@ mod tests {
             },
             target_agents: vec![],
         }];
-        config.active_mode = Some("focus".to_string());
+        config.active_agent = Some("focus".to_string());
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload(&project_dir).unwrap();
         let server_ids: Vec<_> = payload.servers.iter().map(|server| server.id.as_str()).collect();
         assert_eq!(server_ids, vec!["allowed", "blocked"]);
-        assert_eq!(payload.active_mode_id, None);
+        assert_eq!(payload.active_agent_id, None);
         assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
         assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
         assert!(payload.hooks.iter().any(|hook| hook.id == "project-global-hook"));
@@ -235,7 +235,7 @@ mod tests {
             description: None,
             command: "echo global".to_string(),
         }];
-        config.modes = vec![ModeConfig {
+        config.modes = vec![AgentProfile {
             id: "unused".to_string(),
             name: "Unused".to_string(),
             description: None,
@@ -258,11 +258,11 @@ mod tests {
             },
             target_agents: vec![],
         }];
-        config.active_mode = None;
+        config.active_agent = None;
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload(&project_dir).unwrap();
-        assert_eq!(payload.active_mode_id, None);
+        assert_eq!(payload.active_agent_id, None);
         assert_eq!(payload.permissions.tools.allow, vec!["Read(*)".to_string()]);
         assert_eq!(payload.permissions.tools.deny, vec!["Edit(*)".to_string()]);
         assert!(
@@ -300,7 +300,7 @@ mod tests {
         .unwrap();
 
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
-        config.modes = vec![ModeConfig {
+        config.modes = vec![AgentProfile {
             id: "focus".to_string(),
             name: "Focus".to_string(),
             permissions: PermissionConfig {
@@ -309,7 +309,7 @@ mod tests {
             },
             ..Default::default()
         }];
-        config.active_mode = Some("focus".to_string());
+        config.active_agent = Some("focus".to_string());
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload(&project_dir).unwrap();
@@ -344,9 +344,9 @@ mod tests {
         .unwrap();
 
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
-        config.active_mode = Some("planning".to_string());
+        config.active_agent = Some("planning".to_string());
         config.modes = vec![
-            ModeConfig {
+            AgentProfile {
                 id: "planning".to_string(),
                 name: "Planning".to_string(),
                 mcp_servers: vec!["planning-server".to_string()],
@@ -364,7 +364,7 @@ mod tests {
                 }],
                 ..Default::default()
             },
-            ModeConfig {
+            AgentProfile {
                 id: "code".to_string(),
                 name: "Code".to_string(),
                 mcp_servers: vec!["code-server".to_string()],
@@ -386,7 +386,7 @@ mod tests {
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         let payload = build_payload_with_mode_override(&project_dir, Some("code")).unwrap();
-        assert_eq!(payload.active_mode_id.as_deref(), Some("code"));
+        assert_eq!(payload.active_agent_id.as_deref(), Some("code"));
         let mut server_ids: Vec<_> = payload
             .servers
             .iter()
@@ -413,32 +413,32 @@ mod tests {
     }
 
     #[test]
-    fn sync_active_mode_uses_connected_providers_when_targets_empty() {
+    fn sync_active_agent_uses_connected_providers_when_targets_empty() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec!["codex".to_string()];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
-        let synced = sync_active_mode(&project_dir).unwrap();
+        let synced = sync_active_agent(&project_dir).unwrap();
         assert_eq!(synced, vec!["codex".to_string()]);
         assert!(tmp.path().join(".codex").join("config.toml").exists());
     }
 
     #[test]
-    fn sync_active_mode_without_active_mode_uses_connected_providers() {
+    fn sync_active_agent_without_active_agent_uses_connected_providers() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec!["gemini".to_string()];
-        config.active_mode = None;
+        config.active_agent = None;
         save_config(&config, Some(project_dir.clone())).unwrap();
 
-        let synced = sync_active_mode(&project_dir).unwrap();
+        let synced = sync_active_agent(&project_dir).unwrap();
         assert_eq!(synced, vec!["gemini".to_string()]);
         assert!(tmp.path().join(".gemini").join("settings.json").exists());
     }
 
     #[test]
-    fn sync_active_mode_normalizes_targets_and_skips_unknown_values() {
+    fn sync_active_agent_normalizes_targets_and_skips_unknown_values() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec![
@@ -450,7 +450,7 @@ mod tests {
         ];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
-        let synced = sync_active_mode(&project_dir).unwrap();
+        let synced = sync_active_agent(&project_dir).unwrap();
         assert_eq!(
             synced,
             vec!["codex".to_string(), "claude".to_string()],
@@ -461,23 +461,23 @@ mod tests {
     }
 
     #[test]
-    fn sync_active_mode_with_override_uses_project_targets() {
+    fn sync_active_agent_with_override_uses_project_targets() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec!["claude".to_string()];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
-        let synced = sync_active_mode_with_override(&project_dir, Some("code")).unwrap();
+        let synced = sync_active_agent_with_override(&project_dir, Some("code")).unwrap();
         assert_eq!(synced, vec!["claude".to_string()]);
         assert!(tmp.path().join(".mcp.json").exists());
     }
 
     #[test]
-    fn sync_active_mode_with_override_prefers_mode_targets() {
+    fn sync_active_agent_with_override_prefers_agent_targets() {
         let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
         config.providers = vec!["claude".to_string()];
-        config.modes = vec![ModeConfig {
+        config.modes = vec![AgentProfile {
             id: "code".to_string(),
             name: "Code".to_string(),
             target_agents: vec!["codex".to_string()],
@@ -485,7 +485,7 @@ mod tests {
         }];
         save_config(&config, Some(project_dir.clone())).unwrap();
 
-        let synced = sync_active_mode_with_override(&project_dir, Some("code")).unwrap();
+        let synced = sync_active_agent_with_override(&project_dir, Some("code")).unwrap();
         assert_eq!(synced, vec!["codex".to_string()]);
         assert!(tmp.path().join(".codex").join("config.toml").exists());
         assert!(
@@ -1405,7 +1405,7 @@ prefix_rules = [
         create_skill(&project_dir, "rt-blocked-skill", "Blocked", "blocked body").unwrap();
 
         let mut config = crate::config::get_config(Some(project_dir.clone())).unwrap();
-        config.modes = vec![ModeConfig {
+        config.modes = vec![AgentProfile {
             id: "focus".to_string(),
             name: "Focus".to_string(),
             description: None,
@@ -1418,7 +1418,7 @@ prefix_rules = [
             permissions: PermissionConfig::default(),
             target_agents: vec![],
         }];
-        config.active_mode = Some("focus".to_string());
+        config.active_agent = Some("focus".to_string());
         save_config(&config, Some(project_dir.clone())).unwrap();
 
         export_to(project_dir, "codex").unwrap();

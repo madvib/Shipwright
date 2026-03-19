@@ -16,7 +16,7 @@ mod skill;
 mod sync;
 
 use anyhow::Result;
-use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
+use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -35,8 +35,8 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Whoami => run_whoami(),
             Commands::Use { mode, path, compile: _ } => run_use(Some(&mode), path),
             Commands::Status { path } => run_status(path),
-            Commands::Modes { local, project, cloud } => run_modes(local, project, cloud),
-            Commands::Mode { action } => dispatch_mode(action),
+            Commands::AgentProfiles { local, project, cloud } => run_agent_profiles(local, project, cloud),
+            Commands::AgentProfile { action } => dispatch_agent_profile(action),
             Commands::Compile { provider, dry_run, watch, path } => {
                 run_compile_cmd(provider.as_deref(), dry_run, watch, path)
             }
@@ -198,30 +198,30 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-// ── Modes / Profiles ──────────────────────────────────────────────────────────
+// ── Agent profiles list ───────────────────────────────────────────────────────
 
-fn run_modes(local: bool, project: bool, cloud: bool) -> Result<()> {
+fn run_agent_profiles(local: bool, project: bool, cloud: bool) -> Result<()> {
     if cloud {
         println!("Cloud profiles require a Ship account. Run: ship login");
         return Ok(());
     }
-    let modes = paths::list_mode_ids(local, project);
-    if modes.is_empty() {
-        println!("No profiles found.");
-        println!("Create one with: ship mode create <name>");
+    let profiles = paths::list_mode_ids(local, project);
+    if profiles.is_empty() {
+        println!("No agent profiles found.");
+        println!("Create one with: ship agent-profile create <name>");
     } else {
-        for (id, scope) in &modes {
+        for (id, scope) in &profiles {
             println!("  {} [{}]", id, scope);
         }
     }
     Ok(())
 }
 
-// ── Mode subcommands ──────────────────────────────────────────────────────────
+// ── Agent profile subcommands ─────────────────────────────────────────────────
 
-fn dispatch_mode(action: ModeCommands) -> Result<()> {
+fn dispatch_agent_profile(action: AgentProfileCommands) -> Result<()> {
     match action {
-        ModeCommands::Create { name, global } => {
+        AgentProfileCommands::Create { name, global } => {
             let dir = if global { paths::global_modes_dir() } else { paths::project_presets_dir() };
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!("{}.toml", name));
@@ -231,19 +231,19 @@ fn dispatch_mode(action: ModeCommands) -> Result<()> {
             std::fs::write(&path, mode::Profile::scaffold(&name))?;
             println!("✓ created profile '{}' at {}", name, path.display());
         }
-        ModeCommands::Edit { name, editor } => {
+        AgentProfileCommands::Edit { name, editor } => {
             let path = profile::find_profile_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             let editor = editor.or_else(|| std::env::var("EDITOR").ok()).unwrap_or_else(|| "vi".to_string());
             std::process::Command::new(&editor).arg(&path).status()?;
         }
-        ModeCommands::Delete { name } => {
+        AgentProfileCommands::Delete { name } => {
             let path = profile::find_profile_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             std::fs::remove_file(&path)?;
             println!("✓ deleted profile '{}'", name);
         }
-        ModeCommands::Clone { source, target } => {
+        AgentProfileCommands::Clone { source, target } => {
             let cwd = std::env::current_dir()?;
             let src_path = profile::find_profile_file(&source, &cwd)
                 .ok_or_else(|| anyhow::anyhow!("Source profile '{}' not found", source))?;
@@ -257,8 +257,8 @@ fn dispatch_mode(action: ModeCommands) -> Result<()> {
             std::fs::write(&dst_path, content)?;
             println!("✓ cloned '{}' → '{}'", source, target);
         }
-        ModeCommands::Publish { name: _ } => {
-            stub("mode publish", "Publishing requires a Ship account. Run: ship login")?;
+        AgentProfileCommands::Publish { name: _ } => {
+            stub("agent-profile publish", "Publishing requires a Ship account. Run: ship login")?;
         }
     }
     Ok(())
@@ -280,7 +280,7 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
         project_root: &project_root,
         provider,
         dry_run,
-        active_mode: state.active_profile.as_deref(),
+        active_agent: state.active_profile.as_deref(),
     })?;
 
     if watch { println!("--watch not yet implemented. Run compile manually after changes."); }

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result, anyhow};
 use runtime::config::{
-    McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, ProjectConfig,
-    add_mode as runtime_add_mode,
+    AgentProfile, McpServerConfig, McpServerType, NamespaceConfig, ProjectConfig,
+    add_agent as runtime_add_agent,
     ensure_registered_namespaces as runtime_ensure_registered_namespaces, get_config,
-    remove_mode as runtime_remove_mode, save_config, set_active_mode as runtime_set_active_mode,
+    remove_agent as runtime_remove_agent, save_config, set_active_agent as runtime_set_active_agent,
 };
 use runtime::fs_util::write_atomic;
 pub use runtime::project::{ProjectEntry, ProjectRegistry};
@@ -1000,16 +1000,16 @@ pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
     Ok(projects)
 }
 
-pub fn add_mode(project_dir: Option<PathBuf>, mode: ModeConfig) -> Result<()> {
-    runtime_add_mode(project_dir, mode)
+pub fn add_agent(project_dir: Option<PathBuf>, agent: AgentProfile) -> Result<()> {
+    runtime_add_agent(project_dir, agent)
 }
 
-pub fn remove_mode(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
-    runtime_remove_mode(project_dir, id)
+pub fn remove_agent(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
+    runtime_remove_agent(project_dir, id)
 }
 
-pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result<()> {
-    runtime_set_active_mode(project_dir, id)
+pub fn set_active_agent(project_dir: Option<PathBuf>, id: Option<&str>) -> Result<()> {
+    runtime_set_active_agent(project_dir, id)
 }
 
 #[cfg(test)]

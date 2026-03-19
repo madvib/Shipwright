@@ -96,12 +96,12 @@ mod wasm {
     pub fn compile_library(
         library_json: &str,
         provider: &str,
-        active_mode: Option<String>,
+        active_agent: Option<String>,
     ) -> Result<String, JsValue> {
         let library: ProjectLibrary = serde_json::from_str(library_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid library JSON: {e}")))?;
 
-        let resolved = resolve_library(&library, None, active_mode.as_deref());
+        let resolved = resolve_library(&library, None, active_agent.as_deref());
 
         let output = compile(&resolved, provider)
             .ok_or_else(|| JsValue::from_str(&format!("Unknown provider: {provider}")))?;
@@ -133,12 +133,12 @@ mod wasm {
     #[wasm_bindgen(js_name = compileLibraryAll)]
     pub fn compile_library_all(
         library_json: &str,
-        active_mode: Option<String>,
+        active_agent: Option<String>,
     ) -> Result<String, JsValue> {
         let library: ProjectLibrary = serde_json::from_str(library_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid library JSON: {e}")))?;
 
-        let resolved = resolve_library(&library, None, active_mode.as_deref());
+        let resolved = resolve_library(&library, None, active_agent.as_deref());
 
         let mut results = serde_json::Map::new();
         for provider_id in &resolved.providers {

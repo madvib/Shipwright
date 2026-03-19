@@ -65,7 +65,7 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
         project_root,
         provider: None,
         dry_run: false,
-        active_mode: state.active_profile.as_deref(),
+        active_agent: state.active_profile.as_deref(),
     })
     .context("compiling after install")?;
 

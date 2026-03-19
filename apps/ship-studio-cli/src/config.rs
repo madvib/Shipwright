@@ -122,7 +122,7 @@ pub struct ProjectMeta {
     pub name: Option<String>,
     #[serde(default)]
     pub providers: Vec<String>,
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
 }
 
 impl ShipConfig {

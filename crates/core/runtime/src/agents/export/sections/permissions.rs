@@ -308,7 +308,7 @@ fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> R
         },
         "ship_first": true,
         "workspace_root": project_root.to_string_lossy().to_string(),
-        "active_mode": payload.active_mode_id,
+        "active_mode": payload.active_agent_id,
         "allowed_paths": allowed_paths,
         "allow_network": network_allowed(&payload.permissions.network.policy),
         "allow_installs": command_installs_allowed(&payload.permissions.commands.allow),
@@ -344,7 +344,7 @@ fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> R
          - Require confirmation: `{}`\n",
         generated_at,
         payload
-            .active_mode_id
+            .active_agent_id
             .as_deref()
             .unwrap_or("default"),
         payload

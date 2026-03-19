@@ -33,10 +33,10 @@ pub enum Commands {
     /// Show current identity
     Whoami,
 
-    // ── Mode activation ───────────────────────────────────────────────────────
-    /// Activate a mode for the current (or specified) directory
+    // ── Agent profile activation ──────────────────────────────────────────────
+    /// Activate an agent profile for the current (or specified) directory
     Use {
-        /// Mode ID or registry reference (e.g. rust-expert, @org/mode, https://...)
+        /// Agent profile ID or registry reference (e.g. rust-expert, @org/profile, https://...)
         mode: String,
         /// Bind to this path instead of the current directory
         #[arg(long)]
@@ -52,23 +52,23 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
-    /// List available modes
-    Modes {
+    /// List available agent profiles
+    AgentProfiles {
         /// Show only ~/.ship/modes/
         #[arg(long)]
         local: bool,
         /// Show only .ship/modes/
         #[arg(long)]
         project: bool,
-        /// Show only cloud-saved modes (requires login)
+        /// Show only cloud-saved profiles (requires login)
         #[arg(long)]
         cloud: bool,
     },
 
-    /// Manage mode definitions
-    Mode {
+    /// Manage agent profile definitions
+    AgentProfile {
         #[command(subcommand)]
-        action: ModeCommands,
+        action: AgentProfileCommands,
     },
 
     // ── Compilation ───────────────────────────────────────────────────────────
@@ -343,32 +343,32 @@ pub enum AgentCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum ModeCommands {
-    /// Create a new mode (project-local by default)
+pub enum AgentProfileCommands {
+    /// Create a new agent profile (project-local by default)
     Create {
-        /// Mode ID (lowercase, hyphens — e.g. rust-expert)
+        /// Profile ID (lowercase, hyphens — e.g. rust-expert)
         name: String,
         /// Create in ~/.ship/modes/ instead of .ship/modes/
         #[arg(long)]
         global: bool,
     },
-    /// Open a mode in $EDITOR (or launch Ship Studio web app)
+    /// Open an agent profile in $EDITOR (or launch Ship Studio web app)
     Edit {
         name: String,
         /// Editor to use (defaults to $EDITOR)
         #[arg(long)]
         editor: Option<String>,
     },
-    /// Delete a mode
+    /// Delete an agent profile
     Delete {
         name: String,
     },
-    /// Clone a mode under a new ID
+    /// Clone an agent profile under a new ID
     Clone {
         source: String,
         target: String,
     },
-    /// Publish a mode to the Ship marketplace (requires account)
+    /// Publish an agent profile to the Ship marketplace (requires account)
     Publish {
         name: String,
     },

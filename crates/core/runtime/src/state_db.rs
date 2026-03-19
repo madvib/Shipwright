@@ -1,4 +1,4 @@
-use crate::agents::config::FeatureAgentConfig;
+use crate::agents::config::WorkspaceAgentSettings;
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde_json;
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS workspace (
   branch         TEXT PRIMARY KEY,
   feature_id     TEXT,
   target_id      TEXT,
-  active_mode    TEXT,
+  active_agent   TEXT,
   providers_json TEXT NOT NULL DEFAULT '[]',
   resolved_at    TEXT NOT NULL,
   is_worktree    INTEGER NOT NULL DEFAULT 0,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS workspace_session (
   status                    TEXT NOT NULL DEFAULT 'active',
   started_at                TEXT NOT NULL,
   ended_at                  TEXT,
-  mode_id                   TEXT,
+  agent_id                  TEXT,
   primary_provider          TEXT,
   goal                      TEXT,
   summary                   TEXT,
@@ -169,7 +169,7 @@ CREATE INDEX IF NOT EXISTS git_workspace_feature_idx
 const PROJECT_SCHEMA_AGENT_RUNTIME_SETTINGS: &str = r#"
 CREATE TABLE IF NOT EXISTS agent_runtime_settings (
   id             INTEGER PRIMARY KEY CHECK(id = 1),
-  active_mode    TEXT,
+  active_agent   TEXT,
   providers_json TEXT NOT NULL DEFAULT '[]',
   hooks_json     TEXT NOT NULL DEFAULT '[]',
   statuses_json  TEXT NOT NULL DEFAULT '[]',
@@ -554,7 +554,7 @@ pub struct WorkspaceUpsert<'a> {
     pub environment_id: Option<&'a str>,
     pub feature_id: Option<&'a str>,
     pub target_id: Option<&'a str>,
-    pub active_mode: Option<&'a str>,
+    pub active_agent: Option<&'a str>,
     pub providers: &'a [String],
     pub mcp_servers: &'a [String],
     pub skills: &'a [String],
@@ -576,7 +576,7 @@ pub struct WorkspaceSessionDb {
     pub status: String,
     pub started_at: String,
     pub ended_at: Option<String>,
-    pub mode_id: Option<String>,
+    pub agent_id: Option<String>,
     pub primary_provider: Option<String>,
     pub goal: Option<String>,
     pub summary: Option<String>,
@@ -623,7 +623,7 @@ pub struct CapabilityDb {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AgentRuntimeSettingsDb {
     pub providers: Vec<String>,
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     pub hooks_json: String,
     pub statuses_json: String,
     pub ai_json: Option<String>,
@@ -907,7 +907,7 @@ pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRunt
     };
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT providers_json, active_mode, hooks_json, statuses_json, ai_json, git_json, namespaces_json
+            "SELECT providers_json, active_agent, hooks_json, statuses_json, ai_json, git_json, namespaces_json
              FROM agent_runtime_settings
              WHERE id = 1",
         )
@@ -921,7 +921,7 @@ pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRunt
 
     use sqlx::Row;
     let providers_json: String = row.get(0);
-    let active_mode: Option<String> = row.get(1);
+    let active_agent: Option<String> = row.get(1);
     let hooks_json: String = row.get(2);
     let statuses_json: String = row.get(3);
     let ai_json: Option<String> = row.get(4);
@@ -931,7 +931,7 @@ pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRunt
 
     Ok(Some(AgentRuntimeSettingsDb {
         providers,
-        active_mode,
+        active_agent,
         hooks_json,
         statuses_json,
         ai_json,
@@ -944,7 +944,7 @@ pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRunt
 pub fn set_agent_runtime_settings_db(
     ship_dir: &Path,
     providers: &[String],
-    active_mode: Option<&str>,
+    active_agent: Option<&str>,
     hooks_json: &str,
     statuses_json: &str,
     ai_json: Option<&str>,
@@ -958,11 +958,11 @@ pub fn set_agent_runtime_settings_db(
     block_on(async {
         sqlx::query(
             "INSERT INTO agent_runtime_settings
-             (id, providers_json, active_mode, hooks_json, statuses_json, ai_json, git_json, namespaces_json, updated_at)
+             (id, providers_json, active_agent, hooks_json, statuses_json, ai_json, git_json, namespaces_json, updated_at)
              VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                providers_json = excluded.providers_json,
-               active_mode = excluded.active_mode,
+               active_agent = excluded.active_agent,
                hooks_json = excluded.hooks_json,
                statuses_json = excluded.statuses_json,
                ai_json = excluded.ai_json,
@@ -971,7 +971,7 @@ pub fn set_agent_runtime_settings_db(
                updated_at = excluded.updated_at",
         )
         .bind(&providers_json)
-        .bind(active_mode)
+        .bind(active_agent)
         .bind(hooks_json)
         .bind(statuses_json)
         .bind(ai_json)
@@ -1355,12 +1355,12 @@ pub fn get_feature_agent_providers(
 /// Read and parse a feature's `agent_json` payload.
 /// Returns:
 /// - `None` when the feature row does not exist
-/// - `Some(None)` semantics are represented as `Some(FeatureAgentConfig::default())`
+/// - `Some(None)` semantics are represented as `Some(WorkspaceAgentSettings::default())`
 ///   when `agent_json` is unset/empty/invalid
 pub fn get_feature_agent_config(
     ship_dir: &Path,
     feature_id: &str,
-) -> Result<Option<FeatureAgentConfig>> {
+) -> Result<Option<WorkspaceAgentSettings>> {
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query("SELECT agent_json FROM feature WHERE id = ?")
@@ -1375,16 +1375,16 @@ pub fn get_feature_agent_config(
 
     let agent_json: Option<String> = row.get(0);
     let Some(raw) = agent_json else {
-        return Ok(Some(FeatureAgentConfig::default()));
+        return Ok(Some(WorkspaceAgentSettings::default()));
     };
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "{}" || trimmed.eq_ignore_ascii_case("null") {
-        return Ok(Some(FeatureAgentConfig::default()));
+        return Ok(Some(WorkspaceAgentSettings::default()));
     }
 
-    let parsed: FeatureAgentConfig = match serde_json::from_str(trimmed) {
+    let parsed: WorkspaceAgentSettings = match serde_json::from_str(trimmed) {
         Ok(value) => value,
-        Err(_) => return Ok(Some(FeatureAgentConfig::default())),
+        Err(_) => return Ok(Some(WorkspaceAgentSettings::default())),
     };
     Ok(Some(parsed))
 }
@@ -1641,7 +1641,7 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
     let mut conn = open_project_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
+            "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace WHERE branch = ?",
         )
         .bind(branch)
@@ -1656,7 +1656,7 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
         let environment_id: Option<String> = row.get(3);
         let feature_id: Option<String> = row.get(4);
         let target_id: Option<String> = row.get(5);
-        let active_mode: Option<String> = row.get(6);
+        let active_agent: Option<String> = row.get(6);
         let providers_json: String = row.get(7);
         let mcp_servers_json: String = row.get(8);
         let skills_json: String = row.get(9);
@@ -1678,7 +1678,7 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
             environment_id,
             feature_id,
             target_id,
-            active_mode,
+            active_agent,
             providers,
             mcp_servers,
             skills,
@@ -1700,7 +1700,7 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
     let mut conn = open_project_db(ship_dir)?;
     let rows = block_on(async {
         sqlx::query(
-            "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
+            "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace
              ORDER BY
                CASE status
@@ -1724,7 +1724,7 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
         let environment_id: Option<String> = row.get(4);
         let feature_id: Option<String> = row.get(5);
         let target_id: Option<String> = row.get(6);
-        let active_mode: Option<String> = row.get(7);
+        let active_agent: Option<String> = row.get(7);
         let providers_json: String = row.get(8);
         let mcp_servers_json: String = row.get(9);
         let skills_json: String = row.get(10);
@@ -1748,7 +1748,7 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
             environment_id,
             feature_id,
             target_id,
-            active_mode,
+            active_agent,
             providers,
             mcp_servers,
             skills,
@@ -1776,7 +1776,7 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
         .with_context(|| "Failed to serialize workspace skills")?;
     block_on(async {
         sqlx::query(
-            "INSERT INTO workspace (branch, id, workspace_type, status, environment_id, feature_id, target_id, active_mode, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, config_generation, compiled_at, compile_error)
+            "INSERT INTO workspace (branch, id, workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, config_generation, compiled_at, compile_error)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(branch) DO UPDATE SET
                id            = excluded.id,
@@ -1785,7 +1785,7 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
                environment_id = excluded.environment_id,
                feature_id    = excluded.feature_id,
                target_id     = excluded.target_id,
-               active_mode   = excluded.active_mode,
+               active_agent  = excluded.active_agent,
                providers_json = excluded.providers_json,
                mcp_servers_json = excluded.mcp_servers_json,
                skills_json = excluded.skills_json,
@@ -1805,7 +1805,7 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
         .bind(record.environment_id)
         .bind(record.feature_id)
         .bind(record.target_id)
-        .bind(record.active_mode)
+        .bind(record.active_agent)
         .bind(&providers_json)
         .bind(&mcp_servers_json)
         .bind(&skills_json)
@@ -1899,7 +1899,7 @@ fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessio
         status: row.get(3),
         started_at: row.get(4),
         ended_at: row.get(5),
-        mode_id: row.get(6),
+        agent_id: row.get(6),
         primary_provider: row.get(7),
         goal: row.get(8),
         summary: row.get(9),
@@ -1919,7 +1919,7 @@ pub fn get_workspace_session_db(
     let mut conn = open_project_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
              FROM workspace_session
              WHERE id = ?",
         )
@@ -1937,7 +1937,7 @@ pub fn get_active_workspace_session_db(
     let mut conn = open_project_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
              FROM workspace_session
              WHERE workspace_id = ? AND status = 'active'
              ORDER BY started_at DESC
@@ -1960,7 +1960,7 @@ pub fn list_workspace_sessions_db(
     let rows = if let Some(workspace_id) = workspace_id {
         block_on(async {
             sqlx::query(
-                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
                  FROM workspace_session
                  WHERE workspace_id = ?
                  ORDER BY started_at DESC
@@ -1974,7 +1974,7 @@ pub fn list_workspace_sessions_db(
     } else {
         block_on(async {
             sqlx::query(
-                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
                  FROM workspace_session
                  ORDER BY started_at DESC
                  LIMIT ?",
@@ -1995,7 +1995,7 @@ pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
     block_on(async {
         sqlx::query(
             "INSERT INTO workspace_session
-             (id, workspace_id, workspace_branch, status, started_at, ended_at, mode_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at)
+             (id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&session.id)
@@ -2004,7 +2004,7 @@ pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
         .bind(&session.status)
         .bind(&session.started_at)
         .bind(&session.ended_at)
-        .bind(&session.mode_id)
+        .bind(&session.agent_id)
         .bind(&session.primary_provider)
         .bind(&session.goal)
         .bind(&session.summary)
@@ -2032,7 +2032,7 @@ pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
                  status = ?,
                  started_at = ?,
                  ended_at = ?,
-                 mode_id = ?,
+                 agent_id = ?,
                  primary_provider = ?,
                  goal = ?,
                  summary = ?,
@@ -2049,7 +2049,7 @@ pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
         .bind(&session.status)
         .bind(&session.started_at)
         .bind(&session.ended_at)
-        .bind(&session.mode_id)
+        .bind(&session.agent_id)
         .bind(&session.primary_provider)
         .bind(&session.goal)
         .bind(&session.summary)
@@ -2742,7 +2742,7 @@ mod tests {
                    branch TEXT PRIMARY KEY,
                    feature_id TEXT,
                    spec_id TEXT,
-                   active_mode TEXT,
+                   active_agent TEXT,
                    providers_json TEXT NOT NULL DEFAULT '[]',
                    resolved_at TEXT NOT NULL,
                    is_worktree INTEGER NOT NULL DEFAULT 0,
@@ -2792,7 +2792,7 @@ mod tests {
                    feature_id TEXT,
                    spec_id TEXT,
                    release_id TEXT,
-                   active_mode TEXT,
+                   active_agent TEXT,
                    providers_json TEXT NOT NULL DEFAULT '[]',
                    resolved_at TEXT NOT NULL,
                    is_worktree INTEGER NOT NULL DEFAULT 0,
@@ -2870,7 +2870,7 @@ mod tests {
                    feature_id TEXT,
                    spec_id TEXT,
                    release_id TEXT,
-                   active_mode TEXT,
+                   active_agent TEXT,
                    providers_json TEXT NOT NULL DEFAULT '[]',
                    resolved_at TEXT NOT NULL DEFAULT '',
                    is_worktree INTEGER NOT NULL DEFAULT 0,
@@ -3069,7 +3069,7 @@ mod tests {
                    feature_id TEXT,
                    spec_id TEXT,
                    release_id TEXT,
-                   active_mode TEXT,
+                   active_agent TEXT,
                    providers_json TEXT NOT NULL DEFAULT '[]',
                    resolved_at TEXT NOT NULL DEFAULT '',
                    is_worktree INTEGER NOT NULL DEFAULT 0,

@@ -158,7 +158,7 @@ struct LegacyAgentsConfigFile {
     #[serde(default)]
     pub providers: Vec<String>,
     #[serde(default)]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
 }
@@ -194,7 +194,7 @@ fn default_namespaces() -> Vec<NamespaceConfig> {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
-pub struct ModeConfig {
+pub struct AgentProfile {
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -294,11 +294,11 @@ pub struct ProjectConfig {
     pub git: GitConfig,
     pub ai: Option<AiConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub modes: Vec<ModeConfig>,
+    pub modes: Vec<AgentProfile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     /// Global hooks applied regardless of active mode
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<HookConfig>,
@@ -373,7 +373,7 @@ impl Default for ProjectConfig {
             ai: None,
             modes: Vec::new(),
             mcp_servers: Vec::new(),
-            active_mode: None,
+            active_agent: None,
             hooks: Vec::new(),
             agent: AgentLayerConfig::default(),
             namespaces: default_namespaces(),
@@ -425,11 +425,11 @@ pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
     config.git = normalize_git_config(config.git);
 
     if is_project {
-        if let Some((providers, active_mode, hooks, statuses, ai, git, namespaces)) =
+        if let Some((providers, active_agent, hooks, statuses, ai, git, namespaces)) =
             get_runtime_settings(&config_dir)?
         {
             config.providers = providers;
-            config.active_mode = active_mode;
+            config.active_agent = active_agent;
             config.hooks = hooks;
             if let Some(statuses) = statuses {
                 config.statuses = statuses;
@@ -447,7 +447,7 @@ pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
             // One-time compatibility path: bootstrap SQLite runtime settings from
             // legacy .ship/agents/config.toml if present.
             config.providers = legacy.providers;
-            config.active_mode = legacy.active_mode;
+            config.active_agent = legacy.active_agent;
             config.hooks = legacy.hooks;
             save_runtime_settings(&config_dir, &config)?;
             remove_legacy_agents_config(&config_dir)?;
@@ -498,8 +498,8 @@ pub fn get_effective_config(project_dir: Option<PathBuf>) -> Result<ProjectConfi
     project.mcp_servers = merge_mcp_servers(&global.mcp_servers, &project.mcp_servers);
     project.hooks = merge_hooks(&global.hooks, &project.hooks);
 
-    if project.active_mode.is_none() {
-        project.active_mode = global.active_mode;
+    if project.active_agent.is_none() {
+        project.active_agent = global.active_agent;
     }
 
     Ok(project)
@@ -669,7 +669,7 @@ fn resolve_external_ids_to_refs(
     Ok(refs)
 }
 
-fn get_modes_config(ship_dir: &Path) -> Result<Vec<ModeConfig>> {
+fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
     sync_agent_artifact_registry(ship_dir)?;
 
     let mode_rows = crate::state_db::list_agent_modes_db(ship_dir)?;
@@ -687,7 +687,7 @@ fn get_modes_config(ship_dir: &Path) -> Result<Vec<ModeConfig>> {
         let target_agents: Vec<String> =
             serde_json::from_str(&row.target_agents_json).unwrap_or_default();
 
-        modes.push(ModeConfig {
+        modes.push(AgentProfile {
             id: row.id,
             name: row.name,
             description: row.description,
@@ -705,7 +705,7 @@ fn get_modes_config(ship_dir: &Path) -> Result<Vec<ModeConfig>> {
     Ok(modes)
 }
 
-fn save_modes_config(ship_dir: &Path, modes: &[ModeConfig]) -> Result<()> {
+fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
     sync_agent_artifact_registry(ship_dir)?;
 
     let existing_ids: HashSet<String> = crate::state_db::list_agent_modes_db(ship_dir)?
@@ -841,7 +841,7 @@ fn get_runtime_settings(
     };
     Ok(Some((
         raw.providers,
-        raw.active_mode,
+        raw.active_agent,
         hooks,
         statuses,
         ai,
@@ -859,7 +859,7 @@ fn save_runtime_settings(ship_dir: &Path, config: &ProjectConfig) -> Result<()> 
     crate::state_db::set_agent_runtime_settings_db(
         ship_dir,
         &config.providers,
-        config.active_mode.as_deref(),
+        config.active_agent.as_deref(),
         &hooks_json,
         &statuses_json,
         ai_json.as_deref(),
@@ -881,7 +881,7 @@ fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
     merged
 }
 
-fn merge_modes(base: &[ModeConfig], overlay: &[ModeConfig]) -> Vec<ModeConfig> {
+fn merge_modes(base: &[AgentProfile], overlay: &[AgentProfile]) -> Vec<AgentProfile> {
     let mut merged = base.to_vec();
     for mode in overlay {
         if let Some(existing) = merged.iter_mut().find(|m| m.id == mode.id) {
@@ -1321,7 +1321,7 @@ pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
 
 // ─── Mode CRUD ────────────────────────────────────────────────────────────────
 
-pub fn add_mode(project_dir: Option<PathBuf>, mode: ModeConfig) -> Result<()> {
+pub fn add_agent(project_dir: Option<PathBuf>, mode: AgentProfile) -> Result<()> {
     let mut config = get_config(project_dir.clone())?;
     if config.modes.iter().any(|m| m.id == mode.id) {
         return Err(anyhow!("Mode '{}' already exists", mode.id));
@@ -1338,11 +1338,11 @@ pub fn add_mode(project_dir: Option<PathBuf>, mode: ModeConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn remove_mode(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
+pub fn remove_agent(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
     let mut config = get_config(project_dir.clone())?;
     config.modes.retain(|m| m.id != id);
-    if config.active_mode.as_deref() == Some(id) {
-        config.active_mode = None;
+    if config.active_agent.as_deref() == Some(id) {
+        config.active_agent = None;
     }
     save_config(&config, project_dir.clone())?;
     emit_mode_event(
@@ -1354,7 +1354,7 @@ pub fn remove_mode(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result<()> {
+pub fn set_active_agent(project_dir: Option<PathBuf>, id: Option<&str>) -> Result<()> {
     let mut config = get_config(project_dir.clone())?;
     if let Some(mode_id) = id {
         let mode_exists = match &project_dir {
@@ -1368,11 +1368,11 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
             return Err(anyhow!("Mode '{}' not found", mode_id));
         }
     }
-    config.active_mode = id.map(|s| s.to_string());
+    config.active_agent = id.map(|s| s.to_string());
     save_config(&config, project_dir.clone())?;
     // Auto-sync to configured agent targets after mode change
     if let Some(ref dir) = project_dir
-        && let Err(error) = crate::agents::export::sync_active_mode(dir)
+        && let Err(error) = crate::agents::export::sync_active_agent(dir)
     {
         eprintln!("[ship] warning: active mode sync failed: {}", error);
     }
@@ -1383,16 +1383,16 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
         } else {
             EventAction::Clear
         },
-        "active_mode",
+        "active_agent",
         Some(format!("id={}", id.unwrap_or("none"))),
     )?;
     Ok(())
 }
 
-pub fn get_active_mode(project_dir: Option<PathBuf>) -> Result<Option<ModeConfig>> {
+pub fn get_active_agent(project_dir: Option<PathBuf>) -> Result<Option<AgentProfile>> {
     let config = get_config(project_dir)?;
     Ok(config
-        .active_mode
+        .active_agent
         .as_ref()
         .and_then(|id| config.modes.into_iter().find(|m| &m.id == id)))
 }
@@ -1594,58 +1594,58 @@ mod tests {
     // ── Mode CRUD ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn add_mode_and_set_active() -> Result<()> {
+    fn add_agent_and_set_active() -> Result<()> {
         let tmp = tempdir()?;
         let dir = init_project(tmp.path().to_path_buf())?;
-        let mode = ModeConfig {
+        let mode = AgentProfile {
             id: "dev".to_string(),
             name: "Development".to_string(),
             ..Default::default()
         };
-        add_mode(Some(dir.clone()), mode)?;
-        set_active_mode(Some(dir.clone()), Some("dev"))?;
-        let active = get_active_mode(Some(dir))?;
+        add_agent(Some(dir.clone()), mode)?;
+        set_active_agent(Some(dir.clone()), Some("dev"))?;
+        let active = get_active_agent(Some(dir))?;
         assert!(active.is_some());
         assert_eq!(active.unwrap().id, "dev");
         Ok(())
     }
 
     #[test]
-    fn remove_active_mode_clears_active() -> Result<()> {
+    fn remove_active_agent_clears_active() -> Result<()> {
         let tmp = tempdir()?;
         let dir = init_project(tmp.path().to_path_buf())?;
-        add_mode(
+        add_agent(
             Some(dir.clone()),
-            ModeConfig {
+            AgentProfile {
                 id: "x".to_string(),
                 name: "X".to_string(),
                 ..Default::default()
             },
         )?;
-        set_active_mode(Some(dir.clone()), Some("x"))?;
-        remove_mode(Some(dir.clone()), "x")?;
+        set_active_agent(Some(dir.clone()), Some("x"))?;
+        remove_agent(Some(dir.clone()), "x")?;
         let cfg = get_config(Some(dir))?;
         assert!(
-            cfg.active_mode.is_none(),
-            "active_mode should be cleared when mode removed"
+            cfg.active_agent.is_none(),
+            "active_agent should be cleared when agent removed"
         );
         Ok(())
     }
 
     #[test]
-    fn set_nonexistent_mode_rejected() -> Result<()> {
+    fn set_nonexistent_agent_rejected() -> Result<()> {
         let tmp = tempdir()?;
         let dir = init_project(tmp.path().to_path_buf())?;
-        let result = set_active_mode(Some(dir), Some("ghost"));
+        let result = set_active_agent(Some(dir), Some("ghost"));
         assert!(result.is_err());
         Ok(())
     }
 
     #[test]
-    fn mode_with_permissions_round_trips() -> Result<()> {
+    fn agent_with_permissions_round_trips() -> Result<()> {
         let tmp = tempdir()?;
         let dir = init_project(tmp.path().to_path_buf())?;
-        let mode = ModeConfig {
+        let mode = AgentProfile {
             id: "restricted".to_string(),
             name: "Restricted".to_string(),
             permissions: PermissionConfig {
@@ -1654,7 +1654,7 @@ mod tests {
             },
             ..Default::default()
         };
-        add_mode(Some(dir.clone()), mode)?;
+        add_agent(Some(dir.clone()), mode)?;
         let cfg = get_config(Some(dir))?;
         let saved = cfg.modes.iter().find(|m| m.id == "restricted").unwrap();
         assert_eq!(saved.permissions.allow, vec!["mcp__ship__*"]);
@@ -1694,7 +1694,7 @@ mod tests {
 
         let config = ProjectConfig {
             providers: vec!["claude".to_string(), "codex".to_string()],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             hooks: vec![HookConfig {
                 id: "audit".to_string(),
                 trigger: HookTrigger::PostToolUse,
@@ -1713,7 +1713,7 @@ mod tests {
                 prompts: vec![],
                 context: vec!["project/README.md".to_string()],
             },
-            modes: vec![ModeConfig {
+            modes: vec![AgentProfile {
                 id: "planning".to_string(),
                 name: "Planning".to_string(),
                 ..Default::default()
@@ -1756,8 +1756,8 @@ mod tests {
             "ship.toml must not persist providers"
         );
         assert!(
-            !ship_toml.contains("active_mode ="),
-            "ship.toml must not persist active_mode"
+            !ship_toml.contains("active_agent ="),
+            "ship.toml must not persist active_agent"
         );
         assert!(
             !ship_toml.contains("[[statuses]]"),
@@ -1787,7 +1787,7 @@ mod tests {
             runtime_settings.providers,
             vec!["claude".to_string(), "codex".to_string()]
         );
-        assert_eq!(runtime_settings.active_mode.as_deref(), Some("planning"));
+        assert_eq!(runtime_settings.active_agent.as_deref(), Some("planning"));
         assert!(runtime_settings.hooks_json.contains("\"audit\""));
         assert!(runtime_settings.statuses_json.contains("\"backlog\""));
         assert!(
@@ -1816,7 +1816,7 @@ mod tests {
 
         let config = ProjectConfig {
             providers: vec!["gemini".to_string()],
-            active_mode: Some("focus".to_string()),
+            active_agent: Some("focus".to_string()),
             ai: Some(AiConfig {
                 provider: Some("codex".to_string()),
                 model: Some("gpt-5".to_string()),
@@ -1836,7 +1836,7 @@ mod tests {
                 path: "demo".to_string(),
                 owner: "plugins".to_string(),
             }],
-            modes: vec![ModeConfig {
+            modes: vec![AgentProfile {
                 id: "focus".to_string(),
                 name: "Focus".to_string(),
                 mcp_servers: vec!["github".to_string()],
@@ -1861,7 +1861,7 @@ mod tests {
         let loaded = get_config(Some(ship_dir))?;
 
         assert_eq!(loaded.providers, vec!["gemini".to_string()]);
-        assert_eq!(loaded.active_mode.as_deref(), Some("focus"));
+        assert_eq!(loaded.active_agent.as_deref(), Some("focus"));
         assert_eq!(
             loaded
                 .ai

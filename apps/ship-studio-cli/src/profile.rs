@@ -121,7 +121,7 @@ pub fn activate_profile(profile_id: Option<&str>, project_root: &Path) -> Result
     let profile = Profile::load(&profile_path)?;
 
     run_compile(CompileOptions {
-        project_root, provider: None, dry_run: false, active_mode: Some(&id),
+        project_root, provider: None, dry_run: false, active_agent: Some(&id),
     })?;
 
     let now_plugins: Vec<String> = profile.plugins.install.clone();

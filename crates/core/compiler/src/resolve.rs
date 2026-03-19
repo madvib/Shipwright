@@ -34,7 +34,7 @@ pub struct ResolvedConfig {
     pub rules: Vec<Rule>,
     pub permissions: Permissions,
     pub hooks: Vec<HookConfig>,
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     /// Plugin install intent declared by the active preset.
     /// Passed through unchanged from `ProjectLibrary::plugins`.
     pub plugins: PluginsManifest,
@@ -80,7 +80,7 @@ pub struct ProjectLibrary {
     pub modes: Vec<ModeConfig>,
     /// Active mode for this resolve (e.g. workspace override).
     #[serde(default)]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     /// MCP server definitions from `agents/mcp.toml`.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
@@ -125,11 +125,11 @@ pub struct ProjectLibrary {
 pub fn resolve_library(
     library: &ProjectLibrary,
     feature: Option<&FeatureOverrides>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> ResolvedConfig {
     let config = ProjectConfig {
         modes: library.modes.clone(),
-        active_mode: library.active_mode.clone(),
+        active_agent: library.active_agent.clone(),
         mcp_servers: library.mcp_servers.clone(),
         ..Default::default()
     };
@@ -140,7 +140,7 @@ pub fn resolve_library(
         &library.permissions,
         &library.hooks,
         feature,
-        active_mode_override,
+        active_agent_override,
     );
     resolved.plugins = library.plugins.clone();
     resolved.claude_settings_extra = library.claude_settings_extra.clone();
@@ -159,16 +159,16 @@ pub fn resolve(
     permissions: &Permissions,
     hooks: &[HookConfig],
     feature: Option<&FeatureOverrides>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> ResolvedConfig {
     // ── Active mode (resolved first — needed for provider target_agents) ──────
-    let override_mode = active_mode_override
+    let override_mode = active_agent_override
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .filter(|v| config.modes.iter().any(|m| m.id == *v))
         .map(str::to_string);
-    let active_mode = override_mode.or_else(|| config.active_mode.clone());
-    let mode = active_mode
+    let active_agent = override_mode.or_else(|| config.active_agent.clone());
+    let mode = active_agent
         .as_deref()
         .and_then(|id| config.modes.iter().find(|m| m.id == id));
 
@@ -248,7 +248,7 @@ pub fn resolve(
         rules: resolved_rules,
         permissions: permissions.clone(),
         hooks: hooks.to_vec(),
-        active_mode,
+        active_agent,
         plugins: PluginsManifest::default(),
         claude_settings_extra: None,
         agent_profiles: Vec::new(),
@@ -392,7 +392,7 @@ mod tests {
                 skills: vec!["alpha".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("alpha"), make_skill("beta")];
@@ -471,7 +471,7 @@ mod tests {
                 target_agents: vec!["cursor".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("cursor-mode".to_string()),
+            active_agent: Some("cursor-mode".to_string()),
             ..Default::default()
         };
         let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
@@ -487,7 +487,7 @@ mod tests {
                 target_agents: vec!["gemini".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("mode1".to_string()),
+            active_agent: Some("mode1".to_string()),
             ..Default::default()
         };
         let feature = FeatureOverrides {
@@ -517,7 +517,7 @@ mod tests {
                 rules: vec!["style".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("strict".to_string()),
+            active_agent: Some("strict".to_string()),
             ..Default::default()
         };
         let rules = vec![
@@ -650,7 +650,7 @@ mod tests {
                 rules: vec![],
                 ..Default::default()
             }],
-            active_mode: Some("open".to_string()),
+            active_agent: Some("open".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("x"), make_skill("y")];
@@ -670,7 +670,7 @@ mod tests {
                 skills: vec!["plan-skill".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("plan-skill"), make_skill("other")];
@@ -684,7 +684,7 @@ mod tests {
             Some("nonexistent"),
         );
         // nonexistent mode override is discarded, falls back to project active_mode
-        assert_eq!(resolved.active_mode.as_deref(), Some("planning"));
+        assert_eq!(resolved.active_agent.as_deref(), Some("planning"));
     }
 
     // ── resolve_library passthrough fields ─────────────────────────────
@@ -758,13 +758,13 @@ mod tests {
                     ..Default::default()
                 },
             ],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("plan-skill"), make_skill("code-skill")];
 
         let planning = resolve(&config, &skills, &[], &Permissions::default(), &[], None, None);
-        assert_eq!(planning.active_mode.as_deref(), Some("planning"));
+        assert_eq!(planning.active_agent.as_deref(), Some("planning"));
 
         let code = resolve(
             &config,
@@ -775,7 +775,7 @@ mod tests {
             None,
             Some("code"),
         );
-        assert_eq!(code.active_mode.as_deref(), Some("code"));
+        assert_eq!(code.active_agent.as_deref(), Some("code"));
         assert_eq!(code.skills[0].id, "code-skill");
     }
 }

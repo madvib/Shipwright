@@ -201,7 +201,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub modes: Vec<ModeConfig>,
     #[serde(default)]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default)]
@@ -225,7 +225,7 @@ impl Default for ProjectConfig {
             providers: Vec::new(),
             ai: None,
             modes: Vec::new(),
-            active_mode: None,
+            active_agent: None,
             mcp_servers: Vec::new(),
             hooks: Vec::new(),
             namespaces: Vec::new(),

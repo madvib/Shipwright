@@ -538,7 +538,7 @@ fn build_context_content(desc: &ProviderDescriptor, resolved: &ResolvedConfig) -
     }
 
     // Mode notice
-    if let Some(mode) = &resolved.active_mode {
+    if let Some(mode) = &resolved.active_agent {
         parts.push(format!("<!-- ship: active mode = {} -->", mode));
     }
 
@@ -1228,7 +1228,7 @@ mod tests {
             rules: vec![],
             permissions: Permissions::default(),
             hooks: vec![],
-            active_mode: None,
+            active_agent: None,
             plugins: Default::default(),
             claude_settings_extra: None,
             agent_profiles: vec![],
@@ -1532,7 +1532,7 @@ mod tests {
     fn active_mode_appears_in_context_content() {
         let r = ResolvedConfig {
             rules: vec![make_rule("style.md", "Be concise.")],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..resolved(vec![])
         };
         let out = compile(&r, "claude").unwrap();
@@ -1547,7 +1547,7 @@ mod tests {
     fn no_active_mode_no_mode_notice() {
         let r = ResolvedConfig {
             rules: vec![make_rule("style.md", "Be concise.")],
-            active_mode: None,
+            active_agent: None,
             ..resolved(vec![])
         };
         let out = compile(&r, "claude").unwrap();
