@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 mod add;
 mod agent;
 mod auth;
@@ -17,7 +16,6 @@ mod mode;
 mod paths;
 mod profile;
 mod skill;
-mod sync;
 mod validate;
 
 use anyhow::Result;
