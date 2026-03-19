@@ -139,64 +139,11 @@ pub enum Commands {
         action: ProfileSyncCommands,
     },
 
-    // ── Cloud sync (account required) ─────────────────────────────────────────
-    /// Sync agent profiles with the Ship cloud (push/pull)
-    Sync {
-        #[command(subcommand)]
-        cmd: Option<SyncCommand>,
-    },
-
-    // ── Local server ──────────────────────────────────────────────────────────
-    /// Manage the local Ship server (port 7701 — used by Ship Studio web app)
-    Server {
-        #[arg(long)]
-        start: bool,
-        #[arg(long)]
-        stop: bool,
-        #[arg(long)]
-        status: bool,
-        #[arg(long)]
-        port: Option<u16>,
-    },
-
-    // ── Job coordination loop ─────────────────────────────────────────────────
-    /// Claim the next pending job, create a worktree, and print a ready message
-    Next {
-        /// Override the worktrees root directory (default: ~/dev/ship-worktrees)
-        #[arg(long)]
-        worktrees_dir: Option<std::path::PathBuf>,
-    },
-
-    /// Reset a failed or stalled job so it can be re-claimed by `ship next`
-    Retry {
-        /// Job ID or unique prefix
-        id: String,
-        /// Override the worktrees root directory (default: ~/dev/ship-worktrees)
-        #[arg(long)]
-        worktrees_dir: Option<std::path::PathBuf>,
-    },
-
-    /// Run tests on the job branch; merge into current branch on pass
-    Gate {
-        /// Job ID or unique prefix
-        id: String,
-        /// Override the worktrees root directory (default: ~/dev/ship-worktrees)
-        #[arg(long)]
-        worktrees_dir: Option<std::path::PathBuf>,
-    },
-
     // ── Job queue ─────────────────────────────────────────────────────────────
     /// Manage the agent job queue
     Job {
         #[command(subcommand)]
         action: JobCommands,
-    },
-
-    // ── Permissions ───────────────────────────────────────────────────────────
-    /// Manage agent permission decisions
-    Permissions {
-        #[command(subcommand)]
-        action: PermissionsCommands,
     },
 
     // ── Project visibility ────────────────────────────────────────────────────
@@ -231,35 +178,12 @@ pub enum Commands {
         milestone: Option<String>,
     },
 
-    // ── Provider matrix ─────────────────────────────────────────────────────
-    /// Show the provider capability matrix (what Ship emits vs what providers support)
-    Matrix {
-        /// Output format: text (default), json, diff
-        #[arg(long, default_value = "text")]
-        format: String,
-        /// Filter to a single provider (claude, gemini, codex, cursor)
-        #[arg(long)]
-        provider: Option<String>,
-    },
-
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
     /// Agent-facing commands (called from skills/scripts, not user-facing)
     #[command(hide = true)]
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum SyncCommand {
-    /// Upload .ship/agents/profiles/ to the Ship cloud (requires login)
-    Push,
-    /// Download profiles from the Ship cloud (requires login)
-    Pull {
-        /// Overwrite local files even when the local copy is newer
-        #[arg(long)]
-        force: bool,
     },
 }
 
@@ -323,18 +247,6 @@ pub enum JobCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum PermissionsCommands {
-    /// Import session permission decisions from .claude/settings.local.json into the active profile.
-    /// Diffs session decisions against the compiled profile allow/deny lists and writes the delta
-    /// back into the profile TOML. Idempotent — running twice produces the same result.
-    Sync {
-        /// Path to project root (defaults to current directory)
-        #[arg(long)]
-        path: Option<std::path::PathBuf>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
 pub enum AgentCommands {
     /// Append a timestamped log entry to .ship/agent.log
     Log {
@@ -368,10 +280,6 @@ pub enum AgentProfileCommands {
         source: String,
         target: String,
     },
-    /// Publish an agent profile to the Ship marketplace (requires account)
-    Publish {
-        name: String,
-    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -395,8 +303,6 @@ pub enum SkillCommands {
         #[arg(long)]
         global: bool,
     },
-    /// Update all installed skills to their latest versions
-    Update,
     /// Scaffold a new skill following the Agent Skills spec
     Create {
         id: String,
@@ -404,14 +310,6 @@ pub enum SkillCommands {
         name: Option<String>,
         #[arg(long)]
         description: Option<String>,
-    },
-    /// Validate a skill directory against the Agent Skills spec
-    Validate {
-        path: PathBuf,
-    },
-    /// Publish a skill to the Ship registry (requires account)
-    Publish {
-        path: PathBuf,
     },
 }
 
@@ -447,10 +345,5 @@ pub enum McpCommands {
     /// Remove an MCP server
     Remove {
         id: String,
-    },
-    /// Test MCP server connectivity
-    Probe {
-        /// Specific server to probe (omit to probe all)
-        id: Option<String>,
     },
 }

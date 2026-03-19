@@ -21,7 +21,7 @@ mod sync;
 mod validate;
 
 use anyhow::Result;
-use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
+use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, ProfileSyncCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -51,12 +51,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
             }
-            Commands::Sync { cmd: _ } => {
-                stub("sync", "Cloud sync requires a Ship account. Run: ship login")
-            }
-            Commands::Server { .. } => {
-                stub("server", "Local server (port 7701) — coming soon")
-            }
             Commands::Job { action } => dispatch_job(action),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
@@ -71,10 +65,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 add::run_add(&root, &package)
             }
             Commands::Profile { action } => dispatch_profile_sync(action),
-            Commands::Permissions { action } => dispatch_permissions(action),
-            Commands::Next { .. } => stub("next", "Job queue — coming soon"),
-            Commands::Retry { .. } => stub("retry", "Job retry — coming soon"),
-            Commands::Gate { .. } => stub("gate", "Gate check — coming soon"),
             Commands::Validate { profile, json, path } => {
                 let root = path.as_deref()
                     .map(std::fs::canonicalize).transpose()?
@@ -82,7 +72,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 validate::run_validate(profile.as_deref(), json, &root)
             }
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
-            Commands::Matrix { .. } => stub("matrix", "Provider matrix — coming soon"),
         },
     }
 }
@@ -239,9 +228,6 @@ fn dispatch_agent_profile(action: AgentProfileCommands) -> Result<()> {
             std::fs::write(&dst_path, content)?;
             println!("✓ cloned '{}' → '{}'", source, target);
         }
-        AgentProfileCommands::Publish { name: _ } => {
-            stub("agent-profile publish", "Publishing requires a Ship account. Run: ship login")?;
-        }
     }
     Ok(())
 }
@@ -292,9 +278,6 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
         SkillCommands::Create { id, name, description } => skill::create(&id, name.as_deref(), description.as_deref()),
         SkillCommands::Remove { id, global } => skill::remove(&id, global),
         SkillCommands::Add { source, skill, global } => skill::add(&source, skill.as_deref(), global),
-        SkillCommands::Update => stub("skill update", "Registry updates — coming soon"),
-        SkillCommands::Validate { .. } => stub("skill validate", "Spec validation — coming soon"),
-        SkillCommands::Publish { .. } => stub("skill publish", "Publishing requires a Ship account. Run: ship login"),
     }
 }
 
@@ -309,7 +292,6 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
         }
         McpCommands::AddStdio { id, command, args, name, .. } => mcp::add_stdio(&id, name, &command, args),
         McpCommands::Remove { id } => mcp::remove(&id),
-        McpCommands::Probe { id } => stub("mcp probe", &format!("Live probing for {:?} — requires local server", id)),
     }
 }
 
@@ -377,17 +359,3 @@ fn dispatch_profile_sync(action: ProfileSyncCommands) -> Result<()> {
     }
 }
 
-// ── Permissions subcommands ───────────────────────────────────────────────────
-
-fn dispatch_permissions(action: PermissionsCommands) -> Result<()> {
-    match action {
-        PermissionsCommands::Sync { path: _ } => stub("permissions sync", "Permission sync — coming soon"),
-    }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn stub(command: &str, note: &str) -> Result<()> {
-    println!("[{}] {}", command, note);
-    Ok(())
-}
