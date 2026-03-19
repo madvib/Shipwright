@@ -306,6 +306,130 @@ fn export_codex_writes_codex_config_toml() {
     assert!(content.contains("mcp_servers"), "config.toml must contain mcp_servers");
 }
 
+// ── ship status ───────────────────────────────────────────────────────────────
+
+#[test]
+fn status_shows_no_active_profile_before_use() {
+    let tmp = TempDir::new().unwrap();
+
+    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+
+    ship()
+        .args(["status", "--path", tmp.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No active profile"));
+}
+
+// ── ship compile idempotency ───────────────────────────────────────────────────
+
+#[test]
+fn compile_is_idempotent() {
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+
+    let args = [
+        "compile",
+        "--provider",
+        "claude",
+        "--path",
+        tmp.path().to_str().unwrap(),
+    ];
+
+    ship().args(args).assert().success();
+    let first = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+
+    ship().args(args).assert().success();
+    let second = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+
+    assert_eq!(first, second, "compile output must be identical on second run");
+}
+
+// ── ship install ──────────────────────────────────────────────────────────────
+
+#[test]
+fn install_no_manifest_exits_nonzero() {
+    let tmp = TempDir::new().unwrap();
+    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+
+    // .ship/ship.toml from `ship init` is a project-config file (no [module]),
+    // so install must fail with a clear error.
+    ship()
+        .args(["install"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("[module]").or(predicate::str::contains("registry manifest")));
+}
+
+#[test]
+fn install_empty_deps_writes_lock() {
+    let tmp = TempDir::new().unwrap();
+    // Write a minimal registry manifest with no dependencies.
+    write(
+        tmp.path(),
+        ".ship/ship.toml",
+        "[module]\nname = \"github.com/test/repo\"\nversion = \"0.1.0\"\n",
+    );
+
+    // install with no deps needs no network; lock is written immediately.
+    ship()
+        .args(["install"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    assert!(
+        tmp.path().join(".ship/ship.lock").exists(),
+        ".ship/ship.lock must be created by ship install"
+    );
+}
+
+// ── ship validate ─────────────────────────────────────────────────────────────
+
+#[test]
+fn validate_passes_on_valid_config() {
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        ".ship/agents/permissions.toml",
+        "[ship-standard]\ndefault_mode = \"acceptEdits\"\n",
+    );
+    write(
+        tmp.path(),
+        ".ship/agents/profiles/default.toml",
+        r#"[profile]
+name = "Default"
+id = "default"
+providers = ["claude"]
+[skills]
+refs = []
+[mcp]
+servers = []
+[permissions]
+preset = "ship-standard"
+"#,
+    );
+
+    ship()
+        .args(["validate", "--path", tmp.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("valid"));
+}
+
+#[test]
+fn validate_reports_error_on_bad_toml() {
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), ".ship/agents/profiles/bad.toml", "not valid toml [[");
+
+    ship()
+        .args(["validate", "--path", tmp.path().to_str().unwrap()])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("TOML parse error").or(predicate::str::contains("✗")));
+}
+
 // ── auth ──────────────────────────────────────────────────────────────────────
 
 #[test]
