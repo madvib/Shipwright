@@ -2,7 +2,7 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { requireSession } from '#/lib/session-auth'
-import { getDb } from '#/lib/cloud-auth'
+import { getD1 } from '#/lib/d1'
 
 export const Route = createFileRoute('/api/me')({
   server: {
@@ -11,7 +11,7 @@ export const Route = createFileRoute('/api/me')({
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
-        const db = getDb()
+        const db = getD1()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }

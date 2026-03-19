@@ -3,7 +3,7 @@
 // then redirects to the CLI's local callback server.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb } from '#/lib/cloud-auth'
+import { getD1, nanoid } from '#/lib/d1'
 
 type GitHubUser = {
   id: number
@@ -19,12 +19,6 @@ function getEnv(key: string): string | null {
     process.env[key] ??
     null
   )
-}
-
-function nanoid(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 async function exchangeGithubCode(
@@ -73,7 +67,7 @@ export const Route = createFileRoute('/auth/cli-callback')({
         if (error) return errorRedirect(error)
         if (!code || !state) return errorRedirect('missing_params')
 
-        const db = getDb()
+        const db = getD1()
         if (!db) return errorRedirect('db_unavailable')
 
         const pending = await db

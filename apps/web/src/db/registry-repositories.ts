@@ -1,0 +1,206 @@
+import { drizzle } from 'drizzle-orm/d1'
+import { and, desc, eq, like, or, sql } from 'drizzle-orm'
+
+import {
+  packages,
+  packageVersions,
+  packageSkills,
+  type InsertPackage,
+  type InsertPackageVersion,
+  type InsertPackageSkill,
+  type Package,
+  type PackageVersion,
+  type PackageSkill,
+} from './schema'
+
+// ---------------------------------------------------------------------------
+// Registry repository interface
+// ---------------------------------------------------------------------------
+
+export interface SearchResult {
+  packages: Package[]
+  total: number
+  page: number
+}
+
+export interface RegistryRepositories {
+  searchPackages(
+    query: string | undefined,
+    scope: string | undefined,
+    page: number,
+    limit: number,
+  ): Promise<SearchResult>
+
+  getPackage(path: string): Promise<Package | null>
+
+  upsertPackage(data: InsertPackage): Promise<Package>
+
+  getPackageVersions(packageId: string): Promise<PackageVersion[]>
+
+  getPackageSkills(
+    packageId: string,
+    versionId?: string,
+  ): Promise<PackageSkill[]>
+
+  incrementInstalls(packageId: string): Promise<number>
+
+  createPackageVersion(data: InsertPackageVersion): Promise<PackageVersion>
+
+  createPackageSkill(data: InsertPackageSkill): Promise<PackageSkill>
+
+  deletePackageSkillsByVersion(versionId: string): Promise<void>
+}
+
+export function createRegistryRepositories(
+  d1: D1Database,
+): RegistryRepositories {
+  const db = drizzle(d1)
+
+  return {
+    async searchPackages(query, scope, page, limit) {
+      const conditions = []
+      if (scope) {
+        conditions.push(eq(packages.scope, scope))
+      }
+      if (query) {
+        const pattern = `%${query}%`
+        conditions.push(
+          or(
+            like(packages.name, pattern),
+            like(packages.description, pattern),
+            like(packages.path, pattern),
+          )!,
+        )
+      }
+
+      const where = conditions.length > 0 ? and(...conditions) : undefined
+      const offset = (page - 1) * limit
+
+      const [rows, countResult] = await Promise.all([
+        db
+          .select()
+          .from(packages)
+          .where(where)
+          .orderBy(desc(packages.installs))
+          .limit(limit)
+          .offset(offset)
+          .all(),
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(packages)
+          .where(where)
+          .get(),
+      ])
+
+      return {
+        packages: rows,
+        total: countResult?.count ?? 0,
+        page,
+      }
+    },
+
+    async getPackage(path) {
+      const row = await db
+        .select()
+        .from(packages)
+        .where(eq(packages.path, path))
+        .get()
+      return row ?? null
+    },
+
+    async upsertPackage(data) {
+      await db
+        .insert(packages)
+        .values(data)
+        .onConflictDoUpdate({
+          target: packages.path,
+          set: {
+            name: data.name,
+            description: data.description,
+            latestVersion: data.latestVersion,
+            contentHash: data.contentHash,
+            defaultBranch: data.defaultBranch,
+            updatedAt: data.updatedAt,
+          },
+        })
+      const row = await db
+        .select()
+        .from(packages)
+        .where(eq(packages.path, data.path))
+        .get()
+      if (!row)
+        throw new Error(
+          `upsertPackage: row not found after write (path=${data.path})`,
+        )
+      return row
+    },
+
+    async getPackageVersions(packageId) {
+      return db
+        .select()
+        .from(packageVersions)
+        .where(eq(packageVersions.packageId, packageId))
+        .orderBy(desc(packageVersions.indexedAt))
+        .all()
+    },
+
+    async getPackageSkills(packageId, versionId) {
+      const conditions = [eq(packageSkills.packageId, packageId)]
+      if (versionId) {
+        conditions.push(eq(packageSkills.versionId, versionId))
+      }
+      return db
+        .select()
+        .from(packageSkills)
+        .where(and(...conditions))
+        .all()
+    },
+
+    async incrementInstalls(packageId) {
+      await db
+        .update(packages)
+        .set({ installs: sql`${packages.installs} + 1` })
+        .where(eq(packages.id, packageId))
+      const row = await db
+        .select({ installs: packages.installs })
+        .from(packages)
+        .where(eq(packages.id, packageId))
+        .get()
+      return row?.installs ?? 0
+    },
+
+    async createPackageVersion(data) {
+      await db.insert(packageVersions).values(data)
+      const row = await db
+        .select()
+        .from(packageVersions)
+        .where(eq(packageVersions.id, data.id))
+        .get()
+      if (!row)
+        throw new Error(
+          `createPackageVersion: row not found after write (id=${data.id})`,
+        )
+      return row
+    },
+
+    async createPackageSkill(data) {
+      await db.insert(packageSkills).values(data)
+      const row = await db
+        .select()
+        .from(packageSkills)
+        .where(eq(packageSkills.id, data.id))
+        .get()
+      if (!row)
+        throw new Error(
+          `createPackageSkill: row not found after write (id=${data.id})`,
+        )
+      return row
+    },
+
+    async deletePackageSkillsByVersion(versionId) {
+      await db
+        .delete(packageSkills)
+        .where(eq(packageSkills.versionId, versionId))
+    },
+  }
+}

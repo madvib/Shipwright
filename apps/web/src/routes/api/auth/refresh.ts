@@ -7,7 +7,8 @@
 // even after expiry, provided the user still exists in D1.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { signJwt, verifyJwt, getDb, getSecret, type JwtPayload } from '#/lib/cloud-auth'
+import { signJwt, verifyJwt, getSecret, type JwtPayload } from '#/lib/cloud-auth'
+import { getD1 } from '#/lib/d1'
 
 function base64urlDecode(input: string): Uint8Array {
   const padded = input
@@ -52,7 +53,7 @@ export const Route = createFileRoute('/api/auth/refresh')({
           )
         }
 
-        const db = getDb()
+        const db = getD1()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }

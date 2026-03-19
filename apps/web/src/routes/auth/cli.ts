@@ -2,7 +2,7 @@
 // Accepts code_challenge + redirect_uri, stores state in D1, redirects to GitHub.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb } from '#/lib/cloud-auth'
+import { getD1, nanoid } from '#/lib/d1'
 
 function getEnv(key: string): string | null {
   return (
@@ -10,12 +10,6 @@ function getEnv(key: string): string | null {
     process.env[key] ??
     null
   )
-}
-
-function nanoid(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 export const Route = createFileRoute('/auth/cli')({
@@ -52,7 +46,7 @@ export const Route = createFileRoute('/auth/cli')({
           return Response.json({ error: 'GitHub OAuth not configured' }, { status: 500 })
         }
 
-        const db = getDb()
+        const db = getD1()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }

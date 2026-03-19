@@ -1,0 +1,372 @@
+{
+  "spec": "ship-studio-capabilities",
+  "version": "0.1",
+  "description": "Capability map for Ship Studio + Registry web scope. Ship is a package registry for agent configuration. The studio is the GUI for creating, browsing, and publishing agent packages. Registry is git-first — packages live in git repos, D1 stores metadata only.",
+
+  "decisions": {
+    "registry_model": "Git-first. Packages are git repos with .ship/ and semver tags. D1 indexes metadata. No R2 blob storage.",
+    "publishing": "Git tags are source of truth. GitHub App webhooks auto-index on tag push. ship publish CLI pings index API as alternative. App not required.",
+    "unofficial_packages": "@unofficial/* scope for agent configs extracted from popular public repos. Unverified status until owner claims. Migration: owner installs App + publishes → @unofficial deprecated with pointer.",
+    "dedup_strategy": "Content-hash based. Skills with identical content across packages share the same SHA-256 hash. Registry surfaces content similarity without blocking duplicates.",
+    "auth_modes": "Three paths: 1) anonymous — paste git URL or use studio + download files, 2) GitHub OAuth — sign in, pick repos, create PRs, 3) GitHub App install — auto-publish on tag, webhooks.",
+    "windsurf": "Not supported. Scrub all references from SPEC.md, ship-studio-spec.md, EditorLogo, and any remaining code.",
+    "pro_tier": "Out of scope for v0.1. Pro features (Skills IDE with CodeMirror/filesystem/testing, AI assistant) are future. Free tier = full studio + registry."
+  },
+
+  "targets": {
+
+    "registry_index": {
+      "description": "D1-backed package index. Packages are git-hosted; D1 stores metadata, version history, install counts. Powers search, browse, and detail APIs.",
+      "agent": "cloudflare",
+      "file_scope": ["apps/web/src/db/schema.ts", "apps/web/src/db/repositories.ts", "apps/web/src/routes/api/registry/"],
+      "features": {
+        "d1_package_schema": {
+          "description": "Add packages table to D1 schema with drizzle",
+          "acceptance_criteria": [
+            "packages table: id (nanoid PK), path (unique, e.g. 'github.com/owner/repo'), scope ('official' | 'unofficial' | 'community'), name (human display name), description, repo_url, default_branch, latest_version (semver string or null), content_hash (sha256 or null), source_type ('native' | 'imported'), claimed_by (user_id FK or null), deprecated_by (package path or null), stars (integer default 0), installs (integer default 0), indexed_at, updated_at",
+            "package_versions table: id (PK), package_id (FK), version (semver), git_tag, commit_sha (40 char), content_hash, skills_json (array of exported skill ids), agents_json (array of exported agent names), indexed_at",
+            "package_skills table: id (PK), package_id (FK), version_id (FK), skill_id (from SKILL.md frontmatter), name, description, content_hash (sha256 of skill content), content_length (bytes)",
+            "Indexes: packages(scope, installs DESC), packages(path), package_versions(package_id, indexed_at DESC), package_skills(content_hash)",
+            "Add to Repositories interface: getPackages, getPackage, upsertPackage, searchPackages, getPackageVersions, getPackageSkills, incrementInstalls",
+            "Migration SQL generated via drizzle-kit"
+          ]
+        },
+        "search_api": {
+          "description": "GET /api/registry/search — full-text search over packages",
+          "acceptance_criteria": [
+            "GET /api/registry/search?q=<query>&scope=<scope>&page=<n>&limit=<n>",
+            "Searches name, description, path fields",
+            "Optional scope filter: 'official', 'unofficial', 'community', or omit for all",
+            "Returns: { packages: [{ id, path, name, description, scope, latest_version, installs, stars }], total, page }",
+            "Default limit 20, max 100",
+            "Empty query returns all packages sorted by installs DESC",
+            "No auth required — public endpoint"
+          ]
+        },
+        "package_detail_api": {
+          "description": "GET /api/registry/packages/:path — full package detail",
+          "acceptance_criteria": [
+            "Path param is URL-encoded package path (e.g. 'github.com%2Fowner%2Frepo')",
+            "Returns: { package: { ...all fields }, versions: [{ version, git_tag, commit_sha, skills, agents, indexed_at }], skills: [{ skill_id, name, description, content_hash }] }",
+            "404 if package not found",
+            "No auth required"
+          ]
+        },
+        "install_tracking": {
+          "description": "POST /api/registry/packages/:path/install — increment install counter",
+          "acceptance_criteria": [
+            "Increments installs column atomically",
+            "Returns { installs: <new count> }",
+            "No auth required (fire-and-forget from CLI or web)",
+            "Rate-limited per IP to prevent abuse (1 per package per hour)"
+          ]
+        },
+        "publish_api": {
+          "description": "POST /api/registry/publish — index a package version from a git repo",
+          "acceptance_criteria": [
+            "Body: { repo_url: string, tag?: string }",
+            "Fetches .ship/ship.toml from repo at tag (or HEAD if no tag)",
+            "Validates [module] section exists with name and version",
+            "Reads [exports] to discover published skills and agents",
+            "For each exported skill: fetches SKILL.md, extracts frontmatter, computes content_hash",
+            "Upserts package record + creates package_version + package_skills entries",
+            "If package already exists with different owner: 409 Conflict",
+            "If no .ship/ship.toml found: 422 with actionable error",
+            "Auth optional: authenticated users get package linked to their account (claimed_by). Anonymous publish creates unclaimed package.",
+            "Returns { package_id, version, skills_indexed: number }"
+          ]
+        },
+        "github_webhook": {
+          "description": "POST /api/registry/webhook — GitHub App webhook handler for auto-publish",
+          "acceptance_criteria": [
+            "Validates X-Hub-Signature-256 header against webhook secret",
+            "Handles 'create' event where ref_type='tag' — triggers publish flow",
+            "Handles 'installation' event — records App install, links to user account if signed in",
+            "Ignores all other event types with 200 OK",
+            "Tag events: extracts repo URL + tag, calls same logic as publish_api",
+            "Installation events: stores installation_id in D1 for future API calls",
+            "Returns 200 for all valid webhooks, 401 for invalid signature"
+          ]
+        }
+      }
+    },
+
+    "unofficial_pipeline": {
+      "description": "Batch import pipeline for @unofficial packages. Extracts agent configs from popular public repos, indexes as unverified packages with claim path.",
+      "agent": "server-lane",
+      "file_scope": ["apps/web/src/routes/api/registry/", "apps/web/src/lib/github-import.ts", "apps/web/src/lib/unofficial.ts"],
+      "features": {
+        "batch_import": {
+          "description": "Import agent configs from a list of popular repos and index as @unofficial packages",
+          "acceptance_criteria": [
+            "Input: array of GitHub repo URLs (curated list)",
+            "For each repo: uses existing fetchRepoFiles + extractLibrary pipeline",
+            "If extractable config found: creates package with scope='unofficial', source_type='imported'",
+            "Package path: 'unofficial/<owner>-<repo>' (e.g. 'unofficial/anthropic-claude-code')",
+            "Package name: human-friendly from repo name (e.g. 'Anthropic Claude Code Agents')",
+            "Extracts individual skills from the imported library, indexes with content_hash",
+            "Skips repos that return no extractable config (no error, just skip)",
+            "Idempotent: re-running on same repo updates existing package, doesn't duplicate",
+            "Returns summary: { imported: number, skipped: number, errors: string[] }"
+          ]
+        },
+        "seed_list": {
+          "description": "Curated list of popular repos to seed the registry",
+          "acceptance_criteria": [
+            "JSON file at apps/web/src/lib/seed-repos.json",
+            "Minimum 20 repos covering: AI/ML tools, web frameworks, DevOps, languages",
+            "Each entry: { url: string, category: string }",
+            "Categories: 'ai-tools', 'web-frameworks', 'devops', 'languages', 'editors'",
+            "Include: anthropic/claude-code, vercel/next.js, facebook/react, rust-lang/rust, golang/go, microsoft/vscode, denoland/deno, oven-sh/bun, tailwindlabs/tailwindcss, sveltejs/svelte, tanstack/router, etc.",
+            "Only repos known to have CLAUDE.md, .cursor/rules, AGENTS.md, or .ship/"
+          ]
+        },
+        "content_hash_dedup": {
+          "description": "Detect content-similar skills across packages using SHA-256",
+          "acceptance_criteria": [
+            "Every indexed skill has a content_hash (SHA-256 of normalized content)",
+            "Normalization: trim whitespace, normalize line endings to LF, strip YAML frontmatter for hash (hash body only)",
+            "GET /api/registry/skills/:hash/duplicates returns all packages containing a skill with that hash",
+            "Package detail API includes a 'similar_packages' field when skills share content_hash with other packages",
+            "Dedup is informational — does not block indexing"
+          ]
+        },
+        "claim_flow": {
+          "description": "Allow repo owners to claim @unofficial packages and migrate to official",
+          "acceptance_criteria": [
+            "POST /api/registry/packages/:path/claim — requires GitHub auth",
+            "Validates requester is an admin/owner of the source repo (GitHub API check)",
+            "On claim: sets claimed_by to user_id, scope remains 'unofficial' until they publish natively",
+            "When owner publishes native package (has .ship/ + tag): @unofficial package gets deprecated_by set to the native package path",
+            "Deprecated packages return a 'deprecated' field in search results with pointer to replacement",
+            "Future: ship install of deprecated package warns with migration suggestion"
+          ]
+        }
+      }
+    },
+
+    "registry_browse_ui": {
+      "description": "Registry browse and package detail pages in Studio. The main discovery surface for finding and installing packages.",
+      "agent": "web-lane",
+      "file_scope": ["apps/web/src/routes/studio/templates.tsx", "apps/web/src/routes/studio/registry.tsx", "apps/web/src/routes/studio/registry/", "apps/web/src/features/registry/"],
+      "features": {
+        "browse_page": {
+          "description": "Registry browse page with search, filters, and package grid",
+          "acceptance_criteria": [
+            "Route: /studio/registry (rename templates.tsx or replace)",
+            "Search bar at top — queries /api/registry/search",
+            "Scope filter tabs: All | Official | Community | Unofficial",
+            "Package cards in grid: name, description, scope badge, latest version, install count",
+            "Unofficial packages show 'Unverified' badge in muted style",
+            "Cards link to package detail page",
+            "Pagination or infinite scroll",
+            "Empty state when no packages match",
+            "Works without auth — fully public"
+          ]
+        },
+        "package_detail_page": {
+          "description": "Package detail page showing skills, agents, versions, and install instructions",
+          "acceptance_criteria": [
+            "Route: /studio/registry/:path (URL-encoded package path)",
+            "Header: package name, description, scope badge, repo link, install count",
+            "Install command: ship add <package-path> — copyable",
+            "Skills list: name, description, content hash similarity indicator",
+            "Versions list: version, tag, date, commit SHA (truncated)",
+            "If deprecated: banner with link to replacement package",
+            "If unofficial: 'Claim this package' link (visible when authenticated as repo owner)",
+            "README section if available from repo",
+            "'Add to project' button that adds to user's studio library dependencies"
+          ]
+        },
+        "dock_update": {
+          "description": "Update StudioDock to use 'Registry' label pointing to /studio/registry",
+          "acceptance_criteria": [
+            "Registry dock item points to /studio/registry not /studio/templates",
+            "Icon remains Package or changes to Globe/Store",
+            "Templates route either removed or redirects to /studio/registry"
+          ]
+        }
+      }
+    },
+
+    "onboarding_flow": {
+      "description": "Three-path onboarding: anonymous URL paste, GitHub sign-in repo picker, or blank studio. Funnels users to create their first agent package.",
+      "agent": "web-lane",
+      "file_scope": ["apps/web/src/routes/index.tsx", "apps/web/src/routes/studio/index.tsx", "apps/web/src/features/onboarding/"],
+      "features": {
+        "anonymous_url_import": {
+          "description": "Paste a public git repo URL to import agent config without signing in",
+          "acceptance_criteria": [
+            "Input field on landing page and studio dashboard: 'Paste a GitHub URL to get started'",
+            "Accepts: https://github.com/owner/repo format",
+            "On submit: calls /api/github/import, loads result into studio library",
+            "On success: redirects to studio editor with imported config loaded",
+            "On 'no config found': shows message with option to start blank",
+            "On error: shows actionable error message",
+            "No auth required — works for any public repo",
+            "Imported library stored in localStorage (existing pattern) until user signs in"
+          ]
+        },
+        "github_repo_picker": {
+          "description": "Authenticated flow: pick a repo from your GitHub, convert to Ship, optionally publish",
+          "acceptance_criteria": [
+            "After GitHub sign-in: show repo picker (uses existing /api/github/repos)",
+            "Repos sorted by recently pushed",
+            "Each repo shows: name, description, detected config indicator (has CLAUDE.md? .cursor? .ship?)",
+            "Config detection: quick check via GitHub tree API for known file paths",
+            "Select repo → import config → load into studio editor",
+            "'Convert to Ship' button: creates PR adding .ship/ (uses existing create-pr flow)",
+            "'Add to registry' checkbox: if checked, also indexes package via publish API after PR creation",
+            "Flow: pick repo → preview imported config → edit in studio → convert (PR) → publish (optional)"
+          ]
+        },
+        "download_without_account": {
+          "description": "Allow anonymous users to download compiled files without signing in",
+          "acceptance_criteria": [
+            "Export page works without authentication",
+            "Download all button generates and downloads provider files via WASM compiler",
+            "No server call required — compilation happens client-side",
+            "Existing NoCLIState component already handles this — verify it works for anonymous users",
+            "Studio dashboard accessible without auth (currently behind ProtectedRoute — needs change)"
+          ]
+        }
+      }
+    },
+
+    "studio_editor": {
+      "description": "Complete the agent editor with permissions, dependencies, and compile error surface. Make the editing experience intuitive for composing agent packages.",
+      "agent": "web-lane",
+      "file_scope": ["apps/web/src/features/studio/", "apps/web/src/features/compiler/", "apps/web/src/routes/studio/"],
+      "features": {
+        "permissions_ui": {
+          "description": "Permissions editor in profile: preset picker + allow/deny/ask lists",
+          "acceptance_criteria": [
+            "Permissions section in profile editor (below existing skills/MCP sections)",
+            "Preset dropdown: ship-standard, ship-guarded, ship-open, ship-plan — with one-line description of each",
+            "Allow list: text input with autocomplete for known tool names (Bash, Read, Write, Glob, Grep, Edit, WebFetch, Agent, mcp__*)",
+            "Deny list: same autocomplete, glob patterns supported",
+            "Ask list: same, for tools requiring confirmation",
+            "Visual: green for allow, red for deny, amber for ask",
+            "Changes compile into permissions section of CompileResult",
+            "Default: ship-standard preset if user doesn't customize"
+          ]
+        },
+        "dependency_management": {
+          "description": "Add/view dependencies in the studio editor",
+          "acceptance_criteria": [
+            "Dependencies section in studio (could be on dashboard or dedicated route)",
+            "Add dependency: text input for git URL (e.g. 'github.com/owner/repo'), optional version constraint",
+            "Calls /api/registry/search for autocomplete as user types",
+            "Installed deps list: package name, version, skill count, remove button",
+            "When a dep is added: its exported skills appear in the skills picker for the profile editor",
+            "Dep skills shown with package badge to distinguish from local skills",
+            "No server-side resolution needed — web UI adds to library's dependency list, CLI does actual resolution"
+          ]
+        },
+        "compile_error_surface": {
+          "description": "Surface compile errors inline in the editor, not just toasts",
+          "acceptance_criteria": [
+            "Permission validation errors: highlight the specific skill that requires a tool not in the allow list",
+            "Show: 'Skill <name> requires <tool> — add to permissions or remove the skill'",
+            "Error banner at top of editor (dismissible) with count of issues",
+            "Click error → scrolls to relevant section (permissions or skills)",
+            "Compile warnings (non-blocking) shown in amber",
+            "Existing toast-only errors replaced with inline error surface"
+          ]
+        }
+      }
+    },
+
+    "publishing_wizard": {
+      "description": "Studio UI for publishing an agent package to the registry. Sets module identity, defines exports, and triggers indexing.",
+      "agent": "web-lane",
+      "file_scope": ["apps/web/src/features/publishing/", "apps/web/src/routes/studio/publish.tsx"],
+      "features": {
+        "module_identity_editor": {
+          "description": "Set [module] fields: name, version, description, license",
+          "acceptance_criteria": [
+            "Module section in studio (possibly on export/publish page)",
+            "Name field: namespaced path format (e.g. 'github.com/owner/repo') — auto-filled if repo connected",
+            "Version field: semver input with validation",
+            "Description: text area",
+            "License: dropdown with common SPDX identifiers (MIT, Apache-2.0, ISC, etc.)",
+            "These fields map to [module] section in ship.toml",
+            "Saved to user's library data in D1"
+          ]
+        },
+        "exports_editor": {
+          "description": "Define which skills and agents are published",
+          "acceptance_criteria": [
+            "Exports section shows all local skills and agents with checkboxes",
+            "Checked items are included in [exports] section",
+            "Preview of what the published package will contain",
+            "Validation: at least one export required to publish"
+          ]
+        },
+        "publish_action": {
+          "description": "Trigger publish: indexes package in registry",
+          "acceptance_criteria": [
+            "Publish button on the publish page",
+            "Requires: module name, version, at least one export",
+            "If GitHub repo connected: guides user to tag the repo, then auto-indexes via webhook",
+            "If no repo: generates .ship/ scaffold for download, shows instructions for git tag + ship publish",
+            "On success: shows package URL in registry, install command",
+            "On error: actionable message (e.g. 'Package path already claimed by another user')"
+          ]
+        }
+      }
+    },
+
+    "windsurf_scrub": {
+      "description": "Remove all Windsurf references from active codebase. Not a supported provider.",
+      "agent": "web-lane",
+      "file_scope": ["SPEC.md", "ship-studio-spec.md", "packages/primitives/src/components/editor/EditorLogo.tsx"],
+      "features": {
+        "remove_windsurf": {
+          "description": "Remove Windsurf from specs, UI components, and any remaining code",
+          "acceptance_criteria": [
+            "SPEC.md: remove windsurf from provider output matrix, provider feature matrix, generated files list",
+            "ship-studio-spec.md: remove any windsurf references",
+            "EditorLogo.tsx: remove windsurf case/logo",
+            "Grep codebase for 'windsurf' (case-insensitive) outside archive/ — zero hits",
+            "No functional regressions — windsurf was not wired to anything active"
+          ]
+        }
+      }
+    }
+  },
+
+  "priority_order": [
+    "registry_index.d1_package_schema",
+    "registry_index.search_api",
+    "registry_index.package_detail_api",
+    "registry_index.publish_api",
+    "registry_index.github_webhook",
+    "unofficial_pipeline.seed_list",
+    "unofficial_pipeline.batch_import",
+    "registry_browse_ui.browse_page",
+    "registry_browse_ui.package_detail_page",
+    "registry_browse_ui.dock_update",
+    "onboarding_flow.anonymous_url_import",
+    "onboarding_flow.github_repo_picker",
+    "onboarding_flow.download_without_account",
+    "studio_editor.permissions_ui",
+    "studio_editor.dependency_management",
+    "studio_editor.compile_error_surface",
+    "publishing_wizard.module_identity_editor",
+    "publishing_wizard.exports_editor",
+    "publishing_wizard.publish_action",
+    "unofficial_pipeline.content_hash_dedup",
+    "unofficial_pipeline.claim_flow",
+    "windsurf_scrub.remove_windsurf"
+  ],
+
+  "sequencing_notes": {
+    "phase_1": "Registry backend (D1 schema + APIs) — everything else depends on this",
+    "phase_2": "Seed registry (@unofficial imports) + browse UI — make the registry worth visiting",
+    "phase_3": "Onboarding flow — anonymous URL import + repo picker + convert wizard",
+    "phase_4": "Studio editor completeness — permissions, deps, compile errors",
+    "phase_5": "Publishing wizard — close the loop: create → publish → discover",
+    "windsurf": "Can run anytime in parallel, zero dependencies"
+  }
+}

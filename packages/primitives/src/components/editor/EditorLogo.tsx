@@ -19,17 +19,6 @@ export function editorLogoCandidates(editorId: string, isDarkTheme: boolean): st
                 byTheme('/ide-logos/CUBE_2D_DARK.svg', '/ide-logos/CUBE_2D_LIGHT.svg'),
                 fallbackTheme('/ide-logos/CUBE_2D_DARK.svg', '/ide-logos/CUBE_2D_LIGHT.svg'),
             ];
-        case 'windsurf':
-            return [
-                byTheme(
-                    '/ide-logos/windsurf-white-symbol.svg',
-                    '/ide-logos/windsurf-black-symbol.svg',
-                ),
-                fallbackTheme(
-                    '/ide-logos/windsurf-white-symbol.svg',
-                    '/ide-logos/windsurf-black-symbol.svg',
-                ),
-            ];
         case 'antigravity':
             return ['/ide-logos/Google-Antigravity-Icon-Full-Color.png'];
         case 'zed':

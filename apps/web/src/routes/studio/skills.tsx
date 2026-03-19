@@ -20,7 +20,7 @@ function SkillsPage() {
           description="Skills give your agent specific capabilities — commit conventions, code review, testing patterns."
           action={
             <Link
-              to="/studio/templates"
+              to="/studio/registry"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 no-underline"
             >
               Browse the registry

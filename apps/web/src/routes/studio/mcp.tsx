@@ -20,7 +20,7 @@ function McpPage() {
           description="MCP servers give your agent access to external tools — GitHub, Linear, memory, and more."
           action={
             <Link
-              to="/studio/templates"
+              to="/studio/registry"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 no-underline"
             >
               Explore the registry

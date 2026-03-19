@@ -1,16 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { getD1 } from '#/lib/d1'
 
 const VERSION = '0.1.0'
 
-type D1Database = {
-  prepare: (query: string) => { run: () => Promise<unknown> }
-}
-
 async function checkDb(): Promise<'connected' | 'unavailable'> {
-  // In the Cloudflare Workers runtime, D1 bindings are exposed as globals.
-  // `(globalThis as Record<string, unknown>)['DB']` resolves the binding without
-  // importing `cloudflare:workers`, which is not available in local Vite SSR dev.
-  const db = (globalThis as Record<string, unknown>)['DB'] as D1Database | undefined
+  const db = getD1()
   if (!db) return 'unavailable'
   try {
     await db.prepare('SELECT 1').run()

@@ -93,24 +93,6 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
   return p
 }
 
-// D1 database type used across API routes
-export type D1DB = {
-  prepare: (query: string) => {
-    bind: (...args: unknown[]) => {
-      first: <T = unknown>() => Promise<T | null>
-      all: <T = unknown>() => Promise<{ results: T[] }>
-      run: () => Promise<unknown>
-    }
-    first: <T = unknown>() => Promise<T | null>
-    all: <T = unknown>() => Promise<{ results: T[] }>
-    run: () => Promise<unknown>
-  }
-}
-
-export function getDb(): D1DB | null {
-  return (globalThis as Record<string, unknown>)['DB'] as D1DB | undefined ?? null
-}
-
 export function getSecret(): string | null {
   return (
     (globalThis as Record<string, unknown>)['BETTER_AUTH_SECRET'] as string | undefined ??
