@@ -27,7 +27,7 @@ pub use provider::{
     get_provider, list_providers,
 };
 pub use claude::build_claude_settings_patch;
-pub use cursor::CURSOR_PERMISSIVE_ALLOW;
+pub use cursor::{CURSOR_PERMISSIVE_ALLOW, translate_to_cursor_permission};
 
 // ─── Output ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +98,10 @@ pub struct CompileOutput {
     /// Key = path relative to project root (e.g. `.claude/agents/monitor.md`).
     /// Value = file content. Written verbatim by the CLI.
     pub agent_files: HashMap<String, String>,
+
+    /// Cursor-only: `.cursor/environment.json` content.
+    /// Only populated when `cursor_environment` is set in the resolved config.
+    pub cursor_environment_json: Option<Json>,
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -111,7 +115,12 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
 
     // Only emit MCP config for providers that support it.
     if flags.supports_mcp {
-        out.mcp_servers = mcp::build_mcp_servers(desc, &resolved.mcp_servers);
+        // Use provider-specific MCP builders when available (for per-server fields).
+        out.mcp_servers = match provider_id {
+            "gemini" => gemini::build_gemini_mcp_servers(desc, &resolved.mcp_servers),
+            "cursor" => cursor::build_cursor_mcp_servers(desc, &resolved.mcp_servers),
+            _ => mcp::build_mcp_servers(desc, &resolved.mcp_servers),
+        };
         out.mcp_config_path = desc.mcp_config_path.map(String::from);
     } else {
         out.mcp_servers = serde_json::json!({});
@@ -131,6 +140,9 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
             resolved.claude_settings_extra.as_ref(),
             &resolved.env,
             &resolved.available_models,
+            resolved.claude_theme.as_deref(),
+            resolved.claude_auto_updates,
+            resolved.claude_include_co_authored_by,
         );
         // Legacy team agents (passthrough from .ship/agents/teams/claude/)
         if let Some(base) = desc.agents_dir.base_path() {
@@ -142,25 +154,20 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
     }
 
     if provider_id == "codex" {
-        out.codex_config_patch = codex::build_codex_config_patch(
-            &resolved.mcp_servers,
-            resolved.model.as_deref(),
-            resolved.codex_sandbox.as_deref(),
-        );
+        out.codex_config_patch = codex::build_codex_config_patch(resolved);
     }
 
     if provider_id == "gemini" {
-        out.gemini_settings_patch = gemini::build_gemini_settings_patch(
-            &resolved.hooks,
-            resolved.model.as_deref(),
-        );
+        out.gemini_settings_patch = gemini::build_gemini_settings_patch(resolved);
         out.gemini_policy_patch = gemini::build_gemini_policy_patch(&resolved.permissions);
     }
 
     if provider_id == "cursor" {
         out.rule_files = cursor::build_cursor_rule_files(&resolved.rules);
         out.cursor_hooks_patch = cursor::build_cursor_hooks_patch(&resolved.hooks);
-        out.cursor_cli_permissions = cursor::build_cursor_cli_permissions(&resolved.permissions);
+        // cursor_cli_permissions is now merged with cursor_settings_extra via build_cursor_cli_json
+        out.cursor_cli_permissions = cursor::build_cursor_cli_json(resolved);
+        out.cursor_environment_json = cursor::build_cursor_environment(resolved);
     }
 
     out.plugins_manifest = plugins::build_plugins_manifest(&resolved.plugins, provider_id);

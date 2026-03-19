@@ -1,7 +1,7 @@
-use crate::compile::{compile, get_provider};
+use crate::compile::{compile, get_provider, translate_to_cursor_permission};
 use crate::compile::provider::ContextFile;
 use crate::resolve::ResolvedConfig;
-use crate::types::{HookTrigger, Permissions, ToolPermissions};
+use crate::types::{HookConfig, HookTrigger, Permissions, ToolPermissions};
 
 use super::fixtures::*;
 
@@ -142,4 +142,96 @@ fn cursor_hooks_not_emitted_for_other_providers() {
     assert!(compile(&r, "claude").unwrap().cursor_hooks_patch.is_none());
     assert!(compile(&r, "gemini").unwrap().cursor_hooks_patch.is_none());
     assert!(compile(&r, "codex").unwrap().cursor_hooks_patch.is_none());
+}
+
+// ── Phase 4: Cursor new features ──────────────────────────────────────────────
+
+/// Read(glob) and Write(glob) patterns must pass through as-is.
+#[test]
+fn cursor_read_glob_passes_through() {
+    assert_eq!(
+        translate_to_cursor_permission("Read(src/**/*.ts)"),
+        Some("Read(src/**/*.ts)".to_string())
+    );
+    assert_eq!(
+        translate_to_cursor_permission("Write(dist/*.js)"),
+        Some("Write(dist/*.js)".to_string())
+    );
+    // Edit(glob) maps to Write(glob)
+    assert_eq!(
+        translate_to_cursor_permission("Edit(src/*.rs)"),
+        Some("Write(src/*.rs)".to_string())
+    );
+}
+
+#[test]
+fn cursor_raw_event_bypasses_trigger_mapping() {
+    use crate::types::HookConfig;
+    let hook = HookConfig {
+        id: "raw-hook".to_string(),
+        trigger: HookTrigger::Notification, // normally unmapped for cursor
+        matcher: None,
+        command: "ship log".to_string(),
+        cursor_event: Some("customEvent".to_string()),
+        gemini_event: None,
+    };
+    let r = ResolvedConfig {
+        hooks: vec![hook],
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "cursor").unwrap();
+    let patch = out.cursor_hooks_patch.expect("raw cursor_event must produce a patch");
+    assert!(patch["customEvent"].is_array(), "raw event must appear under customEvent key");
+    assert_eq!(patch["customEvent"][0]["command"], "ship log");
+}
+
+#[test]
+fn cursor_environment_json_populated() {
+    let env = serde_json::json!({ "NODE_ENV": "production", "API_URL": "https://api.example.com" });
+    let r = ResolvedConfig {
+        cursor_environment: Some(env.clone()),
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "cursor").unwrap();
+    let env_json = out.cursor_environment_json.expect("cursor_environment must be emitted");
+    assert_eq!(env_json["NODE_ENV"], "production");
+}
+
+#[test]
+fn cursor_environment_json_none_when_not_set() {
+    let r = resolved(vec![]);
+    let out = compile(&r, "cursor").unwrap();
+    assert!(out.cursor_environment_json.is_none());
+}
+
+#[test]
+fn cursor_mcp_env_file_emitted_for_stdio() {
+    let mut s = make_server("my-server");
+    s.cursor_env_file = Some(".env.local".to_string());
+    let r = resolved(vec![s]);
+    let out = compile(&r, "cursor").unwrap();
+    assert_eq!(out.mcp_servers["my-server"]["envFile"], ".env.local");
+}
+
+#[test]
+fn cursor_settings_extra_merged_into_cli_json() {
+    let r = ResolvedConfig {
+        cursor_settings_extra: Some(serde_json::json!({ "customSetting": true })),
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "cursor").unwrap();
+    let cli_json = out.cursor_cli_permissions.expect("cursor_settings_extra must trigger cli.json");
+    assert_eq!(cli_json["customSetting"], true);
+}
+
+#[test]
+fn cursor_env_file_not_emitted_for_other_providers() {
+    let mut s = make_server("my-server");
+    s.cursor_env_file = Some(".env".to_string());
+    let r = resolved(vec![s]);
+    // Only cursor gets envFile; others should not have it.
+    let claude_out = compile(&r, "claude").unwrap();
+    assert!(claude_out.mcp_servers["my-server"].get("envFile").is_none());
+    let gemini_out = compile(&r, "gemini").unwrap();
+    assert!(gemini_out.mcp_servers["my-server"].get("envFile").is_none());
 }

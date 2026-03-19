@@ -9,22 +9,22 @@ Add a `<!-- verified: YYYY-MM-DD source: <url> -->` comment when re-verifying a 
 
 ## Support Matrix
 
-<!-- Last updated: 2026-03-14 -->
+<!-- Last updated: 2026-03-19 -->
 
 | Feature | Claude Code | Gemini CLI | Codex CLI | Cursor |
 |---|:---:|:---:|:---:|:---:|
-| MCP servers | ✅ | ✅ | ✅ TOML `codex_config_patch` | ✅ |
+| MCP servers | ✅ | ✅ per-server `trust`, `includeTools`, `excludeTools`, `timeout` | ✅ TOML `codex_config_patch` + per-server `enabled_tools`, `disabled_tools` | ✅ per-server `envFile` |
 | Rules / context file | ✅ `CLAUDE.md` | ✅ `GEMINI.md` | ✅ `AGENTS.md` | ✅ `rule_files` per-file `.mdc` |
 | Skills | ✅ `.claude/skills/` | ✅ `.gemini/skills/` | ✅ `.agents/skills/` | ✅ `.cursor/skills/` |
 | Permissions allow/deny | ✅ | ✅ `gemini_policy_patch` → `.gemini/policies/ship.toml` | — no compatible model | ✅ `cursor_cli_permissions` |
 | Permissions ask tier | ✅ `permissions.ask` | — | — | — |
 | defaultMode | ✅ `permissions.defaultMode` | — | — | — |
 | additionalDirectories | ✅ `permissions.additionalDirectories` | — | — | — |
-| Hooks | ✅ `claude_settings_patch` | ✅ `gemini_settings_patch` | — | ✅ `cursor_hooks_patch` |
+| Hooks | ✅ `claude_settings_patch` | ✅ `gemini_settings_patch` + raw `gemini_event` bypass | — | ✅ `cursor_hooks_patch` + raw `cursor_event` bypass |
 | Agent limits (cost/turns) | ✅ | — | — | — |
-| Model override | ✅ `model` in settings patch | — needs `provider_config` | — needs `provider_config` | — needs `provider_config` |
+| Model override | ✅ `model` in settings patch | ✅ `model.name` in settings patch | ✅ `model` in TOML config | — |
 | MCP config path | ✅ `.mcp.json` | ✅ `.gemini/settings.json` | ✅ `.codex/config.toml` | ✅ `.cursor/mcp.json` |
-| Provider-specific settings | — (model ✅, rest needs `provider_config`) | — needs `provider_config` | — needs `provider_config` | — needs `provider_config` |
+| Provider-specific settings | ✅ `theme`, `autoUpdates`, `includeCoAuthoredBy`, `claude_settings_extra` | ✅ `defaultApprovalMode`, `maxSessionTurns`, `disableYoloMode`, `disableAlwaysAllow`, `tools.sandbox`, `gemini_settings_extra` | ✅ `approval_policy`, `model_reasoning_effort`, `[agents]` table, `shell_environment_policy`, `notify`, `codex_settings_extra` | ✅ `cursor_environment`, `cursor_settings_extra` |
 | Subagent profiles | ✅ `.claude/agents/<id>.md` | ✅ `.gemini/agents/<id>.md` | ✅ `.codex/agents/<id>.toml` | ✅ `.cursor/agents/<id>.md` |
 
 **Key:** ✅ implemented · ⚠️ partial/not compiled · — not implemented / out of scope

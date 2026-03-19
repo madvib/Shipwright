@@ -1,6 +1,6 @@
 use crate::compile::compile;
 use crate::resolve::ResolvedConfig;
-use crate::types::{Permissions, ToolPermissions};
+use crate::types::{HookTrigger, Permissions, ToolPermissions};
 
 use super::fixtures::*;
 
@@ -188,4 +188,75 @@ fn team_agents_only_for_claude() {
         let out = compile(&r, provider).unwrap();
         assert!(!out.agent_files.contains_key(".claude/agents/lead.md"), "{provider} must not get claude team agents");
     }
+}
+
+// ── Phase 4: Claude provider settings ────────────────────────────────────────
+
+#[test]
+fn claude_theme_emitted_in_settings_patch() {
+    let r = ResolvedConfig {
+        claude_theme: Some("dark".to_string()),
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "claude").unwrap();
+    let patch = out.claude_settings_patch.expect("theme must emit a patch");
+    assert_eq!(patch["theme"], "dark");
+}
+
+#[test]
+fn claude_auto_updates_emitted_in_settings_patch() {
+    let r = ResolvedConfig {
+        claude_auto_updates: Some(false),
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "claude").unwrap();
+    let patch = out.claude_settings_patch.expect("autoUpdates must emit a patch");
+    assert_eq!(patch["autoUpdates"], false);
+}
+
+#[test]
+fn claude_include_co_authored_by_emitted() {
+    let r = ResolvedConfig {
+        claude_include_co_authored_by: Some(true),
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "claude").unwrap();
+    let patch = out.claude_settings_patch.expect("includeCoAuthoredBy must emit a patch");
+    assert_eq!(patch["includeCoAuthoredBy"], true);
+}
+
+/// claude_settings_extra must remain last — it can override typed fields.
+#[test]
+fn claude_settings_extra_is_last_and_can_override() {
+    let r = ResolvedConfig {
+        claude_theme: Some("light".to_string()),
+        claude_settings_extra: Some(serde_json::json!({ "theme": "dark" })),
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "claude").unwrap();
+    let patch = out.claude_settings_patch.expect("must emit a patch");
+    // extra overrides the typed field
+    assert_eq!(patch["theme"], "dark");
+}
+
+/// Verifies the correct Claude Code hook format: wrapped in { hooks: [...] }.
+#[test]
+fn claude_hooks_wrapped_in_hooks_array() {
+    use crate::types::HookTrigger;
+    let r = ResolvedConfig {
+        hooks: vec![make_hook(HookTrigger::Stop, "ship notify", None)],
+        ..resolved(vec![])
+    };
+    let out = compile(&r, "claude").unwrap();
+    let patch = out.claude_settings_patch.unwrap();
+    // Structure: { "Stop": [{ "hooks": [{ "type": "command", "command": "..." }] }] }
+    let stop_arr = patch["hooks"]["Stop"].as_array().unwrap();
+    assert_eq!(stop_arr.len(), 1);
+    let entry = &stop_arr[0];
+    assert!(entry.get("hooks").is_some(), "hook entry must have 'hooks' array");
+    let inner = entry["hooks"].as_array().unwrap();
+    assert_eq!(inner[0]["command"], "ship notify");
+    assert_eq!(inner[0]["type"], "command");
+    // Must NOT have "command" at the top level
+    assert!(entry.get("command").is_none(), "command must be nested inside hooks array");
 }

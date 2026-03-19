@@ -13,7 +13,7 @@ pub use compile::{
     AgentsDir, CompileOutput, ContextFile, McpKey, ProviderDescriptor, ProviderFeatureFlags, SkillsDir,
     agents::compile_agent_profiles,
     build_claude_settings_patch, compile, get_provider, list_providers,
-    CURSOR_PERMISSIVE_ALLOW,
+    CURSOR_PERMISSIVE_ALLOW, translate_to_cursor_permission,
 };
 pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
 pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
@@ -75,6 +75,8 @@ mod wasm {
         cursor_hooks_patch: Option<serde_json::Value>,
         /// Cursor-only: `.cursor/cli.json` permissions (CLI-only, not IDE).
         cursor_cli_permissions: Option<serde_json::Value>,
+        /// Cursor-only: `.cursor/environment.json` content.
+        cursor_environment_json: Option<serde_json::Value>,
         /// Provider-native agent files: path → content.
         /// e.g. `.claude/agents/reviewer.md`, `.gemini/agents/reviewer.md`.
         agent_files: std::collections::HashMap<String, String>,
@@ -119,6 +121,7 @@ mod wasm {
             gemini_policy_patch: output.gemini_policy_patch,
             cursor_hooks_patch: output.cursor_hooks_patch,
             cursor_cli_permissions: output.cursor_cli_permissions,
+            cursor_environment_json: output.cursor_environment_json,
             agent_files: output.agent_files,
             plugins_manifest: output.plugins_manifest,
         };
@@ -156,6 +159,7 @@ mod wasm {
                     gemini_policy_patch: output.gemini_policy_patch,
                     cursor_hooks_patch: output.cursor_hooks_patch,
                     cursor_cli_permissions: output.cursor_cli_permissions,
+                    cursor_environment_json: output.cursor_environment_json,
                     plugins_manifest: output.plugins_manifest,
                 };
                 if let Ok(v) = serde_json::to_value(&result) {
