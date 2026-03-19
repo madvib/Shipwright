@@ -26,7 +26,8 @@ pub enum SkillSource {
 /// Stored as:
 /// - project scope: `.ship/agents/skills/<id>/SKILL.md`
 /// - user scope: `~/.ship/skills/<id>/SKILL.md`
-/// using Agent Skills spec format.
+///
+/// Uses Agent Skills spec format.
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct Skill {
     pub id: String,

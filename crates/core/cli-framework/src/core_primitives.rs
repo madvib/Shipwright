@@ -1,11 +1,11 @@
 use anyhow::Result;
 use runtime::{
-    McpServerConfig, McpServerType, ModeConfig, SkillInstallScope, add_mcp_server, add_mode,
+    AgentProfile, McpServerConfig, McpServerType, SkillInstallScope, add_agent, add_mcp_server,
     autodetect_providers, create_skill, create_user_skill, delete_skill, delete_user_skill,
-    disable_provider, enable_provider, get_active_mode, get_config, get_effective_skill,
+    disable_provider, enable_provider, get_active_agent, get_config, get_effective_skill,
     ingest_external_events, list_effective_skills, list_events_since, list_mcp_servers,
-    list_models, list_providers, list_skills, list_user_skills, log_action, remove_mcp_server,
-    remove_mode, set_active_mode, update_skill, update_user_skill,
+    list_models, list_providers, list_skills, list_user_skills, log_action, remove_agent,
+    remove_mcp_server, set_active_agent, update_skill, update_user_skill,
 };
 use std::path::{Path, PathBuf};
 
@@ -265,7 +265,7 @@ pub fn handle_mode_action(action: ModeAction, project_dir: Option<PathBuf>) -> R
     match action {
         ModeAction::List => {
             let cfg = get_config(project_dir)?;
-            let active_id = cfg.active_mode.as_deref().unwrap_or("");
+            let active_id = cfg.active_agent.as_deref().unwrap_or("");
             if cfg.modes.is_empty() {
                 println!("No modes configured.");
             } else {
@@ -276,31 +276,31 @@ pub fn handle_mode_action(action: ModeAction, project_dir: Option<PathBuf>) -> R
             }
         }
         ModeAction::Add { id, name } => {
-            add_mode(
+            add_agent(
                 project_dir,
-                ModeConfig {
+                AgentProfile {
                     id: id.clone(),
                     name: name.clone(),
                     ..Default::default()
                 },
             )?;
-            println!("Mode added: {} ({})", id, name);
+            println!("Agent added: {} ({})", id, name);
         }
         ModeAction::Remove { id } => {
-            remove_mode(project_dir, &id)?;
-            println!("Mode removed: {}", id);
+            remove_agent(project_dir, &id)?;
+            println!("Agent removed: {}", id);
         }
         ModeAction::Set { id } => {
-            set_active_mode(project_dir, Some(&id))?;
-            println!("Active mode set to: {}", id);
+            set_active_agent(project_dir, Some(&id))?;
+            println!("Active agent set to: {}", id);
         }
         ModeAction::Clear => {
-            set_active_mode(project_dir, None)?;
-            println!("Active mode cleared (all tools available).");
+            set_active_agent(project_dir, None)?;
+            println!("Active agent cleared (all tools available).");
         }
-        ModeAction::Get => match get_active_mode(project_dir)? {
-            Some(mode) => println!("Active mode: {} ({})", mode.id, mode.name),
-            None => println!("No active mode set."),
+        ModeAction::Get => match get_active_agent(project_dir)? {
+            Some(agent) => println!("Active agent: {} ({})", agent.id, agent.name),
+            None => println!("No active agent set."),
         },
     }
     Ok(())
@@ -462,10 +462,7 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
     match action {
         ProviderAction::List => {
             let providers = list_providers(project_dir)?;
-            println!(
-                "{:<12} {:<20} {:<10} {:<10} {}",
-                "ID", "NAME", "INSTALLED", "CONNECTED", "VERSION"
-            );
+            println!("{:<12} {:<20} {:<10} {:<10} VERSION", "ID", "NAME", "INSTALLED", "CONNECTED");
             println!("{}", "-".repeat(70));
             for provider in providers {
                 println!(
@@ -514,7 +511,7 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
         }
         ProviderAction::Models { id } => {
             let models = list_models(&id)?;
-            println!("{:<30} {:<14} {}", "MODEL", "CONTEXT", "");
+            println!("{:<30} {:<14}", "MODEL", "CONTEXT");
             println!("{}", "-".repeat(60));
             for model in models {
                 let context = if model.context_window == 0 {
@@ -588,6 +585,6 @@ fn import_provider_surface(project_dir: &Path, provider_id: &str) -> Result<Prov
     })
 }
 
-fn require_project_dir<'a>(project_dir: Option<&'a Path>) -> Result<&'a Path> {
+fn require_project_dir(project_dir: Option<&Path>) -> Result<&Path> {
     project_dir.ok_or_else(|| anyhow::anyhow!("No Ship project found in current directory"))
 }

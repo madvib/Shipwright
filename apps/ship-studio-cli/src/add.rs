@@ -72,7 +72,7 @@ pub fn run_add(project_root: &Path, package_spec: &str) -> Result<()> {
         Err(e) => {
             // Restore backup.
             let _ = std::fs::write(&manifest_path, &backup);
-            Err(e.context(format!("ship add failed; restored .ship/ship.toml")))
+            Err(e.context("ship add failed; restored .ship/ship.toml"))
         }
     }
 }
@@ -172,12 +172,12 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
         .with_context(|| format!("resolving {pkg_path}"))?;
 
     // Compile.
-    let state = crate::profile::ShipLock::load(&ship_dir);
+    let state = crate::profile::WorkspaceState::load(&ship_dir);
     crate::compile::run_compile(crate::compile::CompileOptions {
         project_root,
         provider: None,
         dry_run: false,
-        active_mode: state.active_profile.as_deref(),
+        active_agent: state.active_profile.as_deref(),
     })
     .context("compiling after add")?;
 

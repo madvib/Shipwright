@@ -1,5 +1,5 @@
 use crate::agents::config::{
-    AgentConfig, FeatureAgentConfig, resolve_agent_config_with_mode_override,
+    ProviderSettings, WorkspaceAgentSettings, resolve_provider_settings_with_agent_override,
 };
 use crate::events::{EventAction, EventEntity, append_event};
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
@@ -137,7 +137,7 @@ pub struct Workspace {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     #[serde(default)]
     pub providers: Vec<String>,
     #[serde(default)]
@@ -275,7 +275,7 @@ pub struct WorkspaceSession {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode_id: Option<String>,
+    pub agent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -321,7 +321,7 @@ pub struct EndWorkspaceSessionRequest {
 pub struct WorkspaceProviderMatrix {
     pub workspace_branch: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode_id: Option<String>,
+    pub agent_id: Option<String>,
     pub source: String,
     pub allowed_providers: Vec<String>,
     pub supported_providers: Vec<String>,
@@ -334,7 +334,7 @@ pub struct WorkspaceRepairReport {
     pub workspace_branch: String,
     pub dry_run: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode_id: Option<String>,
+    pub agent_id: Option<String>,
     pub status: WorkspaceStatus,
     pub providers_expected: Vec<String>,
     pub missing_provider_configs: Vec<String>,
@@ -355,7 +355,7 @@ pub struct CreateWorkspaceRequest {
     pub environment_id: Option<String>,
     pub feature_id: Option<String>,
     pub target_id: Option<String>,
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     pub providers: Option<Vec<String>>,
     pub mcp_servers: Option<Vec<String>>,
     pub skills: Option<Vec<String>>,
@@ -393,7 +393,7 @@ fn hydrate_workspace_session(row: WorkspaceSessionDb) -> WorkspaceSession {
         status: row.status.parse().unwrap_or(WorkspaceSessionStatus::Active),
         started_at: parse_datetime(&row.started_at),
         ended_at: parse_datetime_opt(row.ended_at),
-        mode_id: row.mode_id,
+        agent_id: row.agent_id,
         primary_provider: row.primary_provider,
         goal: row.goal,
         summary: row.summary,
@@ -428,12 +428,11 @@ fn annotate_session_stale_state(
 ) {
     session.stale_context = session
         .config_generation_at_start
-        .and_then(|session_generation| {
+        .is_some_and(|session_generation| {
             workspace_generation_by_branch
                 .get(&session.workspace_branch)
-                .map(|workspace_generation| *workspace_generation > session_generation)
-        })
-        .unwrap_or(false);
+                .is_some_and(|workspace_generation| *workspace_generation > session_generation)
+        });
 }
 
 fn annotate_session_record(ship_dir: &Path, session: &mut WorkspaceSession) -> Result<()> {
@@ -644,9 +643,9 @@ fn normalize_nonempty_id_list(ids: &[String]) -> Vec<String> {
 }
 
 fn merge_feature_agent_with_workspace(
-    feature_agent: Option<FeatureAgentConfig>,
+    feature_agent: Option<WorkspaceAgentSettings>,
     workspace: &Workspace,
-) -> Option<FeatureAgentConfig> {
+) -> Option<WorkspaceAgentSettings> {
     let mut has_override = feature_agent.is_some();
     let mut merged = feature_agent.unwrap_or_default();
 
@@ -701,12 +700,12 @@ fn resolve_workspace_agent_config(
     ship_dir: &Path,
     workspace: &Workspace,
     mode_id: Option<&str>,
-) -> Result<AgentConfig> {
+) -> Result<ProviderSettings> {
     let mode_id = mode_id
         .and_then(normalize_mode_ref)
         .or_else(|| {
             workspace
-                .active_mode
+                .active_agent
                 .as_deref()
                 .and_then(normalize_mode_ref)
         })
@@ -720,7 +719,7 @@ fn resolve_workspace_agent_config(
         .flatten();
     let workspace_agent = merge_feature_agent_with_workspace(feature_agent, workspace);
 
-    resolve_agent_config_with_mode_override(ship_dir, workspace_agent.as_ref(), mode_id.as_deref())
+    resolve_provider_settings_with_agent_override(ship_dir, workspace_agent.as_ref(), mode_id.as_deref())
 }
 
 fn build_workspace_provider_matrix(
@@ -730,7 +729,7 @@ fn build_workspace_provider_matrix(
 ) -> Result<WorkspaceProviderMatrix> {
     let resolved_mode_id = mode_id.and_then(normalize_mode_ref).or_else(|| {
         workspace
-            .active_mode
+            .active_agent
             .as_deref()
             .and_then(normalize_mode_ref)
     });
@@ -753,12 +752,12 @@ fn build_workspace_provider_matrix(
 
     Ok(WorkspaceProviderMatrix {
         workspace_branch: workspace.branch.clone(),
-        mode_id: resolved_mode_id,
+        agent_id: resolved_mode_id,
         source: if !workspace.providers.is_empty() {
             "workspace".to_string()
         } else if workspace.feature_id.is_some() {
             "feature".to_string()
-        } else if resolved.active_mode.is_some() {
+        } else if resolved.active_agent.is_some() {
             "mode/config".to_string()
         } else {
             "config/default".to_string()
@@ -808,7 +807,7 @@ fn stable_hash(value: &str) -> String {
 fn compute_workspace_context_hash(
     ship_dir: &Path,
     workspace: &Workspace,
-    resolved_agent: &AgentConfig,
+    resolved_agent: &ProviderSettings,
 ) -> Result<String> {
     let config = crate::config::get_effective_config(Some(ship_dir.to_path_buf()))?;
     let config_hash = stable_hash(&toml::to_string(&config)?);
@@ -855,7 +854,7 @@ fn compute_workspace_context_hash(
             "environment_id": workspace.environment_id,
             "feature_id": workspace.feature_id,
             "target_id": workspace.target_id,
-            "mode_id": resolved_agent.active_mode,
+            "agent_id": resolved_agent.active_agent,
             "provider_overrides": normalize_nonempty_id_list(&workspace.providers),
             "mcp_server_overrides": normalize_nonempty_id_list(&workspace.mcp_servers),
             "skill_overrides": normalize_nonempty_id_list(&workspace.skills),
@@ -891,7 +890,7 @@ pub fn repair_workspace(
     let mut workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow!("Workspace not found for branch '{}'", branch))?;
     let mut matrix =
-        get_workspace_provider_matrix(ship_dir, branch, workspace.active_mode.as_deref())?;
+        get_workspace_provider_matrix(ship_dir, branch, workspace.active_agent.as_deref())?;
     let context_root = resolve_workspace_context_root(ship_dir, &workspace);
 
     let mut actions = Vec::new();
@@ -919,10 +918,10 @@ pub fn repair_workspace(
 
     if !dry_run && needs_recompile && matrix.resolution_error.is_none() {
         if workspace.status == WorkspaceStatus::Active {
-            let mode = workspace.active_mode.clone();
-            workspace = set_workspace_active_mode(ship_dir, branch, mode.as_deref())?;
+            let mode = workspace.active_agent.clone();
+            workspace = set_workspace_active_agent(ship_dir, branch, mode.as_deref())?;
             matrix =
-                get_workspace_provider_matrix(ship_dir, branch, workspace.active_mode.as_deref())?;
+                get_workspace_provider_matrix(ship_dir, branch, workspace.active_agent.as_deref())?;
             missing_provider_configs =
                 missing_provider_configs_for_workspace(&context_root, &matrix.allowed_providers);
             reapplied_compile = true;
@@ -940,7 +939,7 @@ pub fn repair_workspace(
     Ok(WorkspaceRepairReport {
         workspace_branch: workspace.branch.clone(),
         dry_run,
-        mode_id: workspace.active_mode.clone(),
+        agent_id: workspace.active_agent.clone(),
         status: workspace.status,
         providers_expected: matrix.allowed_providers,
         missing_provider_configs,
@@ -959,7 +958,7 @@ fn compile_workspace_context(
 ) -> Result<()> {
     let mode_id = mode_id_override
         .map(|mode| mode.to_string())
-        .or_else(|| workspace.active_mode.clone());
+        .or_else(|| workspace.active_agent.clone());
     let mode_id = mode_id.and_then(|value| normalize_optional_text(Some(value)));
     let resolved_agent =
         match resolve_workspace_agent_config(ship_dir, workspace, mode_id.as_deref()) {
@@ -1062,7 +1061,7 @@ fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
         environment_id: None,
         feature_id: None,
         target_id: None,
-        active_mode: None,
+        active_agent: None,
         providers: Vec::new(),
         mcp_servers: Vec::new(),
         skills: Vec::new(),
@@ -1114,10 +1113,9 @@ fn hydrate_from_branch_links(
 fn hydrate_from_feature_links(ship_dir: &Path, workspace: &mut Workspace) -> Result<()> {
     if let Some(feature_id) = workspace.feature_id.clone()
         && let Some(target_id) = get_feature_links(ship_dir, &feature_id)?
+        && workspace.target_id.is_none()
     {
-        if workspace.target_id.is_none() {
-            workspace.target_id = target_id;
-        }
+        workspace.target_id = target_id;
     }
     Ok(())
 }
@@ -1177,7 +1175,7 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
         environment_id,
         feature_id,
         target_id,
-        active_mode,
+        active_agent,
         providers,
         mcp_servers,
         skills,
@@ -1207,7 +1205,7 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
         environment_id,
         feature_id,
         target_id,
-        active_mode,
+        active_agent,
         providers,
         mcp_servers,
         skills,
@@ -1233,7 +1231,7 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         environment_id,
         feature_id,
         target_id,
-        active_mode,
+        active_agent,
         providers,
         mcp_servers,
         skills,
@@ -1260,7 +1258,7 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
             environment_id,
             feature_id,
             target_id,
-            active_mode,
+            active_agent,
             providers,
             mcp_servers,
             skills,
@@ -1310,7 +1308,7 @@ pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
             environment_id: workspace.environment_id.as_deref(),
             feature_id: workspace.feature_id.as_deref(),
             target_id: workspace.target_id.as_deref(),
-            active_mode: workspace.active_mode.as_deref(),
+            active_agent: workspace.active_agent.as_deref(),
             providers: &workspace.providers,
             mcp_servers: &workspace.mcp_servers,
             skills: &workspace.skills,
@@ -1424,7 +1422,7 @@ pub fn start_workspace_session(
     ship_dir: &Path,
     branch: &str,
     goal: Option<String>,
-    mode_id: Option<String>,
+    agent_id: Option<String>,
     primary_provider: Option<String>,
 ) -> Result<WorkspaceSession> {
     let branch = ensure_branch_key(branch)?;
@@ -1435,8 +1433,8 @@ pub fn start_workspace_session(
         workspace = activate_workspace(ship_dir, branch)?;
     }
 
-    if let Some(mode_id) = mode_id.as_deref() {
-        workspace = set_workspace_active_mode(ship_dir, branch, Some(mode_id))?;
+    if let Some(agent_id) = agent_id.as_deref() {
+        workspace = set_workspace_active_agent(ship_dir, branch, Some(agent_id))?;
     }
 
     if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
@@ -1448,10 +1446,10 @@ pub fn start_workspace_session(
         return Ok(existing);
     }
 
-    let mode_id = mode_id
-        .or(workspace.active_mode.clone())
+    let agent_id = agent_id
+        .or(workspace.active_agent.clone())
         .and_then(|value| normalize_optional_text(Some(value)));
-    let providers = resolve_session_providers(ship_dir, &workspace, mode_id.as_deref())?;
+    let providers = resolve_session_providers(ship_dir, &workspace, agent_id.as_deref())?;
     let primary_provider = if let Some(requested_provider) = primary_provider {
         let normalized = normalize_provider_ref(&requested_provider)
             .ok_or_else(|| anyhow!("Session provider cannot be empty"))?;
@@ -1471,7 +1469,7 @@ pub fn start_workspace_session(
             .ok_or_else(|| anyhow!("No providers resolved for workspace '{}'", workspace.branch))?
     };
 
-    compile_workspace_context(ship_dir, &mut workspace, mode_id.as_deref())?;
+    compile_workspace_context(ship_dir, &mut workspace, agent_id.as_deref())?;
 
     let now = Utc::now();
     let session = WorkspaceSessionDb {
@@ -1481,7 +1479,7 @@ pub fn start_workspace_session(
         status: WorkspaceSessionStatus::Active.to_string(),
         started_at: now.to_rfc3339(),
         ended_at: None,
-        mode_id,
+        agent_id,
         primary_provider: Some(primary_provider),
         goal: normalize_optional_text(goal),
         summary: None,
@@ -1501,8 +1499,8 @@ pub fn start_workspace_session(
     if let Some(provider) = started.primary_provider.as_deref() {
         details.push(format!("provider={provider}"));
     }
-    if let Some(mode_id) = started.mode_id.as_deref() {
-        details.push(format!("mode={mode_id}"));
+    if let Some(agent_id) = started.agent_id.as_deref() {
+        details.push(format!("agent={agent_id}"));
     }
     if let Some(goal) = started.goal.as_deref() {
         details.push(format!("goal={goal}"));
@@ -1592,7 +1590,6 @@ pub fn end_workspace_session(
 }
 
 /// Create or update a workspace record without requiring a git checkout.
-
 /// This is the runtime-native entrypoint for workspace lifecycle management.
 pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Result<Workspace> {
     let branch = ensure_branch_key(&request.branch)?.to_string();
@@ -1612,8 +1609,8 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     if let Some(target_id) = request.target_id {
         workspace.target_id = Some(target_id);
     }
-    if let Some(active_mode) = request.active_mode {
-        workspace.active_mode = Some(validate_mode_exists(ship_dir, &active_mode)?);
+    if let Some(active_agent) = request.active_agent {
+        workspace.active_agent = Some(validate_mode_exists(ship_dir, &active_agent)?);
     }
     if let Some(providers) = request.providers {
         workspace.providers = providers;
@@ -1695,8 +1692,8 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     if let Some(target_id) = workspace.target_id.as_deref() {
         details.push(format!("target={target_id}"));
     }
-    if let Some(mode_id) = workspace.active_mode.as_deref() {
-        details.push(format!("mode={mode_id}"));
+    if let Some(agent_id) = workspace.active_agent.as_deref() {
+        details.push(format!("agent={agent_id}"));
     }
     if !workspace.mcp_servers.is_empty() {
         details.push(format!("mcp={}", workspace.mcp_servers.len()));
@@ -1780,8 +1777,8 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     workspace.last_activated_at = Some(now);
 
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
-    let active_mode = workspace.active_mode.clone();
-    compile_workspace_context(ship_dir, &mut workspace, active_mode.as_deref())?;
+    let active_agent = workspace.active_agent.clone();
+    compile_workspace_context(ship_dir, &mut workspace, active_agent.as_deref())?;
     append_event(
         ship_dir,
         "ship",
@@ -1797,7 +1794,7 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 }
 
 /// Set or clear workspace-level mode override for a branch workspace.
-pub fn set_workspace_active_mode(
+pub fn set_workspace_active_agent(
     ship_dir: &Path,
     branch: &str,
     mode_id: Option<&str>,
@@ -1806,14 +1803,14 @@ pub fn set_workspace_active_mode(
     let mut workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
 
-    workspace.active_mode = match mode_id {
+    workspace.active_agent = match mode_id {
         Some(mode) => Some(validate_mode_exists(ship_dir, mode)?),
         None => None,
     };
     workspace.resolved_at = Utc::now();
     if workspace.status == WorkspaceStatus::Active {
-        let active_mode = workspace.active_mode.clone();
-        compile_workspace_context(ship_dir, &mut workspace, active_mode.as_deref())?;
+        let active_agent = workspace.active_agent.clone();
+        compile_workspace_context(ship_dir, &mut workspace, active_agent.as_deref())?;
     } else {
         upsert_workspace(ship_dir, &workspace)?;
     }
@@ -2204,7 +2201,7 @@ mod tests {
                 status: WorkspaceSessionStatus::Ended.to_string(),
                 started_at: now.clone(),
                 ended_at: Some(now.clone()),
-                mode_id: None,
+                agent_id: None,
                 primary_provider: None,
                 goal: None,
                 summary: Some("done".to_string()),
@@ -2451,12 +2448,14 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
-        config.mcp_servers = vec![
-            stdio_server("github", "gh"),
-            stdio_server("linear", "linear"),
-        ];
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            mcp_servers: vec![
+                stdio_server("github", "gh"),
+                stdio_server("linear", "linear"),
+            ],
+            ..Default::default()
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         crate::skill::create_skill(&ship_dir, "selected-skill", "Selected", "selected content")?;
@@ -2712,7 +2711,7 @@ mod tests {
     }
 
     #[test]
-    fn create_workspace_rejects_unknown_active_mode() -> Result<()> {
+    fn create_workspace_rejects_unknown_active_agent() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
@@ -2720,28 +2719,30 @@ mod tests {
             &ship_dir,
             CreateWorkspaceRequest {
                 branch: "feature/no-mode".to_string(),
-                active_mode: Some("ghost".to_string()),
+                active_agent: Some("ghost".to_string()),
                 ..Default::default()
             },
         )
-        .expect_err("expected invalid mode to be rejected");
+        .expect_err("expected invalid agent to be rejected");
 
         assert!(err.to_string().contains("Mode 'ghost' not found"));
         Ok(())
     }
 
     #[test]
-    fn set_workspace_active_mode_updates_and_clears_override() -> Result<()> {
+    fn set_workspace_active_agent_updates_and_clears_override() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.modes = vec![crate::config::ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            target_agents: vec!["codex".to_string()],
+        let config = crate::config::ProjectConfig {
+            modes: vec![crate::config::AgentProfile {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                target_agents: vec!["codex".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         create_workspace(
@@ -2754,15 +2755,15 @@ mod tests {
         )?;
 
         let updated =
-            set_workspace_active_mode(&ship_dir, "feature/mode-override", Some("planning"))?;
-        assert_eq!(updated.active_mode.as_deref(), Some("planning"));
+            set_workspace_active_agent(&ship_dir, "feature/mode-override", Some("planning"))?;
+        assert_eq!(updated.active_agent.as_deref(), Some("planning"));
         assert!(updated.config_generation >= 1);
         assert!(updated.compiled_at.is_some());
         assert!(updated.compile_error.is_none());
         assert!(tmp.path().join(".codex").join("config.toml").exists());
 
-        let cleared = set_workspace_active_mode(&ship_dir, "feature/mode-override", None)?;
-        assert!(cleared.active_mode.is_none());
+        let cleared = set_workspace_active_agent(&ship_dir, "feature/mode-override", None)?;
+        assert!(cleared.active_agent.is_none());
         assert!(cleared.config_generation > updated.config_generation);
         Ok(())
     }
@@ -2772,14 +2773,16 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
-        config.modes = vec![crate::config::ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            target_agents: vec!["gemini".to_string()],
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            modes: vec![crate::config::AgentProfile {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                target_agents: vec!["gemini".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         create_workspace(
@@ -2787,7 +2790,7 @@ mod tests {
             CreateWorkspaceRequest {
                 branch: "feature/provider-matrix".to_string(),
                 providers: Some(vec!["codex".to_string()]),
-                active_mode: Some("planning".to_string()),
+                active_agent: Some("planning".to_string()),
                 ..Default::default()
             },
         )?;
@@ -2804,14 +2807,16 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
-        config.modes = vec![crate::config::ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            target_agents: vec!["codex".to_string()],
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            modes: vec![crate::config::AgentProfile {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                target_agents: vec!["codex".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         insert_feature_for_branch_with_agent(
@@ -2827,7 +2832,7 @@ mod tests {
             CreateWorkspaceRequest {
                 branch: "feature/provider-feature".to_string(),
                 feature_id: Some("feat-provider-feature".to_string()),
-                active_mode: Some("planning".to_string()),
+                active_agent: Some("planning".to_string()),
                 ..Default::default()
             },
         )?;
@@ -3018,8 +3023,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            ..Default::default()
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         create_workspace(
@@ -3050,7 +3057,7 @@ mod tests {
         updated_config.providers = vec!["codex".to_string()];
         crate::config::save_config(&updated_config, Some(ship_dir.clone()))?;
 
-        let _ = set_workspace_active_mode(&ship_dir, "feature/stale-session", None)?;
+        let _ = set_workspace_active_agent(&ship_dir, "feature/stale-session", None)?;
 
         let active = get_active_workspace_session(&ship_dir, "feature/stale-session")?
             .ok_or_else(|| anyhow::anyhow!("active session missing"))?;

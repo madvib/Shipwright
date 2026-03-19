@@ -20,7 +20,7 @@ mcp-framework = { path = "../../crates/core/mcp-framework" }
 async-trait = "0.1"
 compiler = { path = "../../crates/core/compiler" }
 runtime = { path = "../../crates/core/runtime" }
-ship-module-project = { path = "../../crates/modules/project" }
+ship-docs = { path = "../../crates/modules/project" }
 anyhow = "1.0"
 chrono = "0.4"
 axum = { version = "0.8", features = ["http1", "tokio"] }

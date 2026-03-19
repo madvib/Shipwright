@@ -19,7 +19,7 @@ use runtime::registry::{
 };
 
 use crate::compile::{CompileOptions, run_compile};
-use crate::profile::ShipLock;
+use crate::profile::WorkspaceState;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -43,10 +43,8 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
     // Parse as registry manifest (requires [module] section).
     let compiler_manifest = ShipManifest::from_file(&manifest_path)
         .with_context(|| {
-            format!(
-                "Failed to parse .ship/ship.toml as a registry manifest.\n\
-                 Ensure it has [module] name, version, and optionally [dependencies]."
-            )
+            "Failed to parse .ship/ship.toml as a registry manifest.\n\
+             Ensure it has [module] name, version, and optionally [dependencies]."
         })?;
 
     // Convert compiler manifest to registry stub types used by resolve_and_fetch.
@@ -62,12 +60,12 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
     // Compile: trigger the standard compile pipeline.
     // The resolved packages are in the cache but integrating them into the
     // compiler library pipeline is a TODO — we run the standard compile here.
-    let state = ShipLock::load(&ship_dir);
+    let state = WorkspaceState::load(&ship_dir);
     run_compile(CompileOptions {
         project_root,
         provider: None,
         dry_run: false,
-        active_mode: state.active_profile.as_deref(),
+        active_agent: state.active_profile.as_deref(),
     })
     .context("compiling after install")?;
 
@@ -106,35 +104,35 @@ fn compiler_to_registry_manifest(m: &ShipManifest) -> RegistryManifest {
 /// Detect configured providers from the project's ship.toml (best-effort).
 fn detect_providers_from_project(project_root: &Path) -> String {
     let path = project_root.join(".ship").join("ship.toml");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(val) = toml::from_str::<toml::Value>(&content) {
-            // Try [defaults].providers first
-            if let Some(providers) = val
-                .get("defaults")
-                .and_then(|d| d.get("providers"))
-                .and_then(|p| p.as_array())
-            {
-                let ids: Vec<&str> = providers
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect();
-                if !ids.is_empty() {
-                    return ids.join(", ");
-                }
+    if let Ok(content) = std::fs::read_to_string(&path)
+        && let Ok(val) = toml::from_str::<toml::Value>(&content)
+    {
+        // Try [defaults].providers first
+        if let Some(providers) = val
+            .get("defaults")
+            .and_then(|d| d.get("providers"))
+            .and_then(|p| p.as_array())
+        {
+            let ids: Vec<&str> = providers
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            if !ids.is_empty() {
+                return ids.join(", ");
             }
-            // Try [project].providers
-            if let Some(providers) = val
-                .get("project")
-                .and_then(|d| d.get("providers"))
-                .and_then(|p| p.as_array())
-            {
-                let ids: Vec<&str> = providers
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect();
-                if !ids.is_empty() {
-                    return ids.join(", ");
-                }
+        }
+        // Try [project].providers
+        if let Some(providers) = val
+            .get("project")
+            .and_then(|d| d.get("providers"))
+            .and_then(|p| p.as_array())
+        {
+            let ids: Vec<&str> = providers
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            if !ids.is_empty() {
+                return ids.join(", ");
             }
         }
     }

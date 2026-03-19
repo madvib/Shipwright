@@ -6,7 +6,7 @@ description = "Authentication, sessions, OAuth providers, middleware, user manag
 providers = ["claude"]
 
 [skills]
-refs = ["better-auth", "tanstack-start"]
+refs = ["github.com/better-auth/skills/better-auth"]
 
 [mcp]
 servers = ["ship"]

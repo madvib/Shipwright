@@ -51,7 +51,7 @@ fn s256_challenge(verifier: &str) -> String {
 fn parse_code_from_request(request: &str) -> Option<String> {
     let line = request.lines().next()?;
     let path = line.split_whitespace().nth(1)?;
-    let query = path.splitn(2, '?').nth(1)?;
+    let query = path.split_once('?')?.1;
     for pair in query.split('&') {
         let mut kv = pair.splitn(2, '=');
         if kv.next() == Some("code") {
@@ -88,75 +88,6 @@ fn exchange_code_for_token(code: &str, verifier: &str, port: u16) -> Result<Stri
         .and_then(|v| v.as_str())
         .map(String::from)
         .ok_or_else(|| anyhow::anyhow!("No token in auth response"))
-}
-
-/// Call POST /api/auth/refresh with the current Bearer token.
-/// Returns the new token string on success.
-pub fn refresh_token(token: &str) -> Result<String> {
-    let resp: String = ureq::post("https://getship.dev/api/auth/refresh")
-        .header("Authorization", &format!("Bearer {}", token))
-        .header("Content-Length", "0")
-        .send(&[][..])
-        .map_err(|e| anyhow::anyhow!("Refresh request failed: {}", e))?
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| anyhow::anyhow!("Failed to read refresh response: {e}"))?;
-
-    let parsed: serde_json::Value = serde_json::from_str(&resp)
-        .map_err(|_| anyhow::anyhow!("Invalid response from refresh endpoint"))?;
-
-    if let Some(err) = parsed.get("error").and_then(|v| v.as_str()) {
-        anyhow::bail!("{}", err);
-    }
-
-    parsed.get("token")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .ok_or_else(|| anyhow::anyhow!("No token in refresh response"))
-}
-
-/// Make an authenticated GET request. On 401, attempts one token refresh
-/// and retries. If refresh also fails, guides the user to re-login.
-pub fn authed_get(url: &str) -> Result<serde_json::Value> {
-    let mut creds = Credentials::load();
-    let token = creds.token()
-        .ok_or_else(|| anyhow::anyhow!("Not logged in. Run `ship login`."))?
-        .to_string();
-
-    let result = ureq::get(url)
-        .header("Authorization", &format!("Bearer {}", token))
-        .call();
-
-    match result {
-        Ok(mut resp) => {
-            let body = resp.body_mut().read_to_string()
-                .map_err(|e| anyhow::anyhow!("Failed to read response: {e}"))?;
-            Ok(serde_json::from_str(&body)
-                .map_err(|_| anyhow::anyhow!("Invalid JSON response"))?)
-        }
-        Err(ureq::Error::StatusCode(401)) => {
-            // Attempt refresh
-            match refresh_token(&token) {
-                Ok(new_token) => {
-                    creds.account = Some(CredentialsAccount { token: Some(new_token.clone()) });
-                    creds.save()?;
-                    let mut resp = ureq::get(url)
-                        .header("Authorization", &format!("Bearer {}", new_token))
-                        .call()
-                        .map_err(|e| anyhow::anyhow!("Request failed after refresh: {}", e))?;
-                    let body = resp.body_mut().read_to_string()
-                        .map_err(|e| anyhow::anyhow!("Failed to read response: {e}"))?;
-                    Ok(serde_json::from_str(&body)
-                        .map_err(|_| anyhow::anyhow!("Invalid JSON response"))?)
-                }
-                Err(_) => {
-                    eprintln!("Session expired. Run `ship login`.");
-                    anyhow::bail!("Session expired");
-                }
-            }
-        }
-        Err(e) => Err(anyhow::anyhow!("Request failed: {}", e)),
-    }
 }
 
 /// `ship login` — PKCE S256 OAuth flow.

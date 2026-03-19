@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use anyhow::Context;
-use sha2::Digest;
 
 /// Files excluded from content hashing.
 fn should_exclude(rel_path: &str) -> bool {

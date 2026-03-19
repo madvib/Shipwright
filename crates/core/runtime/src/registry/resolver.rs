@@ -96,10 +96,11 @@ pub fn resolve_version(
             let refs = list_remote_refs(&git_url)
                 .with_context(|| format!("listing refs for {package_path}"))?;
             let sha = refs.heads.get(branch).ok_or_else(|| {
+                let available: Vec<_> = refs.heads.keys().collect();
                 anyhow::anyhow!(
                     "branch {:?} not found for {package_path}; available: {:?}",
                     branch,
-                    refs.heads.keys().collect::<Vec<_>>()
+                    available
                 )
             })?;
             Ok(ResolvedVersion {
@@ -116,10 +117,10 @@ pub fn resolve_version(
             let mut candidates: Vec<(Version, String, String)> = Vec::new();
             for (tag, sha) in &refs.tags {
                 let normalized = normalize_version(tag);
-                if let Ok(version) = Version::parse(normalized) {
-                    if req.matches(&version) {
-                        candidates.push((version, tag.clone(), sha.clone()));
-                    }
+                if let Ok(version) = Version::parse(normalized)
+                    && req.matches(&version)
+                {
+                    candidates.push((version, tag.clone(), sha.clone()));
                 }
             }
 

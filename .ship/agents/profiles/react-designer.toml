@@ -6,7 +6,7 @@ description = "UI component work — shadcn/ui, @ship/primitives, Tailwind, acce
 providers = ["claude"]
 
 [skills]
-refs = ["tanstack-start", "tanstack-router", "web-perf"]
+refs = []
 
 [mcp]
 servers = ["ship", "shadcn"]

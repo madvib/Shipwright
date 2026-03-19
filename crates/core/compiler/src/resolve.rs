@@ -34,7 +34,7 @@ pub struct ResolvedConfig {
     pub rules: Vec<Rule>,
     pub permissions: Permissions,
     pub hooks: Vec<HookConfig>,
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     /// Plugin install intent declared by the active preset.
     /// Passed through unchanged from `ProjectLibrary::plugins`.
     pub plugins: PluginsManifest,
@@ -56,10 +56,31 @@ pub struct ResolvedConfig {
     /// Restrict the model picker to these model IDs.
     /// Claude: `availableModels` in `.claude/settings.json`.
     pub available_models: Vec<String>,
-    /// Codex sandbox mode: "full", "network-only", or "off".
-    /// Source: `[provider_settings.codex] sandbox` in preset TOML.
-    /// Emitted as `sandbox = "..."` in `.codex/config.toml`.
+    /// Codex sandbox mode — translated key/value before emit.
     pub codex_sandbox: Option<String>,
+    // ── Gemini provider settings ───────────────────────────────────────────────
+    pub gemini_default_approval_mode: Option<String>,
+    pub gemini_max_session_turns: Option<u32>,
+    pub gemini_disable_yolo_mode: Option<bool>,
+    pub gemini_disable_always_allow: Option<bool>,
+    pub gemini_tools_sandbox: Option<String>,
+    pub gemini_settings_extra: Option<serde_json::Value>,
+    // ── Codex provider settings ────────────────────────────────────────────────
+    pub codex_approval_policy: Option<String>,
+    pub codex_reasoning_effort: Option<String>,
+    pub codex_max_threads: Option<u32>,
+    pub codex_max_depth: Option<u32>,
+    pub codex_job_max_runtime_seconds: Option<u64>,
+    pub codex_shell_env_policy: Option<String>,
+    pub codex_notify: Option<serde_json::Value>,
+    pub codex_settings_extra: Option<serde_json::Value>,
+    // ── Cursor provider settings ───────────────────────────────────────────────
+    pub cursor_environment: Option<serde_json::Value>,
+    pub cursor_settings_extra: Option<serde_json::Value>,
+    // ── Claude provider settings ───────────────────────────────────────────────
+    pub claude_theme: Option<String>,
+    pub claude_auto_updates: Option<bool>,
+    pub claude_include_co_authored_by: Option<bool>,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -68,6 +89,7 @@ pub struct ResolvedConfig {
 /// 1. Project defaults (`ship.toml` types + `agents/` content)
 /// 2. Active mode filter (restricts servers/skills/rules)
 /// 3. Feature overrides (model, providers, additional server/skill filter)
+///
 /// A self-contained library of agent config assets loaded from the `agents/`
 /// directory. This is the primary input for the compiler in the new config model:
 /// ship.toml holds identity only; the library holds everything the compiler needs.
@@ -79,7 +101,7 @@ pub struct ProjectLibrary {
     pub modes: Vec<ModeConfig>,
     /// Active mode for this resolve (e.g. workspace override).
     #[serde(default)]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     /// MCP server definitions from `agents/mcp.toml`.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
@@ -114,9 +136,55 @@ pub struct ProjectLibrary {
     /// Restrict model picker to these IDs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub available_models: Vec<String>,
-    /// Codex sandbox mode: "full", "network-only", or "off".
+    /// Codex sandbox mode — translated key/value before emit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_sandbox: Option<String>,
+    // ── Model ─────────────────────────────────────────────────────────────────
+    /// Shared model override used by Gemini + Codex when no feature override present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    // ── Gemini provider settings ───────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_default_approval_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_max_session_turns: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_disable_yolo_mode: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_disable_always_allow: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_tools_sandbox: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_settings_extra: Option<serde_json::Value>,
+    // ── Codex provider settings ────────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_approval_policy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_max_threads: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_max_depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_job_max_runtime_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_shell_env_policy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_notify: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_settings_extra: Option<serde_json::Value>,
+    // ── Cursor provider settings ───────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_environment: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_settings_extra: Option<serde_json::Value>,
+    // ── Claude provider settings ───────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_theme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_auto_updates: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_include_co_authored_by: Option<bool>,
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -124,11 +192,11 @@ pub struct ProjectLibrary {
 pub fn resolve_library(
     library: &ProjectLibrary,
     feature: Option<&FeatureOverrides>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> ResolvedConfig {
     let config = ProjectConfig {
         modes: library.modes.clone(),
-        active_mode: library.active_mode.clone(),
+        active_agent: library.active_agent.clone(),
         mcp_servers: library.mcp_servers.clone(),
         ..Default::default()
     };
@@ -139,7 +207,7 @@ pub fn resolve_library(
         &library.permissions,
         &library.hooks,
         feature,
-        active_mode_override,
+        active_agent_override,
     );
     resolved.plugins = library.plugins.clone();
     resolved.claude_settings_extra = library.claude_settings_extra.clone();
@@ -148,6 +216,33 @@ pub fn resolve_library(
     resolved.env = library.env.clone();
     resolved.available_models = library.available_models.clone();
     resolved.codex_sandbox = library.codex_sandbox.clone();
+    // Phase 1A: model falls back to library.model when no feature/project override
+    if resolved.model.is_none() {
+        resolved.model = library.model.clone();
+    }
+    // Gemini settings
+    resolved.gemini_default_approval_mode = library.gemini_default_approval_mode.clone();
+    resolved.gemini_max_session_turns = library.gemini_max_session_turns;
+    resolved.gemini_disable_yolo_mode = library.gemini_disable_yolo_mode;
+    resolved.gemini_disable_always_allow = library.gemini_disable_always_allow;
+    resolved.gemini_tools_sandbox = library.gemini_tools_sandbox.clone();
+    resolved.gemini_settings_extra = library.gemini_settings_extra.clone();
+    // Codex settings
+    resolved.codex_approval_policy = library.codex_approval_policy.clone();
+    resolved.codex_reasoning_effort = library.codex_reasoning_effort.clone();
+    resolved.codex_max_threads = library.codex_max_threads;
+    resolved.codex_max_depth = library.codex_max_depth;
+    resolved.codex_job_max_runtime_seconds = library.codex_job_max_runtime_seconds;
+    resolved.codex_shell_env_policy = library.codex_shell_env_policy.clone();
+    resolved.codex_notify = library.codex_notify.clone();
+    resolved.codex_settings_extra = library.codex_settings_extra.clone();
+    // Cursor settings
+    resolved.cursor_environment = library.cursor_environment.clone();
+    resolved.cursor_settings_extra = library.cursor_settings_extra.clone();
+    // Claude settings
+    resolved.claude_theme = library.claude_theme.clone();
+    resolved.claude_auto_updates = library.claude_auto_updates;
+    resolved.claude_include_co_authored_by = library.claude_include_co_authored_by;
     resolved
 }
 
@@ -158,16 +253,16 @@ pub fn resolve(
     permissions: &Permissions,
     hooks: &[HookConfig],
     feature: Option<&FeatureOverrides>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> ResolvedConfig {
     // ── Active mode (resolved first — needed for provider target_agents) ──────
-    let override_mode = active_mode_override
+    let override_mode = active_agent_override
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .filter(|v| config.modes.iter().any(|m| m.id == *v))
         .map(str::to_string);
-    let active_mode = override_mode.or_else(|| config.active_mode.clone());
-    let mode = active_mode
+    let active_agent = override_mode.or_else(|| config.active_agent.clone());
+    let mode = active_agent
         .as_deref()
         .and_then(|id| config.modes.iter().find(|m| m.id == id));
 
@@ -178,7 +273,7 @@ pub fn resolve(
     // 2. Mode target_agents — when a mode is active and specifies target agents.
     // 3. Project-level providers.
     // 4. Default: ["claude"].
-    let feature_has_explicit = feature.map_or(false, |f| !f.providers.is_empty());
+    let feature_has_explicit = feature.is_some_and(|f| !f.providers.is_empty());
     let feature_providers = feature
         .filter(|f| !f.providers.is_empty())
         .map(|f| normalize_providers(&f.providers))
@@ -228,13 +323,13 @@ pub fn resolve(
 
     // ── Rules ─────────────────────────────────────────────────────────────────
     let mut resolved_rules = rules.to_vec();
-    if let Some(m) = mode {
-        if !m.rules.is_empty() {
-            let allowed: HashSet<String> =
-                m.rules.iter().map(|id| normalize_rule_id(id)).collect();
-            resolved_rules
-                .retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
-        }
+    if let Some(m) = mode
+        && !m.rules.is_empty()
+    {
+        let allowed: HashSet<String> =
+            m.rules.iter().map(|id| normalize_rule_id(id)).collect();
+        resolved_rules
+            .retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
     }
 
     ResolvedConfig {
@@ -247,7 +342,7 @@ pub fn resolve(
         rules: resolved_rules,
         permissions: permissions.clone(),
         hooks: hooks.to_vec(),
-        active_mode,
+        active_agent,
         plugins: PluginsManifest::default(),
         claude_settings_extra: None,
         agent_profiles: Vec::new(),
@@ -255,6 +350,25 @@ pub fn resolve(
         env: std::collections::HashMap::new(),
         available_models: Vec::new(),
         codex_sandbox: None,
+        gemini_default_approval_mode: None,
+        gemini_max_session_turns: None,
+        gemini_disable_yolo_mode: None,
+        gemini_disable_always_allow: None,
+        gemini_tools_sandbox: None,
+        gemini_settings_extra: None,
+        codex_approval_policy: None,
+        codex_reasoning_effort: None,
+        codex_max_threads: None,
+        codex_max_depth: None,
+        codex_job_max_runtime_seconds: None,
+        codex_shell_env_policy: None,
+        codex_notify: None,
+        codex_settings_extra: None,
+        cursor_environment: None,
+        cursor_settings_extra: None,
+        claude_theme: None,
+        claude_auto_updates: None,
+        claude_include_co_authored_by: None,
     }
 }
 
@@ -290,10 +404,10 @@ fn normalize_rule_id(id: &str) -> String {
 }
 
 fn apply_mode_server_filter(servers: &mut Vec<McpServerConfig>, mode: Option<&ModeConfig>) {
-    if let Some(m) = mode {
-        if !m.mcp_servers.is_empty() {
-            servers.retain(|s| m.mcp_servers.contains(&s.id));
-        }
+    if let Some(m) = mode
+        && !m.mcp_servers.is_empty()
+    {
+        servers.retain(|s| m.mcp_servers.contains(&s.id));
     }
 }
 
@@ -305,10 +419,10 @@ fn apply_feature_server_filter(servers: &mut Vec<McpServerConfig>, feature: &Fea
 }
 
 fn apply_mode_skill_filter(skills: &mut Vec<Skill>, mode: Option<&ModeConfig>) {
-    if let Some(m) = mode {
-        if !m.skills.is_empty() {
-            skills.retain(|s| m.skills.contains(&s.id));
-        }
+    if let Some(m) = mode
+        && !m.skills.is_empty()
+    {
+        skills.retain(|s| m.skills.contains(&s.id));
     }
 }
 
@@ -348,6 +462,13 @@ mod tests {
             url: None,
             disabled: false,
             timeout_secs: None,
+            codex_enabled_tools: vec![],
+            codex_disabled_tools: vec![],
+            gemini_trust: None,
+            gemini_include_tools: vec![],
+            gemini_exclude_tools: vec![],
+            gemini_timeout_ms: None,
+            cursor_env_file: None,
         }
     }
 
@@ -391,7 +512,7 @@ mod tests {
                 skills: vec!["alpha".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("alpha"), make_skill("beta")];
@@ -470,7 +591,7 @@ mod tests {
                 target_agents: vec!["cursor".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("cursor-mode".to_string()),
+            active_agent: Some("cursor-mode".to_string()),
             ..Default::default()
         };
         let resolved = resolve(&config, &[], &[], &Permissions::default(), &[], None, None);
@@ -486,7 +607,7 @@ mod tests {
                 target_agents: vec!["gemini".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("mode1".to_string()),
+            active_agent: Some("mode1".to_string()),
             ..Default::default()
         };
         let feature = FeatureOverrides {
@@ -516,7 +637,7 @@ mod tests {
                 rules: vec!["style".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("strict".to_string()),
+            active_agent: Some("strict".to_string()),
             ..Default::default()
         };
         let rules = vec![
@@ -649,7 +770,7 @@ mod tests {
                 rules: vec![],
                 ..Default::default()
             }],
-            active_mode: Some("open".to_string()),
+            active_agent: Some("open".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("x"), make_skill("y")];
@@ -669,7 +790,7 @@ mod tests {
                 skills: vec!["plan-skill".to_string()],
                 ..Default::default()
             }],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("plan-skill"), make_skill("other")];
@@ -683,7 +804,7 @@ mod tests {
             Some("nonexistent"),
         );
         // nonexistent mode override is discarded, falls back to project active_mode
-        assert_eq!(resolved.active_mode.as_deref(), Some("planning"));
+        assert_eq!(resolved.active_agent.as_deref(), Some("planning"));
     }
 
     // ── resolve_library passthrough fields ─────────────────────────────
@@ -757,13 +878,13 @@ mod tests {
                     ..Default::default()
                 },
             ],
-            active_mode: Some("planning".to_string()),
+            active_agent: Some("planning".to_string()),
             ..Default::default()
         };
         let skills = vec![make_skill("plan-skill"), make_skill("code-skill")];
 
         let planning = resolve(&config, &skills, &[], &Permissions::default(), &[], None, None);
-        assert_eq!(planning.active_mode.as_deref(), Some("planning"));
+        assert_eq!(planning.active_agent.as_deref(), Some("planning"));
 
         let code = resolve(
             &config,
@@ -774,7 +895,7 @@ mod tests {
             None,
             Some("code"),
         );
-        assert_eq!(code.active_mode.as_deref(), Some("code"));
+        assert_eq!(code.active_agent.as_deref(), Some("code"));
         assert_eq!(code.skills[0].id, "code-skill");
     }
 }

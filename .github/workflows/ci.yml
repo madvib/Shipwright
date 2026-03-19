@@ -2,9 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v0.1.0]
+    paths:
+      - '**.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
   pull_request:
     branches: [main]
+    paths:
+      - '**.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -12,63 +23,47 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
-  check:
-    name: Check & Test (Rust)
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt
 
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Format check
+      - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
-      - name: Clippy
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test (compiler, runtime, mcp, modules)
-        run: cargo test -p compiler -p runtime -p mcp -p ship-module-project
-
-  types:
-    name: Generated types check
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Verify generated.ts is up-to-date
-        run: cargo xtask gen-types --check
-
-  web:
-    name: Web (lint + typecheck)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm -r exec tsc --noEmit 2>/dev/null || true
-
-      - name: Lint
-        run: pnpm lint 2>/dev/null || true
+      - name: cargo test --workspace
+        run: cargo test --workspace

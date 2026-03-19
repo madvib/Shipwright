@@ -1,0 +1,69 @@
+name: Ship Smoke Test
+
+on:
+  push:
+    branches: [main, v0.1.0]
+    paths:
+      - '**.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ship-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SHIP_BIN: ${{ github.workspace }}/target/debug/ship
+
+jobs:
+  smoke:
+    name: CLI Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build ship binary
+        run: cargo build -p ship-studio-cli
+
+      - name: ship init --global — ensure ~/.ship/ exists for platform.db
+        run: "$SHIP_BIN" init --global
+
+      - name: ship init — scaffold .ship/ in temp dir
+        run: |
+          SMOKE_DIR=$(mktemp -d)
+          echo "SMOKE_DIR=$SMOKE_DIR" >> "$GITHUB_ENV"
+          cd "$SMOKE_DIR"
+          "$SHIP_BIN" init
+          test -f "$SMOKE_DIR/.ship/ship.toml" || { echo "ERROR: ship.toml not written"; exit 1; }
+
+      - name: Write fixture profile and rules
+        run: |
+          mkdir -p "$SMOKE_DIR/.ship/agents/profiles"
+          mkdir -p "$SMOKE_DIR/.ship/agents/rules"
+          cat > "$SMOKE_DIR/.ship/agents/profiles/web-lane.toml" <<'TOML'
+[profile]
+name = "Web Lane"
+id = "web-lane"
+providers = ["claude"]
+TOML
+          echo "Follow project conventions." > "$SMOKE_DIR/.ship/agents/rules/smoke.md"
+
+      - name: ship use — activate profile and verify CLAUDE.md
+        run: |
+          "$SHIP_BIN" use web-lane --path "$SMOKE_DIR"
+          test -f "$SMOKE_DIR/CLAUDE.md" || { echo "ERROR: CLAUDE.md not written by ship use"; exit 1; }
+          echo "Smoke passed — CLAUDE.md written."

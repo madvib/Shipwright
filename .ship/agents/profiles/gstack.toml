@@ -7,18 +7,18 @@ providers = ["claude"]
 
 [skills]
 refs = [
-  "gstack/qa",
-  "gstack/review",
-  "gstack/retro",
-  "gstack/design-review",
-  "gstack/design-consultation",
-  "gstack/plan-ceo-review",
-  "gstack/plan-eng-review",
-  "gstack/plan-design-review",
-  "gstack/qa-only",
-  "gstack/browse",
-  "gstack/document-release",
-  "gstack/ship",
+  "github.com/garrytan/gstack/qa",
+  "github.com/garrytan/gstack/review",
+  "github.com/garrytan/gstack/retro",
+  "github.com/garrytan/gstack/design-review",
+  "github.com/garrytan/gstack/design-consultation",
+  "github.com/garrytan/gstack/plan-ceo-review",
+  "github.com/garrytan/gstack/plan-eng-review",
+  "github.com/garrytan/gstack/plan-design-review",
+  "github.com/garrytan/gstack/qa-only",
+  "github.com/garrytan/gstack/browse",
+  "github.com/garrytan/gstack/document-release",
+  "github.com/garrytan/gstack/ship",
 ]
 
 [mcp]

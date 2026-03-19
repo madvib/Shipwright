@@ -5,6 +5,7 @@ mod cli;
 mod cloud;
 mod compile;
 mod config;
+mod dep_skills;
 mod diff;
 mod import;
 mod install;
@@ -13,15 +14,13 @@ mod loader;
 mod mcp;
 mod mode;
 mod paths;
-mod permissions;
 mod profile;
 mod skill;
-mod sync;
 mod validate;
 
 use anyhow::Result;
-use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands, SyncCommand};
-use std::path::{Path, PathBuf};
+use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, ProfileSyncCommands, SkillCommands};
+use std::path::PathBuf;
 
 fn main() -> Result<()> {
     use clap::Parser;
@@ -33,350 +32,102 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
     match command {
         None => run_status(None),
         Some(cmd) => match cmd {
-            Commands::Init { global, provider, force } => run_init(global, provider, force),
+            Commands::Init { global, provider, force: _ } => run_init(global, provider),
             Commands::Login  => auth::run_login(),
             Commands::Logout => auth::run_logout(),
             Commands::Whoami => auth::run_whoami(),
             Commands::Use { mode, path, compile: _ } => run_use(Some(&mode), path),
             Commands::Status { path } => run_status(path),
-            Commands::Modes { local, project, cloud } => run_modes(local, project, cloud),
-            Commands::Mode { action } => dispatch_mode(action),
+            Commands::AgentProfiles { local, project, cloud } => run_agent_profiles(local, project, cloud),
+            Commands::AgentProfile { action } => dispatch_agent_profile(action),
             Commands::Compile { provider, dry_run, watch, path } => {
                 run_compile_cmd(provider.as_deref(), dry_run, watch, path)
             }
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
-            Commands::Install { frozen } => {
-                let project_root = resolve_project_root(None)?;
-                install::run_install(&project_root, frozen)
-            }
-            Commands::Add { package } => {
-                let project_root = resolve_project_root(None)?;
-                add::run_add(&project_root, &package)
-            }
             Commands::Import { source } => import::run_import(&source),
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
             }
-            Commands::Sync { cmd } => dispatch_sync(cmd),
-            Commands::Server { .. } => {
-                stub("server", "Local server (port 7701) — coming soon")
-            }
-            Commands::Profile { action } => dispatch_profile(action),
-            Commands::Validate { profile, json, path } => {
-                let project_root = path.as_deref()
-                    .map(std::fs::canonicalize).transpose()?
-                    .unwrap_or_else(|| std::env::current_dir().unwrap());
-                validate::run_validate(profile.as_deref(), json, &project_root)
-            }
-            Commands::Diff { milestone } => diff::run(milestone.as_deref()),
-            Commands::Next { worktrees_dir } => job::next(worktrees_dir),
-            Commands::Retry { id, worktrees_dir } => job::retry(&id, worktrees_dir),
-            Commands::Gate { id, worktrees_dir } => job::gate(&id, worktrees_dir),
             Commands::Job { action } => dispatch_job(action),
-            Commands::Permissions { action } => dispatch_permissions(action),
-            Commands::Matrix { format, provider } => run_matrix(&format, provider.as_deref()),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
             Commands::Agent { action } => agent::dispatch_agent(action),
+            Commands::Install { frozen } => {
+                let root = std::env::current_dir()?;
+                install::run_install(&root, frozen)
+            }
+            Commands::Add { package } => {
+                let root = std::env::current_dir()?;
+                add::run_add(&root, &package)
+            }
+            Commands::Profile { action } => dispatch_profile_sync(action),
+            Commands::Validate { profile, json, path } => {
+                let root = path.as_deref()
+                    .map(std::fs::canonicalize).transpose()?
+                    .unwrap_or_else(|| std::env::current_dir().unwrap());
+                validate::run_validate(profile.as_deref(), json, &root)
+            }
+            Commands::Diff { milestone } => diff::run(milestone.as_deref()),
         },
     }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-fn run_init(global: bool, provider: Option<String>, force: bool) -> Result<()> {
+fn run_init(global: bool, provider: Option<String>) -> Result<()> {
     if global {
         paths::ensure_global_dirs()?;
         let cfg_path = paths::global_dir().join("config.toml");
-        if !cfg_path.exists() || force {
+        if !cfg_path.exists() {
             std::fs::write(&cfg_path, "# Ship Studio global configuration\n\n[identity]\nname = \"\"\n")?;
         }
         let readme = paths::global_dir().join("README.md");
-        if !readme.exists() || force {
+        if !readme.exists() {
             std::fs::write(&readme, "# Ship\n\nPersonal AI agent configuration. See https://getship.dev\n")?;
         }
         println!("✓ initialized global config at ~/.ship/");
         println!("  Edit ~/.ship/config.toml to set your identity");
     } else {
-        let cwd = std::env::current_dir()?;
-        init_project(&cwd, provider.as_deref(), force)?;
+        paths::ensure_project_dirs()?;
+        let ship_toml = paths::project_ship_toml();
+        if !ship_toml.exists() {
+            let provider_str = provider.as_deref().unwrap_or("claude");
+            std::fs::write(&ship_toml, format!(
+                "# Ship project configuration\n\n[project]\nproviders = [\"{provider_str}\"]\n"
+            ))?;
+        }
+        let gitignore = paths::project_dir().join(".gitignore");
+        if !gitignore.exists() {
+            std::fs::write(&gitignore,
+                "# Ship — compiled artifacts (regenerated by ship use)\n\
+                 /secrets/\nCLAUDE.md\nGEMINI.md\nAGENTS.md\n.mcp.json\n.codex/\n.gemini/\n.cursor/\n"
+            )?;
+        }
+        let readme = paths::project_dir().join("README.md");
+        if !readme.exists() {
+            std::fs::write(&readme,
+                "# Ship Configuration\n\nThis project uses [Ship](https://getship.dev) \
+                 to manage AI agent configuration.\n\n\
+                 Install the CLI: `curl -fsSL https://getship.dev/install | sh`\n\
+                 Then: `ship use <profile-id>` to activate.\n"
+            )?;
+        }
+        println!("✓ initialized .ship/ in current directory");
+        println!("  providers: {}", provider.as_deref().unwrap_or("claude"));
+        println!("\nNext steps:");
+        println!("  ship use <profile-id>   activate a profile (compiles immediately)");
+        println!("  ship compile            re-compile current profile");
     }
     Ok(())
 }
 
-/// Initialise a `.ship/` directory under `root`.
-/// Extracted for testability — callers can pass a temp dir as `root`.
-fn init_project(root: &std::path::Path, provider: Option<&str>, force: bool) -> Result<()> {
-    let ship_dir = root.join(".ship");
-    if ship_dir.exists() && !force {
-        println!(".ship/ already exists. Use --force to overwrite existing config.");
-        return Ok(());
-    }
-
-    let provider_str = provider.unwrap_or("claude");
-    let mut created: Vec<String> = Vec::new();
-
-    // Create directory structure
-    for dir in [
-        ship_dir.clone(),
-        ship_dir.join("modes"),
-        ship_dir.join("agents"),
-        ship_dir.join("agents").join("rules"),
-        ship_dir.join("agents").join("skills"),
-        ship_dir.join("agents").join("profiles"),
-        ship_dir.join("agents").join("presets"),
-    ] {
-        std::fs::create_dir_all(&dir)?;
-    }
-
-    // ship.toml
-    let ship_toml = ship_dir.join("ship.toml");
-    if !ship_toml.exists() || force {
-        std::fs::write(&ship_toml, format!(
-            "# Ship project configuration\n\n[defaults]\nprofile = \"default\"\nproviders = [\"{provider_str}\"]\n"
-        ))?;
-        created.push("ship.toml".to_string());
-    }
-
-    // .gitignore
-    let gitignore = ship_dir.join(".gitignore");
-    if !gitignore.exists() || force {
-        std::fs::write(&gitignore,
-            "# Ship — compiled artifacts (regenerated by ship use)\n\
-             /secrets/\nCLAUDE.md\nGEMINI.md\nAGENTS.md\n.mcp.json\n.codex/\n.gemini/\n.cursor/\n"
-        )?;
-        created.push(".gitignore".to_string());
-    }
-
-    // agents/profiles/default.toml
-    let default_profile = ship_dir.join("agents").join("profiles").join("default.toml");
-    if !default_profile.exists() || force {
-        std::fs::write(&default_profile, scaffold_default_profile(provider_str))?;
-        created.push("agents/profiles/default.toml".to_string());
-    }
-
-    // agents/permissions.toml
-    let permissions_path = ship_dir.join("agents").join("permissions.toml");
-    if !permissions_path.exists() || force {
-        std::fs::write(&permissions_path, scaffold_permissions_toml())?;
-        created.push("agents/permissions.toml".to_string());
-    }
-
-    // agents/mcp.toml
-    let mcp_path = ship_dir.join("agents").join("mcp.toml");
-    if !mcp_path.exists() || force {
-        std::fs::write(&mcp_path,
-            "# Ship MCP server definitions\n\
-             # Add servers with: ship mcp add <id> --url <url>\n\
-             # or: ship mcp add-stdio <id> <command> [args...]\n\
-             \n\
-             # [[servers]]\n\
-             # id = \"my-server\"\n\
-             # command = \"npx\"\n\
-             # args = [\"-y\", \"@mcp/my-server\"]\n"
-        )?;
-        created.push("agents/mcp.toml".to_string());
-    }
-
-    // README.md
-    let readme = ship_dir.join("README.md");
-    if !readme.exists() || force {
-        std::fs::write(&readme,
-            "# Ship Configuration\n\nThis project uses [Ship](https://getship.dev) \
-             to manage AI agent configuration.\n\n\
-             Install the CLI: `curl -fsSL https://getship.dev/install | sh`\n\
-             Then: `ship use default` to activate.\n"
-        )?;
-        created.push("README.md".to_string());
-    }
-
-    println!("✓ initialized .ship/ in {}", root.display());
-    for item in &created {
-        println!("  created: {}", item);
-    }
-    println!("\nNext steps:");
-    println!("  ship use default        activate the default profile");
-    println!("  ship use <profile-id>   activate a custom profile");
-    Ok(())
-}
-
-#[cfg(test)]
-mod init_tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    fn tmp() -> TempDir { TempDir::new().unwrap() }
-
-    #[test]
-    fn init_creates_required_structure() {
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-
-        let ship = dir.path().join(".ship");
-        assert!(ship.exists(), ".ship/ must exist");
-        assert!(ship.join("ship.toml").exists(), "ship.toml must exist");
-        assert!(ship.join(".gitignore").exists(), ".gitignore must exist");
-        assert!(ship.join("agents").join("profiles").join("default.toml").exists(),
-                "agents/profiles/default.toml must exist");
-        assert!(ship.join("agents").join("permissions.toml").exists(),
-                "agents/permissions.toml must exist");
-        assert!(ship.join("agents").join("mcp.toml").exists(),
-                "agents/mcp.toml must exist");
-        assert!(ship.join("agents").join("rules").is_dir(),
-                "agents/rules/ must be a directory");
-        assert!(ship.join("agents").join("skills").is_dir(),
-                "agents/skills/ must be a directory");
-    }
-
-    #[test]
-    fn init_default_profile_is_valid_toml() {
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-        let path = dir.path().join(".ship").join("agents").join("profiles").join("default.toml");
-        let content = std::fs::read_to_string(&path).unwrap();
-        let profile: crate::mode::Profile = toml::from_str(&content)
-            .expect("default.toml must parse as a valid Profile");
-        assert_eq!(profile.meta.id, "default");
-        assert_eq!(profile.meta.providers, vec!["claude"]);
-        assert_eq!(profile.permissions.preset.as_deref(), Some("ship-standard"));
-    }
-
-    #[test]
-    fn init_respects_provider_flag() {
-        let dir = tmp();
-        init_project(dir.path(), Some("gemini"), false).unwrap();
-        let path = dir.path().join(".ship").join("agents").join("profiles").join("default.toml");
-        let content = std::fs::read_to_string(&path).unwrap();
-        let profile: crate::mode::Profile = toml::from_str(&content).unwrap();
-        assert_eq!(profile.meta.providers, vec!["gemini"]);
-    }
-
-    #[test]
-    fn init_twice_without_force_is_noop() {
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-
-        // Overwrite the default profile with custom content
-        let profile_path = dir.path().join(".ship").join("agents").join("profiles").join("default.toml");
-        std::fs::write(&profile_path, "[profile]\nname=\"custom\"\nid=\"custom\"\n").unwrap();
-
-        // Second init without --force should not overwrite
-        init_project(dir.path(), None, false).unwrap();
-        let after = std::fs::read_to_string(&profile_path).unwrap();
-        assert!(after.contains("custom"), "second init must not overwrite existing files");
-    }
-
-    #[test]
-    fn init_force_overwrites_existing() {
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-
-        // Overwrite the default profile with custom content
-        let profile_path = dir.path().join(".ship").join("agents").join("profiles").join("default.toml");
-        std::fs::write(&profile_path, "[profile]\nname=\"custom\"\nid=\"custom\"\n").unwrap();
-
-        // --force must regenerate
-        init_project(dir.path(), None, true).unwrap();
-        let after = std::fs::read_to_string(&profile_path).unwrap();
-        assert!(after.contains("id = \"default\""), "--force must regenerate default.toml");
-    }
-
-    #[test]
-    fn permissions_toml_has_named_presets() {
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-        let path = dir.path().join(".ship").join("agents").join("permissions.toml");
-        let content = std::fs::read_to_string(&path).unwrap();
-        let val: toml::Value = toml::from_str(&content).unwrap();
-        assert!(val.get("ship-standard").is_some(), "ship-standard preset required");
-        assert!(val.get("ship-guarded").is_some(), "ship-guarded preset required");
-        assert!(val.get("ship-open").is_some(), "ship-open preset required");
-    }
-
-    #[test]
-    fn permissions_toml_preset_loadable_by_loader() {
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-        let agents_dir = dir.path().join(".ship").join("agents");
-        let preset = crate::loader::load_permission_preset(&agents_dir, "ship-standard");
-        assert!(preset.is_some(), "ship-standard preset must be loadable via loader");
-        let p = preset.unwrap();
-        assert!(p.default_mode.is_some(), "ship-standard must have default_mode");
-    }
-
-    #[test]
-    fn gitignore_does_not_contain_claude_md() {
-        // CLAUDE.md is a generated artifact — must be gitignored, never committed
-        let dir = tmp();
-        init_project(dir.path(), None, false).unwrap();
-        let gitignore = std::fs::read_to_string(
-            dir.path().join(".ship").join(".gitignore")
-        ).unwrap();
-        assert!(gitignore.contains("CLAUDE.md"), ".gitignore must list CLAUDE.md");
-    }
-}
-
-fn scaffold_default_profile(provider: &str) -> String {
-    format!(
-r#"[profile]
-name = "default"
-id = "default"
-version = "0.1.0"
-description = "Default Ship profile"
-providers = ["{provider}"]
-
-[skills]
-# Skill IDs to activate (empty = all installed skills).
-refs = []
-
-[mcp]
-# MCP server IDs to activate (empty = all configured servers).
-servers = []
-
-[permissions]
-preset = "ship-standard"
-# tools_deny = ["mcp__*__delete*"]
-# tools_ask = ["Bash(rm -rf*)"]
-# default_mode = "default"   # default | acceptEdits | plan | bypassPermissions
-
-[rules]
-# inline = """
-# Keep operations deterministic.
-# Run tests before marking work done.
-# """
-"#,
-        provider = provider,
-    )
-}
-
-fn scaffold_permissions_toml() -> &'static str {
-    r#"# Ship permission presets
-# Reference a preset in your profile: [permissions] preset = "ship-standard"
-
-[ship-standard]
-default_mode = "acceptEdits"
-tools_ask = ["Bash(rm -rf*)", "Bash(*--force*)"]
-tools_deny = ["Bash(git push --force*)"]
-
-[ship-guarded]
-default_mode = "default"
-tools_ask = ["Bash(rm -rf*)", "Bash(*deploy*)"]
-tools_deny = ["Bash(git push --force*)", "mcp__*__delete*", "mcp__*__drop*"]
-
-[ship-open]
-default_mode = "bypassPermissions"
-
-[ship-plan]
-default_mode = "plan"
-"#
-}
 
 // ── Use ───────────────────────────────────────────────────────────────────────
 
-/// Activate a profile: load → compile → install plugins → write ship.state.
-/// `profile_id = None` re-activates the current profile from ship.state.
+/// Activate a profile: load → compile → install plugins → write workspace state to platform.db.
+/// `profile_id = None` re-activates the current profile from platform.db.
 fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let project_root = path.as_deref()
         .map(std::fs::canonicalize)
@@ -387,7 +138,6 @@ fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
 
-    validate::run_validate(profile_id, false, &project_root)?;
     profile::activate_profile(profile_id, &project_root)
 }
 
@@ -400,13 +150,13 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
         .unwrap_or_else(|| std::env::current_dir().unwrap());
 
     let ship_dir = target.join(".ship");
-    let lock = profile::ShipLock::load(&ship_dir);
-    match lock.active_profile {
+    let state = profile::WorkspaceState::load(&ship_dir);
+    match state.active_profile {
         Some(ref p) => {
             println!("active profile: {}", p);
-            if let Some(ref at) = lock.compiled_at { println!("compiled: {}", at); }
-            if !lock.plugins.installed.is_empty() {
-                println!("plugins: {}", lock.plugins.installed.join(", "));
+            if let Some(ref at) = state.compiled_at { println!("compiled: {}", at); }
+            if !state.plugins_installed.is_empty() {
+                println!("plugins: {}", state.plugins_installed.join(", "));
             }
         }
         None => {
@@ -417,30 +167,30 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-// ── Modes / Profiles ──────────────────────────────────────────────────────────
+// ── Agent profiles list ───────────────────────────────────────────────────────
 
-fn run_modes(local: bool, project: bool, cloud: bool) -> Result<()> {
+fn run_agent_profiles(local: bool, project: bool, cloud: bool) -> Result<()> {
     if cloud {
         println!("Cloud profiles require a Ship account. Run: ship login");
         return Ok(());
     }
-    let modes = paths::list_mode_ids(local, project);
-    if modes.is_empty() {
-        println!("No profiles found.");
-        println!("Create one with: ship mode create <name>");
+    let profiles = paths::list_mode_ids(local, project);
+    if profiles.is_empty() {
+        println!("No agent profiles found.");
+        println!("Create one with: ship agent-profile create <name>");
     } else {
-        for (id, scope) in &modes {
+        for (id, scope) in &profiles {
             println!("  {} [{}]", id, scope);
         }
     }
     Ok(())
 }
 
-// ── Mode subcommands ──────────────────────────────────────────────────────────
+// ── Agent profile subcommands ─────────────────────────────────────────────────
 
-fn dispatch_mode(action: ModeCommands) -> Result<()> {
+fn dispatch_agent_profile(action: AgentProfileCommands) -> Result<()> {
     match action {
-        ModeCommands::Create { name, global } => {
+        AgentProfileCommands::Create { name, global } => {
             let dir = if global { paths::global_modes_dir() } else { paths::project_presets_dir() };
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!("{}.toml", name));
@@ -450,19 +200,19 @@ fn dispatch_mode(action: ModeCommands) -> Result<()> {
             std::fs::write(&path, mode::Profile::scaffold(&name))?;
             println!("✓ created profile '{}' at {}", name, path.display());
         }
-        ModeCommands::Edit { name, editor } => {
+        AgentProfileCommands::Edit { name, editor } => {
             let path = profile::find_profile_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             let editor = editor.or_else(|| std::env::var("EDITOR").ok()).unwrap_or_else(|| "vi".to_string());
             std::process::Command::new(&editor).arg(&path).status()?;
         }
-        ModeCommands::Delete { name } => {
+        AgentProfileCommands::Delete { name } => {
             let path = profile::find_profile_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             std::fs::remove_file(&path)?;
             println!("✓ deleted profile '{}'", name);
         }
-        ModeCommands::Clone { source, target } => {
+        AgentProfileCommands::Clone { source, target } => {
             let cwd = std::env::current_dir()?;
             let src_path = profile::find_profile_file(&source, &cwd)
                 .ok_or_else(|| anyhow::anyhow!("Source profile '{}' not found", source))?;
@@ -475,9 +225,6 @@ fn dispatch_mode(action: ModeCommands) -> Result<()> {
                 .replace(&format!("name = \"{}\"", source), &format!("name = \"{}\"", target));
             std::fs::write(&dst_path, content)?;
             println!("✓ cloned '{}' → '{}'", source, target);
-        }
-        ModeCommands::Publish { name: _ } => {
-            stub("mode publish", "Publishing requires a Ship account. Run: ship login")?;
         }
     }
     Ok(())
@@ -494,40 +241,16 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
 
-    let lock = profile::ShipLock::load(&project_root.join(".ship"));
-    validate::run_validate(lock.active_profile.as_deref(), false, &project_root)?;
+    let state = profile::WorkspaceState::load(&project_root.join(".ship"));
     compile::run_compile(compile::CompileOptions {
         project_root: &project_root,
         provider,
         dry_run,
-        active_mode: lock.active_profile.as_deref(),
+        active_agent: state.active_profile.as_deref(),
     })?;
 
     if watch { println!("--watch not yet implemented. Run compile manually after changes."); }
     Ok(())
-}
-
-// ── Profile subcommands ───────────────────────────────────────────────────────
-
-fn dispatch_profile(action: ProfileSyncCommands) -> Result<()> {
-    let project_root = std::env::current_dir()?;
-    match action {
-        ProfileSyncCommands::Push => cloud::push_profiles(&project_root),
-        ProfileSyncCommands::Pull { name, force } => {
-            cloud::pull_profiles(name.as_deref(), force, &project_root)
-        }
-    }
-}
-
-// ── Sync subcommands ──────────────────────────────────────────────────────────
-
-fn dispatch_sync(cmd: Option<SyncCommand>) -> Result<()> {
-    let project_root = std::env::current_dir()?;
-    match cmd {
-        None => sync::run_sync_status(&project_root),
-        Some(SyncCommand::Push) => sync::run_sync_push(&project_root),
-        Some(SyncCommand::Pull { force }) => sync::run_sync_pull(force, &project_root),
-    }
 }
 
 // ── Job subcommands ───────────────────────────────────────────────────────────
@@ -541,7 +264,7 @@ fn dispatch_job(action: JobCommands) -> Result<()> {
             job::list(status.as_deref(), branch.as_deref(), milestone.as_deref())
         }
         JobCommands::Update { id, status } => job::update(&id, &status),
-        JobCommands::Done { id } => job::done(&id),
+        JobCommands::Done { id } => job::update(&id, "complete"),
     }
 }
 
@@ -553,9 +276,6 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
         SkillCommands::Create { id, name, description } => skill::create(&id, name.as_deref(), description.as_deref()),
         SkillCommands::Remove { id, global } => skill::remove(&id, global),
         SkillCommands::Add { source, skill, global } => skill::add(&source, skill.as_deref(), global),
-        SkillCommands::Update => stub("skill update", "Registry updates — coming soon"),
-        SkillCommands::Validate { .. } => stub("skill validate", "Spec validation — coming soon"),
-        SkillCommands::Publish { .. } => stub("skill publish", "Publishing requires a Ship account. Run: ship login"),
     }
 }
 
@@ -570,24 +290,6 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
         }
         McpCommands::AddStdio { id, command, args, name, .. } => mcp::add_stdio(&id, name, &command, args),
         McpCommands::Remove { id } => mcp::remove(&id),
-        McpCommands::Probe { id } => stub("mcp probe", &format!("Live probing for {:?} — requires local server", id)),
-    }
-}
-
-// ── Permissions subcommands ───────────────────────────────────────────────────
-
-fn dispatch_permissions(action: PermissionsCommands) -> Result<()> {
-    match action {
-        PermissionsCommands::Sync { path } => {
-            let project_root = path.as_deref()
-                .map(std::fs::canonicalize)
-                .transpose()?
-                .unwrap_or_else(|| std::env::current_dir().unwrap());
-            if !project_root.join(".ship").exists() {
-                anyhow::bail!(".ship/ not found. Run: ship init");
-            }
-            permissions::run_permissions_sync(&project_root)
-        }
     }
 }
 
@@ -640,48 +342,18 @@ fn run_migrate() -> Result<()> {
     Ok(())
 }
 
-// ── Matrix ────────────────────────────────────────────────────────────────
+// ── Profile sync subcommands ──────────────────────────────────────────────────
 
-fn run_matrix(format: &str, provider: Option<&str>) -> Result<()> {
-    let mut matrix = compiler::build_matrix();
-
-    if let Some(pid) = provider {
-        matrix.providers.retain(|p| p.provider_id == pid);
-        if matrix.providers.is_empty() {
-            anyhow::bail!("Unknown provider: {}. Options: claude, gemini, codex, cursor", pid);
+fn dispatch_profile_sync(action: ProfileSyncCommands) -> Result<()> {
+    match action {
+        ProfileSyncCommands::Push => {
+            let root = std::env::current_dir()?;
+            cloud::push_profiles(&root)
+        }
+        ProfileSyncCommands::Pull { name, force } => {
+            let root = std::env::current_dir()?;
+            cloud::pull_profiles(name.as_deref(), force, &root)
         }
     }
-
-    match format {
-        "json" => {
-            let json = serde_json::to_string_pretty(&matrix)?;
-            println!("{}", json);
-        }
-        "diff" => {
-            print!("{}", compiler::render_diffable(&matrix));
-        }
-        _ => {
-            print!("{}", compiler::render_text(&matrix));
-        }
-    }
-
-    Ok(())
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn resolve_project_root(path: Option<&Path>) -> Result<PathBuf> {
-    let root = match path {
-        Some(p) => std::fs::canonicalize(p)?,
-        None => std::env::current_dir()?,
-    };
-    if !root.join(".ship").exists() {
-        anyhow::bail!(".ship/ not found. Run: ship init");
-    }
-    Ok(root)
-}
-
-fn stub(command: &str, note: &str) -> Result<()> {
-    println!("[{}] {}", command, note);
-    Ok(())
-}

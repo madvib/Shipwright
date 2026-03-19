@@ -236,10 +236,10 @@ impl AgentDef {
                 .as_ref()
                 .map(|r| {
                     let mut v = r.refs.clone();
-                    if let Some(inline) = &r.inline {
-                        if !inline.trim().is_empty() {
-                            v.push(format!("inline:{}", inline.trim()));
-                        }
+                    if let Some(inline) = &r.inline
+                        && !inline.trim().is_empty()
+                    {
+                        v.push(format!("inline:{}", inline.trim()));
                     }
                     v
                 })

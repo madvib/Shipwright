@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use compiler::{CompileOutput, HookConfig, HookTrigger, PluginEntry, PluginsManifest, ProjectLibrary, compile, get_provider, resolve_library};
 use std::path::Path;
 
+use crate::dep_skills::resolve_dep_skills;
 use crate::loader::load_library;
 use crate::mode::{Profile, apply_profile_permissions};
 
@@ -17,7 +18,7 @@ pub struct CompileOptions<'a> {
     /// Print what would be written without touching the filesystem.
     pub dry_run: bool,
     /// Active mode id (already resolved from PathContext / ship.toml).
-    pub active_mode: Option<&'a str>,
+    pub active_agent: Option<&'a str>,
 }
 
 pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
@@ -28,13 +29,31 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         .context("failed to load .ship/agents/")?;
 
     // 2. Apply mode overrides (permissions, inline rules, provider list)
-    if let Some(mode_id) = opts.active_mode {
+    if let Some(mode_id) = opts.active_agent {
         apply_mode_to_library(&mut library, mode_id, opts.project_root)?;
     }
-    library.active_mode = opts.active_mode.map(str::to_string);
+    library.active_agent = opts.active_agent.map(str::to_string);
+
+    // 2b. Resolve dep skill refs from cached packages.
+    //     Collect all skill refs declared across agent profiles and mode configs,
+    //     resolve any github.com/ refs from ship.lock + cache, and merge into
+    //     library.skills before passing to the compiler. Local refs are skipped.
+    {
+        let all_skill_refs = collect_all_skill_refs(&library);
+        if !all_skill_refs.is_empty() {
+            let lock_path = opts.project_root.join(".ship").join("ship.lock");
+            let dep_skills = resolve_dep_skills(
+                &all_skill_refs,
+                &library.skills,
+                &lock_path,
+                None, // use default ~/.ship/cache/
+            ).context("resolving dep skills from cache")?;
+            library.skills.extend(dep_skills);
+        }
+    }
 
     // 3. Resolve (mode filtering, provider selection)
-    let resolved = resolve_library(&library, None, opts.active_mode);
+    let resolved = resolve_library(&library, None, opts.active_agent);
 
     // 4. Determine providers to compile for
     let providers: Vec<String> = match opts.provider {
@@ -64,11 +83,12 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     // 6. Write mcp__ship__* to global ~/.claude/settings.json when compiling for claude.
     //    The ship-mcp server is always injected by the compiler into every claude compile.
     //    This is a one-time global allow — avoids per-session approval prompts for ship MCP.
-    if !opts.dry_run && providers.contains(&"claude".to_string()) {
-        if let Err(e) = ensure_ship_mcp_globally_allowed() {
-            // Non-fatal — log warning but don't fail compile
-            eprintln!("warning: could not update global Claude settings: {e}");
-        }
+    if !opts.dry_run
+        && providers.contains(&"claude".to_string())
+        && let Err(e) = ensure_ship_mcp_globally_allowed()
+    {
+        // Non-fatal — log warning but don't fail compile
+        eprintln!("warning: could not update global Claude settings: {e}");
     }
 
     if !opts.dry_run {
@@ -102,8 +122,7 @@ fn ensure_ship_mcp_globally_allowed() -> Result<()> {
     let already_present = settings
         .pointer("/permissions/allow")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)))
-        .unwrap_or(false);
+        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)));
 
     if already_present {
         return Ok(());
@@ -188,6 +207,8 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
                 trigger: HookTrigger::Stop,
                 command: cmd.clone(),
                 matcher: None,
+                cursor_event: None,
+                gemini_event: None,
             });
         }
     }
@@ -199,6 +220,8 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
                 trigger: HookTrigger::SubagentStop,
                 command: cmd.clone(),
                 matcher: None,
+                cursor_event: None,
+                gemini_event: None,
             });
         }
     }
@@ -223,13 +246,13 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     if let Ok(entries) = std::fs::read_dir(&teams_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "md") {
-                if let (Some(name), Ok(content)) = (
+            if path.extension().is_some_and(|e| e == "md")
+                && let (Some(name), Ok(content)) = (
                     path.file_name().map(|n| n.to_string_lossy().to_string()),
                     std::fs::read_to_string(&path),
-                ) {
-                    agents.push((name, content));
-                }
+                )
+            {
+                agents.push((name, content));
             }
         }
     }
@@ -368,8 +391,10 @@ pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> R
 /// Dry-run: print what would be written.
 fn print_dry_run(provider_id: &str, output: &CompileOutput) {
     println!("[dry-run] provider: {}", provider_id);
-    if let Some(f) = get_provider(provider_id).and_then(|d| d.context_file.file_name()) {
-        if output.context_content.is_some() { println!("  would write {}", f); }
+    if let Some(f) = get_provider(provider_id).and_then(|d| d.context_file.file_name())
+        && output.context_content.is_some()
+    {
+        println!("  would write {}", f);
     }
     if let Some(ref p) = output.mcp_config_path { println!("  would write {}", p); }
     for path in output.skill_files.keys() { println!("  would write {}", path); }
@@ -413,6 +438,36 @@ fn ensure_parent(path: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── Dep skill ref collection ───────────────────────────────────────────────────
+
+/// Collect all skill refs declared in agent profiles and mode configs within
+/// `library`. Only dep refs (those starting with `github.com/`) will be resolved
+/// by the caller; local refs are included in the list but filtered in
+/// [`resolve_dep_skills`].
+fn collect_all_skill_refs(library: &ProjectLibrary) -> Vec<String> {
+    let mut refs: Vec<String> = Vec::new();
+
+    // From agent profiles: [skills] refs = [...]
+    for profile in &library.agent_profiles {
+        for r in &profile.skills.refs {
+            if !refs.contains(r) {
+                refs.push(r.clone());
+            }
+        }
+    }
+
+    // From mode configs: skills = [...] filter list
+    for mode in &library.modes {
+        for r in &mode.skills {
+            if !refs.contains(r) {
+                refs.push(r.clone());
+            }
+        }
+    }
+
+    refs
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -442,7 +497,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(content.contains("Use explicit types."));
@@ -454,7 +509,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -468,7 +523,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: true, active_mode: None,
+            dry_run: true, active_agent: None,
         }).unwrap();
         assert!(!tmp.path().join("CLAUDE.md").exists(), "dry-run must not write files");
         assert!(!tmp.path().join(".mcp.json").exists());
@@ -480,7 +535,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("gemini"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let path = tmp.path().join(".gemini/settings.json");
         assert!(path.exists(), ".gemini/settings.json must be written for gemini");
@@ -494,7 +549,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("gemini"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
         assert!(content.contains("Use explicit types."), "GEMINI.md must contain rules");
@@ -506,7 +561,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("codex"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("Use explicit types."), "AGENTS.md must contain rules");
@@ -518,7 +573,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("codex"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let path = tmp.path().join(".codex/config.toml");
         assert!(path.exists(), ".codex/config.toml must be written for codex");
@@ -533,7 +588,7 @@ args = ["-y", "@mcp/github"]
         setup_minimal_project(&tmp);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("cursor"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let mdc = tmp.path().join(".cursor/rules/style.mdc");
         assert!(mdc.exists(), ".cursor/rules/style.mdc must be written");
@@ -551,7 +606,7 @@ deny = ["Bash(rm -rf *)"]
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: None,
+            dry_run: false, active_agent: None,
         }).unwrap();
         let settings_path = tmp.path().join(".claude/settings.json");
         assert!(settings_path.exists());
@@ -572,7 +627,7 @@ preset = "ship-guarded"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("guarded"),
+            dry_run: false, active_agent: Some("guarded"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
@@ -594,7 +649,7 @@ inline = "Never delete files without explicit confirmation."
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("strict"),
+            dry_run: false, active_agent: Some("strict"),
         }).unwrap();
         let content = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(content.contains("Never delete files without explicit confirmation."));
@@ -614,7 +669,7 @@ stop = "ship permissions sync"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("commander"),
+            dry_run: false, active_agent: Some("commander"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
@@ -622,7 +677,10 @@ stop = "ship permissions sync"
         let stop_hooks = v["hooks"]["Stop"].as_array()
             .expect("Stop hooks array must be present");
         assert!(
-            stop_hooks.iter().any(|h| h["command"] == "ship permissions sync"),
+            stop_hooks.iter().any(|entry| {
+                entry["hooks"].as_array()
+                    .is_some_and(|hooks| hooks.iter().any(|h| h["command"] == "ship permissions sync"))
+            }),
             "stop hook command must be emitted"
         );
     }
@@ -645,7 +703,7 @@ preset = "ship-fast"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("fast"),
+            dry_run: false, active_agent: Some("fast"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
@@ -670,7 +728,7 @@ default_mode = "bypassPermissions"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_mode: Some("autonomous"),
+            dry_run: false, active_agent: Some("autonomous"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()

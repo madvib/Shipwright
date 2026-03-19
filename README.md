@@ -24,7 +24,7 @@ Your `.ship/` directory is the source. Provider files are generated artifacts �
 ## Quick start
 
 ```bash
-# Fresh machine — handles Rust, ship binary, Node, pnpm, plugins, worktrees
+# Fresh machine — handles Rust, ship binary, Node, pnpm, plugins
 bash scripts/setup.sh
 
 # In your project
@@ -32,7 +32,6 @@ ship init
 ship use default
 # → CLAUDE.md, .mcp.json, .claude/skills/ written
 # → Claude Code plugins declared in preset installed
-# → git post-checkout hook installed (branch switches auto-trigger ship use)
 ```
 
 ---
@@ -72,16 +71,38 @@ default_mode = "plan"
 
 ## Branch-aware config
 
-Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/state/<project-slug>/platform.db`).
+Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/state/<slug>/platform.db`).
 
 ```bash
-git checkout feat/payments    # post-checkout hook fires
+git checkout feature/payments    # post-checkout hook fires (planned)
 # → ship looks up stored preset for this branch
 # → runs ship use <preset> silently
 # → your agent stack switches without any manual steps
 ```
 
-No markdown files store this state — only `ship.toml` (project ID, committed) and the local DB (runtime state, never committed).
+The post-checkout hook is planned — `ship init` will install it automatically. Until then, run `ship use <preset>` manually after switching branches.
+
+---
+
+## Registry
+
+Ship uses a git-native package model. Skills and presets are published from git repos, not a central blob store:
+
+```toml
+# .ship/ship.toml
+[module]
+name = "github.com/owner/repo"
+version = "0.1.0"
+
+[dependencies]
+# "github.com/org/skill-pack" = "v1.0.0"
+
+[exports]
+skills = ["agents/skills/my-skill"]
+agents = ["agents/profiles/default.toml"]
+```
+
+`ship install` resolves dependencies, writes `ship.lock`, and fetches to `~/.ship/cache/`.
 
 ---
 
@@ -89,7 +110,7 @@ No markdown files store this state — only `ship.toml` (project ID, committed) 
 
 Ship participates in the [agentskills.io](https://agentskills.io) open standard. Skills emitted to `.agents/skills/` are automatically readable by all compliant providers — no per-marketplace submissions.
 
-The viral loop: anyone can paste a GitHub URL into Ship Studio → extract the repo's agent config → compile it for their stack. For project owners, `ship use` + a PR that adds `.ship/` = every collaborator gets your agent config on checkout.
+The viral loop: anyone can paste a GitHub URL into Ship Studio, extract the repo's agent config, compile it for their stack. For project owners, `ship use` + a PR that adds `.ship/` means every collaborator gets your agent config on checkout.
 
 ---
 
@@ -115,7 +136,8 @@ The compiler is WASM — runs in the browser (Studio) and on the server (CLI via
 ## Repo layout for contributors
 
 ```
-ARCHITECTURE.md  — platform principles, layer separation, naming conventions, full reference
+ARCHITECTURE.md  — platform principles, layer separation, naming conventions
+REFERENCE.md     — provider matrix, CLI commands, MCP tools, schemas
 scripts/setup.sh — fresh machine setup (run this first)
 ```
 
@@ -128,11 +150,12 @@ Early. Used to build itself. The compiler and Studio UI work end-to-end.
 **Working:**
 - WASM compiler: ProjectLibrary → CLAUDE.md / GEMINI.md / AGENTS.md / .mcp.json
 - Ship Studio: paste any GitHub URL → extract agent config → compile → download
-- ship-mcp: workspace, session, skill, note tools
+- ship-mcp: workspace, session, skill, note, job coordination tools
 
 **In progress:**
 - `ship init` + `ship use` (CLI)
-- Better Auth + GitHub OAuth + `/api/github/import` (server)
-- Studio import UI + auth (web)
+- Better Auth + GitHub OAuth + `/api/github/import`
+- Studio import UI + auth
 - Branch-preset tracking with post-checkout hook
 - Plugin lifecycle management via `ship use`
+- Registry: `ship install` dep resolution from git sources

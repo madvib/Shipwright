@@ -102,10 +102,8 @@ fn pull_with_token(
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Profile '{}' missing 'content' field", item_name))?;
 
-        if let Some(filter) = name {
-            if item_name != filter {
-                continue;
-            }
+        if name.is_some_and(|filter| item_name != filter) {
+            continue;
         }
 
         let dest = profiles_dir.join(format!("{}.toml", item_name));

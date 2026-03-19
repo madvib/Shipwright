@@ -84,6 +84,12 @@ pub struct HookConfig {
     #[serde(default)]
     pub matcher: Option<String>,
     pub command: String,
+    /// Raw Cursor event name; when set, bypasses trigger mapping and emits directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_event: Option<String>,
+    /// Raw Gemini event name; when set, bypasses trigger mapping and emits directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_event: Option<String>,
 }
 
 // ─── Modes ────────────────────────────────────────────────────────────────────
@@ -153,6 +159,30 @@ pub struct McpServerConfig {
     #[serde(default)]
     pub disabled: bool,
     pub timeout_secs: Option<u32>,
+    // ── Codex per-server fields ────────────────────────────────────────────────
+    /// Codex: tool names to enable for this server.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub codex_enabled_tools: Vec<String>,
+    /// Codex: tool names to disable for this server.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub codex_disabled_tools: Vec<String>,
+    // ── Gemini per-server fields ───────────────────────────────────────────────
+    /// Gemini: whether this server is trusted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_trust: Option<bool>,
+    /// Gemini: tool names to include from this server.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gemini_include_tools: Vec<String>,
+    /// Gemini: tool names to exclude from this server.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gemini_exclude_tools: Vec<String>,
+    /// Gemini: per-server timeout in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_timeout_ms: Option<u32>,
+    // ── Cursor per-server fields ───────────────────────────────────────────────
+    /// Cursor: path to an env file to load for this stdio server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_env_file: Option<String>,
 }
 
 fn default_scope() -> String {
@@ -201,7 +231,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub modes: Vec<ModeConfig>,
     #[serde(default)]
-    pub active_mode: Option<String>,
+    pub active_agent: Option<String>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default)]
@@ -225,7 +255,7 @@ impl Default for ProjectConfig {
             providers: Vec::new(),
             ai: None,
             modes: Vec::new(),
-            active_mode: None,
+            active_agent: None,
             mcp_servers: Vec::new(),
             hooks: Vec::new(),
             namespaces: Vec::new(),

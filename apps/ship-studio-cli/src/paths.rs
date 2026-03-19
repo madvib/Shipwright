@@ -13,7 +13,6 @@ pub fn global_modes_dir() -> PathBuf { global_dir().join("modes") }
 pub fn global_skills_dir() -> PathBuf { global_dir().join("skills") }
 pub fn global_mcp_dir() -> PathBuf { global_dir().join("mcp") }
 pub fn global_cache_dir() -> PathBuf { global_dir().join("cache") }
-pub fn global_mcp_registry() -> PathBuf { global_mcp_dir().join("registry.toml") }
 
 pub fn ensure_global_dirs() -> anyhow::Result<()> {
     for dir in [global_dir(), global_modes_dir(), global_skills_dir(),
@@ -34,8 +33,6 @@ pub fn agents_dir() -> PathBuf { project_dir().join("agents") }
 pub fn agents_rules_dir() -> PathBuf { agents_dir().join("rules") }
 pub fn agents_skills_dir() -> PathBuf { agents_dir().join("skills") }
 pub fn agents_mcp_path() -> PathBuf { agents_dir().join("mcp.toml") }
-pub fn agents_permissions_path() -> PathBuf { agents_dir().join("permissions.toml") }
-pub fn agents_hooks_path() -> PathBuf { agents_dir().join("hooks.toml") }
 pub fn project_ship_toml() -> PathBuf { project_dir().join("ship.toml") }
 
 /// Returns the absolute path to `.ship/` in the current directory, or errors.
@@ -57,33 +54,25 @@ pub fn ensure_project_dirs() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Find a mode file by ID: project first, then global.
-pub fn find_mode_file(id: &str) -> Option<PathBuf> {
-    let p = project_modes_dir().join(format!("{}.toml", id));
-    if p.exists() { return Some(p); }
-    let g = global_modes_dir().join(format!("{}.toml", id));
-    if g.exists() { return Some(g); }
-    None
-}
 
 /// Return (mode_id, scope) pairs from project + global dirs.
 pub fn list_mode_ids(local_only: bool, project_only: bool) -> Vec<(String, &'static str)> {
     let mut modes = Vec::new();
-    if !local_only {
-        if let Ok(entries) = fs::read_dir(project_modes_dir()) {
-            for e in entries.flatten() {
-                if e.path().extension().map_or(false, |x| x == "toml") {
-                    modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "project"));
-                }
+    if !local_only
+        && let Ok(entries) = fs::read_dir(project_modes_dir())
+    {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|x| x == "toml") {
+                modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "project"));
             }
         }
     }
-    if !project_only {
-        if let Ok(entries) = fs::read_dir(global_modes_dir()) {
-            for e in entries.flatten() {
-                if e.path().extension().map_or(false, |x| x == "toml") {
-                    modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "global"));
-                }
+    if !project_only
+        && let Ok(entries) = fs::read_dir(global_modes_dir())
+    {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|x| x == "toml") {
+                modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "global"));
             }
         }
     }

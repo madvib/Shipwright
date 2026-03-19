@@ -1,0 +1,90 @@
+{
+  "version": "1",
+  "updated": "2026-03-17",
+  "note": "Source of truth for architectural decisions. ARCHITECTURE.md is generated from this map. Add concerns here when ADRs are accepted.",
+
+  "concerns": {
+    "substrate-workflow-boundary": {
+      "adr": "Mtvq4QWL",
+      "summary": "Platform owns all data. Workflows configure how agents interact with it. Platform DDL is stable; workflow fields live in metadata JSON blobs.",
+      "surfaces": ["platform", "compiler"]
+    },
+    "workflow-schema-immutability": {
+      "adr": "RuLzGgxT",
+      "summary": "Workflow schema (doc kinds, field shapes) is immutable per project. Orchestration (profiles, routing, hooks) is hot-swappable above it.",
+      "surfaces": ["platform", "cli"]
+    },
+    "platform-doc-types": {
+      "adr": "zQXzxicL",
+      "summary": "Note and ADR are platform-level doc types. Workflows register additional kinds via workflow.toml. Schema validation is workflow-layer, not platform-layer.",
+      "surfaces": ["platform", "mcp"]
+    },
+    "architecture-map": {
+      "adr": "Jdz46698",
+      "summary": "This file is the source of truth. ARCHITECTURE.md is generated output. ADRs are the rich content; this map is the index.",
+      "surfaces": ["platform"]
+    },
+    "extension-model": {
+      "adr": "z6zzgehe",
+      "summary": "Platform exposes hook points in workflow.toml. Extensions register MCP tools. Environment-specific scripts live in opt-in skills, not platform code.",
+      "surfaces": ["platform", "mcp", "cli"]
+    },
+    "free-cloud-split": {
+      "adr": "eL2NkuhR",
+      "summary": "Local = free. Cloud/team = paid. Paywall is the trust boundary: when user data flows through Ship Cloud, that is the paid tier.",
+      "surfaces": ["infra", "studio"]
+    }
+  },
+
+  "surfaces": {
+    "platform": {
+      "target_id": "MeHin6Fy",
+      "path": "crates/core/runtime/",
+      "owns": ["sessions", "events", "jobs", "docs", "capabilities", "workspace"]
+    },
+    "compiler": {
+      "target_id": "ShYqMr8e",
+      "path": "crates/core/compiler/",
+      "owns": ["profile compilation", "provider output", "skill resolution", "permission merging"]
+    },
+    "cli": {
+      "target_id": "gbJkmuwY",
+      "path": "apps/ship-studio-cli/",
+      "owns": ["ship use", "ship init", "ship validate", "ship login", "transport layer"]
+    },
+    "studio": {
+      "target_id": "mXTZ4djg",
+      "path": "apps/web/",
+      "owns": ["profile builder", "canvas", "skill import", "provider matrix UI"]
+    },
+    "mcp": {
+      "target_id": "iu86rzHS",
+      "path": "apps/mcp/",
+      "owns": ["job queue tools", "session tools", "doc tools", "capability tools"]
+    },
+    "infra": {
+      "target_id": "zU6Leq6v",
+      "path": "apps/web/src/routes/api/",
+      "owns": ["auth", "profile sync", "cloud docs API", "analytics"]
+    }
+  },
+
+  "tracks": {
+    "substrate": {
+      "capabilities": ["fZpxcuFd", "szTZmwBc", "zy6LBy24", "VPFDejK5", "5vaRW7ya"],
+      "milestone": "Z3BrPHdD"
+    },
+    "compiler": {
+      "capabilities": ["eRZHk8Ss", "2ixMLJtm", "vsbeqaMU"],
+      "milestone": "Z3BrPHdD"
+    },
+    "studio": {
+      "capabilities": ["3JQsds9J", "mfJbBkpA", "fPKvbagk"],
+      "milestone": "Z3BrPHdD"
+    },
+    "cloud": {
+      "capabilities": ["ZeLa7jU3", "59ftTnDA", "KVRyAq9g"],
+      "milestone": "Z3BrPHdD"
+    }
+  }
+}

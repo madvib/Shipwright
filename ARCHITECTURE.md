@@ -2,9 +2,10 @@
 
 ## Context Firewall — Read Before Touching Code
 
-> **Status**: v0.2 — Current Intent
+> **Status**: v0.1.0 — Current Intent
 > **Rule**: If something you're building isn't in the Platform Layer, it belongs in a Workflow Definition.
 > **Updated**: 2026-03-19
+> **Reference tables** (schemas, provider matrix, CLI commands, MCP tools): see REFERENCE.md
 
 ## Canonical URLs — Do Not Invent These
 
@@ -69,6 +70,54 @@ The CLI and local SQLite database are the runtime. The platform (registry, analy
 │  Workflow     — definition schema (guest layer)     │
 └─────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Current State vs Target (v0.1.0 → v0.2.0)
+
+### Known Violations — Workflow Types in the Platform Layer
+
+The following SDLC/workflow types currently exist in platform code. They should not be there. Do not add new references to them in platform code. They are scheduled for extraction in 0.2.0.
+
+**`state_db/schema_ext.rs`** contains tables that are Shipflow document types, not platform primitives:
+- `feature`, `feature_todo`, `feature_criterion`
+- `release`, `release_breaking_change`
+- `feature_doc`, `feature_doc_revision`
+- `spec`, `adr`, `adr_option`
+
+**`WorkspaceDbRow`** carries `feature_id` and `updated_feature_ids` — workflow-layer foreign keys on a platform type.
+
+**`git_workspace` table** has `feature_id` and `release_id` columns — workflow-layer joins in a platform table.
+
+**`feature_capability` and `target_feature`** are workflow-layer join tables that have no place in the platform schema.
+
+**Rule:** Do not add new references to these types in platform code. Do not add new SDLC concepts (`feature_id`, `release_id`, `spec_id`, etc.) to any platform type. These will be extracted in 0.2.0.
+
+---
+
+### Data Access Rule
+
+Agents and tooling must access Ship data through the MCP server tools or the `ship` CLI. Direct SQLite3 queries against the platform database are prohibited. The schema is not a stable API — it evolves across releases.
+
+**Allowed:**
+- MCP tools (`list_jobs`, `list_workspaces`, `list_capabilities`, etc.)
+- `ship` CLI commands
+
+**Not allowed:**
+- `sqlite3` CLI against the platform DB
+- Python or any language's sqlite3 bindings against the platform DB
+- Any raw SQL outside of the runtime crate itself
+
+---
+
+### 0.2.0 Cleanup Plan
+
+The following changes will complete the platform/workflow separation:
+
+- `schema_ext.rs` becomes Shipflow's schema extension, loaded conditionally when Shipflow is the active workflow — not compiled into the platform unconditionally.
+- `workspace` loses hardcoded `feature_id`/`target_id` columns, replaced by a generic `workflow_context_json` field that workflows populate with their own keying.
+- `workflow.toml` introduced as the customization layer for the project management platform — the boundary file that separates what the platform owns from what a workflow package provides.
+- Shipflow declared as a workflow package that extends the platform via `workflow.toml`, making the guest/host relationship structurally enforced rather than just documented.
 
 ---
 
@@ -179,6 +228,68 @@ Each provider has a native plugin format. Ship should publish a plugin for each 
 | Codex | TBD | — |
 
 The plugin is how users get Ship behavior inside their existing provider UX. Build after CLI is stable.
+
+---
+
+## Registry — Git-Native Package Model
+
+Ship uses a git-native registry model. Dependencies are git repositories, not a central blob store. There is no R2, D1, or Durable Objects in the registry path.
+
+### ship.toml — Project Manifest
+
+Every `.ship/` directory contains a `ship.toml` with three sections:
+
+```toml
+[module]
+name = "github.com/owner/repo"
+version = "0.1.0"
+description = "..."
+license = "MIT"
+
+[dependencies]
+# Dep skill packages by git path. Resolved by `ship install`.
+# "github.com/org/pkg" = "v1.2.0"
+
+[exports]
+# Paths to first-party skills and agents published from this repo.
+skills = [
+  "agents/skills/my-skill",
+]
+agents = [
+  "agents/profiles/default.toml",
+]
+```
+
+### ship.lock — Dependency Lockfile
+
+`ship.lock` is committed to git. It pins every resolved dependency:
+
+```toml
+[deps."github.com/org/pkg"]
+path = "github.com/org/pkg"
+version = "v1.2.0"
+commit = "abc123def456..."
+hash = "sha256:..."
+```
+
+- `path` — canonical module path (matches `[dependencies]` key)
+- `version` — resolved semver tag
+- `commit` — exact git commit SHA (reproducible fetch)
+- `hash` — sha256 of fetched content tree (integrity check)
+
+Fetched package content is stored at `~/.ship/cache/objects/<sha256>/`.
+
+### Dep skill resolution
+
+A skill ref in an agent TOML prefixed with `github.com/` is a dep ref:
+- `github.com/owner/pkg/skills/name` → resolved via `ship.lock` → fetched to cache
+- Unprefixed refs resolve from `.ship/agents/skills/` (local scope)
+
+Cache miss during compile produces an actionable error: `dependency not in cache — run ship install`.
+
+### Post-checkout hook (planned, not yet implemented)
+
+`ship init` will install a git post-checkout hook that runs `ship use <stored-profile>` on branch switch. When implemented: `branch_config` table in platform.db stores the last profile per branch; the hook looks it up and re-emits provider files silently.
 
 ---
 
@@ -320,19 +431,24 @@ The loop above, sessions, documents, ADRs, idea queue, basic hooks. No embedded 
 
 ## ProjectConfig — Intended Separation
 
-`ProjectConfig` currently conflates platform config, preset config, and agent config. The intended separation:
+`ProjectConfig` currently conflates platform config, preset config, and agent config. The target separation mirrors the registry manifest format:
 
-**`ship.toml` (ProjectConfig) — platform config only:**
+**`ship.toml` — registry manifest (new format):**
 ```toml
-id = "..."
-name = "ship"
+[module]
+name = "github.com/owner/repo"
+version = "0.1.0"
 description = "..."
-providers = ["claude", "gemini"]
-active_preset = "default"
-workflow = "shipflow"        # references a WorkflowDefinition
+
+[dependencies]
+# dep skill packages
+
+[exports]
+skills = ["agents/skills/..."]
+agents = ["agents/profiles/..."]
 ```
 
-**Preset definitions** — separate, referenced by id, live in `.ship/presets/`
+**Preset definitions** — separate, referenced by id, live in `.ship/agents/presets/`
 
 **Agent layer config** — already broken out correctly as `AgentLayerConfig`, keep as-is
 
@@ -389,8 +505,14 @@ Types that **are** load-bearing and should be ported (with renames noted above):
 - DocumentVersion is append-only. Drift = diff(versions[-1], versions[-2]).
 - WorkflowDefinition is a guest on the platform. The platform does not
   know what a Feature or Release is.
+- Profile/preset files live in .ship/agents/presets/ (not modes/).
+  Use profiles/ or agents/ when referring to these paths in docs and code.
+- ship.toml uses [module]/[dependencies]/[exports] format. Legacy fields
+  (statuses, namespaces, active_mode) are transitional — do not add new ones.
+- Registry is git-native: no R2, D1, or Durable Objects in the registry path.
 - File length cap: 300 lines. If a file needs more, it needs review.
 - No shipping untested code for new modules. Existing code is exempt.
+- See REFERENCE.md for provider matrix, platform.db schema, MCP tools, CLI commands.
 ```
 
 ---

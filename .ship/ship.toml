@@ -1,65 +1,38 @@
-version = "1"
-id = "hRvMUz4p"
-name = "Ship"
-description = "AI native project management workspace"
+id = "bzwmeMdT"
 
-[[statuses]]
-id = "backlog"
-name = "Backlog"
-color = "gray"
+[module]
+name = "github.com/madvib/ship"
+version = "0.1.0"
+description = "Compiler and package manager for AI agent configuration"
+license = "MIT"
 
-[[statuses]]
-id = "blocked"
-name = "Blocked"
-color = "red"
+[dependencies]
+"github.com/garrytan/gstack" = "main"
+"github.com/better-auth/skills" = "main"
 
-[[statuses]]
-id = "in-progress"
-name = "In Progress"
-color = "blue"
-
-[[statuses]]
-id = "review"
-name = "Review"
-color = "yellow"
-
-[[statuses]]
-id = "done"
-name = "Done"
-color = "green"
-
-[[namespaces]]
-id = "project"
-path = "project"
-owner = "project"
-
-[[namespaces]]
-id = "workflow"
-path = "workflow"
-owner = "workflow"
-
-[[namespaces]]
-id = "agents"
-path = "agents"
-owner = "agents"
-
-[[namespaces]]
-id = "generated"
-path = "generated"
-owner = "runtime"
-
-[git]
-ignore = [
-    "events.ndjson",
-    "issues",
-    "notes",
-    "releases",
-    "features",
-    "specs",
-    "adrs",
-    "templates",
+[exports]
+skills = [
+    "agents/skills/commander",
+    "agents/skills/configure-agent",
+    "agents/skills/find-skills",
+    "agents/skills/ship-coordination",
+    "agents/skills/spawn-agent",
+    "agents/skills/write-adr",
 ]
-commit = [
-    "ship.toml",
-    "agents",
+agents = [
+    "agents/profiles/better-auth.toml",
+    "agents/profiles/cli-lane.toml",
+    "agents/profiles/cloudflare.toml",
+    "agents/profiles/commander.toml",
+    "agents/profiles/default.toml",
+    "agents/profiles/gstack.toml",
+    "agents/profiles/react-architect.toml",
+    "agents/profiles/react-designer.toml",
+    "agents/profiles/reviewer.toml",
+    "agents/profiles/rust-compiler.toml",
+    "agents/profiles/rust-lane.toml",
+    "agents/profiles/rust-runtime.toml",
+    "agents/profiles/server-lane.toml",
+    "agents/profiles/test-writer.toml",
+    "agents/profiles/web-lane.toml",
 ]

@@ -215,8 +215,8 @@ pub struct CreateWorkspaceToolRequest {
     pub feature_id: Option<String>,
     /// Optional linked target ID.
     pub target_id: Option<String>,
-    /// Optional workspace mode override.
-    pub mode_id: Option<String>,
+    /// Optional workspace agent profile override.
+    pub agent_id: Option<String>,
     /// Whether this workspace is a git worktree.
     pub is_worktree: Option<bool>,
     /// Worktree path (required when is_worktree=true).
@@ -229,8 +229,8 @@ pub struct CreateWorkspaceToolRequest {
 pub struct ActivateWorkspaceRequest {
     /// Workspace branch/id to activate.
     pub branch: String,
-    /// Optional workspace mode override to apply after activation.
-    pub mode_id: Option<String>,
+    /// Optional workspace agent profile override to apply after activation.
+    pub agent_id: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -245,8 +245,8 @@ pub struct StartSessionRequest {
     pub branch: Option<String>,
     /// Optional goal for this session.
     pub goal: Option<String>,
-    /// Optional mode override for this session/workspace.
-    pub mode_id: Option<String>,
+    /// Optional agent profile override for this session/workspace.
+    pub agent_id: Option<String>,
     /// Optional primary provider for this session.
     pub provider_id: Option<String>,
 }

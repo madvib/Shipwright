@@ -1,133 +1,146 @@
 //! Profile activation — `ship use [<profile-id>]`.
-//! Loads profile, compiles, installs plugins, writes ship.state.
-//!
-//! NOTE: ship.state (workspace state) is distinct from ship.lock (registry deps).
-//! ship.state contains: active_profile, compiled_at, plugins.
-//! ship.lock contains: version=1, [[package]] entries from the registry.
+//! Workspace state (active_profile, compiled_at, plugins_installed) is stored
+//! in platform.db kv_state (namespace='workspace'). ship.lock is reserved for
+//! the registry lockfile format.
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use crate::compile::{CompileOptions, run_compile};
 use crate::mode::Profile;
 
-// ── ship.state ────────────────────────────────────────────────────────────────
+const NS: &str = "workspace";
+const KEY_ACTIVE_PROFILE: &str = "active_profile";
+const KEY_COMPILED_AT: &str = "compiled_at";
+const KEY_PLUGINS_INSTALLED: &str = "plugins_installed";
 
-/// Workspace state written to `.ship/ship.state`.
-/// Tracks the active profile, last compile time, and installed plugins.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ShipLock {
+// ── WorkspaceState ────────────────────────────────────────────────────────────
+
+/// Workspace runtime state, persisted in platform.db kv_state (namespace='workspace').
+/// Previously stored in .ship/ship.lock (TOML format). Migration runs on first load.
+#[derive(Debug, Clone, Default)]
+pub struct WorkspaceState {
     pub active_profile: Option<String>,
-    /// Legacy field — migrated to `active_profile` on first load.
-    #[serde(default, skip_serializing)]
-    pub active_preset: Option<String>,
     pub compiled_at: Option<String>,
-    #[serde(default)]
-    pub plugins: LockPlugins,
+    pub plugins_installed: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LockPlugins {
-    #[serde(default)]
-    pub installed: Vec<String>,
-}
-
-impl ShipLock {
-    /// Load workspace state from `.ship/ship.state`.
-    ///
-    /// Migration: if `ship.state` is absent but `ship.lock` exists and contains
-    /// `active_profile`, the file is renamed to `ship.state` automatically.
+impl WorkspaceState {
+    /// Load from platform.db, running migration from old ship.lock if present.
     pub fn load(ship_dir: &Path) -> Self {
-        let state_path = ship_dir.join("ship.state");
-        let lock_path = ship_dir.join("ship.lock");
-
-        // Auto-migrate: ship.lock (workspace state) → ship.state
-        // Only migrate when ship.lock looks like workspace state (has active_profile key)
-        // and ship.state doesn't yet exist.
-        if !state_path.exists() && lock_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&lock_path) {
-                let is_workspace_state = content.contains("active_profile")
-                    || content.contains("active_preset");
-                if is_workspace_state {
-                    if let Ok(()) = std::fs::rename(&lock_path, &state_path) {
-                        println!("migrated .ship/ship.lock -> .ship/ship.state");
-                    }
-                }
-            }
+        let _ = migrate_ship_lock_if_present(ship_dir);
+        let mut state = WorkspaceState::default();
+        if let Err(e) = runtime::db::ensure_db(ship_dir) {
+            eprintln!("warning: could not open platform.db: {}", e);
+            return state;
         }
-
-        let mut lock: ShipLock = std::fs::read_to_string(&state_path)
-            .ok()
-            .and_then(|s| toml::from_str(&s).ok())
-            .unwrap_or_default();
-        // Migration: active_preset → active_profile
-        if lock.active_profile.is_none() {
-            if let Some(legacy) = lock.active_preset.take() {
-                lock.active_profile = Some(legacy);
-            }
+        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_ACTIVE_PROFILE) {
+            state.active_profile = v.as_str().map(str::to_string);
         }
-        lock
+        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_COMPILED_AT) {
+            state.compiled_at = v.as_str().map(str::to_string);
+        }
+        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_PLUGINS_INSTALLED)
+            && let Some(arr) = v.as_array()
+        {
+            state.plugins_installed = arr
+                .iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect();
+        }
+        state
     }
 
+    /// Persist workspace state to platform.db.
     pub fn save(&self, ship_dir: &Path) -> Result<()> {
-        let path = ship_dir.join("ship.state");
-        let content = toml::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
+        runtime::db::ensure_db(ship_dir).context("failed to open platform.db")?;
+        if let Some(ref p) = self.active_profile {
+            runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_PROFILE, &serde_json::json!(p))?;
+        }
+        if let Some(ref t) = self.compiled_at {
+            runtime::db::kv::set(ship_dir, NS, KEY_COMPILED_AT, &serde_json::json!(t))?;
+        }
+        runtime::db::kv::set(
+            ship_dir, NS, KEY_PLUGINS_INSTALLED, &serde_json::json!(self.plugins_installed),
+        )?;
         Ok(())
     }
 }
 
+// ── Migration ─────────────────────────────────────────────────────────────────
+
+/// If .ship/ship.lock is the old workspace-state TOML format (has active_profile/active_preset),
+/// migrate values into platform.db and delete the file. Idempotent.
+fn migrate_ship_lock_if_present(ship_dir: &Path) -> Result<()> {
+    let lock_path = ship_dir.join("ship.lock");
+    if !lock_path.exists() { return Ok(()); }
+    let content = std::fs::read_to_string(&lock_path)?;
+    let parsed: toml::Value = match toml::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+    // Only migrate if this is the old workspace-state format.
+    let has_profile = parsed.get("active_profile").and_then(|v| v.as_str()).is_some();
+    let has_preset  = parsed.get("active_preset").and_then(|v| v.as_str()).is_some();
+    if !has_profile && !has_preset { return Ok(()); }
+
+    runtime::db::ensure_db(ship_dir).context("opening platform.db for migration")?;
+
+    let active = parsed.get("active_profile").and_then(|v| v.as_str())
+        .or_else(|| parsed.get("active_preset").and_then(|v| v.as_str()));
+    if let Some(profile) = active {
+        runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_PROFILE, &serde_json::json!(profile))?;
+    }
+    if let Some(ts) = parsed.get("compiled_at").and_then(|v| v.as_str()) {
+        runtime::db::kv::set(ship_dir, NS, KEY_COMPILED_AT, &serde_json::json!(ts))?;
+    }
+    if let Some(arr) = parsed.get("plugins").and_then(|v| v.get("installed")).and_then(|v| v.as_array()) {
+        let ids: Vec<String> = arr.iter().filter_map(|x| x.as_str().map(str::to_string)).collect();
+        runtime::db::kv::set(ship_dir, NS, KEY_PLUGINS_INSTALLED, &serde_json::json!(ids))?;
+    }
+    std::fs::remove_file(&lock_path)
+        .with_context(|| format!("deleting migrated ship.lock at {}", lock_path.display()))?;
+    eprintln!("info: migrated workspace state from {} to platform.db", lock_path.display());
+    Ok(())
+}
+
 // ── Activation ────────────────────────────────────────────────────────────────
 
-/// Activate a profile: compile + install plugins + write ship.state.
-/// If `profile_id` is None, re-runs the active profile from ship.state.
+/// Activate a profile: compile + install plugins + persist workspace state to platform.db.
+/// If `profile_id` is None, re-runs the active profile from platform.db.
 pub fn activate_profile(profile_id: Option<&str>, project_root: &Path) -> Result<()> {
     let ship_dir = project_root.join(".ship");
-    let mut lock = ShipLock::load(&ship_dir);
-
-    // Resolve profile ID
+    let mut state = WorkspaceState::load(&ship_dir);
     let id = profile_id
         .map(str::to_string)
-        .or_else(|| lock.active_profile.clone())
-        .context("No profile specified and no active profile in ship.state. Run: ship use <profile-id>")?;
+        .or_else(|| state.active_profile.clone())
+        .context("No profile specified and no active profile set. Run: ship use <profile-id>")?;
 
-    // Locate profile file
     let profile_path = find_profile_file(&id, project_root)
         .with_context(|| format!("Profile '{}' not found in .ship/agents/profiles/", id))?;
-
     let profile = Profile::load(&profile_path)?;
 
-    // Compile for all providers
     run_compile(CompileOptions {
-        project_root,
-        provider: None,
-        dry_run: false,
-        active_mode: Some(&id),
+        project_root, provider: None, dry_run: false, active_agent: Some(&id),
     })?;
 
-    // Plugin lifecycle
     let now_plugins: Vec<String> = profile.plugins.install.clone();
-    let prev_plugins = lock.plugins.installed.clone();
+    let prev_plugins = state.plugins_installed.clone();
     run_plugin_lifecycle(&now_plugins, &prev_plugins, &profile.plugins.scope);
 
-    // Update ship.lock
-    lock.active_profile = Some(id.clone());
-    lock.compiled_at = Some(chrono::Utc::now().to_rfc3339());
-    lock.plugins.installed = now_plugins;
-    lock.save(&ship_dir)?;
-
+    state.active_profile = Some(id.clone());
+    state.compiled_at = Some(chrono::Utc::now().to_rfc3339());
+    state.plugins_installed = now_plugins;
+    state.save(&ship_dir)?;
     println!("✓ activated profile '{}'", id);
     Ok(())
 }
 
-/// Delta plugin installs/uninstalls via `claude plugin` CLI.
 fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
     for plugin in now {
         if !prev.contains(plugin) {
             let status = std::process::Command::new("claude")
-                .args(["plugin", "install", plugin, "--scope", scope])
-                .status();
+                .args(["plugin", "install", plugin, "--scope", scope]).status();
             match status {
                 Ok(s) if s.success() => println!("  + plugin {}", plugin),
                 Ok(_) => eprintln!("  warning: plugin install failed for {}", plugin),
@@ -138,8 +151,7 @@ fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
     for plugin in prev {
         if !now.contains(plugin) {
             let status = std::process::Command::new("claude")
-                .args(["plugin", "uninstall", plugin])
-                .status();
+                .args(["plugin", "uninstall", plugin]).status();
             match status {
                 Ok(s) if s.success() => println!("  - plugin {}", plugin),
                 _ => eprintln!("  warning: plugin uninstall failed for {}", plugin),
@@ -152,14 +164,12 @@ fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
 pub fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<PathBuf> {
     let ship = project_root.join(".ship");
     let file = format!("{}.toml", profile_id);
-
     let p = ship.join("agents").join("profiles").join(&file);
     if p.exists() { return Some(p); }
     let p_compat = ship.join("agents").join("presets").join(&file);
     if p_compat.exists() { return Some(p_compat); }
     let m = ship.join("modes").join(&file);
     if m.exists() { return Some(m); }
-
     let home = dirs::home_dir()?;
     let gp = home.join(".ship").join("agents").join("profiles").join(&file);
     if gp.exists() { return Some(gp); }
@@ -167,7 +177,6 @@ pub fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<PathBu
     if gp_compat.exists() { return Some(gp_compat); }
     let gm = home.join(".ship").join("modes").join(&file);
     if gm.exists() { return Some(gm); }
-
     None
 }
 
@@ -178,96 +187,94 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn write(dir: &Path, rel: &str, content: &str) {
+    fn write_file(dir: &Path, rel: &str, content: &str) {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, content).unwrap();
     }
 
-    #[test]
-    fn ship_state_roundtrip() {
-        let tmp = TempDir::new().unwrap();
+    fn setup_ship_dir(tmp: &TempDir) -> PathBuf {
         let ship_dir = tmp.path().join(".ship");
         std::fs::create_dir_all(&ship_dir).unwrap();
-        let mut lock = ShipLock::default();
-        lock.active_profile = Some("cli-lane".to_string());
-        lock.plugins.installed = vec!["superpowers@official".to_string()];
-        lock.save(&ship_dir).unwrap();
-        // Verify it wrote to ship.state not ship.lock
-        assert!(ship_dir.join("ship.state").exists());
-        assert!(!ship_dir.join("ship.lock").exists());
-        let loaded = ShipLock::load(&ship_dir);
+        std::fs::write(ship_dir.join("ship.toml"), "id = \"test-proj-id\"\nname = \"test\"\n").unwrap();
+        ship_dir
+    }
+
+    #[test]
+    fn workspace_state_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let ship_dir = setup_ship_dir(&tmp);
+        let mut state = WorkspaceState::default();
+        state.active_profile = Some("cli-lane".to_string());
+        state.compiled_at = Some("2026-01-01T00:00:00Z".to_string());
+        state.plugins_installed = vec!["superpowers@official".to_string()];
+        state.save(&ship_dir).unwrap();
+        let loaded = WorkspaceState::load(&ship_dir);
         assert_eq!(loaded.active_profile.as_deref(), Some("cli-lane"));
-        assert_eq!(loaded.plugins.installed, vec!["superpowers@official"]);
+        assert_eq!(loaded.compiled_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+        assert_eq!(loaded.plugins_installed, vec!["superpowers@official"]);
     }
 
     #[test]
-    fn ship_state_load_missing_returns_default() {
+    fn workspace_state_load_missing_returns_default() {
         let tmp = TempDir::new().unwrap();
-        let lock = ShipLock::load(tmp.path());
-        assert!(lock.active_profile.is_none());
-        assert!(lock.plugins.installed.is_empty());
+        let ship_dir = setup_ship_dir(&tmp);
+        let state = WorkspaceState::load(&ship_dir);
+        assert!(state.active_profile.is_none());
+        assert!(state.plugins_installed.is_empty());
     }
 
     #[test]
-    fn ship_state_migrates_active_preset_to_active_profile() {
+    fn migrate_ship_lock_active_profile() {
         let tmp = TempDir::new().unwrap();
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir).unwrap();
-        // Write old-format ship.state with active_preset
-        std::fs::write(
-            ship_dir.join("ship.state"),
-            "active_preset = \"cli-lane\"\n",
-        ).unwrap();
-        let loaded = ShipLock::load(&ship_dir);
-        assert_eq!(loaded.active_profile.as_deref(), Some("cli-lane"));
-    }
-
-    #[test]
-    fn ship_state_migrates_from_old_ship_lock_file() {
-        let tmp = TempDir::new().unwrap();
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir).unwrap();
-        // Write old ship.lock with workspace state content
+        let ship_dir = setup_ship_dir(&tmp);
         std::fs::write(
             ship_dir.join("ship.lock"),
-            "active_profile = \"my-profile\"\ncompiled_at = \"2026-01-01T00:00:00Z\"\n",
+            "active_profile = \"cli-lane\"\ncompiled_at = \"2026-01-01T00:00:00Z\"\n\
+             \n[plugins]\ninstalled = [\"superpowers@official\"]\n",
         ).unwrap();
-        // ship.state does not exist yet
-        assert!(!ship_dir.join("ship.state").exists());
+        let state = WorkspaceState::load(&ship_dir);
+        assert_eq!(state.active_profile.as_deref(), Some("cli-lane"));
+        assert_eq!(state.compiled_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+        assert_eq!(state.plugins_installed, vec!["superpowers@official"]);
+        assert!(!ship_dir.join("ship.lock").exists(), "ship.lock must be deleted after migration");
+    }
 
-        let loaded = ShipLock::load(&ship_dir);
-        assert_eq!(loaded.active_profile.as_deref(), Some("my-profile"));
-        // ship.lock should have been renamed to ship.state
-        assert!(ship_dir.join("ship.state").exists());
+    #[test]
+    fn migrate_ship_lock_active_preset_fallback() {
+        let tmp = TempDir::new().unwrap();
+        let ship_dir = setup_ship_dir(&tmp);
+        std::fs::write(ship_dir.join("ship.lock"), "active_preset = \"cli-lane\"\n").unwrap();
+        let state = WorkspaceState::load(&ship_dir);
+        assert_eq!(state.active_profile.as_deref(), Some("cli-lane"));
         assert!(!ship_dir.join("ship.lock").exists());
     }
 
     #[test]
-    fn ship_state_does_not_migrate_registry_ship_lock() {
+    fn migrate_ship_lock_is_idempotent() {
         let tmp = TempDir::new().unwrap();
-        let ship_dir = tmp.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir).unwrap();
-        // Write a registry ship.lock (no active_profile key)
-        std::fs::write(
-            ship_dir.join("ship.lock"),
-            "version = 1\n\n[[package]]\npath = \"github.com/a/b\"\nversion = \"v1.0.0\"\ncommit = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nhash = \"sha256:abc\"\n",
-        ).unwrap();
-        // ship.state does not exist yet
-        assert!(!ship_dir.join("ship.state").exists());
+        let ship_dir = setup_ship_dir(&tmp);
+        std::fs::write(ship_dir.join("ship.lock"), "active_profile = \"web-lane\"\n").unwrap();
+        let _ = WorkspaceState::load(&ship_dir); // first load: migrates and deletes
+        assert!(!ship_dir.join("ship.lock").exists());
+        let state = WorkspaceState::load(&ship_dir); // second load: reads from DB
+        assert_eq!(state.active_profile.as_deref(), Some("web-lane"));
+    }
 
-        let loaded = ShipLock::load(&ship_dir);
-        // Should be default (no profile) — ship.lock was not migrated
-        assert!(loaded.active_profile.is_none());
-        // Registry ship.lock should remain untouched
-        assert!(ship_dir.join("ship.lock").exists());
-        assert!(!ship_dir.join("ship.state").exists());
+    #[test]
+    fn registry_ship_lock_not_migrated() {
+        let tmp = TempDir::new().unwrap();
+        let ship_dir = setup_ship_dir(&tmp);
+        let registry_lock = "version = 1\n\n[[package]]\npath = \"github.com/owner/pkg\"\ncommit = \"abc\"\nhash = \"sha256:xyz\"\n";
+        std::fs::write(ship_dir.join("ship.lock"), registry_lock).unwrap();
+        let _ = WorkspaceState::load(&ship_dir);
+        assert!(ship_dir.join("ship.lock").exists(), "registry-format ship.lock must not be deleted");
     }
 
     #[test]
     fn find_profile_file_finds_new_location() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/test.toml", "[profile]\nname=\"Test\"\nid=\"test\"\n");
+        write_file(tmp.path(), ".ship/agents/profiles/test.toml", "[profile]\nname=\"Test\"\nid=\"test\"\n");
         let found = find_profile_file("test", tmp.path());
         assert!(found.is_some());
         assert!(found.unwrap().to_string_lossy().contains("agents/profiles"));
@@ -276,16 +283,15 @@ mod tests {
     #[test]
     fn find_profile_file_falls_back_to_modes() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/modes/legacy.toml", "[mode]\nname=\"Legacy\"\nid=\"legacy\"\n");
-        let found = find_profile_file("legacy", tmp.path());
-        assert!(found.is_some());
+        write_file(tmp.path(), ".ship/modes/legacy.toml", "[mode]\nname=\"Legacy\"\nid=\"legacy\"\n");
+        assert!(find_profile_file("legacy", tmp.path()).is_some());
     }
 
     #[test]
-    fn find_profile_file_prefers_presets_over_modes() {
+    fn find_profile_file_prefers_profiles_over_modes() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/both.toml", "[profile]\nname=\"New\"\nid=\"both\"\n");
-        write(tmp.path(), ".ship/modes/both.toml", "[mode]\nname=\"Old\"\nid=\"both\"\n");
+        write_file(tmp.path(), ".ship/agents/profiles/both.toml", "[profile]\nname=\"New\"\nid=\"both\"\n");
+        write_file(tmp.path(), ".ship/modes/both.toml", "[mode]\nname=\"Old\"\nid=\"both\"\n");
         let found = find_profile_file("both", tmp.path()).unwrap();
         assert!(found.to_string_lossy().contains("agents/profiles"));
     }

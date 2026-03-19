@@ -194,11 +194,12 @@ hash = "sha256:abc123"
 
     #[test]
     fn test_check_sync_in_sync() {
-        let mut manifest = ShipManifest::default();
-        manifest.dependencies.insert(
-            "github.com/owner/pkg".into(),
-            Dependency { version: "^1.0".into(), grant: vec![] },
-        );
+        let manifest = ShipManifest {
+            dependencies: [
+                ("github.com/owner/pkg".into(), Dependency { version: "^1.0".into(), grant: vec![] }),
+            ].into(),
+            ..Default::default()
+        };
         let lock = ShipLock {
             version: 1,
             package: vec![LockedPackage {
@@ -213,11 +214,12 @@ hash = "sha256:abc123"
 
     #[test]
     fn test_check_sync_added() {
-        let mut manifest = ShipManifest::default();
-        manifest.dependencies.insert(
-            "github.com/owner/new".into(),
-            Dependency { version: "^1.0".into(), grant: vec![] },
-        );
+        let manifest = ShipManifest {
+            dependencies: [
+                ("github.com/owner/new".into(), Dependency { version: "^1.0".into(), grant: vec![] }),
+            ].into(),
+            ..Default::default()
+        };
         let lock = ShipLock { version: 1, package: vec![] };
         let status = lock.check_sync(&manifest);
         assert!(!status.is_in_sync());

@@ -1,0 +1,186 @@
+{
+  "spec": "ship-cli-capabilities",
+  "version": "0.1",
+  "description": "CLI work required to reach v0.1.0 production readiness. First checkpoint: .ship/ contains only first-party skills. All jobs are sequenced by dependency order.",
+
+  "first_party_skills": [
+    "commander",
+    "configure-agent",
+    "find-skills",
+    "ship-coordination",
+    "spawn-agent",
+    "write-adr"
+  ],
+
+  "third_party_skills": [
+    "agents-sdk",
+    "better-auth",
+    "building-ai-agent-on-cloudflare",
+    "building-mcp-server-on-cloudflare",
+    "cloudflare",
+    "durable-objects",
+    "gstack",
+    "hono",
+    "tanstack-integration",
+    "tanstack-query",
+    "tanstack-router",
+    "tanstack-start",
+    "web-perf",
+    "workers-best-practices",
+    "wrangler"
+  ],
+
+  "jobs": {
+
+    "workspace_state_migration": {
+      "title": "Migrate workspace state out of .ship/ship.lock into platform.db",
+      "description": "ship.lock is committed to git and must become the registry lockfile exclusively. Active workspace state (active_profile, compiled_at, plugins) currently lives in .ship/ship.lock. Move it into platform.db kv_state table (namespace='workspace') so ship.lock is free for registry use. platform.db already exists at ~/.ship/state/<slug>/platform.db and has a kv_state table.",
+      "agent": "rust-runtime",
+      "depends_on": [],
+      "file_scope": [
+        "apps/ship-studio-cli/src/profile.rs",
+        "apps/ship-studio-cli/src/compile.rs",
+        "apps/ship-studio-cli/src/main.rs",
+        "crates/core/runtime/src/db/",
+        ".ship/ship.lock",
+        ".gitignore"
+      ],
+      "acceptance_criteria": [
+        "active_profile read from platform.db kv_state(namespace='workspace', key='active_profile') not .ship/ship.lock",
+        "compiled_at read from platform.db kv_state(namespace='workspace', key='compiled_at') not .ship/ship.lock",
+        "plugins state read from platform.db kv_state(namespace='workspace', key='plugins_installed') not .ship/ship.lock",
+        "ship use writes active_profile + compiled_at to platform.db, not .ship/ship.lock",
+        "On first run: if .ship/ship.lock contains active_profile field, migrate values to platform.db and delete the file",
+        ".ship/ship.lock removed from git tracking (git rm --cached .ship/ship.lock)",
+        ".ship/ship.lock added to .ship/.gitignore (registry lockfile is committed, workspace state is not — these are separate concerns; ship.lock the registry file IS committed, but the old workspace-state ship.lock is not)",
+        "ship status reads from platform.db correctly",
+        "No regression in ship use or ship status commands",
+        "All tests pass"
+      ],
+      "notes": "platform.db is per-project at ~/.ship/state/<slug>/platform.db. kv_state table: (namespace TEXT, key TEXT, value_json TEXT, updated_at TEXT). Use namespace='workspace' for all workspace state keys. A future job will consolidate to a single machine-wide DB — this migration is the safe intermediate step."
+    },
+
+    "dep_compile_integration": {
+      "title": "Wire cached registry packages into the CLI compile pipeline",
+      "description": "After ship install fetches deps into ~/.ship/cache/, the CLI compile step must resolve dep skill references in agent TOMLs to actual file content from the cache. Currently the compiler only reads skills from .ship/agents/skills/. This job adds the dep resolution path: dep skill ref -> ship.lock -> commit SHA -> cache lookup -> skill content -> compiler input.",
+      "agent": "rust-compiler",
+      "depends_on": ["workspace_state_migration"],
+      "file_scope": [
+        "crates/core/compiler/src/",
+        "crates/core/runtime/src/registry/",
+        "apps/ship-studio-cli/src/compile.rs",
+        "apps/ship-studio-cli/src/install.rs"
+      ],
+      "acceptance_criteria": [
+        "Agent TOML skill ref 'github.com/owner/pkg/skills/name' resolves to cached package content at ~/.ship/cache/objects/<sha256>/skills/name/SKILL.md",
+        "Resolution uses ship.lock to map dep path -> commit SHA -> cache hash",
+        "Cache miss during compile triggers an actionable error: 'dependency github.com/owner/pkg not in cache — run ship install'",
+        "Local skill refs (paths without github.com/ prefix) continue to resolve from .ship/agents/skills/ unchanged",
+        "Resolved dep skills are merged with local skills before passing to compiler — no duplicates",
+        "A dep skill ref pointing to a non-existent path within the cached package produces a clear error naming the dep, the path, and the available skills in that package",
+        "ship install followed by native compile produces identical provider output to manually placing the skill in .ship/agents/skills/",
+        "WASM compile path (web Studio) is unchanged — ProjectLibrary JSON format is the same, dep resolution is CLI-only",
+        "Tests: unit test for dep ref parsing (github.com vs local path detection), unit test for cache path resolution, integration test: add dep to ship.toml -> ship install -> compile -> skill appears in provider output",
+        "All existing tests pass"
+      ],
+      "notes": "Dep ref format: 'github.com/owner/pkg/skills/skill-name'. The segment up to the third slash is the package path (github.com/owner/pkg), remainder is the path within the cached package tree. Cache root is ~/.ship/cache/objects/<sha256-hex>/. Use ship.lock to map package path -> hash."
+    },
+
+    "ship_toml_rebuild": {
+      "title": "Rebuild .ship/ship.toml as a clean registry manifest",
+      "description": "Current .ship/ship.toml contains legacy day-2 UI config: statuses, namespaces, git ignore lists, version=1 project identity. Replace entirely with [module] + [dependencies] + [exports] format per the registry spec. Preserve only: project id (hRvMUz4p) and name. Everything else is legacy noise that confuses agents reading this file.",
+      "agent": "cli-lane",
+      "depends_on": ["workspace_state_migration"],
+      "file_scope": [
+        ".ship/ship.toml",
+        "apps/ship-studio-cli/src/",
+        "crates/core/compiler/src/manifest.rs"
+      ],
+      "acceptance_criteria": [
+        ".ship/ship.toml contains exactly three sections: [module], [dependencies], [exports]",
+        "[module].name = 'github.com/madvib/ship'",
+        "[module].version = '0.1.0'",
+        "[module].description = 'Compiler and package manager for AI agent configuration'",
+        "[module].license = 'MIT'",
+        "[dependencies] is initially empty (third-party skills added by ship_trim job)",
+        "[exports].skills lists only first-party skill paths: agents/skills/commander, agents/skills/configure-agent, agents/skills/find-skills, agents/skills/ship-coordination, agents/skills/spawn-agent, agents/skills/write-adr",
+        "[exports].agents lists all agent TOML paths under agents/profiles/",
+        "CLI code that reads legacy fields from ship.toml (statuses, namespaces, git.ignore, git.commit) either reads them gracefully as absent or is updated to not reference them",
+        "ship use still works after rebuild",
+        "ship install parses the new format without error",
+        "Existing ship.toml backed up to .ship/ship.toml.bak before modification (deleted after verification)"
+      ],
+      "notes": "The legacy ProjectConfig parser in crates/core/compiler/src/types/config.rs may still reference old fields. It can continue to exist for backward compat during transition — new manifest.rs is the canonical parser for ship install/add. The two parsers coexist until legacy config is fully retired in v0.2."
+    },
+
+    "context_doc_cleanup": {
+      "title": "Delete stale context documents and extract SPEC.md value",
+      "description": "Stale docs confuse agents and rot sessions. Delete docs that describe superseded architecture. Extract any unique reference value from SPEC.md into ARCHITECTURE.md before deleting. ARCHITECTURE.md becomes the single agent-readable context document.",
+      "agent": "cli-lane",
+      "depends_on": [],
+      "file_scope": [
+        "TASKS.md",
+        "SPEC.md",
+        "ship-studio-spec.md",
+        "ARCHITECTURE.md",
+        "README.md"
+      ],
+      "acceptance_criteria": [
+        "TASKS.md deleted",
+        "ship-studio-spec.md deleted",
+        "SPEC.md sections not already in ARCHITECTURE.md are extracted and merged: provider output matrix, MCP tools reference, platform.db schema, CLI command reference",
+        "SPEC.md deleted after extraction",
+        "ARCHITECTURE.md updated: registry section reflects git-native model (manifest + lockfile), removes R2/D1/DO references, documents [module]/[dependencies]/[exports] format",
+        "ARCHITECTURE.md updated: post-checkout hook noted as planned/not yet implemented",
+        "README.md updated: remove lane/worktree references, reflect current ship use workflow",
+        "No reference to 'modes/' directory remains in any committed doc (use 'profiles/' or 'agents/')",
+        "No reference to 'feat/cli-*' lane branches remains in any committed doc",
+        "ARCHITECTURE.md line count stays under 500 lines — if extraction would exceed this, create REFERENCE.md for the table-heavy sections"
+      ],
+      "notes": "ARCHITECTURE.md is the context firewall. It should be readable in one pass by an agent starting a session. Keep it architectural — principles, layer separation, canonical types, naming. Tables and schemas go in REFERENCE.md if needed. The goal is zero ambiguity about current intent."
+    },
+
+    "ship_trim": {
+      "title": "Trim .ship/ to first-party skills only — FIRST CHECKPOINT",
+      "description": "Remove all third-party skills from .ship/agents/skills/ and add them as [dependencies] in ship.toml. Run ship install to verify resolution. This is the first end-to-end proof that the registry works: our own .ship/ depends on external git repos and ship install resolves them.",
+      "agent": "cli-lane",
+      "depends_on": ["dep_compile_integration", "ship_toml_rebuild"],
+      "file_scope": [
+        ".ship/agents/skills/",
+        ".ship/ship.toml",
+        ".ship/ship.lock"
+      ],
+      "third_party_skill_sources": {
+        "gstack": "github.com/gstack-ai/gstack — verify canonical repo before adding; if not public, note as blocked",
+        "better-auth": "github.com/better-auth/better-auth — skills likely in a skills/ or .ship/ dir",
+        "cloudflare": "github.com/cloudflare/agents or superpowers plugin — identify canonical source",
+        "tanstack-query": "github.com/TanStack/query or superpowers — identify canonical source",
+        "tanstack-router": "github.com/TanStack/router or superpowers — identify canonical source",
+        "tanstack-start": "github.com/TanStack/router (start is in same repo) or superpowers",
+        "tanstack-integration": "superpowers plugin — identify canonical source",
+        "hono": "github.com/honojs/hono or superpowers",
+        "wrangler": "github.com/cloudflare/workers-sdk or superpowers",
+        "workers-best-practices": "superpowers plugin",
+        "durable-objects": "superpowers plugin",
+        "agents-sdk": "superpowers or cloudflare",
+        "building-ai-agent-on-cloudflare": "superpowers plugin",
+        "building-mcp-server-on-cloudflare": "superpowers plugin",
+        "web-perf": "superpowers plugin"
+      },
+      "acceptance_criteria": [
+        "Only first-party skills remain in .ship/agents/skills/: commander, configure-agent, find-skills, ship-coordination, spawn-agent, write-adr",
+        "All third-party skills have their canonical git source identified before removal",
+        "Third-party skills with a confirmed public git repo are added to [dependencies] in .ship/ship.toml",
+        "Third-party skills without a confirmed public git source are documented in a .ship/PENDING_DEPS.md note and removed from git — do not block on them",
+        "ship install resolves all [dependencies] entries, writes .ship/ship.lock, fetches to ~/.ship/cache/",
+        "ship use (with active profile referencing dep skills) produces correct provider output",
+        "Profiles that referenced removed skills are updated to use dep-qualified paths (github.com/owner/pkg/skills/name)",
+        ".ship/ directory has no third-party skill directories committed to git",
+        "git diff shows clean removal — no leftover empty directories",
+        "All first-party skills still compile and appear in provider output correctly"
+      ],
+      "notes": "Many of the third-party skills likely originate from the superpowers claude plugin, which is installed separately. Skills from the superpowers plugin are already available to agents via the plugin mechanism and do not need to be in ship.toml dependencies at all — just remove them. Only skills that need explicit dep resolution (not available via plugin) go into [dependencies]. Gstack is the main candidate for a true manifest dep."
+    }
+
+  }
+}

@@ -308,7 +308,7 @@ fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> R
         },
         "ship_first": true,
         "workspace_root": project_root.to_string_lossy().to_string(),
-        "active_mode": payload.active_mode_id,
+        "active_mode": payload.active_agent_id,
         "allowed_paths": allowed_paths,
         "allow_network": network_allowed(&payload.permissions.network.policy),
         "allow_installs": command_installs_allowed(&payload.permissions.commands.allow),
@@ -344,7 +344,7 @@ fn write_hook_runtime_artifacts(project_root: &Path, payload: &SyncPayload) -> R
          - Require confirmation: `{}`\n",
         generated_at,
         payload
-            .active_mode_id
+            .active_agent_id
             .as_deref()
             .unwrap_or("default"),
         payload
@@ -395,10 +395,10 @@ fn export_claude_settings(
     // Never write to the user's home directory. This can happen if project_dir is ~/.ship
     // (global ship config) and project_dir.parent() resolves to ~/. Permissions must only
     // be written at the project scope.
-    if let Ok(home_dir) = home() {
-        if project_root == home_dir {
-            return Ok(());
-        }
+    if let Ok(home_dir) = home()
+        && project_root == home_dir
+    {
+        return Ok(());
     }
     let path = project_root.join(".claude").join("settings.json");
     if let Some(parent) = path.parent() {
@@ -806,9 +806,13 @@ fn import_permissions_from_claude(project_dir: &Path) -> Result<Option<Permissio
         return Ok(None);
     }
 
-    let mut permissions = Permissions::default();
-    permissions.tools.allow = allow;
-    Ok(Some(permissions))
+    Ok(Some(Permissions {
+        tools: crate::permissions::ToolPermissions {
+            allow,
+            ..Default::default()
+        },
+        ..Default::default()
+    }))
 }
 
 fn import_permissions_from_gemini(project_dir: &Path) -> Result<Option<Permissions>> {
@@ -833,12 +837,20 @@ fn import_permissions_from_gemini(project_dir: &Path) -> Result<Option<Permissio
         return Ok(None);
     }
 
-    let mut permissions = Permissions::default();
-    permissions.tools.allow.clear();
-    permissions.tools.deny.clear();
-    permissions.commands.allow.clear();
-    permissions.commands.deny.clear();
-    permissions.agent.require_confirmation.clear();
+    let mut permissions = Permissions {
+        tools: crate::permissions::ToolPermissions {
+            allow: vec![],
+            deny: vec![],
+        },
+        commands: crate::permissions::CommandPermissions {
+            allow: vec![],
+            deny: vec![],
+        },
+        agent: crate::permissions::AgentLimits {
+            require_confirmation: vec![],
+        },
+        ..Default::default()
+    };
 
     for value in rules {
         let Some(rule) = value.as_table() else {
@@ -971,25 +983,25 @@ fn import_permissions_from_codex(project_dir: &Path) -> Result<Option<Permission
 
     // Read native Starlark rules files under .codex/rules/
     let rules_dir = project_root.join(".codex").join("rules");
-    if rules_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&rules_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("rules") {
-                    continue;
-                }
-                let Ok(content) = fs::read_to_string(&path) else {
-                    continue;
-                };
-                for (words, decision) in parse_starlark_prefix_rules(&content) {
-                    imported = true;
-                    let pattern = format!("{} *", words.join(" "));
-                    match decision.as_str() {
-                        "allow" => permissions.commands.allow.push(pattern),
-                        "forbidden" => permissions.commands.deny.push(pattern),
-                        "prompt" => permissions.agent.require_confirmation.push(pattern),
-                        _ => {}
-                    }
+    if rules_dir.is_dir()
+        && let Ok(entries) = fs::read_dir(&rules_dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rules") {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            for (words, decision) in parse_starlark_prefix_rules(&content) {
+                imported = true;
+                let pattern = format!("{} *", words.join(" "));
+                match decision.as_str() {
+                    "allow" => permissions.commands.allow.push(pattern),
+                    "forbidden" => permissions.commands.deny.push(pattern),
+                    "prompt" => permissions.agent.require_confirmation.push(pattern),
+                    _ => {}
                 }
             }
         }
@@ -1154,7 +1166,7 @@ fn parse_starlark_prefix_rules(content: &str) -> Vec<(Vec<String>, String)> {
 fn parse_starlark_prefix_rule_block(block: &str) -> Option<(Vec<String>, String)> {
     let decision = {
         let line = block.lines().find(|l| l.trim().starts_with("decision"))?;
-        let after_eq = line.splitn(2, '=').nth(1)?.trim();
+        let after_eq = line.split_once('=')?.1.trim();
         let inner = after_eq.trim_start_matches('"');
         let end = inner.find('"')?;
         inner[..end].to_string()

@@ -86,7 +86,7 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<ProfileReport> {
     let mut reports = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&profiles_dir) {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().map_or(false, |x| x == "toml"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
@@ -97,23 +97,23 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<ProfileReport> {
     }
     // Also check any compat presets dir
     let presets_dir = agents_dir.join("presets");
-    if presets_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&presets_dir) {
-            let mut paths: Vec<_> = entries.flatten()
-                .filter(|e| e.path().extension().map_or(false, |x| x == "toml"))
-                .collect();
-            paths.sort_by_key(|e| e.file_name());
-            for entry in paths {
-                let path = entry.path();
-                let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-                // Skip if already found in agents/profiles/
-                if find_profile_file(&id, project_root)
-                    .map_or(false, |p| p.to_string_lossy().contains("agents/profiles"))
-                {
-                    continue;
-                }
-                reports.push(validate_profile(&id, &path, agents_dir));
+    if presets_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&presets_dir)
+    {
+        let mut paths: Vec<_> = entries.flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+            .collect();
+        paths.sort_by_key(|e| e.file_name());
+        for entry in paths {
+            let path = entry.path();
+            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            // Skip if already found in agents/profiles/
+            if find_profile_file(&id, project_root)
+                .is_some_and(|p| p.to_string_lossy().contains("agents/profiles"))
+            {
+                continue;
             }
+            reports.push(validate_profile(&id, &path, agents_dir));
         }
     }
     reports
@@ -232,12 +232,12 @@ fn check_mcp_entry(s: &McpEntry) -> Option<String> {
         || s.server_type.as_deref() == Some("http")
         || s.server_type.as_deref() == Some("sse");
     if is_http {
-        if s.url.as_deref().map_or(true, |u| u.trim().is_empty()) {
+        if s.url.as_deref().is_none_or(|u| u.trim().is_empty()) {
             return Some("HTTP/SSE server missing 'url' field".to_string());
         }
     } else {
         // stdio
-        if s.command.as_deref().map_or(true, |c| c.trim().is_empty()) {
+        if s.command.as_deref().is_none_or(|c| c.trim().is_empty()) {
             return Some("stdio server missing 'command' field".to_string());
         }
     }

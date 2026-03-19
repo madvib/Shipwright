@@ -4,7 +4,7 @@ pub struct SyncPayload {
     pub instructions: Option<String>,
     pub hooks: Vec<HookConfig>,
     pub permissions: Permissions,
-    pub active_mode_id: Option<String>,
+    pub active_agent_id: Option<String>,
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ pub fn export_to_filtered_at_root(
 pub fn export_to_with_mode_override_at_root(
     project_dir: PathBuf,
     target: &str,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
     project_root: &Path,
 ) -> Result<()> {
     export_to_inner(
@@ -89,7 +89,7 @@ pub fn export_to_with_mode_override_at_root(
         target,
         None,
         None,
-        active_mode_override,
+        active_agent_override,
         Some(project_root),
     )
 }
@@ -99,7 +99,7 @@ pub fn export_to_filtered_with_mode_override_at_root(
     project_dir: PathBuf,
     target: &str,
     server_filter: Option<&[String]>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
     project_root: &Path,
 ) -> Result<()> {
     export_to_inner(
@@ -107,7 +107,7 @@ pub fn export_to_filtered_with_mode_override_at_root(
         target,
         server_filter,
         None,
-        active_mode_override,
+        active_agent_override,
         Some(project_root),
     )
 }
@@ -119,7 +119,7 @@ pub fn export_to_filtered_with_mode_override_and_skills_at_root(
     target: &str,
     server_filter: Option<&[String]>,
     skill_filter: Option<&[String]>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
     project_root: &Path,
 ) -> Result<()> {
     export_to_inner(
@@ -127,7 +127,7 @@ pub fn export_to_filtered_with_mode_override_and_skills_at_root(
         target,
         server_filter,
         skill_filter,
-        active_mode_override,
+        active_agent_override,
         Some(project_root),
     )
 }
@@ -136,9 +136,9 @@ pub fn export_to_filtered_with_mode_override_and_skills_at_root(
 pub fn export_to_with_mode_override(
     project_dir: PathBuf,
     target: &str,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> Result<()> {
-    export_to_inner(project_dir, target, None, None, active_mode_override, None)
+    export_to_inner(project_dir, target, None, None, active_agent_override, None)
 }
 
 /// Like `export_to_filtered` but applies a mode override when building payload.
@@ -146,14 +146,14 @@ pub fn export_to_filtered_with_mode_override(
     project_dir: PathBuf,
     target: &str,
     server_filter: Option<&[String]>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> Result<()> {
     export_to_inner(
         project_dir,
         target,
         server_filter,
         None,
-        active_mode_override,
+        active_agent_override,
         None,
     )
 }
@@ -163,11 +163,11 @@ fn export_to_inner(
     target: &str,
     server_filter: Option<&[String]>,
     skill_filter: Option<&[String]>,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
     project_root_override: Option<&Path>,
 ) -> Result<()> {
     let desc = require_provider(target)?;
-    let mut payload = build_payload_with_mode_override(&project_dir, active_mode_override)?;
+    let mut payload = build_payload_with_mode_override(&project_dir, active_agent_override)?;
     if let Some(ids) = server_filter {
         payload.servers.retain(|s| ids.contains(&s.id));
     }
@@ -296,18 +296,18 @@ pub fn teardown(project_dir: PathBuf, target: &str) -> Result<()> {
     Ok(())
 }
 
-/// Sync all target agents configured for the active mode.
-pub fn sync_active_mode(project_dir: &Path) -> Result<Vec<String>> {
-    sync_active_mode_with_override(project_dir, None)
+/// Sync all target agents configured for the active agent profile.
+pub fn sync_active_agent(project_dir: &Path) -> Result<Vec<String>> {
+    sync_active_agent_with_override(project_dir, None)
 }
 
-/// Sync all target agents configured for the active mode (or the override mode when provided).
-pub fn sync_active_mode_with_override(
+/// Sync all target agents configured for the active agent profile (or the override when provided).
+pub fn sync_active_agent_with_override(
     project_dir: &Path,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> Result<Vec<String>> {
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
-    let mode_targets = resolve_mode_for_export(&config, active_mode_override)
+    let mode_targets = resolve_mode_for_export(&config, active_agent_override)
         .map(|mode| mode.target_agents.clone())
         .unwrap_or_default();
     let targets: Vec<String> = if !mode_targets.is_empty() {
@@ -329,7 +329,7 @@ pub fn sync_active_mode_with_override(
             eprintln!("[ship] warning: skipping unknown target agent '{}'", target);
             continue;
         }
-        export_to_with_mode_override(project_dir.to_path_buf(), &normalized, active_mode_override)?;
+        export_to_with_mode_override(project_dir.to_path_buf(), &normalized, active_agent_override)?;
         synced.push(normalized);
     }
     Ok(synced)
@@ -738,7 +738,7 @@ fn import_mcp_servers_from_json(
             disabled: entry
                 .get("disabled")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false),
+                .unwrap_or_default(),
             timeout_secs: entry
                 .get("startup_timeout_sec")
                 .or_else(|| entry.get("timeout_secs"))
@@ -814,7 +814,7 @@ fn import_mcp_servers_from_toml(
             disabled: table
                 .get("disabled")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false),
+                .unwrap_or_default(),
             timeout_secs: table
                 .get("startup_timeout_sec")
                 .and_then(|v| v.as_integer())
@@ -833,10 +833,10 @@ fn build_payload(project_dir: &Path) -> Result<SyncPayload> {
 
 fn build_payload_with_mode_override(
     project_dir: &Path,
-    active_mode_override: Option<&str>,
+    active_agent_override: Option<&str>,
 ) -> Result<SyncPayload> {
     let config = get_effective_config(Some(project_dir.to_path_buf()))?;
-    let mode = resolve_mode_for_export(&config, active_mode_override).cloned();
+    let mode = resolve_mode_for_export(&config, active_agent_override).cloned();
     let mode_id = mode.as_ref().map(|mode| mode.id.clone());
     let mut servers = config.mcp_servers;
     if let Some(mode) = mode.as_ref()
@@ -868,15 +868,15 @@ fn build_payload_with_mode_override(
         instructions: None,
         hooks,
         permissions: effective_permissions,
-        active_mode_id: mode_id,
+        active_agent_id: mode_id,
     })
 }
 
 fn resolve_mode_for_export<'a>(
     config: &'a crate::config::ProjectConfig,
-    active_mode_override: Option<&str>,
-) -> Option<&'a crate::config::ModeConfig> {
-    let mode_id = active_mode_override
+    active_agent_override: Option<&str>,
+) -> Option<&'a crate::config::AgentProfile> {
+    let mode_id = active_agent_override
         .map(str::trim)
         .filter(|id| !id.is_empty())?;
     config.modes.iter().find(|mode| mode.id == mode_id)
@@ -926,7 +926,7 @@ fn export_json(
                     .get("_ship")
                     .and_then(|v| v.get("managed"))
                     .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
+                    .unwrap_or_default(),
                 ManagedMarker::StateFileOnly => false,
             } || tool_state.managed_servers.contains(id);
             if !is_managed {
@@ -986,7 +986,7 @@ fn export_json(
     }
 
     tool_state.managed_servers = written_ids;
-    tool_state.last_mode = payload.active_mode_id.clone();
+    tool_state.last_mode = payload.active_agent_id.clone();
     Ok(())
 }
 
@@ -1091,7 +1091,7 @@ fn export_toml(
     }
 
     tool_state.managed_servers = written_ids;
-    tool_state.last_mode = payload.active_mode_id.clone();
+    tool_state.last_mode = payload.active_agent_id.clone();
     Ok(())
 }
 
@@ -1118,7 +1118,7 @@ fn teardown_json(
                     .get("_ship")
                     .and_then(|v| v.get("managed"))
                     .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
+                    .unwrap_or_default(),
                 ManagedMarker::StateFileOnly => false,
             } || tool_state.managed_servers.contains(id);
             if !is_managed {

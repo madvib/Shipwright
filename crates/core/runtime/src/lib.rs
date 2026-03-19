@@ -10,6 +10,7 @@ pub mod log;
 pub mod migration;
 pub mod plugin;
 pub mod project;
+#[path = "state_db/mod.rs"]
 pub mod state_db;
 pub mod workspace;
 
@@ -21,19 +22,19 @@ pub use agents::permissions;
 pub use agents::rule;
 pub use agents::skill;
 
-pub use agent_config::{AgentConfig, resolve_agent_config};
+pub use agent_config::{ProviderSettings, WorkspaceAgentSettings, resolve_provider_settings, resolve_provider_settings_with_agent_override};
 pub use agent_export::{
     ModelInfo, ProviderInfo, autodetect_providers, detect_binary, detect_version, disable_provider,
-    enable_provider, export_to, import_from_claude, list_models, list_providers, sync_active_mode,
+    enable_provider, export_to, import_from_claude, list_models, list_providers, sync_active_agent,
 };
 pub use catalog::{CatalogEntry, CatalogKind, list_catalog, list_catalog_by_kind, search_catalog};
 pub use config::{
-    AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig, McpServerType,
-    ModeConfig, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_hook,
-    add_mcp_server, add_mode, add_status, ensure_registered_namespaces, generate_gitignore,
-    get_active_mode, get_config, get_effective_config, get_git_config, get_project_statuses,
-    is_category_committed, list_hooks, list_mcp_servers, migrate_json_config_file, remove_hook,
-    remove_mcp_server, remove_mode, remove_status, save_config, set_active_mode,
+    AgentLayerConfig, AgentProfile, AiConfig, GitConfig, HookConfig, HookTrigger, McpServerConfig,
+    McpServerType, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_agent,
+    add_hook, add_mcp_server, add_status, ensure_registered_namespaces, generate_gitignore,
+    get_active_agent, get_config, get_effective_config, get_git_config, get_project_statuses,
+    is_category_committed, list_hooks, list_mcp_servers, migrate_json_config_file, remove_agent,
+    remove_hook, remove_mcp_server, remove_status, save_config, set_active_agent,
     set_category_committed, set_git_config,
 };
 
@@ -80,7 +81,7 @@ pub use workspace::{
     create_workspace, delete_workspace, end_workspace_session, get_active_workspace_session,
     get_workspace, get_workspace_provider_matrix, get_workspace_session_record,
     list_workspace_sessions, list_workspaces, record_workspace_session_progress, repair_workspace,
-    set_workspace_active_mode, start_workspace_session, sync_workspace,
+    set_workspace_active_agent, start_workspace_session, sync_workspace,
     transition_workspace_status, upsert_workspace, validate_workspace_transition,
 };
 

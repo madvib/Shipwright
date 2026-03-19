@@ -177,21 +177,16 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
 fn migrate_project_config_file(ship_dir: &Path) -> Result<()> {
     let primary = ship_dir.join(PRIMARY_CONFIG_FILE);
     if !primary.exists() {
-        for legacy_name in [LEGACY_CONFIG_FILE] {
-            let legacy = ship_dir.join(legacy_name);
-            if legacy.exists() {
-                move_file(&legacy, &primary)?;
-                break;
-            }
+        let legacy = ship_dir.join(LEGACY_CONFIG_FILE);
+        if legacy.exists() {
+            move_file(&legacy, &primary)?;
         }
     }
 
     if primary.exists() {
-        for legacy_name in [LEGACY_CONFIG_FILE] {
-            let legacy = ship_dir.join(legacy_name);
-            if legacy.exists() {
-                fs::remove_file(legacy)?;
-            }
+        let legacy = ship_dir.join(LEGACY_CONFIG_FILE);
+        if legacy.exists() {
+            fs::remove_file(legacy)?;
         }
     }
     Ok(())
@@ -301,12 +296,11 @@ fn migrate_directory_tree(
 fn has_archive_subdir(dir: &Path) -> bool {
     fs::read_dir(dir)
         .ok()
-        .map(|entries| {
+        .is_some_and(|entries| {
             entries
                 .flatten()
                 .any(|e| e.file_name() == "archive" && e.path().is_dir())
         })
-        .unwrap_or(false)
 }
 
 fn move_dir(source: &Path, target: &Path) -> Result<()> {
@@ -447,8 +441,7 @@ fn normalize_project_path(input: &Path) -> PathBuf {
     if path
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name == ".ship")
-        .unwrap_or(false)
+        .is_some_and(|name| name == ".ship")
     {
         return path;
     }
