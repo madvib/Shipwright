@@ -3,6 +3,7 @@ mod agent;
 mod cli;
 mod compile;
 mod config;
+mod dep_skills;
 mod install;
 mod job;
 mod loader;

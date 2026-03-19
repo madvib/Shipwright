@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use compiler::{CompileOutput, HookConfig, HookTrigger, PluginEntry, PluginsManifest, ProjectLibrary, compile, get_provider, resolve_library};
 use std::path::Path;
 
+use crate::dep_skills::resolve_dep_skills;
 use crate::loader::load_library;
 use crate::mode::{Profile, apply_profile_permissions};
 
@@ -32,6 +33,24 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         apply_mode_to_library(&mut library, mode_id, opts.project_root)?;
     }
     library.active_mode = opts.active_mode.map(str::to_string);
+
+    // 2b. Resolve dep skill refs from cached packages.
+    //     Collect all skill refs declared across agent profiles and mode configs,
+    //     resolve any github.com/ refs from ship.lock + cache, and merge into
+    //     library.skills before passing to the compiler. Local refs are skipped.
+    {
+        let all_skill_refs = collect_all_skill_refs(&library);
+        if !all_skill_refs.is_empty() {
+            let lock_path = opts.project_root.join(".ship").join("ship.lock");
+            let dep_skills = resolve_dep_skills(
+                &all_skill_refs,
+                &library.skills,
+                &lock_path,
+                None, // use default ~/.ship/cache/
+            ).context("resolving dep skills from cache")?;
+            library.skills.extend(dep_skills);
+        }
+    }
 
     // 3. Resolve (mode filtering, provider selection)
     let resolved = resolve_library(&library, None, opts.active_mode);
@@ -411,6 +430,36 @@ fn merge_json_file(path: &Path, patch: &serde_json::Value) -> Result<()> {
 fn ensure_parent(path: &Path) -> Result<()> {
     if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
     Ok(())
+}
+
+// ── Dep skill ref collection ───────────────────────────────────────────────────
+
+/// Collect all skill refs declared in agent profiles and mode configs within
+/// `library`. Only dep refs (those starting with `github.com/`) will be resolved
+/// by the caller; local refs are included in the list but filtered in
+/// [`resolve_dep_skills`].
+fn collect_all_skill_refs(library: &ProjectLibrary) -> Vec<String> {
+    let mut refs: Vec<String> = Vec::new();
+
+    // From agent profiles: [skills] refs = [...]
+    for profile in &library.agent_profiles {
+        for r in &profile.skills.refs {
+            if !refs.contains(r) {
+                refs.push(r.clone());
+            }
+        }
+    }
+
+    // From mode configs: skills = [...] filter list
+    for mode in &library.modes {
+        for r in &mode.skills {
+            if !refs.contains(r) {
+                refs.push(r.clone());
+            }
+        }
+    }
+
+    refs
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
