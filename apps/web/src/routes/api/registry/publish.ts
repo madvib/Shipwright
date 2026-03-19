@@ -31,7 +31,7 @@ export const Route = createFileRoute('/api/registry/publish')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const rl = await checkRateLimit(request, 'publish', 10, 3600)
+        const rl = await checkRateLimit(request, 'RATE_LIMITER_PUBLISH', 3600)
         if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
         let body: unknown

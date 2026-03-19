@@ -65,7 +65,7 @@ export const Route = createFileRoute('/api/registry/claim')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const rl = await checkRateLimit(request, 'claim', 5, 3600)
+        const rl = await checkRateLimit(request, 'RATE_LIMITER_CLAIM', 3600)
         if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
         // Require authenticated session

@@ -18,12 +18,12 @@
     }
   ],
 
-  // KV namespace for rate limiting — run `wrangler kv namespace create RATE_LIMIT_KV` to provision
-  "kv_namespaces": [
-    {
-      "binding": "RATE_LIMIT_KV",
-      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
-    }
+  // Rate limiting — uses Cloudflare's native Rate Limiting binding (no KV needed).
+  // Configure the actual limits (requests/period) in the Cloudflare dashboard under Workers > Rate Limits.
+  "rate_limits": [
+    { "binding": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001" },
+    { "binding": "RATE_LIMITER_CLAIM",    "namespace_id": "1002" },
+    { "binding": "RATE_LIMITER_INSTALL",  "namespace_id": "1003" }
   ],
 
   // Vars with placeholder values — set real secrets in the Cloudflare dashboard (never commit secrets)
@@ -51,11 +51,10 @@
           "migrations_dir": "migrations"
         }
       ],
-      "kv_namespaces": [
-        {
-          "binding": "RATE_LIMIT_KV",
-          "id": "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
-        }
+      "rate_limits": [
+        { "binding": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001" },
+        { "binding": "RATE_LIMITER_CLAIM",    "namespace_id": "1002" },
+        { "binding": "RATE_LIMITER_INSTALL",  "namespace_id": "1003" }
       ],
       "vars": {
         "GITHUB_WEBHOOK_SECRET": "",
@@ -75,11 +74,10 @@
           "migrations_dir": "migrations"
         }
       ],
-      "kv_namespaces": [
-        {
-          "binding": "RATE_LIMIT_KV",
-          "id": "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
-        }
+      "rate_limits": [
+        { "binding": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001" },
+        { "binding": "RATE_LIMITER_CLAIM",    "namespace_id": "1002" },
+        { "binding": "RATE_LIMITER_INSTALL",  "namespace_id": "1003" }
       ],
       "vars": {
         "GITHUB_WEBHOOK_SECRET": "",

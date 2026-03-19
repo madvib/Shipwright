@@ -13,7 +13,7 @@ export const Route = createFileRoute('/api/registry/$path/install')({
   server: {
     handlers: {
       POST: async ({ request, params }) => {
-        const rl = await checkRateLimit(request, 'install', 60, 60)
+        const rl = await checkRateLimit(request, 'RATE_LIMITER_INSTALL', 60)
         if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
         const d1 = getD1()

@@ -4,19 +4,25 @@
 declare namespace Cloudflare {
 	interface StagingEnv {
 		DB: D1Database;
-		RATE_LIMIT_KV: KVNamespace;
+		RATE_LIMITER_PUBLISH: RateLimit;
+		RATE_LIMITER_CLAIM: RateLimit;
+		RATE_LIMITER_INSTALL: RateLimit;
 		GITHUB_WEBHOOK_SECRET: string;
 		SEED_SECRET: string;
 	}
 	interface ProductionEnv {
 		DB: D1Database;
-		RATE_LIMIT_KV: KVNamespace;
+		RATE_LIMITER_PUBLISH: RateLimit;
+		RATE_LIMITER_CLAIM: RateLimit;
+		RATE_LIMITER_INSTALL: RateLimit;
 		GITHUB_WEBHOOK_SECRET: string;
 		SEED_SECRET: string;
 	}
 	interface Env {
 		DB: D1Database;
-		RATE_LIMIT_KV: KVNamespace;
+		RATE_LIMITER_PUBLISH: RateLimit;
+		RATE_LIMITER_CLAIM: RateLimit;
+		RATE_LIMITER_INSTALL: RateLimit;
 		GITHUB_WEBHOOK_SECRET: string;
 		SEED_SECRET: string;
 	}
