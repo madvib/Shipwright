@@ -6,7 +6,7 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "vite dev --port 3000 --host",
     "build": "vite build && node -e \"const fs=require('fs'),p=require('path');const src='../../packages/assets/public',dst='dist/client';fs.readdirSync(src).forEach(f=>{const s=p.join(src,f),d=p.join(dst,f);fs.existsSync(s)&&fs.lstatSync(s).isFile()&&fs.copyFileSync(s,d)})\"",
     "preview": "vite preview",
     "test": "vitest run",
