@@ -372,7 +372,7 @@ Above the fold:
 
 Below the fold:
 - How it works (3 steps: compose, compile, use)
-- Provider logos (Claude Code, Codex, Gemini CLI, Cursor, Windsurf)
+- Provider logos (Claude Code, Codex, Gemini CLI, Cursor)
 - CLI quickstart code block
 - Marketplace preview (3 featured modes)
 
@@ -406,7 +406,7 @@ CLI not connected: health status hidden, "Connect CLI for live status" hint.
 Tabs: Providers · MCP · Skills · Permissions · Rules · Context
 
 *Providers tab*
-- Toggle per provider (Claude Code, Codex, Gemini CLI, Cursor, Windsurf)
+- Toggle per provider (Claude Code, Codex, Gemini CLI, Cursor)
 - CLI connected: shows installed/not installed, version
 - Export targets only the toggled providers
 
