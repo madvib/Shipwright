@@ -86,7 +86,7 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<ProfileReport> {
     let mut reports = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&profiles_dir) {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().map_or(false, |x| x == "toml"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
@@ -100,7 +100,7 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<ProfileReport> {
     if presets_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&presets_dir) {
             let mut paths: Vec<_> = entries.flatten()
-                .filter(|e| e.path().extension().map_or(false, |x| x == "toml"))
+                .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
                 .collect();
             paths.sort_by_key(|e| e.file_name());
             for entry in paths {
@@ -108,7 +108,7 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<ProfileReport> {
                 let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
                 // Skip if already found in agents/profiles/
                 if find_profile_file(&id, project_root)
-                    .map_or(false, |p| p.to_string_lossy().contains("agents/profiles"))
+                    .is_some_and(|p| p.to_string_lossy().contains("agents/profiles"))
                 {
                     continue;
                 }

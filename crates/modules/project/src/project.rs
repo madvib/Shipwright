@@ -143,13 +143,12 @@ fn normalize_registry_project_path(path: &Path) -> PathBuf {
     if canonical
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name == SHIP_DIR_NAME)
-        .unwrap_or(false)
+        .is_some_and(|name| name == SHIP_DIR_NAME)
     {
         return canonical;
     }
     let ship_candidate = canonical.join(SHIP_DIR_NAME);
-    if ship_candidate.exists() && ship_candidate.is_dir() {
+    if ship_candidate.is_dir() {
         fs::canonicalize(&ship_candidate).unwrap_or(ship_candidate)
     } else {
         canonical
@@ -513,11 +512,9 @@ fn cleanup_legacy_config_files(ship_path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    for legacy_name in [runtime::config::LEGACY_CONFIG_FILE] {
-        let legacy = ship_path.join(legacy_name);
-        if legacy.exists() {
-            fs::remove_file(legacy)?;
-        }
+    let legacy = ship_path.join(runtime::config::LEGACY_CONFIG_FILE);
+    if legacy.exists() {
+        fs::remove_file(legacy)?;
     }
 
     Ok(())
@@ -789,10 +786,9 @@ fn seed_skill_creator_template(skill_root: &Path) -> Result<()> {
 
 fn ensure_first_party_namespaces(namespaces: &mut Vec<NamespaceConfig>) {
     namespaces.retain(|ns| {
-        !(ns.id == "project" && ns.path == "project")
-            && !(ns.id == "project" && ns.path == "project/")
-            && !(ns.id == "plugins" && ns.path == "plugins")
-            && !(ns.id == "workflow" && ns.path == "workflow")
+        !((ns.id == "project" && (ns.path == "project" || ns.path == "project/"))
+            || (ns.id == "plugins" && ns.path == "plugins")
+            || (ns.id == "workflow" && ns.path == "workflow"))
     });
 
     let required = [
@@ -993,7 +989,7 @@ pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
                 continue;
             }
             let ship_dir = path.join(SHIP_DIR_NAME);
-            if ship_dir.exists() && ship_dir.is_dir() {
+            if ship_dir.is_dir() {
                 projects.push(ProjectDiscovery {
                     name: name.into_owned(),
                     path: ship_dir,

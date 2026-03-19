@@ -5,7 +5,7 @@ mod tests {
         HookConfig, HookTrigger, McpServerConfig, McpServerType, ModeConfig, PermissionConfig,
         ProjectConfig, save_config,
     };
-    use crate::permissions::{Permissions, save_permissions};
+    use crate::permissions::{Permissions, ToolPermissions, save_permissions};
     use crate::project::init_project;
     use crate::skill::{create_skill, delete_skill};
     use std::collections::HashMap;
@@ -1823,8 +1823,13 @@ Use this for incident response.
         // Simulate ~/.ship as the project dir (parent = home/)
         let project_dir = init_project(home.path().to_path_buf()).unwrap();
 
-        let mut perms = Permissions::default();
-        perms.tools.deny = vec!["Bash".to_string()];
+        let perms = Permissions {
+            tools: ToolPermissions {
+                deny: vec!["Bash".to_string()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         save_permissions(project_dir.clone(), &perms).unwrap();
 
         // export_to resolves project_root = project_dir.parent() = home/

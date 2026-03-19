@@ -115,7 +115,7 @@ pub fn get_release_db(ship_dir: &Path, id: &str) -> Result<Option<ReleaseEntry>>
                     metadata: ReleaseMetadata {
                         id,
                         version,
-                        status: status.clone(),
+                        status,
                         created,
                         updated,
                         supported: supported.map(|s| s != 0),
@@ -160,7 +160,7 @@ pub fn list_releases_db(ship_dir: &Path) -> Result<Vec<ReleaseEntry>> {
                 file_name,
                 path,
                 version: version.clone(),
-                status: status.clone(),
+                status,
                 release: Release {
                     metadata: ReleaseMetadata {
                         id,

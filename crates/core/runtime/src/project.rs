@@ -702,10 +702,10 @@ fn is_likely_rust_test_binary(path: &Path) -> bool {
 
 #[cfg(unix)]
 extern "C" fn cleanup_test_global_dir_on_exit() {
-    if let Some(path) = TEST_GLOBAL_CLEANUP_PATH.get() {
-        if let Some(run_root) = path.parent() {
-            let _ = fs::remove_dir_all(run_root);
-        }
+    if let Some(path) = TEST_GLOBAL_CLEANUP_PATH.get()
+        && let Some(run_root) = path.parent()
+    {
+        let _ = fs::remove_dir_all(run_root);
     }
 }
 
@@ -860,8 +860,7 @@ fn normalize_registry_project_path(path: &Path) -> PathBuf {
     if canonical
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name == SHIP_DIR_NAME)
-        .unwrap_or(false)
+        .is_some_and(|name| name == SHIP_DIR_NAME)
     {
         return canonical;
     }
@@ -1172,8 +1171,10 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
     // Write ship.toml (with a stable project ID) BEFORE any DB access so that
     // project_db_key can read the ID and derive a stable state directory path.
     if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
-        let mut config = crate::config::ProjectConfig::default();
-        config.id = crate::gen_nanoid();
+        let config = crate::config::ProjectConfig {
+            id: crate::gen_nanoid(),
+            ..Default::default()
+        };
         crate::config::save_config(&config, Some(ship_path.clone()))?;
     }
 

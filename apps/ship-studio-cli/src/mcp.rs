@@ -59,14 +59,14 @@ impl McpFile {
         if !path.exists() { return Ok(Self::default()); }
         let text = std::fs::read_to_string(path)?;
         // Try keyed table format first: [mcp.servers.<key>]
-        if let Ok(raw) = toml::from_str::<RawMcpFile>(&text) {
-            if !raw.mcp.servers.is_empty() {
-                let servers = raw.mcp.servers.into_iter().map(|(key, mut entry)| {
-                    if entry.id.is_empty() { entry.id = key; }
-                    entry
-                }).collect();
-                return Ok(Self { servers });
-            }
+        if let Ok(raw) = toml::from_str::<RawMcpFile>(&text)
+            && !raw.mcp.servers.is_empty()
+        {
+            let servers = raw.mcp.servers.into_iter().map(|(key, mut entry)| {
+                if entry.id.is_empty() { entry.id = key; }
+                entry
+            }).collect();
+            return Ok(Self { servers });
         }
         // Fallback: flat array format { servers = [{...}] }
         if let Ok(legacy) = toml::from_str::<LegacyMcpFile>(&text) {

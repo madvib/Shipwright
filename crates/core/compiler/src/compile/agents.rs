@@ -188,7 +188,7 @@ fn compile_codex_agent(profile: &AgentProfile) -> String {
         for server in &profile.mcp.servers {
             lines.push(format!("[mcp_servers.{}]", server));
             // Codex agent TOML references server by name; actual config comes from main config
-            lines.push(format!("enabled = true"));
+            lines.push("enabled = true".to_string());
         }
     }
 

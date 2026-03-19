@@ -43,8 +43,7 @@ fn git_is_dirty() -> bool {
         .output()
         .ok()
         .filter(|output| output.status.success())
-        .map(|output| !output.stdout.is_empty())
-        .unwrap_or(false)
+        .is_some_and(|output| !output.stdout.is_empty())
 }
 
 fn build_version_string(base: &str, count: &str, hash: &str, dirty: bool) -> String {

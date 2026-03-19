@@ -39,14 +39,13 @@ pub fn init_demo_project(base_dir: PathBuf) -> Result<PathBuf> {
         let adr_path = runtime::project::adrs_dir(&project_dir);
         let slug = runtime::project::sanitize_file_name(title);
         let exists = std::fs::read_dir(&adr_path)
-            .map(|entries| {
+            .is_ok_and(|entries| {
                 entries.flatten().any(|e| {
                     e.file_name()
                         .to_string_lossy()
                         .contains(&slug[..slug.len().min(20)])
                 })
-            })
-            .unwrap_or(false);
+            });
         if !exists {
             create_adr(&project_dir, title, "", decision, status)?;
         }

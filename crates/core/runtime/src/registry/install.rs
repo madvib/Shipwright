@@ -228,11 +228,12 @@ mod tests {
         write_lock_atomic(&lock_path, &empty_lock)?;
 
         // Manifest has a dep not in the lock.
-        let mut manifest = ShipManifest::default();
-        manifest.dependencies.insert(
-            "github.com/owner/pkg".into(),
-            Dependency { version: "main".into(), grant: vec![] },
-        );
+        let manifest = ShipManifest {
+            dependencies: [
+                ("github.com/owner/pkg".into(), Dependency { version: "main".into(), grant: vec![] }),
+            ].into(),
+            ..Default::default()
+        };
 
         let opts = InstallOptions { frozen: true };
         let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts);

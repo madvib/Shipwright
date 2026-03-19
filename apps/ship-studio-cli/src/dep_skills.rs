@@ -140,18 +140,18 @@ fn parse_dep_skill(dep_ref: &str, raw: &str) -> Skill {
     let mut description = None;
     let mut content_start = 0usize;
 
-    if let Some(rest) = raw.strip_prefix("---\n") {
-        if let Some(end) = rest.find("\n---\n") {
-            let fm = &rest[..end];
-            for line in fm.lines() {
-                if let Some(v) = line.strip_prefix("name:") {
-                    name = v.trim().to_string();
-                } else if let Some(v) = line.strip_prefix("description:") {
-                    description = Some(v.trim().to_string());
-                }
+    if let Some(rest) = raw.strip_prefix("---\n")
+        && let Some(end) = rest.find("\n---\n")
+    {
+        let fm = &rest[..end];
+        for line in fm.lines() {
+            if let Some(v) = line.strip_prefix("name:") {
+                name = v.trim().to_string();
+            } else if let Some(v) = line.strip_prefix("description:") {
+                description = Some(v.trim().to_string());
             }
-            content_start = 4 + end + 5; // "---\n" + fm + "\n---\n"
         }
+        content_start = 4 + end + 5; // "---\n" + fm + "\n---\n"
     }
 
     let content = raw[content_start..].trim().to_string();

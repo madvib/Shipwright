@@ -3,20 +3,15 @@ use specta::Type;
 
 // ─── Status ───────────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum AdrStatus {
+    #[default]
     Proposed,
     Accepted,
     Rejected,
     Superseded,
     Deprecated,
-}
-
-impl Default for AdrStatus {
-    fn default() -> Self {
-        AdrStatus::Proposed
-    }
 }
 
 impl std::fmt::Display for AdrStatus {

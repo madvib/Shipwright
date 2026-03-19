@@ -17,21 +17,19 @@ fn resolve_release_id(ship_dir: &Path, reference: &str) -> Result<Option<String>
     }
 
     let without_ext = reference.trim_end_matches(".md");
-    if without_ext != reference {
-        if let Some(entry) = get_release_db(ship_dir, without_ext)? {
-            return Ok(Some(entry.id));
-        }
+    if without_ext != reference
+        && let Some(entry) = get_release_db(ship_dir, without_ext)?
+    {
+        return Ok(Some(entry.id));
     }
 
     if let Some(file_name) = Path::new(reference)
         .file_name()
         .and_then(|name| name.to_str())
+        && file_name != reference
+        && let Some(entry) = get_release_db(ship_dir, file_name.trim_end_matches(".md"))?
     {
-        if file_name != reference {
-            if let Some(entry) = get_release_db(ship_dir, file_name.trim_end_matches(".md"))? {
-                return Ok(Some(entry.id));
-            }
-        }
+        return Ok(Some(entry.id));
     }
 
     let reference_file = if reference.ends_with(".md") {
@@ -109,7 +107,7 @@ pub fn create_release_with_metadata(
         metadata: ReleaseMetadata {
             id: id.clone(),
             version: version.to_string(),
-            status: status.clone(),
+            status,
             created: now.clone(),
             updated: now,
             supported,

@@ -28,8 +28,7 @@ impl Feature {
             let (header_id, body_content) = parse_generated_feature_header(content);
             let title = body_content
                 .lines()
-                .find(|l| l.starts_with("# "))
-                .map(|l| l.trim_start_matches("# ").trim().to_string())
+                .find_map(|l| l.strip_prefix("# ").map(|rest| rest.trim().to_string()))
                 .unwrap_or_default();
             let now = Utc::now().to_rfc3339();
             Ok(Feature {
@@ -54,17 +53,16 @@ impl Feature {
 
     fn from_toml_markdown(content: &str) -> Result<Self> {
         let rest = &content[4..]; // skip "+++\n"
-        let end = rest
-            .find("\n+++")
+        let (toml_str, rest_after) = rest
+            .split_once("\n+++")
             .ok_or_else(|| anyhow!("Invalid feature format: missing closing +++"))?;
-        let toml_str = &rest[..end];
-        let body = rest[end + 4..].trim_start_matches('\n').to_string();
+        let body = rest_after.trim_start_matches('\n').to_string();
         let metadata: FeatureMetadata =
             toml::from_str(toml_str).context("Failed to parse feature TOML frontmatter")?;
 
         let mut feature = Feature {
             metadata,
-            body: body.clone(),
+            body,
             todos: Vec::new(),
             criteria: Vec::new(),
         };
@@ -83,17 +81,18 @@ impl Feature {
 
 fn parse_generated_feature_header(content: &str) -> (Option<String>, String) {
     let mut lines = content.lines();
-    if let Some(first) = lines.next() {
-        let trimmed = first.trim();
-        if trimmed.starts_with("<!-- ship:feature ") && trimmed.ends_with("-->") {
-            let id = trimmed
-                .split_whitespace()
-                .find_map(|part| part.strip_prefix("id="))
-                .map(|value| value.trim_end_matches("-->").trim().to_string());
-            let mut body = lines.collect::<Vec<_>>().join("\n");
-            body = body.trim_start_matches('\n').to_string();
-            return (id, body);
-        }
+    if let Some(first) = lines.next()
+        && let trimmed = first.trim()
+        && trimmed.starts_with("<!-- ship:feature ")
+        && trimmed.ends_with("-->")
+    {
+        let id = trimmed
+            .split_whitespace()
+            .find_map(|part| part.strip_prefix("id="))
+            .map(|value| value.trim_end_matches("-->").trim().to_string());
+        let mut body = lines.collect::<Vec<_>>().join("\n");
+        body = body.trim_start_matches('\n').to_string();
+        return (id, body);
     }
     (None, content.to_string())
 }

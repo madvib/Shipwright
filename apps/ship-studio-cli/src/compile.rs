@@ -83,11 +83,12 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     // 6. Write mcp__ship__* to global ~/.claude/settings.json when compiling for claude.
     //    The ship-mcp server is always injected by the compiler into every claude compile.
     //    This is a one-time global allow — avoids per-session approval prompts for ship MCP.
-    if !opts.dry_run && providers.contains(&"claude".to_string()) {
-        if let Err(e) = ensure_ship_mcp_globally_allowed() {
-            // Non-fatal — log warning but don't fail compile
-            eprintln!("warning: could not update global Claude settings: {e}");
-        }
+    if !opts.dry_run
+        && providers.contains(&"claude".to_string())
+        && let Err(e) = ensure_ship_mcp_globally_allowed()
+    {
+        // Non-fatal — log warning but don't fail compile
+        eprintln!("warning: could not update global Claude settings: {e}");
     }
 
     if !opts.dry_run {
@@ -121,8 +122,7 @@ fn ensure_ship_mcp_globally_allowed() -> Result<()> {
     let already_present = settings
         .pointer("/permissions/allow")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)))
-        .unwrap_or(false);
+        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)));
 
     if already_present {
         return Ok(());
@@ -242,13 +242,13 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     if let Ok(entries) = std::fs::read_dir(&teams_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "md") {
-                if let (Some(name), Ok(content)) = (
+            if path.extension().is_some_and(|e| e == "md")
+                && let (Some(name), Ok(content)) = (
                     path.file_name().map(|n| n.to_string_lossy().to_string()),
                     std::fs::read_to_string(&path),
-                ) {
-                    agents.push((name, content));
-                }
+                )
+            {
+                agents.push((name, content));
             }
         }
     }
@@ -387,8 +387,10 @@ pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> R
 /// Dry-run: print what would be written.
 fn print_dry_run(provider_id: &str, output: &CompileOutput) {
     println!("[dry-run] provider: {}", provider_id);
-    if let Some(f) = get_provider(provider_id).and_then(|d| d.context_file.file_name()) {
-        if output.context_content.is_some() { println!("  would write {}", f); }
+    if let Some(f) = get_provider(provider_id).and_then(|d| d.context_file.file_name())
+        && output.context_content.is_some()
+    {
+        println!("  would write {}", f);
     }
     if let Some(ref p) = output.mcp_config_path { println!("  would write {}", p); }
     for path in output.skill_files.keys() { println!("  would write {}", path); }

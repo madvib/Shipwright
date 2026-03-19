@@ -115,15 +115,14 @@ pub fn feature_done(ship_dir: &Path, id: &str) -> OpsResult<FeatureEntry> {
         .metadata
         .branch
         .as_ref()
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
+        .is_some_and(|value| !value.trim().is_empty());
     if !branch_set {
         return Err(OpsError::Validation(
             "Feature must have a branch before marking done".to_string(),
         ));
     }
 
-    let docs = get_feature_documentation(ship_dir, &existing.id).map_err(OpsError::from)?;
+    let docs = get_feature_documentation(ship_dir, &existing.id)?;
     if docs.status == FeatureDocStatus::NotStarted {
         return Err(OpsError::Validation(
             "Feature documentation must be started before marking done".to_string(),

@@ -428,12 +428,11 @@ fn annotate_session_stale_state(
 ) {
     session.stale_context = session
         .config_generation_at_start
-        .and_then(|session_generation| {
+        .is_some_and(|session_generation| {
             workspace_generation_by_branch
                 .get(&session.workspace_branch)
-                .map(|workspace_generation| *workspace_generation > session_generation)
-        })
-        .unwrap_or(false);
+                .is_some_and(|workspace_generation| *workspace_generation > session_generation)
+        });
 }
 
 fn annotate_session_record(ship_dir: &Path, session: &mut WorkspaceSession) -> Result<()> {
@@ -1114,10 +1113,9 @@ fn hydrate_from_branch_links(
 fn hydrate_from_feature_links(ship_dir: &Path, workspace: &mut Workspace) -> Result<()> {
     if let Some(feature_id) = workspace.feature_id.clone()
         && let Some(target_id) = get_feature_links(ship_dir, &feature_id)?
+        && workspace.target_id.is_none()
     {
-        if workspace.target_id.is_none() {
-            workspace.target_id = target_id;
-        }
+        workspace.target_id = target_id;
     }
     Ok(())
 }
@@ -1592,7 +1590,6 @@ pub fn end_workspace_session(
 }
 
 /// Create or update a workspace record without requiring a git checkout.
-
 /// This is the runtime-native entrypoint for workspace lifecycle management.
 pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Result<Workspace> {
     let branch = ensure_branch_key(&request.branch)?.to_string();
@@ -2451,12 +2448,14 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
-        config.mcp_servers = vec![
-            stdio_server("github", "gh"),
-            stdio_server("linear", "linear"),
-        ];
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            mcp_servers: vec![
+                stdio_server("github", "gh"),
+                stdio_server("linear", "linear"),
+            ],
+            ..Default::default()
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         crate::skill::create_skill(&ship_dir, "selected-skill", "Selected", "selected content")?;
@@ -2735,13 +2734,15 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.modes = vec![crate::config::ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            target_agents: vec!["codex".to_string()],
+        let config = crate::config::ProjectConfig {
+            modes: vec![crate::config::ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                target_agents: vec!["codex".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         create_workspace(
@@ -2772,14 +2773,16 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
-        config.modes = vec![crate::config::ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            target_agents: vec!["gemini".to_string()],
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            modes: vec![crate::config::ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                target_agents: vec!["gemini".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         create_workspace(
@@ -2804,14 +2807,16 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
-        config.modes = vec![crate::config::ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            target_agents: vec!["codex".to_string()],
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            modes: vec![crate::config::ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                target_agents: vec!["codex".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         insert_feature_for_branch_with_agent(
@@ -3018,8 +3023,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        let mut config = crate::config::ProjectConfig::default();
-        config.providers = vec!["claude".to_string()];
+        let config = crate::config::ProjectConfig {
+            providers: vec!["claude".to_string()],
+            ..Default::default()
+        };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
         create_workspace(

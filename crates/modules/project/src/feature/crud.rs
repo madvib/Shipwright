@@ -21,10 +21,10 @@ fn resolve_feature_id(ship_dir: &Path, reference: &str) -> Result<Option<String>
     }
 
     let without_ext = reference.trim_end_matches(".md");
-    if without_ext != reference {
-        if let Some(entry) = get_feature_db(ship_dir, without_ext)? {
-            return Ok(Some(entry.id));
-        }
+    if without_ext != reference
+        && let Some(entry) = get_feature_db(ship_dir, without_ext)?
+    {
+        return Ok(Some(entry.id));
     }
 
     let reference_file = if reference.ends_with(".md") {

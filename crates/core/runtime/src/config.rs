@@ -796,6 +796,7 @@ fn normalize_git_config(mut git: GitConfig) -> GitConfig {
     git
 }
 
+#[allow(clippy::type_complexity)]
 fn get_runtime_settings(
     ship_dir: &Path,
 ) -> Result<
@@ -999,18 +1000,20 @@ fn migrate_json_config(path: &Path) -> Result<ProjectConfig> {
     let content = fs::read_to_string(path)?;
     let legacy: LegacyConfig = serde_json::from_str(&content).unwrap_or_default();
 
-    let mut config = ProjectConfig::default();
-    if let Some(status_ids) = legacy.statuses {
-        config.statuses = status_ids
-            .into_iter()
-            .map(|id| StatusConfig {
-                name: id_to_name(&id),
-                color: default_color_for(&id),
-                id,
-            })
-            .collect();
-    }
-    Ok(config)
+    let statuses = legacy
+        .statuses
+        .unwrap_or_default()
+        .into_iter()
+        .map(|id| StatusConfig {
+            name: id_to_name(&id),
+            color: default_color_for(&id),
+            id,
+        })
+        .collect();
+    Ok(ProjectConfig {
+        statuses,
+        ..Default::default()
+    })
 }
 
 fn id_to_name(id: &str) -> String {
@@ -1368,10 +1371,10 @@ pub fn set_active_mode(project_dir: Option<PathBuf>, id: Option<&str>) -> Result
     config.active_mode = id.map(|s| s.to_string());
     save_config(&config, project_dir.clone())?;
     // Auto-sync to configured agent targets after mode change
-    if let Some(ref dir) = project_dir {
-        if let Err(error) = crate::agents::export::sync_active_mode(dir) {
-            eprintln!("[ship] warning: active mode sync failed: {}", error);
-        }
+    if let Some(ref dir) = project_dir
+        && let Err(error) = crate::agents::export::sync_active_mode(dir)
+    {
+        eprintln!("[ship] warning: active mode sync failed: {}", error);
     }
     emit_mode_event(
         &project_dir,
@@ -1689,47 +1692,49 @@ mod tests {
         let ship_dir = tmp.path().join(".ship");
         fs::create_dir_all(&ship_dir)?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["claude".to_string(), "codex".to_string()];
-        config.active_mode = Some("planning".to_string());
-        config.hooks = vec![HookConfig {
-            id: "audit".to_string(),
-            trigger: HookTrigger::PostToolUse,
-            matcher: Some("Bash".to_string()),
-            timeout_ms: None,
-            description: None,
-            command: "echo audit".to_string(),
-        }];
-        config.ai = Some(AiConfig {
-            provider: Some("codex".to_string()),
-            model: Some("gpt-5".to_string()),
-            cli_path: None,
-        });
-        config.agent = AgentLayerConfig {
-            skills: vec!["task-policy".to_string()],
-            prompts: vec![],
-            context: vec!["project/README.md".to_string()],
-        };
-        config.modes = vec![ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
+        let config = ProjectConfig {
+            providers: vec!["claude".to_string(), "codex".to_string()],
+            active_mode: Some("planning".to_string()),
+            hooks: vec![HookConfig {
+                id: "audit".to_string(),
+                trigger: HookTrigger::PostToolUse,
+                matcher: Some("Bash".to_string()),
+                timeout_ms: None,
+                description: None,
+                command: "echo audit".to_string(),
+            }],
+            ai: Some(AiConfig {
+                provider: Some("codex".to_string()),
+                model: Some("gpt-5".to_string()),
+                cli_path: None,
+            }),
+            agent: AgentLayerConfig {
+                skills: vec!["task-policy".to_string()],
+                prompts: vec![],
+                context: vec!["project/README.md".to_string()],
+            },
+            modes: vec![ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                ..Default::default()
+            }],
+            mcp_servers: vec![McpServerConfig {
+                id: "github".to_string(),
+                name: "GitHub".to_string(),
+                command: "npx".to_string(),
+                args: vec![
+                    "-y".to_string(),
+                    "@modelcontextprotocol/server-github".to_string(),
+                ],
+                env: HashMap::new(),
+                scope: "project".to_string(),
+                server_type: McpServerType::Stdio,
+                url: None,
+                disabled: false,
+                timeout_secs: Some(30),
+            }],
             ..Default::default()
-        }];
-        config.mcp_servers = vec![McpServerConfig {
-            id: "github".to_string(),
-            name: "GitHub".to_string(),
-            command: "npx".to_string(),
-            args: vec![
-                "-y".to_string(),
-                "@modelcontextprotocol/server-github".to_string(),
-            ],
-            env: HashMap::new(),
-            scope: "project".to_string(),
-            server_type: McpServerType::Stdio,
-            url: None,
-            disabled: false,
-            timeout_secs: Some(30),
-        }];
+        };
 
         save_config(&config, Some(ship_dir.clone()))?;
 
@@ -1809,46 +1814,48 @@ mod tests {
         let ship_dir = tmp.path().join(".ship");
         fs::create_dir_all(&ship_dir)?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["gemini".to_string()];
-        config.active_mode = Some("focus".to_string());
-        config.ai = Some(AiConfig {
-            provider: Some("codex".to_string()),
-            model: Some("gpt-5".to_string()),
-            cli_path: Some("codex".to_string()),
-        });
-        config.statuses.push(StatusConfig {
-            id: "qa".to_string(),
-            name: "QA".to_string(),
-            color: "teal".to_string(),
-        });
-        config.git = GitConfig {
-            ignore: vec!["project/features".to_string()],
-            commit: vec!["ship.toml".to_string(), "rules".to_string()],
-        };
-        config.namespaces.push(NamespaceConfig {
-            id: "plugin:demo".to_string(),
-            path: "demo".to_string(),
-            owner: "plugins".to_string(),
-        });
-        config.modes = vec![ModeConfig {
-            id: "focus".to_string(),
-            name: "Focus".to_string(),
-            mcp_servers: vec!["github".to_string()],
+        let config = ProjectConfig {
+            providers: vec!["gemini".to_string()],
+            active_mode: Some("focus".to_string()),
+            ai: Some(AiConfig {
+                provider: Some("codex".to_string()),
+                model: Some("gpt-5".to_string()),
+                cli_path: Some("codex".to_string()),
+            }),
+            statuses: vec![StatusConfig {
+                id: "qa".to_string(),
+                name: "QA".to_string(),
+                color: "teal".to_string(),
+            }],
+            git: GitConfig {
+                ignore: vec!["project/features".to_string()],
+                commit: vec!["ship.toml".to_string(), "rules".to_string()],
+            },
+            namespaces: vec![NamespaceConfig {
+                id: "plugin:demo".to_string(),
+                path: "demo".to_string(),
+                owner: "plugins".to_string(),
+            }],
+            modes: vec![ModeConfig {
+                id: "focus".to_string(),
+                name: "Focus".to_string(),
+                mcp_servers: vec!["github".to_string()],
+                ..Default::default()
+            }],
+            mcp_servers: vec![McpServerConfig {
+                id: "github".to_string(),
+                name: "GitHub".to_string(),
+                command: "npx".to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                scope: "project".to_string(),
+                server_type: McpServerType::Stdio,
+                url: None,
+                disabled: false,
+                timeout_secs: None,
+            }],
             ..Default::default()
-        }];
-        config.mcp_servers = vec![McpServerConfig {
-            id: "github".to_string(),
-            name: "GitHub".to_string(),
-            command: "npx".to_string(),
-            args: vec![],
-            env: HashMap::new(),
-            scope: "project".to_string(),
-            server_type: McpServerType::Stdio,
-            url: None,
-            disabled: false,
-            timeout_secs: None,
-        }];
+        };
 
         save_config(&config, Some(ship_dir.clone()))?;
         let loaded = get_config(Some(ship_dir))?;

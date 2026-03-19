@@ -56,7 +56,7 @@ pub struct AgentLimits {
     pub require_confirmation: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct Permissions {
     #[serde(default)]
     pub tools: ToolPermissions,
@@ -178,17 +178,6 @@ impl Default for AgentLimits {
     }
 }
 
-impl Default for Permissions {
-    fn default() -> Self {
-        Self {
-            tools: ToolPermissions::default(),
-            filesystem: FsPermissions::default(),
-            commands: CommandPermissions::default(),
-            network: NetworkPermissions::default(),
-            agent: AgentLimits::default(),
-        }
-    }
-}
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -243,12 +232,11 @@ pub fn save_permissions(ship_dir: PathBuf, permissions: &Permissions) -> Result<
     // struct. The named-preset format ([ship-standard], [ship-guarded], etc.) is
     // a user-maintained reference that the compile path reads via profile presets.
     // Overwriting it would destroy the named sections on every `ship use`.
-    if path.exists() {
-        if let Ok(existing) = fs::read_to_string(&path) {
-            if is_named_preset_format(&existing) {
-                return Ok(());
-            }
-        }
+    if path.exists()
+        && let Ok(existing) = fs::read_to_string(&path)
+        && is_named_preset_format(&existing)
+    {
+        return Ok(());
     }
     write_atomic(&path, toml::to_string(permissions)?)
 }
@@ -367,8 +355,13 @@ tools_deny = ["Bash(git push --force*)"]
         let ship_dir = tmp.path().join(".ship");
         std::fs::create_dir_all(ship_dir.join("agents")).unwrap();
 
-        let mut perms = Permissions::default();
-        perms.tools.deny = vec!["mcp__*__delete*".to_string()];
+        let perms = Permissions {
+            tools: ToolPermissions {
+                deny: vec!["mcp__*__delete*".to_string()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         save_permissions(ship_dir.clone(), &perms).unwrap();
 
         let restored = get_permissions(ship_dir).unwrap();

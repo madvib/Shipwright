@@ -165,10 +165,10 @@ fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> a
                     result.push((dir.clone(), content));
                 } else if let Some(sub_entries) = list_github_dir(owner, repo, dir)? {
                     for (name, kind) in sub_entries {
-                        if kind == "dir" {
-                            if let Some(content) = fetch_github_file(owner, repo, &format!("{dir}/{name}/SKILL.md"))? {
-                                result.push((format!("{dir}-{name}"), content));
-                            }
+                        if kind == "dir"
+                            && let Some(content) = fetch_github_file(owner, repo, &format!("{dir}/{name}/SKILL.md"))?
+                        {
+                            result.push((format!("{dir}-{name}"), content));
                         }
                     }
                 }

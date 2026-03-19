@@ -4,7 +4,6 @@
 use anyhow::Result;
 use compiler::{AgentProfile, HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, ProjectLibrary, Rule, Skill, SkillSource};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 // ── Top-level entry point ─────────────────────────────────────────────────────
@@ -150,7 +149,7 @@ fn load_rules(agents_dir: &Path) -> Result<Vec<Rule>> {
     let mut rules = Vec::new();
     let mut entries: Vec<_> = std::fs::read_dir(&rules_dir)?
         .flatten()
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
         .collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
@@ -164,25 +163,25 @@ fn load_rules(agents_dir: &Path) -> Result<Vec<Rule>> {
 /// Parse a rule `.md` file, stripping YAML frontmatter if present.
 /// Frontmatter fields: `description`, `globs` (list), `alwaysApply` (bool).
 fn parse_rule(file_name: &str, raw: &str) -> Rule {
-    if let Some(rest) = raw.strip_prefix("---\n") {
-        if let Some(end) = rest.find("\n---\n") {
-            let fm = &rest[..end];
-            let body = &rest[end + 5..];
-            let mut always_apply = true;
-            let mut globs = vec![];
-            let mut description = None;
-            for line in fm.lines() {
-                if let Some(v) = line.strip_prefix("alwaysApply:") {
-                    always_apply = v.trim() != "false";
-                } else if let Some(v) = line.strip_prefix("description:") {
-                    description = Some(v.trim().trim_matches('"').to_string());
-                } else if line.trim_start().starts_with("- ") {
-                    globs.push(line.trim().trim_start_matches("- ").to_string());
-                }
+    if let Some(rest) = raw.strip_prefix("---\n")
+        && let Some(end) = rest.find("\n---\n")
+    {
+        let fm = &rest[..end];
+        let body = &rest[end + 5..];
+        let mut always_apply = true;
+        let mut globs = vec![];
+        let mut description = None;
+        for line in fm.lines() {
+            if let Some(v) = line.strip_prefix("alwaysApply:") {
+                always_apply = v.trim() != "false";
+            } else if let Some(v) = line.strip_prefix("description:") {
+                description = Some(v.trim().trim_matches('"').to_string());
+            } else if line.trim_start().starts_with("- ") {
+                globs.push(line.trim().trim_start_matches("- ").to_string());
             }
-            return Rule { file_name: file_name.to_string(), content: body.trim().to_string(),
-                          always_apply, globs, description };
         }
+        return Rule { file_name: file_name.to_string(), content: body.trim().to_string(),
+                      always_apply, globs, description };
     }
     Rule { file_name: file_name.to_string(), content: raw.trim().to_string(),
            always_apply: true, globs: vec![], description: None }
@@ -204,7 +203,7 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
                 let raw = std::fs::read_to_string(&skill_md)?;
                 skills.push(parse_skill(&id, &raw));
             }
-        } else if path.extension().map_or(false, |x| x == "md") {
+        } else if path.extension().is_some_and(|x| x == "md") {
             // Flat format: <skill-id>.md
             let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
             let raw = std::fs::read_to_string(&path)?;
@@ -220,18 +219,18 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
     let mut description = None;
     let mut content_start = 0;
 
-    if let Some(rest) = raw.strip_prefix("---\n") {
-        if let Some(end) = rest.find("\n---\n") {
-            let fm = &rest[..end];
-            for line in fm.lines() {
-                if let Some(v) = line.strip_prefix("name:") {
-                    name = v.trim().to_string();
-                } else if let Some(v) = line.strip_prefix("description:") {
-                    description = Some(v.trim().to_string());
-                }
+    if let Some(rest) = raw.strip_prefix("---\n")
+        && let Some(end) = rest.find("\n---\n")
+    {
+        let fm = &rest[..end];
+        for line in fm.lines() {
+            if let Some(v) = line.strip_prefix("name:") {
+                name = v.trim().to_string();
+            } else if let Some(v) = line.strip_prefix("description:") {
+                description = Some(v.trim().to_string());
             }
-            content_start = 4 + end + 5; // "---\n" + fm + "\n---\n"
         }
+        content_start = 4 + end + 5; // "---\n" + fm + "\n---\n"
     }
     let content = raw[content_start..].trim().to_string();
     Skill { id: id.to_string(), name, description, version: None, author: None,
@@ -246,7 +245,7 @@ fn load_agent_profiles(agents_dir: &Path) -> Result<Vec<AgentProfile>> {
     let mut profiles = Vec::new();
     for entry in std::fs::read_dir(&profiles_dir)?.flatten() {
         let path = entry.path();
-        if path.extension().map_or(false, |x| x == "toml") {
+        if path.extension().is_some_and(|x| x == "toml") {
             let content = std::fs::read_to_string(&path)?;
             match toml::from_str::<AgentProfile>(&content) {
                 Ok(profile) => profiles.push(profile),

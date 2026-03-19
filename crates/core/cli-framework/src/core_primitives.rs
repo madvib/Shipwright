@@ -462,10 +462,7 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
     match action {
         ProviderAction::List => {
             let providers = list_providers(project_dir)?;
-            println!(
-                "{:<12} {:<20} {:<10} {:<10} {}",
-                "ID", "NAME", "INSTALLED", "CONNECTED", "VERSION"
-            );
+            println!("{:<12} {:<20} {:<10} {:<10} VERSION", "ID", "NAME", "INSTALLED", "CONNECTED");
             println!("{}", "-".repeat(70));
             for provider in providers {
                 println!(
@@ -514,7 +511,7 @@ pub fn handle_provider_action(action: ProviderAction, project_dir: &Path) -> Res
         }
         ProviderAction::Models { id } => {
             let models = list_models(&id)?;
-            println!("{:<30} {:<14} {}", "MODEL", "CONTEXT", "");
+            println!("{:<30} {:<14}", "MODEL", "CONTEXT");
             println!("{}", "-".repeat(60));
             for model in models {
                 let context = if model.context_window == 0 {
@@ -588,6 +585,6 @@ fn import_provider_surface(project_dir: &Path, provider_id: &str) -> Result<Prov
     })
 }
 
-fn require_project_dir<'a>(project_dir: Option<&'a Path>) -> Result<&'a Path> {
+fn require_project_dir(project_dir: Option<&Path>) -> Result<&Path> {
     project_dir.ok_or_else(|| anyhow::anyhow!("No Ship project found in current directory"))
 }

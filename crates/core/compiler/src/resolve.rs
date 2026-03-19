@@ -68,6 +68,7 @@ pub struct ResolvedConfig {
 /// 1. Project defaults (`ship.toml` types + `agents/` content)
 /// 2. Active mode filter (restricts servers/skills/rules)
 /// 3. Feature overrides (model, providers, additional server/skill filter)
+///
 /// A self-contained library of agent config assets loaded from the `agents/`
 /// directory. This is the primary input for the compiler in the new config model:
 /// ship.toml holds identity only; the library holds everything the compiler needs.
@@ -178,7 +179,7 @@ pub fn resolve(
     // 2. Mode target_agents — when a mode is active and specifies target agents.
     // 3. Project-level providers.
     // 4. Default: ["claude"].
-    let feature_has_explicit = feature.map_or(false, |f| !f.providers.is_empty());
+    let feature_has_explicit = feature.is_some_and(|f| !f.providers.is_empty());
     let feature_providers = feature
         .filter(|f| !f.providers.is_empty())
         .map(|f| normalize_providers(&f.providers))
@@ -228,13 +229,13 @@ pub fn resolve(
 
     // ── Rules ─────────────────────────────────────────────────────────────────
     let mut resolved_rules = rules.to_vec();
-    if let Some(m) = mode {
-        if !m.rules.is_empty() {
-            let allowed: HashSet<String> =
-                m.rules.iter().map(|id| normalize_rule_id(id)).collect();
-            resolved_rules
-                .retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
-        }
+    if let Some(m) = mode
+        && !m.rules.is_empty()
+    {
+        let allowed: HashSet<String> =
+            m.rules.iter().map(|id| normalize_rule_id(id)).collect();
+        resolved_rules
+            .retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
     }
 
     ResolvedConfig {
@@ -290,10 +291,10 @@ fn normalize_rule_id(id: &str) -> String {
 }
 
 fn apply_mode_server_filter(servers: &mut Vec<McpServerConfig>, mode: Option<&ModeConfig>) {
-    if let Some(m) = mode {
-        if !m.mcp_servers.is_empty() {
-            servers.retain(|s| m.mcp_servers.contains(&s.id));
-        }
+    if let Some(m) = mode
+        && !m.mcp_servers.is_empty()
+    {
+        servers.retain(|s| m.mcp_servers.contains(&s.id));
     }
 }
 
@@ -305,10 +306,10 @@ fn apply_feature_server_filter(servers: &mut Vec<McpServerConfig>, feature: &Fea
 }
 
 fn apply_mode_skill_filter(skills: &mut Vec<Skill>, mode: Option<&ModeConfig>) {
-    if let Some(m) = mode {
-        if !m.skills.is_empty() {
-            skills.retain(|s| m.skills.contains(&s.id));
-        }
+    if let Some(m) = mode
+        && !m.skills.is_empty()
+    {
+        skills.retain(|s| m.skills.contains(&s.id));
     }
 }
 

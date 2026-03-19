@@ -738,7 +738,7 @@ fn import_mcp_servers_from_json(
             disabled: entry
                 .get("disabled")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false),
+                .unwrap_or_default(),
             timeout_secs: entry
                 .get("startup_timeout_sec")
                 .or_else(|| entry.get("timeout_secs"))
@@ -814,7 +814,7 @@ fn import_mcp_servers_from_toml(
             disabled: table
                 .get("disabled")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false),
+                .unwrap_or_default(),
             timeout_secs: table
                 .get("startup_timeout_sec")
                 .and_then(|v| v.as_integer())
@@ -926,7 +926,7 @@ fn export_json(
                     .get("_ship")
                     .and_then(|v| v.get("managed"))
                     .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
+                    .unwrap_or_default(),
                 ManagedMarker::StateFileOnly => false,
             } || tool_state.managed_servers.contains(id);
             if !is_managed {
@@ -1118,7 +1118,7 @@ fn teardown_json(
                     .get("_ship")
                     .and_then(|v| v.get("managed"))
                     .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
+                    .unwrap_or_default(),
                 ManagedMarker::StateFileOnly => false,
             } || tool_state.managed_servers.contains(id);
             if !is_managed {

@@ -3,19 +3,14 @@ use specta::Type;
 
 // ─── Status ───────────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum FeatureStatus {
+    #[default]
     Planned,
     InProgress,
     Implemented,
     Deprecated,
-}
-
-impl Default for FeatureStatus {
-    fn default() -> Self {
-        FeatureStatus::Planned
-    }
 }
 
 impl std::fmt::Display for FeatureStatus {
@@ -42,19 +37,14 @@ impl std::str::FromStr for FeatureStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum FeatureDocStatus {
+    #[default]
     NotStarted,
     Draft,
     Reviewed,
     Published,
-}
-
-impl Default for FeatureDocStatus {
-    fn default() -> Self {
-        FeatureDocStatus::NotStarted
-    }
 }
 
 impl std::fmt::Display for FeatureDocStatus {

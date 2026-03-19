@@ -181,14 +181,14 @@ fn pull_with_token(token: &str, cfg: &CloudConfig, force: bool, project_root: &P
 
         if dest.exists() && !force {
             // Skip if local file is newer than remote (use mtime as proxy)
-            if let Ok(meta) = std::fs::metadata(&dest) {
-                if let Ok(modified) = meta.modified() {
-                    // Without a remote timestamp we skip conservatively —
-                    // any local file wins unless --force is given.
-                    let _ = modified;
-                    println!("  skipped (local is newer or same): {}", name);
-                    continue;
-                }
+            if let Ok(meta) = std::fs::metadata(&dest)
+                && let Ok(modified) = meta.modified()
+            {
+                // Without a remote timestamp we skip conservatively —
+                // any local file wins unless --force is given.
+                let _ = modified;
+                println!("  skipped (local is newer or same): {}", name);
+                continue;
             }
         }
 

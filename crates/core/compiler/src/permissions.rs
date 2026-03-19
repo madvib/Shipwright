@@ -74,7 +74,7 @@ fn extract_allowed_tools(content: &str) -> Vec<String> {
 
     // Skip leading blank lines then expect opening `---`
     let first = lines.find(|l| !l.trim().is_empty());
-    if first.as_deref() != Some("---") {
+    if first != Some("---") {
         return vec![];
     }
 

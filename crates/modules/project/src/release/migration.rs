@@ -23,7 +23,7 @@ pub fn import_releases_from_files(ship_dir: &Path) -> Result<usize> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |e| e == "md") {
+            if path.is_file() && path.extension().is_some_and(|e| e == "md") {
                 let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if file_name == "TEMPLATE.md" || file_name == "README.md" {
                     continue;
@@ -33,10 +33,10 @@ pub fn import_releases_from_files(ship_dir: &Path) -> Result<usize> {
                     .with_context(|| format!("Failed to read release file: {}", path.display()))?;
 
                 if let Ok(release) = Release::from_markdown(&content) {
-                    let status = if path.starts_with(&releases_dir.join("upcoming")) {
+                    let status = if path.starts_with(releases_dir.join("upcoming")) {
                         ReleaseStatus::Upcoming
                     } else {
-                        release.metadata.status.clone()
+                        release.metadata.status
                     };
 
                     if get_release_db(ship_dir, &release.metadata.id)?.is_some() {

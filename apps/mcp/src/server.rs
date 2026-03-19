@@ -36,7 +36,7 @@ use runtime::{
 use ship_module_project::ops::note::update_note_content;
 
 use ship_module_project::{NoteScope, get_project_name, list_registered_projects};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use crate::requests::*;
@@ -66,20 +66,18 @@ fn configured_worktree_dir_impl(
                 in_worktrees = true;
             } else if trimmed.starts_with('[') {
                 in_worktrees = false;
-            } else if in_worktrees {
-                if let Some(rest) = trimmed.strip_prefix("dir") {
-                    let rest = rest.trim();
-                    if let Some(val) = rest.strip_prefix('=') {
-                        let dir = val.trim().trim_matches('"');
-                        if !dir.is_empty() {
-                            let expanded = if dir.starts_with("~/") {
-                                home.join(&dir[2..])
-                            } else {
-                                std::path::PathBuf::from(dir)
-                            };
-                            return expanded;
-                        }
-                    }
+            } else if in_worktrees
+                && let Some(rest) = trimmed.strip_prefix("dir")
+                && let Some(val) = rest.trim().strip_prefix('=')
+            {
+                let dir = val.trim().trim_matches('"');
+                if !dir.is_empty() {
+                    let expanded = if let Some(rest) = dir.strip_prefix("~/") {
+                        home.join(rest)
+                    } else {
+                        std::path::PathBuf::from(dir)
+                    };
+                    return expanded;
                 }
             }
         }
@@ -102,6 +100,7 @@ pub struct ShipServer {
 
 #[tool_router]
 impl ShipServer {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
@@ -132,24 +131,23 @@ impl ShipServer {
             return Ok(resolve(dir));
         }
 
-        if let Ok(Some(global_active)) = get_active_project_global() {
-            if let Ok(dir) = get_project_dir(Some(global_active.clone())) {
-                let project_root = resolve(dir);
-                let mut active = self.active_project.lock().await;
-                *active = Some(project_root.clone());
-                return Ok(project_root);
-            }
+        if let Ok(Some(global_active)) = get_active_project_global()
+            && let Ok(dir) = get_project_dir(Some(global_active.clone()))
+        {
+            let project_root = resolve(dir);
+            let mut active = self.active_project.lock().await;
+            *active = Some(project_root.clone());
+            return Ok(project_root);
         }
 
-        if let Ok(registry) = list_registered_projects() {
-            if registry.len() == 1 {
-                if let Ok(dir) = get_project_dir(Some(registry[0].path.clone())) {
-                    let project_root = resolve(dir);
-                    let mut active = self.active_project.lock().await;
-                    *active = Some(project_root.clone());
-                    return Ok(project_root);
-                }
-            }
+        if let Ok(registry) = list_registered_projects()
+            && registry.len() == 1
+            && let Ok(dir) = get_project_dir(Some(registry[0].path.clone()))
+        {
+            let project_root = resolve(dir);
+            let mut active = self.active_project.lock().await;
+            *active = Some(project_root.clone());
+            return Ok(project_root);
         }
 
         get_project_dir(None)
@@ -232,7 +230,7 @@ impl ShipServer {
             .any(|allowed| allowed == normalized_tool)
     }
 
-    fn enforce_mode_tool_gate(project_dir: &PathBuf, tool_name: &str) -> Result<(), String> {
+    fn enforce_mode_tool_gate(project_dir: &Path, tool_name: &str) -> Result<(), String> {
         if Self::is_core_tool(tool_name) {
             return Ok(());
         }
@@ -246,7 +244,7 @@ impl ShipServer {
             }
         }
 
-        let active_mode = get_active_mode(Some(project_dir.clone())).map_err(|e| e.to_string())?;
+        let active_mode = get_active_mode(Some(project_dir.to_path_buf())).map_err(|e| e.to_string())?;
 
         if let Some(ref mode) = active_mode {
             if Self::mode_allows_tool(tool_name, &mode.active_tools) {
@@ -275,7 +273,7 @@ impl ShipServer {
     }
 
     fn resolve_workspace_branch_for_project(
-        project_dir: &PathBuf,
+        project_dir: &Path,
         branch: Option<&str>,
     ) -> Result<String, String> {
         if let Some(branch) = branch {
@@ -410,26 +408,26 @@ impl ShipServer {
             }
         }
 
-        if let Ok(events) = list_events_since(&project_dir, 0, Some(10)) {
-            if !events.is_empty() {
-                out.push_str("\n## Recent Events\n");
-                for e in events {
-                    let details = e
-                        .details
-                        .as_ref()
-                        .map(|d| format!(" — {}", d))
-                        .unwrap_or_default();
-                    out.push_str(&format!(
-                        "- #{} {} [{}] {:?}.{:?} {}{}\n",
-                        e.seq,
-                        e.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                        e.actor,
-                        e.entity,
-                        e.action,
-                        e.subject,
-                        details
-                    ));
-                }
+        if let Ok(events) = list_events_since(&project_dir, 0, Some(10))
+            && !events.is_empty()
+        {
+            out.push_str("\n## Recent Events\n");
+            for e in events {
+                let details = e
+                    .details
+                    .as_ref()
+                    .map(|d| format!(" — {}", d))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "- #{} {} [{}] {:?}.{:?} {}{}\n",
+                    e.seq,
+                    e.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                    e.actor,
+                    e.entity,
+                    e.action,
+                    e.subject,
+                    details
+                ));
             }
         }
 
@@ -454,7 +452,6 @@ impl ShipServer {
         }
     }
 
-    /// List notes stored in platform.db for this project
     // list_notes_tool removed — use ship://notes resource for reads
 
     /// Update a standalone note
@@ -559,7 +556,7 @@ impl ShipServer {
             Err(err) => return format!("Error: {}", err),
         };
 
-        let workspace = if req.activate.unwrap_or(false) {
+        let workspace = if req.activate.unwrap_or_default() {
             match runtime_activate_workspace(&project_dir, &workspace.branch) {
                 Ok(active) => active,
                 Err(err) => return format!("Error: {}", err),
@@ -1486,10 +1483,10 @@ impl ShipServer {
                 current_wt_branch = None;
             } else if let Some(branch) = line.strip_prefix("branch refs/heads/") {
                 current_wt_branch = Some(branch.to_string());
-            } else if line.is_empty() {
-                if let Some(p) = current_path.take() {
-                    entries.push((p, current_wt_branch.take()));
-                }
+            } else if line.is_empty()
+                && let Some(p) = current_path.take()
+            {
+                entries.push((p, current_wt_branch.take()));
             }
         }
         if let Some(p) = current_path.take() {
@@ -1556,10 +1553,10 @@ impl ShipServer {
         // Accumulate touched files from "touched: <path>" convention.
         if let Some(path) = req.message.strip_prefix("touched: ") {
             let path = path.trim();
-            if !path.is_empty() {
-                if let Err(e) = runtime::db::jobs::append_touched_file(&project_dir, &req.job_id, path) {
-                    return format!("Error recording touched file: {}", e);
-                }
+            if !path.is_empty()
+                && let Err(e) = runtime::db::jobs::append_touched_file(&project_dir, &req.job_id, path)
+            {
+                return format!("Error recording touched file: {}", e);
             }
         }
         let message = if let Some(ref level) = req.level {
@@ -1582,7 +1579,7 @@ impl ShipServer {
 
 impl ShipServer {
     /// Resolve a `ship://` URI to its text content, or `None` if not found.
-    async fn resolve_resource_uri(&self, uri: &str, dir: &PathBuf) -> Option<String> {
+    async fn resolve_resource_uri(&self, uri: &str, dir: &Path) -> Option<String> {
         // ship://project_info
         if uri == "ship://project_info" {
             return Some(self.get_project_info().await);
@@ -1727,7 +1724,7 @@ impl ShipServer {
         }
         // ship://modes
         if uri == "ship://modes" {
-            return match get_config(Some(dir.clone())) {
+            return match get_config(Some(dir.to_path_buf())) {
                 Ok(config) => {
                     let payload = serde_json::json!({
                         "active_mode": config.active_mode,
@@ -1777,7 +1774,7 @@ fn parse_note_scope(raw: Option<&str>) -> Result<NoteScope> {
     raw.unwrap_or("project").parse::<NoteScope>()
 }
 
-fn render_events_resource(project_dir: &PathBuf, since: u64, limit: usize) -> Option<String> {
+fn render_events_resource(project_dir: &Path, since: u64, limit: usize) -> Option<String> {
     match list_events_since(project_dir, since, Some(limit)) {
         Ok(events) => {
             if events.is_empty() {
@@ -2195,7 +2192,6 @@ mod normalization_tests {
         let core_tools = [
             "open_project",
             "create_note",
-            "list_notes_tool",
             "create_adr",
             "activate_workspace",
             "create_workspace",

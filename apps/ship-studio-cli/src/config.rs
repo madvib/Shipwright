@@ -160,15 +160,15 @@ impl ShipConfig {
     /// Returns the path from `[worktrees] dir` (expanding `~`), or falls back
     /// to `~/dev/<project-name>-worktrees/` derived from `project_root`.
     pub fn worktree_base_dir(&self, project_root: &std::path::Path) -> PathBuf {
-        if let Some(ref wt) = self.worktrees {
-            if let Some(ref dir) = wt.dir {
-                let expanded = if dir.starts_with("~/") {
-                    dirs::home_dir().unwrap_or_default().join(&dir[2..])
-                } else {
-                    PathBuf::from(dir)
-                };
-                return expanded;
-            }
+        if let Some(ref wt) = self.worktrees
+            && let Some(ref dir) = wt.dir
+        {
+            let expanded = if let Some(rest) = dir.strip_prefix("~/") {
+                dirs::home_dir().unwrap_or_default().join(rest)
+            } else {
+                PathBuf::from(dir)
+            };
+            return expanded;
         }
         // Fallback: ~/dev/<project>-worktrees/
         let project_name = project_root

@@ -69,21 +69,21 @@ pub fn find_mode_file(id: &str) -> Option<PathBuf> {
 /// Return (mode_id, scope) pairs from project + global dirs.
 pub fn list_mode_ids(local_only: bool, project_only: bool) -> Vec<(String, &'static str)> {
     let mut modes = Vec::new();
-    if !local_only {
-        if let Ok(entries) = fs::read_dir(project_modes_dir()) {
-            for e in entries.flatten() {
-                if e.path().extension().map_or(false, |x| x == "toml") {
-                    modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "project"));
-                }
+    if !local_only
+        && let Ok(entries) = fs::read_dir(project_modes_dir())
+    {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|x| x == "toml") {
+                modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "project"));
             }
         }
     }
-    if !project_only {
-        if let Ok(entries) = fs::read_dir(global_modes_dir()) {
-            for e in entries.flatten() {
-                if e.path().extension().map_or(false, |x| x == "toml") {
-                    modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "global"));
-                }
+    if !project_only
+        && let Ok(entries) = fs::read_dir(global_modes_dir())
+    {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|x| x == "toml") {
+                modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "global"));
             }
         }
     }

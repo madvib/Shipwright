@@ -43,10 +43,8 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
     // Parse as registry manifest (requires [module] section).
     let compiler_manifest = ShipManifest::from_file(&manifest_path)
         .with_context(|| {
-            format!(
-                "Failed to parse .ship/ship.toml as a registry manifest.\n\
-                 Ensure it has [module] name, version, and optionally [dependencies]."
-            )
+            "Failed to parse .ship/ship.toml as a registry manifest.\n\
+             Ensure it has [module] name, version, and optionally [dependencies]."
         })?;
 
     // Convert compiler manifest to registry stub types used by resolve_and_fetch.
@@ -106,35 +104,35 @@ fn compiler_to_registry_manifest(m: &ShipManifest) -> RegistryManifest {
 /// Detect configured providers from the project's ship.toml (best-effort).
 fn detect_providers_from_project(project_root: &Path) -> String {
     let path = project_root.join(".ship").join("ship.toml");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(val) = toml::from_str::<toml::Value>(&content) {
-            // Try [defaults].providers first
-            if let Some(providers) = val
-                .get("defaults")
-                .and_then(|d| d.get("providers"))
-                .and_then(|p| p.as_array())
-            {
-                let ids: Vec<&str> = providers
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect();
-                if !ids.is_empty() {
-                    return ids.join(", ");
-                }
+    if let Ok(content) = std::fs::read_to_string(&path)
+        && let Ok(val) = toml::from_str::<toml::Value>(&content)
+    {
+        // Try [defaults].providers first
+        if let Some(providers) = val
+            .get("defaults")
+            .and_then(|d| d.get("providers"))
+            .and_then(|p| p.as_array())
+        {
+            let ids: Vec<&str> = providers
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            if !ids.is_empty() {
+                return ids.join(", ");
             }
-            // Try [project].providers
-            if let Some(providers) = val
-                .get("project")
-                .and_then(|d| d.get("providers"))
-                .and_then(|p| p.as_array())
-            {
-                let ids: Vec<&str> = providers
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect();
-                if !ids.is_empty() {
-                    return ids.join(", ");
-                }
+        }
+        // Try [project].providers
+        if let Some(providers) = val
+            .get("project")
+            .and_then(|d| d.get("providers"))
+            .and_then(|p| p.as_array())
+        {
+            let ids: Vec<&str> = providers
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            if !ids.is_empty() {
+                return ids.join(", ");
             }
         }
     }

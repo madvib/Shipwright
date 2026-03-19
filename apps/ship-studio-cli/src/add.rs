@@ -72,7 +72,7 @@ pub fn run_add(project_root: &Path, package_spec: &str) -> Result<()> {
         Err(e) => {
             // Restore backup.
             let _ = std::fs::write(&manifest_path, &backup);
-            Err(e.context(format!("ship add failed; restored .ship/ship.toml")))
+            Err(e.context("ship add failed; restored .ship/ship.toml"))
         }
     }
 }

@@ -599,7 +599,7 @@ pub fn build_claude_settings_patch(
     let has_agent_limits = permissions.agent.max_cost_per_session.is_some()
         || permissions.agent.max_turns.is_some();
     let has_model = model.is_some();
-    let has_extra = extra.map_or(false, |v| !v.is_null());
+    let has_extra = extra.is_some_and(|v| !v.is_null());
     let has_env = !env.is_empty();
     let has_available_models = !available_models.is_empty();
 
@@ -618,8 +618,8 @@ pub fn build_claude_settings_patch(
         let mut perms = serde_json::json!({});
         // Only include allow if the user has a non-default allowlist.
         // Default ("*" or empty) → omit → Claude Code uses its own defaults.
-        let non_default_allow = !permissions.tools.allow.is_empty()
-            && !(permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
+        let non_default_allow = !(permissions.tools.allow.is_empty()
+            || permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
         if non_default_allow {
             perms["allow"] = serde_json::json!(permissions.tools.allow);
         }
@@ -885,8 +885,8 @@ fn build_gemini_policy_patch(permissions: &Permissions) -> Option<String> {
         }
     }
     // non-default allow → "allow"
-    let non_default_allow = !permissions.tools.allow.is_empty()
-        && !(permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
+    let non_default_allow = !(permissions.tools.allow.is_empty()
+        || permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
     if non_default_allow {
         for p in &permissions.tools.allow {
             if let Some((tool, pattern)) = translate_to_gemini_policy(p) {
@@ -1024,8 +1024,8 @@ pub const CURSOR_PERMISSIVE_ALLOW: &[&str] =
 /// IMPORTANT: `allow = ["*"]` (our internal allow-all) does NOT automatically expand
 /// to the permissive Cursor set — that must be an explicit user action in the UI.
 fn build_cursor_cli_permissions(permissions: &Permissions) -> Option<Json> {
-    let non_default_allow = !permissions.tools.allow.is_empty()
-        && !(permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
+    let non_default_allow = !(permissions.tools.allow.is_empty()
+        || permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
 
     let allow_patterns: Vec<String> = if non_default_allow {
         permissions.tools.allow
@@ -1278,7 +1278,7 @@ mod tests {
 
         // allow must NOT be emitted — default allow means Claude uses its own defaults
         assert!(
-            perms.get("allow").is_none() || perms["allow"].as_array().map(|a| a.is_empty()).unwrap_or(false),
+            perms.get("allow").is_none() || perms["allow"].as_array().is_some_and(|a| a.is_empty()),
             "allow field must be absent or empty when the user has not restricted the allowlist"
         );
     }
@@ -1307,7 +1307,7 @@ mod tests {
         let patch = out.claude_settings_patch.expect("deny patterns must emit a patch");
         let perms = &patch["permissions"];
         assert!(
-            perms.get("allow").is_none() || perms["allow"].as_array().map(|a| a.is_empty()).unwrap_or(false),
+            perms.get("allow").is_none() || perms["allow"].as_array().is_some_and(|a| a.is_empty()),
             "guarded preset (allow=[*] + deny) must not emit an allow field — it would become a strict allowlist"
         );
         let deny = perms["deny"].as_array().unwrap();
@@ -1592,8 +1592,10 @@ mod tests {
             "agent profile must be compiled into agent_files"
         );
         let content = &out.agent_files[".claude/agents/reviewer.md"];
-        assert!(content.contains("Code Reviewer"));
-        assert!(content.contains("Review carefully."));
+        // name field uses the profile id (filename-safe slug for Claude Code subagent_type matching)
+        assert!(content.contains("name: reviewer"), "name field must use profile id; got:\n{content}");
+        assert!(content.contains("Reviews code"), "description must appear; got:\n{content}");
+        assert!(content.contains("Review carefully."), "inline rules must appear; got:\n{content}");
     }
 
     // ── Team agents passthrough ─────────────────────────────────────────
@@ -3163,13 +3165,13 @@ mod tests {
             let out = compile(&r, desc.id).unwrap();
             if flags.supports_mcp {
                 assert!(
-                    out.mcp_servers.as_object().map(|o| o.contains_key("ship")).unwrap_or(false),
+                    out.mcp_servers.as_object().is_some_and(|o| o.contains_key("ship")),
                     "provider {} (supports_mcp=true) must include ship server",
                     desc.id
                 );
             } else {
                 assert!(
-                    out.mcp_servers.as_object().map(|o| o.is_empty()).unwrap_or(false),
+                    out.mcp_servers.as_object().is_some_and(|o| o.is_empty()),
                     "provider {} (supports_mcp=false) must not emit MCP entries",
                     desc.id
                 );

@@ -75,13 +75,11 @@ pub fn import_notes_from_files(scope: NoteScope, ship_dir: Option<&Path>) -> Res
 }
 
 fn parse_legacy_note(content: &str) -> Result<(LegacyNoteMetadata, String)> {
-    if content.starts_with("+++\n") {
-        let rest = &content[4..];
-        let end = rest
-            .find("\n+++")
+    if let Some(rest) = content.strip_prefix("+++\n") {
+        let (toml_str, rest_after) = rest
+            .split_once("\n+++")
             .ok_or_else(|| anyhow!("Invalid note format: missing closing +++"))?;
-        let toml_str = &rest[..end];
-        let body = rest[end + 4..].trim_start_matches('\n').to_string();
+        let body = rest_after.trim_start_matches('\n').to_string();
         let metadata: LegacyNoteMetadata =
             toml::from_str(toml_str).context("Failed to parse note TOML frontmatter")?;
         Ok((metadata, body))
@@ -89,8 +87,7 @@ fn parse_legacy_note(content: &str) -> Result<(LegacyNoteMetadata, String)> {
         let now = Utc::now().to_rfc3339();
         let title = content
             .lines()
-            .find(|line| line.starts_with("# "))
-            .map(|line| line.trim_start_matches("# ").trim().to_string())
+            .find_map(|line| line.strip_prefix("# ").map(|rest| rest.trim().to_string()))
             .unwrap_or_else(|| "Untitled Note".to_string());
         Ok((
             LegacyNoteMetadata {

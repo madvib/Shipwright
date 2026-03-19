@@ -21,12 +21,10 @@ impl ADR {
 
     pub fn from_markdown(content: &str) -> Result<Self> {
         // Strip HTML comment prefix that to_markdown writes (e.g. "<!-- GENERATED FILE ... -->")
-        let content = if content.starts_with("<!--") {
-            if let Some(end) = content.find("-->") {
-                content[end + 3..].trim_start_matches('\n')
-            } else {
-                content
-            }
+        let content = if content.starts_with("<!--")
+            && let Some(end) = content.find("-->")
+        {
+            content[end + 3..].trim_start_matches('\n')
         } else {
             content
         };
@@ -34,11 +32,10 @@ impl ADR {
             return Err(anyhow!("Invalid ADR format: missing TOML frontmatter"));
         }
         let rest = &content[4..];
-        let end = rest
-            .find("\n+++")
+        let (toml_str, rest_after) = rest
+            .split_once("\n+++")
             .ok_or_else(|| anyhow!("Invalid ADR format: missing closing +++"))?;
-        let toml_str = &rest[..end];
-        let body = rest[end + 4..].trim_start_matches('\n').to_string();
+        let body = rest_after.trim_start_matches('\n').to_string();
         let metadata: AdrMetadata =
             toml::from_str(toml_str).context("Failed to parse ADR TOML frontmatter")?;
         let (context, decision) = split_body(&body);
@@ -56,8 +53,8 @@ pub fn split_body(body: &str) -> (String, String) {
         let context = body[..pos].trim().to_string();
         let after = &body[pos..];
         let decision_body = after
-            .splitn(2, '\n')
-            .nth(1)
+            .split_once('\n')
+            .map(|(_, rest)| rest)
             .unwrap_or("")
             .trim()
             .to_string();

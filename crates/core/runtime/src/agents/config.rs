@@ -128,7 +128,7 @@ pub fn resolve_agent_config_with_mode_override(
     // 2. Mode target_agents — when a mode is active and specifies target agents.
     // 3. Project-level providers from ship.toml.
     // 4. Default: ["claude"].
-    let feature_has_explicit_providers = feature_agent.map_or(false, |fa| !fa.providers.is_empty());
+    let feature_has_explicit_providers = feature_agent.is_some_and(|fa| !fa.providers.is_empty());
     let feature_override_providers = feature_agent
         .filter(|fa| !fa.providers.is_empty())
         .map(|fa| normalize_provider_ids(&fa.providers))
@@ -249,14 +249,16 @@ mod tests {
         create_skill(&ship_dir, "rt-alpha-skill", "Alpha", "alpha body")?;
         create_skill(&ship_dir, "rt-beta-skill", "Beta", "beta body")?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["claude".to_string(), "gemini".to_string()];
-        config.ai = Some(AiConfig {
-            provider: Some("claude".to_string()),
-            model: Some("global-model".to_string()),
-            cli_path: None,
-        });
-        config.mcp_servers = vec![stdio_server("github", "github-bin")];
+        let config = ProjectConfig {
+            providers: vec!["claude".to_string(), "gemini".to_string()],
+            ai: Some(AiConfig {
+                provider: Some("claude".to_string()),
+                model: Some("global-model".to_string()),
+                cli_path: None,
+            }),
+            mcp_servers: vec![stdio_server("github", "github-bin")],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let feature_agent = FeatureAgentConfig {
@@ -311,18 +313,20 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.mcp_servers = vec![
-            stdio_server("github", "github-bin"),
-            stdio_server("linear", "linear-bin"),
-        ];
-        config.modes = vec![ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            mcp_servers: vec!["github".to_string()],
+        let config = ProjectConfig {
+            mcp_servers: vec![
+                stdio_server("github", "github-bin"),
+                stdio_server("linear", "linear-bin"),
+            ],
+            modes: vec![ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                mcp_servers: vec!["github".to_string()],
+                ..Default::default()
+            }],
+            active_mode: Some("planning".to_string()),
             ..Default::default()
-        }];
-        config.active_mode = Some("planning".to_string());
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let resolved = resolve_agent_config(&ship_dir, None)?;
@@ -336,8 +340,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.mcp_servers = vec![stdio_server("github", "ship-toml-command")];
+        let config = ProjectConfig {
+            mcp_servers: vec![stdio_server("github", "ship-toml-command")],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let mut servers = HashMap::new();
@@ -398,19 +404,21 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.mcp_servers = vec![
-            stdio_server("github", "github-bin"),
-            stdio_server("linear", "linear-bin"),
-            stdio_server("figma", "figma-bin"),
-        ];
-        config.modes = vec![ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            mcp_servers: vec!["github".to_string(), "linear".to_string()],
+        let config = ProjectConfig {
+            mcp_servers: vec![
+                stdio_server("github", "github-bin"),
+                stdio_server("linear", "linear-bin"),
+                stdio_server("figma", "figma-bin"),
+            ],
+            modes: vec![ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                mcp_servers: vec!["github".to_string(), "linear".to_string()],
+                ..Default::default()
+            }],
+            active_mode: Some("planning".to_string()),
             ..Default::default()
-        }];
-        config.active_mode = Some("planning".to_string());
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let feature_agent = FeatureAgentConfig {
@@ -436,8 +444,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["claude".to_string(), "gemini".to_string()];
+        let config = ProjectConfig {
+            providers: vec!["claude".to_string(), "gemini".to_string()],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let feature_agent = FeatureAgentConfig {
@@ -461,8 +471,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["gemini".to_string()];
+        let config = ProjectConfig {
+            providers: vec!["gemini".to_string()],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let feature_agent = FeatureAgentConfig {
@@ -490,8 +502,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["gemini".to_string(), "claude".to_string()];
+        let config = ProjectConfig {
+            providers: vec!["gemini".to_string(), "claude".to_string()],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let feature_agent = FeatureAgentConfig {
@@ -513,8 +527,10 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = init_project(tmp.path().to_path_buf())?;
 
-        let mut config = ProjectConfig::default();
-        config.providers = vec!["unknown-provider".to_string(), "   ".to_string()];
+        let config = ProjectConfig {
+            providers: vec!["unknown-provider".to_string(), "   ".to_string()],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let resolved = resolve_agent_config(&ship_dir, None)?;
@@ -535,15 +551,17 @@ mod tests {
             "# Runtime Hardening\n",
         )?;
 
-        let mut config = ProjectConfig::default();
-        config.active_mode = Some("planning".to_string());
-        config.modes = vec![ModeConfig {
-            id: "planning".to_string(),
-            name: "Planning".to_string(),
-            skills: vec!["rt-alpha-skill".to_string()],
-            rules: vec!["010-runtime-hardening".to_string()],
+        let config = ProjectConfig {
+            active_mode: Some("planning".to_string()),
+            modes: vec![ModeConfig {
+                id: "planning".to_string(),
+                name: "Planning".to_string(),
+                skills: vec!["rt-alpha-skill".to_string()],
+                rules: vec!["010-runtime-hardening".to_string()],
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let resolved = resolve_agent_config(&ship_dir, None)?;
@@ -574,22 +592,24 @@ mod tests {
         create_skill(&ship_dir, "rt-plan-skill", "Plan Skill", "plan body")?;
         create_skill(&ship_dir, "rt-code-skill", "Code Skill", "code body")?;
 
-        let mut config = ProjectConfig::default();
-        config.active_mode = Some("planning".to_string());
-        config.modes = vec![
-            ModeConfig {
-                id: "planning".to_string(),
-                name: "Planning".to_string(),
-                skills: vec!["rt-plan-skill".to_string()],
-                ..Default::default()
-            },
-            ModeConfig {
-                id: "code".to_string(),
-                name: "Code".to_string(),
-                skills: vec!["rt-code-skill".to_string()],
-                ..Default::default()
-            },
-        ];
+        let config = ProjectConfig {
+            active_mode: Some("planning".to_string()),
+            modes: vec![
+                ModeConfig {
+                    id: "planning".to_string(),
+                    name: "Planning".to_string(),
+                    skills: vec!["rt-plan-skill".to_string()],
+                    ..Default::default()
+                },
+                ModeConfig {
+                    id: "code".to_string(),
+                    name: "Code".to_string(),
+                    skills: vec!["rt-code-skill".to_string()],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
         save_config(&config, Some(ship_dir.clone()))?;
 
         let baseline = resolve_agent_config(&ship_dir, None)?;

@@ -3,10 +3,10 @@ use crate::{Note, NoteEntry, NoteScope};
 use runtime::{EventAction, EventEntity, RuntimeHooks};
 use std::path::Path;
 
-fn project_dir_for_scope<'a>(
+fn project_dir_for_scope(
     scope: NoteScope,
-    ship_dir: Option<&'a Path>,
-) -> OpsResult<Option<&'a Path>> {
+    ship_dir: Option<&Path>,
+) -> OpsResult<Option<&Path>> {
     match scope {
         NoteScope::Project => ship_dir.map(Some).ok_or_else(|| {
             OpsError::Validation("Project notes require an active project".to_string())

@@ -59,6 +59,7 @@ const J_COLS: &str = concat!(
 
 const L_COLS: &str = "id, job_id, branch, message, actor, created_at";
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_job(
     ship_dir: &Path,
     kind: &str,
@@ -74,7 +75,7 @@ pub fn create_job(
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
-    let payload = payload.unwrap_or(serde_json::Value::Object(Default::default()));
+    let payload = payload.unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
     let payload_str = serde_json::to_string(&payload)?;
     let files_str = serde_json::to_string(&touched_files)?;
     let scope_str = serde_json::to_string(&file_scope)?;

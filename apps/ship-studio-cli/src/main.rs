@@ -1,3 +1,4 @@
+#![allow(dead_code)] // Stub modules for future commands — wired up incrementally.
 mod add;
 mod agent;
 mod cli;
@@ -15,7 +16,7 @@ mod skill;
 mod sync;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
+use cli::{Cli, Commands, JobCommands, McpCommands, ModeCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {

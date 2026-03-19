@@ -40,13 +40,13 @@ impl WorkspaceState {
         if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_COMPILED_AT) {
             state.compiled_at = v.as_str().map(str::to_string);
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_PLUGINS_INSTALLED) {
-            if let Some(arr) = v.as_array() {
-                state.plugins_installed = arr
-                    .iter()
-                    .filter_map(|x| x.as_str().map(str::to_string))
-                    .collect();
-            }
+        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_PLUGINS_INSTALLED)
+            && let Some(arr) = v.as_array()
+        {
+            state.plugins_installed = arr
+                .iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect();
         }
         state
     }

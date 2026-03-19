@@ -940,6 +940,7 @@ pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRunt
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn set_agent_runtime_settings_db(
     ship_dir: &Path,
     providers: &[String],
@@ -1434,7 +1435,6 @@ pub fn list_target_features_db(ship_dir: &Path, target_id: &str) -> Result<Vec<S
         .fetch_all(&mut conn)
         .await
     })
-    .map_err(Into::into)
 }
 
 /// Set/clear the primary capability for a feature.
@@ -1488,7 +1488,6 @@ pub fn get_feature_primary_capability_db(
         .fetch_optional(&mut conn)
         .await
     })
-    .map_err(Into::into)
 }
 
 pub fn upsert_capability_map_db(ship_dir: &Path, map: &CapabilityMapDb) -> Result<()> {
