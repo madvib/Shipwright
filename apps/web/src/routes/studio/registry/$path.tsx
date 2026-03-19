@@ -1,14 +1,203 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
-import { ArrowLeft, ExternalLink, Download, Copy, Check, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import {
+  ArrowLeft, ExternalLink, Download, Copy, Check, AlertTriangle,
+  ShieldAlert, Plus, Loader2, Github, X,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { usePackageDetail } from '#/features/registry/useRegistry'
 import { SCOPE_COLORS } from '#/features/registry/types'
 import { SkillsList } from '#/features/registry/SkillsList'
 import { VersionsTable } from '#/features/registry/VersionsTable'
+import { useLibrary } from '#/features/compiler/useLibrary'
+import { authClient } from '#/lib/auth-client'
+import type { PackageSkill } from '#/features/registry/types'
+import type { Skill } from '#/features/compiler/types'
 
 export const Route = createFileRoute('/studio/registry/$path')({ component: PackageDetailPage })
 
 type DetailTab = 'skills' | 'versions'
+
+/** Convert a registry PackageSkill into a Skill for the library. */
+function packageSkillToLibrarySkill(ps: PackageSkill): Skill {
+  return {
+    id: ps.skill_id,
+    name: ps.name,
+    description: ps.description || null,
+    version: null,
+    author: null,
+    content: `# ${ps.name}\n\n${ps.description ?? ''}\n`,
+    source: 'imported',
+  }
+}
+
+// ── Claim Dialog ──────────────────────────────────────────────────────────────
+
+interface ClaimDialogProps {
+  open: boolean
+  packagePath: string
+  repoUrl: string
+  onClose: () => void
+}
+
+function ClaimDialog({ open, packagePath, repoUrl, onClose }: ClaimDialogProps) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+  const { data: session } = authClient.useSession()
+
+  // Reset on open
+  useEffect(() => {
+    if (open) { setStatus('idle'); setErrorMsg('') }
+  }, [open])
+
+  const handleEscape = useCallback(
+    (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() },
+    [onClose],
+  )
+  useEffect(() => {
+    if (!open) return
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [open, handleEscape])
+
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (open) cancelRef.current?.focus()
+  }, [open])
+
+  async function handleVerify() {
+    setStatus('loading')
+    setErrorMsg('')
+    try {
+      const res = await fetch('/api/registry/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_path: packagePath }),
+      })
+      const data = (await res.json()) as { claimed?: boolean; error?: string }
+      if (!res.ok) {
+        setStatus('error')
+        setErrorMsg(data.error ?? `Request failed (${res.status})`)
+        return
+      }
+      setStatus('success')
+    } catch {
+      setStatus('error')
+      setErrorMsg('Network error — please try again.')
+    }
+  }
+
+  if (!open) return null
+
+  const isSignedIn = !!session?.user
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="w-full max-w-sm rounded-xl border border-border/60 bg-card shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border/60 px-5 py-3.5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="size-4 text-amber-500" />
+              <h2 className="font-display text-sm font-semibold text-foreground">Claim this package</h2>
+            </div>
+            <button
+              ref={cancelRef}
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-5 py-4 space-y-3">
+            {status === 'success' ? (
+              <div className="flex items-start gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5">
+                <Check className="size-4 text-emerald-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-emerald-400">You now own this package. The claim has been recorded.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Claim ownership of this unofficial package by verifying you are a maintainer of{' '}
+                  <a
+                    href={repoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-foreground underline underline-offset-2"
+                  >
+                    {repoUrl.replace('https://', '')}
+                  </a>
+                  .
+                </p>
+                <p className="text-[11px] text-muted-foreground/60">
+                  We verify your GitHub account has admin or write access to the source repository.
+                </p>
+                {!isSignedIn && (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                    <p className="text-[11px] text-amber-400">Sign in with GitHub first to claim packages.</p>
+                  </div>
+                )}
+                {status === 'error' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2">
+                    <AlertTriangle className="size-3.5 text-destructive mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-destructive">{errorMsg}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3.5">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            >
+              {status === 'success' ? 'Close' : 'Cancel'}
+            </button>
+            {status !== 'success' && (
+              isSignedIn ? (
+                <button
+                  onClick={() => void handleVerify()}
+                  disabled={status === 'loading'}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 dark:bg-violet-500 px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-violet-500 dark:hover:bg-violet-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {status === 'loading' && <Loader2 className="size-3 animate-spin" />}
+                  <Github className="size-3" />
+                  Verify with GitHub
+                </button>
+              ) : (
+                <button
+                  onClick={() =>
+                    void authClient.signIn.social({
+                      provider: 'github',
+                      callbackURL: window.location.pathname,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 dark:bg-violet-500 px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-violet-500 dark:hover:bg-violet-400"
+                >
+                  <Github className="size-3" />
+                  Sign in with GitHub
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 function PackageDetailPage() {
   const { path } = Route.useParams()
@@ -16,6 +205,10 @@ function PackageDetailPage() {
   const { data, isLoading } = usePackageDetail(decodedPath)
   const [tab, setTab] = useState<DetailTab>('skills')
   const [copied, setCopied] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [claimOpen, setClaimOpen] = useState(false)
+  const { addSkill } = useLibrary()
+  const { data: session } = authClient.useSession()
 
   const installCmd = `ship add ${decodedPath}`
 
@@ -23,6 +216,36 @@ function PackageDetailPage() {
     void navigator.clipboard.writeText(installCmd)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function handleAddToProject() {
+    if (!data) return
+    const isSignedIn = !!session?.user
+    if (!isSignedIn) {
+      void authClient.signIn.social({
+        provider: 'github',
+        callbackURL: window.location.pathname,
+      })
+      return
+    }
+
+    setAdding(true)
+    try {
+      const skills = data.skills
+      if (skills.length === 0) {
+        toast.error('No skills found in this package.')
+        return
+      }
+      for (const ps of skills) {
+        addSkill(packageSkillToLibrarySkill(ps))
+      }
+      toast.success(`Added ${skills.length} skill${skills.length !== 1 ? 's' : ''} from ${data.package.name}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add skills'
+      toast.error(msg)
+    } finally {
+      setAdding(false)
+    }
   }
 
   if (isLoading) {
@@ -57,6 +280,7 @@ function PackageDetailPage() {
 
   const pkg = data.package
   const colors = SCOPE_COLORS[pkg.scope]
+  const isSignedIn = !!session?.user
 
   return (
     <div className="h-full flex flex-col">
@@ -147,17 +371,44 @@ function PackageDetailPage() {
           </div>
         </div>
 
-        {/* Add to project button */}
-        <div className="mb-6">
-          <button className="rounded-lg bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors px-5 py-2.5 text-xs font-semibold text-primary-foreground">
-            Add to project
+        {/* Action buttons */}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void handleAddToProject()}
+            disabled={adding}
+            title={isSignedIn ? undefined : 'Sign in to add packages'}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors px-5 py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {adding ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Plus className="size-3.5" />
+            )}
+            {adding ? 'Adding...' : 'Add to project'}
           </button>
+
           {pkg.scope === 'unofficial' && !pkg.claimed_by && (
-            <button className="ml-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-xs font-medium text-amber-400 transition hover:bg-amber-500/10">
+            <button
+              onClick={() => setClaimOpen(true)}
+              className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-xs font-medium text-amber-400 transition hover:bg-amber-500/10"
+            >
               Claim this package
             </button>
           )}
         </div>
+
+        {/* Not signed in hint */}
+        {!isSignedIn && (
+          <p className="mb-4 text-[11px] text-muted-foreground/60">
+            <button
+              onClick={() => void authClient.signIn.social({ provider: 'github', callbackURL: window.location.pathname })}
+              className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+            >
+              Sign in
+            </button>
+            {' '}to add packages to your project.
+          </p>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-1 border-b border-border/40 mb-4">
@@ -173,6 +424,14 @@ function PackageDetailPage() {
         {tab === 'skills' && <SkillsList skills={data.skills} />}
         {tab === 'versions' && <VersionsTable versions={data.versions} />}
       </div>
+
+      {/* Claim dialog */}
+      <ClaimDialog
+        open={claimOpen}
+        packagePath={decodedPath}
+        repoUrl={pkg.repo_url}
+        onClose={() => setClaimOpen(false)}
+      />
     </div>
   )
 }
