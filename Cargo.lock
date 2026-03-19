@@ -1430,7 +1430,7 @@ dependencies = [
  "runtime",
  "serde",
  "serde_json",
- "ship-module-project",
+ "ship-docs",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -2409,7 +2409,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ship-module-project"
+name = "ship-docs"
 version = "0.1.0"
 dependencies = [
  "anyhow",

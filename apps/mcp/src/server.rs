@@ -33,9 +33,8 @@ use runtime::{
         sync_workspace as runtime_sync_workspace,
     },
 };
-use ship_module_project::ops::note::update_note_content;
-
-use ship_module_project::{NoteScope, get_project_name, list_registered_projects};
+use ship_docs::ops::note::update_note_content;
+use ship_docs::{NoteScope, get_project_name, list_registered_projects};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
@@ -2055,7 +2054,7 @@ pub async fn run_server() -> Result<()> {
 mod tests {
     use super::*;
     use runtime::{ModeConfig, add_mode};
-    use ship_module_project::init_project;
+    use ship_docs::init_project;
     use tempfile::tempdir;
 
     #[test]

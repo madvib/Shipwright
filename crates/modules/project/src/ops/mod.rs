@@ -2,9 +2,7 @@ use runtime::{DefaultRuntimeHooks, RuntimeHooks};
 use std::path::Path;
 
 pub mod adr;
-pub mod feature;
 pub mod note;
-pub mod release;
 
 pub trait ShipModule: Send + Sync + 'static {
     fn module_type_id() -> &'static str
@@ -18,21 +16,9 @@ impl ShipModule for crate::ADR {
     }
 }
 
-impl ShipModule for crate::Feature {
-    fn module_type_id() -> &'static str {
-        "feature"
-    }
-}
-
 impl ShipModule for crate::Note {
     fn module_type_id() -> &'static str {
         "note"
-    }
-}
-
-impl ShipModule for crate::Release {
-    fn module_type_id() -> &'static str {
-        "release"
     }
 }
 
