@@ -3,11 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'desktop-v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Version tag (e.g. v0.1.0-alpha)'
+        description: 'Version tag (e.g. desktop-v0.1.0-alpha)'
         required: true
 
 concurrency:
