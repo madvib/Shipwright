@@ -1,6 +1,6 @@
 [profile]
 id = "web-lane"
-name = "Web Lane — feat/web-import"
+name = "Web Lane"
 version = "0.1.0"
 description = "Active context for the Web lane agent"
 providers = ["claude"]
