@@ -14,7 +14,7 @@ export const Route = createFileRoute('/studio/export')({ component: ExportPage }
 
 // CLI detection: use auth session to determine state.
 // Signed-in users see the auto-sync state; anonymous users see install instructions.
-type CliState = 'cli-and-account' | 'cli-no-account' | 'no-cli'
+type CliState = 'cli-and-account' | 'no-cli'
 
 function useCliState(): CliState {
   const { data: session } = authClient.useSession()
@@ -23,7 +23,7 @@ function useCliState(): CliState {
 }
 
 function ExportPage() {
-  const { modeName, selectedProviders, compileState } = useLibrary()
+  const { selectedProviders, compileState } = useLibrary()
   const cliState = useCliState()
   const output = compileState.status === 'ok' ? compileState.output : null
   const hasOutput = Boolean(output)
@@ -47,7 +47,6 @@ function ExportPage() {
       <div className="flex-1 overflow-auto p-5">
       {/* State: no CLI */}
       {cliState === 'no-cli' && <NoCLIState hasOutput={hasOutput} onDownloadAll={downloadAll} />}
-      {cliState === 'cli-no-account' && <CliNoAccountState modeName={modeName} />}
       {cliState === 'cli-and-account' && <CliAndAccountState output={output} selectedProviders={selectedProviders} />}
 
       {/* Per-file downloads (all states) */}
@@ -175,7 +174,7 @@ function NoCLIState({ hasOutput, onDownloadAll }: { hasOutput: boolean; onDownlo
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <Download className="size-3" />
-            Download .zip
+            Download all files
           </button>
         </div>
       )}
@@ -191,48 +190,6 @@ function NoCLIState({ hasOutput, onDownloadAll }: { hasOutput: boolean; onDownlo
           </Link>
         </div>
       )}
-
-      {/* GitHub connect nudge */}
-      <ConnectGitHub variant="inline" />
-    </div>
-  )
-}
-
-// ── State 2: CLI, no account ──────────────────────────────────────────────────
-
-function CliNoAccountState({ modeName }: { modeName: string }) {
-  const [copied, setCopied] = useState(false)
-  const cmd = `ship use @me/${modeName || 'my-profile'}`
-
-  const copy = () => {
-    void navigator.clipboard.writeText(cmd).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-      toast.success('Copied to clipboard')
-    })
-  }
-
-  return (
-    <div className="rounded-xl border border-border/60 bg-card p-5 space-y-4">
-      <p className="text-sm text-foreground">Run this command to activate your profile:</p>
-      <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 pl-3 pr-1 py-1.5">
-        <code className="flex-1 font-mono text-[11px] text-foreground">{cmd}</code>
-        <button
-          onClick={copy}
-          className="flex size-6 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground"
-        >
-          {copied ? <CheckCheck className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-        </button>
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        Link expires in 7 days · one-time use
-      </p>
-      <div className="rounded-lg border border-border/40 bg-primary/5 px-3 py-2.5">
-        <p className="text-[11px] text-muted-foreground">
-          Auto-sync with a Ship account — no more copy-paste.{' '}
-          <Link to="/studio" className="text-primary no-underline hover:underline">Sign in →</Link>
-        </p>
-      </div>
 
       {/* GitHub connect nudge */}
       <ConnectGitHub variant="inline" />

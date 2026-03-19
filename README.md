@@ -72,7 +72,7 @@ default_mode = "plan"
 
 ## Branch-aware config
 
-Ship tracks which preset is active per branch in a local SQLite DB (`.ship/state/ship.db`).
+Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/state/<project-slug>/platform.db`).
 
 ```bash
 git checkout feat/payments    # post-checkout hook fires
@@ -81,7 +81,7 @@ git checkout feat/payments    # post-checkout hook fires
 # → your agent stack switches without any manual steps
 ```
 
-The DB syncs across machines via Syncthing (or any file sync). All your machines know the branch → preset mapping. No markdown files store this state — only `ship.toml` (project ID, committed) and the DB (runtime state, synced).
+No markdown files store this state — only `ship.toml` (project ID, committed) and the local DB (runtime state, never committed).
 
 ---
 
@@ -115,18 +115,8 @@ The compiler is WASM — runs in the browser (Studio) and on the server (CLI via
 ## Repo layout for contributors
 
 ```
-ARCHITECTURE.md  — platform principles, layer separation, naming conventions
-SPEC.md          — config formats, preset schema, CLI contracts, storage model
-TASKS.md         — sprint board: CLI / Server / Web lanes
+ARCHITECTURE.md  — platform principles, layer separation, naming conventions, full reference
 scripts/setup.sh — fresh machine setup (run this first)
-```
-
-Work happens in parallel worktrees at `~/dev/worktrees/`:
-
-```
-ship-cli     feat/cli-init      — ship init, ship use, ship log
-ship-server  feat/server-auth   — Better Auth + D1 + GitHub import endpoint
-ship-web     feat/web-import    — Studio GitHub URL import flow
 ```
 
 ---

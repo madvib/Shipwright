@@ -92,8 +92,8 @@ export function ConfirmDialog({
               {cancelLabel}
             </button>
             <button
-              onClick={() => {
-                onConfirm()
+              onClick={async () => {
+                await onConfirm()
                 onCancel()
               }}
               className={`rounded-lg px-4 py-2 text-xs font-medium transition ${

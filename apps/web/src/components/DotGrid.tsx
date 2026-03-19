@@ -7,19 +7,12 @@ interface DotGridProps {
   radius?: number
 }
 
-/** Resolve a CSS custom property to an RGB triplet the canvas API can use. */
-function resolveColor(el: HTMLElement): [number, number, number] {
-  const raw = getComputedStyle(el).getPropertyValue('--primary').trim()
-  // --primary is typically "h s% l%" (HSL channels) or a full color string
-  // Use a temporary element to let the browser resolve it
-  const tmp = document.createElement('div')
-  tmp.style.color = `hsl(${raw})`
-  document.body.appendChild(tmp)
-  const computed = getComputedStyle(tmp).color
-  tmp.remove()
-  const m = computed.match(/(\d+)/g)
-  if (m && m.length >= 3) return [+m[0], +m[1], +m[2]]
-  return [128, 128, 128]
+/** Resolve a CSS custom property to an RGB triplet the canvas API can use.
+ *  --primary uses oklch() which cannot be parsed via hsl() wrapping.
+ *  Fall back to the brand amber/orange that matches the primary token. */
+function resolveColor(_el: HTMLElement): [number, number, number] {
+  // amber-500 equivalent: #f59e0b → rgb(245, 158, 11)
+  return [245, 158, 11]
 }
 
 export function DotGrid({

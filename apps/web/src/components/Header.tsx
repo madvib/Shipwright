@@ -14,14 +14,18 @@ function applyTheme(mode: ThemeMode) {
 }
 
 function ThemeToggle() {
-  const [mode, setMode] = useState<ThemeMode>('dark')
+  const [mode, setMode] = useState<ThemeMode>(() => {
+    try {
+      const stored = localStorage.getItem('theme')
+      if (stored === 'light' || stored === 'dark') return stored
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    } catch {
+      return 'dark'
+    }
+  })
   useEffect(() => {
-    const stored = window.localStorage.getItem('theme')
-    const initial: ThemeMode = stored === 'light' || stored === 'dark'
-      ? stored
-      : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    setMode(initial)
-    applyTheme(initial)
+    applyTheme(mode)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const toggle = () => {
     const next = mode === 'dark' ? 'light' : 'dark'

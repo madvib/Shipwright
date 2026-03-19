@@ -48,12 +48,6 @@ function StudioEditor() {
             Ship Studio is a three-panel editor — open it on a wider screen for the full experience.
           </p>
         </div>
-        <a
-          href="/studio/editor"
-          className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-        >
-          Try anyway
-        </a>
       </div>
 
       <div className="hidden md:flex flex-1 min-h-0 flex-col overflow-hidden">

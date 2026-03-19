@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { OverviewTab, ProvidersTab } from './ProfileEditorFields'
+import { OverviewTab } from './ProfileEditorFields'
 import { PermissionsEditor } from './PermissionsEditor'
 import type { Profile } from './useProfiles'
 import type { Permissions } from '#/features/compiler/types'
 
-type Tab = 'overview' | 'providers' | 'permissions'
+type Tab = 'overview' | 'permissions'
 
 interface ProfileEditorProps {
   profile: Profile
@@ -69,9 +69,9 @@ export function ProfileEditor({ profile, onChange, onBack, onDelete }: ProfileEd
           </button>
         )}
         <div className="flex" role="tablist">
-          {(['overview', 'providers', 'permissions'] as Tab[]).map((t) => {
+          {(['overview', 'permissions'] as Tab[]).map((t) => {
             const active = tab === t
-            const label = t === 'overview' ? 'Overview' : t === 'providers' ? 'Providers' : 'Permissions'
+            const label = t === 'overview' ? 'Overview' : 'Permissions'
             return (
               <button
                 key={t}
@@ -80,7 +80,7 @@ export function ProfileEditor({ profile, onChange, onBack, onDelete }: ProfileEd
                 onClick={() => setTab(t)}
                 className={`px-3 py-2.5 text-[11px] font-medium border-b-2 transition-colors ${
                   active
-                    ? 'border-violet-500 text-foreground'
+                    ? 'border-primary text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -95,7 +95,6 @@ export function ProfileEditor({ profile, onChange, onBack, onDelete }: ProfileEd
       {/* Body */}
       <div className="flex-1 overflow-auto p-5">
         {tab === 'overview' && <OverviewTab profile={profile} onChange={onChange} />}
-        {tab === 'providers' && <ProvidersTab profile={profile} onChange={onChange} />}
         {tab === 'permissions' && (
           <PermissionsEditor
             permissions={profile.permissions}
