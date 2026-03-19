@@ -51,7 +51,7 @@ fn s256_challenge(verifier: &str) -> String {
 fn parse_code_from_request(request: &str) -> Option<String> {
     let line = request.lines().next()?;
     let path = line.split_whitespace().nth(1)?;
-    let query = path.splitn(2, '?').nth(1)?;
+    let query = path.split_once('?')?.1;
     for pair in query.split('&') {
         let mut kv = pair.splitn(2, '=');
         if kv.next() == Some("code") {

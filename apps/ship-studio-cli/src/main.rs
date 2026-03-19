@@ -1,10 +1,14 @@
-#![allow(dead_code)] // Stub modules for future commands — wired up incrementally.
+#![allow(dead_code)]
 mod add;
 mod agent;
+mod auth;
 mod cli;
+mod cloud;
 mod compile;
 mod config;
 mod dep_skills;
+mod diff;
+mod import;
 mod install;
 mod job;
 mod loader;
@@ -14,6 +18,7 @@ mod paths;
 mod profile;
 mod skill;
 mod sync;
+mod validate;
 
 use anyhow::Result;
 use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, PermissionsCommands, ProfileSyncCommands, SkillCommands};
@@ -30,9 +35,9 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
         None => run_status(None),
         Some(cmd) => match cmd {
             Commands::Init { global, provider, force: _ } => run_init(global, provider),
-            Commands::Login  => stub("login",  "Run: open https://getship.dev/login"),
-            Commands::Logout => run_logout(),
-            Commands::Whoami => run_whoami(),
+            Commands::Login  => auth::run_login(),
+            Commands::Logout => auth::run_logout(),
+            Commands::Whoami => auth::run_whoami(),
             Commands::Use { mode, path, compile: _ } => run_use(Some(&mode), path),
             Commands::Status { path } => run_status(path),
             Commands::AgentProfiles { local, project, cloud } => run_agent_profiles(local, project, cloud),
@@ -42,9 +47,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
-            Commands::Import { source } => {
-                stub("import", &format!("Would import from {:?}", source))
-            }
+            Commands::Import { source } => import::run_import(&source),
             Commands::Export { provider, zip: _ } => {
                 run_compile_cmd(Some(&provider), false, false, None)
             }
@@ -72,8 +75,13 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Next { .. } => stub("next", "Job queue — coming soon"),
             Commands::Retry { .. } => stub("retry", "Job retry — coming soon"),
             Commands::Gate { .. } => stub("gate", "Gate check — coming soon"),
-            Commands::Validate { .. } => stub("validate", "Validation — coming soon"),
-            Commands::Diff { .. } => stub("diff", "Diff — coming soon"),
+            Commands::Validate { profile, json, path } => {
+                let root = path.as_deref()
+                    .map(std::fs::canonicalize).transpose()?
+                    .unwrap_or_else(|| std::env::current_dir().unwrap());
+                validate::run_validate(profile.as_deref(), json, &root)
+            }
+            Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Matrix { .. } => stub("matrix", "Provider matrix — coming soon"),
         },
     }
@@ -128,32 +136,6 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
     Ok(())
 }
 
-// ── Auth stubs ────────────────────────────────────────────────────────────────
-
-fn run_logout() -> Result<()> {
-    let creds = config::Credentials::load();
-    if creds.token().is_none() {
-        println!("Not logged in.");
-    } else {
-        println!("Logged out.");
-    }
-    Ok(())
-}
-
-fn run_whoami() -> Result<()> {
-    let cfg = config::ShipConfig::load();
-    match cfg.identity {
-        Some(id) if !id.name.is_empty() => {
-            println!("{}", id.name);
-            if let Some(email) = id.email { println!("{}", email); }
-        }
-        _ => {
-            println!("Not logged in.");
-            println!("Run: ship init --global");
-        }
-    }
-    Ok(())
-}
 
 // ── Use ───────────────────────────────────────────────────────────────────────
 
@@ -384,8 +366,14 @@ fn run_migrate() -> Result<()> {
 
 fn dispatch_profile_sync(action: ProfileSyncCommands) -> Result<()> {
     match action {
-        ProfileSyncCommands::Push => stub("profile push", "Cloud sync requires a Ship account. Run: ship login"),
-        ProfileSyncCommands::Pull { .. } => stub("profile pull", "Cloud sync requires a Ship account. Run: ship login"),
+        ProfileSyncCommands::Push => {
+            let root = std::env::current_dir()?;
+            cloud::push_profiles(&root)
+        }
+        ProfileSyncCommands::Pull { name, force } => {
+            let root = std::env::current_dir()?;
+            cloud::pull_profiles(name.as_deref(), force, &root)
+        }
     }
 }
 
