@@ -27,7 +27,9 @@
   ],
 
   "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:${containerWorkspaceFolder}/target/debug:/home/vscode/.local/bin"
+    "PATH": "${containerEnv:PATH}:${containerWorkspaceFolder}/target/debug:/home/vscode/.local/bin",
+    "PNPM_HOME": "/home/vscode/.local/share/pnpm",
+    "NPM_CONFIG_STORE_DIR": "/home/vscode/.local/share/pnpm/store"
   },
 
   "forwardPorts": [3000, 7701],
