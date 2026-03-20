@@ -9,6 +9,9 @@ targets/
 # Runtime state — never commit
 sessions/
 ship.lock
+platform.db
+platform.db-wal
+platform.db-shm
 
 # Backup files
 *.bak
