@@ -1,5 +1,7 @@
 # Engineering Quality And Tests
 
+* Write the failing test before the implementation. If you didn't watch it fail, you don't know if it tests the right thing. Use the `tdd` skill for the full protocol.
+
 * Add or update tests for every bug fix and behavior change.
 
 * Cover happy paths and meaningful failure paths.
