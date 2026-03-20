@@ -1,40 +1,16 @@
-import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { WorkflowGallery } from '#/components/canvas/WorkflowGallery'
-import { WorkflowCanvas } from '#/components/canvas/WorkflowCanvas'
-import { PRESETS } from '#/components/canvas/presets'
-import type { WorkflowPreset } from '#/components/canvas/types'
 
-export const Route = createFileRoute('/studio/workflow')({
-  component: WorkflowPage,
-})
+export const Route = createFileRoute('/studio/workflow')({ component: WorkflowSketch })
 
-function WorkflowPage() {
-  const [selected, setSelected] = useState<{ preset: WorkflowPreset; name: string } | null>(null)
-
-  const handleSelect = (presetId: string) => {
-    const info = PRESETS.find((p) => p.id === presetId)
-    if (!info) return
-    setSelected({ preset: info.load(), name: info.name })
-  }
-
-  // Editing mode — overlay fullscreen canvas
-  if (selected) {
-    return (
-      <div className="fixed inset-0 z-40 flex flex-col bg-background">
-        <WorkflowCanvas
-          preset={selected.preset}
-          presetName={selected.name}
-          onBack={() => setSelected(null)}
-        />
-      </div>
-    )
-  }
-
-  // Gallery mode — renders inside normal studio layout with header + dock
+function WorkflowSketch() {
+  if (!import.meta.env.DEV) return null
   return (
-    <div className="h-full overflow-auto">
-      <WorkflowGallery onSelect={handleSelect} />
+    <div className="flex-1 overflow-auto p-8">
+      <div className="max-w-3xl mx-auto">
+        <span className="text-xs font-mono text-muted-foreground/40 border border-dashed border-muted-foreground/20 rounded px-2 py-0.5">dev only</span>
+        <h1 className="text-xl font-bold mt-4 mb-2">Workflow (v2 sketch)</h1>
+        <p className="text-sm text-muted-foreground">Multi-agent orchestration canvas. Not shipped in v0.1.0.</p>
+      </div>
     </div>
   )
 }

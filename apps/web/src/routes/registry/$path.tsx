@@ -14,7 +14,7 @@ import { authClient } from '#/lib/auth-client'
 import type { PackageSkill } from '#/features/registry/types'
 import type { Skill } from '#/features/compiler/types'
 
-export const Route = createFileRoute('/studio/registry/$path')({ component: PackageDetailPage })
+export const Route = createFileRoute('/registry/$path')({ component: PackageDetailPage })
 
 type DetailTab = 'skills' | 'versions'
 

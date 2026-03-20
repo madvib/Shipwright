@@ -7,7 +7,7 @@ import { EmptyState } from '#/components/EmptyState'
 import { SCOPE_FILTERS } from '#/features/registry/types'
 import type { ScopeFilter } from '#/features/registry/types'
 
-export const Route = createFileRoute('/studio/registry/')({ component: RegistryBrowsePage })
+export const Route = createFileRoute('/registry/')({ component: RegistryBrowsePage })
 
 function RegistryBrowsePage() {
   const [query, setQuery] = useState('')

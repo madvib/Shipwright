@@ -8,7 +8,7 @@ import {
 } from '#/features/settings/GitHubImportList'
 import type { GitHubRepo } from '#/features/settings/GitHubImportList'
 
-export const Route = createFileRoute('/import')({ component: ImportPage, ssr: false })
+export const Route = createFileRoute('/studio/import')({ component: ImportPage, ssr: false })
 
 function ImportPage() {
   const { data: session } = authClient.useSession()

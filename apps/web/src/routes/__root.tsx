@@ -34,6 +34,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       { rel: 'stylesheet', href: appCss },
       { rel: 'icon', href: '/ship-logos/ship_logo.svg', type: 'image/svg+xml' },
       { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
+      { rel: 'preload', as: 'image', href: '/ship-logos/ship_logo.svg' },
     ],
   }),
   shellComponent: RootDocument,
@@ -41,8 +42,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isStudio = pathname === '/studio'
+
   const isLanding = pathname === '/'
+  const isStudio = pathname.startsWith('/studio')
+  // Show footer on registry and other pages, hide on studio (dock) and landing (own footer)
+  const showFooter = !isStudio && !isLanding
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -50,11 +54,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
-      <body className={`font-sans antialiased [overflow-wrap:anywhere]${isStudio ? ' flex flex-col h-screen overflow-hidden' : ''}`}>
+      <body className={`font-sans antialiased [overflow-wrap:anywhere] ${isStudio ? 'flex flex-col h-screen overflow-hidden' : 'min-h-screen flex flex-col'}`}>
         <TanStackQueryProvider>
           {!isLanding && <Header />}
-          {children}
-          {!isStudio && !isLanding && <Footer />}
+          <div className={isStudio ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'flex-1'}>
+            {children}
+          </div>
+          {showFooter && <Footer />}
         </TanStackQueryProvider>
         <Scripts />
       </body>

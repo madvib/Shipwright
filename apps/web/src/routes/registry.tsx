@@ -13,7 +13,7 @@ import {
 import type { TypeFilter, CategoryTab } from '#/features/registry/registry-cards'
 import type { ScopeFilter } from '#/features/registry/types'
 
-export const Route = createFileRoute('/studio/registry')({
+export const Route = createFileRoute('/registry')({
   component: RegistryPage,
   ssr: false,
 })
