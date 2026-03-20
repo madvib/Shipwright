@@ -1,6 +1,7 @@
 # Brainstorm / visual companion (local only, not for git)
 .superpowers/
 docs/brainstorm/
+docs/superpowers/
 
 # Dependencies
 **/node_modules/
