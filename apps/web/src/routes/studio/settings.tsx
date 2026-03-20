@@ -1,6 +1,5 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
 import { loadSettings, saveSettings } from '#/features/settings/settingsData'
 import type { SettingsData } from '#/features/settings/settingsData'
@@ -30,16 +29,6 @@ function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-[680px] px-5 py-6 pb-24">
-      <div className="mb-2">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition mb-3"
-        >
-          <ArrowLeft className="size-3" />
-          Back
-        </Link>
-      </div>
-
       <div className="mb-6">
         <h1 className="font-display text-xl font-bold text-foreground">
           Settings
