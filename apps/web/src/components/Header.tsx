@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Sun, Moon, LogOut, Settings } from 'lucide-react'
+import { Sun, Moon, LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { authClient } from '#/lib/auth-client'
 
@@ -19,9 +19,7 @@ function ThemeToggle() {
       const stored = localStorage.getItem('theme')
       if (stored === 'light' || stored === 'dark') return stored
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    } catch {
-      return 'dark'
-    }
+    } catch { return 'dark' }
   })
   useEffect(() => { applyTheme(mode) }, [mode])
   return (
@@ -32,6 +30,51 @@ function ThemeToggle() {
     >
       {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
     </button>
+  )
+}
+
+function NavDropdown({ label, items, isActive }: {
+  label: string
+  items: { icon: typeof Users; label: string; href: string; desc?: string }[]
+  isActive: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const timeout = useRef<ReturnType<typeof setTimeout>>()
+
+  const enter = () => { clearTimeout(timeout.current); setOpen(true) }
+  const leave = () => { timeout.current = setTimeout(() => setOpen(false), 150) }
+
+  return (
+    <div className="relative" onMouseEnter={enter} onMouseLeave={leave}>
+      <span className={`cursor-default rounded-md px-3 py-1.5 text-sm transition select-none ${
+        isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+      }`}>
+        {label}
+      </span>
+      {open && (
+        <div className="absolute left-0 top-full pt-1 z-50">
+          <div className="w-56 rounded-xl border border-border/60 bg-card shadow-lg py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+            {items.map((item) => {
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.label}
+                  to={item.href as string}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors no-underline"
+                >
+                  <Icon className="size-3.5 shrink-0" />
+                  <div>
+                    <div className="font-medium">{item.label}</div>
+                    {item.desc && <div className="text-[10px] text-muted-foreground/60 mt-0.5">{item.desc}</div>}
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -64,7 +107,6 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
           <span className="text-xs font-bold text-primary">{initial}</span>
         )}
       </button>
-
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-border/60 bg-card shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40">
@@ -86,24 +128,36 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
   )
 }
 
+const STUDIO_ITEMS = [
+  { icon: Users, label: 'My Agents', href: '/studio', desc: 'Configure your AI agents' },
+  { icon: Zap, label: 'Skills IDE', href: '/studio/skills', desc: 'Create and edit skills' },
+  { icon: Settings, label: 'Settings', href: '/studio/settings', desc: 'Account and defaults' },
+]
+
+const REGISTRY_ITEMS = [
+  { icon: Zap, label: 'Skills', href: '/registry', desc: 'Browse agent skills' },
+  { icon: Users, label: 'Agents', href: '/registry', desc: 'Pre-built agent configs' },
+  { icon: Server, label: 'MCP Servers', href: '/registry', desc: 'Tool server integrations' },
+  { icon: Upload, label: 'Publish', href: '/registry', desc: 'Share your packages' },
+]
+
 export default function Header() {
   const { data: session, isPending } = authClient.useSession()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const user = session?.user
 
-  // Breadcrumb segments from pathname
   const segments = pathname.split('/').filter(Boolean)
+  const isStudio = pathname.startsWith('/studio')
+  const isRegistry = pathname.startsWith('/registry')
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
       <nav className="flex items-center gap-4 px-5 h-12">
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-2 no-underline shrink-0">
           <img src="/ship-logos/ship_logo.svg" alt="Ship" className="size-5" />
           <span className="font-display text-base font-bold tracking-[-0.04em] leading-none">SHIP</span>
         </Link>
 
-        {/* Breadcrumbs */}
         {segments.length > 0 && (
           <div className="flex items-center gap-1 text-sm text-muted-foreground min-w-0">
             <span className="text-border">/</span>
@@ -116,7 +170,7 @@ export default function Header() {
                     <span className="text-foreground font-medium truncate">{seg}</span>
                   ) : (
                     <>
-                      <Link to={path} className="hover:text-foreground transition-colors no-underline truncate">{seg}</Link>
+                      <Link to={path as string} className="hover:text-foreground transition-colors no-underline truncate">{seg}</Link>
                       <span className="text-border">/</span>
                     </>
                   )}
@@ -126,28 +180,13 @@ export default function Header() {
           </div>
         )}
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Top-level links */}
-        <div className="hidden sm:flex items-center gap-1 text-sm">
-          <Link
-            to="/studio"
-            className="rounded-md px-3 py-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground [&.active]:text-foreground"
-            activeProps={{ className: 'active' }}
-          >
-            Studio
-          </Link>
-          <Link
-            to="/registry"
-            className="rounded-md px-3 py-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground [&.active]:text-foreground"
-            activeProps={{ className: 'active' }}
-          >
-            Registry
-          </Link>
+        <div className="hidden sm:flex items-center gap-1">
+          <NavDropdown label="Studio" items={STUDIO_ITEMS} isActive={isStudio} />
+          <NavDropdown label="Registry" items={REGISTRY_ITEMS} isActive={isRegistry} />
         </div>
 
-        {/* Auth + theme */}
         <div className="flex items-center gap-2">
           {!isPending && !user && (
             <button

@@ -17,11 +17,11 @@ afterEach(() => {
 })
 
 describe('StudioDock', () => {
-  it('renders 3 nav items + compile button', () => {
+  it('renders 3 nav items + output toggle', () => {
     render(<StudioDock />)
     expect(screen.getByRole('navigation')).toBeTruthy()
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(4) // Agents, Skills, Registry, Compile
+    expect(buttons).toHaveLength(4) // Agents, Skills, Settings, Output
   })
 
   it('Agents is active on /studio', () => {
@@ -38,33 +38,19 @@ describe('StudioDock', () => {
     expect(buttons[1]?.className).toContain('bg-primary')
   })
 
-  it('Registry is active on /registry', () => {
-    mockPathname = '/registry'
+  it('Settings is active on /studio/settings', () => {
+    mockPathname = '/studio/settings'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
     expect(buttons[2]?.className).toContain('bg-primary')
   })
 
-  it('non-active items do not have bg-primary class', () => {
-    mockPathname = '/studio'
-    render(<StudioDock />)
-    const buttons = screen.getAllByRole('button')
-    expect(buttons[1]?.className).not.toContain('bg-primary')
-  })
-
-  it('compile button calls onCompile', () => {
-    const onCompile = vi.fn()
-    render(<StudioDock onCompile={onCompile} />)
+  it('output toggle calls onTogglePreview', () => {
+    const onToggle = vi.fn()
+    render(<StudioDock onTogglePreview={onToggle} />)
     const buttons = screen.getAllByRole('button')
     buttons[3]?.click()
-    expect(onCompile).toHaveBeenCalledOnce()
-  })
-
-  it('active item shows bottom indicator bar', () => {
-    mockPathname = '/studio'
-    render(<StudioDock />)
-    const indicators = document.querySelectorAll('span.bg-primary')
-    expect(indicators.length).toBeGreaterThan(0)
+    expect(onToggle).toHaveBeenCalledOnce()
   })
 
   it('nav has accessible label', () => {

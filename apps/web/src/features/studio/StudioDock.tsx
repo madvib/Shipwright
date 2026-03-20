@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { Users, Zap, Search, Code2, Loader2 } from 'lucide-react'
+import { Users, Zap, Settings, Eye, EyeOff } from 'lucide-react'
 
 const NAV_ITEMS = [
   { to: '/studio', icon: Users, label: 'Agents', exact: true },
   { to: '/studio/skills', icon: Zap, label: 'Skills', exact: false },
-  { to: '/registry', icon: Search, label: 'Registry', exact: false },
+  { to: '/studio/settings', icon: Settings, label: 'Settings', exact: false },
 ] as const
 
 interface StudioDockProps {
-  onCompile?: () => void
-  isCompiling?: boolean
+  previewOpen?: boolean
+  onTogglePreview?: () => void
 }
 
-export function StudioDock({ onCompile, isCompiling }: StudioDockProps) {
+export function StudioDock({ previewOpen, onTogglePreview }: StudioDockProps) {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -40,7 +40,7 @@ export function StudioDock({ onCompile, isCompiling }: StudioDockProps) {
           return (
             <button
               key={item.to}
-              onClick={() => void navigate({ to: item.to as any })}
+              onClick={() => void navigate({ to: item.to as string })}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
               className={`group relative flex items-center justify-center size-9 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all duration-200 ease-out ${
@@ -66,18 +66,17 @@ export function StudioDock({ onCompile, isCompiling }: StudioDockProps) {
         {/* Separator */}
         <div className="h-6 w-px bg-border/60 mx-1" />
 
-        {/* Compile button */}
+        {/* Output preview toggle */}
         <button
-          onClick={onCompile}
-          disabled={isCompiling}
-          className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+          onClick={onTogglePreview}
+          className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+            previewOpen
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
         >
-          {isCompiling ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Code2 className="size-3.5" />
-          )}
-          Compile
+          {previewOpen ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+          Output
         </button>
       </nav>
     </div>
