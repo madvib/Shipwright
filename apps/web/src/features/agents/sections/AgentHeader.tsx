@@ -1,5 +1,3 @@
-import { Link } from '@tanstack/react-router'
-import { ArrowLeft, ChevronRight } from 'lucide-react'
 import type { AgentProfile } from '../types'
 
 interface AgentHeaderProps {
@@ -14,24 +12,6 @@ export function AgentHeader({ profile }: AgentHeaderProps) {
 
   return (
     <>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 px-5 py-3 text-xs text-muted-foreground border-b border-border/40">
-        <Link
-          to="/studio"
-          className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors"
-        >
-          <ArrowLeft className="size-3" />
-        </Link>
-        <Link
-          to="/studio"
-          className="text-muted-foreground hover:text-primary transition-colors"
-        >
-          Agents
-        </Link>
-        <ChevronRight className="size-3 text-muted-foreground/40" />
-        <span className="text-foreground">{profile.name}</span>
-      </div>
-
       {/* Agent info */}
       <div className="flex items-start gap-4 px-5 py-5 border-b border-border/40">
         <div
