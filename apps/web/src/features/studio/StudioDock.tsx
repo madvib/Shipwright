@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { Users, Zap, Settings, Eye, EyeOff } from 'lucide-react'
+import { Users, Zap, Settings, Upload } from 'lucide-react'
 
 const NAV_ITEMS = [
   { to: '/studio', icon: Users, label: 'Agents', exact: true },
@@ -66,17 +66,17 @@ export function StudioDock({ previewOpen, onTogglePreview }: StudioDockProps) {
         {/* Separator */}
         <div className="h-6 w-px bg-border/60 mx-1" />
 
-        {/* Output preview toggle */}
+        {/* Publish panel toggle */}
         <button
           onClick={onTogglePreview}
           className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
             previewOpen
               ? 'bg-primary text-primary-foreground'
-              : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+              : 'bg-primary/10 text-primary hover:bg-primary/20'
           }`}
         >
-          {previewOpen ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          Output
+          <Upload className="size-3.5" />
+          Publish
         </button>
       </nav>
     </div>
