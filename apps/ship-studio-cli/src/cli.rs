@@ -143,6 +143,17 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
+    // ── Surface ───────────────────────────────────────────────────────────────
+    /// Print the current CLI command tree and MCP core tools as markdown
+    Surface {
+        /// Write output to docs/surface.md
+        #[arg(long)]
+        emit: bool,
+        /// Diff against committed docs/surface.md; exit 1 if drift detected
+        #[arg(long)]
+        check: bool,
+    },
+
     // ── Capability diff ───────────────────────────────────────────────────────
     #[command(hide = true)]
     Diff {
