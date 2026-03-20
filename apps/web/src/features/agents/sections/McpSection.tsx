@@ -41,6 +41,7 @@ interface McpSectionProps {
   onRemove: (name: string) => void
   onSetToolPermission: (server: string, tool: string, perm: ToolPermission) => void
   onSetGroupPermission: (server: string, tools: string[], perm: ToolPermission) => void
+  onAdd?: () => void
 }
 
 export function McpSection({
@@ -49,6 +50,7 @@ export function McpSection({
   onRemove,
   onSetToolPermission,
   onSetGroupPermission,
+  onAdd,
 }: McpSectionProps) {
   const [expandedServer, setExpandedServer] = useState<string | null>(null)
 
@@ -58,7 +60,7 @@ export function McpSection({
       title="MCP Servers"
       count={`${servers.length} attached`}
       actionLabel="Add"
-      showOrangeDot
+      onAction={onAdd}
     >
       <div className="flex flex-wrap gap-1.5">
         {servers.map((server) => {
@@ -84,7 +86,7 @@ export function McpSection({
             />
           )
         })}
-        <AddChip label="Add server" showOrangeDot />
+        <AddChip label="Add server" onClick={onAdd} />
       </div>
 
       {/* Expanded tool toggle panel */}

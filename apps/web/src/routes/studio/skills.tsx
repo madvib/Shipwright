@@ -1,14 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 import { Zap } from 'lucide-react'
 import { useSkillsIDE } from '#/features/studio/skills-ide/useSkillsIDE'
 import { SkillsFileExplorer } from '#/features/studio/skills-ide/SkillsFileExplorer'
 import { SkillsEditor } from '#/features/studio/skills-ide/SkillsEditor'
 import { SkillsPreviewPanel } from '#/features/studio/skills-ide/SkillsPreviewPanel'
+import { CreateSkillDialog } from '#/features/studio/skills-ide/CreateSkillDialog'
 
 export const Route = createFileRoute('/studio/skills')({ component: SkillsIDEPage })
 
 function SkillsIDEPage() {
   const ide = useSkillsIDE()
+  const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <>
@@ -35,7 +38,7 @@ function SkillsIDEPage() {
           onSearchChange={ide.setSearchQuery}
           onToggleFolder={ide.toggleFolder}
           onOpenSkill={ide.openSkill}
-          onCreateSkill={ide.createSkill}
+          onCreateSkill={() => setCreateOpen(true)}
         />
 
         <SkillsEditor
@@ -60,6 +63,13 @@ function SkillsIDEPage() {
           />
         )}
       </div>
+
+      <CreateSkillDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreateSkill={ide.createSkill}
+        existingIds={ide.skills.map((s) => s.id)}
+      />
     </>
   )
 }

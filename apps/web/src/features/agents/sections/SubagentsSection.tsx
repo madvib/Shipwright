@@ -11,16 +11,17 @@ function getInitials(name: string): string {
 interface SubagentsSectionProps {
   subagents: SubagentRef[]
   onRemove: (id: string) => void
+  onAdd?: () => void
 }
 
-export function SubagentsSection({ subagents, onRemove }: SubagentsSectionProps) {
+export function SubagentsSection({ subagents, onRemove, onAdd }: SubagentsSectionProps) {
   return (
     <SectionShell
       icon={<Users className="size-4" />}
       title="Subagents"
       count={`${subagents.length} attached`}
       actionLabel="Add"
-      showOrangeDot
+      onAction={onAdd}
     >
       <div className="flex flex-wrap gap-1.5">
         {subagents.map((agent) => (
@@ -32,7 +33,7 @@ export function SubagentsSection({ subagents, onRemove }: SubagentsSectionProps)
             onRemove={() => onRemove(agent.id)}
           />
         ))}
-        <AddChip label="Add agent" showOrangeDot />
+        <AddChip label="Add agent" onClick={onAdd} />
       </div>
     </SectionShell>
   )

@@ -13,16 +13,17 @@ function getInitials(name: string): string {
 interface SkillsSectionProps {
   skills: Skill[]
   onRemove: (skillId: string) => void
+  onAdd?: () => void
 }
 
-export function SkillsSection({ skills, onRemove }: SkillsSectionProps) {
+export function SkillsSection({ skills, onRemove, onAdd }: SkillsSectionProps) {
   return (
     <SectionShell
       icon={<Zap className="size-4" />}
       title="Skills"
       count={`${skills.length} attached`}
       actionLabel="Add"
-      showOrangeDot
+      onAction={onAdd}
     >
       <div className="flex flex-wrap gap-1.5">
         {skills.map((skill) => (
@@ -30,11 +31,11 @@ export function SkillsSection({ skills, onRemove }: SkillsSectionProps) {
             key={skill.id}
             icon={<ChipIcon letters={getInitials(skill.name)} variant="skill" />}
             name={skill.name}
-            meta={`${skill.metadata?.version ?? '' ?? 'v0.1.0'} / ${skill.source ?? 'project'}`}
+            meta={`${skill.metadata?.version ?? 'v0.1.0'} / ${skill.source ?? 'project'}`}
             onRemove={() => onRemove(skill.id)}
           />
         ))}
-        <AddChip label="Add skill" showOrangeDot />
+        <AddChip label="Add skill" onClick={onAdd} />
       </div>
     </SectionShell>
   )

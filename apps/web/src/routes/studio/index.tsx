@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useProfiles } from '#/features/studio/useProfiles'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { TechIcon } from '#/features/studio/TechIcon'
@@ -6,13 +7,15 @@ import { useAuth } from '#/lib/components/protected-route'
 import { Plus, Users, Zap, Server, Github, ArrowRight, Package } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
 import { PROVIDERS } from '#/features/compiler/types'
+import { CreateAgentDialog } from '#/features/agents/dialogs/CreateAgentDialog'
 
 export const Route = createFileRoute('/studio/')({ component: StudioHome })
 
 function StudioHome() {
-  const { profiles, addProfile } = useProfiles()
+  const { profiles } = useProfiles()
   const { library, selectedProviders } = useLibrary()
   const auth = useAuth()
+  const [createOpen, setCreateOpen] = useState(false)
 
   const skillCount = library.skills?.length ?? 0
   const mcpCount = library.mcp_servers?.length ?? 0
@@ -20,11 +23,21 @@ function StudioHome() {
   const providerCount = selectedProviders.length
 
   if (agentCount === 0 && !auth.isAuthenticated) {
-    return <EmptyWelcome onCreateAgent={addProfile} />
+    return (
+      <>
+        <EmptyWelcome onCreateAgent={() => setCreateOpen(true)} />
+        <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} />
+      </>
+    )
   }
 
   if (agentCount === 0) {
-    return <EmptyDashboard onCreateAgent={addProfile} user={auth.user} />
+    return (
+      <>
+        <EmptyDashboard onCreateAgent={() => setCreateOpen(true)} user={auth.user} />
+        <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} />
+      </>
+    )
   }
 
   return (
@@ -40,7 +53,7 @@ function StudioHome() {
             </p>
           </div>
           <button
-            onClick={() => addProfile()}
+            onClick={() => setCreateOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
           >
             <Plus className="size-3.5" />
@@ -88,7 +101,7 @@ function StudioHome() {
             <div className="rounded-xl border border-border/60 bg-card p-4">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick actions</h3>
               <div className="space-y-1.5">
-                <SidebarAction icon={<Plus className="size-3.5" />} label="Create agent" onClick={() => addProfile()} />
+                <SidebarAction icon={<Plus className="size-3.5" />} label="Create agent" onClick={() => setCreateOpen(true)} />
                 <SidebarAction icon={<Github className="size-3.5" />} label="Import from GitHub" href="/studio/import" />
                 <SidebarAction icon={<Package className="size-3.5" />} label="Browse registry" href="/registry" />
               </div>
@@ -111,6 +124,7 @@ function StudioHome() {
           </div>
         </div>
       </div>
+      <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   )
 }
