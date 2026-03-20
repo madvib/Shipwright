@@ -24,8 +24,8 @@ describe('StudioDock', () => {
     expect(buttons).toHaveLength(4) // Agents, Skills, Settings, Output
   })
 
-  it('Agents is active on /studio', () => {
-    mockPathname = '/studio'
+  it('Agents is active on /studio/agents', () => {
+    mockPathname = '/studio/agents'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
     expect(buttons[0]?.className).toContain('bg-primary')

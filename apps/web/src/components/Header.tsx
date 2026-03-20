@@ -129,7 +129,7 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
 }
 
 const STUDIO_ITEMS = [
-  { icon: Users, label: 'My Agents', href: '/studio', desc: 'Configure your AI agents' },
+  { icon: Users, label: 'My Agents', href: '/studio/agents', desc: 'Configure your AI agents' },
   { icon: Zap, label: 'Skills IDE', href: '/studio/skills', desc: 'Create and edit skills' },
   { icon: Settings, label: 'Settings', href: '/studio/settings', desc: 'Account and defaults' },
 ]

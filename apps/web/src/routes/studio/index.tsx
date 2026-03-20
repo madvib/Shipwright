@@ -2,9 +2,8 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useProfiles } from '#/features/studio/useProfiles'
 import { useLibrary } from '#/features/compiler/useLibrary'
-import { TechIcon } from '#/features/studio/TechIcon'
 import { useAuth } from '#/lib/components/protected-route'
-import { Plus, Users, Zap, Server, Github, ArrowRight, Package } from 'lucide-react'
+import { Plus, Users, Zap, Server, Github, Package, ArrowRight } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
 import { PROVIDERS } from '#/features/compiler/types'
 import { CreateAgentDialog } from '#/features/agents/dialogs/CreateAgentDialog'
@@ -61,40 +60,47 @@ function StudioHome() {
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mb-8">
-          <StatCard icon={<Users className="size-4" />} label="Agents" value={agentCount} color="text-primary bg-primary/10" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <StatCard icon={<Users className="size-4" />} label="Agents" value={agentCount} color="text-primary bg-primary/10" href="/studio/agents" />
           <StatCard icon={<Zap className="size-4" />} label="Skills" value={skillCount} color="text-emerald-500 bg-emerald-500/10" href="/studio/skills" />
           <StatCard icon={<Server className="size-4" />} label="MCP Servers" value={mcpCount} color="text-blue-500 bg-blue-500/10" />
           <StatCard icon={<Package className="size-4" />} label="Providers" value={providerCount} color="text-violet-500 bg-violet-500/10" subtitle={selectedProviders.join(', ')} />
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2">
-            <h2 className="text-sm font-semibold text-foreground mb-3">Your agents</h2>
-            <div className="space-y-2">
-              {profiles.map((p) => (
-                <Link
-                  key={p.id}
-                  to="/studio/agents/$id"
-                  params={{ id: p.id }}
-                  className="group flex items-center gap-4 rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
-                >
-                  <TechIcon stack={p.icon} size={40} style={{ borderRadius: 10 }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-semibold text-foreground">{p.name}</span>
-                      {p.selectedProviders.map((pid) => (
-                        <span key={pid} className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">{pid}</span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {p.skills.length} skill{p.skills.length !== 1 ? 's' : ''} · {p.mcpServers.length} MCP
-                    </p>
-                  </div>
-                  <ArrowRight className="size-4 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors" />
-                </Link>
-              ))}
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 space-y-4">
+            {/* Quick links */}
+            <Link
+              to="/studio/agents"
+              className="group flex items-center justify-between rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
+            >
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Users className="size-4 text-primary" />
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-foreground">Your agents</span>
+                  <p className="text-xs text-muted-foreground">{agentCount} configured</p>
+                </div>
+              </div>
+              <ArrowRight className="size-4 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors" />
+            </Link>
+
+            <Link
+              to="/studio/skills"
+              className="group flex items-center justify-between rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
+            >
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <Zap className="size-4 text-emerald-500" />
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-foreground">Skills IDE</span>
+                  <p className="text-xs text-muted-foreground">{skillCount} skill{skillCount !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <ArrowRight className="size-4 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors" />
+            </Link>
           </div>
 
           <div className="space-y-4">
@@ -138,7 +144,7 @@ function EmptyWelcome({ onCreateAgent }: { onCreateAgent: () => void }) {
           Configure AI coding agents visually. Define skills, permissions, and MCP servers — compile to any provider.
         </p>
 
-        <div className="grid grid-cols-3 gap-4 mb-10 text-left">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 text-left">
           <WelcomeCard icon={<Plus className="size-5" />} title="Start fresh" desc="Create an agent from scratch. Add skills, MCP servers, and set permissions." action="Create agent" onClick={onCreateAgent} color="bg-primary/10 text-primary" />
           <WelcomeCard icon={<Github className="size-5" />} title="Import existing" desc="Already have CLAUDE.md or .cursor/rules? Import and convert to Ship format." action="Import from GitHub" href="/studio/import" color="bg-muted text-foreground" />
           <WelcomeCard icon={<Package className="size-5" />} title="Browse registry" desc="Install pre-built agents and skills from the community. One-click setup." action="Browse registry" href="/registry" color="bg-violet-500/10 text-violet-500" />
@@ -170,7 +176,7 @@ function EmptyDashboard({ onCreateAgent, user }: { onCreateAgent: () => void; us
         </h1>
         <p className="text-sm text-muted-foreground mb-8">Let's configure your first agent.</p>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <WelcomeCard icon={<Plus className="size-5" />} title="Start fresh" desc="Create an agent from scratch with skills, MCP servers, and permissions." action="Create agent" onClick={onCreateAgent} color="bg-primary/10 text-primary" />
           <WelcomeCard icon={<Github className="size-5" />} title="Import from GitHub" desc="We'll scan your repos for agent configs and convert them to Ship format." action="Import" href="/studio/import" color="bg-muted text-foreground" />
           <WelcomeCard icon={<Package className="size-5" />} title="Install from registry" desc="Pre-built agents for fullstack dev, Rust, QA, and more." action="Browse" href="/registry" color="bg-violet-500/10 text-violet-500" />

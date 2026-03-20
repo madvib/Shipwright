@@ -8,19 +8,21 @@ interface PermissionsSectionProps {
   permissions: Permissions
   activePreset: string
   onPresetChange: (preset: string) => void
+  onEdit?: () => void
 }
 
 export function PermissionsSection({
   permissions,
   activePreset,
   onPresetChange,
+  onEdit,
 }: PermissionsSectionProps) {
   return (
     <SectionShell
       icon={<Lock className="size-4" />}
       title="Permissions"
       actionLabel="Edit"
-      showOrangeDot
+      onAction={onEdit}
     >
       {/* Preset bar */}
       <div className="flex gap-1 mb-3">

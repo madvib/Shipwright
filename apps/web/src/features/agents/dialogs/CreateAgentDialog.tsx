@@ -31,7 +31,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     const id = addProfile()
     updateProfile(id, {
       name: name.trim(),
-      
+      persona: description.trim(),
       selectedProviders,
     })
     onOpenChange(false)

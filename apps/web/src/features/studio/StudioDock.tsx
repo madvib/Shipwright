@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Users, Zap, Settings, Radio, PanelRightOpen } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { to: '/studio', icon: Users, label: 'Agents', exact: true },
+  { to: '/studio/agents', icon: Users, label: 'Agents', exact: false },
   { to: '/studio/skills', icon: Zap, label: 'Skills', exact: false },
   { to: '/studio/settings', icon: Settings, label: 'Settings', exact: false },
 ] as const

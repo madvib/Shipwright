@@ -4,14 +4,16 @@ import {
   createRootRouteWithContext,
   useRouterState,
 } from '@tanstack/react-router'
+import { lazy, Suspense } from 'react'
 import Footer from '../components/Footer'
-import Header from '../components/Header'
 
 import TanStackQueryProvider from '../integrations/tanstack-query/root-provider'
 
 import appCss from '../styles.css?url'
 
 import type { QueryClient } from '@tanstack/react-query'
+
+const Header = lazy(() => import('../components/Header'))
 
 interface MyRouterContext {
   queryClient: QueryClient
@@ -56,7 +58,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className={`font-sans antialiased [overflow-wrap:anywhere] ${isStudio ? 'flex flex-col h-screen overflow-hidden' : 'min-h-screen flex flex-col'}`}>
         <TanStackQueryProvider>
-          {!isLanding && <Header />}
+          {!isLanding && (
+            <Suspense fallback={<div className="h-12 border-b border-border/60" />}>
+              <Header />
+            </Suspense>
+          )}
           <div className={isStudio ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'flex-1'}>
             {children}
           </div>

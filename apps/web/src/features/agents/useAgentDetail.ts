@@ -136,6 +136,46 @@ export function useAgentDetail(agentId: string) {
     [],
   )
 
+  const addHook = useCallback((hook: import('./types').HookConfig) => {
+    setProfile((prev) => ({ ...prev, hooks: [...prev.hooks, hook] }))
+  }, [])
+
+  const updateHook = useCallback((index: number, hook: import('./types').HookConfig) => {
+    setProfile((prev) => ({
+      ...prev,
+      hooks: prev.hooks.map((h, i) => (i === index ? hook : h)),
+    }))
+  }, [])
+
+  const removeHook = useCallback((index: number) => {
+    setProfile((prev) => ({
+      ...prev,
+      hooks: prev.hooks.filter((_, i) => i !== index),
+    }))
+  }, [])
+
+  const addRule = useCallback((rule: import('@ship/ui').Rule) => {
+    setProfile((prev) => ({ ...prev, rules: [...prev.rules, rule] }))
+  }, [])
+
+  const updateRule = useCallback((index: number, rule: import('@ship/ui').Rule) => {
+    setProfile((prev) => ({
+      ...prev,
+      rules: prev.rules.map((r, i) => (i === index ? rule : r)),
+    }))
+  }, [])
+
+  const removeRule = useCallback((index: number) => {
+    setProfile((prev) => ({
+      ...prev,
+      rules: prev.rules.filter((_, i) => i !== index),
+    }))
+  }, [])
+
+  const updatePermissions = useCallback((permissions: import('@ship/ui').Permissions) => {
+    setProfile((prev) => ({ ...prev, permissions, permissionPreset: 'custom' }))
+  }, [])
+
   return {
     profile,
     updateProfile,
@@ -147,5 +187,12 @@ export function useAgentDetail(agentId: string) {
     updateSettings,
     setToolPermission,
     setGroupPermission,
+    addHook,
+    updateHook,
+    removeHook,
+    addRule,
+    updateRule,
+    removeRule,
+    updatePermissions,
   }
 }
