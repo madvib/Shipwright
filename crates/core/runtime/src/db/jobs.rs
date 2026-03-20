@@ -28,6 +28,7 @@ pub struct Job {
     pub created_at: String,
     pub updated_at: String,
     pub file_scope: Vec<String>,
+    pub capability_id: Option<String>,
 }
 
 /// Fields that can be patched in an [`update_job`] call.
@@ -40,6 +41,7 @@ pub struct JobPatch {
     pub blocked_by: Option<String>,
     pub touched_files: Option<Vec<String>>,
     pub file_scope: Option<Vec<String>>,
+    pub capability_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +56,7 @@ pub struct JobLogEntry {
 
 const J_COLS: &str = concat!(
     "id, kind, status, branch, payload_json, created_by, claimed_by,",
-    " touched_files, assigned_to, priority, blocked_by, created_at, updated_at, file_scope"
+    " touched_files, assigned_to, priority, blocked_by, created_at, updated_at, file_scope, capability_id"
 );
 
 const L_COLS: &str = "id, job_id, branch, message, actor, created_at";
@@ -107,6 +109,7 @@ pub fn create_job(
         created_at: now.clone(),
         updated_at: now,
         file_scope,
+        capability_id: None,
     })
 }
 
@@ -123,16 +126,18 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
     let new_blocked = patch.blocked_by.or(current.blocked_by);
     let new_files = patch.touched_files.unwrap_or(current.touched_files);
     let new_scope = patch.file_scope.unwrap_or(current.file_scope);
+    let new_cap = patch.capability_id.or(current.capability_id);
     let files_str = serde_json::to_string(&new_files)?;
     let scope_str = serde_json::to_string(&new_scope)?;
     let mut conn = open_db(ship_dir)?;
     block_on(async {
         sqlx::query(
             "UPDATE job SET status=?, assigned_to=?, priority=?, blocked_by=?, \
-             touched_files=?, file_scope=?, updated_at=? WHERE id=?",
+             touched_files=?, file_scope=?, capability_id=?, updated_at=? WHERE id=?",
         )
         .bind(&new_status).bind(&new_assigned).bind(new_priority)
-        .bind(&new_blocked).bind(&files_str).bind(&scope_str).bind(&now).bind(job_id)
+        .bind(&new_blocked).bind(&files_str).bind(&scope_str)
+        .bind(&new_cap).bind(&now).bind(job_id)
         .execute(&mut conn)
         .await
     })?;
@@ -306,7 +311,8 @@ pub fn list_logs(
 fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
     // Column order matches J_COLS:
     // 0:id 1:kind 2:status 3:branch 4:payload_json 5:created_by 6:claimed_by
-    // 7:touched_files 8:assigned_to 9:priority 10:blocked_by 11:created_at 12:updated_at 13:file_scope
+    // 7:touched_files 8:assigned_to 9:priority 10:blocked_by 11:created_at 12:updated_at
+    // 13:file_scope 14:capability_id
     let payload_str: String = row.get(4);
     let files_str: String = row.get(7);
     let scope_str: String = row.get(13);
@@ -325,6 +331,7 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         created_at: row.get(11),
         updated_at: row.get(12),
         file_scope: serde_json::from_str(&scope_str).unwrap_or_default(),
+        capability_id: row.get(14),
     }
 }
 
@@ -478,6 +485,7 @@ mod tests {
             blocked_by: None,
             touched_files: Some(vec!["a.rs".to_string()]),
             file_scope: None,
+            capability_id: None,
         }).unwrap();
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.status, "running");
@@ -527,6 +535,25 @@ mod tests {
         assert_eq!(job.file_scope, scope);
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.file_scope, scope);
+    }
+
+    #[test]
+    fn test_capability_id_round_trip() {
+        let (_tmp, ship_dir) = setup();
+        // FK is enforced — create a real target + capability first.
+        let t = crate::db::targets::create_target(&ship_dir, "surface", "test", None, None, None).unwrap();
+        let c = crate::db::targets::create_capability(&ship_dir, &t.id, "test cap", None).unwrap();
+
+        let job = mkjob(&ship_dir, "compile", None);
+        assert!(job.capability_id.is_none());
+
+        update_job(&ship_dir, &job.id, JobPatch {
+            capability_id: Some(c.id.clone()),
+            ..Default::default()
+        }).unwrap();
+
+        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        assert_eq!(got.capability_id, Some(c.id));
     }
 
     #[test]

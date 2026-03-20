@@ -188,4 +188,28 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0009_targets", TARGETS),
     ("0010_job_file_ownership", JOB_FILE_OWNERSHIP),
     ("0011_job_file_scope", "ALTER TABLE job ADD COLUMN file_scope TEXT NOT NULL DEFAULT '[]';"),
+    (
+        "0012_capability_promotion",
+        "ALTER TABLE capability ADD COLUMN phase TEXT;\
+         ALTER TABLE capability ADD COLUMN acceptance_criteria TEXT;\
+         ALTER TABLE capability ADD COLUMN preset_hint TEXT;\
+         ALTER TABLE capability ADD COLUMN file_scope TEXT;\
+         ALTER TABLE capability ADD COLUMN assigned_to TEXT;\
+         ALTER TABLE capability ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;\
+         CREATE INDEX IF NOT EXISTS capability_phase_idx ON capability(target_id, phase, status);\
+         CREATE INDEX IF NOT EXISTS capability_assignment_idx ON capability(assigned_to, status);\
+         CREATE INDEX IF NOT EXISTS capability_preset_idx ON capability(preset_hint)",
+    ),
+    (
+        "0013_job_capability_link",
+        "ALTER TABLE job ADD COLUMN capability_id TEXT REFERENCES capability(id)",
+    ),
+    (
+        "0014_target_promotion",
+        "ALTER TABLE target ADD COLUMN phase TEXT;\
+         ALTER TABLE target ADD COLUMN due_date TEXT;\
+         ALTER TABLE target ADD COLUMN body_markdown TEXT;\
+         ALTER TABLE target ADD COLUMN file_scope_json TEXT;\
+         CREATE INDEX IF NOT EXISTS target_phase_status_idx ON target(phase, status)",
+    ),
 ];
