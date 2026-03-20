@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { authClient } from '#/lib/auth-client'
 
-export function LandingNav() {
+export default function LandingNav() {
   const { data: session } = authClient.useSession()
   const user = session?.user
 
