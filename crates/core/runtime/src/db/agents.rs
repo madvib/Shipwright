@@ -1,15 +1,15 @@
+//! Agent runtime settings, artifact registry, and mode CRUD.
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use sqlx::Row;
 use std::path::Path;
 
-use super::init::open_project_db;
 use super::types::{AgentArtifactRegistryDb, AgentModeDb, AgentRuntimeSettingsDb};
-use super::util::block_on;
+use super::{block_on, open_db};
 
 pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRuntimeSettingsDb>> {
-    // If the project has no id yet (fresh dir, not yet initialised) treat as empty.
-    let mut conn = match open_project_db(ship_dir) {
+    let mut conn = match open_db(ship_dir) {
         Ok(c) => c,
         Err(e) if e.to_string().contains("no id field") => return Ok(None),
         Err(e) => return Err(e),
@@ -59,7 +59,7 @@ pub fn set_agent_runtime_settings_db(
     git_json: &str,
     namespaces_json: &str,
 ) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let providers_json = serde_json::to_string(providers)
         .with_context(|| "Failed to serialize providers for agent runtime settings")?;
     let now = Utc::now().to_rfc3339();
@@ -100,7 +100,7 @@ pub fn upsert_agent_artifact_registry_db(
     source_path: &str,
     content_hash: &str,
 ) -> Result<String> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let existing_uuid = block_on(async {
         sqlx::query(
             "SELECT uuid
@@ -146,7 +146,7 @@ pub fn get_agent_artifact_registry_by_uuid_db(
     kind: &str,
     uuid: &str,
 ) -> Result<Option<AgentArtifactRegistryDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
             "SELECT uuid, kind, external_id, name, source_path, content_hash
@@ -178,7 +178,7 @@ pub fn get_agent_artifact_registry_by_external_id_db(
     kind: &str,
     external_id: &str,
 ) -> Result<Option<AgentArtifactRegistryDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
             "SELECT uuid, kind, external_id, name, source_path, content_hash
@@ -206,7 +206,7 @@ pub fn get_agent_artifact_registry_by_external_id_db(
 }
 
 pub fn list_agent_modes_db(ship_dir: &Path) -> Result<Vec<AgentModeDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let rows = block_on(async {
         sqlx::query(
             "SELECT id, name, description, active_tools_json, mcp_refs_json, skill_refs_json, rule_refs_json, prompt_id, hooks_json, permissions_json, target_agents_json
@@ -237,7 +237,7 @@ pub fn list_agent_modes_db(ship_dir: &Path) -> Result<Vec<AgentModeDb>> {
 }
 
 pub fn upsert_agent_mode_db(ship_dir: &Path, mode: &AgentModeDb) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
@@ -276,7 +276,7 @@ pub fn upsert_agent_mode_db(ship_dir: &Path, mode: &AgentModeDb) -> Result<()> {
 }
 
 pub fn delete_agent_mode_db(ship_dir: &Path, id: &str) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     block_on(async {
         sqlx::query("DELETE FROM agent_mode WHERE id = ?")
             .bind(id)

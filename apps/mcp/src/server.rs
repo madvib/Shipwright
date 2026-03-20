@@ -159,7 +159,7 @@ impl ShipServer {
     #[tool(description = "Replace a note's markdown content by filename.")]
     async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
         let scope = match notes::parse_note_scope(req.scope.as_deref()) { Ok(s) => s, Err(e) => return format!("Error: {}", e) };
-        use ship_docs::NoteScope;
+        use crate::tools::notes::NoteScope;
         let dir = match scope { NoteScope::Project => match self.get_effective_project_dir().await { Ok(d) => Some(d), Err(e) => return e }, NoteScope::User => None };
         notes::update_note(scope, dir.as_deref(), &req.file_name, &req.content)
     }

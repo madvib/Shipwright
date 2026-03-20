@@ -9,7 +9,7 @@ use runtime::{
         list_workspaces as runtime_list_workspaces,
     },
 };
-use ship_docs::{get_project_name, list_registered_projects};
+use runtime::project::{get_project_name, list_registered_projects};
 use tokio::sync::Mutex;
 
 /// Set the active project; returns (response_message, resolved_project_root).

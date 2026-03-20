@@ -16,7 +16,7 @@ pub use compile::{
     CURSOR_PERMISSIVE_ALLOW, translate_to_cursor_permission,
 };
 pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
-pub use resolve::{FeatureOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
+pub use resolve::{WorkspaceOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
 pub use types::{
     AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogCategory, CatalogEntry,
     CatalogKind,

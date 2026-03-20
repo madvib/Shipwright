@@ -230,7 +230,7 @@ pub struct EndSessionRequest {
     /// End-of-session summary — what was accomplished, what changed.
     pub summary: Option<String>,
     /// Feature IDs updated during this session.
-    pub updated_feature_ids: Option<Vec<String>>,
+    pub updated_workspace_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, JsonSchema)]

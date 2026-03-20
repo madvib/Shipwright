@@ -1,7 +1,7 @@
 use super::*;
 use runtime::{AgentProfile, add_agent};
 use runtime::workspace::{CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest, ShipWorkspaceKind, create_workspace as runtime_create_workspace};
-use ship_docs::init_project;
+use runtime::project::init_project;
 use tempfile::tempdir;
 
 #[test]

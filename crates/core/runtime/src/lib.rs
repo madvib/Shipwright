@@ -10,8 +10,6 @@ pub mod log;
 pub mod migration;
 pub mod plugin;
 pub mod project;
-#[path = "state_db/mod.rs"]
-pub mod state_db;
 pub mod workspace;
 
 // Backward-compatible module aliases.
@@ -63,17 +61,25 @@ pub use skill::{
     delete_user_skill, get_effective_skill, get_skill, get_user_skill, install_skill_from_source,
     list_effective_skills, list_skills, list_user_skills, update_skill, update_user_skill,
 };
-pub use state_db::{
-    CapabilityDb, CapabilityMapDb, DatabaseMigrationReport, WorkspaceSessionRecordDb,
-    clear_branch_doc, clear_branch_link, clear_global_migration_meta, clear_project_migration_meta,
-    ensure_global_database, ensure_project_database, get_branch_doc, get_branch_link,
-    get_feature_primary_capability_db, get_managed_state_db, get_workspace_session_record_db,
-    list_capabilities_db, list_capability_maps_db, list_target_features_db,
-    mark_migration_meta_complete_global, mark_migration_meta_complete_project,
-    migration_meta_complete_global, migration_meta_complete_project, replace_target_features_db,
-    set_branch_doc, set_branch_link, set_feature_primary_capability_db, set_managed_state_db,
-    upsert_capability_db, upsert_capability_map_db, upsert_workspace_db,
+
+// ─── Re-exports from db (formerly state_db) ────────────────────────────────
+pub use db::types::{
+    AgentArtifactRegistryDb, AgentModeDb, AgentRuntimeSettingsDb,
+    DatabaseMigrationReport, WorkspaceSessionDb, WorkspaceSessionRecordDb, WorkspaceUpsert,
 };
+pub use db::agents::{
+    delete_agent_mode_db, get_agent_artifact_registry_by_external_id_db,
+    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_modes_db,
+    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_mode_db,
+};
+pub use db::branch_context::{
+    clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link,
+    set_branch_doc, set_branch_link,
+};
+pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
+pub use db::session::get_workspace_session_record_db;
+pub use db::workspace_state::upsert_workspace_db;
+
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,
     ShipWorkspaceKind, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
@@ -210,17 +216,15 @@ mod tests {
 
     // ── Log tests ───────────────────────────────────────────────────────────────
 
+    // NOTE: log/event tests are no-ops — event_log table was killed.
+    // These verify the stub functions don't panic.
     #[test]
     fn test_log_action() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action(&project_dir, "test", "details")?;
         let entries = read_log_entries(&project_dir)?;
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].actor, "ship");
-        assert_eq!(entries[0].action, "test");
-        assert_eq!(entries[0].details, "details");
-        assert!(!project_dir.join("log.md").exists());
+        assert!(entries.is_empty(), "event_log killed — reads return empty");
         Ok(())
     }
 
@@ -230,9 +234,7 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action_by(&project_dir, "agent", "create", "issue-abc.md")?;
         let entries = read_log_entries(&project_dir)?;
-        assert_eq!(entries[0].actor, "agent");
-        assert_eq!(entries[0].action, "create");
-        assert_eq!(entries[0].details, "issue-abc.md");
+        assert!(entries.is_empty(), "event_log killed — reads return empty");
         Ok(())
     }
 
@@ -243,11 +245,7 @@ mod tests {
         log_action(&project_dir, "create", "first entry")?;
         log_action(&project_dir, "update", "second entry")?;
         let entries = read_log_entries(&project_dir)?;
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].actor, "ship");
-        assert_eq!(entries[0].action, "update");
-        assert_eq!(entries[1].actor, "ship");
-        assert_eq!(entries[1].action, "create");
+        assert!(entries.is_empty(), "event_log killed — reads return empty");
         Ok(())
     }
 
@@ -349,32 +347,16 @@ mod tests {
         Ok(())
     }
 
+    // NOTE: event_log table was killed — these verify stubs don't panic.
     #[test]
     fn test_event_stream_since() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        assert!(!ship_path.join("events.ndjson").exists());
         let seq0 = latest_event_seq(&ship_path)?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Feature,
-            EventAction::Create,
-            "feat-1",
-            Some("Created feature".to_string()),
-        )?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Feature,
-            EventAction::Create,
-            "feat-2",
-            Some("Created another feature".to_string()),
-        )?;
+        assert_eq!(seq0, 0, "event_log killed — always returns 0");
+        append_event(&ship_path, "ship", EventEntity::Feature, EventAction::Create, "feat-1", None)?;
         let events = list_events_since(&ship_path, seq0, None)?;
-        assert!(events.len() >= 2);
-        assert!(events.iter().all(|e| e.seq > seq0));
-        assert!(events.windows(2).all(|w| w[0].seq < w[1].seq));
+        assert!(events.is_empty(), "event_log killed — reads return empty");
         Ok(())
     }
 
@@ -382,19 +364,10 @@ mod tests {
     fn test_event_export_on_demand() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Project,
-            EventAction::Log,
-            "export",
-            Some("ndjson".to_string()),
-        )?;
+        append_event(&ship_path, "ship", EventEntity::Project, EventAction::Log, "export", None)?;
         let export_path = ship_path.join("generated").join("events-export.ndjson");
         let count = export_events_ndjson(&ship_path, &export_path)?;
-        assert!(count >= 1);
-        let content = fs::read_to_string(&export_path)?;
-        assert!(content.contains("\"action\":\"log\""));
+        assert_eq!(count, 0, "event_log killed — export returns 0");
         Ok(())
     }
 
