@@ -129,6 +129,10 @@ pub enum Commands {
     #[command(hide = true)]
     Migrate,
 
+    // ── View (TUI) ────────────────────────────────────────────────────────────
+    /// Browse workflow state in a terminal UI (read-only)
+    View,
+
     // ── Validation ────────────────────────────────────────────────────────────
     /// Validate .ship/ config before compile — checks TOML, skill refs, MCP fields, permissions
     Validate {

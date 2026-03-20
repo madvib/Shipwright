@@ -19,6 +19,7 @@ mod paths;
 mod profile;
 mod skill;
 mod validate;
+mod view;
 
 use anyhow::Result;
 use cli::{AgentCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, SkillCommands};
@@ -71,6 +72,10 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Events { action } => dispatch_events(action),
+            Commands::View => {
+                let ship_dir = paths::project_ship_dir_required()?;
+                view::run_view(ship_dir)
+            }
         },
     }
 }
