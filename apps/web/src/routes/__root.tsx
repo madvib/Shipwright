@@ -3,13 +3,9 @@ import {
   Scripts,
   createRootRouteWithContext,
   useRouterState,
-  type ErrorComponentProps,
 } from '@tanstack/react-router'
-import { Toaster } from 'sonner'
 import Footer from '../components/Footer'
 import Header from '../components/Header'
-import { DefaultCatchBoundary } from '../components/error/DefaultCatchBoundary'
-import { NotFound } from '../components/error/NotFound'
 
 import TanStackQueryProvider from '../integrations/tanstack-query/root-provider'
 
@@ -40,14 +36,13 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
     ],
   }),
-  errorComponent: (props: ErrorComponentProps) => <DefaultCatchBoundary {...props} />,
-  notFoundComponent: () => <NotFound />,
   shellComponent: RootDocument,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isAppView = pathname.startsWith('/studio')
+  const isStudio = pathname === '/studio'
+  const isLanding = pathname === '/'
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -55,12 +50,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
-      <body className={`font-sans antialiased [overflow-wrap:anywhere]${isAppView ? ' flex flex-col h-screen overflow-hidden' : ''}`}>
+      <body className={`font-sans antialiased [overflow-wrap:anywhere]${isStudio ? ' flex flex-col h-screen overflow-hidden' : ''}`}>
         <TanStackQueryProvider>
-          <Header />
+          {!isLanding && <Header />}
           {children}
-          {!isAppView && <Footer />}
-          <Toaster theme="system" position="bottom-right" richColors />
+          {!isStudio && !isLanding && <Footer />}
         </TanStackQueryProvider>
         <Scripts />
       </body>
