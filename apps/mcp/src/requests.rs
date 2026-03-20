@@ -293,6 +293,36 @@ pub struct CreateTargetRequest {
     pub goal: Option<String>,
     /// Status: "active" | "planned" | "complete" | "frozen". Defaults to "active".
     pub status: Option<String>,
+    /// Current phase: "alpha" | "beta" | "stable" | "frozen" (or any label)
+    pub phase: Option<String>,
+    /// Target due date (ISO 8601 date, e.g. "2026-06-01")
+    pub due_date: Option<String>,
+    /// Long-form markdown: strategy, constraints, decisions, open questions
+    pub body_markdown: Option<String>,
+    /// File/directory paths owned by this target
+    pub file_scope: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateTargetRequest {
+    /// Target id to update
+    pub id: String,
+    /// New title
+    pub title: Option<String>,
+    /// New description
+    pub description: Option<String>,
+    /// New goal
+    pub goal: Option<String>,
+    /// New status
+    pub status: Option<String>,
+    /// New phase
+    pub phase: Option<String>,
+    /// New due date
+    pub due_date: Option<String>,
+    /// Replace the long-form markdown body
+    pub body_markdown: Option<String>,
+    /// Replace the file scope list
+    pub file_scope: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -315,6 +345,40 @@ pub struct CreateCapabilityRequest {
     pub title: String,
     /// Optional milestone target id this capability is required for
     pub milestone_id: Option<String>,
+    /// Phase grouping within the target (e.g. "bootstrap", "core", "polish")
+    pub phase: Option<String>,
+    /// Acceptance criteria — checklist items that define "done"
+    pub acceptance_criteria: Option<Vec<String>>,
+    /// Agent preset to activate when working this capability (e.g. "rust-runtime")
+    pub preset_hint: Option<String>,
+    /// File/directory paths this capability is scoped to
+    pub file_scope: Option<Vec<String>>,
+    /// Agent or workspace id currently assigned to this capability
+    pub assigned_to: Option<String>,
+    /// Scheduling priority — lower numbers run first (default 0)
+    pub priority: Option<i32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateCapabilityRequest {
+    /// Capability id to update
+    pub id: String,
+    /// New title
+    pub title: Option<String>,
+    /// New status: "aspirational" | "in_progress" | "actual"
+    pub status: Option<String>,
+    /// New phase
+    pub phase: Option<String>,
+    /// Replace acceptance criteria checklist
+    pub acceptance_criteria: Option<Vec<String>>,
+    /// New preset hint
+    pub preset_hint: Option<String>,
+    /// Replace file scope
+    pub file_scope: Option<Vec<String>>,
+    /// Assign to agent or workspace id
+    pub assigned_to: Option<String>,
+    /// New priority
+    pub priority: Option<i32>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -331,8 +395,10 @@ pub struct ListCapabilitiesRequest {
     pub target_id: Option<String>,
     /// Filter by milestone id — returns capabilities across surfaces linked to this milestone
     pub milestone_id: Option<String>,
-    /// Filter by status: "aspirational" | "actual"
+    /// Filter by status: "aspirational" | "in_progress" | "actual"
     pub status: Option<String>,
+    /// Filter by phase (e.g. "bootstrap", "core", "polish")
+    pub phase: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]

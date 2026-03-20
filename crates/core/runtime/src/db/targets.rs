@@ -1,14 +1,16 @@
 //! Targets and capabilities — the north star layer above the job queue.
-//! Targets are either milestones (v0.1.0) or surfaces (compiler, studio).
-//! Capabilities are aspirational/actual states within a target.
+//! Targets are milestones (v0.1.0) or surfaces (compiler, studio).
+//! Capabilities are required features/properties tracked from aspirational → actual.
 
 use anyhow::Result;
 use chrono::Utc;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
+
+// ─── Structs ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct Target {
@@ -18,10 +20,15 @@ pub struct Target {
     pub description: Option<String>,
     pub status: String,
     pub goal: Option<String>,
+    pub phase: Option<String>,
+    pub due_date: Option<String>,
+    pub body_markdown: Option<String>,
+    pub file_scope: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
+/// status: aspirational | in_progress | actual
 #[derive(Debug, Clone)]
 pub struct Capability {
     pub id: String,
@@ -30,15 +37,53 @@ pub struct Capability {
     pub status: String,
     pub evidence: Option<String>,
     pub milestone_id: Option<String>,
+    pub phase: Option<String>,
+    pub acceptance_criteria: Vec<String>,
+    pub preset_hint: Option<String>,
+    pub file_scope: Vec<String>,
+    pub assigned_to: Option<String>,
+    pub priority: i32,
     pub created_at: String,
     pub updated_at: String,
 }
 
-const T_COLS: &str = "id, kind, title, description, status, goal, created_at, updated_at";
+#[derive(Debug, Default)]
+pub struct TargetPatch {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub goal: Option<String>,
+    pub status: Option<String>,
+    pub phase: Option<String>,
+    pub due_date: Option<String>,
+    pub body_markdown: Option<String>,
+    pub file_scope: Option<Vec<String>>,
+}
+
+#[derive(Debug, Default)]
+pub struct CapabilityPatch {
+    pub title: Option<String>,
+    pub status: Option<String>,
+    pub phase: Option<String>,
+    pub acceptance_criteria: Option<Vec<String>>,
+    pub preset_hint: Option<String>,
+    pub file_scope: Option<Vec<String>>,
+    pub assigned_to: Option<String>,
+    pub priority: Option<i32>,
+}
+
+// ─── Column lists ─────────────────────────────────────────────────────────────
+
+const T_COLS: &str =
+    "id, kind, title, description, status, goal, phase, due_date, body_markdown, file_scope_json, created_at, updated_at";
+
 const C_COLS: &str =
-    "id, target_id, title, status, evidence, milestone_id, created_at, updated_at";
+    "id, target_id, title, status, evidence, milestone_id, phase, acceptance_criteria, \
+     preset_hint, file_scope, assigned_to, priority, created_at, updated_at";
+
+// ─── Row mapping ──────────────────────────────────────────────────────────────
 
 fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> Target {
+    let scope: Option<String> = row.get("file_scope_json");
     Target {
         id: row.get("id"),
         kind: row.get("kind"),
@@ -46,12 +91,18 @@ fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> Target {
         description: row.get("description"),
         status: row.get("status"),
         goal: row.get("goal"),
+        phase: row.get("phase"),
+        due_date: row.get("due_date"),
+        body_markdown: row.get("body_markdown"),
+        file_scope: scope.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
 }
 
 fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
+    let ac: Option<String> = row.get("acceptance_criteria");
+    let scope: Option<String> = row.get("file_scope");
     Capability {
         id: row.get("id"),
         target_id: row.get("target_id"),
@@ -59,10 +110,18 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
         status: row.get("status"),
         evidence: row.get("evidence"),
         milestone_id: row.get("milestone_id"),
+        phase: row.get("phase"),
+        acceptance_criteria: ac.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        preset_hint: row.get("preset_hint"),
+        file_scope: scope.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        assigned_to: row.get("assigned_to"),
+        priority: row.try_get("priority").unwrap_or(0),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
 }
+
+// ─── Target operations ────────────────────────────────────────────────────────
 
 pub fn create_target(
     ship_dir: &Path,
@@ -93,26 +152,13 @@ pub fn create_target(
         description: description.map(str::to_string),
         status: status.to_string(),
         goal: goal.map(str::to_string),
+        phase: None,
+        due_date: None,
+        body_markdown: None,
+        file_scope: vec![],
         created_at: now.clone(),
         updated_at: now,
     })
-}
-
-pub fn list_targets(ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> {
-    let mut conn = open_db(ship_dir)?;
-    let rows = block_on(async {
-        if let Some(k) = kind {
-            sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE kind = ? ORDER BY created_at ASC"))
-                .bind(k)
-                .fetch_all(&mut conn)
-                .await
-        } else {
-            sqlx::query(&format!("SELECT {T_COLS} FROM target ORDER BY kind ASC, created_at ASC"))
-                .fetch_all(&mut conn)
-                .await
-        }
-    })?;
-    Ok(rows.iter().map(row_to_target).collect())
 }
 
 pub fn get_target(ship_dir: &Path, id: &str) -> Result<Option<Target>> {
@@ -126,6 +172,49 @@ pub fn get_target(ship_dir: &Path, id: &str) -> Result<Option<Target>> {
     Ok(row.as_ref().map(row_to_target))
 }
 
+pub fn list_targets(ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        if let Some(k) = kind {
+            sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE kind = ? ORDER BY created_at ASC"))
+                .bind(k).fetch_all(&mut conn).await
+        } else {
+            sqlx::query(&format!("SELECT {T_COLS} FROM target ORDER BY kind ASC, created_at ASC"))
+                .fetch_all(&mut conn).await
+        }
+    })?;
+    Ok(rows.iter().map(row_to_target).collect())
+}
+
+pub fn update_target(ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()> {
+    let current = get_target(ship_dir, id)?
+        .ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
+    let now = Utc::now().to_rfc3339();
+    let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
+    let mut conn = open_db(ship_dir)?;
+    block_on(async {
+        sqlx::query(
+            "UPDATE target SET title=?, description=?, goal=?, status=?, phase=?, \
+             due_date=?, body_markdown=?, file_scope_json=?, updated_at=? WHERE id=?",
+        )
+        .bind(patch.title.unwrap_or(current.title))
+        .bind(patch.description.or(current.description))
+        .bind(patch.goal.or(current.goal))
+        .bind(patch.status.unwrap_or(current.status))
+        .bind(patch.phase.or(current.phase))
+        .bind(patch.due_date.or(current.due_date))
+        .bind(patch.body_markdown.or(current.body_markdown))
+        .bind(&scope)
+        .bind(&now)
+        .bind(id)
+        .execute(&mut conn)
+        .await
+    })?;
+    Ok(())
+}
+
+// ─── Capability operations ────────────────────────────────────────────────────
+
 pub fn create_capability(
     ship_dir: &Path,
     target_id: &str,
@@ -137,7 +226,8 @@ pub fn create_capability(
     let id = gen_nanoid();
     block_on(async {
         sqlx::query(
-            "INSERT INTO capability (id, target_id, title, status, evidence, milestone_id, created_at, updated_at)
+            "INSERT INTO capability \
+             (id, target_id, title, status, evidence, milestone_id, created_at, updated_at) \
              VALUES (?, ?, ?, 'aspirational', NULL, ?, ?, ?)",
         )
         .bind(&id).bind(target_id).bind(title).bind(milestone_id)
@@ -152,16 +242,57 @@ pub fn create_capability(
         status: "aspirational".to_string(),
         evidence: None,
         milestone_id: milestone_id.map(str::to_string),
+        phase: None,
+        acceptance_criteria: vec![],
+        preset_hint: None,
+        file_scope: vec![],
+        assigned_to: None,
+        priority: 0,
         created_at: now.clone(),
         updated_at: now,
     })
 }
 
-pub fn mark_capability_actual(
-    ship_dir: &Path,
-    id: &str,
-    evidence: &str,
-) -> Result<()> {
+pub fn get_capability(ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
+    let mut conn = open_db(ship_dir)?;
+    let row = block_on(async {
+        sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE id = ?"))
+            .bind(id)
+            .fetch_optional(&mut conn)
+            .await
+    })?;
+    Ok(row.as_ref().map(row_to_capability))
+}
+
+pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> Result<()> {
+    let current = get_capability(ship_dir, id)?
+        .ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
+    let now = Utc::now().to_rfc3339();
+    let ac = serde_json::to_string(&patch.acceptance_criteria.unwrap_or(current.acceptance_criteria))?;
+    let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
+    let mut conn = open_db(ship_dir)?;
+    block_on(async {
+        sqlx::query(
+            "UPDATE capability SET title=?, status=?, phase=?, acceptance_criteria=?, \
+             preset_hint=?, file_scope=?, assigned_to=?, priority=?, updated_at=? WHERE id=?",
+        )
+        .bind(patch.title.unwrap_or(current.title))
+        .bind(patch.status.unwrap_or(current.status))
+        .bind(patch.phase.or(current.phase))
+        .bind(&ac)
+        .bind(patch.preset_hint.or(current.preset_hint))
+        .bind(&scope)
+        .bind(patch.assigned_to.or(current.assigned_to))
+        .bind(patch.priority.unwrap_or(current.priority))
+        .bind(&now)
+        .bind(id)
+        .execute(&mut conn)
+        .await
+    })?;
+    Ok(())
+}
+
+pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Result<()> {
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
@@ -179,33 +310,29 @@ pub fn list_capabilities(
     ship_dir: &Path,
     target_id: Option<&str>,
     status: Option<&str>,
+    phase: Option<&str>,
 ) -> Result<Vec<Capability>> {
     let mut conn = open_db(ship_dir)?;
-    let rows = block_on(async {
-        match (target_id, status) {
-            (Some(t), Some(s)) => {
-                sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE target_id = ? AND status = ? ORDER BY created_at ASC"))
-                    .bind(t).bind(s).fetch_all(&mut conn).await
-            }
-            (Some(t), None) => {
-                sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE target_id = ? ORDER BY status ASC, created_at ASC"))
-                    .bind(t).fetch_all(&mut conn).await
-            }
-            (None, Some(s)) => {
-                sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE status = ? ORDER BY target_id ASC, created_at ASC"))
-                    .bind(s).fetch_all(&mut conn).await
-            }
-            (None, None) => {
-                sqlx::query(&format!("SELECT {C_COLS} FROM capability ORDER BY target_id ASC, status ASC, created_at ASC"))
-                    .fetch_all(&mut conn).await
-            }
-        }
-    })?;
+    let mut qb: QueryBuilder<sqlx::Sqlite> =
+        QueryBuilder::new(format!("SELECT {C_COLS} FROM capability"));
+    let mut sep = " WHERE ";
+    if let Some(t) = target_id {
+        qb.push(sep).push("target_id = ").push_bind(t);
+        sep = " AND ";
+    }
+    if let Some(s) = status {
+        qb.push(sep).push("status = ").push_bind(s);
+        sep = " AND ";
+    }
+    if let Some(p) = phase {
+        qb.push(sep).push("phase = ").push_bind(p);
+    }
+    qb.push(" ORDER BY priority ASC, phase ASC, status ASC, created_at ASC");
+    let rows = block_on(async { qb.build().fetch_all(&mut conn).await })?;
     Ok(rows.iter().map(row_to_capability).collect())
 }
 
-/// List capabilities linked to a milestone via milestone_id.
-/// Used by get_target on milestone targets to show the full capability delta.
+/// List capabilities linked to a milestone. Used by get_target on milestone targets.
 pub fn list_capabilities_for_milestone(
     ship_dir: &Path,
     milestone_id: &str,
@@ -214,72 +341,23 @@ pub fn list_capabilities_for_milestone(
     let mut conn = open_db(ship_dir)?;
     let rows = block_on(async {
         if let Some(s) = status {
-            sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE milestone_id = ? AND status = ? ORDER BY target_id ASC, created_at ASC"))
-                .bind(milestone_id).bind(s).fetch_all(&mut conn).await
+            sqlx::query(&format!(
+                "SELECT {C_COLS} FROM capability \
+                 WHERE milestone_id = ? AND status = ? \
+                 ORDER BY priority ASC, target_id ASC, created_at ASC"
+            ))
+            .bind(milestone_id).bind(s).fetch_all(&mut conn).await
         } else {
-            sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE milestone_id = ? ORDER BY status ASC, target_id ASC, created_at ASC"))
-                .bind(milestone_id).fetch_all(&mut conn).await
+            sqlx::query(&format!(
+                "SELECT {C_COLS} FROM capability \
+                 WHERE milestone_id = ? \
+                 ORDER BY priority ASC, status ASC, target_id ASC, created_at ASC"
+            ))
+            .bind(milestone_id).fetch_all(&mut conn).await
         }
     })?;
     Ok(rows.iter().map(row_to_capability).collect())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::project::init_project;
-    use tempfile::tempdir;
-
-    fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
-        let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        (tmp, ship_dir)
-    }
-
-    #[test]
-    fn create_and_get_target() {
-        let (_tmp, ship_dir) = setup();
-        let t = create_target(&ship_dir, "milestone", "v0.1.0", Some("Funnel"), Some("ship in every project"), None).unwrap();
-        assert_eq!(t.kind, "milestone");
-        assert_eq!(t.status, "active");
-        let fetched = get_target(&ship_dir, &t.id).unwrap().unwrap();
-        assert_eq!(fetched.title, "v0.1.0");
-    }
-
-    #[test]
-    fn list_targets_by_kind() {
-        let (_tmp, ship_dir) = setup();
-        create_target(&ship_dir, "milestone", "v0.1.0", None, None, None).unwrap();
-        create_target(&ship_dir, "surface", "compiler", None, None, None).unwrap();
-        let milestones = list_targets(&ship_dir, Some("milestone")).unwrap();
-        assert_eq!(milestones.len(), 1);
-        assert_eq!(milestones[0].title, "v0.1.0");
-    }
-
-    #[test]
-    fn capability_lifecycle() {
-        let (_tmp, ship_dir) = setup();
-        let t = create_target(&ship_dir, "surface", "compiler", None, None, None).unwrap();
-        let c = create_capability(&ship_dir, &t.id, "Profile compilation", None).unwrap();
-        assert_eq!(c.status, "aspirational");
-
-        mark_capability_actual(&ship_dir, &c.id, "test: profile_scaffold_parses").unwrap();
-        let caps = list_capabilities(&ship_dir, Some(&t.id), Some("actual")).unwrap();
-        assert_eq!(caps.len(), 1);
-        assert_eq!(caps[0].evidence.as_deref(), Some("test: profile_scaffold_parses"));
-    }
-
-    #[test]
-    fn list_capabilities_all_filters() {
-        let (_tmp, ship_dir) = setup();
-        let t = create_target(&ship_dir, "milestone", "v0.1.0", None, None, None).unwrap();
-        create_capability(&ship_dir, &t.id, "accounts", None).unwrap();
-        let c2 = create_capability(&ship_dir, &t.id, "cli auth", None).unwrap();
-        mark_capability_actual(&ship_dir, &c2.id, "ship login works").unwrap();
-
-        let all = list_capabilities(&ship_dir, Some(&t.id), None).unwrap();
-        assert_eq!(all.len(), 2);
-        let actual = list_capabilities(&ship_dir, None, Some("actual")).unwrap();
-        assert_eq!(actual.len(), 1);
-    }
-}
+mod tests;

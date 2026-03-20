@@ -32,6 +32,7 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
     if let Some(ref fs) = req.file_scope {
         payload.insert("file_scope".to_string(), serde_json::json!(fs));
     }
+    let capability_id = req.capability_id.clone();
     match runtime::db::jobs::create_job(
         project_dir,
         &req.kind,
@@ -44,7 +45,19 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
         req.touched_files.unwrap_or_default(),
         req.file_scope.unwrap_or_default(),
     ) {
-        Ok(job) => format!("Created job {} (kind={}, status=pending)", job.id, job.kind),
+        Ok(job) => {
+            if let Some(cap_id) = capability_id {
+                let _ = runtime::db::jobs::update_job(
+                    project_dir,
+                    &job.id,
+                    runtime::db::jobs::JobPatch {
+                        capability_id: Some(cap_id),
+                        ..Default::default()
+                    },
+                );
+            }
+            format!("Created job {} (kind={}, status=pending)", job.id, job.kind)
+        }
         Err(e) => format!("Error creating job: {}", e),
     }
 }
@@ -57,6 +70,7 @@ pub fn update_job(project_dir: &Path, req: UpdateJobRequest) -> String {
         blocked_by: req.blocked_by,
         touched_files: req.touched_files,
         file_scope: None,
+        capability_id: None,
     };
     match runtime::db::jobs::update_job(project_dir, &req.id, patch) {
         Ok(()) => {
