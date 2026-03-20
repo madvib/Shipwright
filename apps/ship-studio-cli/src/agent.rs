@@ -7,17 +7,10 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 
-use crate::cli::AgentCommands;
 use crate::paths;
 
-pub fn dispatch_agent(action: AgentCommands) -> Result<()> {
-    match action {
-        AgentCommands::Log { message } => agent_log(&message),
-    }
-}
-
 /// Append a timestamped entry to .ship/agent.log.
-fn agent_log(message: &str) -> Result<()> {
+pub fn agent_log(message: &str) -> Result<()> {
     let log_path = paths::project_dir().join("agent.log");
     let entry = format!("[{}] {}\n", Utc::now().to_rfc3339(), message);
     use std::io::Write;

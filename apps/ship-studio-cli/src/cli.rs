@@ -52,25 +52,6 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
-    /// List available agent profiles
-    AgentProfiles {
-        /// Show only ~/.ship/modes/
-        #[arg(long)]
-        local: bool,
-        /// Show only .ship/modes/
-        #[arg(long)]
-        project: bool,
-        /// Show only cloud-saved profiles (requires login)
-        #[arg(long)]
-        cloud: bool,
-    },
-
-    /// Manage agent profile definitions
-    AgentProfile {
-        #[command(subcommand)]
-        action: AgentProfileCommands,
-    },
-
     // ── Compilation ───────────────────────────────────────────────────────────
     /// Compile the active mode to provider-native config files
     Compile {
@@ -176,9 +157,8 @@ pub enum Commands {
         action: EventsCommands,
     },
 
-    // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
-    /// Agent-facing commands (called from skills/scripts, not user-facing)
-    #[command(hide = true)]
+    // ── Agent profiles ────────────────────────────────────────────────────────
+    /// Manage agent profiles
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
@@ -257,14 +237,15 @@ pub enum EventsCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum AgentCommands {
-    /// Append a timestamped log entry to .ship/agent.log
-    Log {
-        message: String,
+    /// List available agent profiles
+    List {
+        /// Show only ~/.ship/modes/
+        #[arg(long)]
+        local: bool,
+        /// Show only .ship/modes/
+        #[arg(long)]
+        project: bool,
     },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum AgentProfileCommands {
     /// Create a new agent profile (project-local by default)
     Create {
         /// Profile ID (lowercase, hyphens — e.g. rust-expert)
@@ -273,7 +254,7 @@ pub enum AgentProfileCommands {
         #[arg(long)]
         global: bool,
     },
-    /// Open an agent profile in $EDITOR (or launch Ship Studio web app)
+    /// Open an agent profile in $EDITOR
     Edit {
         name: String,
         /// Editor to use (defaults to $EDITOR)
@@ -288,6 +269,11 @@ pub enum AgentProfileCommands {
     Clone {
         source: String,
         target: String,
+    },
+    /// Append a timestamped log entry to .ship/agent.log (agent-facing)
+    #[command(hide = true)]
+    Log {
+        message: String,
     },
 }
 

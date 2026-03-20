@@ -21,7 +21,7 @@ mod skill;
 mod validate;
 
 use anyhow::Result;
-use cli::{AgentProfileCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, SkillCommands};
+use cli::{AgentCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -41,8 +41,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Whoami => auth::run_whoami(),
             Commands::Use { mode, path, compile: _ } => run_use(Some(&mode), path),
             Commands::Status { path } => run_status(path),
-            Commands::AgentProfiles { local, project, cloud } => run_agent_profiles(local, project, cloud),
-            Commands::AgentProfile { action } => dispatch_agent_profile(action),
+            Commands::Agent { action } => dispatch_agent(action),
             Commands::Compile { provider, dry_run, watch, path } => {
                 run_compile_cmd(provider.as_deref(), dry_run, watch, path)
             }
@@ -56,7 +55,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
-            Commands::Agent { action } => agent::dispatch_agent(action),
             Commands::Install { frozen } => {
                 let root = std::env::current_dir()?;
                 install::run_install(&root, frozen)
@@ -170,30 +168,22 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-// ── Agent profiles list ───────────────────────────────────────────────────────
+// ── Agent ─────────────────────────────────────────────────────────────────────
 
-fn run_agent_profiles(local: bool, project: bool, cloud: bool) -> Result<()> {
-    if cloud {
-        println!("Cloud profiles require a Ship account. Run: ship login");
-        return Ok(());
-    }
-    let profiles = paths::list_mode_ids(local, project);
-    if profiles.is_empty() {
-        println!("No agent profiles found.");
-        println!("Create one with: ship agent-profile create <name>");
-    } else {
-        for (id, scope) in &profiles {
-            println!("  {} [{}]", id, scope);
-        }
-    }
-    Ok(())
-}
-
-// ── Agent profile subcommands ─────────────────────────────────────────────────
-
-fn dispatch_agent_profile(action: AgentProfileCommands) -> Result<()> {
+fn dispatch_agent(action: AgentCommands) -> Result<()> {
     match action {
-        AgentProfileCommands::Create { name, global } => {
+        AgentCommands::List { local, project } => {
+            let profiles = paths::list_mode_ids(local, project);
+            if profiles.is_empty() {
+                println!("No agent profiles found.");
+                println!("Create one with: ship agent create <name>");
+            } else {
+                for (id, scope) in &profiles {
+                    println!("  {} [{}]", id, scope);
+                }
+            }
+        }
+        AgentCommands::Create { name, global } => {
             let dir = if global { paths::global_modes_dir() } else { paths::project_presets_dir() };
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!("{}.toml", name));
@@ -203,19 +193,19 @@ fn dispatch_agent_profile(action: AgentProfileCommands) -> Result<()> {
             std::fs::write(&path, mode::Profile::scaffold(&name))?;
             println!("✓ created profile '{}' at {}", name, path.display());
         }
-        AgentProfileCommands::Edit { name, editor } => {
+        AgentCommands::Edit { name, editor } => {
             let path = profile::find_profile_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             let editor = editor.or_else(|| std::env::var("EDITOR").ok()).unwrap_or_else(|| "vi".to_string());
             std::process::Command::new(&editor).arg(&path).status()?;
         }
-        AgentProfileCommands::Delete { name } => {
+        AgentCommands::Delete { name } => {
             let path = profile::find_profile_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
             std::fs::remove_file(&path)?;
             println!("✓ deleted profile '{}'", name);
         }
-        AgentProfileCommands::Clone { source, target } => {
+        AgentCommands::Clone { source, target } => {
             let cwd = std::env::current_dir()?;
             let src_path = profile::find_profile_file(&source, &cwd)
                 .ok_or_else(|| anyhow::anyhow!("Source profile '{}' not found", source))?;
@@ -229,6 +219,7 @@ fn dispatch_agent_profile(action: AgentProfileCommands) -> Result<()> {
             std::fs::write(&dst_path, content)?;
             println!("✓ cloned '{}' → '{}'", source, target);
         }
+        AgentCommands::Log { message } => agent::agent_log(&message)?,
     }
     Ok(())
 }
