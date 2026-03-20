@@ -7,10 +7,12 @@ mod compile;
 mod config;
 mod dep_skills;
 mod diff;
+mod events_cmd;
 mod import;
 mod install;
 mod job;
 mod loader;
+mod logging;
 mod mcp;
 mod mode;
 mod paths;
@@ -19,11 +21,12 @@ mod skill;
 mod validate;
 
 use anyhow::Result;
-use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, ProfileSyncCommands, SkillCommands};
+use cli::{AgentProfileCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, ProfileSyncCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
     use clap::Parser;
+    let _log_guard = logging::init();
     let cli = Cli::parse();
     dispatch(cli.command)
 }
@@ -70,6 +73,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 validate::run_validate(profile.as_deref(), json, &root)
             }
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
+            Commands::Events { action } => dispatch_events(action),
         },
     }
 }
@@ -340,6 +344,17 @@ fn run_migrate() -> Result<()> {
     println!("  notes:  {} migrated, {} skipped", report.notes_migrated, report.notes_skipped);
     println!("  adrs:   {} migrated, {} skipped", report.adrs_migrated, report.adrs_skipped);
     Ok(())
+}
+
+// ── Events ────────────────────────────────────────────────────────────────────
+
+fn dispatch_events(action: EventsCommands) -> Result<()> {
+    let root = std::env::current_dir()?;
+    match action {
+        EventsCommands::List { since, actor, entity, action, limit, json } => {
+            events_cmd::run_events(&root, since, actor, entity, action, limit, json)
+        }
+    }
 }
 
 // ── Profile sync subcommands ──────────────────────────────────────────────────

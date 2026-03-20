@@ -178,6 +178,13 @@ pub enum Commands {
         milestone: Option<String>,
     },
 
+    // ── Event log ─────────────────────────────────────────────────────────────
+    /// Query the project event log
+    Events {
+        #[command(subcommand)]
+        action: EventsCommands,
+    },
+
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
     /// Agent-facing commands (called from skills/scripts, not user-facing)
     #[command(hide = true)]
@@ -243,6 +250,31 @@ pub enum JobCommands {
     Done {
         /// Job ID or unique prefix
         id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum EventsCommands {
+    /// List events from the project event log
+    List {
+        /// Show events since this timestamp (ISO 8601) or relative (e.g. "1h", "24h")
+        #[arg(long)]
+        since: Option<String>,
+        /// Filter by actor
+        #[arg(long)]
+        actor: Option<String>,
+        /// Filter by entity type (workspace, session, note, etc.)
+        #[arg(long)]
+        entity: Option<String>,
+        /// Filter by action (create, update, delete, etc.)
+        #[arg(long)]
+        action: Option<String>,
+        /// Maximum number of events to show (default: 50)
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        /// Output as JSON array instead of table
+        #[arg(long)]
+        json: bool,
     },
 }
 

@@ -1,5 +1,6 @@
 pub mod adr;
 pub mod agent;
+pub mod events;
 pub mod job;
 pub mod notes;
 pub mod project;

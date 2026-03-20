@@ -30,8 +30,10 @@ pub fn make_skill(id: &str) -> Skill {
         id: id.to_string(),
         name: id.to_string(),
         description: Some(format!("{} skill", id)),
-        version: None,
-        author: None,
+        license: None,
+        compatibility: None,
+        allowed_tools: vec![],
+        metadata: Default::default(),
         content: format!("# {}\n\nDo the thing.", id),
         source: Default::default(),
     }

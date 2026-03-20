@@ -1,5 +1,8 @@
+mod logging;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _log_guard = logging::init();
     let args: Vec<String> = std::env::args().collect();
 
     if args.iter().any(|a| a == "--help" || a == "-h") {

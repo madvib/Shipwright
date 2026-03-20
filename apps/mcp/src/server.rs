@@ -19,7 +19,7 @@ use std::process::Command as ProcessCommand;
 use crate::requests::*;
 use crate::resources;
 use crate::tools::{
-    adr, agent, job, notes, project, session, skills, target, workspace, workspace_ops,
+    adr, agent, events, job, notes, project, session, skills, target, workspace, workspace_ops,
 };
 
 // ─── Server struct ────────────────────────────────────────────────────────────
@@ -65,6 +65,7 @@ impl ShipServer {
             "claim_file", "get_file_owner",
             "create_target", "list_targets", "get_target",
             "create_capability", "mark_capability_actual", "list_capabilities",
+            "list_events",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         CORE_TOOLS.contains(&normalized.as_str())
@@ -295,6 +296,16 @@ impl ShipServer {
     async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         target::list_capabilities(&project_dir, req)
+    }
+
+    // ─── Events ───────────────────────────────────────────────────────────────
+
+    #[tool(description = "Query the project event log. Returns JSON array of events. \
+        Filter by since (ISO 8601 or relative: '1h', '24h', '7d'), actor, entity, or action. \
+        Default limit: 50, max: 200.")]
+    async fn list_events(&self, Parameters(req): Parameters<ListEventsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        events::list_events(&project_dir, req)
     }
 
     // ─── Jobs ─────────────────────────────────────────────────────────────────

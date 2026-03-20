@@ -370,3 +370,17 @@ pub struct ListCapabilitiesRequest {
     /// Filter by status: "aspirational" | "actual"
     pub status: Option<String>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListEventsRequest {
+    /// Show events since this timestamp (ISO 8601) or relative ("1h", "24h", "7d")
+    pub since: Option<String>,
+    /// Filter by actor (substring match)
+    pub actor: Option<String>,
+    /// Filter by entity type: workspace, session, note, adr, config, etc.
+    pub entity: Option<String>,
+    /// Filter by action: create, update, delete, start, stop, etc.
+    pub action: Option<String>,
+    /// Maximum number of events to return (default: 50, max: 200)
+    pub limit: Option<u32>,
+}

@@ -200,8 +200,10 @@ fn resolve_dep_skills_deduplicates_against_local() {
         id: "github.com/owner/pkg/skills/my-skill".to_string(),
         name: "Local".to_string(),
         description: None,
-        version: None,
-        author: None,
+        license: None,
+        compatibility: None,
+        allowed_tools: vec![],
+        metadata: Default::default(),
         content: "local content".to_string(),
         source: SkillSource::Custom,
     };
@@ -240,4 +242,36 @@ fn resolve_dep_skills_merges_dep_with_local() {
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].id, "github.com/owner/pkg/skills/cool-skill");
     assert_eq!(result[0].content, "Cool content.");
+}
+
+// ── parse_dep_skill spec fields ───────────────────────────────────────
+
+#[test]
+fn parse_dep_skill_parses_license_and_compatibility() {
+    let raw = "---\nname: Cool\ndescription: x\nlicense: MIT\ncompatibility: claude >= 3\n---\n\nContent.";
+    let skill = parse_dep_skill("github.com/owner/pkg/skills/cool", raw);
+    assert_eq!(skill.license.as_deref(), Some("MIT"));
+    assert_eq!(skill.compatibility.as_deref(), Some("claude >= 3"));
+}
+
+#[test]
+fn parse_dep_skill_parses_allowed_tools() {
+    let raw = "---\nname: Cool\ndescription: x\nallowed-tools: Read Edit\n---\n\nContent.";
+    let skill = parse_dep_skill("github.com/owner/pkg/skills/cool", raw);
+    assert_eq!(skill.allowed_tools, vec!["Read", "Edit"]);
+}
+
+#[test]
+fn parse_dep_skill_parses_metadata_block() {
+    let raw = "---\nname: Cool\ndescription: x\nmetadata:\n  team: platform\n---\n\nContent.";
+    let skill = parse_dep_skill("github.com/owner/pkg/skills/cool", raw);
+    assert_eq!(skill.metadata.get("team").map(String::as_str), Some("platform"));
+}
+
+#[test]
+fn parse_dep_skill_folds_legacy_version_author_into_metadata() {
+    let raw = "---\nname: Cool\ndescription: x\nversion: 2.0\nauthor: bob\n---\n\nContent.";
+    let skill = parse_dep_skill("github.com/owner/pkg/skills/cool", raw);
+    assert_eq!(skill.metadata.get("version").map(String::as_str), Some("2.0"));
+    assert_eq!(skill.metadata.get("author").map(String::as_str), Some("bob"));
 }
