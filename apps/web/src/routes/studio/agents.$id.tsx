@@ -11,6 +11,7 @@ import { RulesSection } from '../../features/agents/sections/RulesSection'
 
 export const Route = createFileRoute('/studio/agents/$id')({
   component: AgentDetailPage,
+  ssr: false,
 })
 
 function AgentDetailPage() {

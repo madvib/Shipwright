@@ -15,6 +15,7 @@ import type { ScopeFilter } from '#/features/registry/types'
 
 export const Route = createFileRoute('/studio/registry')({
   component: RegistryPage,
+  ssr: false,
 })
 
 // ── Constants ────────────────────────────────────────────────────────────────
