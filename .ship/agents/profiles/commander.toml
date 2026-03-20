@@ -6,10 +6,16 @@ description = "Ship orchestrator — surfaces communication, configures workspac
 providers = ["claude"]
 
 [skills]
-refs = ["commander", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "find-skills"]
+refs = ["cmdr", "cmdr-planner", "cmdr-orchestrator", "cmdr-gate", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "find-skills"]
 
 [mcp]
 servers = ["ship"]
+active_tools = [
+  "update_capability",
+  "update_target",
+  "mark_capability_actual",
+  "list_events",
+]
 
 [permissions]
 preset = "ship-standard"
