@@ -18,6 +18,7 @@ mod mode;
 mod paths;
 mod profile;
 mod skill;
+mod surface;
 mod validate;
 mod view;
 
@@ -70,6 +71,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                     .unwrap_or_else(|| std::env::current_dir().unwrap());
                 validate::run_validate(profile.as_deref(), json, &root)
             }
+            Commands::Surface { emit, check } => surface::run(emit, check),
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Events { action } => dispatch_events(action),
             Commands::View => {

@@ -55,8 +55,8 @@ impl ShipServer {
         normalized
     }
 
-    pub fn is_core_tool(tool_name: &str) -> bool {
-        const CORE_TOOLS: &[&str] = &[
+    pub fn core_tools() -> &'static [&'static str] {
+        &[
             "open_project", "create_note", "update_note", "create_adr",
             "activate_workspace", "create_workspace", "complete_workspace",
             "list_stale_worktrees", "set_agent",
@@ -64,9 +64,12 @@ impl ShipServer {
             "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
             "claim_file", "get_file_owner",
             "list_events", "provider_matrix",
-        ];
+        ]
+    }
+
+    pub fn is_core_tool(tool_name: &str) -> bool {
         let normalized = Self::normalize_mode_tool_id(tool_name);
-        CORE_TOOLS.contains(&normalized.as_str())
+        Self::core_tools().contains(&normalized.as_str())
     }
 
     pub fn is_project_workspace_tool(_tool_name: &str) -> bool {

@@ -194,6 +194,6 @@ Or use `list_stale_worktrees()` from the commander to find idle worktrees > 24h.
 
 **`claude .` opens but has no MCP tools:** The `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session in that directory.
 
-**Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship-mcp` is installed (`which ship-mcp`) and `.mcp.json` points to it correctly.
+**Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship mcp serve` is on `$PATH` (`which ship`) and `.mcp.json` is configured to run `ship mcp serve`.
 
 **Auth missing in spawned terminal:** Run `claude auth login` in the new terminal. With Claude Code Max, auth is per-machine OAuth — no API key needed.
