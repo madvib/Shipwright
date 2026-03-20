@@ -77,7 +77,7 @@ Location: `~/.ship/state/<project-slug>/platform.db` (SQLite, WAL mode)
 
 ## MCP Tools
 
-Server: `ship-mcp` binary (`apps/mcp/`). Core tools are always available; non-core tools require the tool id in the active profile's `active_tools[]`.
+Server: `ship mcp serve` (`apps/mcp/`). Core tools are always available; non-core tools require the tool id in the active profile's `active_tools[]`.
 
 | Tool | Purpose | Key params |
 |---|---|---|

@@ -4,7 +4,7 @@ import type { ProjectLibrary } from '@ship/ui'
 
 const EMPTY_LIB: ProjectLibrary = {
   modes: [],
-  active_mode: null,
+  active_agent: null,
   mcp_servers: [],
   skills: [],
   rules: [],
@@ -49,8 +49,8 @@ describe('libraryToShipFiles', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
       mcp_servers: [
-        { name: 'github', command: 'npx', args: ['-y', '@mcp/server-github'], url: null, timeout_secs: null },
-        { name: 'memory', command: 'npx', args: ['-y', '@mcp/server-memory'], url: null, timeout_secs: null },
+        { name: 'github', command: 'npx', args: ['-y', '@mcp/server-github'], url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
+        { name: 'memory', command: 'npx', args: ['-y', '@mcp/server-memory'], url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
       ],
     }
     const files = libraryToShipFiles(lib)
@@ -65,7 +65,7 @@ describe('libraryToShipFiles', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
       mcp_servers: [
-        { name: 'github', command: 'npx', args: [], env: { GITHUB_TOKEN: '$GITHUB_TOKEN' }, url: null, timeout_secs: null },
+        { name: 'github', command: 'npx', args: [], env: { GITHUB_TOKEN: '$GITHUB_TOKEN' }, url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
       ],
     }
     const files = libraryToShipFiles(lib)
@@ -75,7 +75,7 @@ describe('libraryToShipFiles', () => {
   it('generates preset toml referencing mcp and skills', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
-      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null }],
+      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] }],
       skills: [{ id: 'commit', name: 'Commit', content: '...' }],
     }
     const files = libraryToShipFiles(lib, 'dev')

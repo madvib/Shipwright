@@ -109,7 +109,7 @@ export const shipflow: WorkflowPreset = {
       id: 'ship-mcp',
       type: 'platform',
       position: { x: 1120, y: 200 },
-      data: { nodeKind: 'mcp', title: 'ship-mcp', detail: 'tools: 24 · jobs, caps, sessions' },
+      data: { nodeKind: 'mcp', title: 'ship mcp', detail: 'tools: 24 · jobs, caps, sessions' },
     },
     {
       id: 'github-mcp',

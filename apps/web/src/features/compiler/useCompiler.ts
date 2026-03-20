@@ -45,7 +45,7 @@ export function useCompiler() {
       if (ctrl.signal.aborted) return
 
       const json = JSON.stringify(library)
-      const raw = wasm.compileLibraryAll(json, library.active_mode ?? null)
+      const raw = wasm.compileLibraryAll(json, library.active_agent ?? null)
       if (ctrl.signal.aborted) return
 
       const output = JSON.parse(raw) as Record<string, CompileResult>

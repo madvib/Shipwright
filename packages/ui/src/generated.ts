@@ -17,12 +17,38 @@ export type AgentProfile = { profile: ProfileMeta; skills?: SkillRefs; mcp?: Mcp
 export type AiConfig = { provider: string | null; model: string | null; cli_path: string | null }
 
 /**
- * A browsable catalog entry — either a community skill or an MCP server.
+ * Grouping category for catalog browsing.
+ */
+export type CatalogCategory = "database" | "communication" | "development" | "search" | "automation" | "ai" | "storage" | "monitoring" | "cloud"
+
+/**
+ * A browsable catalog entry with rich metadata for UI display.
  * 
+ * Curated by Ship. Every entry is vetted for security, stability, and usefulness.
  * The embedded list is the baseline. The web product will supplement this
  * via API (agentskills.io, mcp.so, or the Ship-hosted registry).
  */
-export type CatalogEntry = { id: string; name: string; description: string; kind: CatalogKind; tags: string[]; author: string | null; source_url: string | null; install_command: string | null; command: string | null; args: string[]; skill_template: string | null }
+export type CatalogEntry = { id: string; name: string; description: string; kind: CatalogKind; category: CatalogCategory; tags: string[]; 
+/**
+ * Emoji icon for UI display.
+ */
+icon: string; 
+/**
+ * Whether this is an official first-party entry (MCP org or vendor-maintained).
+ */
+official: boolean; author: string | null; 
+/**
+ * SPDX license identifier.
+ */
+license: string | null; source_url: string | null; install_command: string | null; command: string | null; args: string[]; 
+/**
+ * Environment variables the server requires.
+ */
+env_vars: string[]; 
+/**
+ * For skills: the prompt template body.
+ */
+skill_template: string | null }
 
 export type CatalogKind = "skill" | "mcp-server"
 
@@ -108,13 +134,26 @@ plugins_manifest: PluginsManifest;
  * Key = path relative to project root (e.g. `.claude/agents/monitor.md`).
  * Value = file content. Written verbatim by the CLI.
  */
-agent_files: Partial<{ [key in string]: string }> }
+agent_files: Partial<{ [key in string]: string }>; 
+/**
+ * Cursor-only: `.cursor/environment.json` content.
+ * Only populated when `cursor_environment` is set in the resolved config.
+ */
+cursor_environment_json: JsonValue | null }
 
 export type FsPermissions = { allow?: string[]; deny?: string[] }
 
 export type GitConfig = { ignore?: string[]; commit?: string[] }
 
-export type HookConfig = { id: string; trigger: HookTrigger; matcher?: string | null; command: string }
+export type HookConfig = { id: string; trigger: HookTrigger; matcher?: string | null; command: string; 
+/**
+ * Raw Cursor event name; when set, bypasses trigger mapping and emits directly.
+ */
+cursor_event?: string | null; 
+/**
+ * Raw Gemini event name; when set, bypasses trigger mapping and emits directly.
+ */
+gemini_event?: string | null }
 
 export type HookTrigger = "PreToolUse" | "PostToolUse" | "Notification" | "Stop" | "SubagentStop" | "PreCompact"
 
@@ -122,7 +161,35 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | Partial
 
 export type McpRefs = { servers?: string[] }
 
-export type McpServerConfig = { id?: string; name: string; command: string; args?: string[]; env?: Partial<{ [key in string]: string }>; scope?: string; server_type?: McpServerType; url: string | null; disabled?: boolean; timeout_secs: number | null }
+export type McpServerConfig = { id?: string; name: string; command: string; args?: string[]; env?: Partial<{ [key in string]: string }>; scope?: string; server_type?: McpServerType; url: string | null; disabled?: boolean; timeout_secs: number | null; 
+/**
+ * Codex: tool names to enable for this server.
+ */
+codex_enabled_tools: string[]; 
+/**
+ * Codex: tool names to disable for this server.
+ */
+codex_disabled_tools: string[]; 
+/**
+ * Gemini: whether this server is trusted.
+ */
+gemini_trust?: boolean | null; 
+/**
+ * Gemini: tool names to include from this server.
+ */
+gemini_include_tools: string[]; 
+/**
+ * Gemini: tool names to exclude from this server.
+ */
+gemini_exclude_tools: string[]; 
+/**
+ * Gemini: per-server timeout in milliseconds.
+ */
+gemini_timeout_ms?: number | null; 
+/**
+ * Cursor: path to an env file to load for this stdio server.
+ */
+cursor_env_file?: string | null }
 
 export type McpServerType = "stdio" | "sse" | "http"
 
@@ -193,7 +260,7 @@ export type ProfileRules = {
  */
 inline?: string | null }
 
-export type ProjectConfig = { version?: string; id?: string; name: string | null; description: string | null; statuses?: StatusConfig[]; providers?: string[]; ai: AiConfig | null; modes?: ModeConfig[]; active_mode?: string | null; mcp_servers?: McpServerConfig[]; hooks?: HookConfig[]; namespaces?: NamespaceConfig[]; git?: GitConfig }
+export type ProjectConfig = { version?: string; id?: string; name: string | null; description: string | null; statuses?: StatusConfig[]; providers?: string[]; ai: AiConfig | null; modes?: ModeConfig[]; active_agent?: string | null; mcp_servers?: McpServerConfig[]; hooks?: HookConfig[]; namespaces?: NamespaceConfig[]; git?: GitConfig }
 
 /**
  * Resolve the effective agent config from pre-loaded project data.
@@ -202,6 +269,7 @@ export type ProjectConfig = { version?: string; id?: string; name: string | null
  * 1. Project defaults (`ship.toml` types + `agents/` content)
  * 2. Active mode filter (restricts servers/skills/rules)
  * 3. Feature overrides (model, providers, additional server/skill filter)
+ * 
  * A self-contained library of agent config assets loaded from the `agents/`
  * directory. This is the primary input for the compiler in the new config model:
  * ship.toml holds identity only; the library holds everything the compiler needs.
@@ -214,7 +282,7 @@ modes?: ModeConfig[];
 /**
  * Active mode for this resolve (e.g. workspace override).
  */
-active_mode?: string | null; 
+active_agent?: string | null; 
 /**
  * MCP server definitions from `agents/mcp.toml`.
  */
@@ -259,7 +327,15 @@ env: Partial<{ [key in string]: string }>;
 /**
  * Restrict model picker to these IDs.
  */
-available_models: string[] }
+available_models: string[]; 
+/**
+ * Codex sandbox mode — translated key/value before emit.
+ */
+codex_sandbox?: string | null; 
+/**
+ * Shared model override used by Gemini + Codex when no feature override present.
+ */
+model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_session_turns?: number | null; gemini_disable_yolo_mode?: boolean | null; gemini_disable_always_allow?: boolean | null; gemini_tools_sandbox?: string | null; gemini_settings_extra?: JsonValue | null; codex_approval_policy?: string | null; codex_reasoning_effort?: string | null; codex_max_threads?: number | null; codex_max_depth?: number | null; codex_job_max_runtime_seconds?: number | null; codex_shell_env_policy?: string | null; codex_notify?: JsonValue | null; codex_settings_extra?: JsonValue | null; cursor_environment?: JsonValue | null; cursor_settings_extra?: JsonValue | null; claude_theme?: string | null; claude_auto_updates?: boolean | null; claude_include_co_authored_by?: boolean | null }
 
 /**
  * A rule from `agents/rules/*.md`. Always active — no mode/feature filtering.
@@ -283,7 +359,15 @@ description?: string | null }
  * A skill / slash command. Stored as `agents/skills/<id>/SKILL.md` (agentskills.io spec).
  * The compiler receives pre-loaded `Skill` values — it does not read files.
  */
-export type Skill = { id: string; name: string; description?: string | null; version?: string | null; author?: string | null; content: string; source?: SkillSource }
+export type Skill = { id: string; name: string; description?: string | null; license?: string | null; compatibility?: string | null; 
+/**
+ * Parsed from the space-delimited `allowed-tools` frontmatter key.
+ */
+allowed_tools?: string[]; 
+/**
+ * Arbitrary key-value metadata from the `metadata` frontmatter block.
+ */
+metadata?: Partial<{ [key in string]: string }>; content: string; source?: SkillSource }
 
 export type SkillRefs = { refs?: string[] }
 

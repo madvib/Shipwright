@@ -1,16 +1,14 @@
 ship_dir := ".ship"
 cli     := "./target/release/ship"
-mcp     := "./target/release/ship-mcp"
 
 # List available recipes
 default:
     @just --list
 # ── Install ────────────────────────────────────────────────────────────────────
 
-# Build and install `ship` + `ship-mcp` to ~/.cargo/bin (adds to PATH)
+# Build and install `ship` to ~/.cargo/bin (adds to PATH)
 install: build
     cargo install --path apps/ship-studio-cli --locked
-    cargo install --path apps/mcp --locked
 
 # Alias: same as install
 reinstall: install
@@ -93,7 +91,7 @@ e2e-reset:
 
 # Start the MCP server manually (usually Claude Code does this)
 mcp-start:
-    {{mcp}}
+    {{cli}} mcp serve
 
 # ── Housekeeping ───────────────────────────────────────────────────────────────
 

@@ -24,7 +24,7 @@ export const shipflowSolo: WorkflowPreset = {
       id: 'ship-mcp',
       type: 'platform',
       position: { x: 600, y: 80 },
-      data: { nodeKind: 'mcp', title: 'ship-mcp', detail: 'jobs, sessions, progress' },
+      data: { nodeKind: 'mcp', title: 'ship mcp', detail: 'jobs, sessions, progress' },
     },
   ],
   edges: [

@@ -161,6 +161,10 @@ export function McpRegistryBrowser({ onAdd, addedIds = new Set() }: Props) {
       disabled: false,
       url: null,
       timeout_secs: null,
+      codex_enabled_tools: [],
+      codex_disabled_tools: [],
+      gemini_include_tools: [],
+      gemini_exclude_tools: [],
     }
     onAdd(server)
   }

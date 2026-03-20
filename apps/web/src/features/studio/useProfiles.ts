@@ -49,7 +49,7 @@ export function profileToLibrary(profile: Profile): ProjectLibrary {
       rules: rules.map((r) => r.file_name),
       active_tools: profile.selectedProviders,
     }],
-    active_mode: profile.name,
+    active_agent: profile.name,
     mcp_servers: profile.mcpServers,
     skills: profile.skills,
     rules,

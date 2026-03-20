@@ -97,17 +97,17 @@ pub async fn run_http_server(port: u16) -> Result<()> {
     let ct = CancellationToken::new();
 
     if token.is_some() {
-        tracing::info!("ship-mcp HTTP: bearer token auth enabled");
+        tracing::info!("ship mcp: bearer token auth enabled");
     } else {
         tracing::warn!(
-            "ship-mcp HTTP: no [auth] token in ~/.ship/config.toml, server is unauthenticated"
+            "ship mcp: no [auth] token in ~/.ship/config.toml, server is unauthenticated"
         );
     }
 
     let app = build_mcp_app(token, ct.child_token());
 
     let addr = format!("0.0.0.0:{port}");
-    tracing::info!("ship-mcp HTTP server listening on {addr}");
+    tracing::info!("ship mcp: HTTP server listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app)

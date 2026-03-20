@@ -24,8 +24,6 @@ function packageSkillToLibrarySkill(ps: PackageSkill): Skill {
     id: ps.skill_id,
     name: ps.name,
     description: ps.description || null,
-    version: null,
-    author: null,
     content: `# ${ps.name}\n\n${ps.description ?? ''}\n`,
     source: 'imported',
   }

@@ -16,7 +16,7 @@ pub struct ShipMcpApp;
 #[async_trait]
 impl mcp_framework::McpApp for ShipMcpApp {
     fn metadata() -> mcp_framework::McpMetadata {
-        mcp_framework::McpMetadata::new("ship-mcp", "Ship MCP", env!("SHIP_MCP_VERSION_STRING"))
+        mcp_framework::McpMetadata::new("ship", "Ship MCP", env!("SHIP_MCP_VERSION_STRING"))
     }
 
     fn startup_banner(_metadata: mcp_framework::McpMetadata) -> Option<String> {

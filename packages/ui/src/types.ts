@@ -77,7 +77,7 @@ export const DEFAULT_PERMISSIONS: Permissions = {
 
 export const DEFAULT_LIBRARY: ProjectLibrary = {
   modes: [],
-  active_mode: null,
+  active_agent: null,
   mcp_servers: [],
   skills: [],
   rules: [],

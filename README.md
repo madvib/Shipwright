@@ -119,7 +119,7 @@ The viral loop: anyone can paste a GitHub URL into Ship Studio, extract the repo
 ```
 apps/
   web/         — Ship Studio (TanStack Start + Cloudflare Workers) — active
-  mcp/         — ship-mcp binary (MCP stdio server) — active
+  mcp/         — MCP server library (served via `ship mcp serve`) — active
 crates/
   core/
     compiler/  — WASM compiler: ProjectLibrary → provider files
@@ -150,7 +150,7 @@ Early. Used to build itself. The compiler and Studio UI work end-to-end.
 **Working:**
 - WASM compiler: ProjectLibrary → CLAUDE.md / GEMINI.md / AGENTS.md / .mcp.json
 - Ship Studio: paste any GitHub URL → extract agent config → compile → download
-- ship-mcp: workspace, session, skill, note, job coordination tools
+- `ship mcp serve`: workspace, session, skill, note, job coordination tools
 
 **In progress:**
 - `ship init` + `ship use` (CLI)

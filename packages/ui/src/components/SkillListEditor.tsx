@@ -13,8 +13,6 @@ const EMPTY: Skill = {
   content: '',
   description: null,
   source: 'custom',
-  author: null,
-  version: null,
 }
 
 export function SkillListEditor({ skills, onChange }: Props) {

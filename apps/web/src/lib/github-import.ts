@@ -60,7 +60,7 @@ export function extractLibrary(files: RepoFiles): ProjectLibrary | null {
 
   if (rules.length === 0 && mcpServers.length === 0) return null
 
-  return { modes: [], active_mode: null, mcp_servers: mcpServers, skills: [], rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
+  return { modes: [], active_agent: null, mcp_servers: mcpServers, skills: [], rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
 }
 
 function extractFromShipProject(files: RepoFiles): ProjectLibrary {
@@ -84,7 +84,7 @@ function extractFromShipProject(files: RepoFiles): ProjectLibrary {
     mcpServers.push(...parseShipMcpToml(files['.ship/agents/mcp.toml']))
   }
 
-  return { modes: [], active_mode: null, mcp_servers: mcpServers, skills, rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
+  return { modes: [], active_agent: null, mcp_servers: mcpServers, skills, rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
 }
 
 function parseMcpJson(content: string): McpServerConfig[] {
@@ -96,6 +96,10 @@ function parseMcpJson(content: string): McpServerConfig[] {
       command: typeof cfg.command === 'string' ? cfg.command : '',
       url: typeof cfg.url === 'string' ? cfg.url : null,
       timeout_secs: null,
+      codex_enabled_tools: [] as string[],
+      codex_disabled_tools: [] as string[],
+      gemini_include_tools: [] as string[],
+      gemini_exclude_tools: [] as string[],
       ...(Array.isArray(cfg.args) ? { args: cfg.args as string[] } : {}),
       ...(cfg.env && typeof cfg.env === 'object' ? { env: cfg.env as Record<string, string> } : {}),
     }))
@@ -129,7 +133,7 @@ function parseShipMcpToml(content: string): McpServerConfig[] {
     }
 
     if (name && (command || url)) {
-      servers.push({ name, command, url: url ?? null, timeout_secs: null, ...(args ? { args } : {}) })
+      servers.push({ name, command, url: url ?? null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [], ...(args ? { args } : {}) })
     }
   }
 

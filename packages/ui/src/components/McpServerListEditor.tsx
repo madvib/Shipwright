@@ -17,6 +17,10 @@ const EMPTY: McpServerConfig = {
   disabled: false,
   url: null,
   timeout_secs: null,
+  codex_enabled_tools: [],
+  codex_disabled_tools: [],
+  gemini_include_tools: [],
+  gemini_exclude_tools: [],
 }
 
 const COMMAND_SUGGESTIONS = ['npx', 'uvx', 'docker', 'node', 'python', 'ship', 'deno']

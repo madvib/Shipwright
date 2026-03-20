@@ -71,7 +71,7 @@ export const superpowers: WorkflowPreset = {
       id: 'ship-mcp',
       type: 'platform',
       position: { x: 620, y: 180 },
-      data: { nodeKind: 'mcp', title: 'ship-mcp', detail: 'jobs, sessions, progress' },
+      data: { nodeKind: 'mcp', title: 'ship mcp', detail: 'jobs, sessions, progress' },
     },
   ],
   edges: [

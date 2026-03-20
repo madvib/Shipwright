@@ -20,7 +20,7 @@ First release of the Ship CLI and MCP server.
 - Lockfile (`ship.lock`), versioning, transitive dependency resolution
 - `ship use @org/preset` — install and activate from a registry
 
-**MCP server (`ship-mcp`)**
+**MCP server (`ship mcp serve`)**
 - Project intelligence over MCP: workspaces, sessions, jobs, capabilities, targets, skills, notes, ADRs
 - Attach to Claude Code or any MCP-compatible client
 - Session lifecycle: `start_session`, `log_progress`, `end_session`
@@ -46,7 +46,7 @@ First release of the Ship CLI and MCP server.
 ```bash
 # macOS / Linux — see release assets for your platform
 curl -fsSL <release-url>/ship-<platform>.tar.gz | tar -xz
-sudo mv ship ship-mcp /usr/local/bin/
+sudo mv ship /usr/local/bin/
 ```
 
-Both `ship` and `ship-mcp` are required. `ship-mcp` is the MCP server your agent tools connect to.
+The `ship` binary includes the MCP server. Run `ship mcp serve` to start it.

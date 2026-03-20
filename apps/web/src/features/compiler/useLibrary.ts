@@ -51,7 +51,7 @@ export function useLibrary() {
           skills: [],
           rules: [],
         }],
-        active_mode: 'default',
+        active_agent: 'default',
       }
       void compile(effectiveLibrary)
     }, 600)

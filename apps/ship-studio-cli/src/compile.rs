@@ -81,7 +81,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     }
 
     // 6. Write mcp__ship__* to global ~/.claude/settings.json when compiling for claude.
-    //    The ship-mcp server is always injected by the compiler into every claude compile.
+    //    The ship MCP server is always injected by the compiler into every claude compile.
     //    This is a one-time global allow — avoids per-session approval prompts for ship MCP.
     if !opts.dry_run
         && providers.contains(&"claude".to_string())
