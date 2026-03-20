@@ -21,13 +21,14 @@ export interface RegistryCard {
   toolCount?: number
 }
 
-// ── Placeholder stats (replaced by API) ──────────────────────────────────────
+// ── Stats: hidden until real data exists ─────────────────────────────────────
+// Per ui-integrity rule: never display fake data. Show 0 or hide.
 
 export const REGISTRY_STATS = {
-  skills: 342,
-  agents: 89,
-  mcpServers: 156,
-  totalInstalls: '12.4k',
+  skills: 0,
+  agents: 0,
+  mcpServers: 0,
+  totalInstalls: '0',
 }
 
 export const FEATURED_COLLECTION = {

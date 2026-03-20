@@ -98,11 +98,12 @@ function RegistryPage() {
           onTypeFilterChange={setTypeFilter}
         />
 
-        <StatsBar />
+        {/* Stats bar: hidden until registry has real data */}
+        {(REGISTRY_STATS.skills > 0 || REGISTRY_STATS.agents > 0) && <StatsBar />}
 
         <CategoryTabs active={category} onChange={setCategory} />
 
-        <FeaturedBanner />
+        {/* Featured banner: hidden until a real pack is published */}
 
         {filtered.length === 0 ? (
           <EmptyResults

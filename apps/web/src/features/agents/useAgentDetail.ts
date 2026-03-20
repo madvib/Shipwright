@@ -5,7 +5,7 @@ import type {
   ToolPermission,
   AgentSettings,
 } from './types'
-import { DEMO_AGENT } from './types'
+import { DEFAULT_SETTINGS } from './types'
 
 const STORAGE_KEY = 'ship-agent-profiles-v1'
 
@@ -30,7 +30,28 @@ function saveProfiles(profiles: Record<string, AgentProfile>) {
 export function useAgentDetail(agentId: string) {
   const [profile, setProfile] = useState<AgentProfile>(() => {
     const stored = loadProfiles()
-    return stored[agentId] ?? { ...DEMO_AGENT, id: agentId, name: agentId }
+    return stored[agentId] ?? {
+      id: agentId,
+      name: agentId,
+      description: '',
+      providers: [],
+      version: '0.1.0',
+      skills: [],
+      mcpServers: [],
+      subagents: [],
+      permissions: {
+        tools: { allow: [], deny: [] },
+        filesystem: { allow: [], deny: [] },
+        commands: { allow: [], deny: [] },
+        network: { policy: 'none', allow_hosts: [] },
+        agent: { require_confirmation: [] },
+      },
+      permissionPreset: 'ship-guarded',
+      settings: { ...DEFAULT_SETTINGS },
+      hooks: [],
+      rules: [],
+      mcpToolStates: {},
+    }
   })
 
   // Persist on change
