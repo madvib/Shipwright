@@ -19,7 +19,7 @@ function StudioLayout() {
 function StudioSyncShell() {
   const { syncStatus } = useLibrarySync()
   const { library } = useLibrary()
-  const { compile, compileState } = useCompiler()
+  const { compile, state: compileState } = useCompiler()
 
   const handleCompile = () => {
     if (library) compile(library)
