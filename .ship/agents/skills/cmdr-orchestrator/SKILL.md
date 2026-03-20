@@ -96,6 +96,17 @@ Agent marks blocked
 → read blocker, decide: route | escalate | append question
 ```
 
+## Agent Teams Hooks
+
+When running under `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, the runtime fires hooks you can wire to mode switches:
+
+| Hook | Commander action |
+|------|-----------------|
+| `TeammateIdle` | A teammate has no active task → check if a pending job fits their profile → dispatch or confirm idle |
+| `TaskCompleted` | A teammate finished a task → switch to GATE mode immediately for that job |
+
+These hooks are the native triggers for gate and orchestrator modes in team sessions. Wire `TaskCompleted → gate` and `TeammateIdle → dispatch or idle-confirm`.
+
 ## Completion Detection
 
 > **Note:** Push notifications are not yet in the runtime (job `wNG3Ea5w`). Until they ship, use the triple-signal check.

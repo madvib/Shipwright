@@ -7,7 +7,9 @@ description: Commander GATE mode — reviews completed jobs against acceptance c
 
 **When:** A job shows all three completion signals — `status="complete"`, `handoff.md` present, `complete:` commit on the branch. Switch to this mode immediately when detected.
 
-You are the gate. The agent cannot self-report done without you verifying. This is the only thing keeping capability tracking honest.
+**Commander does NOT do gate review directly for `review`-tier jobs.** For feature code, schema changes, config, or API integrations — spawn a Gate agent (separate session scoped to the diff). Commander acts on the result. Only `auto`-tier jobs (docs, analysis, compile) may be reviewed inline.
+
+The gate agent cannot self-report done without verifying. This is the only thing keeping capability tracking honest.
 
 ## Gate Protocol
 
@@ -57,19 +59,19 @@ What needs to change: [actionable, specific]
 
 Only escalate failures the human must decide. If you can resolve by filing a follow-on job, do that instead.
 
-## Reviewer Pattern
+## Gate Agent Pattern
 
-For significant jobs (feature code, schema changes), spawn an ephemeral reviewer rather than reviewing yourself:
+For `review`-tier jobs, spawn a Gate agent rather than reviewing yourself:
 
 ```
 Agent marks done
-→ Spawn reviewer sub-agent scoped to the diff
-  (use superpowers:requesting-code-review)
-→ Reviewer returns pass/fail + notes
-→ You act on the result
+→ Commander spawns Gate agent scoped to the job branch diff
+  (read job spec + acceptance_criteria, run checks, return pass/fail)
+→ Gate agent returns verdict + evidence
+→ Commander acts on result: merge on pass, block + surface specific failures on fail
 ```
 
-Reviewer lives on main — not on the job branch. Spawn per review, not standing.
+Gate agent lives on main — not on the job branch. Spawn per review, ephemeral. It has read access to the worktree; commander does not.
 
 ## File Ownership
 
