@@ -1,6 +1,7 @@
 //! DB load helpers for the view TUI — all infallible (return empty on error).
 
 use runtime::db::{
+    adrs::{AdrRecord, list_adrs},
     jobs::{Job, JobLogEntry, list_jobs, list_logs},
     notes::{Note, list_notes},
     targets::{Capability, Target, list_capabilities, list_targets},
@@ -13,6 +14,10 @@ pub fn load_targets(ship_dir: &Path) -> Vec<Target> {
 
 pub fn load_caps(ship_dir: &Path, target_id: &str) -> Vec<Capability> {
     list_capabilities(ship_dir, Some(target_id), None).unwrap_or_default()
+}
+
+pub fn load_adrs(ship_dir: &Path) -> Vec<AdrRecord> {
+    list_adrs(ship_dir).unwrap_or_default()
 }
 
 pub fn load_notes(ship_dir: &Path) -> Vec<Note> {

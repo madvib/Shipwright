@@ -10,14 +10,14 @@ use crossterm::{
     terminal,
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
-use runtime::db::{jobs::Job, jobs::JobLogEntry, notes::Note, targets::{Capability, Target}};
+use runtime::db::{adrs::AdrRecord, jobs::Job, jobs::JobLogEntry, notes::Note, targets::{Capability, Target}};
 use std::{io, path::PathBuf, time::Duration};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab { Targets, Notes, Jobs }
+pub enum Tab { Targets, Notes, Adrs, Jobs }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, JobDetail }
+pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, AdrDetail, JobDetail }
 
 pub struct App {
     pub tab: Tab,
@@ -29,6 +29,8 @@ pub struct App {
     pub notes: Vec<Note>,
     pub sel_note: usize,
     pub note_scroll: u16,
+    pub adrs: Vec<AdrRecord>,
+    pub sel_adr: usize,
     pub jobs: Vec<Job>,
     pub sel_job: usize,
     pub logs: Vec<JobLogEntry>,
@@ -40,6 +42,7 @@ impl App {
     pub fn new(ship_dir: PathBuf) -> Self {
         let targets = data::load_targets(&ship_dir);
         let notes = data::load_notes(&ship_dir);
+        let adrs = data::load_adrs(&ship_dir);
         let jobs = data::load_jobs(&ship_dir);
         Self {
             tab: Tab::Targets,
@@ -51,6 +54,8 @@ impl App {
             notes,
             sel_note: 0,
             note_scroll: 0,
+            adrs,
+            sel_adr: 0,
             jobs,
             sel_job: 0,
             logs: Vec::new(),
@@ -62,6 +67,7 @@ impl App {
     pub fn refresh(&mut self) {
         self.targets = data::load_targets(&self.ship_dir);
         self.notes = data::load_notes(&self.ship_dir);
+        self.adrs = data::load_adrs(&self.ship_dir);
         self.jobs = data::load_jobs(&self.ship_dir);
         match (self.tab, self.screen) {
             (Tab::Targets, Screen::TargetDetail) | (Tab::Targets, Screen::CapDetail) => {
@@ -80,6 +86,7 @@ impl App {
         }
         self.sel_target = self.sel_target.min(self.targets.len().saturating_sub(1));
         self.sel_note = self.sel_note.min(self.notes.len().saturating_sub(1));
+        self.sel_adr = self.sel_adr.min(self.adrs.len().saturating_sub(1));
         self.sel_job = self.sel_job.min(self.jobs.len().saturating_sub(1));
         self.status = "refreshed".into();
     }
@@ -88,7 +95,8 @@ impl App {
         if self.screen != Screen::List { return; }
         self.tab = match self.tab {
             Tab::Targets => Tab::Notes,
-            Tab::Notes => Tab::Jobs,
+            Tab::Notes => Tab::Adrs,
+            Tab::Adrs => Tab::Jobs,
             Tab::Jobs => Tab::Targets,
         };
         self.status.clear();
@@ -114,6 +122,11 @@ impl App {
             (Tab::Notes, Screen::NoteDetail) => {
                 self.note_scroll = self.note_scroll.saturating_add(3);
             }
+            (Tab::Adrs, Screen::List) => {
+                if !self.adrs.is_empty() {
+                    self.sel_adr = (self.sel_adr + 1).min(self.adrs.len() - 1);
+                }
+            }
             (Tab::Jobs, Screen::List) => {
                 if !self.jobs.is_empty() {
                     self.sel_job = (self.sel_job + 1).min(self.jobs.len() - 1);
@@ -131,6 +144,7 @@ impl App {
             (Tab::Notes, Screen::NoteDetail) => {
                 self.note_scroll = self.note_scroll.saturating_sub(3);
             }
+            (Tab::Adrs, Screen::List) => self.sel_adr = self.sel_adr.saturating_sub(1),
             (Tab::Jobs, Screen::List) => self.sel_job = self.sel_job.saturating_sub(1),
             _ => {}
         }
@@ -157,6 +171,11 @@ impl App {
                     self.screen = Screen::NoteDetail;
                 }
             }
+            (Tab::Adrs, Screen::List) => {
+                if !self.adrs.is_empty() {
+                    self.screen = Screen::AdrDetail;
+                }
+            }
             (Tab::Jobs, Screen::List) => {
                 if let Some(j) = self.jobs.get(self.sel_job) {
                     let id = j.id.clone();
@@ -172,7 +191,9 @@ impl App {
     pub fn back(&mut self) {
         self.screen = match self.screen {
             Screen::CapDetail => Screen::TargetDetail,
-            Screen::TargetDetail | Screen::NoteDetail | Screen::JobDetail => Screen::List,
+            Screen::TargetDetail | Screen::NoteDetail | Screen::AdrDetail | Screen::JobDetail => {
+                Screen::List
+            }
             Screen::List => Screen::List,
         };
         self.status.clear();

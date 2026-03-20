@@ -1,5 +1,6 @@
 //! TUI rendering — Ship design token palette translated to terminal RGB.
 
+mod adrs;
 mod jobs;
 mod notes;
 mod targets;
@@ -17,7 +18,7 @@ use crate::view::{App, Screen, Tab};
 // ── Ship design tokens → terminal RGB ─────────────────────────────────────────
 // Dark mode: oklch(0.18 0.01 250) bg, oklch(0.77 0.16 70) primary (amber)
 pub(super) const C_BG: Color = Color::Rgb(28, 30, 38);
-pub(super) const C_FG: Color = Color::Rgb(248, 246, 242);
+pub(super) const C_FG: Color = Color::Rgb(200, 196, 190);
 pub(super) const C_PRI: Color = Color::Rgb(200, 156, 74); // amber — primary
 pub(super) const C_MUT: Color = Color::Rgb(110, 100, 88); // muted foreground
 pub(super) const C_BOR: Color = Color::Rgb(55, 58, 72);   // border
@@ -65,9 +66,10 @@ fn header_tabs(app: &App) -> Tabs<'static> {
     let selected = match app.tab {
         Tab::Targets => 0,
         Tab::Notes => 1,
-        Tab::Jobs => 2,
+        Tab::Adrs => 2,
+        Tab::Jobs => 3,
     };
-    Tabs::new(vec!["  Targets  ", "  Notes  ", "  Jobs  "])
+    Tabs::new(vec!["  Targets  ", "  Notes  ", "  ADRs  ", "  Jobs  "])
         .select(selected)
         .highlight_style(
             Style::default().fg(C_PRI).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
@@ -119,6 +121,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         (Tab::Targets, Screen::CapDetail) => targets::draw_cap_detail(f, app, body),
         (Tab::Notes, Screen::List) => notes::draw_notes(f, app, body),
         (Tab::Notes, Screen::NoteDetail) => notes::draw_note_detail(f, app, body),
+        (Tab::Adrs, Screen::List) => adrs::draw_adrs(f, app, body),
+        (Tab::Adrs, Screen::AdrDetail) => adrs::draw_adr_detail(f, app, body),
         (Tab::Jobs, Screen::List) => jobs::draw_jobs(f, app, body),
         (Tab::Jobs, Screen::JobDetail) => jobs::draw_job_detail(f, app, body),
         _ => {}
