@@ -31,6 +31,8 @@ Bad questions ask for things you can read from the target, the codebase, or the 
 
 ### 3. Build the capability map
 
+**Map file scope before writing capabilities.** Decomposition happens in the file map — who owns which files determines what can run in parallel, what blocks what, and what the gate checks. Get this wrong and the rest of the plan is built on sand.
+
 Decompose the goal into verifiable slices. For each capability:
 
 | Field | What to set |
