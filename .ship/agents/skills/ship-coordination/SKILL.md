@@ -6,7 +6,7 @@ description: Use when logging progress, leaving cross-lane notes, or tracking wo
 # Ship Coordination Protocol
 
 This project runs 3 parallel work lanes + 1 orchestrator.
-All lanes share a SQLite DB (`.ship/state/`) synced via Syncthing across machines.
+All lanes share a SQLite DB (`.ship/platform.db`) — local to the project, not in `~/.ship/state/`.
 
 ## Lane → Orchestrator communication
 
