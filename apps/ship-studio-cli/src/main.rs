@@ -137,15 +137,11 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
 /// Activate a profile: load → compile → install plugins → write workspace state to platform.db.
 /// `profile_id = None` re-activates the current profile from platform.db.
 fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
-    let project_root = path.as_deref()
-        .map(std::fs::canonicalize)
-        .transpose()?
-        .unwrap_or_else(|| std::env::current_dir().unwrap());
-
-    if !project_root.join(".ship").exists() {
-        anyhow::bail!(".ship/ not found. Run: ship init");
-    }
-
+    let ship_dir = match path {
+        Some(p) => std::fs::canonicalize(&p)?.join(".ship"),
+        None => paths::project_ship_dir_required()?,
+    };
+    let project_root = ship_dir.parent().unwrap().to_path_buf();
     profile::activate_profile(profile_id, &project_root)
 }
 
@@ -297,17 +293,8 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
 
 // ── ADRs / Notes ──────────────────────────────────────────────────────────────
 
-fn project_ship_dir() -> Result<std::path::PathBuf> {
-    let cwd = std::env::current_dir()?;
-    let ship_dir = cwd.join(".ship");
-    if !ship_dir.exists() {
-        anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
-    }
-    Ok(ship_dir)
-}
-
 fn run_adrs() -> Result<()> {
-    let ship_dir = project_ship_dir()?;
+    let ship_dir = paths::project_ship_dir_required()?;
     let adrs = runtime::db::adrs::list_adrs(&ship_dir)?;
     if adrs.is_empty() {
         println!("No ADRs found.");
@@ -320,7 +307,7 @@ fn run_adrs() -> Result<()> {
 }
 
 fn run_notes() -> Result<()> {
-    let ship_dir = project_ship_dir()?;
+    let ship_dir = paths::project_ship_dir_required()?;
     let notes = runtime::db::notes::list_notes(&ship_dir, None)?;
     if notes.is_empty() {
         println!("No notes found.");
@@ -333,10 +320,7 @@ fn run_notes() -> Result<()> {
 }
 
 fn run_migrate() -> Result<()> {
-    let ship_dir = std::env::current_dir()?.join(".ship");
-    if !ship_dir.exists() {
-        anyhow::bail!(".ship/ not found. Run: ship init");
-    }
+    let ship_dir = paths::project_ship_dir_required()?;
     let report = runtime::db::migrate_from_state_db::migrate_notes_and_adrs(&ship_dir)?;
     println!("migration complete");
     println!("  notes:  {} migrated, {} skipped", report.notes_migrated, report.notes_skipped);
@@ -347,10 +331,10 @@ fn run_migrate() -> Result<()> {
 // ── Events ────────────────────────────────────────────────────────────────────
 
 fn dispatch_events(action: EventsCommands) -> Result<()> {
-    let root = std::env::current_dir()?;
+    let ship_dir = paths::project_ship_dir_required()?;
     match action {
         EventsCommands::List { since, actor, entity, action, limit, json } => {
-            events_cmd::run_events(&root, since, actor, entity, action, limit, json)
+            events_cmd::run_events(&ship_dir, since, actor, entity, action, limit, json)
         }
     }
 }

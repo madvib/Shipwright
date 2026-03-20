@@ -42,7 +42,7 @@ fn fmt_ts(ts: &DateTime<Utc>) -> String {
 }
 
 pub fn run_events(
-    project_root: &Path,
+    ship_dir: &Path,
     since: Option<String>,
     actor: Option<String>,
     entity: Option<String>,
@@ -50,11 +50,6 @@ pub fn run_events(
     limit: u32,
     json: bool,
 ) -> Result<()> {
-    let ship_dir = project_root.join(".ship");
-    if !ship_dir.exists() {
-        anyhow::bail!(".ship/ not found. Run: ship init");
-    }
-
     let since_cutoff = since
         .as_deref()
         .map(parse_since)
