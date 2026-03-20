@@ -1,113 +1,216 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useProfiles } from '#/features/studio/useProfiles'
+import { useLibrary } from '#/features/compiler/useLibrary'
 import { TechIcon } from '#/features/studio/TechIcon'
-import { Plus, Users, Github } from 'lucide-react'
+import { useAuth } from '#/lib/components/protected-route'
+import { Plus, Users, Zap, Server, Github, ArrowRight, Package } from 'lucide-react'
+import { authClient } from '#/lib/auth-client'
+import { PROVIDERS } from '#/features/compiler/types'
 
-export const Route = createFileRoute('/studio/')({ component: AgentsPage })
+export const Route = createFileRoute('/studio/')({ component: StudioHome })
 
-function AgentsPage() {
+function StudioHome() {
   const { profiles, addProfile } = useProfiles()
+  const { library, selectedProviders } = useLibrary()
+  const auth = useAuth()
 
-  if (profiles.length === 0) {
-    return (
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-lg mx-auto py-20 px-5 flex flex-col items-center text-center">
-          <div className="size-14 rounded-2xl border border-border/60 bg-muted/30 flex items-center justify-center mb-5">
-            <Users className="size-6 text-muted-foreground" />
-          </div>
-          <h2 className="text-xl font-bold text-foreground mb-2">No agents yet</h2>
-          <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-            Agents define how your AI coding assistants work — skills, permissions, MCP servers. Configure once, compile to any provider.
-          </p>
-          <div className="flex gap-3 mb-8">
-            <button
-              onClick={() => addProfile()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-            >
-              <Plus className="size-4" />
-              Create your first agent
-            </button>
-            <Link
-              to="/registry"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary text-primary px-4 py-2 text-sm font-medium transition hover:bg-primary/10 no-underline"
-            >
-              Browse registry
-            </Link>
-          </div>
+  const skillCount = library.skills?.length ?? 0
+  const mcpCount = library.mcp_servers?.length ?? 0
+  const agentCount = profiles.length
+  const providerCount = selectedProviders.length
 
-          {/* GitHub import */}
-          <div className="w-full rounded-xl border border-border/60 bg-card p-5 text-left">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="size-9 rounded-lg bg-muted/50 flex items-center justify-center">
-                <Github className="size-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Import from GitHub</p>
-                <p className="text-xs text-muted-foreground">Already using CLAUDE.md or .cursor/rules? We'll convert it.</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <input
-                placeholder="Paste repo URL..."
-                className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/50"
-              />
-              <Link
-                to={"/studio/import" as string}
-                className="rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition no-underline"
-              >
-                Import
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+  if (agentCount === 0 && !auth.isAuthenticated) {
+    return <EmptyWelcome onCreateAgent={addProfile} />
+  }
+
+  if (agentCount === 0) {
+    return <EmptyDashboard onCreateAgent={addProfile} user={auth.user} />
   }
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-3xl mx-auto py-8 px-5">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Agents</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {profiles.length} agent{profiles.length !== 1 ? 's' : ''} configured
+            <h1 className="font-display text-2xl font-bold text-foreground">Studio</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {agentCount} agent{agentCount !== 1 ? 's' : ''}
+              {skillCount > 0 && ` · ${skillCount} skill${skillCount !== 1 ? 's' : ''}`}
+              {mcpCount > 0 && ` · ${mcpCount} MCP`}
             </p>
           </div>
           <button
             onClick={() => addProfile()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
           >
             <Plus className="size-3.5" />
             New agent
           </button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {profiles.map((p) => (
-            <Link
-              key={p.id}
-              to="/studio/agents/$id"
-              params={{ id: p.id }}
-              className="group flex items-start gap-4 rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
-            >
-              <TechIcon stack={p.icon} size={40} style={{ borderRadius: 10 }} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-semibold text-foreground">{p.name}</span>
-                  {p.selectedProviders.map((pid) => (
-                    <span key={pid} className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">{pid}</span>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {p.skills.length} skill{p.skills.length !== 1 ? 's' : ''} · {p.mcpServers.length} MCP
-                </p>
+        <div className="grid grid-cols-4 gap-3 mb-8">
+          <StatCard icon={<Users className="size-4" />} label="Agents" value={agentCount} color="text-primary bg-primary/10" />
+          <StatCard icon={<Zap className="size-4" />} label="Skills" value={skillCount} color="text-emerald-500 bg-emerald-500/10" href="/studio/skills" />
+          <StatCard icon={<Server className="size-4" />} label="MCP Servers" value={mcpCount} color="text-blue-500 bg-blue-500/10" />
+          <StatCard icon={<Package className="size-4" />} label="Providers" value={providerCount} color="text-violet-500 bg-violet-500/10" subtitle={selectedProviders.join(', ')} />
+        </div>
+
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2">
+            <h2 className="text-sm font-semibold text-foreground mb-3">Your agents</h2>
+            <div className="space-y-2">
+              {profiles.map((p) => (
+                <Link
+                  key={p.id}
+                  to="/studio/agents/$id"
+                  params={{ id: p.id }}
+                  className="group flex items-center gap-4 rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
+                >
+                  <TechIcon stack={p.icon} size={40} style={{ borderRadius: 10 }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-sm font-semibold text-foreground">{p.name}</span>
+                      {p.selectedProviders.map((pid) => (
+                        <span key={pid} className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">{pid}</span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {p.skills.length} skill{p.skills.length !== 1 ? 's' : ''} · {p.mcpServers.length} MCP
+                    </p>
+                  </div>
+                  <ArrowRight className="size-4 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors" />
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick actions</h3>
+              <div className="space-y-1.5">
+                <SidebarAction icon={<Plus className="size-3.5" />} label="Create agent" onClick={() => addProfile()} />
+                <SidebarAction icon={<Github className="size-3.5" />} label="Import from GitHub" href="/studio/import" />
+                <SidebarAction icon={<Package className="size-3.5" />} label="Browse registry" href="/registry" />
               </div>
-              <span className="text-muted-foreground/30 group-hover:text-muted-foreground transition-colors text-sm">&#8250;</span>
-            </Link>
-          ))}
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Compile targets</h3>
+              <div className="space-y-1.5">
+                {PROVIDERS.map((p) => {
+                  const active = selectedProviders.includes(p.id)
+                  return (
+                    <div key={p.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs ${active ? 'text-foreground' : 'text-muted-foreground/40'}`}>
+                      <span className={`size-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-muted-foreground/20'}`} />
+                      {p.name}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function EmptyWelcome({ onCreateAgent }: { onCreateAgent: () => void }) {
+  return (
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-3xl mx-auto px-6 py-16 text-center">
+        <h1 className="font-display text-3xl font-extrabold text-foreground mb-3">Welcome to Ship Studio</h1>
+        <p className="text-base text-muted-foreground max-w-md mx-auto mb-10">
+          Configure AI coding agents visually. Define skills, permissions, and MCP servers — compile to any provider.
+        </p>
+
+        <div className="grid grid-cols-3 gap-4 mb-10 text-left">
+          <WelcomeCard icon={<Plus className="size-5" />} title="Start fresh" desc="Create an agent from scratch. Add skills, MCP servers, and set permissions." action="Create agent" onClick={onCreateAgent} color="bg-primary/10 text-primary" />
+          <WelcomeCard icon={<Github className="size-5" />} title="Import existing" desc="Already have CLAUDE.md or .cursor/rules? Import and convert to Ship format." action="Import from GitHub" href="/studio/import" color="bg-muted text-foreground" />
+          <WelcomeCard icon={<Package className="size-5" />} title="Browse registry" desc="Install pre-built agents and skills from the community. One-click setup." action="Browse registry" href="/registry" color="bg-violet-500/10 text-violet-500" />
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-card p-6 max-w-md mx-auto">
+          <p className="text-sm text-foreground font-medium mb-1">Sign in for the full experience</p>
+          <p className="text-xs text-muted-foreground mb-4">Sync configs to GitHub, publish to the registry, and use the CLI.</p>
+          <button
+            onClick={() => void authClient.signIn.social({ provider: 'github', callbackURL: '/studio' })}
+            className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
+          >
+            <svg className="size-4" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Sign in with GitHub
+          </button>
+          <p className="text-[10px] text-muted-foreground/50 mt-3">No account required to use Studio locally.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EmptyDashboard({ onCreateAgent, user }: { onCreateAgent: () => void; user: { name: string } | null }) {
+  return (
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-3xl mx-auto px-6 py-12">
+        <h1 className="font-display text-2xl font-bold text-foreground mb-1">
+          {user ? `Welcome, ${user.name}` : 'Welcome to Studio'}
+        </h1>
+        <p className="text-sm text-muted-foreground mb-8">Let's configure your first agent.</p>
+
+        <div className="grid grid-cols-3 gap-4">
+          <WelcomeCard icon={<Plus className="size-5" />} title="Start fresh" desc="Create an agent from scratch with skills, MCP servers, and permissions." action="Create agent" onClick={onCreateAgent} color="bg-primary/10 text-primary" />
+          <WelcomeCard icon={<Github className="size-5" />} title="Import from GitHub" desc="We'll scan your repos for agent configs and convert them to Ship format." action="Import" href="/studio/import" color="bg-muted text-foreground" />
+          <WelcomeCard icon={<Package className="size-5" />} title="Install from registry" desc="Pre-built agents for fullstack dev, Rust, QA, and more." action="Browse" href="/registry" color="bg-violet-500/10 text-violet-500" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WelcomeCard({ icon, title, desc, action, onClick, href, color }: {
+  icon: React.ReactNode; title: string; desc: string; action: string
+  onClick?: () => void; href?: string; color: string
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-5 flex flex-col">
+      <div className={`size-10 rounded-xl ${color} flex items-center justify-center mb-3`}>{icon}</div>
+      <h3 className="text-sm font-semibold text-foreground mb-1">{title}</h3>
+      <p className="text-xs text-muted-foreground flex-1 mb-4">{desc}</p>
+      {href ? (
+        <Link to={href as string} className="text-xs font-medium text-primary hover:underline no-underline">{action} →</Link>
+      ) : (
+        <button onClick={onClick} className="text-xs font-medium text-primary hover:underline text-left">{action} →</button>
+      )}
+    </div>
+  )
+}
+
+function StatCard({ icon, label, value, color, href, subtitle }: {
+  icon: React.ReactNode; label: string; value: number; color: string; href?: string; subtitle?: string
+}) {
+  const content = (
+    <div className="rounded-xl border border-border/60 bg-card p-4 hover:border-border transition-colors">
+      <div className={`size-8 rounded-lg ${color} flex items-center justify-center mb-2`}>{icon}</div>
+      <div className="text-2xl font-bold text-foreground">{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      {subtitle && <div className="text-[10px] text-muted-foreground/50 mt-0.5 truncate">{subtitle}</div>}
+    </div>
+  )
+  return href ? <Link to={href as string} className="no-underline">{content}</Link> : content
+}
+
+function SidebarAction({ icon, label, onClick, href }: {
+  icon: React.ReactNode; label: string; onClick?: () => void; href?: string
+}) {
+  if (href) {
+    return (
+      <Link to={href as string} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors no-underline">
+        {icon} {label}
+      </Link>
+    )
+  }
+  return (
+    <button onClick={onClick} className="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+      {icon} {label}
+    </button>
   )
 }
