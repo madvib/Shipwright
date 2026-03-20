@@ -13,7 +13,7 @@ pub fn load_targets(ship_dir: &Path) -> Vec<Target> {
 }
 
 pub fn load_caps(ship_dir: &Path, target_id: &str) -> Vec<Capability> {
-    list_capabilities(ship_dir, Some(target_id), None).unwrap_or_default()
+    list_capabilities(ship_dir, Some(target_id), None, None).unwrap_or_default()
 }
 
 pub fn load_adrs(ship_dir: &Path) -> Vec<AdrRecord> {
