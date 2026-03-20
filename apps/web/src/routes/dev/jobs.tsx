@@ -77,31 +77,12 @@ function getDbPath(): string {
     const appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8')) as { active_project?: string }
     const projectDir = appState.active_project?.replace(/\/.ship\/?$/, '')
     if (projectDir) {
-      const shipToml = fs.readFileSync(path.join(projectDir, '.ship', 'ship.toml'), 'utf8')
-      const idMatch = shipToml.match(/^id\s*=\s*"([^"]+)"/m)
-      if (idMatch) {
-        const wsId = idMatch[1].toLowerCase()
-        return path.join(home, '.ship', 'state', `ship-${wsId}`, 'platform.db')
-      }
+      const local = path.join(projectDir, '.ship', 'platform.db')
+      if (fs.existsSync(local)) return local
     }
-  } catch { /* fall through to default */ }
+  } catch { /* fall through */ }
 
-  // fallback: most recently modified platform.db
-  const stateDir = path.join(home, '.ship', 'state')
-  try {
-    const entries = fs.readdirSync(stateDir)
-    let best = { path: '', mtime: 0 }
-    for (const entry of entries) {
-      const dbPath = path.join(stateDir, entry, 'platform.db')
-      try {
-        const stat = fs.statSync(dbPath)
-        if (stat.mtimeMs > best.mtime) best = { path: dbPath, mtime: stat.mtimeMs }
-      } catch { /* not a dir with platform.db */ }
-    }
-    if (best.path) return best.path
-  } catch { /* ignore */ }
-
-  return path.join(home, '.ship', 'state', 'ship-hrvmuz4p', 'platform.db')
+  return path.join(home, 'dev', 'ship', '.ship', 'platform.db')
 }
 
 // ── Map DB row → Job ──────────────────────────────────────────────────────

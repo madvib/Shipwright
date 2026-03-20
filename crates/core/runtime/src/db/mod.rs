@@ -25,14 +25,9 @@ pub struct MigrationReport {
     pub applied: usize,
 }
 
-/// Path to this project's SQLite DB: `~/.ship/state/<slug>/platform.db`.
-///
-/// Uses a separate file from `state_db`'s `ship.db` during the transition period.
-/// Once `state_db` is retired, this becomes the canonical `ship.db`.
+/// Path to this project's SQLite DB: `.ship/platform.db` (local to the project).
 pub fn db_path(ship_dir: &Path) -> Result<PathBuf> {
-    let global_dir = crate::project::get_global_dir()?;
-    let slug = crate::project::project_slug_from_ship_dir(ship_dir);
-    Ok(global_dir.join("state").join(slug).join("platform.db"))
+    Ok(ship_dir.join("platform.db"))
 }
 
 /// Open a connection, running migrations first.
