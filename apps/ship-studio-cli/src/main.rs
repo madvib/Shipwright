@@ -2,16 +2,18 @@ mod add;
 mod agent;
 mod auth;
 mod cli;
-mod cloud;
 mod compile;
 mod config;
 mod dep_skills;
 mod diff;
+mod events_cmd;
 mod import;
 mod install;
 mod job;
 mod loader;
+mod logging;
 mod mcp;
+mod mcp_serve;
 mod mode;
 mod paths;
 mod profile;
@@ -19,11 +21,12 @@ mod skill;
 mod validate;
 
 use anyhow::Result;
-use cli::{AgentProfileCommands, Cli, Commands, JobCommands, McpCommands, ProfileSyncCommands, SkillCommands};
+use cli::{AgentProfileCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
     use clap::Parser;
+    let _log_guard = logging::init();
     let cli = Cli::parse();
     dispatch(cli.command)
 }
@@ -62,7 +65,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 add::run_add(&root, &package)
             }
-            Commands::Profile { action } => dispatch_profile_sync(action),
             Commands::Validate { profile, json, path } => {
                 let root = path.as_deref()
                     .map(std::fs::canonicalize).transpose()?
@@ -70,6 +72,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 validate::run_validate(profile.as_deref(), json, &root)
             }
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
+            Commands::Events { action } => dispatch_events(action),
         },
     }
 }
@@ -283,6 +286,7 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
 
 fn dispatch_mcp(action: McpCommands) -> Result<()> {
     match action {
+        McpCommands::Serve { http, port } => mcp_serve::run(http, port),
         McpCommands::List => mcp::list(),
         McpCommands::Add { id, name, url, .. } => {
             let url = url.ok_or_else(|| anyhow::anyhow!("--url is required for HTTP/SSE servers"))?;
@@ -342,18 +346,15 @@ fn run_migrate() -> Result<()> {
     Ok(())
 }
 
-// ── Profile sync subcommands ──────────────────────────────────────────────────
+// ── Events ────────────────────────────────────────────────────────────────────
 
-fn dispatch_profile_sync(action: ProfileSyncCommands) -> Result<()> {
+fn dispatch_events(action: EventsCommands) -> Result<()> {
+    let root = std::env::current_dir()?;
     match action {
-        ProfileSyncCommands::Push => {
-            let root = std::env::current_dir()?;
-            cloud::push_profiles(&root)
-        }
-        ProfileSyncCommands::Pull { name, force } => {
-            let root = std::env::current_dir()?;
-            cloud::pull_profiles(name.as_deref(), force, &root)
+        EventsCommands::List { since, actor, entity, action, limit, json } => {
+            events_cmd::run_events(&root, since, actor, entity, action, limit, json)
         }
     }
 }
+
 

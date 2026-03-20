@@ -2,66 +2,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use runtime::workspace::{
-    CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest, ShipWorkspaceKind,
     activate_workspace as runtime_activate_workspace,
-    create_workspace as runtime_create_workspace,
     list_workspaces as runtime_list_workspaces,
-    repair_workspace as runtime_repair_workspace,
     set_workspace_active_agent,
-    sync_workspace as runtime_sync_workspace,
 };
 
 use crate::requests::{
-    ActivateWorkspaceRequest, CreateWorkspaceRequest, CreateWorkspaceToolRequest,
-    ListWorkspacesRequest, RepairWorkspaceRequest, SyncWorkspaceRequest,
+    ActivateWorkspaceRequest, CreateWorkspaceRequest, ListWorkspacesRequest,
 };
 use crate::util::configured_worktree_dir;
-
-pub fn create_workspace_tool(
-    project_dir: &Path,
-    req: CreateWorkspaceToolRequest,
-) -> String {
-    let parsed_workspace_type = match req.workspace_type {
-        Some(workspace_type) => match workspace_type.parse::<ShipWorkspaceKind>() {
-            Ok(parsed) => Some(parsed),
-            Err(err) => return format!("Error: {}", err),
-        },
-        None => None,
-    };
-
-    let workspace_request = RuntimeCreateWorkspaceRequest {
-        branch: req.branch.clone(),
-        workspace_type: parsed_workspace_type,
-        status: None,
-        environment_id: req.environment_id,
-        feature_id: req.feature_id,
-        target_id: req.target_id,
-        active_agent: req.agent_id,
-        providers: None,
-        mcp_servers: None,
-        skills: None,
-        is_worktree: req.is_worktree,
-        worktree_path: req.worktree_path,
-        context_hash: None,
-    };
-
-    let workspace = match runtime_create_workspace(project_dir, workspace_request) {
-        Ok(workspace) => workspace,
-        Err(err) => return format!("Error: {}", err),
-    };
-
-    let workspace = if req.activate.unwrap_or_default() {
-        match runtime_activate_workspace(project_dir, &workspace.branch) {
-            Ok(active) => active,
-            Err(err) => return format!("Error: {}", err),
-        }
-    } else {
-        workspace
-    };
-
-    serde_json::to_string_pretty(&workspace)
-        .unwrap_or_else(|e| format!("Error serializing workspace: {}", e))
-}
 
 pub fn activate_workspace(project_dir: &Path, req: ActivateWorkspaceRequest) -> String {
     let mut workspace = match runtime_activate_workspace(project_dir, &req.branch) {
@@ -76,23 +25,6 @@ pub fn activate_workspace(project_dir: &Path, req: ActivateWorkspaceRequest) -> 
     }
     serde_json::to_string_pretty(&workspace)
         .unwrap_or_else(|e| format!("Error serializing workspace: {}", e))
-}
-
-pub fn sync_workspace(project_dir: &Path, _req: SyncWorkspaceRequest, branch: &str) -> String {
-    match runtime_sync_workspace(project_dir, branch) {
-        Ok(workspace) => serde_json::to_string_pretty(&workspace)
-            .unwrap_or_else(|e| format!("Error serializing workspace: {}", e)),
-        Err(err) => format!("Error: {}", err),
-    }
-}
-
-pub fn repair_workspace(project_dir: &Path, req: RepairWorkspaceRequest, branch: &str) -> String {
-    let dry_run = req.dry_run.unwrap_or(true);
-    match runtime_repair_workspace(project_dir, branch, dry_run) {
-        Ok(report) => serde_json::to_string_pretty(&report)
-            .unwrap_or_else(|e| format!("Error serializing workspace repair report: {}", e)),
-        Err(err) => format!("Error: {}", err),
-    }
 }
 
 pub fn list_workspaces(project_dir: &Path, req: ListWorkspacesRequest) -> String {

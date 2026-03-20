@@ -204,39 +204,11 @@ pub struct SetModeRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct CreateWorkspaceToolRequest {
-    /// Workspace branch/id.
-    pub branch: String,
-    /// Workspace type (feature, patch, service)
-    pub workspace_type: Option<String>,
-    /// Optional environment/profile preset ID used to seed this workspace.
-    pub environment_id: Option<String>,
-    /// Optional linked feature ID.
-    pub feature_id: Option<String>,
-    /// Optional linked target ID.
-    pub target_id: Option<String>,
-    /// Optional workspace agent profile override.
-    pub agent_id: Option<String>,
-    /// Whether this workspace is a git worktree.
-    pub is_worktree: Option<bool>,
-    /// Worktree path (required when is_worktree=true).
-    pub worktree_path: Option<String>,
-    /// Activate immediately after create.
-    pub activate: Option<bool>,
-}
-
-#[derive(Deserialize, JsonSchema)]
 pub struct ActivateWorkspaceRequest {
     /// Workspace branch/id to activate.
     pub branch: String,
     /// Optional workspace agent profile override to apply after activation.
     pub agent_id: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct SyncWorkspaceRequest {
-    /// Workspace branch/id. If omitted, resolves from current git branch.
-    pub branch: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -275,14 +247,6 @@ pub struct ProviderMatrixRequest {
     pub provider: Option<String>,
     /// Output format: "json" (default), "text", or "diff".
     pub format: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct RepairWorkspaceRequest {
-    /// Workspace branch/id. If omitted, resolves from current git branch.
-    pub branch: Option<String>,
-    /// Preview repair without writing changes.
-    pub dry_run: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -369,4 +333,18 @@ pub struct ListCapabilitiesRequest {
     pub milestone_id: Option<String>,
     /// Filter by status: "aspirational" | "actual"
     pub status: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListEventsRequest {
+    /// Show events since this timestamp (ISO 8601) or relative ("1h", "24h", "7d")
+    pub since: Option<String>,
+    /// Filter by actor (substring match)
+    pub actor: Option<String>,
+    /// Filter by entity type: workspace, session, note, adr, config, etc.
+    pub entity: Option<String>,
+    /// Filter by action: create, update, delete, start, stop, etc.
+    pub action: Option<String>,
+    /// Maximum number of events to return (default: 50, max: 200)
+    pub limit: Option<u32>,
 }

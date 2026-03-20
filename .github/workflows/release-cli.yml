@@ -54,28 +54,25 @@ jobs:
           workspaces: '. -> target'
           key: ${{ matrix.target }}
 
-      - name: Build ship and ship-mcp
+      - name: Build ship
         run: |
           cargo build --release --target ${{ matrix.target }} \
-            -p ship-studio-cli \
-            -p mcp
+            -p ship-studio-cli
 
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/ship dist/ship
-          cp target/${{ matrix.target }}/release/ship-mcp dist/ship-mcp
-          chmod +x dist/ship dist/ship-mcp
-          tar -czf ship-${{ matrix.target }}.tar.gz -C dist ship ship-mcp
+          chmod +x dist/ship
+          tar -czf ship-${{ matrix.target }}.tar.gz -C dist ship
 
       - name: Package (Windows)
         if: matrix.archive == 'zip'
         run: |
           mkdir dist
           copy target\${{ matrix.target }}\release\ship.exe dist\ship.exe
-          copy target\${{ matrix.target }}\release\ship-mcp.exe dist\ship-mcp.exe
-          Compress-Archive -Path dist\ship.exe,dist\ship-mcp.exe -DestinationPath ship-${{ matrix.target }}.zip
+          Compress-Archive -Path dist\ship.exe -DestinationPath ship-${{ matrix.target }}.zip
         shell: pwsh
 
       - name: Upload artifact
@@ -111,19 +108,19 @@ jobs:
             **macOS / Linux (arm64)**
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ship-aarch64-apple-darwin.tar.gz | tar -xz
-            sudo mv ship ship-mcp /usr/local/bin/
+            sudo mv ship /usr/local/bin/
             ```
 
             **macOS (x86_64)**
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ship-x86_64-apple-darwin.tar.gz | tar -xz
-            sudo mv ship ship-mcp /usr/local/bin/
+            sudo mv ship /usr/local/bin/
             ```
 
             **Linux (x86_64)**
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ship-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-            sudo mv ship ship-mcp /usr/local/bin/
+            sudo mv ship /usr/local/bin/
             ```
 
             **Windows (x86_64)**

@@ -9,6 +9,8 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
+mcp = { path = "../mcp" }
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 cli-framework = { path = "../../crates/core/cli-framework" }
 compiler = { path = "../../crates/core/compiler" }
 runtime = { path = "../../crates/core/runtime" }
@@ -21,6 +23,9 @@ chrono = { version = "0.4", features = ["serde"] }
 ureq = { version = "3", features = ["json"] }
 sha2 = "0.10"
 base64 = "0.22"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -443,8 +443,10 @@ mod tests {
             id: id.to_string(),
             name: id.to_string(),
             description: None,
-            version: None,
-            author: None,
+            license: None,
+            compatibility: None,
+            allowed_tools: vec![],
+            metadata: Default::default(),
             content: String::new(),
             source: Default::default(),
         }

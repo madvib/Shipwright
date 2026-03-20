@@ -19,7 +19,7 @@ use std::process::Command as ProcessCommand;
 use crate::requests::*;
 use crate::resources;
 use crate::tools::{
-    adr, agent, job, notes, project, session, skills, target, workspace, workspace_ops,
+    adr, agent, events, job, notes, project, session, skills, target, workspace, workspace_ops,
 };
 
 // ─── Server struct ────────────────────────────────────────────────────────────
@@ -57,14 +57,13 @@ impl ShipServer {
 
     pub fn is_core_tool(tool_name: &str) -> bool {
         const CORE_TOOLS: &[&str] = &[
-            "open_project", "create_note", "create_adr",
+            "open_project", "create_note", "update_note", "create_adr",
             "activate_workspace", "create_workspace", "complete_workspace",
-            "list_stale_worktrees", "set_agent", "sync_workspace", "repair_workspace",
+            "list_stale_worktrees", "set_agent",
             "list_workspaces", "start_session", "end_session", "log_progress",
             "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
             "claim_file", "get_file_owner",
-            "create_target", "list_targets", "get_target",
-            "create_capability", "mark_capability_actual", "list_capabilities",
+            "list_events", "provider_matrix",
         ];
         let normalized = Self::normalize_mode_tool_id(tool_name);
         CORE_TOOLS.contains(&normalized.as_str())
@@ -178,30 +177,10 @@ impl ShipServer {
 
     // ─── Workspace ────────────────────────────────────────────────────────────
 
-    #[tool(description = "Create or update a workspace runtime record (feature/patch/service).")]
-    async fn create_workspace_tool(&self, Parameters(req): Parameters<CreateWorkspaceToolRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
-        workspace::create_workspace_tool(&project_dir, req)
-    }
-
     #[tool(description = "Activate a workspace by branch/id and optionally set its mode override.")]
     async fn activate_workspace(&self, Parameters(req): Parameters<ActivateWorkspaceRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         workspace::activate_workspace(&project_dir, req)
-    }
-
-    #[tool(description = "Sync the workspace for a branch/id (or current git branch if omitted).")]
-    async fn sync_workspace(&self, Parameters(req): Parameters<SyncWorkspaceRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
-        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
-        workspace::sync_workspace(&project_dir, req, &branch)
-    }
-
-    #[tool(description = "Repair workspace compile/config drift. Defaults to dry-run unless dry_run=false.")]
-    async fn repair_workspace(&self, Parameters(req): Parameters<RepairWorkspaceRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
-        let branch = match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) { Ok(b) => b, Err(e) => return format!("Error: {}", e) };
-        workspace::repair_workspace(&project_dir, req, &branch)
     }
 
     #[tool(description = "List all workspaces for the active project. Optionally filter by status.")]
@@ -295,6 +274,16 @@ impl ShipServer {
     async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         target::list_capabilities(&project_dir, req)
+    }
+
+    // ─── Events ───────────────────────────────────────────────────────────────
+
+    #[tool(description = "Query the project event log. Returns JSON array of events. \
+        Filter by since (ISO 8601 or relative: '1h', '24h', '7d'), actor, entity, or action. \
+        Default limit: 50, max: 200.")]
+    async fn list_events(&self, Parameters(req): Parameters<ListEventsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        events::list_events(&project_dir, req)
     }
 
     // ─── Jobs ─────────────────────────────────────────────────────────────────

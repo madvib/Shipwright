@@ -135,20 +135,54 @@ pub fn resolve_dep_skill(ref_str: &str, lock: &ShipLock, cache_root: &Path) -> R
 }
 
 /// Parse a SKILL.md from a dep package, using `dep_ref` as the skill id.
+///
+/// Parses per the agentskills.io spec: `name`, `description`, `license`,
+/// `compatibility`, `allowed-tools`, `metadata`. Legacy `version` and `author`
+/// top-level keys are folded into `metadata`.
 fn parse_dep_skill(dep_ref: &str, raw: &str) -> Skill {
+    use std::collections::HashMap;
+
     let mut name = dep_ref.to_string();
     let mut description = None;
+    let mut license = None;
+    let mut compatibility = None;
+    let mut allowed_tools = vec![];
+    let mut metadata: HashMap<String, String> = HashMap::new();
     let mut content_start = 0usize;
 
     if let Some(rest) = raw.strip_prefix("---\n")
         && let Some(end) = rest.find("\n---\n")
     {
         let fm = &rest[..end];
+        let mut in_metadata = false;
         for line in fm.lines() {
+            if in_metadata {
+                if line.starts_with("  ") || line.starts_with('\t') {
+                    let trimmed = line.trim();
+                    if let Some((k, v)) = trimmed.split_once(':') {
+                        metadata.insert(k.trim().to_string(), v.trim().to_string());
+                    }
+                    continue;
+                } else {
+                    in_metadata = false;
+                }
+            }
             if let Some(v) = line.strip_prefix("name:") {
                 name = v.trim().to_string();
             } else if let Some(v) = line.strip_prefix("description:") {
                 description = Some(v.trim().to_string());
+            } else if let Some(v) = line.strip_prefix("license:") {
+                license = Some(v.trim().to_string());
+            } else if let Some(v) = line.strip_prefix("compatibility:") {
+                compatibility = Some(v.trim().to_string());
+            } else if let Some(v) = line.strip_prefix("allowed-tools:") {
+                allowed_tools = v.trim().split_whitespace().map(str::to_string).collect();
+            } else if line.trim_end() == "metadata:" {
+                in_metadata = true;
+            } else if let Some(v) = line.strip_prefix("version:") {
+                metadata.insert("version".to_string(), v.trim().to_string());
+            } else if let Some(v) = line.strip_prefix("author:") {
+                metadata.insert("author".to_string(), v.trim().to_string());
             }
         }
         content_start = 4 + end + 5; // "---\n" + fm + "\n---\n"
@@ -159,8 +193,10 @@ fn parse_dep_skill(dep_ref: &str, raw: &str) -> Skill {
         id: dep_ref.to_string(),
         name,
         description,
-        version: None,
-        author: None,
+        license,
+        compatibility,
+        allowed_tools,
+        metadata,
         content,
         source: SkillSource::Community,
     }

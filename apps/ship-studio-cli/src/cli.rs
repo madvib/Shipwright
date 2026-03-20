@@ -132,28 +132,20 @@ pub enum Commands {
         zip: bool,
     },
 
-    // ── Profile sync (account required) ──────────────────────────────────────
-    /// Push and pull agent profiles from the Ship cloud
-    Profile {
-        #[command(subcommand)]
-        action: ProfileSyncCommands,
-    },
-
-    // ── Job queue ─────────────────────────────────────────────────────────────
-    /// Manage the agent job queue
+    // ── Workflow (internal — hidden from product help) ────────────────────────
+    #[command(hide = true)]
     Job {
         #[command(subcommand)]
         action: JobCommands,
     },
 
-    // ── Project visibility ────────────────────────────────────────────────────
-    /// List architecture decision records in the current project
+    #[command(hide = true)]
     Adrs,
 
-    /// List notes in the current project
+    #[command(hide = true)]
     Notes,
 
-    /// Migrate notes and ADRs from old ship.db to platform.db
+    #[command(hide = true)]
     Migrate,
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -171,11 +163,17 @@ pub enum Commands {
     },
 
     // ── Capability diff ───────────────────────────────────────────────────────
-    /// Show capability progress delta for the active milestone
+    #[command(hide = true)]
     Diff {
-        /// Milestone target id. If omitted, uses the first active milestone found.
         #[arg(long)]
         milestone: Option<String>,
+    },
+
+    // ── Event log ─────────────────────────────────────────────────────────────
+    /// Query the project event log
+    Events {
+        #[command(subcommand)]
+        action: EventsCommands,
     },
 
     // ── Agent namespace (agent-facing; hidden from user help) ─────────────────
@@ -184,20 +182,6 @@ pub enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum ProfileSyncCommands {
-    /// Upload .ship/agents/profiles/ to the Ship API (requires login)
-    Push,
-    /// Download profiles from the Ship API (requires login)
-    Pull {
-        /// Pull only the named profile
-        name: Option<String>,
-        /// Overwrite existing profiles without prompting
-        #[arg(long)]
-        force: bool,
     },
 }
 
@@ -243,6 +227,31 @@ pub enum JobCommands {
     Done {
         /// Job ID or unique prefix
         id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum EventsCommands {
+    /// List events from the project event log
+    List {
+        /// Show events since this timestamp (ISO 8601) or relative (e.g. "1h", "24h")
+        #[arg(long)]
+        since: Option<String>,
+        /// Filter by actor
+        #[arg(long)]
+        actor: Option<String>,
+        /// Filter by entity type (workspace, session, note, etc.)
+        #[arg(long)]
+        entity: Option<String>,
+        /// Filter by action (create, update, delete, etc.)
+        #[arg(long)]
+        action: Option<String>,
+        /// Maximum number of events to show (default: 50)
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        /// Output as JSON array instead of table
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -315,6 +324,16 @@ pub enum SkillCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum McpCommands {
+    /// Run the Ship MCP server (stdio by default; --http for HTTP daemon)
+    Serve {
+        /// Serve over HTTP instead of stdio
+        #[arg(long)]
+        http: bool,
+        /// HTTP port (requires --http, default: 3000)
+        #[arg(long, default_value = "3000")]
+        port: u16,
+    },
+
     /// Register an MCP server (HTTP/SSE transport)
     Add {
         /// Stable server ID

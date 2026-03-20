@@ -63,8 +63,8 @@ pub(super) fn server_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> Js
 
 pub(super) fn ship_server_entry(emit_type: bool) -> Json {
     let mut e = serde_json::json!({
-        "command": "ship-mcp",
-        "args": []
+        "command": "ship",
+        "args": ["mcp", "serve"]
     });
     if emit_type {
         e["type"] = Json::String("stdio".to_string());

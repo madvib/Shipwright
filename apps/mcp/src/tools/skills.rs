@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use runtime::{list_effective_skills, list_models, list_providers};
+use runtime::list_effective_skills;
 
 use crate::requests::ListSkillsRequest;
 
@@ -37,18 +37,3 @@ pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
     out
 }
 
-pub fn list_providers_tool(project_dir: &Path) -> String {
-    match list_providers(project_dir) {
-        Ok(providers) => serde_json::to_string_pretty(&providers)
-            .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-        Err(e) => format!("Error: {}", e),
-    }
-}
-
-pub fn list_models_tool(provider_id: &str) -> String {
-    match list_models(provider_id) {
-        Ok(models) => serde_json::to_string_pretty(&models)
-            .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-        Err(e) => format!("Error: {}", e),
-    }
-}

@@ -14,8 +14,10 @@ fn make_skill(id: &str) -> Skill {
         id: id.to_string(),
         name: id.to_string(),
         description: Some(format!("Description for {id}")),
-        version: Some("1.0.0".to_string()),
-        author: Some("test".to_string()),
+        license: None,
+        compatibility: None,
+        allowed_tools: vec![],
+        metadata: Default::default(),
         content: format!("# {id}\nDo something useful."),
         source: Default::default(),
     }
