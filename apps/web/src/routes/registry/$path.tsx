@@ -266,7 +266,7 @@ function PackageDetailPage() {
         <p className="text-sm font-medium text-foreground">Package not found</p>
         <p className="text-[11px] text-muted-foreground">No package exists at {decodedPath}</p>
         <Link
-          to="/studio/registry"
+          to="/registry"
           className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground no-underline"
         >
           <ArrowLeft className="size-3" />
@@ -286,7 +286,7 @@ function PackageDetailPage() {
 
         {/* Back link */}
         <Link
-          to="/studio/registry"
+          to="/registry"
           className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-4 no-underline"
         >
           <ArrowLeft className="size-3" />

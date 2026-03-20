@@ -82,7 +82,7 @@ function PublishPage() {
 
         {/* Back link */}
         <Link
-          to="/studio/registry"
+          to="/registry"
           className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-4 no-underline"
         >
           <ArrowLeft className="size-3" />

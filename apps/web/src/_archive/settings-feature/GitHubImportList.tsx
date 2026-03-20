@@ -1,7 +1,7 @@
 import {
   Zap, FileText, Check, Upload, Loader2,
 } from 'lucide-react'
-import { Button } from '@ship/primitives'
+// @ship/primitives not built
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

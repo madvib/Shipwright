@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Sun, Moon, LogOut, User, Settings } from 'lucide-react'
+import { Sun, Moon, LogOut, Settings } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { authClient } from '#/lib/auth-client'
 
@@ -74,7 +74,7 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
               {user.email && <p className="text-[10px] text-muted-foreground/70 truncate">{user.email}</p>}
             </div>
           </div>
-          <Link to="/studio/settings" onClick={() => setOpen(false)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors no-underline">
+          <Link to={"/studio/settings" as string} onClick={() => setOpen(false)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors no-underline">
             <Settings className="size-3.5" /> Settings
           </Link>
           <button onClick={() => { setOpen(false); void authClient.signOut() }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">

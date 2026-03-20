@@ -44,25 +44,25 @@ export function PermissionsSection({
         <PermCard
           icon={<Wrench className="size-3" />}
           label="Tools"
-          allow={permissions.tools.allow}
-          deny={permissions.tools.deny}
+          allow={permissions.tools?.allow ?? []}
+          deny={permissions.tools?.deny ?? []}
         />
         <PermCard
           icon={<FileText className="size-3" />}
           label="Filesystem"
-          allow={permissions.filesystem.allow}
-          deny={permissions.filesystem.deny}
+          allow={permissions.filesystem?.allow ?? []}
+          deny={permissions.filesystem?.deny ?? []}
         />
         <PermCard
           icon={<Terminal className="size-3" />}
           label="Commands"
-          allow={permissions.commands.allow}
-          deny={permissions.commands.deny}
+          allow={permissions.commands?.allow ?? []}
+          deny={permissions.commands?.deny ?? []}
         />
         <PermCard
           icon={<Globe className="size-3" />}
           label="Network"
-          allow={permissions.network.allow_hosts}
+          allow={permissions.network?.allow_hosts ?? []}
           deny={[]}
         />
       </div>

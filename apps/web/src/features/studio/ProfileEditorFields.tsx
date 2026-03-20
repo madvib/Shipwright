@@ -97,7 +97,7 @@ export function OverviewTab({ profile, onChange }: { profile: Profile; onChange:
             MCP SERVERS <span className="text-muted-foreground/40 font-normal normal-case tracking-normal">· {profile.mcpServers.length}</span>
           </SectionLabel>
           <Link
-            to="/studio/mcp"
+            to={"/studio/mcp" as string}
             className="inline-flex items-center gap-1 rounded bg-violet-600 dark:bg-violet-500 hover:bg-violet-500 dark:hover:bg-violet-400 transition-colors px-2 py-0.5 text-[11px] text-primary-foreground no-underline"
           >
             <Plus className="size-2.5" />

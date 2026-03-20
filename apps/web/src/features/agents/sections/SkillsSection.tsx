@@ -30,7 +30,7 @@ export function SkillsSection({ skills, onRemove }: SkillsSectionProps) {
             key={skill.id}
             icon={<ChipIcon letters={getInitials(skill.name)} variant="skill" />}
             name={skill.name}
-            meta={`${skill.version ?? 'v0.1.0'} / ${skill.source ?? 'project'}`}
+            meta={`${skill.metadata?.version ?? '' ?? 'v0.1.0'} / ${skill.source ?? 'project'}`}
             onRemove={() => onRemove(skill.id)}
           />
         ))}

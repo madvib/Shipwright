@@ -2,7 +2,7 @@ import {
   User, Github, Settings as SettingsIcon, Link2, Terminal,
   AlertTriangle, Plus,
 } from 'lucide-react'
-import { Button, Switch, Separator, Badge } from '@ship/primitives'
+// @ship/primitives not built
 import { authClient } from '#/lib/auth-client'
 import type { SettingsData } from './settingsData'
 import {

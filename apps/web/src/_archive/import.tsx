@@ -1,14 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useMemo } from 'react'
 import { Github, Search, ArrowLeft, Loader2 } from 'lucide-react'
-import { Button } from '@ship/primitives'
+// Button inlined — @ship/primitives not built
 import { authClient } from '#/lib/auth-client'
 import {
   RepoRow, RegistryCta, getRepoState,
 } from '#/features/settings/GitHubImportList'
 import type { GitHubRepo } from '#/features/settings/GitHubImportList'
 
-export const Route = createFileRoute('/studio/import')({ component: ImportPage, ssr: false })
+export const Route = createFileRoute('/_archive/import')({ component: ImportPage, ssr: false })
 
 function ImportPage() {
   const { data: session } = authClient.useSession()
@@ -105,9 +105,9 @@ function ImportPage() {
 
           {!fetched && !loading && (
             <div className="mt-6 text-center">
-              <Button onClick={() => void fetchRepos()}>
+              <button onClick={() => void fetchRepos()}>
                 Load repositories
-              </Button>
+              </button>
             </div>
           )}
 
@@ -161,12 +161,13 @@ function NotConnectedState() {
           them to Ship format.
         </p>
       </div>
-      <Button
+      <button
         onClick={() => void authClient.signIn.social({ provider: 'github' })}
+        className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
       >
         <Github className="size-4" />
         Connect GitHub
-      </Button>
+      </button>
     </div>
   )
 }

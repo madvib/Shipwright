@@ -3,7 +3,7 @@ import type { ElementType } from 'react'
 import { useState, useDeferredValue, useCallback } from 'react'
 import { Search, Download, Clock, Heart, TrendingUp } from 'lucide-react'
 import { useRegistrySearch } from '#/features/registry/useRegistry'
-import { FeaturedBanner, CardSection } from '#/features/registry/RegistryCardGrid'
+import { CardSection } from '#/features/registry/RegistryCardGrid'
 import {
   REGISTRY_CARDS,
   REGISTRY_STATS,

@@ -5,7 +5,7 @@ import { Users, Zap, Search, Code2, Loader2 } from 'lucide-react'
 const NAV_ITEMS = [
   { to: '/studio', icon: Users, label: 'Agents', exact: true },
   { to: '/studio/skills', icon: Zap, label: 'Skills', exact: false },
-  { to: '/studio/registry', icon: Search, label: 'Registry', exact: false },
+  { to: '/registry', icon: Search, label: 'Registry', exact: false },
 ] as const
 
 interface StudioDockProps {
@@ -40,7 +40,7 @@ export function StudioDock({ onCompile, isCompiling }: StudioDockProps) {
           return (
             <button
               key={item.to}
-              onClick={() => void navigate({ to: item.to })}
+              onClick={() => void navigate({ to: item.to as any })}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
               className={`group relative flex items-center justify-center size-9 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all duration-200 ease-out ${

@@ -1,6 +1,6 @@
 import { User, Plus } from 'lucide-react'
 import { TechIcon } from './TechIcon'
-import { EmptyState } from '#/components/EmptyState'
+// EmptyState removed
 import type { Profile } from './useProfiles'
 
 interface ProfileListProps {
@@ -14,19 +14,17 @@ interface ProfileListProps {
 export function ProfileList({ profiles, activeId, onSelect, onNew, onDelete }: ProfileListProps) {
   if (profiles.length === 0) {
     return (
-      <EmptyState
-        icon={<User className="size-5" />}
-        title="No profiles yet"
-        description="Profiles define your agent configuration — skills, MCP servers, rules, and providers."
-        action={
-          <button
-            onClick={onNew}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
-          >
-            Create your first profile
-          </button>
-        }
-      />
+      <div className="flex flex-col items-center py-10 text-center">
+        <User className="size-5 text-muted-foreground mb-3" />
+        <p className="text-sm font-medium text-foreground mb-1">No profiles yet</p>
+        <p className="text-xs text-muted-foreground mb-4">Profiles define your agent configuration.</p>
+        <button
+          onClick={onNew}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
+        >
+          Create your first profile
+        </button>
+      </div>
     )
   }
 
