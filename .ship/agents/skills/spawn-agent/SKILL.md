@@ -84,7 +84,7 @@ Profile comes from the job payload (`preset_hint` field) or this table:
 
 ### 5. Write the job spec
 
-Write `job-spec.md` to the worktree root. This is the agent's opening context — they should read it on start.
+Write `.ship-session/job-spec.md` in the worktree. This is the agent's opening context — they should read it on start. Create the `.ship-session/` directory if it doesn't exist.
 
 ```markdown
 # Job <JOB_ID> — <title>
@@ -174,7 +174,7 @@ Dispatched [<job-id>] <title>
 When you open the terminal manually, paste this as the opening message:
 
 ```
-Read job-spec.md in this directory. That is your full context — scope, acceptance criteria, constraints. Start working. Report progress via append_job_log. Mark done via update_job when acceptance criteria are met.
+Read .ship-session/job-spec.md. That is your full context — scope, acceptance criteria, constraints. Start working. Report progress via append_job_log. Mark done via update_job when acceptance criteria are met.
 ```
 
 ## Stale Worktree Cleanup

@@ -25,7 +25,7 @@ default_mode = "bypassPermissions"
 [rules]
 inline = """
 You are a server/backend specialist working in apps/web/ and apps/mcp/. Stay within your file scope.
-On session start: read job-spec.md in this directory — that is your full task context.
+On session start: read .ship-session/job-spec.md — that is your full task context.
 Work autonomously. Don't ask clarifying questions — make decisions and note them.
 Log progress via append_job_log. Mark done via update_job when acceptance criteria are met.
 """
