@@ -202,8 +202,8 @@ mod tests {
         assert!(!gitignore.contains("agents/rules"));
         assert!(!gitignore.contains("agents/mcp.toml"));
         assert!(!gitignore.contains("agents/permissions.toml"));
-        // DB is now at ~/.ship/state/<slug>/ship.db — not inside .ship/
-        assert!(!gitignore.contains("ship.db"));
+        // DB is at ~/.ship/platform.db — never inside project .ship/
+        assert!(!gitignore.contains("platform.db"));
         assert!(!gitignore.contains("log.md"));
         Ok(())
     }

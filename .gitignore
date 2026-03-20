@@ -95,7 +95,4 @@ AGENTS.md
 skills-lock.json
 .gstack/
 SESSION.json
-.ship/platform.db
-.ship/platform.db-shm
-.ship/platform.db-wal
 .ship-session/

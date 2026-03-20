@@ -51,7 +51,7 @@ GEMINI.md              ← gemini context
 
 ## platform.db Schema
 
-Location: `~/.ship/state/<project-slug>/platform.db` (SQLite, WAL mode)
+Location: `~/.ship/platform.db` (SQLite, WAL mode)
 
 | Table | Key columns | Purpose |
 |---|---|---|
@@ -247,7 +247,7 @@ Freeform rule text injected directly into the context output.
 | `skills/<id>/SKILL.md` | Markdown | Installed/authored skills |
 | `mcp/registry.toml` | TOML | Named MCP server definitions |
 | `cache/objects/<sha256>/` | blobs | Fetched package content (content-addressed) |
-| `state/<slug>/platform.db` | SQLite | Per-project workspace/session/event DB |
+| `platform.db` | SQLite | Workspace/session/event DB |
 
 ---
 

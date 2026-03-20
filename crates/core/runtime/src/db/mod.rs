@@ -25,22 +25,68 @@ pub struct MigrationReport {
     pub applied: usize,
 }
 
-/// Path to this project's SQLite DB: `.ship/platform.db` (local to the project).
-pub fn db_path(ship_dir: &Path) -> Result<PathBuf> {
-    Ok(ship_dir.join("platform.db"))
+/// The one database path: `~/.ship/platform.db`.
+///
+/// Never inside a project directory. Tests get automatic isolation
+/// via `get_global_dir()`'s test-binary detection (per-thread temp dir).
+pub fn db_path() -> Result<PathBuf> {
+    Ok(crate::project::get_global_dir()?.join("platform.db"))
 }
 
 /// Open a connection, running migrations first.
+///
+/// On first call, migrates any `.ship/platform.db` from `ship_dir` to the
+/// global location so existing data is preserved.
 pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
+    migrate_local_db_to_global(ship_dir);
     ensure_db(ship_dir)?;
-    let path = db_path(ship_dir)?;
+    let path = db_path()?;
     connect(&path)
 }
 
 /// Run migrations without returning a connection. Idempotent.
-pub fn ensure_db(ship_dir: &Path) -> Result<MigrationReport> {
-    let path = db_path(ship_dir)?;
+pub fn ensure_db(_ship_dir: &Path) -> Result<MigrationReport> {
+    let path = db_path()?;
     run_migrations(&path, schema::MIGRATIONS)
+}
+
+/// One-time migration: if `~/.ship/platform.db` is missing or empty but
+/// `.ship/platform.db` inside the project has data, copy it to the global
+/// location so existing data is preserved.
+fn migrate_local_db_to_global(ship_dir: &Path) {
+    let global_path = match db_path() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let global_has_data = global_path
+        .metadata()
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
+    if global_has_data {
+        return;
+    }
+    let local_path = ship_dir.join("platform.db");
+    let local_has_data = local_path
+        .metadata()
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
+    if !local_has_data {
+        return;
+    }
+    if let Some(parent) = global_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::copy(&local_path, &global_path) {
+        Ok(_) => eprintln!(
+            "migrated platform.db from {} → {}",
+            local_path.display(),
+            global_path.display()
+        ),
+        Err(e) => eprintln!(
+            "warning: failed to migrate platform.db to {}: {e}",
+            global_path.display()
+        ),
+    }
 }
 
 fn connect(path: &Path) -> Result<SqliteConnection> {

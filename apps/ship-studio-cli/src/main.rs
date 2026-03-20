@@ -138,7 +138,11 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
 /// `profile_id = None` re-activates the current profile from platform.db.
 fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let ship_dir = match path {
-        Some(p) => std::fs::canonicalize(&p)?.join(".ship"),
+        Some(p) => {
+            let sd = std::fs::canonicalize(&p)?.join(".ship");
+            anyhow::ensure!(sd.exists(), ".ship/ not found in {}. Run: ship init", p.display());
+            sd
+        }
         None => paths::project_ship_dir_required()?,
     };
     let project_root = ship_dir.parent().unwrap().to_path_buf();

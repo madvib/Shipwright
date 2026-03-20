@@ -10,8 +10,18 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
+/// Bare CLI command — no DB isolation. Use `ship_in()` for tests that touch
+/// the database (ship use, ship status, etc.).
 fn ship() -> Command {
     Command::cargo_bin("ship").unwrap()
+}
+
+/// CLI command with DB isolated to `tmp`'s temp dir.
+/// All calls within the same test share state; different tests are isolated.
+fn ship_in(tmp: &TempDir) -> Command {
+    let mut cmd = Command::cargo_bin("ship").unwrap();
+    cmd.env("SHIP_GLOBAL_DIR", tmp.path());
+    cmd
 }
 
 fn write(dir: &Path, rel: &str, content: &str) {
@@ -74,7 +84,7 @@ fn init_with_provider_sets_provider_in_toml() {
 fn use_activates_profile_writes_claude_md_and_lock() {
     let tmp = TempDir::new().unwrap();
 
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
@@ -86,14 +96,14 @@ providers = ["claude"]
 "#,
     );
 
-    ship()
+    ship_in(&tmp)
         .args(["use", "my-profile", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
         .stdout(predicate::str::contains("activated profile 'my-profile'"));
 
-    // State is persisted to platform.db (not ship.state). Verify via ship status.
-    ship()
+    // State is persisted to platform.db (at ~/.ship/). Verify via ship status.
+    ship_in(&tmp)
         .args(["status", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
@@ -105,7 +115,7 @@ providers = ["claude"]
 fn use_same_profile_twice_is_idempotent() {
     let tmp = TempDir::new().unwrap();
 
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
@@ -118,10 +128,10 @@ providers = ["claude"]
     );
 
     let args = ["use", "my-profile", "--path", tmp.path().to_str().unwrap()];
-    ship().args(args).assert().success();
-    ship().args(args).assert().success();
+    ship_in(&tmp).args(args).assert().success();
+    ship_in(&tmp).args(args).assert().success();
 
-    ship()
+    ship_in(&tmp)
         .args(["status", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
@@ -132,7 +142,7 @@ providers = ["claude"]
 fn use_fails_without_ship_dir() {
     let tmp = TempDir::new().unwrap();
 
-    ship()
+    ship_in(&tmp)
         .args(["use", "my-profile", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .failure()
@@ -312,9 +322,9 @@ fn export_codex_writes_codex_config_toml() {
 fn status_shows_no_active_profile_before_use() {
     let tmp = TempDir::new().unwrap();
 
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
 
-    ship()
+    ship_in(&tmp)
         .args(["status", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()

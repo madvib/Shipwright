@@ -34,12 +34,6 @@ pub fn build_claude_settings_patch(
     let has_auto_updates = auto_updates.is_some();
     let has_co_authored = include_co_authored_by.is_some();
 
-    if !has_perms && !has_hooks && !has_agent_limits && !has_model && !has_extra
-        && !has_env && !has_available_models && !has_theme && !has_auto_updates && !has_co_authored
-    {
-        return None;
-    }
-
     let mut patch = serde_json::json!({});
 
     // Tool permissions — only emit when the user has deliberately configured them.
@@ -147,6 +141,9 @@ pub fn build_claude_settings_patch(
     if let Some(co) = include_co_authored_by {
         patch["includeCoAuthoredBy"] = serde_json::json!(co);
     }
+
+    // Ship is the memory layer. Always disable Claude's built-in memories.
+    patch["autoMemoryEnabled"] = serde_json::json!(false);
 
     // Extra provider-specific settings — pass through verbatim (must be last).
     // Source: `[provider_settings.claude]` in the active preset TOML.

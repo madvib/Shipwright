@@ -4,18 +4,20 @@ use crate::types::{AgentLimits, HookConfig, HookTrigger, Permissions, ToolPermis
 
 use super::fixtures::*;
 
+fn assert_memory_only(patch: &Option<serde_json::Value>) {
+    let p = patch.as_ref().expect("patch must exist (autoMemoryEnabled)");
+    assert_eq!(p["autoMemoryEnabled"], false);
+    assert_eq!(p.as_object().unwrap().len(), 1, "expected only autoMemoryEnabled");
+}
+
 // ── Safety: permissions must not silently block tools ─────────────────────────
 
-/// The most important test. Default config → no settings patch written.
-/// Claude Code's own defaults govern — Ship must not interfere.
+/// Default config still emits a settings patch — at minimum, autoMemoryEnabled: false.
+/// Ship is the memory layer; Claude's built-in memories are disabled by default.
 #[test]
-fn default_permissions_emit_no_settings_patch() {
+fn default_permissions_emit_memory_only_patch() {
     let out = compile(&resolved(vec![]), "claude").unwrap();
-    assert!(
-        out.claude_settings_patch.is_none(),
-        "Default permissions must not emit a settings patch — \
-         any patch with an empty allow list could silently block tools"
-    );
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 /// Explicit deny-only is safe: it only restricts what the user asked to restrict.
@@ -72,7 +74,7 @@ fn guarded_preset_never_emits_allow_field() {
 }
 
 #[test]
-fn allow_star_with_no_deny_emits_no_patch() {
+fn allow_star_with_no_deny_emits_memory_only() {
     let r = ResolvedConfig {
         permissions: Permissions {
             tools: ToolPermissions { allow: vec!["*".to_string()], deny: vec![], ..Default::default() },
@@ -81,7 +83,7 @@ fn allow_star_with_no_deny_emits_no_patch() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 #[test]
@@ -237,7 +239,7 @@ fn claude_settings_extra_null_no_patch() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 // ── Ask tier ──────────────────────────────────────────────────────────────────
@@ -259,7 +261,7 @@ fn ask_tier_compiles_to_permissions_ask() {
 }
 
 #[test]
-fn ask_tier_default_empty_no_patch() {
+fn ask_tier_default_empty_memory_only() {
     let r = ResolvedConfig {
         permissions: Permissions {
             tools: ToolPermissions { allow: vec!["*".to_string()], ask: vec![], deny: vec![] },
@@ -268,7 +270,7 @@ fn ask_tier_default_empty_no_patch() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 #[test]
