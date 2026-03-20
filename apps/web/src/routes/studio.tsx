@@ -20,7 +20,7 @@ function StudioLayout() {
 
 function StudioSyncShell() {
   const { syncStatus } = useLibrarySync()
-  const { library } = useLibrary()
+  const { library, selectedProviders } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const auth = useAuth()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -36,6 +36,7 @@ function StudioSyncShell() {
             auth={auth}
             library={library}
             compileState={compileState}
+            selectedProviders={selectedProviders}
             onCompile={() => { if (library) compile(library) }}
             onClose={() => setPanelOpen(false)}
           />
