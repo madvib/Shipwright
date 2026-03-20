@@ -4,7 +4,7 @@ import { SyncStatus } from '#/features/studio/SyncStatus'
 import { ProtectedRoute } from '#/lib/components/protected-route'
 import { useLibrarySync } from '#/features/compiler/useLibrarySync'
 
-export const Route = createFileRoute('/studio')({ component: StudioLayout })
+export const Route = createFileRoute('/studio')({ component: StudioLayout, ssr: false })
 
 function StudioLayout() {
   return (
