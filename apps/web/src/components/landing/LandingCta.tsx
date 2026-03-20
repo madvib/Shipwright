@@ -36,7 +36,7 @@ export function LandingCta() {
         </a>
       </div>
       <p className="text-[11px] text-muted-foreground/40">
-        342 skills / 89 agents / 156 MCP servers in the registry
+        Open source on GitHub
       </p>
     </section>
   )

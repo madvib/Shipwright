@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+
 export function LandingFooter() {
   const year = new Date().getFullYear()
 
@@ -8,32 +10,13 @@ export function LandingFooter() {
           Ship v0.1.0 / getship.dev / {year}
         </span>
         <div className="flex items-center gap-4">
-          <a
-            href="#"
-            className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground"
-          >
-            Docs
-          </a>
-          <a
-            href="#"
-            className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground"
-          >
+          <Link to="/registry" className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground no-underline">
             Registry
-          </a>
-          <a
-            href="https://github.com/madvib/Ship"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground"
-          >
+          </Link>
+          <a href="https://github.com/madvib/Ship" target="_blank" rel="noopener noreferrer" className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground">
             GitHub
           </a>
-          <a
-            href="https://x.com/themadvib"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground"
-          >
+          <a href="https://x.com/themadvib" target="_blank" rel="noopener noreferrer" className="text-[11px] text-muted-foreground/40 transition hover:text-muted-foreground">
             X
           </a>
         </div>

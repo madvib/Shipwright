@@ -41,11 +41,13 @@ export function LandingHero() {
             Open Studio
           </Link>
           <a
-            href="#"
+            href="https://github.com/madvib/Ship"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-transparent px-7 py-3 text-sm font-semibold text-muted-foreground no-underline transition hover:-translate-y-0.5 hover:border-border/80 hover:text-foreground"
           >
             <Terminal className="size-4" />
-            Install CLI
+            View on GitHub
           </a>
         </div>
         <p className="text-[11px] text-muted-foreground/50">
