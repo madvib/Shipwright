@@ -279,7 +279,9 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
     }
 
     // Warn if frontmatter name does not match directory id (spec requirement).
-    if name != id {
+    // Allow human-readable display names like "Write ADR" for id "write-adr".
+    let normalized_name = name.to_lowercase().replace(' ', "-");
+    if normalized_name != id && name != id {
         eprintln!(
             "warning: skill '{}': frontmatter name '{}' does not match directory name",
             id, name

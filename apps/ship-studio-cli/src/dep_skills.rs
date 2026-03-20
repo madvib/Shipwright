@@ -1,14 +1,15 @@
 //! Resolve dep skill refs from the package cache into [`Skill`] values.
 //!
-//! Dep skill refs look like `github.com/owner/pkg/skills/skill-name`.
+//! Dep skill refs look like `github.com/owner/pkg/skill-name`.
 //! Local refs (no `github.com/` prefix) are left to the caller to handle.
 //!
 //! Resolution path:
 //!   dep ref → split package path + within-package path
 //!           → look up package in ship.lock → get `sha256:<hex>` hash
 //!           → cache dir `~/.ship/cache/objects/<hex>/`
-//!           → read `<within-package-path>/SKILL.md`
-//!           → parse as a [`Skill`]
+//!           → if `<within-path>/SKILL.md` exists → single skill
+//!           → if `<within-path>/` is a namespace dir (sub-dirs with SKILL.md)
+//!             → expand to all leaf skills within
 
 use anyhow::{Context, Result};
 use compiler::{Skill, SkillSource};
@@ -92,46 +93,65 @@ pub fn cache_skill_path(cache_root: &Path, hex: &str, within_path: &str) -> Path
     cache_root.join("objects").join(hex).join(within_path)
 }
 
-/// Resolve a single dep skill ref to a [`Skill`].
+/// Resolve a dep skill ref to one or more [`Skill`] values.
 ///
-/// `ref_str`    — full dep ref, e.g. `github.com/owner/pkg/skills/name`
+/// If the ref points to a directory with a `SKILL.md`, returns a single skill.
+/// If it points to a **namespace directory** (no `SKILL.md` but contains
+/// sub-directories that each have `SKILL.md`), expands to all leaf skills.
+///
+/// `ref_str`    — full dep ref, e.g. `github.com/owner/pkg/better-auth`
 /// `lock`       — parsed ship.lock
 /// `cache_root` — `~/.ship/cache/`
-pub fn resolve_dep_skill(ref_str: &str, lock: &ShipLock, cache_root: &Path) -> Result<Skill> {
+pub fn resolve_dep_skill(ref_str: &str, lock: &ShipLock, cache_root: &Path) -> Result<Vec<Skill>> {
     let (package_path, within_path) = parse_dep_ref(ref_str)
         .ok_or_else(|| anyhow::anyhow!("invalid dep skill ref: '{}'", ref_str))?;
 
     let hex = hash_from_lock(lock, package_path)?;
 
-    // Skill files live at <within_path>/SKILL.md
-    // Spec: ~/.ship/cache/objects/<sha256>/skills/name/SKILL.md
-    let skill_md = cache_skill_path(cache_root, &hex, within_path).join("SKILL.md");
+    let target_dir = cache_skill_path(cache_root, &hex, within_path);
+    let skill_md = target_dir.join("SKILL.md");
 
-    if !skill_md.exists() {
-        // Build a list of available skills for a helpful error
-        let skills_dir = cache_skill_path(cache_root, &hex, "skills");
-        let available = list_available_skills(&skills_dir);
-        let available_str = if available.is_empty() {
-            "(none found)".to_string()
-        } else {
-            available.join(", ")
-        };
-        anyhow::bail!(
-            "dep skill '{}': path '{}' not found in cached package '{}'; \
-             available skills: {}",
-            ref_str,
-            within_path,
-            package_path,
-            available_str
-        );
+    // Direct skill — the ref points to a directory with SKILL.md.
+    if skill_md.exists() {
+        let raw = std::fs::read_to_string(&skill_md)
+            .with_context(|| format!("reading cached skill file {}", skill_md.display()))?;
+        return Ok(vec![parse_dep_skill(ref_str, &raw)]);
     }
 
-    let raw = std::fs::read_to_string(&skill_md)
-        .with_context(|| format!("reading cached skill file {}", skill_md.display()))?;
+    // Namespace expansion — the ref points to a directory containing sub-skills.
+    if target_dir.is_dir() {
+        let leaf_skills = find_leaf_skills(&target_dir);
+        if !leaf_skills.is_empty() {
+            let mut skills = Vec::new();
+            for (sub_name, sub_path) in &leaf_skills {
+                let raw = std::fs::read_to_string(sub_path)
+                    .with_context(|| format!("reading {}", sub_path.display()))?;
+                let sub_ref = format!("{}/{}", ref_str, sub_name);
+                skills.push(parse_dep_skill(&sub_ref, &raw));
+            }
+            return Ok(skills);
+        }
+    }
 
-    // Parse the skill, using the full dep ref as the id so mode filters match.
-    let skill = parse_dep_skill(ref_str, &raw);
-    Ok(skill)
+    // Neither a skill nor a namespace — build a helpful error.
+    let parent = Path::new(within_path)
+        .parent()
+        .unwrap_or(Path::new(""));
+    let skills_dir = cache_skill_path(cache_root, &hex, &parent.to_string_lossy());
+    let available = list_available_skills(&skills_dir);
+    let available_str = if available.is_empty() {
+        "(none found)".to_string()
+    } else {
+        available.join(", ")
+    };
+    anyhow::bail!(
+        "dep skill '{}': path '{}' not found in cached package '{}'; \
+         available skills: {}",
+        ref_str,
+        within_path,
+        package_path,
+        available_str
+    );
 }
 
 /// Parse a SKILL.md from a dep package, using `dep_ref` as the skill id.
@@ -202,6 +222,29 @@ fn parse_dep_skill(dep_ref: &str, raw: &str) -> Skill {
     }
 }
 
+/// Find all leaf skill sub-directories within a namespace directory.
+///
+/// Returns `(sub_name, path_to_SKILL.md)` for each sub-directory that contains
+/// a `SKILL.md`. Sorted by name for deterministic output.
+fn find_leaf_skills(namespace_dir: &Path) -> Vec<(String, PathBuf)> {
+    let Ok(entries) = std::fs::read_dir(namespace_dir) else {
+        return vec![];
+    };
+    let mut results: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let skill_md = e.path().join("SKILL.md");
+            if e.path().is_dir() && skill_md.exists() {
+                Some((e.file_name().to_string_lossy().to_string(), skill_md))
+            } else {
+                None
+            }
+        })
+        .collect();
+    results.sort_by(|a, b| a.0.cmp(&b.0));
+    results
+}
+
 /// List skill names available in `skills_dir` (best-effort, for error messages).
 fn list_available_skills(skills_dir: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(skills_dir) else {
@@ -270,9 +313,13 @@ pub fn resolve_dep_skills(
         if existing_ids.contains(ref_str) {
             continue; // already present locally, skip
         }
-        let skill = resolve_dep_skill(ref_str, &lock, cache_root)
+        let skills = resolve_dep_skill(ref_str, &lock, cache_root)
             .with_context(|| format!("resolving dep skill '{}'", ref_str))?;
-        dep_skills.push(skill);
+        for skill in skills {
+            if !existing_ids.contains(skill.id.as_str()) {
+                dep_skills.push(skill);
+            }
+        }
     }
 
     Ok(dep_skills)
