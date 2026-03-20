@@ -1,11 +1,12 @@
 import { Link } from '@tanstack/react-router'
 import { Zap, Terminal, Package } from 'lucide-react'
+import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 
 const PROVIDERS = [
-  { abbr: 'C', name: 'Claude Code', bg: 'bg-primary/10', text: 'text-primary' },
-  { abbr: 'G', name: 'Gemini CLI', bg: 'bg-blue-500/10', text: 'text-blue-400' },
-  { abbr: 'O', name: 'Codex CLI', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-  { abbr: 'Cu', name: 'Cursor', bg: 'bg-violet-500/10', text: 'text-violet-400' },
+  { id: 'claude', name: 'Claude Code' },
+  { id: 'gemini', name: 'Gemini CLI' },
+  { id: 'codex', name: 'Codex CLI' },
+  { id: 'cursor', name: 'Cursor' },
 ]
 
 export function LandingHero() {
@@ -59,14 +60,10 @@ export function LandingHero() {
       <div className="mt-10 flex flex-wrap items-center justify-center gap-8 sm:gap-10">
         {PROVIDERS.map((p) => (
           <div
-            key={p.name}
+            key={p.id}
             className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground/70"
           >
-            <span
-              className={`flex size-7 items-center justify-center rounded-lg text-xs font-bold ${p.bg} ${p.text}`}
-            >
-              {p.abbr}
-            </span>
+            <ProviderLogo provider={p.id} size="md" />
             {p.name}
           </div>
         ))}
