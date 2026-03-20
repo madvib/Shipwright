@@ -98,3 +98,5 @@ SESSION.json
 .ship/platform.db
 .ship/platform.db-shm
 .ship/platform.db-wal
+.ship-session/
+.session/

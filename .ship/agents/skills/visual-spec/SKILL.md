@@ -7,7 +7,7 @@ description: Use to convert a chosen design (HTML file or live URL) into a struc
 
 Converts a chosen design into a structured implementation brief. Combines screenshot + markup + requirements in one artifact.
 
-**Opening context:** Always read `.ship-session/design-spec/spec.md` if it exists before starting — it is your implementation brief.
+**Opening context:** Always read `.session/design-spec/spec.md` if it exists before starting — it is your implementation brief.
 
 ## When to use
 
@@ -27,7 +27,7 @@ Either:
 If input is an HTML file, serve it first:
 
 ```bash
-python3 -m http.server 8766 --directory .ship-session &
+python3 -m http.server 8766 --directory .session &
 ```
 
 Use the resulting URL (e.g. `http://localhost:8766/mockup.html`) for all browse commands.
@@ -56,13 +56,13 @@ This captures mobile + desktop viewports. Save outputs to `design-spec/screensho
 
 Create two things:
 
-**`.ship-session/design-spec/screenshots/`** — screenshot files (desktop.png, mobile.png)
+**`.session/design-spec/screenshots/`** — screenshot files (desktop.png, mobile.png)
 
-**`.ship-session/design-spec/spec.md`** — the full spec document (see structure below)
+**`.session/design-spec/spec.md`** — the full spec document (see structure below)
 
 ### 5. Hand off
 
-Tell the agent: "Open `.ship-session/design-spec/spec.md`. That is your implementation brief."
+Tell the agent: "Open `.session/design-spec/spec.md`. That is your implementation brief."
 
 ## spec.md structure
 
@@ -70,8 +70,8 @@ Tell the agent: "Open `.ship-session/design-spec/spec.md`. That is your implemen
 # Design Spec: <name>
 
 ## Screenshots
-![Desktop](.ship-session/design-spec/screenshots/desktop.png)
-![Mobile](.ship-session/design-spec/screenshots/mobile.png)
+![Desktop](.session/design-spec/screenshots/desktop.png)
+![Mobile](.session/design-spec/screenshots/mobile.png)
 
 ## Component Breakdown
 - <component name>: <what it does, what it contains>
