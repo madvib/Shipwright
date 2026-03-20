@@ -25,7 +25,7 @@ Good questions:
 
 ### 2. Generate the mockup
 
-Create a single self-contained HTML file at `.session/mockup.html`:
+Create a single self-contained HTML file at `.ship-session/mockup.html`:
 - Tailwind CSS via CDN — no build step
 - Realistic placeholder data (names, numbers, copy — not "Lorem ipsum")
 - Full visual fidelity: real font sizes, weights, line-heights, border-radius, shadows
@@ -49,7 +49,7 @@ Create a single self-contained HTML file at `.session/mockup.html`:
 ### 3. Serve locally
 
 ```bash
-python3 -m http.server 8765 --directory .session &
+python3 -m http.server 8765 --directory .ship-session &
 ```
 
 Print the URL: `http://localhost:8765/mockup.html`
@@ -57,7 +57,7 @@ Print the URL: `http://localhost:8765/mockup.html`
 ### 4. Iterate
 
 On each feedback round:
-- Overwrite `.session/mockup.html` with the updated version
+- Overwrite `.ship-session/mockup.html` with the updated version
 - Tell the user to refresh their browser
 - Do not rename the file — keep the same URL
 
