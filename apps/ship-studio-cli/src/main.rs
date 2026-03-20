@@ -14,6 +14,7 @@ mod job;
 mod loader;
 mod logging;
 mod mcp;
+mod mcp_serve;
 mod mode;
 mod paths;
 mod profile;
@@ -287,6 +288,7 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
 
 fn dispatch_mcp(action: McpCommands) -> Result<()> {
     match action {
+        McpCommands::Serve { http, port } => mcp_serve::run(http, port),
         McpCommands::List => mcp::list(),
         McpCommands::Add { id, name, url, .. } => {
             let url = url.ok_or_else(|| anyhow::anyhow!("--url is required for HTTP/SSE servers"))?;

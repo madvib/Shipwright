@@ -3,10 +3,6 @@ name = "mcp"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "ship-mcp"
-path = "src/main.rs"
-
 [lib]
 name = "mcp"
 path = "src/lib.rs"

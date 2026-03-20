@@ -1,5 +1,5 @@
 use crate::resolve::ResolvedConfig;
-use crate::types::{McpServerConfig, McpServerType};
+use crate::types::McpServerType;
 
 // ── Sandbox translation ───────────────────────────────────────────────────────
 
@@ -50,8 +50,11 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
 
     // Ship server always first.
     let mut ship_entry = toml::Table::new();
-    ship_entry.insert("command".into(), toml::Value::String("ship-mcp".into()));
-    ship_entry.insert("args".into(), toml::Value::Array(vec![]));
+    ship_entry.insert("command".into(), toml::Value::String("ship".into()));
+    ship_entry.insert("args".into(), toml::Value::Array(vec![
+        toml::Value::String("mcp".into()),
+        toml::Value::String("serve".into()),
+    ]));
     mcp.insert("ship".into(), toml::Value::Table(ship_entry));
 
     for s in servers {

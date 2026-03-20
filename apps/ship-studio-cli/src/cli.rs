@@ -347,6 +347,16 @@ pub enum SkillCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum McpCommands {
+    /// Run the Ship MCP server (stdio by default; --http for HTTP daemon)
+    Serve {
+        /// Serve over HTTP instead of stdio
+        #[arg(long)]
+        http: bool,
+        /// HTTP port (requires --http, default: 3000)
+        #[arg(long, default_value = "3000")]
+        port: u16,
+    },
+
     /// Register an MCP server (HTTP/SSE transport)
     Add {
         /// Stable server ID
