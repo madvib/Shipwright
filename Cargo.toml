@@ -4,7 +4,6 @@ members = [
     "crates/core/compiler",
     "crates/core/mcp-framework",
     "crates/core/runtime",
-    "crates/modules/project",
     "crates/xtask",
     "apps/mcp",
     "apps/ship-studio-cli",

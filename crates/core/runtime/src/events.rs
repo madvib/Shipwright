@@ -2,7 +2,6 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use sqlx::Row;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -178,76 +177,31 @@ fn event_index_path(project_dir: &Path) -> PathBuf {
     project_dir.join(EVENT_INDEX_FILE)
 }
 
-pub fn ensure_event_log(project_dir: &Path) -> Result<()> {
-    let _conn = crate::state_db::open_project_connection(project_dir)?;
+// NOTE: event_log table was killed in the DB consolidation.
+// These functions are stubs until the events rewrite lands.
+
+pub fn ensure_event_log(_project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn row_to_event_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
-    let seq: i64 = row.get(0);
-    let timestamp_raw: String = row.get(1);
-    let actor: String = row.get(2);
-    let entity_raw: String = row.get(3);
-    let action_raw: String = row.get(4);
-    let subject: String = row.get(5);
-    let details: Option<String> = row.get(6);
-
-    let parsed = DateTime::parse_from_rfc3339(&timestamp_raw)
-        .with_context(|| format!("Invalid event timestamp '{}'", timestamp_raw))?;
-
-    Ok(EventRecord {
-        seq: seq as u64,
-        timestamp: parsed.with_timezone(&Utc),
-        actor,
-        entity: EventEntity::from_db(&entity_raw)?,
-        action: EventAction::from_db(&action_raw)?,
-        subject,
-        details,
-    })
-}
-
 fn append_event_internal(
-    project_dir: &Path,
+    _project_dir: &Path,
     actor: &str,
     entity: EventEntity,
     action: EventAction,
     subject: String,
     details: Option<String>,
-    sync_snapshot: bool,
+    _sync_snapshot: bool,
 ) -> Result<EventRecord> {
-    ensure_event_log(project_dir)?;
-    let mut conn = crate::state_db::open_project_connection(project_dir)?;
-    let timestamp = Utc::now();
-    let timestamp_str = timestamp.to_rfc3339();
-    let result = crate::state_db::block_on(async {
-        sqlx::query(
-            "INSERT INTO event_log (timestamp, actor, entity, action, subject, details)
-             VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&timestamp_str)
-        .bind(actor)
-        .bind(entity.as_db())
-        .bind(action.as_db())
-        .bind(&subject)
-        .bind(&details)
-        .execute(&mut conn)
-        .await
-    })?;
-    let seq = result.last_insert_rowid() as u64;
-    let record = EventRecord {
-        seq,
-        timestamp,
+    Ok(EventRecord {
+        seq: 0,
+        timestamp: Utc::now(),
         actor: actor.to_string(),
         entity,
         action,
         subject,
         details,
-    };
-
-    if sync_snapshot {
-        let _ = sync_event_snapshot(project_dir)?;
-    }
-    Ok(record)
+    })
 }
 
 pub fn append_event(
@@ -269,77 +223,20 @@ pub fn append_event(
     )
 }
 
-pub fn read_events(project_dir: &Path) -> Result<Vec<EventRecord>> {
-    ensure_event_log(project_dir)?;
-    let mut conn = crate::state_db::open_project_connection(project_dir)?;
-    let rows = crate::state_db::block_on(async {
-        sqlx::query(
-            "SELECT seq, timestamp, actor, entity, action, subject, details
-             FROM event_log
-             ORDER BY seq ASC",
-        )
-        .fetch_all(&mut conn)
-        .await
-    })?;
-    rows.iter().map(row_to_event_record).collect()
+pub fn read_events(_project_dir: &Path) -> Result<Vec<EventRecord>> {
+    Ok(Vec::new())
 }
 
-pub fn latest_event_seq(project_dir: &Path) -> Result<u64> {
-    ensure_event_log(project_dir)?;
-    let mut conn = crate::state_db::open_project_connection(project_dir)?;
-    let row = crate::state_db::block_on(async {
-        sqlx::query("SELECT COALESCE(MAX(seq), 0) FROM event_log")
-            .fetch_one(&mut conn)
-            .await
-    })?;
-    let seq: i64 = row.get(0);
-    Ok(seq as u64)
+pub fn latest_event_seq(_project_dir: &Path) -> Result<u64> {
+    Ok(0)
 }
 
 pub fn list_events_since(
-    project_dir: &Path,
-    since_seq: u64,
-    limit: Option<usize>,
+    _project_dir: &Path,
+    _since_seq: u64,
+    _limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
-    ensure_event_log(project_dir)?;
-    let mut conn = crate::state_db::open_project_connection(project_dir)?;
-
-    let rows = if let Some(limit) = limit {
-        crate::state_db::block_on(async {
-            sqlx::query(
-                "SELECT seq, timestamp, actor, entity, action, subject, details
-                 FROM event_log
-                 WHERE seq > ?
-                 ORDER BY seq DESC
-                 LIMIT ?",
-            )
-            .bind(since_seq as i64)
-            .bind(limit as i64)
-            .fetch_all(&mut conn)
-            .await
-        })?
-    } else {
-        crate::state_db::block_on(async {
-            sqlx::query(
-                "SELECT seq, timestamp, actor, entity, action, subject, details
-                 FROM event_log
-                 WHERE seq > ?
-                 ORDER BY seq ASC",
-            )
-            .bind(since_seq as i64)
-            .fetch_all(&mut conn)
-            .await
-        })?
-    };
-
-    let mut events: Vec<EventRecord> = rows
-        .iter()
-        .map(row_to_event_record)
-        .collect::<Result<_>>()?;
-    if limit.is_some() {
-        events.reverse();
-    }
-    Ok(events)
+    Ok(Vec::new())
 }
 
 pub fn export_events_ndjson(project_dir: &Path, output_path: &Path) -> Result<usize> {

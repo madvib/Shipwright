@@ -25,10 +25,10 @@ pub fn start_session(project_dir: &Path, req: StartSessionRequest, branch: &str)
 }
 
 pub fn end_session(project_dir: &Path, req: EndSessionRequest, branch: &str) -> String {
-    let updated_feature_ids = req.updated_feature_ids.unwrap_or_default();
+    let updated_workspace_ids = req.updated_workspace_ids.unwrap_or_default();
     let end_req = RuntimeEndWorkspaceSessionRequest {
         summary: req.summary,
-        updated_feature_ids,
+        updated_workspace_ids,
     };
     match runtime_end_workspace_session(project_dir, branch, end_req) {
         Ok(session) => serde_json::to_string_pretty(&session)

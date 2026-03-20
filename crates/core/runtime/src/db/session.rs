@@ -1,14 +1,15 @@
+//! Workspace session CRUD — moved from state_db.
+
 use anyhow::{Context, Result};
 use sqlx::Row;
 use std::path::Path;
 
-use super::init::open_project_db;
 use super::types::{WorkspaceSessionDb, WorkspaceSessionRecordDb};
-use super::util::block_on;
+use super::{block_on, open_db};
 
 fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessionDb {
-    let updated_feature_ids_json: String = row.get(10);
-    let updated_feature_ids = serde_json::from_str(&updated_feature_ids_json).unwrap_or_default();
+    let updated_workspace_ids_json: String = row.get(10);
+    let updated_workspace_ids = serde_json::from_str(&updated_workspace_ids_json).unwrap_or_default();
     WorkspaceSessionDb {
         id: row.get(0),
         workspace_id: row.get(1),
@@ -20,7 +21,7 @@ fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessio
         primary_provider: row.get(7),
         goal: row.get(8),
         summary: row.get(9),
-        updated_feature_ids,
+        updated_workspace_ids,
         compiled_at: row.get(11),
         compile_error: row.get(12),
         config_generation_at_start: row.get(13),
@@ -33,10 +34,10 @@ pub fn get_workspace_session_db(
     ship_dir: &Path,
     session_id: &str,
 ) -> Result<Option<WorkspaceSessionDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_workspace_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
              FROM workspace_session
              WHERE id = ?",
         )
@@ -51,10 +52,10 @@ pub fn get_active_workspace_session_db(
     ship_dir: &Path,
     workspace_id: &str,
 ) -> Result<Option<WorkspaceSessionDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+            "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_workspace_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
              FROM workspace_session
              WHERE workspace_id = ? AND status = 'active'
              ORDER BY started_at DESC
@@ -72,12 +73,12 @@ pub fn list_workspace_sessions_db(
     workspace_id: Option<&str>,
     limit: usize,
 ) -> Result<Vec<WorkspaceSessionDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let clamped_limit = limit.clamp(1, 500) as i64;
     let rows = if let Some(workspace_id) = workspace_id {
         block_on(async {
             sqlx::query(
-                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_workspace_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
                  FROM workspace_session
                  WHERE workspace_id = ?
                  ORDER BY started_at DESC
@@ -91,7 +92,7 @@ pub fn list_workspace_sessions_db(
     } else {
         block_on(async {
             sqlx::query(
-                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
+                "SELECT id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_workspace_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at
                  FROM workspace_session
                  ORDER BY started_at DESC
                  LIMIT ?",
@@ -106,13 +107,13 @@ pub fn list_workspace_sessions_db(
 }
 
 pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
-    let updated_feature_ids_json = serde_json::to_string(&session.updated_feature_ids)
-        .with_context(|| "Failed to serialize workspace session updated_feature_ids")?;
+    let mut conn = open_db(ship_dir)?;
+    let updated_workspace_ids_json = serde_json::to_string(&session.updated_workspace_ids)
+        .with_context(|| "Failed to serialize workspace session updated_workspace_ids")?;
     block_on(async {
         sqlx::query(
             "INSERT INTO workspace_session
-             (id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_feature_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at)
+             (id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, primary_provider, goal, summary, updated_workspace_ids_json, compiled_at, compile_error, config_generation_at_start, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&session.id)
@@ -125,7 +126,7 @@ pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
         .bind(&session.primary_provider)
         .bind(&session.goal)
         .bind(&session.summary)
-        .bind(&updated_feature_ids_json)
+        .bind(&updated_workspace_ids_json)
         .bind(&session.compiled_at)
         .bind(&session.compile_error)
         .bind(session.config_generation_at_start)
@@ -138,9 +139,9 @@ pub fn insert_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
 }
 
 pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
-    let updated_feature_ids_json = serde_json::to_string(&session.updated_feature_ids)
-        .with_context(|| "Failed to serialize workspace session updated_feature_ids")?;
+    let mut conn = open_db(ship_dir)?;
+    let updated_workspace_ids_json = serde_json::to_string(&session.updated_workspace_ids)
+        .with_context(|| "Failed to serialize workspace session updated_workspace_ids")?;
     block_on(async {
         sqlx::query(
             "UPDATE workspace_session
@@ -153,7 +154,7 @@ pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
                  primary_provider = ?,
                  goal = ?,
                  summary = ?,
-                 updated_feature_ids_json = ?,
+                 updated_workspace_ids_json = ?,
                  compiled_at = ?,
                  compile_error = ?,
                  config_generation_at_start = ?,
@@ -170,7 +171,7 @@ pub fn update_workspace_session_db(ship_dir: &Path, session: &WorkspaceSessionDb
         .bind(&session.primary_provider)
         .bind(&session.goal)
         .bind(&session.summary)
-        .bind(&updated_feature_ids_json)
+        .bind(&updated_workspace_ids_json)
         .bind(&session.compiled_at)
         .bind(&session.compile_error)
         .bind(session.config_generation_at_start)
@@ -187,20 +188,20 @@ pub fn insert_workspace_session_record_db(
     ship_dir: &Path,
     record: &WorkspaceSessionRecordDb,
 ) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
-    let updated_feature_ids_json = serde_json::to_string(&record.updated_feature_ids)
-        .with_context(|| "Failed to serialize workspace session record updated_feature_ids")?;
+    let mut conn = open_db(ship_dir)?;
+    let updated_workspace_ids_json = serde_json::to_string(&record.updated_workspace_ids)
+        .with_context(|| "Failed to serialize workspace session record updated_workspace_ids")?;
     block_on(async {
         sqlx::query(
             "INSERT INTO workspace_session_record
-             (id, session_id, workspace_id, workspace_branch, summary, updated_feature_ids_json, created_at)
+             (id, session_id, workspace_id, workspace_branch, summary, updated_workspace_ids_json, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(session_id) DO UPDATE SET
                id = excluded.id,
                workspace_id = excluded.workspace_id,
                workspace_branch = excluded.workspace_branch,
                summary = excluded.summary,
-               updated_feature_ids_json = excluded.updated_feature_ids_json,
+               updated_workspace_ids_json = excluded.updated_workspace_ids_json,
                created_at = excluded.created_at",
         )
         .bind(&record.id)
@@ -208,7 +209,7 @@ pub fn insert_workspace_session_record_db(
         .bind(&record.workspace_id)
         .bind(&record.workspace_branch)
         .bind(&record.summary)
-        .bind(&updated_feature_ids_json)
+        .bind(&updated_workspace_ids_json)
         .bind(&record.created_at)
         .execute(&mut conn)
         .await
@@ -220,10 +221,10 @@ pub fn get_workspace_session_record_db(
     ship_dir: &Path,
     session_id: &str,
 ) -> Result<Option<WorkspaceSessionRecordDb>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, session_id, workspace_id, workspace_branch, summary, updated_feature_ids_json, created_at
+            "SELECT id, session_id, workspace_id, workspace_branch, summary, updated_workspace_ids_json, created_at
              FROM workspace_session_record
              WHERE session_id = ?",
         )
@@ -237,7 +238,7 @@ pub fn get_workspace_session_record_db(
         workspace_id: row.get(2),
         workspace_branch: row.get(3),
         summary: row.get(4),
-        updated_feature_ids: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(5))
+        updated_workspace_ids: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(5))
             .unwrap_or_default(),
         created_at: row.get(6),
     }))

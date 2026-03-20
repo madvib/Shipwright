@@ -1,13 +1,6 @@
+//! Shared types for the platform database layer.
+
 use std::path::PathBuf;
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DatabaseMigrationReport {
-    pub db_path: PathBuf,
-    pub created: bool,
-    pub applied_migrations: usize,
-}
-
-pub type FeatureBranchLinks = (String, Option<String>);
 
 pub type WorkspaceDbRow = (
     String,
@@ -86,7 +79,7 @@ pub struct WorkspaceSessionDb {
     pub primary_provider: Option<String>,
     pub goal: Option<String>,
     pub summary: Option<String>,
-    pub updated_feature_ids: Vec<String>,
+    pub updated_workspace_ids: Vec<String>,
     pub compiled_at: Option<String>,
     pub compile_error: Option<String>,
     pub config_generation_at_start: Option<i64>,
@@ -101,29 +94,8 @@ pub struct WorkspaceSessionRecordDb {
     pub workspace_id: String,
     pub workspace_branch: String,
     pub summary: Option<String>,
-    pub updated_feature_ids: Vec<String>,
+    pub updated_workspace_ids: Vec<String>,
     pub created_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CapabilityMapDb {
-    pub id: String,
-    pub vision_ref: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CapabilityDb {
-    pub id: String,
-    pub map_id: String,
-    pub title: String,
-    pub description: String,
-    pub parent_capability_id: Option<String>,
-    pub status: String,
-    pub ord: i64,
-    pub created_at: String,
-    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -160,4 +132,10 @@ pub struct AgentModeDb {
     pub hooks_json: String,
     pub permissions_json: String,
     pub target_agents_json: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DatabaseMigrationReport {
+    pub db_path: PathBuf,
+    pub created: bool,
 }

@@ -16,7 +16,7 @@ struct ToolState {
 fn load_managed_state(project_dir: &Path) -> ManagedState {
     let mut state = ManagedState::default();
     for p in PROVIDERS {
-        if let Ok((ids, last_mode)) = crate::state_db::get_managed_state_db(project_dir, p.id)
+        if let Ok((ids, last_mode)) = crate::db::managed_state::get_managed_state_db(project_dir, p.id)
             && (!ids.is_empty() || last_mode.is_some())
         {
             state.providers.insert(
@@ -34,7 +34,7 @@ fn load_managed_state(project_dir: &Path) -> ManagedState {
 fn save_managed_state(project_dir: &Path, state: &ManagedState) -> Result<()> {
     for (provider, tool_state) in &state.providers {
         // Non-fatal: DB writes fail gracefully when called from async context.
-        let _ = crate::state_db::set_managed_state_db(
+        let _ = crate::db::managed_state::set_managed_state_db(
             project_dir,
             provider,
             &tool_state.managed_servers,

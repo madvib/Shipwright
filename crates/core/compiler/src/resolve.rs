@@ -8,7 +8,7 @@ use crate::types::{
 /// Thin overrides that a feature branch can apply on top of project defaults.
 /// Maps to the `[agent]` block in a feature's TOML frontmatter.
 #[derive(Debug, Clone, Default)]
-pub struct FeatureOverrides {
+pub struct WorkspaceOverrides {
     pub model: Option<String>,
     pub max_cost_per_session: Option<f64>,
     /// Restrict to these MCP server IDs (empty = no restriction)
@@ -191,7 +191,7 @@ pub struct ProjectLibrary {
 /// No `ProjectConfig` or filesystem access required.
 pub fn resolve_library(
     library: &ProjectLibrary,
-    feature: Option<&FeatureOverrides>,
+    feature: Option<&WorkspaceOverrides>,
     active_agent_override: Option<&str>,
 ) -> ResolvedConfig {
     let config = ProjectConfig {
@@ -252,7 +252,7 @@ pub fn resolve(
     rules: &[Rule],
     permissions: &Permissions,
     hooks: &[HookConfig],
-    feature: Option<&FeatureOverrides>,
+    feature: Option<&WorkspaceOverrides>,
     active_agent_override: Option<&str>,
 ) -> ResolvedConfig {
     // ── Active mode (resolved first — needed for provider target_agents) ──────
@@ -311,14 +311,14 @@ pub fn resolve(
     let mut mcp_servers = config.mcp_servers.clone();
     apply_mode_server_filter(&mut mcp_servers, mode);
     if let Some(f) = feature {
-        apply_feature_server_filter(&mut mcp_servers, f);
+        apply_workspace_server_filter(&mut mcp_servers, f);
     }
 
     // ── Skills ────────────────────────────────────────────────────────────────
     let mut resolved_skills = skills.to_vec();
     apply_mode_skill_filter(&mut resolved_skills, mode);
     if let Some(f) = feature {
-        apply_feature_skill_filter(&mut resolved_skills, f);
+        apply_workspace_skill_filter(&mut resolved_skills, f);
     }
 
     // ── Rules ─────────────────────────────────────────────────────────────────
@@ -411,7 +411,7 @@ fn apply_mode_server_filter(servers: &mut Vec<McpServerConfig>, mode: Option<&Mo
     }
 }
 
-fn apply_feature_server_filter(servers: &mut Vec<McpServerConfig>, feature: &FeatureOverrides) {
+fn apply_workspace_server_filter(servers: &mut Vec<McpServerConfig>, feature: &WorkspaceOverrides) {
     if !feature.mcp_servers.is_empty() {
         let ids: Vec<&str> = feature.mcp_servers.iter().map(String::as_str).collect();
         servers.retain(|s| ids.contains(&s.id.as_str()));
@@ -426,7 +426,7 @@ fn apply_mode_skill_filter(skills: &mut Vec<Skill>, mode: Option<&ModeConfig>) {
     }
 }
 
-fn apply_feature_skill_filter(skills: &mut Vec<Skill>, feature: &FeatureOverrides) {
+fn apply_workspace_skill_filter(skills: &mut Vec<Skill>, feature: &WorkspaceOverrides) {
     if !feature.skills.is_empty() {
         let ids: Vec<&str> = feature.skills.iter().map(String::as_str).collect();
         skills.retain(|s| ids.contains(&s.id.as_str()));
@@ -487,7 +487,7 @@ mod tests {
             providers: vec!["gemini".to_string()],
             ..Default::default()
         };
-        let feature = FeatureOverrides {
+        let feature = WorkspaceOverrides {
             providers: vec!["codex".to_string()],
             ..Default::default()
         };
@@ -612,7 +612,7 @@ mod tests {
             active_agent: Some("mode1".to_string()),
             ..Default::default()
         };
-        let feature = FeatureOverrides {
+        let feature = WorkspaceOverrides {
             providers: vec!["codex".to_string()],
             ..Default::default()
         };
@@ -671,7 +671,7 @@ mod tests {
             mcp_servers: vec![make_server("github"), make_server("linear"), make_server("slack")],
             ..Default::default()
         };
-        let feature = FeatureOverrides {
+        let feature = WorkspaceOverrides {
             mcp_servers: vec!["github".to_string()],
             ..Default::default()
         };
@@ -692,7 +692,7 @@ mod tests {
     fn feature_overrides_filter_skills() {
         let skills = vec![make_skill("alpha"), make_skill("beta"), make_skill("gamma")];
         let config = ProjectConfig::default();
-        let feature = FeatureOverrides {
+        let feature = WorkspaceOverrides {
             skills: vec!["beta".to_string()],
             ..Default::default()
         };
@@ -716,7 +716,7 @@ mod tests {
             mcp_servers: vec![make_server("github")],
             ..Default::default()
         };
-        let feature = FeatureOverrides::default(); // all empty
+        let feature = WorkspaceOverrides::default(); // all empty
         let resolved = resolve(
             &config,
             &skills,
@@ -741,7 +741,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        let feature = FeatureOverrides {
+        let feature = WorkspaceOverrides {
             model: Some("feature-model".to_string()),
             ..Default::default()
         };

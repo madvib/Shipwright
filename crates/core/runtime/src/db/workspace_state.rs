@@ -1,17 +1,21 @@
+//! Workspace state CRUD — the primary workspace persistence layer.
+//!
+//! These functions are used by `crate::workspace` for all workspace lifecycle
+//! operations.  They write to the unified `workspace` table in platform.db.
+
 use anyhow::{Context, Result};
 use sqlx::Row;
 use std::path::Path;
 
-use super::init::open_project_db;
 use super::types::{WorkspaceDbListRow, WorkspaceDbRow, WorkspaceUpsert};
-use super::util::block_on;
+use super::{block_on, open_db};
 
 /// Retrieve the workspace record for the given branch, or None if none exists.
 pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<WorkspaceDbRow>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
+            "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, COALESCE(resolved_at, ''), is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace WHERE branch = ?",
         )
         .bind(branch)
@@ -66,10 +70,10 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
 }
 
 pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let rows = block_on(async {
         sqlx::query(
-            "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, resolved_at, is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
+            "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, COALESCE(resolved_at, ''), is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
              FROM workspace
              ORDER BY
                CASE status
@@ -135,7 +139,7 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
 
 /// Upsert the workspace record for the given branch.
 pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let providers_json = serde_json::to_string(record.providers)
         .with_context(|| "Failed to serialize workspace providers")?;
     let mcp_servers_json = serde_json::to_string(record.mcp_servers)
@@ -193,7 +197,7 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
 
 /// Delete workspace state for a branch, including any session history.
 pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     let workspace_id = block_on(async {
         sqlx::query_scalar::<_, String>(
             "SELECT COALESCE(id, branch) FROM workspace WHERE branch = ?",
@@ -219,12 +223,6 @@ pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
             .execute(&mut conn)
             .await?;
 
-        sqlx::query("DELETE FROM git_workspace WHERE workspace_id = ? OR branch = ?")
-            .bind(&workspace_id)
-            .bind(branch)
-            .execute(&mut conn)
-            .await?;
-
         let result = sqlx::query("DELETE FROM workspace WHERE branch = ?")
             .bind(branch)
             .execute(&mut conn)
@@ -242,7 +240,7 @@ pub fn demote_other_active_workspaces_db(
     active_branch: &str,
     resolved_at: &str,
 ) -> Result<()> {
-    let mut conn = open_project_db(ship_dir)?;
+    let mut conn = open_db(ship_dir)?;
     block_on(async {
         sqlx::query(
             "UPDATE workspace
@@ -256,4 +254,3 @@ pub fn demote_other_active_workspaces_db(
     })?;
     Ok(())
 }
-

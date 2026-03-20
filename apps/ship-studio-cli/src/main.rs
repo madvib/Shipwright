@@ -324,11 +324,7 @@ fn run_notes() -> Result<()> {
 }
 
 fn run_migrate() -> Result<()> {
-    let ship_dir = paths::project_ship_dir_required()?;
-    let report = runtime::db::migrate_from_state_db::migrate_notes_and_adrs(&ship_dir)?;
-    println!("migration complete");
-    println!("  notes:  {} migrated, {} skipped", report.notes_migrated, report.notes_skipped);
-    println!("  adrs:   {} migrated, {} skipped", report.adrs_migrated, report.adrs_skipped);
+    println!("migration infrastructure removed — state_db consolidated into platform.db");
     Ok(())
 }
 
