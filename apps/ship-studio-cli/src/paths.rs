@@ -35,14 +35,10 @@ pub fn agents_skills_dir() -> PathBuf { agents_dir().join("skills") }
 pub fn agents_mcp_path() -> PathBuf { agents_dir().join("mcp.toml") }
 pub fn project_ship_toml() -> PathBuf { project_dir().join("ship.toml") }
 
-/// Returns the absolute path to `.ship/` in the current directory, or errors.
+/// Returns the absolute path to `.ship/` for the current project, or errors.
+/// Uses git-worktree-aware traversal so this works from subdirs and worktrees.
 pub fn project_ship_dir_required() -> anyhow::Result<std::path::PathBuf> {
-    let cwd = std::env::current_dir()?;
-    let ship_dir = cwd.join(".ship");
-    if !ship_dir.exists() {
-        anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
-    }
-    Ok(ship_dir)
+    runtime::project::get_project_dir(None)
 }
 
 pub fn ensure_project_dirs() -> anyhow::Result<()> {
