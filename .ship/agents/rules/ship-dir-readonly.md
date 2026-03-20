@@ -13,7 +13,8 @@ Agents never write to `.ship/`. The only writers are:
 - Invent CLI commands in `[hooks]` profile sections without verifying they exist
 
 **Where things actually go:**
-- State and records → Ship MCP tools (`create_note`, `create_target`, `append_job_log`, etc.)
+- Agent progress → `log_progress`, `append_job_log`
+- Agent scratch work → `.ship-session/` files (gitignored scratchpad)
 - Handoffs → `handoff.md` in the job worktree root
-- Plans → `job-spec.md` in the job worktree root
-- Architecture decisions → `create_adr` via MCP
+- Plans → `.ship-session/` or `job-spec.md` in the job worktree root
+- Notes and ADRs → human-facing documents, created only when the human asks

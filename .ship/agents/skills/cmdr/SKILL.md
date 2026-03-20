@@ -40,7 +40,7 @@ You operate with three role skills loaded alongside this one. Each has its full 
 
 **Logging:** `append_job_log` for state changes, blockers, decisions. Not noise.
 
-**Notes and ADRs:** `create_note` for decisions. Use `write-adr` skill for architecture choices with real alternatives.
+**Notes and ADRs are for humans.** Do not create notes for agent plans, coordination, or scratch work. Help the human draft notes when asked. Use `append_job_log` or `.ship-session/` files for agent state.
 
 **Stale worktrees:** Prune aggressively. Idle imperative worktrees > 24h have no reason to exist.
 

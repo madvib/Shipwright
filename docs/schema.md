@@ -1,12 +1,12 @@
 # Ship Database Schema
 
-Ship stores platform state in `.ship/state/platform.db` (SQLite). This document describes what lives there, what each field means, and the rules for accessing it.
+Ship stores platform state in `~/.ship/platform.db` (SQLite). This document describes what lives there, what each field means, and the rules for accessing it.
 
 **Golden rule: never access the database directly.** Use the MCP tools or `ship` CLI. The schema evolves across releases. Direct SQL queries will break on upgrades and bypass event emission, invariant checks, and migration logic.
 
 ```
 # Wrong
-sqlite3 .ship/state/platform.db "SELECT * FROM jobs"
+sqlite3 ~/.ship/platform.db "SELECT * FROM jobs"
 
 # Right
 list_jobs()                          # via MCP
@@ -198,7 +198,7 @@ Events are **append-only** — they are never updated or deleted. Query via `lis
 
 | Data | Location | Access |
 |------|----------|--------|
-| Platform state (workspaces, sessions, jobs, notes, ADRs, events) | `.ship/state/platform.db` | MCP tools or `ship` CLI only |
+| Platform state (workspaces, sessions, jobs, notes, ADRs, events) | `~/.ship/platform.db` | MCP tools or `ship` CLI only |
 | Agent profiles | `.ship/agents/profiles/*.toml` | Edit directly; recompile with `ship use` |
 | Skills | `.ship/agents/skills/*/SKILL.md` | `ship skill add/remove` or edit directly |
 | MCP server config | `.ship/agents/mcp.toml` | `ship mcp add/remove` |

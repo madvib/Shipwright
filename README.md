@@ -71,7 +71,7 @@ default_mode = "plan"
 
 ## Branch-aware config
 
-Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/state/<slug>/platform.db`).
+Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/platform.db`).
 
 ```bash
 git checkout feature/payments    # post-checkout hook fires (planned)

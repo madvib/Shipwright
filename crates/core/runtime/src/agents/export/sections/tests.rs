@@ -642,7 +642,7 @@ mod tests {
             ids.contains(&"gh".to_string()),
             "managed server not recorded in state"
         );
-        // Clean up DB created in ~/.ship/state/ for this temp project
+        // Clean up state_db created for this temp project
         std::fs::remove_file(crate::state_db::project_db_path(&project_dir).unwrap()).ok();
     }
 

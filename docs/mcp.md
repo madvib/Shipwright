@@ -2,7 +2,7 @@
 
 The Ship MCP server (`ship mcp serve`) exposes platform tools to agents at runtime via the Model Context Protocol. Agents call these tools to manage workspaces, sessions, jobs, and project state.
 
-**Never access the database directly** (`sqlite3 .ship/state/platform.db`). Always use these tools or the `ship` CLI — they enforce schema invariants, emit events, and handle migrations.
+**Never access the database directly** (`sqlite3 ~/.ship/platform.db`). Always use these tools or the `ship` CLI — they enforce schema invariants, emit events, and handle migrations.
 
 ---
 
