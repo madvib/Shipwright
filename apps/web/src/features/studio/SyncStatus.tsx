@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Loader2 } from 'lucide-react'
+import { Check, Loader2, AlertCircle } from 'lucide-react'
 
 export type SyncStatusValue = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -10,9 +10,9 @@ interface SyncStatusProps {
 /**
  * Minimal non-blocking indicator shown while a library is being saved.
  * - idle: renders nothing
- * - saving: cloud icon + "Saving..."
+ * - saving: spinner + "Saving..."
  * - saved: checkmark + "Saved", fades out after 2 s
- * - error: not shown (offline / unauthenticated — do not nag)
+ * - error: warning + "Sync failed", fades out after 3 s
  */
 export function SyncStatus({ status }: SyncStatusProps) {
   const [visible, setVisible] = useState(false)
@@ -31,13 +31,22 @@ export function SyncStatus({ status }: SyncStatusProps) {
         clearTimeout(fade)
         clearTimeout(hide)
       }
+    } else if (status === 'error') {
+      setVisible(true)
+      setFading(false)
+      const fade = setTimeout(() => setFading(true), 3000)
+      const hide = setTimeout(() => setVisible(false), 3600)
+      return () => {
+        clearTimeout(fade)
+        clearTimeout(hide)
+      }
     } else {
       setVisible(false)
       setFading(false)
     }
   }, [status])
 
-  if (!visible || status === 'idle' || status === 'error') return null
+  if (!visible || status === 'idle') return null
 
   return (
     <span
@@ -45,7 +54,7 @@ export function SyncStatus({ status }: SyncStatusProps) {
         fading ? 'opacity-0' : 'opacity-100'
       }`}
       aria-live="polite"
-      aria-label={status === 'saving' ? 'Saving' : 'Saved'}
+      aria-label={status === 'saving' ? 'Saving' : status === 'error' ? 'Sync failed' : 'Saved'}
     >
       {status === 'saving' && (
         <>
@@ -57,6 +66,12 @@ export function SyncStatus({ status }: SyncStatusProps) {
         <>
           <Check className="size-3 text-emerald-500" />
           <span>Saved</span>
+        </>
+      )}
+      {status === 'error' && (
+        <>
+          <AlertCircle className="size-3 text-amber-500" />
+          <span className="text-amber-500">Sync failed</span>
         </>
       )}
     </span>

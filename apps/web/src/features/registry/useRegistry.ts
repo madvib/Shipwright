@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import type { RegistrySearchResponse, PackageDetailResponse, ScopeFilter } from './types'
 import { MOCK_PACKAGES, MOCK_VERSIONS, MOCK_SKILLS, DEFAULT_MOCK_VERSIONS, DEFAULT_MOCK_SKILLS } from './mock-data'
 
@@ -77,7 +76,7 @@ export function useRegistrySearch(query: string, scope: ScopeFilter, page: numbe
         return await res.json() as RegistrySearchResponse
       } catch {
         // Fallback to mock data when API is not deployed
-        toast.error('Registry unavailable — showing demo data')
+        console.warn('Registry unavailable — showing demo data')
         return mockSearch(query, scope, page)
       }
     },
@@ -102,7 +101,7 @@ export function usePackageDetail(path: string) {
         return await res.json() as PackageDetailResponse
       } catch {
         // Fallback to mock data when API is not deployed
-        toast.error('Registry unavailable — showing demo data')
+        console.warn('Registry unavailable — showing demo data')
         return mockDetail(path)
       }
     },

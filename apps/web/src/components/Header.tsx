@@ -25,13 +25,8 @@ function ThemeToggle() {
   })
   useEffect(() => {
     applyTheme(mode)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  const toggle = () => {
-    const next = mode === 'dark' ? 'light' : 'dark'
-    setMode(next)
-    applyTheme(next)
-  }
+  }, [mode])
+  const toggle = () => setMode((prev) => (prev === 'dark' ? 'light' : 'dark'))
   return (
     <button
       onClick={toggle}

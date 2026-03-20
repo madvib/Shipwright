@@ -5,7 +5,7 @@ import type { ProjectLibrary } from '../features/compiler/types'
 function makeLibrary(overrides: Partial<ProjectLibrary> = {}): ProjectLibrary {
   return {
     modes: [],
-    active_mode: null,
+    active_agent: null,
     skills: [],
     rules: [],
     mcp_servers: [],
@@ -22,7 +22,7 @@ describe('filterLibraryBySelection', () => {
     const lib = makeLibrary({
       skills: [{ id: 'foo', name: 'Foo', content: '# Foo' }],
       rules: [{ file_name: 'CLAUDE.md', content: '# Rules' }],
-      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null }],
+      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] }],
     })
     const result = filterLibraryBySelection(lib, {
       skills: new Set(),
@@ -38,7 +38,7 @@ describe('filterLibraryBySelection', () => {
     const lib = makeLibrary({
       skills: [{ id: 'foo', name: 'Foo', content: '# Foo' }, { id: 'bar', name: 'Bar', content: '# Bar' }],
       rules: [{ file_name: 'CLAUDE.md', content: '# Rules' }],
-      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null }],
+      mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] }],
     })
     const result = filterLibraryBySelection(lib, {
       skills: new Set(['foo', 'bar']),
@@ -85,8 +85,8 @@ describe('filterLibraryBySelection', () => {
   it('filters mcp_servers by name', () => {
     const lib = makeLibrary({
       mcp_servers: [
-        { name: 'github', command: 'npx', url: null, timeout_secs: null },
-        { name: 'filesystem', command: 'npx', url: null, timeout_secs: null },
+        { name: 'github', command: 'npx', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
+        { name: 'filesystem', command: 'npx', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
       ],
     })
     const result = filterLibraryBySelection(lib, {
@@ -101,7 +101,7 @@ describe('filterLibraryBySelection', () => {
   it('preserves non-filtered fields on the library', () => {
     const lib = makeLibrary({
       modes: [{ id: 'test-mode', name: 'default', description: '', mcp_servers: [], skills: [], rules: [] }],
-      active_mode: 'default',
+      active_agent: 'default',
     })
     const result = filterLibraryBySelection(lib, {
       skills: new Set(),
@@ -109,7 +109,7 @@ describe('filterLibraryBySelection', () => {
       mcp_servers: new Set(),
     })
     expect(result.modes).toHaveLength(1)
-    expect(result.active_mode).toBe('default')
+    expect(result.active_agent).toBe('default')
   })
 
   it('handles empty library without error', () => {

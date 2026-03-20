@@ -1,11 +1,8 @@
 {
-  "name": "@ship/compiler",
+  "name": "compiler",
   "type": "module",
   "description": "WASM-safe agent config compiler — types, resolution, and output generation",
   "version": "0.1.0",
-  "scripts": {
-    "test": "node compiler.test.mjs"
-  },
   "files": [
     "compiler_bg.wasm",
     "compiler.js",

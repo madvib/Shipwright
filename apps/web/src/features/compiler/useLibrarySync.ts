@@ -135,7 +135,7 @@ export function useLibrarySync() {
               setSyncStatus('saved')
             } catch { setSyncStatus('idle') }
           } else {
-            setSyncStatus('idle')
+            setSyncStatus('error')
           }
         })
     }, DEBOUNCE_MS)

@@ -19,6 +19,7 @@ const config = defineConfig({
     viteReact(),
   ],
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       // '@/' resolves primitives-internal paths (e.g. @/lib/utils in primitives components)
       '@/': fileURLToPath(new URL('../../packages/primitives/src/', import.meta.url)),
@@ -28,6 +29,12 @@ const config = defineConfig({
   },
   optimizeDeps: {
     exclude: ['@ship/compiler'],
+  },
+  server: {
+    hmr: {
+      port: 3002,
+      clientPort: 3002,
+    },
   },
 })
 

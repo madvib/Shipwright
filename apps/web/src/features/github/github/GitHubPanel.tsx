@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Github, Lock, Unlock, Loader2, ExternalLink, GitPullRequest, AlertCircle, ChevronRight } from 'lucide-react'
 import type { ProjectLibrary } from '#/features/compiler/types'
 
@@ -190,11 +190,16 @@ export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
 
   // step === 'connected' — repo picker
   const { user, repos } = state
-  const filtered = repos.filter(
-    (r) =>
-      !search ||
-      r.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      (r.description ?? '').toLowerCase().includes(search.toLowerCase()),
+  const filtered = useMemo(
+    () =>
+      !search
+        ? repos
+        : repos.filter(
+            (r) =>
+              r.full_name.toLowerCase().includes(search.toLowerCase()) ||
+              (r.description ?? '').toLowerCase().includes(search.toLowerCase()),
+          ),
+    [repos, search],
   )
 
   return (
