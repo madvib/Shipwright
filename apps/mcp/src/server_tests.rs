@@ -1,5 +1,6 @@
 use super::*;
 use runtime::{AgentProfile, add_agent};
+use runtime::workspace::{CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest, ShipWorkspaceKind, create_workspace as runtime_create_workspace};
 use ship_docs::init_project;
 use tempfile::tempdir;
 
@@ -24,13 +25,13 @@ fn mode_gate_normalizes_and_blocks_disallowed_tools() {
     ShipServer::enforce_mode_tool_gate(&project_dir, "list_notes").expect("list_notes allowed");
     ShipServer::enforce_mode_tool_gate(&project_dir, "ship_list_notes_tool")
         .expect("prefixed note tool allowed");
-    ShipServer::enforce_mode_tool_gate(&project_dir, "register_workspace")
-        .expect("register workspace must remain control-plane allowed");
-    ShipServer::enforce_mode_tool_gate(&project_dir, "repair_workspace")
-        .expect("workspace repair must remain control-plane allowed");
+    ShipServer::enforce_mode_tool_gate(&project_dir, "create_workspace")
+        .expect("create_workspace must be core");
+    ShipServer::enforce_mode_tool_gate(&project_dir, "complete_workspace")
+        .expect("complete_workspace must be core");
 
-    let blocked = ShipServer::enforce_mode_tool_gate(&project_dir, "update_note")
-        .expect_err("update_note should be blocked");
+    let blocked = ShipServer::enforce_mode_tool_gate(&project_dir, "create_spec")
+        .expect_err("create_spec should be blocked");
     assert!(
         blocked.contains("blocked by active mode"),
         "unexpected mode gate message: {}",
@@ -46,24 +47,21 @@ async fn mcp_workspace_control_plane_round_trip() {
     let server = ShipServer::new();
     *server.active_project.lock().await = Some(project_dir.clone());
 
-    let created = server
-        .register_workspace(Parameters(RegisterWorkspaceRequest {
-            branch: "feature/mode-control-plane".to_string(),
-            workspace_type: Some("feature".to_string()),
-            environment_id: None,
-            feature_id: None,
-            target_id: None,
-            agent_id: None,
-            is_worktree: Some(false),
-            worktree_path: None,
-            activate: Some(true),
-        }))
-        .await;
-    assert!(
-        created.contains("\"branch\": \"feature/mode-control-plane\""),
-        "unexpected create workspace response: {}",
-        created
-    );
+    runtime_create_workspace(&project_dir, RuntimeCreateWorkspaceRequest {
+        branch: "feature/mode-control-plane".to_string(),
+        workspace_type: Some(ShipWorkspaceKind::Feature),
+        status: None,
+        environment_id: None,
+        feature_id: None,
+        target_id: None,
+        active_agent: None,
+        providers: None,
+        mcp_servers: None,
+        skills: None,
+        is_worktree: Some(false),
+        worktree_path: None,
+        context_hash: None,
+    }).expect("create workspace for test");
 
     let fetched = server
         .resolve_resource_uri("ship://workspaces/feature/mode-control-plane", &project_dir)
@@ -129,6 +127,7 @@ fn core_tools_are_recognized() {
     let core_tools = [
         "open_project",
         "create_note",
+        "update_note",
         "create_adr",
         "activate_workspace",
         "create_workspace",
@@ -141,6 +140,7 @@ fn core_tools_are_recognized() {
         "create_job",
         "update_job",
         "list_jobs",
+        "provider_matrix",
     ];
     for tool in core_tools {
         assert!(ShipServer::is_core_tool(tool), "{tool} should be a core tool");
@@ -156,7 +156,6 @@ fn core_tool_with_prefix_and_suffix() {
 #[test]
 fn non_core_tool_is_not_core() {
     assert!(!ShipServer::is_core_tool("create_spec"));
-    assert!(!ShipServer::is_core_tool("update_note"));
     assert!(!ShipServer::is_core_tool("random_tool"));
 }
 
