@@ -17,80 +17,57 @@ afterEach(() => {
 })
 
 describe('StudioDock', () => {
-  it('renders all 6 nav items', () => {
+  it('renders 3 nav items + compile button', () => {
     render(<StudioDock />)
     expect(screen.getByRole('navigation')).toBeTruthy()
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(6)
+    expect(buttons).toHaveLength(4) // Agents, Skills, Registry, Compile
   })
 
-  it('renders Overview nav item', () => {
-    render(<StudioDock />)
-    const buttons = screen.getAllByRole('button')
-    // Overview is the first button
-    expect(buttons[0]).toBeTruthy()
-  })
-
-  it('active item has bg-primary/12 class when on /studio', () => {
+  it('Agents is active on /studio', () => {
     mockPathname = '/studio'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
-    // Overview is exact match for /studio
     expect(buttons[0]?.className).toContain('bg-primary')
+  })
+
+  it('Skills is active on /studio/skills', () => {
+    mockPathname = '/studio/skills'
+    render(<StudioDock />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons[1]?.className).toContain('bg-primary')
+  })
+
+  it('Registry is active on /registry', () => {
+    mockPathname = '/registry'
+    render(<StudioDock />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons[2]?.className).toContain('bg-primary')
   })
 
   it('non-active items do not have bg-primary class', () => {
     mockPathname = '/studio'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
-    // Profiles button should not be active on /studio
     expect(buttons[1]?.className).not.toContain('bg-primary')
   })
 
-  it('Profiles item is active when pathname starts with /studio/profiles', () => {
-    mockPathname = '/studio/profiles'
-    render(<StudioDock />)
+  it('compile button calls onCompile', () => {
+    const onCompile = vi.fn()
+    render(<StudioDock onCompile={onCompile} />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons[1]?.className).toContain('bg-primary')
-  })
-
-  it('Skills item is active when pathname starts with /studio/skills', () => {
-    mockPathname = '/studio/skills'
-    render(<StudioDock />)
-    const buttons = screen.getAllByRole('button')
-    expect(buttons[2]?.className).toContain('bg-primary')
-  })
-
-  it('MCP item is active when pathname starts with /studio/mcp', () => {
-    mockPathname = '/studio/mcp'
-    render(<StudioDock />)
-    const buttons = screen.getAllByRole('button')
-    expect(buttons[3]?.className).toContain('bg-primary')
-  })
-
-  it('Export item is active when pathname starts with /studio/export', () => {
-    mockPathname = '/studio/export'
-    render(<StudioDock />)
-    const buttons = screen.getAllByRole('button')
-    expect(buttons[4]?.className).toContain('bg-primary')
-  })
-
-  it('Registry item is active when pathname starts with /studio/registry', () => {
-    mockPathname = '/studio/registry'
-    render(<StudioDock />)
-    const buttons = screen.getAllByRole('button')
-    expect(buttons[5]?.className).toContain('bg-primary')
+    buttons[3]?.click()
+    expect(onCompile).toHaveBeenCalledOnce()
   })
 
   it('active item shows bottom indicator bar', () => {
     mockPathname = '/studio'
     render(<StudioDock />)
-    // The active indicator is a <span> with bg-primary class inside the active button
     const indicators = document.querySelectorAll('span.bg-primary')
     expect(indicators.length).toBeGreaterThan(0)
   })
 
-  it('nav element has accessible label', () => {
+  it('nav has accessible label', () => {
     render(<StudioDock />)
     const nav = screen.getByRole('navigation')
     expect(nav.getAttribute('aria-label')).toBe('Studio navigation')
