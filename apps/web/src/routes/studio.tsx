@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { StudioDock } from '#/features/studio/StudioDock'
 import { SyncStatus } from '#/features/studio/SyncStatus'
 import { PublishPanel } from '#/features/studio/PublishPanel'
@@ -24,6 +24,22 @@ function StudioSyncShell() {
   const { state: compileState, compile } = useCompiler()
   const auth = useAuth()
   const [panelOpen, setPanelOpen] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  // Auto-compile when library changes while panel is open
+  useEffect(() => {
+    if (!panelOpen || !library) return
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => compile(library), 600)
+    return () => clearTimeout(debounceRef.current)
+  }, [library, panelOpen])
+
+  // Immediate compile when panel opens
+  useEffect(() => {
+    if (panelOpen && library) {
+      compile(library)
+    }
+  }, [panelOpen])
 
   return (
     <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative pb-20">

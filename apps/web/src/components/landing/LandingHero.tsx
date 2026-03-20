@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Zap, Terminal, Package } from 'lucide-react'
+import { DotGrid } from '#/components/DotGrid'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 
 const PROVIDERS = [
@@ -11,8 +12,9 @@ const PROVIDERS = [
 
 export function LandingHero() {
   return (
-    <section className="px-6 pb-10 pt-36 text-center sm:px-10 sm:pt-40">
-      <div className="mx-auto max-w-[56rem]">
+    <section className="relative overflow-hidden px-6 pb-10 pt-36 text-center sm:px-10 sm:pt-40">
+      <DotGrid className="z-0" />
+      <div className="relative z-10 mx-auto max-w-[56rem]">
         {/* Badge */}
         <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-3.5 py-1.5 text-[11px] font-medium text-primary">
           <Package className="size-3" />
@@ -57,7 +59,7 @@ export function LandingHero() {
       </div>
 
       {/* Provider strip */}
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-8 sm:gap-10">
+      <div className="relative z-10 mt-10 flex flex-wrap items-center justify-center gap-8 sm:gap-10">
         {PROVIDERS.map((p) => (
           <div
             key={p.id}

@@ -5,21 +5,19 @@ import { useLibrary } from '#/features/compiler/useLibrary'
 import { useAuth } from '#/lib/components/protected-route'
 import { Plus, Users, Zap, Server, Github, Package, ArrowRight } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
-import { PROVIDERS } from '#/features/compiler/types'
 import { CreateAgentDialog } from '#/features/agents/dialogs/CreateAgentDialog'
 
 export const Route = createFileRoute('/studio/')({ component: StudioHome })
 
 function StudioHome() {
   const { profiles } = useProfiles()
-  const { library, selectedProviders } = useLibrary()
+  const { library } = useLibrary()
   const auth = useAuth()
   const [createOpen, setCreateOpen] = useState(false)
 
   const skillCount = library.skills?.length ?? 0
   const mcpCount = library.mcp_servers?.length ?? 0
   const agentCount = profiles.length
-  const providerCount = selectedProviders.length
 
   if (agentCount === 0 && !auth.isAuthenticated) {
     return (
@@ -60,11 +58,10 @@ function StudioHome() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <div className="grid grid-cols-3 gap-3 mb-8">
           <StatCard icon={<Users className="size-4" />} label="Agents" value={agentCount} color="text-primary bg-primary/10" href="/studio/agents" />
           <StatCard icon={<Zap className="size-4" />} label="Skills" value={skillCount} color="text-emerald-500 bg-emerald-500/10" href="/studio/skills" />
           <StatCard icon={<Server className="size-4" />} label="MCP Servers" value={mcpCount} color="text-blue-500 bg-blue-500/10" />
-          <StatCard icon={<Package className="size-4" />} label="Providers" value={providerCount} color="text-violet-500 bg-violet-500/10" subtitle={selectedProviders.join(', ')} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -112,21 +109,6 @@ function StudioHome() {
                 <SidebarAction icon={<Package className="size-3.5" />} label="Browse registry" href="/registry" />
               </div>
             </div>
-
-            <div className="rounded-xl border border-border/60 bg-card p-4">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Compile targets</h3>
-              <div className="space-y-1.5">
-                {PROVIDERS.map((p) => {
-                  const active = selectedProviders.includes(p.id)
-                  return (
-                    <div key={p.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs ${active ? 'text-foreground' : 'text-muted-foreground/40'}`}>
-                      <span className={`size-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-muted-foreground/20'}`} />
-                      {p.name}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -140,12 +122,19 @@ function EmptyWelcome({ onCreateAgent }: { onCreateAgent: () => void }) {
     <div className="flex-1 overflow-auto">
       <div className="max-w-3xl mx-auto px-6 py-16 text-center">
         <h1 className="font-display text-3xl font-extrabold text-foreground mb-3">Welcome to Ship Studio</h1>
-        <p className="text-base text-muted-foreground max-w-md mx-auto mb-10">
+        <p className="text-base text-muted-foreground max-w-md mx-auto mb-8">
           Configure AI coding agents visually. Define skills, permissions, and MCP servers — compile to any provider.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 text-left">
-          <WelcomeCard icon={<Plus className="size-5" />} title="Start fresh" desc="Create an agent from scratch. Add skills, MCP servers, and set permissions." action="Create agent" onClick={onCreateAgent} color="bg-primary/10 text-primary" />
+        <button
+          onClick={onCreateAgent}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 mb-10"
+        >
+          <Plus className="size-4" />
+          Create your first agent
+        </button>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 text-left max-w-lg mx-auto">
           <WelcomeCard icon={<Github className="size-5" />} title="Import existing" desc="Already have CLAUDE.md or .cursor/rules? Import and convert to Ship format." action="Import from GitHub" href="/studio/import" color="bg-muted text-foreground" />
           <WelcomeCard icon={<Package className="size-5" />} title="Browse registry" desc="Install pre-built agents and skills from the community. One-click setup." action="Browse registry" href="/registry" color="bg-violet-500/10 text-violet-500" />
         </div>
@@ -170,14 +159,23 @@ function EmptyWelcome({ onCreateAgent }: { onCreateAgent: () => void }) {
 function EmptyDashboard({ onCreateAgent, user }: { onCreateAgent: () => void; user: { name: string } | null }) {
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="font-display text-2xl font-bold text-foreground mb-1">
+      <div className="max-w-3xl mx-auto px-6 py-16 text-center">
+        <h1 className="font-display text-3xl font-extrabold text-foreground mb-2">
           {user ? `Welcome, ${user.name}` : 'Welcome to Studio'}
         </h1>
-        <p className="text-sm text-muted-foreground mb-8">Let's configure your first agent.</p>
+        <p className="text-base text-muted-foreground mb-8 max-w-md mx-auto">
+          You have no agents yet. Create your first one to get started with skills, MCP servers, and permissions.
+        </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <WelcomeCard icon={<Plus className="size-5" />} title="Start fresh" desc="Create an agent from scratch with skills, MCP servers, and permissions." action="Create agent" onClick={onCreateAgent} color="bg-primary/10 text-primary" />
+        <button
+          onClick={onCreateAgent}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 mb-10"
+        >
+          <Plus className="size-4" />
+          Create your first agent
+        </button>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-lg mx-auto text-left">
           <WelcomeCard icon={<Github className="size-5" />} title="Import from GitHub" desc="We'll scan your repos for agent configs and convert them to Ship format." action="Import" href="/studio/import" color="bg-muted text-foreground" />
           <WelcomeCard icon={<Package className="size-5" />} title="Install from registry" desc="Pre-built agents for fullstack dev, Rust, QA, and more." action="Browse" href="/registry" color="bg-violet-500/10 text-violet-500" />
         </div>
@@ -208,14 +206,14 @@ function StatCard({ icon, label, value, color, href, subtitle }: {
   icon: React.ReactNode; label: string; value: number; color: string; href?: string; subtitle?: string
 }) {
   const content = (
-    <div className="rounded-xl border border-border/60 bg-card p-4 hover:border-border transition-colors">
+    <div className="rounded-xl border border-border/60 bg-card p-4 hover:border-border transition-colors h-full flex flex-col items-center justify-center text-center">
       <div className={`size-8 rounded-lg ${color} flex items-center justify-center mb-2`}>{icon}</div>
       <div className="text-2xl font-bold text-foreground">{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      {subtitle && <div className="text-[10px] text-muted-foreground/50 mt-0.5 truncate">{subtitle}</div>}
+      {subtitle && <div className="text-[10px] text-muted-foreground/50 mt-0.5 truncate max-w-full">{subtitle}</div>}
     </div>
   )
-  return href ? <Link to={href as string} className="no-underline">{content}</Link> : content
+  return href ? <Link to={href as string} className="no-underline h-full">{content}</Link> : content
 }
 
 function SidebarAction({ icon, label, onClick, href }: {

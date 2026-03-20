@@ -38,9 +38,11 @@ export const FEATURED_COLLECTION = {
   badge: 'Featured Collection',
 }
 
-// ── Mock card data ───────────────────────────────────────────────────────────
+// ── Mock card data (dev only — replaced by API in production) ────────────────
 
-export const REGISTRY_CARDS: RegistryCard[] = [
+const isDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
+const MOCK_CARDS: RegistryCard[] = [
   // Skills
   {
     id: 'sk-code-review', name: 'code-review', author: '@ship/official', type: 'skill', icon: 'CR',
@@ -120,6 +122,9 @@ export const REGISTRY_CARDS: RegistryCard[] = [
     installs: 1100, rating: 4.5, installed: false, toolCount: 10,
   },
 ]
+
+/** Show mock cards in dev, empty in production (API populates real data). */
+export const REGISTRY_CARDS: RegistryCard[] = isDev ? MOCK_CARDS : []
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
