@@ -58,7 +58,7 @@ impl ShipServer {
     pub fn is_core_tool(tool_name: &str) -> bool {
         const CORE_TOOLS: &[&str] = &[
             "open_project", "create_note", "create_adr",
-            "activate_workspace", "create_workspace", "complete_workspace",
+            "activate_workspace", "create_workspace", "register_workspace", "complete_workspace",
             "list_stale_worktrees", "set_agent", "sync_workspace", "repair_workspace",
             "list_workspaces", "start_session", "end_session", "log_progress",
             "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
@@ -179,10 +179,11 @@ impl ShipServer {
 
     // ─── Workspace ────────────────────────────────────────────────────────────
 
-    #[tool(description = "Create or update a workspace runtime record (feature/patch/service).")]
-    async fn create_workspace_tool(&self, Parameters(req): Parameters<CreateWorkspaceToolRequest>) -> String {
+    #[tool(description = "Register a workspace record without creating a git worktree. \
+        Use create_workspace when you need the full worktree setup.")]
+    async fn register_workspace(&self, Parameters(req): Parameters<RegisterWorkspaceRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
-        workspace::create_workspace_tool(&project_dir, req)
+        workspace::register_workspace(&project_dir, req)
     }
 
     #[tool(description = "Activate a workspace by branch/id and optionally set its mode override.")]

@@ -24,8 +24,8 @@ fn mode_gate_normalizes_and_blocks_disallowed_tools() {
     ShipServer::enforce_mode_tool_gate(&project_dir, "list_notes").expect("list_notes allowed");
     ShipServer::enforce_mode_tool_gate(&project_dir, "ship_list_notes_tool")
         .expect("prefixed note tool allowed");
-    ShipServer::enforce_mode_tool_gate(&project_dir, "create_workspace_tool")
-        .expect("create workspace must remain control-plane allowed");
+    ShipServer::enforce_mode_tool_gate(&project_dir, "register_workspace")
+        .expect("register workspace must remain control-plane allowed");
     ShipServer::enforce_mode_tool_gate(&project_dir, "repair_workspace")
         .expect("workspace repair must remain control-plane allowed");
 
@@ -47,7 +47,7 @@ async fn mcp_workspace_control_plane_round_trip() {
     *server.active_project.lock().await = Some(project_dir.clone());
 
     let created = server
-        .create_workspace_tool(Parameters(CreateWorkspaceToolRequest {
+        .register_workspace(Parameters(RegisterWorkspaceRequest {
             branch: "feature/mode-control-plane".to_string(),
             workspace_type: Some("feature".to_string()),
             environment_id: None,

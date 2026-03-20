@@ -132,28 +132,20 @@ pub enum Commands {
         zip: bool,
     },
 
-    // ── Profile sync (account required) ──────────────────────────────────────
-    /// Push and pull agent profiles from the Ship cloud
-    Profile {
-        #[command(subcommand)]
-        action: ProfileSyncCommands,
-    },
-
-    // ── Job queue ─────────────────────────────────────────────────────────────
-    /// Manage the agent job queue
+    // ── Workflow (internal — hidden from product help) ────────────────────────
+    #[command(hide = true)]
     Job {
         #[command(subcommand)]
         action: JobCommands,
     },
 
-    // ── Project visibility ────────────────────────────────────────────────────
-    /// List architecture decision records in the current project
+    #[command(hide = true)]
     Adrs,
 
-    /// List notes in the current project
+    #[command(hide = true)]
     Notes,
 
-    /// Migrate notes and ADRs from old ship.db to platform.db
+    #[command(hide = true)]
     Migrate,
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -171,9 +163,8 @@ pub enum Commands {
     },
 
     // ── Capability diff ───────────────────────────────────────────────────────
-    /// Show capability progress delta for the active milestone
+    #[command(hide = true)]
     Diff {
-        /// Milestone target id. If omitted, uses the first active milestone found.
         #[arg(long)]
         milestone: Option<String>,
     },
@@ -191,20 +182,6 @@ pub enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum ProfileSyncCommands {
-    /// Upload .ship/agents/profiles/ to the Ship API (requires login)
-    Push,
-    /// Download profiles from the Ship API (requires login)
-    Pull {
-        /// Pull only the named profile
-        name: Option<String>,
-        /// Overwrite existing profiles without prompting
-        #[arg(long)]
-        force: bool,
     },
 }
 

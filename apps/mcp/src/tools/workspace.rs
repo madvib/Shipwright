@@ -12,14 +12,14 @@ use runtime::workspace::{
 };
 
 use crate::requests::{
-    ActivateWorkspaceRequest, CreateWorkspaceRequest, CreateWorkspaceToolRequest,
+    ActivateWorkspaceRequest, CreateWorkspaceRequest, RegisterWorkspaceRequest,
     ListWorkspacesRequest, RepairWorkspaceRequest, SyncWorkspaceRequest,
 };
 use crate::util::configured_worktree_dir;
 
-pub fn create_workspace_tool(
+pub fn register_workspace(
     project_dir: &Path,
-    req: CreateWorkspaceToolRequest,
+    req: RegisterWorkspaceRequest,
 ) -> String {
     let parsed_workspace_type = match req.workspace_type {
         Some(workspace_type) => match workspace_type.parse::<ShipWorkspaceKind>() {

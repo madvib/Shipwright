@@ -2,7 +2,6 @@ mod add;
 mod agent;
 mod auth;
 mod cli;
-mod cloud;
 mod compile;
 mod config;
 mod dep_skills;
@@ -22,7 +21,7 @@ mod skill;
 mod validate;
 
 use anyhow::Result;
-use cli::{AgentProfileCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, ProfileSyncCommands, SkillCommands};
+use cli::{AgentProfileCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -66,7 +65,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 add::run_add(&root, &package)
             }
-            Commands::Profile { action } => dispatch_profile_sync(action),
             Commands::Validate { profile, json, path } => {
                 let root = path.as_deref()
                     .map(std::fs::canonicalize).transpose()?
@@ -359,18 +357,4 @@ fn dispatch_events(action: EventsCommands) -> Result<()> {
     }
 }
 
-// ── Profile sync subcommands ──────────────────────────────────────────────────
-
-fn dispatch_profile_sync(action: ProfileSyncCommands) -> Result<()> {
-    match action {
-        ProfileSyncCommands::Push => {
-            let root = std::env::current_dir()?;
-            cloud::push_profiles(&root)
-        }
-        ProfileSyncCommands::Pull { name, force } => {
-            let root = std::env::current_dir()?;
-            cloud::pull_profiles(name.as_deref(), force, &root)
-        }
-    }
-}
 

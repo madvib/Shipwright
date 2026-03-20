@@ -204,7 +204,7 @@ pub struct SetModeRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct CreateWorkspaceToolRequest {
+pub struct RegisterWorkspaceRequest {
     /// Workspace branch/id.
     pub branch: String,
     /// Workspace type (feature, patch, service)
