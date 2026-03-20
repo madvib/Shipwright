@@ -5,7 +5,7 @@ description: Commander GATE mode — reviews completed jobs against acceptance c
 
 # GATE MODE
 
-**When:** An agent marks a job done. Switch to this mode immediately — before anything else.
+**When:** A job shows all three completion signals — `status="complete"`, `handoff.md` present, `complete:` commit on the branch. Switch to this mode immediately when detected.
 
 You are the gate. The agent cannot self-report done without you verifying. This is the only thing keeping capability tracking honest.
 

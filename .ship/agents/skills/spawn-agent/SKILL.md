@@ -75,6 +75,11 @@ cat > ~/dev/ship-worktrees/<job-id>/job-spec.md << 'EOF'
 
 Read this file first. It is your complete context.
 
+## Mode
+autonomous
+# autonomous — begin immediately, log questions via append_job_log
+# interactive — present your plan to the human, wait for approval before executing
+
 ## What
 <description>
 
@@ -88,13 +93,20 @@ Profile: <profile>
 ## Constraints
 - Stay within declared file scope
 - Log touched files: `append_job_log(id, "touched: path/to/file")`
-- Mark done: `update_job(id, status="complete")` — commander runs the gate
+
+## Completion Contract
+When acceptance criteria are met, do all three in order:
+1. Commit touched files: `git add <files> && git commit -m "complete: <title>"`
+2. Write handoff.md to this directory (what you did, decisions made, anything incomplete)
+3. `update_job(id="<JOB_ID>", status="complete")`
+
+All three are required. Commander uses all three as completion signals.
 
 ## Context
 Branch: job/<job-id>
 Worktree: ~/dev/ship-worktrees/<job-id>
 Profile: <profile>
-Ship MCP is active in this directory — use it for logging progress.
+Ship MCP is active in this directory.
 EOF
 ```
 

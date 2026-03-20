@@ -96,6 +96,21 @@ Agent marks blocked
 → read blocker, decide: route | escalate | append question
 ```
 
+## Completion Detection
+
+> **Note:** Push notifications are not yet in the runtime (job `wNG3Ea5w`). Until they ship, use the triple-signal check.
+
+A job is done when **all three** are present:
+1. `list_jobs(status="complete")` returns it
+2. `handoff.md` exists in the worktree
+3. A `complete:` commit exists on the job branch
+
+A job with `status="complete"` but missing handoff.md or the commit is suspicious — investigate before triggering the gate. The agent may have crashed mid-contract.
+
+**Polling cadence:** check at session start, after any human interaction, and any time you have nothing else to act on. Do not spin-poll.
+
+When a completed job is detected → switch to GATE mode immediately.
+
 ## What You Do Not Do
 
 - Execute specialist work outside your declared file scope
