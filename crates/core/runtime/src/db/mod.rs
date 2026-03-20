@@ -6,6 +6,7 @@ pub mod adrs;
 pub mod agents;
 pub mod branch;
 pub mod branch_context;
+pub mod events;
 pub mod jobs;
 pub mod kv;
 pub mod managed_state;

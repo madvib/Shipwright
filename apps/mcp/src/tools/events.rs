@@ -58,7 +58,7 @@ pub fn list_events(project_dir: &Path, req: ListEventsRequest) -> String {
         events.retain(|e| format!("{:?}", e.action).to_ascii_lowercase().contains(&af));
     }
 
-    // Keep newest `limit` events (events are ordered ASC by seq)
+    // Keep newest `limit` events (events are ordered ASC by created_at)
     if events.len() > limit {
         events = events.into_iter().rev().take(limit).rev().collect();
     }

@@ -37,8 +37,8 @@ pub use config::{
 };
 
 pub use events::{
-    EVENTS_FILE_NAME, EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
-    export_events_ndjson, ingest_external_events, latest_event_seq, list_events_since, read_events,
+    EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
+    ingest_external_events, list_events_since, read_events, read_recent_events,
     sync_event_snapshot,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
@@ -104,7 +104,7 @@ pub fn gen_nanoid() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::project::{features_dir, get_project_dir, init_project, sanitize_file_name};
+    use crate::project::{get_project_dir, init_project, sanitize_file_name};
     use std::fs;
     use tempfile::tempdir;
 
@@ -216,15 +216,15 @@ mod tests {
 
     // ── Log tests ───────────────────────────────────────────────────────────────
 
-    // NOTE: log/event tests are no-ops — event_log table was killed.
-    // These verify the stub functions don't panic.
     #[test]
     fn test_log_action() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action(&project_dir, "test", "details")?;
         let entries = read_log_entries(&project_dir)?;
-        assert!(entries.is_empty(), "event_log killed — reads return empty");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].action, "test");
+        assert_eq!(entries[0].details, "details");
         Ok(())
     }
 
@@ -234,7 +234,8 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action_by(&project_dir, "agent", "create", "issue-abc.md")?;
         let entries = read_log_entries(&project_dir)?;
-        assert!(entries.is_empty(), "event_log killed — reads return empty");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].actor, "agent");
         Ok(())
     }
 
@@ -245,7 +246,7 @@ mod tests {
         log_action(&project_dir, "create", "first entry")?;
         log_action(&project_dir, "update", "second entry")?;
         let entries = read_log_entries(&project_dir)?;
-        assert!(entries.is_empty(), "event_log killed — reads return empty");
+        assert_eq!(entries.len(), 2);
         Ok(())
     }
 
@@ -347,27 +348,26 @@ mod tests {
         Ok(())
     }
 
-    // NOTE: event_log table was killed — these verify stubs don't panic.
     #[test]
     fn test_event_stream_since() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        let seq0 = latest_event_seq(&ship_path)?;
-        assert_eq!(seq0, 0, "event_log killed — always returns 0");
-        append_event(&ship_path, "ship", EventEntity::Feature, EventAction::Create, "feat-1", None)?;
-        let events = list_events_since(&ship_path, seq0, None)?;
-        assert!(events.is_empty(), "event_log killed — reads return empty");
+        let before = chrono::Utc::now();
+        append_event(&ship_path, "ship", EventEntity::Workspace, EventAction::Create, "feat-1", None)?;
+        let events = list_events_since(&ship_path, &before, None)?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].subject, "feat-1");
         Ok(())
     }
 
     #[test]
-    fn test_event_export_on_demand() -> anyhow::Result<()> {
+    fn test_event_append_and_read() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
         append_event(&ship_path, "ship", EventEntity::Project, EventAction::Log, "export", None)?;
-        let export_path = ship_path.join("generated").join("events-export.ndjson");
-        let count = export_events_ndjson(&ship_path, &export_path)?;
-        assert_eq!(count, 0, "event_log killed — export returns 0");
+        let events = read_events(&ship_path)?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].entity, EventEntity::Project);
         Ok(())
     }
 
@@ -379,26 +379,24 @@ mod tests {
         // Ensure snapshot is synced to current state.
         let _ = ingest_external_events(&ship_path)?;
 
-        let manual = features_dir(&ship_path).join("manual-sync.md");
+        let notes_dir = ship_path.join("project/notes");
+        let manual = notes_dir.join("manual-sync.md");
         fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nbody\n")?;
         let created = ingest_external_events(&ship_path)?;
         assert_eq!(created.len(), 1);
-        assert_eq!(created[0].actor, "filesystem");
-        assert_eq!(created[0].entity, EventEntity::Feature);
+        assert_eq!(created[0].entity, EventEntity::Note);
         assert_eq!(created[0].action, EventAction::Create);
 
         fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nchanged\n")?;
         let updated = ingest_external_events(&ship_path)?;
         assert_eq!(updated.len(), 1);
-        assert_eq!(updated[0].actor, "filesystem");
-        assert_eq!(updated[0].entity, EventEntity::Feature);
+        assert_eq!(updated[0].entity, EventEntity::Note);
         assert_eq!(updated[0].action, EventAction::Update);
 
         fs::remove_file(&manual)?;
         let deleted = ingest_external_events(&ship_path)?;
         assert_eq!(deleted.len(), 1);
-        assert_eq!(deleted[0].actor, "filesystem");
-        assert_eq!(deleted[0].entity, EventEntity::Feature);
+        assert_eq!(deleted[0].entity, EventEntity::Note);
         assert_eq!(deleted[0].action, EventAction::Delete);
         Ok(())
     }

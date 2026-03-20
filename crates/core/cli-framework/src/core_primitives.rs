@@ -3,7 +3,7 @@ use runtime::{
     AgentProfile, McpServerConfig, McpServerType, SkillInstallScope, add_agent, add_mcp_server,
     autodetect_providers, create_skill, create_user_skill, delete_skill, delete_user_skill,
     disable_provider, enable_provider, get_active_agent, get_config, get_effective_skill,
-    ingest_external_events, list_effective_skills, list_events_since, list_mcp_servers,
+    ingest_external_events, list_effective_skills, list_mcp_servers,
     list_models, list_providers, list_skills, list_user_skills, log_action, remove_agent,
     remove_mcp_server, set_active_agent, update_skill, update_user_skill,
 };
@@ -67,9 +67,8 @@ pub enum ModeAction {
 
 #[derive(Debug, Clone)]
 pub enum EventAction {
-    List { since: u64, limit: usize },
+    List { limit: usize },
     Ingest,
-    Export { output: Option<PathBuf> },
 }
 
 #[derive(Debug, Clone)]
@@ -308,8 +307,8 @@ pub fn handle_mode_action(action: ModeAction, project_dir: Option<PathBuf>) -> R
 
 pub fn handle_event_action(action: EventAction, project_dir: &Path) -> Result<()> {
     match action {
-        EventAction::List { since, limit } => {
-            let events = list_events_since(project_dir, since, Some(limit))?;
+        EventAction::List { limit } => {
+            let events = runtime::read_recent_events(project_dir, limit)?;
             if events.is_empty() {
                 println!("No events found.");
             } else {
@@ -320,8 +319,8 @@ pub fn handle_event_action(action: EventAction, project_dir: &Path) -> Result<()
                         .map(|details| format!(" — {}", details))
                         .unwrap_or_default();
                     println!(
-                        "#{:04} {} [{}] {:?}.{:?} {}{}",
-                        event.seq,
+                        "{} {} [{}] {:?}.{:?} {}{}",
+                        event.id,
                         event.timestamp.format("%Y-%m-%d %H:%M:%S"),
                         event.actor,
                         event.entity,
@@ -345,8 +344,8 @@ pub fn handle_event_action(action: EventAction, project_dir: &Path) -> Result<()
                         .map(|details| format!(" — {}", details))
                         .unwrap_or_default();
                     println!(
-                        "#{:04} {} [{}] {:?}.{:?} {}{}",
-                        event.seq,
+                        "{} {} [{}] {:?}.{:?} {}{}",
+                        event.id,
                         event.timestamp.format("%Y-%m-%d %H:%M:%S"),
                         event.actor,
                         event.entity,
@@ -356,16 +355,6 @@ pub fn handle_event_action(action: EventAction, project_dir: &Path) -> Result<()
                     );
                 }
             }
-        }
-        EventAction::Export { output } => {
-            let output_path = output.unwrap_or_else(|| project_dir.join(runtime::EVENTS_FILE_NAME));
-            let exported = runtime::export_events_ndjson(project_dir, &output_path)?;
-            println!(
-                "Exported {} event{} to {}",
-                exported,
-                if exported == 1 { "" } else { "s" },
-                output_path.display()
-            );
         }
     }
     Ok(())
