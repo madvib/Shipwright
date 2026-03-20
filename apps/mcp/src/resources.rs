@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rmcp::model::{AnnotateAble, RawResource, RawResourceTemplate};
 use runtime::{
-    get_config, list_events_since, list_models, list_providers, read_log,
+    get_config, list_models, list_providers, read_log, read_recent_events,
     workspace::{
         get_active_workspace_session as runtime_get_active_workspace_session,
         get_workspace as runtime_get_workspace,
@@ -59,13 +59,13 @@ pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResource
         ),
         tmpl("ship://sessions/{workspace}", "Workspace Sessions", "application/json"),
         tmpl("ship://providers/{id}/models", "Provider Models", "application/json"),
-        tmpl("ship://events/{since}", "Event Stream Since Seq", "text/plain"),
+        tmpl("ship://events/{limit}", "Recent Events", "text/plain"),
         tmpl("ship://skills/{id}", "Skill", "text/markdown"),
     ]
 }
 
-pub fn render_events_resource(project_dir: &Path, since: u64, limit: usize) -> Option<String> {
-    match list_events_since(project_dir, since, Some(limit)) {
+pub fn render_events_resource(project_dir: &Path, limit: usize) -> Option<String> {
+    match read_recent_events(project_dir, limit) {
         Ok(events) => {
             if events.is_empty() {
                 return Some("No events found.".to_string());
@@ -78,8 +78,8 @@ pub fn render_events_resource(project_dir: &Path, since: u64, limit: usize) -> O
                     .map(|d| format!(" — {}", d))
                     .unwrap_or_default();
                 out.push_str(&format!(
-                    "- #{} {} [{}] {:?}.{:?} {}{}\n",
-                    e.seq,
+                    "- {} {} [{}] {:?}.{:?} {}{}\n",
+                    e.id,
                     e.timestamp.format("%Y-%m-%d %H:%M:%S"),
                     e.actor,
                     e.entity,
@@ -176,13 +176,13 @@ pub async fn resolve_resource_uri(
         };
     }
     if uri == "ship://events" {
-        return render_events_resource(dir, 0, 100);
+        return render_events_resource(dir, 100);
     }
-    if let Some(since) = uri.strip_prefix("ship://events/") {
-        let Ok(since) = since.parse::<u64>() else {
-            return Some(format!("Error: invalid event sequence '{}'", since));
+    if let Some(limit_str) = uri.strip_prefix("ship://events/") {
+        let Ok(limit) = limit_str.parse::<usize>() else {
+            return Some(format!("Error: invalid limit '{}'", limit_str));
         };
-        return render_events_resource(dir, since, 100);
+        return render_events_resource(dir, limit);
     }
     if uri == "ship://workspaces" {
         return match runtime_list_workspaces(dir) {

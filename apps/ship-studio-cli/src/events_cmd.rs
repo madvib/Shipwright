@@ -91,16 +91,16 @@ pub fn run_events(
 
     // Table header
     println!(
-        "{:<5} {:<20} {:<16} {:<24} {}",
-        "SEQ", "TIMESTAMP", "ACTOR", "ENTITY:ACTION", "SUBJECT"
+        "{:<10} {:<20} {:<16} {:<24} {}",
+        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION", "SUBJECT"
     );
     println!("{}", "-".repeat(90));
 
     for ev in &events {
         let entity_action = format!("{:?}:{:?}", ev.entity, ev.action).to_ascii_lowercase();
         println!(
-            "{:<5} {:<20} {:<16} {:<24} {}",
-            ev.seq,
+            "{:<10} {:<20} {:<16} {:<24} {}",
+            trunc(&ev.id, 10),
             fmt_ts(&ev.timestamp),
             trunc(&ev.actor, 16),
             trunc(&entity_action, 24),

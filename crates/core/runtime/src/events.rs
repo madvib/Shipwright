@@ -7,12 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub const EVENTS_FILE_NAME: &str = "events.ndjson";
 const EVENT_INDEX_FILE: &str = "generated/event_index.json";
 const TRACKED_DIRS: &[&str] = &[
-    "project/specs",
-    "project/features",
-    "project/releases",
     "project/notes",
     "project/adrs",
 ];
@@ -25,13 +21,9 @@ pub enum EventEntity {
     Workspace,
     Session,
     Note,
-    Spec,
     Adr,
-    Feature,
-    Release,
     Config,
     Mode,
-    Prompt,
     Plugin,
     Ghost,
     Time,
@@ -40,19 +32,15 @@ pub enum EventEntity {
 }
 
 impl EventEntity {
-    fn as_db(&self) -> &'static str {
+    pub(crate) fn as_db(&self) -> &'static str {
         match self {
             EventEntity::Project => "project",
             EventEntity::Workspace => "workspace",
             EventEntity::Session => "session",
             EventEntity::Note => "note",
-            EventEntity::Spec => "spec",
             EventEntity::Adr => "adr",
-            EventEntity::Feature => "feature",
-            EventEntity::Release => "release",
             EventEntity::Config => "config",
             EventEntity::Mode => "mode",
-            EventEntity::Prompt => "prompt",
             EventEntity::Plugin => "plugin",
             EventEntity::Ghost => "ghost",
             EventEntity::Time => "time",
@@ -61,19 +49,15 @@ impl EventEntity {
         }
     }
 
-    fn from_db(value: &str) -> Result<Self> {
+    pub(crate) fn from_db(value: &str) -> Result<Self> {
         match value {
             "project" => Ok(EventEntity::Project),
             "workspace" => Ok(EventEntity::Workspace),
             "session" => Ok(EventEntity::Session),
             "note" => Ok(EventEntity::Note),
-            "spec" => Ok(EventEntity::Spec),
             "adr" => Ok(EventEntity::Adr),
-            "feature" => Ok(EventEntity::Feature),
-            "release" => Ok(EventEntity::Release),
             "config" => Ok(EventEntity::Config),
             "mode" => Ok(EventEntity::Mode),
-            "prompt" => Ok(EventEntity::Prompt),
             "plugin" => Ok(EventEntity::Plugin),
             "ghost" => Ok(EventEntity::Ghost),
             "time" => Ok(EventEntity::Time),
@@ -106,7 +90,7 @@ pub enum EventAction {
 }
 
 impl EventAction {
-    fn as_db(&self) -> &'static str {
+    pub(crate) fn as_db(&self) -> &'static str {
         match self {
             EventAction::Init => "init",
             EventAction::Create => "create",
@@ -127,7 +111,7 @@ impl EventAction {
         }
     }
 
-    fn from_db(value: &str) -> Result<Self> {
+    pub(crate) fn from_db(value: &str) -> Result<Self> {
         match value {
             "init" => Ok(EventAction::Init),
             "create" => Ok(EventAction::Create),
@@ -152,7 +136,7 @@ impl EventAction {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct EventRecord {
-    pub seq: u64,
+    pub id: String,
     pub timestamp: DateTime<Utc>,
     pub actor: String,
     pub entity: EventEntity,
@@ -161,6 +145,8 @@ pub struct EventRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
 }
+
+// ─── Filesystem ingestion types (internal) ──────────────────────────────────
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct FileFingerprint {
@@ -177,81 +163,50 @@ fn event_index_path(project_dir: &Path) -> PathBuf {
     project_dir.join(EVENT_INDEX_FILE)
 }
 
-// NOTE: event_log table was killed in the DB consolidation.
-// These functions are stubs until the events rewrite lands.
+// ─── Public API ─────────────────────────────────────────────────────────────
 
 pub fn ensure_event_log(_project_dir: &Path) -> Result<()> {
+    // Schema is applied by db::ensure_db — nothing to do here.
     Ok(())
 }
 
-fn append_event_internal(
-    _project_dir: &Path,
-    actor: &str,
-    entity: EventEntity,
-    action: EventAction,
-    subject: String,
-    details: Option<String>,
-    _sync_snapshot: bool,
-) -> Result<EventRecord> {
-    Ok(EventRecord {
-        seq: 0,
-        timestamp: Utc::now(),
-        actor: actor.to_string(),
-        entity,
-        action,
-        subject,
-        details,
-    })
-}
-
 pub fn append_event(
-    project_dir: &Path,
+    ship_dir: &Path,
     actor: &str,
     entity: EventEntity,
     action: EventAction,
     subject: impl Into<String>,
     details: Option<String>,
 ) -> Result<EventRecord> {
-    append_event_internal(
-        project_dir,
+    let subject = subject.into();
+    let entity_id = if subject.is_empty() { None } else { Some(subject.as_str()) };
+    crate::db::events::insert_event(
+        ship_dir,
         actor,
-        entity,
-        action,
-        subject.into(),
-        details,
-        true,
+        &entity,
+        entity_id,
+        &action,
+        details.as_deref(),
     )
 }
 
-pub fn read_events(_project_dir: &Path) -> Result<Vec<EventRecord>> {
-    Ok(Vec::new())
-}
-
-pub fn latest_event_seq(_project_dir: &Path) -> Result<u64> {
-    Ok(0)
+pub fn read_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
+    crate::db::events::list_all_events(ship_dir)
 }
 
 pub fn list_events_since(
-    _project_dir: &Path,
-    _since_seq: u64,
-    _limit: Option<usize>,
+    ship_dir: &Path,
+    since: &DateTime<Utc>,
+    limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
-    Ok(Vec::new())
+    crate::db::events::list_events_since_time(ship_dir, since, limit)
 }
 
-pub fn export_events_ndjson(project_dir: &Path, output_path: &Path) -> Result<usize> {
-    let events = read_events(project_dir)?;
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut output = String::new();
-    for event in &events {
-        output.push_str(&serde_json::to_string(event)?);
-        output.push('\n');
-    }
-    crate::fs_util::write_atomic(output_path, output)?;
-    Ok(events.len())
+pub fn read_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
+    crate::db::events::list_recent_events(ship_dir, limit)
 }
+
+// ─── Filesystem ingestion ───────────────────────────────────────────────────
 
 fn load_snapshot(project_dir: &Path) -> Result<EventSnapshot> {
     let path = event_index_path(project_dir);
@@ -363,13 +318,6 @@ pub fn sync_event_snapshot(project_dir: &Path) -> Result<usize> {
 }
 
 fn classify_path(rel_path: &str) -> Option<(EventEntity, String, Option<String>)> {
-    if let Some(file) = rel_path.strip_prefix("project/specs/") {
-        return Some((
-            EventEntity::Spec,
-            file.to_string(),
-            Some(format!("path={}", rel_path)),
-        ));
-    }
     if let Some(file) = rel_path.strip_prefix("project/adrs/") {
         return Some((
             EventEntity::Adr,
@@ -380,20 +328,6 @@ fn classify_path(rel_path: &str) -> Option<(EventEntity, String, Option<String>)
     if let Some(file) = rel_path.strip_prefix("project/notes/") {
         return Some((
             EventEntity::Note,
-            file.to_string(),
-            Some(format!("path={}", rel_path)),
-        ));
-    }
-    if let Some(file) = rel_path.strip_prefix("project/features/") {
-        return Some((
-            EventEntity::Feature,
-            file.to_string(),
-            Some(format!("path={}", rel_path)),
-        ));
-    }
-    if let Some(file) = rel_path.strip_prefix("project/releases/") {
-        return Some((
-            EventEntity::Release,
             file.to_string(),
             Some(format!("path={}", rel_path)),
         ));
@@ -463,14 +397,13 @@ pub fn ingest_external_events(project_dir: &Path) -> Result<Vec<EventRecord>> {
             _ => base_details,
         };
 
-        let record = append_event_internal(
+        let record = append_event(
             project_dir,
             "filesystem",
             entity,
             action,
             subject,
             details,
-            false,
         )?;
         emitted.push(record);
     }

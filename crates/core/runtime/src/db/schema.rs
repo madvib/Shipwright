@@ -210,6 +210,17 @@ CREATE INDEX IF NOT EXISTS capability_phase_idx ON capability(target_id, phase, 
 CREATE INDEX IF NOT EXISTS capability_assignment_idx ON capability(assigned_to, status);
 CREATE INDEX IF NOT EXISTS capability_preset_idx ON capability(preset_hint);
 
+-- ─── Event log ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS event_log (
+    id          TEXT PRIMARY KEY NOT NULL,
+    actor       TEXT NOT NULL DEFAULT 'ship',
+    entity_type TEXT NOT NULL,
+    entity_id   TEXT,
+    action      TEXT NOT NULL,
+    detail      TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ─── Agent runtime ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS agent_runtime_settings (
   id              INTEGER PRIMARY KEY CHECK(id = 1),
