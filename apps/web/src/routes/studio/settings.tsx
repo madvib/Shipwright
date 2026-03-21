@@ -8,7 +8,13 @@ import {
   GlobalHooksSection, EnvVarsSection, CLISection, DangerZoneSection,
 } from '#/features/settings/sections'
 
-export const Route = createFileRoute('/studio/settings')({ component: SettingsPage, ssr: false })
+import { SettingsSkeleton } from '#/features/studio/StudioSkeleton'
+
+export const Route = createFileRoute('/studio/settings')({
+  component: SettingsPage,
+  pendingComponent: SettingsSkeleton,
+  ssr: false,
+})
 
 function SettingsPage() {
   const { data: session, isPending } = authClient.useSession()

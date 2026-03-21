@@ -7,7 +7,12 @@ import { SkillsEditor } from '#/features/studio/skills-ide/SkillsEditor'
 import { SkillsPreviewPanel } from '#/features/studio/skills-ide/SkillsPreviewPanel'
 import { CreateSkillDialog } from '#/features/studio/skills-ide/CreateSkillDialog'
 
-export const Route = createFileRoute('/studio/skills')({ component: SkillsIDEPage })
+import { SkillsIdeSkeleton } from '#/features/studio/StudioSkeleton'
+
+export const Route = createFileRoute('/studio/skills')({
+  component: SkillsIDEPage,
+  pendingComponent: SkillsIdeSkeleton,
+})
 
 function SkillsIDEPage() {
   const ide = useSkillsIDE()
