@@ -1,6 +1,6 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, useMemo } from 'react'
-import { Github, Search, ArrowLeft, Loader2 } from 'lucide-react'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Github, Search, ArrowLeft, Loader2, RefreshCw, Download } from 'lucide-react'
 import { Button } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
 import {
@@ -10,6 +10,9 @@ import type { GitHubRepo } from '#/features/settings/GitHubImportList'
 
 export const Route = createFileRoute('/studio/import')({ component: ImportPage, ssr: false })
 
+interface ConnectedRepo { id: number; full_name: string; private: boolean }
+interface Installation { installation_id: number; account_login: string; repos: ConnectedRepo[] }
+
 function ImportPage() {
   const { data: session } = authClient.useSession()
   const isConnected = !!session?.user
@@ -18,6 +21,23 @@ function ImportPage() {
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
   const [importingId, setImportingId] = useState<number | null>(null)
+  const [installations, setInstallations] = useState<Installation[]>([])
+  const [syncingRepo, setSyncingRepo] = useState<string | null>(null)
+  const [syncResult, setSyncResult] = useState<Record<string, 'success' | 'error' | 'empty'>>({})
+
+  const fetchInstallations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/github/installations')
+      if (res.ok) {
+        const data = (await res.json()) as { installations: Installation[] }
+        setInstallations(data.installations ?? [])
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    if (isConnected) void fetchInstallations()
+  }, [isConnected, fetchInstallations])
 
   const fetchRepos = async () => {
     setLoading(true)
@@ -27,12 +47,8 @@ function ImportPage() {
         const data = (await res.json()) as GitHubRepo[]
         setRepos(data)
       }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false)
-      setFetched(true)
-    }
+    } catch { /* ignore */ }
+    finally { setLoading(false); setFetched(true) }
   }
 
   const handleImportPr = async (repo: GitHubRepo) => {
@@ -47,47 +63,58 @@ function ImportPage() {
         const result = (await res.json()) as { pr_number?: number }
         setRepos((prev) =>
           prev.map((r) =>
-            r.id === repo.id
-              ? { ...r, imported: true, import_pr_number: result.pr_number ?? null }
-              : r,
+            r.id === repo.id ? { ...r, imported: true, import_pr_number: result.pr_number ?? null } : r,
           ),
         )
       }
-    } catch {
-      /* ignore */
-    } finally {
-      setImportingId(null)
-    }
+    } catch { /* ignore */ }
+    finally { setImportingId(null) }
   }
+
+  const navigate = useNavigate()
+
+  const handleSyncConfig = async (fullName: string) => {
+    const [owner, repo] = fullName.split('/')
+    if (!owner || !repo) return
+    setSyncingRepo(fullName)
+    try {
+      const res = await fetch(`/api/github/repos-config?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`)
+      if (res.status === 422) {
+        setSyncResult((prev) => ({ ...prev, [fullName]: 'empty' }))
+        return
+      }
+      if (!res.ok) { setSyncResult((prev) => ({ ...prev, [fullName]: 'error' })); return }
+      const library = await res.json()
+      // Store the synced library in sessionStorage so Studio can pick it up
+      sessionStorage.setItem('ship:imported-library', JSON.stringify(library))
+      sessionStorage.setItem('ship:imported-from', fullName)
+      setSyncResult((prev) => ({ ...prev, [fullName]: 'success' }))
+      // Navigate to studio to load the library
+      void navigate({ to: '/studio' })
+    } catch { setSyncResult((prev) => ({ ...prev, [fullName]: 'error' })) }
+    finally { setSyncingRepo(null) }
+  }
+
+  const connectedRepos = useMemo(() => installations.flatMap((i) => i.repos), [installations])
 
   const sortedRepos = useMemo(() => {
     const order = { detected: 0, 'no-config': 1, imported: 2 } as const
     const filtered = filter.trim()
-      ? repos.filter((r) =>
-          r.full_name.toLowerCase().includes(filter.toLowerCase()),
-        )
+      ? repos.filter((r) => r.full_name.toLowerCase().includes(filter.toLowerCase()))
       : repos
-    return [...filtered].sort(
-      (a, b) => order[getRepoState(a)] - order[getRepoState(b)],
-    )
+    return [...filtered].sort((a, b) => order[getRepoState(a)] - order[getRepoState(b)])
   }, [repos, filter])
 
   return (
     <div className="mx-auto max-w-[640px] px-5 py-6 pb-24">
       <div className="mb-2">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition mb-3"
-        >
-          <ArrowLeft className="size-3" />
-          Back
+        <Link to="/" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition mb-3">
+          <ArrowLeft className="size-3" /> Back
         </Link>
       </div>
 
       <div className="mb-5">
-        <h1 className="font-display text-xl font-bold text-foreground">
-          Import from GitHub
-        </h1>
+        <h1 className="font-display text-xl font-bold text-foreground">Import from GitHub</h1>
         <p className="text-[13px] text-muted-foreground">
           Select repos to convert. Ship will create a PR adding .ship/ config.
         </p>
@@ -97,24 +124,26 @@ function ImportPage() {
         <NotConnectedState />
       ) : (
         <>
-          <ConnectedHeader
-            userName={session?.user?.name || 'Connected'}
-            filter={filter}
-            onFilterChange={setFilter}
-          />
+          <ConnectedHeader userName={session?.user?.name || 'Connected'} filter={filter} onFilterChange={setFilter} />
+
+          {connectedRepos.length > 0 && (
+            <ConnectedReposSection
+              repos={connectedRepos}
+              syncingRepo={syncingRepo}
+              syncResult={syncResult}
+              onSync={handleSyncConfig}
+            />
+          )}
 
           {!fetched && !loading && (
             <div className="mt-6 text-center">
-              <Button onClick={() => void fetchRepos()}>
-                Load repositories
-              </Button>
+              <Button onClick={() => void fetchRepos()}>Load repositories</Button>
             </div>
           )}
 
           {loading && (
             <div className="mt-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Loading repositories...
+              <Loader2 className="size-4 animate-spin" /> Loading repositories...
             </div>
           )}
 
@@ -126,12 +155,7 @@ function ImportPage() {
                 </p>
               ) : (
                 sortedRepos.map((repo) => (
-                  <RepoRow
-                    key={repo.id}
-                    repo={repo}
-                    isImporting={importingId === repo.id}
-                    onImportPr={() => void handleImportPr(repo)}
-                  />
+                  <RepoRow key={repo.id} repo={repo} isImporting={importingId === repo.id} onImportPr={() => void handleImportPr(repo)} />
                 ))
               )}
             </div>
@@ -207,6 +231,52 @@ function ConnectedHeader({
           placeholder="Filter repos..."
           className="flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none min-w-0"
         />
+      </div>
+    </div>
+  )
+}
+
+function ConnectedReposSection({
+  repos,
+  syncingRepo,
+  syncResult,
+  onSync,
+}: {
+  repos: Array<{ id: number; full_name: string; private: boolean }>
+  syncingRepo: string | null
+  syncResult: Record<string, 'success' | 'error' | 'empty'>
+  onSync: (fullName: string) => void
+}) {
+  return (
+    <div className="mt-5">
+      <div className="mb-2 flex items-center gap-1.5">
+        <Download className="size-3 text-primary" />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+          Connected repos
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {repos.map((repo) => {
+          const status = syncResult[repo.full_name]
+          const isSyncing = syncingRepo === repo.full_name
+          return (
+            <div key={repo.id} className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+                <RefreshCw className={`size-4 text-primary ${isSyncing ? 'animate-spin' : ''}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-foreground truncate">{repo.full_name}</div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground">
+                  {status === 'success' ? 'Config synced' : status === 'empty' ? 'No config found' : status === 'error' ? 'Sync failed' : 'Ship App installed'}
+                </div>
+              </div>
+              <Button size="sm" onClick={() => onSync(repo.full_name)} disabled={isSyncing || status === 'success'}>
+                {isSyncing ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
+                {status === 'success' ? 'Synced' : 'Sync config'}
+              </Button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

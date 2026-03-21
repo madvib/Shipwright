@@ -190,3 +190,24 @@ export const packageSkills = sqliteTable(
 
 export type PackageSkill = typeof packageSkills.$inferSelect
 export type InsertPackageSkill = typeof packageSkills.$inferInsert
+
+// ---------------------------------------------------------------------------
+// GitHub App installations
+// ---------------------------------------------------------------------------
+
+export const githubInstallations = sqliteTable(
+  'github_installations',
+  {
+    id: text('id').notNull().primaryKey(),
+    installationId: integer('installation_id').notNull().unique(),
+    accountLogin: text('account_login').notNull(),
+    accountType: text('account_type').notNull(), // 'User' | 'Organization'
+    reposJson: text('repos_json').notNull().default('[]'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('gh_install_account').on(t.accountLogin)],
+)
+
+export type GithubInstallation = typeof githubInstallations.$inferSelect
+export type InsertGithubInstallation = typeof githubInstallations.$inferInsert
