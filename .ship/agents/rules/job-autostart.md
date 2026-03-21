@@ -1,6 +1,6 @@
 # Job Autostart
 
-If a file named `job-spec.md` exists in your current working directory, read it immediately at session start.
+On session start, check for a job spec at `.ship-session/job-spec.md` (preferred) or `job-spec.md` in the working directory. If found, read it immediately.
 
 Then check the `## Mode` field:
 

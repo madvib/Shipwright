@@ -3,18 +3,20 @@
 # Referenced via: [permissions] preset = "<name>"
 # Presets are templates, not security boundaries. Users customize from here.
 # Studio presents these as clickable options that prefill the permission form.
-#
-# Base rules are injected by the compiler into ALL presets automatically:
-#   always_allow = ["mcp__ship__*", "Bash(ship *)"]
-#   always_deny  = ["Bash(sqlite3 ~/.ship/*)", "Bash(git push*)", "Bash(*publish*)",
-#                    "Read(.env*)", "Write(.env*)", "Read(.dev.vars*)", "Write(.dev.vars*)",
-#                    "Read(credentials*)", "Write(credentials*)", "Read(secrets/*)", "Write(secrets/*)"]
-#   always_ask   = ["Write(.ship/*)", "Edit(.ship/*)"]
-#   autoMemoryEnabled = false
 
 [ship-readonly]
-# Read-only analysis. Reviewer agents, gate agents, auditors.
+# Read-only analysis. Reviewer agents, gate agents, auditors, tutors.
 default_mode = "plan"
+tools_allow = [
+  "Read",
+  "Glob",
+  "Grep",
+  "Bash(ship *)",
+  "mcp__ship__*",
+  "mcp__*__read*",
+  "mcp__*__list*",
+  "mcp__*__search*",
+]
 tools_deny = [
   "Write(*)",
   "Edit(*)",
@@ -25,15 +27,34 @@ tools_deny = [
 # Interactive sessions. Human-paired work, commander, brainstorming.
 # Default for new profiles in Studio.
 default_mode = "default"
+tools_allow = [
+  "Read",
+  "Glob",
+  "Grep",
+  "Bash(ship *)",
+  "mcp__ship__*",
+]
 
 [ship-autonomous]
 # Dispatched specialist agents working in worktrees. Zero prompts.
 default_mode = "dontAsk"
+tools_allow = [
+  "Read",
+  "Glob",
+  "Grep",
+  "Bash(ship *)",
+  "mcp__ship__*",
+]
 
 [ship-elevated]
 # Deploy and release agents. Unlocks git push and publish.
 default_mode = "dontAsk"
-tools_allow_override = [
+tools_allow = [
+  "Read",
+  "Glob",
+  "Grep",
+  "Bash(ship *)",
   "Bash(git push*)",
   "Bash(*publish*)",
+  "mcp__ship__*",
 ]
