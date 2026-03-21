@@ -82,16 +82,12 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<AgentReport> {
     let mut reports = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
-    // Primary: agents/*.toml (flat)
+    // Primary: agents/*.{jsonc,toml} (flat)
     if let Ok(entries) = std::fs::read_dir(agents_dir) {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "toml") && e.path().is_file())
-            // Exclude known non-agent TOML files
-            .filter(|e| {
-                let name = e.file_name();
-                let name_str = name.to_string_lossy();
-                name_str != "mcp.toml" && name_str != "permissions.toml"
-            })
+            .filter(|e| crate::paths::is_config_ext(&e.path()) && e.path().is_file())
+            // Exclude known non-agent config files
+            .filter(|e| crate::paths::is_agent_config(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
@@ -102,13 +98,13 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<AgentReport> {
         }
     }
 
-    // Compat: agents/profiles/*.toml
+    // Compat: agents/profiles/*.{jsonc,toml}
     let profiles_dir = agents_dir.join("profiles");
     if profiles_dir.exists()
         && let Ok(entries) = std::fs::read_dir(&profiles_dir)
     {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+            .filter(|e| crate::paths::is_config_ext(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
@@ -127,7 +123,7 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<AgentReport> {
         && let Ok(entries) = std::fs::read_dir(&presets_dir)
     {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+            .filter(|e| crate::paths::is_config_ext(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
@@ -145,17 +141,14 @@ fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<AgentReport> {
 pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> AgentReport {
     let mut errors = Vec::new();
 
-    // 1. Parse TOML
-    let agent = match std::fs::read_to_string(agent_path)
-        .map_err(|e| e.to_string())
-        .and_then(|s| toml::from_str::<AgentConfig>(&s).map_err(|e| e.to_string()))
-    {
+    // 1. Parse config (JSONC or TOML based on extension)
+    let agent = match AgentConfig::load(agent_path) {
         Ok(p) => p,
         Err(e) => {
             errors.push(ValidationError {
                 agent: agent_id.to_string(),
                 file: agent_path.display().to_string(),
-                error: format!("TOML parse error: {}", e),
+                error: format!("config parse error: {}", e),
             });
             return AgentReport { agent_id: agent_id.to_string(), errors };
         }
@@ -175,8 +168,9 @@ pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> A
         }
     }
 
-    // 3. MCP server refs exist in mcp.toml AND have required fields
-    let mcp_path = agents_dir.join("mcp.toml");
+    // 3. MCP server refs exist in mcp config AND have required fields
+    let mcp_jsonc = agents_dir.join("mcp.jsonc");
+    let mcp_path = if mcp_jsonc.exists() { mcp_jsonc } else { agents_dir.join("mcp.toml") };
     let mcp_file = load_mcp_file(&mcp_path);
     for server_id in &agent.mcp.servers {
         match mcp_file.servers.iter().find(|s| &s.id == server_id) {
@@ -219,7 +213,8 @@ pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> A
                 error: "permissions.preset must be a non-empty string".to_string(),
             });
         } else {
-            let perm_path = agents_dir.join("permissions.toml");
+            let perm_jsonc = agents_dir.join("permissions.jsonc");
+            let perm_path = if perm_jsonc.exists() { perm_jsonc } else { agents_dir.join("permissions.toml") };
             if perm_path.exists() && load_permission_preset(agents_dir, preset_name).is_none() {
                 errors.push(ValidationError {
                     agent: agent_id.to_string(),

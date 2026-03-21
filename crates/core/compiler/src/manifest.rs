@@ -116,21 +116,24 @@ impl ShipManifest {
     pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
         let raw: RawShipManifest = toml::from_str(s)
             .map_err(|e| anyhow::anyhow!("Failed to parse ship.toml: {e}"))?;
+        Self::from_raw(raw)
+    }
 
-        // Validate [module] section presence.
+    /// Validate a raw manifest and produce a [`ShipManifest`].
+    fn from_raw(raw: RawShipManifest) -> anyhow::Result<Self> {
         let raw_module = raw
             .module
-            .ok_or_else(|| anyhow::anyhow!("[module] section is required in ship.toml"))?;
+            .ok_or_else(|| anyhow::anyhow!("[module] section is required in ship manifest"))?;
 
         let name = raw_module
             .name
             .filter(|n| !n.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("[module].name is required in ship.toml"))?;
+            .ok_or_else(|| anyhow::anyhow!("[module].name is required in ship manifest"))?;
 
         let version = raw_module
             .version
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("[module].version is required in ship.toml"))?;
+            .ok_or_else(|| anyhow::anyhow!("[module].version is required in ship manifest"))?;
 
         // Validate semver (strip optional v-prefix).
         let ver_str = version.trim_start_matches('v');
@@ -146,7 +149,7 @@ impl ShipManifest {
             };
             if v.is_empty() {
                 anyhow::bail!(
-                    "Dependency '{}' has an empty version constraint in ship.toml",
+                    "Dependency '{}' has an empty version constraint in ship manifest",
                     path
                 );
             }
@@ -164,11 +167,22 @@ impl ShipManifest {
         })
     }
 
-    /// Read and parse from a file path.
+    /// Parse from a JSONC string and validate required fields and semver.
+    pub fn from_jsonc_str(s: &str) -> anyhow::Result<Self> {
+        let raw: RawShipManifest = crate::jsonc::from_jsonc_str(s)
+            .map_err(|e| anyhow::anyhow!("Failed to parse ship.jsonc: {e}"))?;
+        Self::from_raw(raw)
+    }
+
+    /// Read and parse from a file path. Dispatches to JSONC or TOML based on extension.
     pub fn from_file(path: &std::path::Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Cannot read {}: {e}", path.display()))?;
-        Self::from_toml_str(&content)
+        if crate::jsonc::is_jsonc_path(path) {
+            Self::from_jsonc_str(&content)
+        } else {
+            Self::from_toml_str(&content)
+        }
     }
 
     /// Iterate resolved (full-form) dependencies.
@@ -347,6 +361,42 @@ version = "0.1.0"
         let m = ShipManifest::from_toml_str(minimal_toml()).unwrap();
         assert!(m.exports.skills.is_empty());
         assert!(m.exports.agents.is_empty());
+    }
+
+    #[test]
+    fn parse_jsonc_manifest() {
+        let jsonc = r#"{
+  // Ship manifest in JSONC format
+  "module": {
+    "name": "github.com/owner/repo",
+    "version": "1.0.0",
+    "description": "A library", // inline comment
+  },
+  "dependencies": {
+    "github.com/a/b": "^1.0.0",
+  },
+}"#;
+        let m = ShipManifest::from_jsonc_str(jsonc).unwrap();
+        assert_eq!(m.module.name, "github.com/owner/repo");
+        assert_eq!(m.module.version, "1.0.0");
+        assert_eq!(m.module.description.as_deref(), Some("A library"));
+        assert_eq!(m.dependencies.len(), 1);
+    }
+
+    #[test]
+    fn from_file_dispatches_by_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let jsonc_path = dir.path().join("ship.jsonc");
+        std::fs::write(&jsonc_path, r#"{
+  "module": { "name": "github.com/test/repo", "version": "0.1.0" }
+}"#).unwrap();
+        let m = ShipManifest::from_file(&jsonc_path).unwrap();
+        assert_eq!(m.module.name, "github.com/test/repo");
+
+        let toml_path = dir.path().join("ship.toml");
+        std::fs::write(&toml_path, minimal_toml()).unwrap();
+        let m2 = ShipManifest::from_file(&toml_path).unwrap();
+        assert_eq!(m2.module.name, "github.com/owner/repo");
     }
 
     #[test]

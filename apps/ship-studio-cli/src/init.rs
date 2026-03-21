@@ -35,12 +35,22 @@ fn run_global() -> Result<()> {
 
 fn run_project(provider: Option<String>) -> Result<()> {
     paths::ensure_project_dirs()?;
+    let ship_jsonc = paths::project_ship_jsonc();
     let ship_toml = paths::project_ship_toml();
-    if !ship_toml.exists() {
+    // Scaffold .ship/ship.jsonc when no config exists (prefer JSONC over TOML)
+    if !ship_jsonc.exists() && !ship_toml.exists() {
         let provider_str = provider.as_deref().unwrap_or("claude");
         std::fs::write(
-            &ship_toml,
-            format!("# Ship project configuration\n\n[project]\nproviders = [\"{provider_str}\"]\n"),
+            &ship_jsonc,
+            format!(
+r#"{{
+  // Ship project configuration — https://getship.dev
+  "$schema": "../schemas/ship.schema.json",
+  "project": {{
+    "providers": ["{provider_str}"],
+  }},
+}}"#
+            ),
         )?;
     }
     let gitignore = paths::project_dir().join(".gitignore");

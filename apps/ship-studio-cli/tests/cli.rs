@@ -44,7 +44,7 @@ fn init_creates_ship_structure() {
         .stdout(predicate::str::contains("initialized .ship/"));
 
     assert!(tmp.path().join(".ship").is_dir());
-    assert!(tmp.path().join(".ship/ship.toml").exists());
+    assert!(tmp.path().join(".ship/ship.jsonc").exists());
     assert!(tmp.path().join(".ship/README.md").exists());
     assert!(tmp.path().join(".ship/.gitignore").exists());
 }
@@ -55,13 +55,13 @@ fn init_is_idempotent() {
 
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
 
-    let original = fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
+    let original = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
 
     // Second run must succeed without overwriting existing files.
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
 
-    let after = fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
-    assert_eq!(original, after, "init must not overwrite existing ship.toml");
+    let after = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
+    assert_eq!(original, after, "init must not overwrite existing ship.jsonc");
 }
 
 #[test]
@@ -74,8 +74,8 @@ fn init_with_provider_sets_provider_in_toml() {
         .assert()
         .success();
 
-    let toml = fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
-    assert!(toml.contains("gemini"), "provider should appear in ship.toml");
+    let content = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
+    assert!(content.contains("gemini"), "provider should appear in ship.jsonc");
 }
 
 // ── ship use ──────────────────────────────────────────────────────────────────
@@ -362,14 +362,14 @@ fn install_no_manifest_exits_nonzero() {
     let tmp = TempDir::new().unwrap();
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
 
-    // .ship/ship.toml from `ship init` is a project-config file (no [module]),
+    // .ship/ship.jsonc from `ship init` is a project-config file (no "module"),
     // so install must fail with a clear error.
     ship()
         .args(["install"])
         .current_dir(tmp.path())
         .assert()
         .failure()
-        .stderr(predicate::str::contains("[module]").or(predicate::str::contains("registry manifest")));
+        .stderr(predicate::str::contains("module").or(predicate::str::contains("manifest")));
 }
 
 #[test]

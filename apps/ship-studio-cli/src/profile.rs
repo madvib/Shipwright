@@ -133,34 +133,36 @@ fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
 }
 
 /// Search order: agents/ → agents/profiles/ (compat) → agents/presets/ (compat) → modes/ (legacy), project then global.
+/// Within each directory, `.jsonc` is checked before `.toml`.
 pub fn find_agent_file(agent_id: &str, project_root: &Path) -> Option<PathBuf> {
     let ship = project_root.join(".ship");
-    let file = format!("{}.toml", agent_id);
-    // Primary: .ship/agents/<id>.toml
-    let p = ship.join("agents").join(&file);
-    if p.exists() { return Some(p); }
-    // Compat: .ship/agents/profiles/<id>.toml
-    let p_profiles = ship.join("agents").join("profiles").join(&file);
-    if p_profiles.exists() { return Some(p_profiles); }
-    // Compat: .ship/agents/presets/<id>.toml
-    let p_compat = ship.join("agents").join("presets").join(&file);
-    if p_compat.exists() { return Some(p_compat); }
-    // Legacy: .ship/modes/<id>.toml
-    let m = ship.join("modes").join(&file);
-    if m.exists() { return Some(m); }
-    // Global: ~/.ship/agents/<id>.toml
+    let jsonc_file = format!("{}.jsonc", agent_id);
+    let toml_file = format!("{}.toml", agent_id);
+
+    // Helper: check jsonc then toml in a directory
+    let check_dir = |dir: PathBuf| -> Option<PathBuf> {
+        let j = dir.join(&jsonc_file);
+        if j.exists() { return Some(j); }
+        let t = dir.join(&toml_file);
+        if t.exists() { return Some(t); }
+        None
+    };
+
+    // Primary: .ship/agents/<id>.{jsonc,toml}
+    if let Some(p) = check_dir(ship.join("agents")) { return Some(p); }
+    // Compat: .ship/agents/profiles/<id>.{jsonc,toml}
+    if let Some(p) = check_dir(ship.join("agents").join("profiles")) { return Some(p); }
+    // Compat: .ship/agents/presets/<id>.{jsonc,toml}
+    if let Some(p) = check_dir(ship.join("agents").join("presets")) { return Some(p); }
+    // Legacy: .ship/modes/<id>.{jsonc,toml}
+    if let Some(p) = check_dir(ship.join("modes")) { return Some(p); }
+    // Global dirs
     let home = dirs::home_dir()?;
-    let gp = home.join(".ship").join("agents").join(&file);
-    if gp.exists() { return Some(gp); }
-    // Global compat: ~/.ship/agents/profiles/<id>.toml
-    let gp_profiles = home.join(".ship").join("agents").join("profiles").join(&file);
-    if gp_profiles.exists() { return Some(gp_profiles); }
-    // Global compat: ~/.ship/agents/presets/<id>.toml
-    let gp_compat = home.join(".ship").join("agents").join("presets").join(&file);
-    if gp_compat.exists() { return Some(gp_compat); }
-    // Global legacy: ~/.ship/modes/<id>.toml
-    let gm = home.join(".ship").join("modes").join(&file);
-    if gm.exists() { return Some(gm); }
+    let global_ship = home.join(".ship");
+    if let Some(p) = check_dir(global_ship.join("agents")) { return Some(p); }
+    if let Some(p) = check_dir(global_ship.join("agents").join("profiles")) { return Some(p); }
+    if let Some(p) = check_dir(global_ship.join("agents").join("presets")) { return Some(p); }
+    if let Some(p) = check_dir(global_ship.join("modes")) { return Some(p); }
     None
 }
 
@@ -232,5 +234,24 @@ mod tests {
     fn find_agent_file_returns_none_for_missing() {
         let tmp = TempDir::new().unwrap();
         assert!(find_agent_file("nonexistent", tmp.path()).is_none());
+    }
+
+    #[test]
+    fn find_agent_file_prefers_jsonc() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), ".ship/agents/test.toml", "[agent]\nname=\"Test\"\n");
+        write_file(tmp.path(), ".ship/agents/test.jsonc", r#"{ "agent": { "name": "Test" } }"#);
+        let found = find_agent_file("test", tmp.path());
+        assert!(found.is_some());
+        assert!(found.unwrap().to_string_lossy().ends_with(".jsonc"));
+    }
+
+    #[test]
+    fn find_agent_file_finds_jsonc_only() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), ".ship/agents/test.jsonc", r#"{ "agent": { "name": "Test" } }"#);
+        let found = find_agent_file("test", tmp.path());
+        assert!(found.is_some());
+        assert!(found.unwrap().to_string_lossy().ends_with(".jsonc"));
     }
 }
