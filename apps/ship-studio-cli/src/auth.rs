@@ -19,25 +19,12 @@ fn open_browser(url: &str) {
     eprintln!("Cannot open browser automatically. Visit: {}", url);
 }
 
-/// Generate a PKCE code_verifier (64 random-ish bytes, base64url-encoded, no padding).
+/// Generate a PKCE code_verifier (64 random bytes, base64url-encoded, no padding).
+/// Uses OS CSPRNG via getrandom.
 fn generate_code_verifier() -> String {
-    use std::time::SystemTime;
-    let t = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let pid = std::process::id() as u128;
-    let mut val = t ^ pid.wrapping_shl(32) ^ pid.wrapping_shr(7);
-    // URL-safe alphabet for PKCE verifiers (RFC 7636 §4.1)
-    let chars: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut result = String::with_capacity(64);
-    for _ in 0..64 {
-        result.push(chars[(val % 64) as usize] as char);
-        val = val
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-    }
-    result
+    let mut buf = [0u8; 48]; // 48 bytes → 64 base64url chars
+    getrandom::getrandom(&mut buf).expect("OS RNG failed");
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
 }
 
 /// Compute the S256 code_challenge from a verifier:
@@ -162,7 +149,30 @@ pub fn run_logout() -> Result<()> {
 }
 
 /// `ship whoami` — print identity and auth token status.
+/// Tries to fetch user info from getship.dev; falls back to local config.
 pub fn run_whoami() -> Result<()> {
+    let creds = Credentials::load();
+    match creds.token() {
+        Some(token) => {
+            // Try the remote API first.
+            match fetch_me(token) {
+                Ok(info) => println!("{}", info),
+                Err(_) => {
+                    // API unreachable — show local identity.
+                    print_local_identity();
+                    println!("authenticated (offline — could not reach API)");
+                }
+            }
+        }
+        None => {
+            print_local_identity();
+            println!("Not logged in.");
+        }
+    }
+    Ok(())
+}
+
+fn print_local_identity() {
     let cfg = ShipConfig::load();
     match cfg.identity {
         Some(ref id) if !id.name.is_empty() => {
@@ -173,12 +183,32 @@ pub fn run_whoami() -> Result<()> {
         }
         _ => println!("(no identity — run: ship init --global)"),
     }
-    let creds = Credentials::load();
-    match creds.token() {
-        Some(_) => println!("authenticated"),
-        None => println!("Not logged in."),
+}
+
+/// Fetch /api/auth/me and return a display string.
+fn fetch_me(token: &str) -> Result<String> {
+    let mut resp = ureq::get("https://getship.dev/api/auth/me")
+        .header("Authorization", &format!("Bearer {}", token))
+        .call()
+        .map_err(|e| anyhow::anyhow!("API request failed: {}", e))?;
+
+    let body: String = resp
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| anyhow::anyhow!("Failed to read response: {e}"))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|_| anyhow::anyhow!("Invalid response"))?;
+
+    let name = parsed.get("name").and_then(|v| v.as_str()).unwrap_or("(unknown)");
+    let email = parsed.get("email").and_then(|v| v.as_str());
+
+    let mut out = name.to_string();
+    if let Some(e) = email {
+        out.push_str(&format!("\n{}", e));
     }
-    Ok(())
+    out.push_str("\nauthenticated");
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -200,11 +230,19 @@ mod tests {
     #[test]
     fn generate_code_verifier_length_and_charset() {
         let v = generate_code_verifier();
+        // 48 random bytes → 64 base64url chars (no padding)
         assert_eq!(v.len(), 64);
         assert!(
             v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "verifier contains invalid chars: {v}"
         );
+    }
+
+    #[test]
+    fn generate_code_verifier_is_not_deterministic() {
+        let v1 = generate_code_verifier();
+        let v2 = generate_code_verifier();
+        assert_ne!(v1, v2, "two verifiers should not be identical");
     }
 
     #[test]

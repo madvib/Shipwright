@@ -11,12 +11,20 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+/// Check that a package name matches `^[a-z0-9._/@-]+$`.
+fn is_valid_package_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'/' | b'@' | b'-'))
+}
+
 // ── Module section ─────────────────────────────────────────────────────────────
 
 /// Identity metadata for a ship module.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ManifestModule {
-    /// Namespaced package path, e.g. `github.com/owner/repo`.
+    /// Namespaced package path, e.g. `github.com/owner/repo` or `@scope/name`.
     pub name: String,
     /// Semver string, no `v` prefix required in manifest.
     pub version: String,
@@ -26,6 +34,9 @@ pub struct ManifestModule {
     /// SPDX license identifier, e.g. `MIT`.
     #[serde(default)]
     pub license: Option<String>,
+    /// Package authors, e.g. `["Alice <alice@example.com>"]`.
+    #[serde(default)]
+    pub authors: Vec<String>,
 }
 
 /// Raw (pre-validation) module section — fields are optional so we can emit
@@ -40,6 +51,8 @@ struct RawManifestModule {
     description: Option<String>,
     #[serde(default)]
     license: Option<String>,
+    #[serde(default)]
+    authors: Vec<String>,
 }
 
 // ── Dependencies section ───────────────────────────────────────────────────────
@@ -127,6 +140,15 @@ impl ShipManifest {
             .filter(|n| !n.is_empty())
             .ok_or_else(|| anyhow::anyhow!("[module].name is required in ship.toml"))?;
 
+        // Validate name: lowercase alphanumeric, dots, hyphens, underscores, slashes, @.
+        if !is_valid_package_name(&name) {
+            anyhow::bail!(
+                "[module].name '{}' contains invalid characters — \
+                 must match [a-z0-9._/@-]+",
+                name
+            );
+        }
+
         let version = raw_module
             .version
             .filter(|v| !v.is_empty())
@@ -137,6 +159,15 @@ impl ShipManifest {
         semver::Version::parse(ver_str).map_err(|e| {
             anyhow::anyhow!("[module].version '{}' is not valid semver: {e}", version)
         })?;
+
+        // Validate SPDX license if provided.
+        if let Some(ref lic) = raw_module.license {
+            if !lic.is_empty() {
+                validate_spdx(lic).map_err(|e| {
+                    anyhow::anyhow!("[module].license '{}' is not a valid SPDX expression: {e}", lic)
+                })?;
+            }
+        }
 
         // Validate dependency version strings.
         for (path, dep_val) in &raw.dependencies {
@@ -158,6 +189,7 @@ impl ShipManifest {
                 version,
                 description: raw_module.description,
                 license: raw_module.license,
+                authors: raw_module.authors,
             },
             dependencies: raw.dependencies,
             exports: raw.exports,
@@ -179,198 +211,54 @@ impl ShipManifest {
     }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
+/// Validate a name as suitable for publishing.
+pub fn validate_package_name(name: &str) -> anyhow::Result<()> {
+    if !is_valid_package_name(name) {
+        anyhow::bail!(
+            "package name '{}' contains invalid characters — must match [a-z0-9._/@-]+",
+            name
+        );
+    }
+    Ok(())
+}
+
+/// Lightweight SPDX validation — accepts common license ids and simple
+/// expressions (`MIT`, `Apache-2.0`, `MIT OR Apache-2.0`).
+/// Full SPDX expression parsing is deferred to a future release.
+fn validate_spdx(expr: &str) -> Result<(), String> {
+    // Accept known single identifiers or simple OR/AND expressions.
+    let tokens: Vec<&str> = expr.split_whitespace().collect();
+    if tokens.is_empty() {
+        return Err("empty license expression".into());
+    }
+    for token in &tokens {
+        if *token == "OR" || *token == "AND" || *token == "WITH" {
+            continue;
+        }
+        if !is_known_spdx_id(token) {
+            return Err(format!("unknown license identifier '{}'", token));
+        }
+    }
+    Ok(())
+}
+
+fn is_known_spdx_id(id: &str) -> bool {
+    matches!(
+        id,
+        "0BSD" | "AAL" | "AFL-3.0" | "AGPL-3.0-only" | "AGPL-3.0-or-later"
+            | "Apache-2.0" | "Artistic-2.0" | "BlueOak-1.0.0"
+            | "BSD-2-Clause" | "BSD-3-Clause" | "BSL-1.0" | "CAL-1.0"
+            | "CAL-1.0-Combined-Work-Exception" | "CC-BY-4.0" | "CC-BY-SA-4.0"
+            | "CC0-1.0" | "CPAL-1.0" | "ECL-2.0" | "EFL-2.0" | "EUPL-1.2"
+            | "GPL-2.0-only" | "GPL-2.0-or-later" | "GPL-3.0-only" | "GPL-3.0-or-later"
+            | "ISC" | "LGPL-2.1-only" | "LGPL-2.1-or-later" | "LGPL-3.0-only"
+            | "LGPL-3.0-or-later" | "LiLiQ-P-1.1" | "LiLiQ-R-1.1" | "LiLiQ-Rplus-1.1"
+            | "MIT" | "MIT-0" | "MPL-2.0" | "MulanPSL-2.0" | "NCSA" | "OFL-1.1"
+            | "OSL-3.0" | "PostgreSQL" | "RPL-1.5" | "SimPL-2.0" | "UPL-1.0"
+            | "Unicode-DFS-2016" | "Unlicense" | "Vim" | "WTFPL" | "Zlib" | "ZPL-2.0"
+    )
+}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn minimal_toml() -> &'static str {
-        r#"
-[module]
-name = "github.com/owner/repo"
-version = "1.0.0"
-"#
-    }
-
-    #[test]
-    fn parse_minimal_manifest() {
-        let m = ShipManifest::from_toml_str(minimal_toml()).unwrap();
-        assert_eq!(m.module.name, "github.com/owner/repo");
-        assert_eq!(m.module.version, "1.0.0");
-        assert!(m.module.description.is_none());
-        assert!(m.module.license.is_none());
-        assert!(m.dependencies.is_empty());
-        assert!(m.exports.skills.is_empty());
-        assert!(m.exports.agents.is_empty());
-    }
-
-    #[test]
-    fn parse_full_manifest() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/mylib"
-version = "2.3.1"
-description = "A great library"
-license = "MIT"
-
-[dependencies]
-"github.com/a/b" = "^1.0.0"
-"github.com/c/d" = { version = "~2.1.0", grant = ["Bash", "Read"] }
-
-[exports]
-skills = ["agents/skills/my-skill"]
-agents = ["agents/profiles/my-agent.toml"]
-"#;
-        let m = ShipManifest::from_toml_str(toml_str).unwrap();
-        assert_eq!(m.module.description.as_deref(), Some("A great library"));
-        assert_eq!(m.module.license.as_deref(), Some("MIT"));
-        assert_eq!(m.dependencies.len(), 2);
-
-        let (_, dep_b) = m.resolved_deps().next().unwrap();
-        assert_eq!(dep_b.version, "^1.0.0");
-        assert!(dep_b.grant.is_empty());
-
-        let dep_d = m
-            .dependencies
-            .get("github.com/c/d")
-            .unwrap()
-            .clone()
-            .into_dep();
-        assert_eq!(dep_d.version, "~2.1.0");
-        assert_eq!(dep_d.grant, vec!["Bash", "Read"]);
-
-        assert_eq!(m.exports.skills, vec!["agents/skills/my-skill"]);
-        assert_eq!(m.exports.agents, vec!["agents/profiles/my-agent.toml"]);
-    }
-
-    #[test]
-    fn missing_name_is_error() {
-        let toml_str = r#"
-[module]
-version = "1.0.0"
-"#;
-        let err = ShipManifest::from_toml_str(toml_str).unwrap_err();
-        assert!(err.to_string().contains("[module].name"), "{err}");
-    }
-
-    #[test]
-    fn missing_version_is_error() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/repo"
-"#;
-        let err = ShipManifest::from_toml_str(toml_str).unwrap_err();
-        assert!(err.to_string().contains("[module].version"), "{err}");
-    }
-
-    #[test]
-    fn missing_module_section_is_error() {
-        let toml_str = r#"
-[dependencies]
-"github.com/a/b" = "^1.0.0"
-"#;
-        let err = ShipManifest::from_toml_str(toml_str).unwrap_err();
-        assert!(err.to_string().contains("[module]"), "{err}");
-    }
-
-    #[test]
-    fn invalid_semver_is_error() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/repo"
-version = "not-semver"
-"#;
-        let err = ShipManifest::from_toml_str(toml_str).unwrap_err();
-        assert!(err.to_string().contains("not valid semver"), "{err}");
-    }
-
-    #[test]
-    fn version_with_v_prefix_is_valid() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/repo"
-version = "v1.2.3"
-"#;
-        // v-prefix is stripped before semver parse
-        let m = ShipManifest::from_toml_str(toml_str).unwrap();
-        assert_eq!(m.module.version, "v1.2.3");
-    }
-
-    #[test]
-    fn empty_dependencies_is_valid() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/repo"
-version = "0.1.0"
-
-[dependencies]
-"#;
-        let m = ShipManifest::from_toml_str(toml_str).unwrap();
-        assert!(m.dependencies.is_empty());
-    }
-
-    #[test]
-    fn empty_version_constraint_is_error() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/repo"
-version = "0.1.0"
-
-[dependencies]
-"github.com/a/b" = ""
-"#;
-        let err = ShipManifest::from_toml_str(toml_str).unwrap_err();
-        assert!(err.to_string().contains("empty version constraint"), "{err}");
-    }
-
-    #[test]
-    fn resolved_deps_normalises_shorthand() {
-        let toml_str = r#"
-[module]
-name = "github.com/owner/repo"
-version = "0.1.0"
-
-[dependencies]
-"github.com/a/b" = "main"
-"#;
-        let m = ShipManifest::from_toml_str(toml_str).unwrap();
-        let deps: Vec<_> = m.resolved_deps().collect();
-        assert_eq!(deps.len(), 1);
-        assert_eq!(deps[0].0, "github.com/a/b");
-        assert_eq!(deps[0].1.version, "main");
-        assert!(deps[0].1.grant.is_empty());
-    }
-
-    #[test]
-    fn omitting_exports_is_valid() {
-        let m = ShipManifest::from_toml_str(minimal_toml()).unwrap();
-        assert!(m.exports.skills.is_empty());
-        assert!(m.exports.agents.is_empty());
-    }
-
-    #[test]
-    fn sha_constraint_is_valid() {
-        let sha = "abc1234567890abcdef1234567890abcdef1234";
-        let toml_str = format!(
-            r#"
-[module]
-name = "github.com/owner/repo"
-version = "0.1.0"
-
-[dependencies]
-"github.com/a/b" = "{sha}"
-"#
-        );
-        let m = ShipManifest::from_toml_str(&toml_str).unwrap();
-        assert_eq!(
-            m.dependencies
-                .get("github.com/a/b")
-                .unwrap()
-                .clone()
-                .into_dep()
-                .version,
-            sha
-        );
-    }
-}
+#[path = "manifest_tests.rs"]
+mod tests;

@@ -19,6 +19,7 @@ mod mcp_serve;
 mod agent_config;
 mod paths;
 mod profile;
+mod publish;
 mod skill;
 mod surface;
 mod validate;
@@ -57,6 +58,10 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
             Commands::Migrate => run_migrate(),
+            Commands::Publish { dry_run, tag } => {
+                let root = std::env::current_dir()?;
+                publish::run_publish(&root, dry_run, tag.as_deref())
+            }
             Commands::Install { frozen } => {
                 let root = std::env::current_dir()?;
                 install::run_install(&root, frozen)

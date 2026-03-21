@@ -123,6 +123,16 @@ pub enum Commands {
         frozen: bool,
     },
 
+    /// Publish this package to the Ship registry
+    Publish {
+        /// Preview what would be published without making any network requests
+        #[arg(long)]
+        dry_run: bool,
+        /// Dist-tag for pre-release publishing (e.g. beta, next)
+        #[arg(long)]
+        tag: Option<String>,
+    },
+
     /// Add a package dependency to .ship/ship.toml and install it
     Add {
         /// Package path with optional version: github.com/owner/repo[@version]

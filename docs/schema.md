@@ -194,6 +194,48 @@ Events are **append-only** — they are never updated or deleted. Query via `lis
 
 ---
 
+## ship.toml Manifest
+
+The project manifest at `.ship/ship.toml` declares package identity, dependencies, and exports.
+
+### [module]
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **yes** | Namespaced package name. Must match `^[a-z0-9._/@-]+$`. Examples: `github.com/owner/repo`, `@scope/name`. |
+| `version` | string | **yes** | Semver version. Optional `v` prefix is stripped before validation. |
+| `description` | string | no | Human-readable package description. |
+| `license` | string | no | SPDX license expression, e.g. `MIT`, `MIT OR Apache-2.0`. |
+| `authors` | string[] | no | Package authors, e.g. `["Alice <alice@example.com>"]`. |
+
+### [dependencies]
+
+Key-value map where the key is a package path and the value is either a version string (shorthand) or a full table.
+
+```toml
+# Shorthand — version constraint only
+"github.com/owner/skills" = "^1.0.0"
+
+# Full form — version + permission grants
+"github.com/owner/tools" = { version = "~2.1.0", grant = ["Bash", "Read"] }
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `version` | string | **yes** | Semver range, branch name, or 40-char commit SHA. |
+| `grant` | string[] | no | Tool permissions granted to this dependency's skills. |
+
+### [exports]
+
+Declares which skills and agents this package makes available to consumers.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `skills` | string[] | no | Skill directory paths relative to `.ship/` (each must contain `SKILL.md`). |
+| `agents` | string[] | no | Agent TOML paths relative to `.ship/` (each must end in `.toml`). |
+
+---
+
 ## What lives where
 
 | Data | Location | Access |
