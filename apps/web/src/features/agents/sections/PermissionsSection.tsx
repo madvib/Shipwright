@@ -1,8 +1,8 @@
+import { useMemo } from 'react'
 import { Lock, Wrench, FileText, Terminal, Globe } from 'lucide-react'
 import type { Permissions } from '@ship/ui'
 import { SectionShell } from './SectionShell'
-
-const PRESETS = ['read-only', 'ship-guarded', 'ship-standard', 'full-access', 'custom'] as const
+import { getFieldEnum } from '#/features/agents/schema-hints'
 
 interface PermissionsSectionProps {
   permissions: Permissions
@@ -17,6 +17,8 @@ export function PermissionsSection({
   onPresetChange,
   onEdit,
 }: PermissionsSectionProps) {
+  const schemaPresets = useMemo(() => getFieldEnum('permissions.preset'), [])
+
   return (
     <SectionShell
       icon={<Lock className="size-4" />}
@@ -26,7 +28,7 @@ export function PermissionsSection({
     >
       {/* Preset bar */}
       <div className="flex gap-1 mb-3">
-        {PRESETS.map((preset) => (
+        {schemaPresets.map((preset) => (
           <button
             key={preset}
             onClick={() => onPresetChange(preset)}

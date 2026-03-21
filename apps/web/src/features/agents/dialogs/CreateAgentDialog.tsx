@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -6,7 +6,9 @@ import {
 import { Input } from '@ship/primitives'
 import { Button } from '@ship/primitives'
 import { useAgentStore } from '#/features/agents/useAgentStore'
-import { PROVIDERS } from '#/features/compiler/types'
+import { getFieldEnum, getFieldDescription } from '#/features/agents/schema-hints'
+import { validateAgentProfile } from '#/features/agents/schema-validation'
+import { makeAgent } from '#/features/agents/useAgentStore'
 
 interface CreateAgentDialogProps {
   open: boolean
@@ -19,6 +21,10 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [selectedProviders, setSelectedProviders] = useState<string[]>(['claude'])
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+
+  const schemaProviders = useMemo(() => getFieldEnum('agent.providers'), [])
+  const providerHint = useMemo(() => getFieldDescription('agent.providers'), [])
 
   const toggleProvider = (id: string) => {
     setSelectedProviders((prev) =>
@@ -28,6 +34,18 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
   const handleCreate = () => {
     if (!name.trim()) return
+    // Validate via schema before creating
+    const draft = makeAgent({
+      name: name.trim(),
+      description: description.trim(),
+      providers: selectedProviders,
+    })
+    const result = validateAgentProfile(draft)
+    if (!result.valid) {
+      setValidationErrors(result.errors.map((e) => e.message))
+      return
+    }
+    setValidationErrors([])
     const id = createAgent({
       name: name.trim(),
       description: description.trim(),
@@ -72,26 +90,37 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
           <div>
             <label className="text-xs font-medium text-foreground mb-1.5 block">Target providers</label>
+            {providerHint && (
+              <p className="text-[11px] text-muted-foreground/60 mb-1.5">{providerHint}</p>
+            )}
             <div className="flex flex-wrap gap-2">
-              {PROVIDERS.map((p) => {
-                const active = selectedProviders.includes(p.id)
+              {schemaProviders.map((id) => {
+                const active = selectedProviders.includes(id)
                 return (
                   <button
-                    key={p.id}
+                    key={id}
                     type="button"
-                    onClick={() => toggleProvider(p.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                    onClick={() => toggleProvider(id)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition capitalize ${
                       active
                         ? 'border-primary/30 bg-primary/10 text-primary'
                         : 'border-border/60 text-muted-foreground hover:border-border'
                     }`}
                   >
-                    {p.name.split(' ')[0]}
+                    {id}
                   </button>
                 )
               })}
             </div>
           </div>
+
+          {validationErrors.length > 0 && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+              {validationErrors.map((err, i) => (
+                <p key={i} className="text-xs text-destructive">{err}</p>
+              ))}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
