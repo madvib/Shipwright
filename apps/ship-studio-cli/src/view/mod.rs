@@ -10,14 +10,15 @@ use crossterm::{
     terminal,
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
+use runtime::EventRecord;
 use runtime::db::{adrs::AdrRecord, jobs::Job, jobs::JobLogEntry, notes::Note, targets::{Capability, Target}};
 use std::{io, path::PathBuf, time::Duration};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab { Targets, Notes, Adrs, Jobs }
+pub enum Tab { Targets, Notes, Adrs, Jobs, Events }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, AdrDetail, JobDetail }
+pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, AdrDetail, JobDetail, EventDetail }
 
 pub struct App {
     pub tab: Tab,
@@ -34,6 +35,11 @@ pub struct App {
     pub jobs: Vec<Job>,
     pub sel_job: usize,
     pub logs: Vec<JobLogEntry>,
+    pub events: Vec<EventRecord>,
+    pub sel_event: usize,
+    pub log_scroll: u16,
+    pub auto_refresh: bool,
+    pub refresh_counter: u8,
     pub ship_dir: PathBuf,
     pub status: String,
 }
@@ -44,6 +50,7 @@ impl App {
         let notes = data::load_notes(&ship_dir);
         let adrs = data::load_adrs(&ship_dir);
         let jobs = data::load_jobs(&ship_dir);
+        let events = data::load_events(&ship_dir, 50);
         Self {
             tab: Tab::Targets,
             screen: Screen::List,
@@ -59,6 +66,11 @@ impl App {
             jobs,
             sel_job: 0,
             logs: Vec::new(),
+            events,
+            sel_event: 0,
+            log_scroll: 0,
+            auto_refresh: true,
+            refresh_counter: 0,
             ship_dir,
             status: String::new(),
         }
@@ -69,6 +81,7 @@ impl App {
         self.notes = data::load_notes(&self.ship_dir);
         self.adrs = data::load_adrs(&self.ship_dir);
         self.jobs = data::load_jobs(&self.ship_dir);
+        self.events = data::load_events(&self.ship_dir, 50);
         match (self.tab, self.screen) {
             (Tab::Targets, Screen::TargetDetail) | (Tab::Targets, Screen::CapDetail) => {
                 if let Some(t) = self.targets.get(self.sel_target) {
@@ -88,15 +101,29 @@ impl App {
         self.sel_note = self.sel_note.min(self.notes.len().saturating_sub(1));
         self.sel_adr = self.sel_adr.min(self.adrs.len().saturating_sub(1));
         self.sel_job = self.sel_job.min(self.jobs.len().saturating_sub(1));
+        self.sel_event = self.sel_event.min(self.events.len().saturating_sub(1));
         self.status = "refreshed".into();
     }
 
     pub fn cycle_tab(&mut self) {
         if self.screen != Screen::List { return; }
         self.tab = match self.tab {
-            Tab::Targets => Tab::Notes,
+            Tab::Targets => Tab::Jobs,
+            Tab::Jobs => Tab::Events,
+            Tab::Events => Tab::Notes,
             Tab::Notes => Tab::Adrs,
-            Tab::Adrs => Tab::Jobs,
+            Tab::Adrs => Tab::Targets,
+        };
+        self.status.clear();
+    }
+
+    pub fn reverse_cycle_tab(&mut self) {
+        if self.screen != Screen::List { return; }
+        self.tab = match self.tab {
+            Tab::Targets => Tab::Adrs,
+            Tab::Adrs => Tab::Notes,
+            Tab::Notes => Tab::Events,
+            Tab::Events => Tab::Jobs,
             Tab::Jobs => Tab::Targets,
         };
         self.status.clear();
@@ -132,6 +159,15 @@ impl App {
                     self.sel_job = (self.sel_job + 1).min(self.jobs.len() - 1);
                 }
             }
+            (Tab::Jobs, Screen::JobDetail) => {
+                self.log_scroll = self.log_scroll.saturating_add(3);
+            }
+            (Tab::Events, Screen::List) => {
+                if !self.events.is_empty() {
+                    self.sel_event = (self.sel_event + 1).min(self.events.len() - 1);
+                }
+            }
+            (Tab::Events, Screen::EventDetail) => {}
             _ => {}
         }
     }
@@ -146,6 +182,10 @@ impl App {
             }
             (Tab::Adrs, Screen::List) => self.sel_adr = self.sel_adr.saturating_sub(1),
             (Tab::Jobs, Screen::List) => self.sel_job = self.sel_job.saturating_sub(1),
+            (Tab::Jobs, Screen::JobDetail) => {
+                self.log_scroll = self.log_scroll.saturating_sub(3);
+            }
+            (Tab::Events, Screen::List) => self.sel_event = self.sel_event.saturating_sub(1),
             _ => {}
         }
     }
@@ -180,7 +220,13 @@ impl App {
                 if let Some(j) = self.jobs.get(self.sel_job) {
                     let id = j.id.clone();
                     self.logs = data::load_logs(&self.ship_dir, &id);
+                    self.log_scroll = 0;
                     self.screen = Screen::JobDetail;
+                }
+            }
+            (Tab::Events, Screen::List) => {
+                if !self.events.is_empty() {
+                    self.screen = Screen::EventDetail;
                 }
             }
             _ => {}
@@ -191,7 +237,7 @@ impl App {
     pub fn back(&mut self) {
         self.screen = match self.screen {
             Screen::CapDetail => Screen::TargetDetail,
-            Screen::TargetDetail | Screen::NoteDetail | Screen::AdrDetail | Screen::JobDetail => {
+            Screen::TargetDetail | Screen::NoteDetail | Screen::AdrDetail | Screen::JobDetail | Screen::EventDetail => {
                 Screen::List
             }
             Screen::List => Screen::List,
@@ -227,13 +273,26 @@ fn run_loop<B: ratatui::backend::Backend>(
                     KeyCode::Char('q') => break,
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                     KeyCode::Char('r') => app.refresh(),
+                    KeyCode::Char('a') => {
+                        app.auto_refresh = !app.auto_refresh;
+                        app.status = if app.auto_refresh { "auto-refresh on".into() } else { "auto-refresh off".into() };
+                    }
                     KeyCode::Tab => app.cycle_tab(),
+                    KeyCode::BackTab => app.reverse_cycle_tab(),
                     KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                     KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                     KeyCode::Enter => app.enter(),
                     KeyCode::Esc | KeyCode::Backspace => app.back(),
                     _ => {}
                 }
+            }
+        } else if app.auto_refresh {
+            // Auto-refresh every ~5 seconds (20 ticks * 250ms)
+            app.refresh_counter += 1;
+            if app.refresh_counter >= 20 {
+                app.refresh_counter = 0;
+                app.refresh();
+                app.status = "auto".into();
             }
         }
     }

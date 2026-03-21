@@ -1,10 +1,23 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+const AFTER_HELP: &str = "\x1b[1mGetting Started:\x1b[0m
+  ship init              Scaffold .ship/ in the current project
+  ship agent create id   Create an agent definition
+  ship use <agent-id>    Activate an agent (compiles immediately)
+  ship compile           Re-compile after editing agent config
+
+\x1b[1mLearn More:\x1b[0m
+  ship help topics       List available help topics
+  ship help <topic>      Show detailed help for a topic
+  https://getship.dev/docs";
+
 #[derive(Parser, Debug)]
 #[command(name = "ship")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Agent configuration studio — compose, compile, distribute")]
+#[command(about = "Agent configuration compiler — compose, compile, distribute")]
+#[command(after_help = AFTER_HELP)]
+#[command(disable_help_subcommand = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -12,6 +25,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    // ── Setup ────────────────────────────────────────────────────────────────
     /// Scaffold .ship/ in the current project, or configure ~/.ship/ globally
     Init {
         /// Configure ~/.ship/ identity and defaults instead of current project
@@ -25,18 +39,19 @@ pub enum Commands {
         force: bool,
     },
 
-    // ── Auth (lazy — no account needed for core features) ────────────────────
     /// Authenticate with getship.dev
     Login,
+
     /// Sign out
     Logout,
+
     /// Show current identity
     Whoami,
 
-    // ── Agent activation ──────────────────────────────────────────────────────
+    // ── Daily Use ────────────────────────────────────────────────────────────
     /// Activate an agent for the current (or specified) directory
     Use {
-        /// Agent ID or registry reference (e.g. rust-expert, @org/agent, https://...)
+        /// Agent ID or registry reference (e.g. rust-expert, @org/agent)
         agent_id: String,
         /// Bind to this path instead of the current directory
         #[arg(long)]
@@ -46,13 +61,12 @@ pub enum Commands {
         compile: bool,
     },
 
-    /// Show the active agent and compilation status for the current directory
+    /// Show the active agent and compilation status
     Status {
         #[arg(long)]
         path: Option<PathBuf>,
     },
 
-    // ── Compilation ───────────────────────────────────────────────────────────
     /// Compile the active agent to provider-native config files
     Compile {
         /// Compile for a specific provider only (claude, gemini, codex, cursor)
@@ -69,21 +83,39 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
-    // ── Skills ────────────────────────────────────────────────────────────────
-    /// Manage agent skills
+    /// Validate .ship/ config — checks TOML, skill refs, MCP fields, permissions
+    Validate {
+        /// Validate a single agent (omit to validate all)
+        #[arg(long)]
+        agent: Option<String>,
+        /// Emit errors as JSON array instead of human-readable output
+        #[arg(long)]
+        json: bool,
+        /// Path to project root (defaults to current directory)
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
+
+    // ── Agent Configuration ──────────────────────────────────────────────────
+    /// Manage agents (create, list, edit, delete, clone)
+    Agent {
+        #[command(subcommand)]
+        action: AgentCommands,
+    },
+
+    /// Manage agent skills (add, list, remove, create)
     Skill {
         #[command(subcommand)]
         action: SkillCommands,
     },
 
-    // ── MCP servers ───────────────────────────────────────────────────────────
-    /// Manage MCP servers
+    /// Manage MCP servers (serve, add, list, remove)
     Mcp {
         #[command(subcommand)]
         action: McpCommands,
     },
 
-    // ── Registry ─────────────────────────────────────────────────────────────
+    // ── Publishing ───────────────────────────────────────────────────────────
     /// Install all dependencies declared in .ship/ship.toml
     Install {
         /// Fail if the lockfile would change rather than updating it
@@ -97,23 +129,39 @@ pub enum Commands {
         package: String,
     },
 
-    // ── Import / Export ───────────────────────────────────────────────────────
     /// Import an agent from a getship.dev URL, local path, or provider config
     Import {
-        /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config directory
+        /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config
         source: String,
     },
 
-    /// Export compiled output for a specific provider (alias for compile --provider)
-    Export {
-        /// Provider ID: claude, gemini, codex, cursor
-        provider: String,
-        /// Download all formats as a zip archive
-        #[arg(long)]
-        zip: bool,
+    // ── Inspection ───────────────────────────────────────────────────────────
+    /// Query the project event log
+    Events {
+        #[command(subcommand)]
+        action: EventsCommands,
     },
 
-    // ── Workflow (internal — hidden from product help) ────────────────────────
+    /// Browse workflow state in a terminal UI (read-only)
+    View,
+
+    /// Show detailed help for a topic (run `ship help topics` to list)
+    Help {
+        /// Topic name (e.g. agents, skills, mcp, compile, providers)
+        topic: Option<String>,
+    },
+
+    // ── Hidden / Internal ────────────────────────────────────────────────────
+    #[command(hide = true)]
+    Surface {
+        /// Write output to docs/surface.md
+        #[arg(long)]
+        emit: bool,
+        /// Diff against committed docs/surface.md; exit 1 if drift detected
+        #[arg(long)]
+        check: bool,
+    },
+
     #[command(hide = true)]
     Job {
         #[command(subcommand)]
@@ -129,54 +177,10 @@ pub enum Commands {
     #[command(hide = true)]
     Migrate,
 
-    // ── View (TUI) ────────────────────────────────────────────────────────────
-    /// Browse workflow state in a terminal UI (read-only)
-    View,
-
-    // ── Validation ────────────────────────────────────────────────────────────
-    /// Validate .ship/ config before compile — checks TOML, skill refs, MCP fields, permissions
-    Validate {
-        /// Validate a single agent (omit to validate all)
-        #[arg(long)]
-        agent: Option<String>,
-        /// Emit errors as JSON array instead of human-readable output
-        #[arg(long)]
-        json: bool,
-        /// Path to project root (defaults to current directory)
-        #[arg(long)]
-        path: Option<PathBuf>,
-    },
-
-    // ── Surface ───────────────────────────────────────────────────────────────
-    /// Print the current CLI command tree and MCP core tools as markdown
-    Surface {
-        /// Write output to docs/surface.md
-        #[arg(long)]
-        emit: bool,
-        /// Diff against committed docs/surface.md; exit 1 if drift detected
-        #[arg(long)]
-        check: bool,
-    },
-
-    // ── Capability diff ───────────────────────────────────────────────────────
     #[command(hide = true)]
     Diff {
         #[arg(long)]
         milestone: Option<String>,
-    },
-
-    // ── Event log ─────────────────────────────────────────────────────────────
-    /// Query the project event log
-    Events {
-        #[command(subcommand)]
-        action: EventsCommands,
-    },
-
-    // ── Agents ────────────────────────────────────────────────────────────────
-    /// Manage agents
-    Agent {
-        #[command(subcommand)]
-        action: AgentCommands,
     },
 }
 
@@ -254,10 +258,10 @@ pub enum EventsCommands {
 pub enum AgentCommands {
     /// List available agents
     List {
-        /// Show only ~/.ship/modes/
+        /// Show only global agents (~/.ship/agents/)
         #[arg(long)]
         local: bool,
-        /// Show only .ship/agents/
+        /// Show only project agents (.ship/agents/)
         #[arg(long)]
         project: bool,
     },
@@ -265,7 +269,7 @@ pub enum AgentCommands {
     Create {
         /// Agent ID (lowercase, hyphens — e.g. rust-expert)
         name: String,
-        /// Create in ~/.ship/modes/ instead of .ship/agents/
+        /// Create in ~/.ship/agents/ instead of .ship/agents/
         #[arg(long)]
         global: bool,
     },

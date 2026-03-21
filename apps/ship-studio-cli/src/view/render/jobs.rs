@@ -128,7 +128,8 @@ pub fn draw_job_detail(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(
         Paragraph::new(log_lines)
             .block(panel("Log  (recent 20)"))
-            .wrap(Wrap { trim: false }),
+            .wrap(Wrap { trim: false })
+            .scroll((app.log_scroll, 0)),
         chunks[1],
     );
 }

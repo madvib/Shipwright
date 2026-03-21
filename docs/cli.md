@@ -1,6 +1,6 @@
 # Ship CLI Reference
 
-The `ship` CLI is the primary interface for managing agent configuration. It compiles profiles into provider-native config files (CLAUDE.md, .mcp.json, .cursor/, etc.) and manages the local platform state.
+The `ship` CLI is the primary interface for managing agent configuration. It compiles agents into provider-native config files (CLAUDE.md, .mcp.json, .cursor/, etc.) and manages the local platform state.
 
 Install: `curl -fsSL https://getship.dev/install | sh`
 
@@ -10,8 +10,8 @@ Install: `curl -fsSL https://getship.dev/install | sh`
 
 ```bash
 ship init                   # scaffold .ship/ in the current project
-ship use <profile-id>       # activate a profile and compile
-ship status                 # show active profile
+ship use <agent-id>         # activate an agent and compile
+ship status                 # show active agent
 ```
 
 ---
@@ -40,9 +40,9 @@ Creates `.ship/ship.toml` and `.ship/.gitignore` (ignores compiled artifacts).
 
 ---
 
-### `ship use <profile-id>`
+### `ship use <agent-id>`
 
-Activate an agent profile for the current directory. Installs dependencies and compiles immediately, writing provider config files (CLAUDE.md, .mcp.json, etc.).
+Activate an agent for the current directory. Installs dependencies and compiles immediately, writing provider config files (CLAUDE.md, .mcp.json, etc.).
 
 ```bash
 ship use rust-compiler
@@ -61,7 +61,7 @@ This is the primary activation command. Run it after cloning a repo with `.ship/
 
 ### `ship status`
 
-Show the active profile and compilation status for the current directory.
+Show the active agent and compilation status for the current directory.
 
 ```bash
 ship status
@@ -72,7 +72,7 @@ ship status --path ~/projects/myapp
 
 ### `ship compile`
 
-Recompile the active profile to provider-native config files without changing the active profile.
+Recompile the active agent to provider-native config files without changing the active agent.
 
 ```bash
 ship compile
@@ -93,19 +93,19 @@ ship compile --dry-run
 
 ### `ship agent`
 
-Manage agent profiles. Profiles live in `.ship/agents/profiles/` (project) or `~/.ship/modes/` (global).
+Manage agents. Agent definitions live in `.ship/agents/` (project) or `~/.ship/agents/` (global).
 
 #### `ship agent list`
 
 ```bash
-ship agent list             # all profiles
-ship agent list --local     # ~/.ship/modes/ only
-ship agent list --project   # .ship/agents/profiles/ only
+ship agent list             # all agents
+ship agent list --local     # global agents only
+ship agent list --project   # project agents only
 ```
 
 #### `ship agent create <name>`
 
-Scaffold a new profile TOML.
+Scaffold a new agent TOML.
 
 ```bash
 ship agent create my-expert
@@ -114,15 +114,15 @@ ship agent create my-expert --global
 
 #### `ship agent edit <name>`
 
-Open a profile in `$EDITOR`.
+Open an agent in `$EDITOR`.
 
 #### `ship agent delete <name>`
 
-Delete a profile file.
+Delete an agent file.
 
 #### `ship agent clone <source> <target>`
 
-Duplicate a profile under a new ID.
+Duplicate an agent under a new ID.
 
 ```bash
 ship agent clone rust-compiler my-rust-compiler
@@ -242,24 +242,12 @@ ship add github.com/owner/repo@v1.2.0
 
 ### `ship import <source>`
 
-Import a profile from a getship.dev URL, local path, or provider config directory.
+Import an agent from a getship.dev URL, local path, or provider config directory.
 
 ```bash
 ship import https://getship.dev/p/<id>
-ship import ./my-profile.toml
+ship import ./my-agent.toml
 ship import .cursor/           # import from Cursor config
-```
-
----
-
-### `ship export <provider>`
-
-Export compiled output for a specific provider. Equivalent to `ship compile --provider <id>`.
-
-```bash
-ship export claude
-ship export gemini
-ship export cursor --zip     # download all formats as a zip
 ```
 
 ---
@@ -270,7 +258,7 @@ Validate `.ship/` config before compile. Checks TOML syntax, skill references, M
 
 ```bash
 ship validate
-ship validate --profile rust-compiler
+ship validate --agent rust-compiler
 ship validate --json          # machine-readable output
 ship validate --path /other/project
 ```
@@ -322,11 +310,11 @@ Used by CI to detect surface drift. Run `ship surface --emit` after adding comma
 | Path | Purpose |
 |------|---------|
 | `.ship/ship.toml` | Project manifest: dependencies, exports, provider list |
-| `.ship/agents/profiles/` | Agent profile TOML files |
+| `.ship/agents/*.toml` | Agent definition TOML files |
 | `.ship/agents/skills/` | Installed skills (compiled into provider config) |
 | `.ship/agents/mcp.toml` | MCP server registrations |
 | `.ship/agents/permissions.toml` | Permission presets |
 | `~/.ship/config.toml` | Global identity and defaults |
-| `~/.ship/modes/` | Global agent profiles |
+| `~/.ship/agents/` | Global agent definitions |
 
 Compiled artifacts (CLAUDE.md, .mcp.json, .cursor/, etc.) are gitignored — they are generated from `.ship/` source and should never be committed.

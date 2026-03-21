@@ -265,53 +265,53 @@ fn skill_list_shows_global_skill() {
         .stdout(predicate::str::contains("Global skills"));
 }
 
-// ── ship export ───────────────────────────────────────────────────────────────
+// ── ship compile --provider ───────────────────────────────────────────────────
 
 #[test]
-fn export_gemini_writes_gemini_md() {
+fn compile_provider_gemini_writes_gemini_md() {
     let tmp = TempDir::new().unwrap();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["export", "gemini"])
+        .args(["compile", "--provider", "gemini"])
         .current_dir(tmp.path())
         .assert()
         .success();
 
-    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written for gemini export");
+    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written for gemini compile");
     let content = fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
     assert!(content.contains("Use explicit types."));
 }
 
 #[test]
-fn export_codex_writes_agents_md() {
+fn compile_provider_codex_writes_agents_md() {
     let tmp = TempDir::new().unwrap();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["export", "codex"])
+        .args(["compile", "--provider", "codex"])
         .current_dir(tmp.path())
         .assert()
         .success();
 
-    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written for codex export");
+    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written for codex compile");
     let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
     assert!(content.contains("Use explicit types."));
 }
 
 #[test]
-fn export_codex_writes_codex_config_toml() {
+fn compile_provider_codex_writes_codex_config_toml() {
     let tmp = TempDir::new().unwrap();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["export", "codex"])
+        .args(["compile", "--provider", "codex"])
         .current_dir(tmp.path())
         .assert()
         .success();
 
     let path = tmp.path().join(".codex/config.toml");
-    assert!(path.exists(), ".codex/config.toml must be written for codex export");
+    assert!(path.exists(), ".codex/config.toml must be written for codex compile");
     let content = fs::read_to_string(&path).unwrap();
     assert!(content.contains("mcp_servers"), "config.toml must contain mcp_servers");
 }

@@ -40,7 +40,7 @@ pub fn generate() -> String {
     writeln!(out).unwrap();
     writeln!(out, "## MCP Core Tools").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "Tools always available regardless of active mode:").unwrap();
+    writeln!(out, "Tools always available regardless of active agent:").unwrap();
     writeln!(out).unwrap();
     let mut tools: Vec<&str> = CORE_TOOLS.to_vec();
     tools.sort_unstable();
@@ -97,9 +97,6 @@ fn write_cli_tree(out: &mut String) {
         ])),
         ("ship add <package>", "Add a dependency to .ship/ship.toml and install it", None),
         ("ship import <source>", "Import an agent from a URL, path, or provider config", None),
-        ("ship export <provider>", "Export compiled output for a specific provider", Some(&[
-            ("--zip", "Download all formats as a zip archive"),
-        ])),
         ("ship validate", "Validate .ship/ config before compile", Some(&[
             ("--agent <id>", "Validate a single agent"),
             ("--json", "Emit errors as JSON"),
