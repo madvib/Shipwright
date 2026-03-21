@@ -26,8 +26,8 @@ pub fn load_notes(ship_dir: &Path) -> Vec<Note> {
     list_notes(ship_dir, None).unwrap_or_default()
 }
 
-pub fn load_jobs(ship_dir: &Path) -> Vec<Job> {
-    list_jobs(ship_dir, None, None).unwrap_or_default()
+pub fn load_jobs_filtered(ship_dir: &Path, status: Option<&str>) -> Vec<Job> {
+    list_jobs(ship_dir, None, status).unwrap_or_default()
 }
 
 pub fn load_logs(ship_dir: &Path, job_id: &str) -> Vec<JobLogEntry> {
