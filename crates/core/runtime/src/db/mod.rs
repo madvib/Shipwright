@@ -9,6 +9,7 @@ pub mod branch_context;
 pub mod events;
 #[cfg(test)]
 mod events_tests;
+pub mod file_claims;
 pub mod jobs;
 pub mod kv;
 pub mod managed_state;
@@ -58,21 +59,35 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
         .create_if_missing(true);
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
-    // Migration: rename agent_mode → agent_config (idempotent, ignore if old table absent).
-    let _ = block_on(async {
-        sqlx::query("ALTER TABLE agent_mode RENAME TO agent_config")
-            .execute(&mut conn)
-            .await
-    });
+    // Migrations — idempotent, ignore errors (already applied or table absent).
+    let migrations: &[&str] = &[
+        "ALTER TABLE agent_mode RENAME TO agent_config",
+        // Old event_log (pre-events-rewrite) has incompatible schema.
+        // Drop so DDL recreates with the correct columns. Safe: ephemeral audit data.
+        "DROP TABLE IF EXISTS event_log",
+        // Session record gained optional metrics columns.
+        "ALTER TABLE workspace_session_record ADD COLUMN duration_secs INTEGER",
+        "ALTER TABLE workspace_session_record ADD COLUMN provider TEXT",
+        "ALTER TABLE workspace_session_record ADD COLUMN model TEXT",
+        "ALTER TABLE workspace_session_record ADD COLUMN agent_id TEXT",
+        "ALTER TABLE workspace_session_record ADD COLUMN files_changed INTEGER",
+        "ALTER TABLE workspace_session_record ADD COLUMN gate_result TEXT",
+    ];
+    for sql in migrations {
+        let _ = block_on(async { sqlx::query(sql).execute(&mut conn).await });
+    }
 
     // Execute each statement individually — sqlx only runs one statement at a time.
-    for stmt in schema::SCHEMA
-        .split(';')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        block_on(async { sqlx::query(stmt).execute(&mut conn).await })
-            .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
+    // Strip SQL comments first since they may contain semicolons.
+    for part in schema::SCHEMA_PARTS {
+        let stripped: String = part.lines()
+            .filter(|l| !l.trim_start().starts_with("--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for stmt in stripped.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            block_on(async { sqlx::query(stmt).execute(&mut conn).await })
+                .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
+        }
     }
     Ok(())
 }
