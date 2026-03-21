@@ -309,6 +309,18 @@ pub struct WorkspaceSessionRecord {
     pub summary: Option<String>,
     #[serde(default)]
     pub updated_workspace_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_changed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gate_result: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -316,6 +328,9 @@ pub struct WorkspaceSessionRecord {
 pub struct EndWorkspaceSessionRequest {
     pub summary: Option<String>,
     pub updated_workspace_ids: Vec<String>,
+    pub model: Option<String>,
+    pub files_changed: Option<i64>,
+    pub gate_result: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -419,6 +434,12 @@ fn hydrate_workspace_session_record(
         workspace_branch: row.workspace_branch,
         summary: row.summary,
         updated_workspace_ids: row.updated_workspace_ids,
+        duration_secs: row.duration_secs,
+        provider: row.provider,
+        model: row.model,
+        agent_id: row.agent_id,
+        files_changed: row.files_changed,
+        gate_result: row.gate_result,
         created_at: parse_datetime(&row.created_at),
     }
 }
@@ -1543,6 +1564,10 @@ pub fn end_workspace_session(
         Some(details.join(" ")),
     )?;
 
+    let duration_secs = ended
+        .ended_at
+        .map(|end| (end - ended.started_at).num_seconds());
+
     let record = crate::db::types::WorkspaceSessionRecordDb {
         id: crate::gen_nanoid(),
         session_id: ended.id.clone(),
@@ -1550,6 +1575,12 @@ pub fn end_workspace_session(
         workspace_branch: ended.workspace_branch.clone(),
         summary: ended.summary.clone(),
         updated_workspace_ids: ended.updated_workspace_ids.clone(),
+        duration_secs,
+        provider: ended.primary_provider.clone(),
+        model: request.model,
+        agent_id: ended.agent_id.clone(),
+        files_changed: request.files_changed,
+        gate_result: request.gate_result,
         created_at: Utc::now().to_rfc3339(),
     };
     insert_workspace_session_record_db(ship_dir, &record)?;
@@ -2470,6 +2501,9 @@ mod tests {
             EndWorkspaceSessionRequest {
                 summary: Some("Implemented parser + tests".to_string()),
                 updated_workspace_ids: vec!["feat-parser".to_string()],
+                model: None,
+                files_changed: None,
+                gate_result: None,
             },
         )?;
         assert_eq!(ended.status, WorkspaceSessionStatus::Ended);
@@ -2480,6 +2514,94 @@ mod tests {
         assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
 
         // NOTE: event_log killed — event assertions removed.
+        Ok(())
+    }
+
+    #[test]
+    fn session_record_captures_metrics_on_end() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/metrics".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let started = start_workspace_session(
+            &ship_dir,
+            "feature/metrics",
+            Some("test metrics".to_string()),
+            None,
+            None,
+        )?;
+
+        let ended = end_workspace_session(
+            &ship_dir,
+            "feature/metrics",
+            EndWorkspaceSessionRequest {
+                summary: Some("done".to_string()),
+                updated_workspace_ids: vec![],
+                model: Some("claude-opus-4-20250514".to_string()),
+                files_changed: Some(5),
+                gate_result: Some("pass".to_string()),
+            },
+        )?;
+
+        let record = get_workspace_session_record(&ship_dir, &ended.id)?
+            .expect("session record should exist after end");
+
+        assert_eq!(record.session_id, started.id);
+        assert!(record.duration_secs.is_some());
+        assert!(record.duration_secs.unwrap() >= 0);
+        assert_eq!(record.provider.as_deref(), Some("claude"));
+        assert_eq!(record.model.as_deref(), Some("claude-opus-4-20250514"));
+        assert_eq!(record.agent_id, started.agent_id);
+        assert_eq!(record.files_changed, Some(5));
+        assert_eq!(record.gate_result.as_deref(), Some("pass"));
+        Ok(())
+    }
+
+    #[test]
+    fn session_record_metrics_default_to_none() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/metrics-defaults".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        start_workspace_session(
+            &ship_dir,
+            "feature/metrics-defaults",
+            None,
+            None,
+            None,
+        )?;
+
+        let ended = end_workspace_session(
+            &ship_dir,
+            "feature/metrics-defaults",
+            EndWorkspaceSessionRequest::default(),
+        )?;
+
+        let record = get_workspace_session_record(&ship_dir, &ended.id)?
+            .expect("session record should exist");
+
+        assert!(record.duration_secs.is_some());
+        assert!(record.duration_secs.unwrap() >= 0);
+        assert!(record.provider.is_some()); // inherited from session
+        assert!(record.model.is_none());
+        assert!(record.files_changed.is_none());
+        assert!(record.gate_result.is_none());
         Ok(())
     }
 

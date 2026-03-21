@@ -95,6 +95,12 @@ pub struct WorkspaceSessionRecordDb {
     pub workspace_branch: String,
     pub summary: Option<String>,
     pub updated_workspace_ids: Vec<String>,
+    pub duration_secs: Option<i64>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub agent_id: Option<String>,
+    pub files_changed: Option<i64>,
+    pub gate_result: Option<String>,
     pub created_at: String,
 }
 

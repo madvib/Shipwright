@@ -26,7 +26,7 @@ pub enum EventEntity {
 }
 
 impl EventEntity {
-    pub(crate) fn as_db(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             EventEntity::Project => "project",
             EventEntity::Workspace => "workspace",
@@ -97,7 +97,7 @@ pub enum EventAction {
 }
 
 impl EventAction {
-    pub(crate) fn as_db(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             EventAction::Init => "init",
             EventAction::Create => "create",
@@ -228,4 +228,24 @@ pub fn list_events_since(
 
 pub fn read_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
     crate::db::events::list_recent_events(ship_dir, limit)
+}
+
+/// Record a gate pass/fail outcome as a structured event.
+///
+/// - entity = Gate, entity_id = job_id, action = Pass or Fail
+/// - detail = evidence string
+/// - On pass, job status is set to "complete"
+/// - On fail, job status stays "running" (retryable)
+pub fn record_gate_outcome(
+    ship_dir: &Path,
+    job_id: &str,
+    passed: bool,
+    evidence: &str,
+) -> Result<EventRecord> {
+    crate::db::events::record_gate_outcome(ship_dir, job_id, passed, evidence)
+}
+
+/// List all gate outcomes (pass/fail events) for a given job.
+pub fn list_gate_outcomes(ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
+    crate::db::events::list_gate_outcomes(ship_dir, job_id)
 }

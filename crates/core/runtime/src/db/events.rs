@@ -24,8 +24,8 @@ pub fn insert_event(
     let mut conn = open_db(ship_dir)?;
     let id = gen_nanoid();
     let now = Utc::now().to_rfc3339();
-    let entity_type = entity.as_db();
-    let action_str = action.as_db();
+    let entity_type = entity.as_str();
+    let action_str = action.as_str();
 
     block_on(async {
         sqlx::query(
@@ -210,6 +210,55 @@ pub fn migrate_job_log_to_events(ship_dir: &Path) -> Result<usize> {
     }
 
     Ok(migrated)
+}
+
+/// Record a gate pass/fail outcome as an event.
+///
+/// Creates an event with entity=Gate, entity_id=job_id, action=Pass or Fail.
+/// If `passed`, also updates the job status to "complete".
+/// If failed, the job stays "running" so it can be retried.
+pub fn record_gate_outcome(
+    ship_dir: &Path,
+    job_id: &str,
+    passed: bool,
+    evidence: &str,
+) -> Result<EventRecord> {
+    let action = if passed {
+        EventAction::Pass
+    } else {
+        EventAction::Fail
+    };
+    let record = insert_event(
+        ship_dir,
+        "ship",
+        &EventEntity::Gate,
+        Some(job_id),
+        &action,
+        Some(evidence),
+        None,
+        None,
+        Some(job_id),
+    )?;
+    if passed {
+        crate::db::jobs::update_job_status(ship_dir, job_id, "complete")?;
+    }
+    Ok(record)
+}
+
+/// List gate outcomes (pass/fail events) for a specific job.
+pub fn list_gate_outcomes(ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(&format!(
+            "SELECT {SELECT_COLS} FROM event_log \
+             WHERE entity_type = 'gate' AND entity_id = ? \
+             ORDER BY created_at ASC, rowid ASC"
+        ))
+        .bind(job_id)
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    rows.iter().map(row_to_record).collect()
 }
 
 fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {

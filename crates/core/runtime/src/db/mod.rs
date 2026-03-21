@@ -62,9 +62,6 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
     // Migrations — idempotent, ignore errors (already applied or table absent).
     let migrations: &[&str] = &[
         "ALTER TABLE agent_mode RENAME TO agent_config",
-        // Old event_log (pre-events-rewrite) has incompatible schema.
-        // Drop so DDL recreates with the correct columns. Safe: ephemeral audit data.
-        "DROP TABLE IF EXISTS event_log",
         // Session record gained optional metrics columns.
         "ALTER TABLE workspace_session_record ADD COLUMN duration_secs INTEGER",
         "ALTER TABLE workspace_session_record ADD COLUMN provider TEXT",
@@ -75,6 +72,22 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
     ];
     for sql in migrations {
         let _ = block_on(async { sqlx::query(sql).execute(&mut conn).await });
+    }
+
+    // Old event_log (pre-v0.1.0) used incompatible columns (seq, timestamp, entity, subject).
+    // Detect by checking for the old `seq` column; if present, drop and let DDL recreate.
+    let has_old_schema = block_on(async {
+        sqlx::query("SELECT seq FROM event_log LIMIT 0")
+            .execute(&mut conn)
+            .await
+    })
+    .is_ok();
+    if has_old_schema {
+        let _ = block_on(async {
+            sqlx::query("DROP TABLE event_log")
+                .execute(&mut conn)
+                .await
+        });
     }
 
     // Execute each statement individually — sqlx only runs one statement at a time.

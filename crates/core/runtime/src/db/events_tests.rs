@@ -207,3 +207,80 @@ fn migrate_job_log_to_events_works() {
     let migrated2 = migrate_job_log_to_events(&ship_dir).unwrap();
     assert_eq!(migrated2, 3);
 }
+
+// ── Gate outcome tests ────────────────────────────────────────────────────
+
+#[test]
+fn record_gate_pass_creates_event_and_completes_job() {
+    let (_tmp, ship_dir) = setup();
+    let job = crate::db::jobs::create_job(
+        &ship_dir, "gate-test", None, None, None, None, 0, None, vec![], vec![],
+    ).unwrap();
+    crate::db::jobs::update_job_status(&ship_dir, &job.id, "running").unwrap();
+
+    let rec = record_gate_outcome(&ship_dir, &job.id, true, "all tests green").unwrap();
+    assert_eq!(rec.entity, EventEntity::Gate);
+    assert_eq!(rec.action, EventAction::Pass);
+    assert_eq!(rec.subject, job.id);
+    assert_eq!(rec.details.as_deref(), Some("all tests green"));
+    assert_eq!(rec.job_id.as_deref(), Some(job.id.as_str()));
+
+    // Job should now be "complete"
+    let updated = crate::db::jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+    assert_eq!(updated.status, "complete");
+}
+
+#[test]
+fn record_gate_fail_creates_event_leaves_job_running() {
+    let (_tmp, ship_dir) = setup();
+    let job = crate::db::jobs::create_job(
+        &ship_dir, "gate-test", None, None, None, None, 0, None, vec![], vec![],
+    ).unwrap();
+    crate::db::jobs::update_job_status(&ship_dir, &job.id, "running").unwrap();
+
+    let rec = record_gate_outcome(&ship_dir, &job.id, false, "3 tests failed").unwrap();
+    assert_eq!(rec.entity, EventEntity::Gate);
+    assert_eq!(rec.action, EventAction::Fail);
+    assert_eq!(rec.details.as_deref(), Some("3 tests failed"));
+
+    // Job should still be "running"
+    let updated = crate::db::jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+    assert_eq!(updated.status, "running");
+}
+
+#[test]
+fn list_gate_outcomes_filters_by_job() {
+    let (_tmp, ship_dir) = setup();
+    let job_a = crate::db::jobs::create_job(
+        &ship_dir, "gate-a", None, None, None, None, 0, None, vec![], vec![],
+    ).unwrap();
+    let job_b = crate::db::jobs::create_job(
+        &ship_dir, "gate-b", None, None, None, None, 0, None, vec![], vec![],
+    ).unwrap();
+    crate::db::jobs::update_job_status(&ship_dir, &job_a.id, "running").unwrap();
+    crate::db::jobs::update_job_status(&ship_dir, &job_b.id, "running").unwrap();
+
+    // Record outcomes for both jobs
+    record_gate_outcome(&ship_dir, &job_a.id, false, "lint errors").unwrap();
+    record_gate_outcome(&ship_dir, &job_a.id, true, "all clean").unwrap();
+    record_gate_outcome(&ship_dir, &job_b.id, false, "build broken").unwrap();
+
+    // Also insert an unrelated event to prove filtering works
+    insert_event(
+        &ship_dir, "ship", &EventEntity::Job, Some(&job_a.id),
+        &EventAction::Log, Some("noise"), None, None, Some(&job_a.id),
+    ).unwrap();
+
+    let outcomes_a = list_gate_outcomes(&ship_dir, &job_a.id).unwrap();
+    assert_eq!(outcomes_a.len(), 2);
+    assert_eq!(outcomes_a[0].action, EventAction::Fail);
+    assert_eq!(outcomes_a[1].action, EventAction::Pass);
+
+    let outcomes_b = list_gate_outcomes(&ship_dir, &job_b.id).unwrap();
+    assert_eq!(outcomes_b.len(), 1);
+    assert_eq!(outcomes_b[0].action, EventAction::Fail);
+
+    // Non-existent job returns empty
+    let outcomes_none = list_gate_outcomes(&ship_dir, "no-such-job").unwrap();
+    assert!(outcomes_none.is_empty());
+}

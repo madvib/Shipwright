@@ -194,14 +194,22 @@ pub fn insert_workspace_session_record_db(
     block_on(async {
         sqlx::query(
             "INSERT INTO workspace_session_record
-             (id, session_id, workspace_id, workspace_branch, summary, updated_workspace_ids_json, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+             (id, session_id, workspace_id, workspace_branch, summary,
+              updated_workspace_ids_json, duration_secs, provider, model,
+              agent_id, files_changed, gate_result, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(session_id) DO UPDATE SET
                id = excluded.id,
                workspace_id = excluded.workspace_id,
                workspace_branch = excluded.workspace_branch,
                summary = excluded.summary,
                updated_workspace_ids_json = excluded.updated_workspace_ids_json,
+               duration_secs = excluded.duration_secs,
+               provider = excluded.provider,
+               model = excluded.model,
+               agent_id = excluded.agent_id,
+               files_changed = excluded.files_changed,
+               gate_result = excluded.gate_result,
                created_at = excluded.created_at",
         )
         .bind(&record.id)
@@ -210,6 +218,12 @@ pub fn insert_workspace_session_record_db(
         .bind(&record.workspace_branch)
         .bind(&record.summary)
         .bind(&updated_workspace_ids_json)
+        .bind(record.duration_secs)
+        .bind(&record.provider)
+        .bind(&record.model)
+        .bind(&record.agent_id)
+        .bind(record.files_changed)
+        .bind(&record.gate_result)
         .bind(&record.created_at)
         .execute(&mut conn)
         .await
@@ -224,7 +238,9 @@ pub fn get_workspace_session_record_db(
     let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(
-            "SELECT id, session_id, workspace_id, workspace_branch, summary, updated_workspace_ids_json, created_at
+            "SELECT id, session_id, workspace_id, workspace_branch, summary,
+                    updated_workspace_ids_json, duration_secs, provider, model,
+                    agent_id, files_changed, gate_result, created_at
              FROM workspace_session_record
              WHERE session_id = ?",
         )
@@ -240,6 +256,12 @@ pub fn get_workspace_session_record_db(
         summary: row.get(4),
         updated_workspace_ids: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(5))
             .unwrap_or_default(),
-        created_at: row.get(6),
+        duration_secs: row.get(6),
+        provider: row.get(7),
+        model: row.get(8),
+        agent_id: row.get(9),
+        files_changed: row.get(10),
+        gate_result: row.get(11),
+        created_at: row.get(12),
     }))
 }
