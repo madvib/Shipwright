@@ -2,8 +2,16 @@
   "name": "ship-monorepo",
   "private": true,
   "scripts": {
+    "dev": "pnpm --filter web dev",
+    "test": "pnpm --filter web test",
+    "test:rust": "cargo test",
+    "typecheck": "pnpm --filter web exec tsc --noEmit",
+    "wasm": "wasm-pack build crates/core/compiler --target web --out-dir ../../../packages/compiler --out-name compiler -- --features wasm",
     "lint": "vp lint",
-    "lint:fix": "vp lint --fix"
+    "lint:fix": "vp lint --fix",
+    "db:migrate": "cd apps/web && npx wrangler d1 migrations apply ship --local",
+    "cf:types": "cd apps/web && npx wrangler types",
+    "cf:deploy": "pnpm --filter web deploy"
   },
   "devDependencies": {
     "vite-plus": "^0.1.11",

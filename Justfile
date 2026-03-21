@@ -1,21 +1,21 @@
-ship_dir := ".ship"
-cli     := "./target/release/ship"
+# ── Ship Development ───────────────────────────────────────────────────────────
 
-# List available recipes
 default:
     @just --list
-# ── Install ────────────────────────────────────────────────────────────────────
 
-# Build and install `ship` to ~/.cargo/bin (adds to PATH)
-install: build
-    cargo install --path apps/ship-studio-cli --locked
+# ── Dev ────────────────────────────────────────────────────────────────────────
 
-# Alias: same as install
-reinstall: install
+# Start Studio dev server (Vite + local D1)
+dev:
+    pnpm --filter web dev
+
+# Watch and rebuild Rust on changes
+watch:
+    cargo watch -x "build -p ship-studio-cli -p mcp"
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 
-# Build cli + mcp (skips Tauri — needs glib-2.0 not available in WSL)
+# Build CLI + MCP server (release)
 build:
     cargo build --release -p ship-studio-cli -p mcp
 
@@ -23,95 +23,117 @@ build:
 build-dev:
     cargo build -p ship-studio-cli -p mcp
 
-# Build everything including Tauri UI (requires native libs)
-build-all:
-    cargo build --release
+# Install ship binary to ~/.cargo/bin
+install: build
+    cargo install --path apps/ship-studio-cli
+
+# Rebuild WASM compiler (requires build-essential)
+wasm:
+    wasm-pack build crates/core/compiler --target web --out-dir ../../../packages/compiler --out-name compiler -- --features wasm
 
 # ── Test ───────────────────────────────────────────────────────────────────────
 
-# Run all tests
-test:
+# Run all tests (Rust + web)
+test: test-rust test-web
+
+# Rust workspace tests
+test-rust:
     cargo test --workspace
 
-# Run runtime tests only (fastest)
+# Runtime crate only (fastest Rust)
 test-runtime:
     cargo test -p runtime
 
-# Run tests with output visible
-test-verbose:
-    cargo test -p runtime -- --nocapture
+# Compiler crate only
+test-compiler:
+    cargo test -p compiler
 
-# ── Migration ──────────────────────────────────────────────────────────────────
+# Web app tests (vitest)
+test-web:
+    pnpm --filter web test
 
-# Migrate existing YAML issues → TOML in-place
-migrate:
-    SHIP_DIR={{ship_dir}} {{cli}} dev migrate
+# TypeScript type check
+typecheck:
+    pnpm --filter web exec tsc --noEmit
 
-# ── Dev workflow ───────────────────────────────────────────────────────────────
+# ── Database ───────────────────────────────────────────────────────────────────
 
-# Build then run migration (typical dev loop after a format change)
-build-migrate: build migrate
+# Apply D1 migrations locally
+db-migrate:
+    cd apps/web && npx wrangler d1 migrations apply ship --local
 
-# Watch for changes and rebuild (requires cargo-watch)
-watch:
-    cargo watch -x "build -p ship-studio-cli -p mcp"
+# Regenerate Cloudflare worker types from wrangler.jsonc
+cf-types:
+    cd apps/web && npx wrangler types
 
-# ── Tauri ──────────────────────────────────────────────────────────────────────
+# ── Lint & Format ──────────────────────────────────────────────────────────────
 
-# Run Tauri dev server (UI hot-reload)
-tauri-dev:
-    cd crates/ui && npm run tauri dev
-
-# ── Ship CLI shortcuts ─────────────────────────────────────────────────────────
-
-# List all issues
-issues:
-    SHIP_DIR={{ship_dir}} {{cli}} issue list
-
-# List issues by status
-issues-backlog:
-    SHIP_DIR={{ship_dir}} {{cli}} issue list --status backlog
-
-issues-in-progress:
-    SHIP_DIR={{ship_dir}} {{cli}} issue list --status in-progress
-
-# Scan for ghost issues (TODO/FIXME/HACK/BUG)
-ghost:
-    SHIP_DIR={{ship_dir}} {{cli}} ghost scan
-
-# Run projects-module e2e checks
-e2e-projects:
-    ./examples/e2e/checks/project-features.sh
-
-# Reset local example workspace with fresh generated .ship data
-e2e-reset:
-    ./examples/e2e/reset.sh
-
-# ── MCP ────────────────────────────────────────────────────────────────────────
-
-# Start the MCP server manually (usually Claude Code does this)
-mcp-start:
-    {{cli}} mcp serve
-
-# ── Housekeeping ───────────────────────────────────────────────────────────────
-
-# Run clippy
+# Rust clippy
 lint:
-    ./scripts/check-no-compat-surface.sh
     cargo clippy --workspace -- -D warnings
 
-# Guard against compatibility shims in product surfaces
-check-no-compat:
-    ./scripts/check-no-compat-surface.sh
-
-# Format all Rust code
+# Format Rust
 fmt:
     cargo fmt
 
-# Check formatting without modifying
+# Check Rust formatting
 fmt-check:
     cargo fmt --check
+
+# ── Deploy ─────────────────────────────────────────────────────────────────────
+
+# Deploy Studio to Cloudflare Workers
+deploy:
+    pnpm --filter web deploy
+
+# Apply D1 migrations to remote (production)
+db-migrate-remote:
+    cd apps/web && npx wrangler d1 migrations apply ship --remote
+
+# ── Registry ───────────────────────────────────────────────────────────────────
+
+# Seed the local registry with @unofficial packages
+seed:
+    @echo "Seeding local registry — requires dev server running on :3000"
+    curl -s -X POST http://localhost:3000/api/registry/seed \
+      -H "Content-Type: application/json" \
+      -H "X-Seed-Secret: ${SEED_SECRET}" \
+      -H "Cookie: ${AUTH_COOKIE}" | jq .
+
+# Publish a package to the local registry
+publish repo:
+    curl -s -X POST http://localhost:3000/api/registry/publish \
+      -H "Content-Type: application/json" \
+      -H "Cookie: ${AUTH_COOKIE}" \
+      -d '{"repo_url": "{{repo}}"}' | jq .
+
+# ── Ship CLI ──────────────────────────────────────────────────────────────────
+
+# Compile agent config for current project
+compile:
+    ship compile
+
+# Activate an agent profile
+use profile="default":
+    ship use {{profile}}
+
+# View targets, capabilities, jobs in TUI
+view:
+    ship view
+
+# ── Housekeeping ───────────────────────────────────────────────────────────────
 
 # Remove build artifacts
 clean:
     cargo clean
+    rm -rf apps/web/dist apps/web/.wrangler/deploy
+
+# Nuke local D1 and re-migrate
+db-reset:
+    rm -rf apps/web/.wrangler/state/v3/d1
+    just db-migrate
+
+# Rebuild everything from scratch
+rebuild: clean build wasm
+    pnpm install
+    just db-migrate
