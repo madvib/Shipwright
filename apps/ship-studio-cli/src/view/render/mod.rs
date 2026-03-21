@@ -37,7 +37,7 @@ pub(super) fn status_color(s: &str) -> Color {
         "actual" | "complete" | "done" => C_GREEN,
         "pending" => C_BLUE,
         "aspirational" => C_PURPLE,
-        "active" | "running" => C_AMBER,
+        "active" | "running" | "in_progress" => C_AMBER,
         "failed" | "blocked" => C_RED,
         _ => C_MUT,
     }
@@ -48,7 +48,7 @@ pub(super) fn status_sym(s: &str) -> &'static str {
         "actual" | "complete" | "done" => "●",
         "pending" => "○",
         "aspirational" => "◎",
-        "active" | "running" => "◆",
+        "active" | "running" | "in_progress" => "◆",
         "failed" | "blocked" => "✖",
         _ => "·",
     }
@@ -92,9 +92,22 @@ fn header_tabs(app: &App) -> Tabs<'static> {
 
 fn footer(app: &App) -> Paragraph<'static> {
     let auto = if app.auto_refresh { "on" } else { "off" };
-    let hint = match app.screen {
-        Screen::List => format!("  ↑↓ jk · ⏎ open · Tab/⇧Tab switch · r reload · a auto({auto}) · q quit"),
-        _ => format!("  ↑↓ jk scroll · ⌫ Esc back · r reload · a auto({auto}) · q quit"),
+    let hint = match (app.tab, app.screen) {
+        (Tab::Jobs, Screen::List) => format!(
+            "  ↑↓ jk · g/G top/end · ⏎ open · s cycle-status · f filter · Tab switch · a auto({auto}) · q quit"
+        ),
+        (Tab::Targets, Screen::TargetDetail) => format!(
+            "  ↑↓ jk · g/G top/end · ⏎ open · s cycle-status · ⌫ back · a auto({auto}) · q quit"
+        ),
+        (Tab::Jobs, Screen::JobDetail) => format!(
+            "  ↑↓ jk scroll · g/G top/end · l launch · ⌫ back · a auto({auto}) · q quit"
+        ),
+        (_, Screen::List) => format!(
+            "  ↑↓ jk · g/G top/end · ⏎ open · Tab/⇧Tab switch · r reload · a auto({auto}) · q quit"
+        ),
+        _ => format!(
+            "  ↑↓ jk scroll · g/G top/end · ⌫ Esc back · r reload · a auto({auto}) · q quit"
+        ),
     };
     let mut spans = vec![Span::styled(hint, Style::default().fg(C_MUT))];
     if !app.status.is_empty() {
