@@ -68,21 +68,10 @@ export const TARGET_NAMES: Record<string, string> = {
 
 function getDbPath(): string {
   const os = require('os') as typeof import('os')
-  const fs = require('fs') as typeof import('fs')
   const path = require('path') as typeof import('path')
   const home = process.env.HOME ?? os.homedir()
-  const appStatePath = path.join(home, '.ship', 'app_state.json')
-
-  try {
-    const appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8')) as { active_project?: string }
-    const projectDir = appState.active_project?.replace(/\/.ship\/?$/, '')
-    if (projectDir) {
-      const local = path.join(projectDir, '.ship', 'platform.db')
-      if (fs.existsSync(local)) return local
-    }
-  } catch { /* fall through */ }
-
-  return path.join(home, 'dev', 'ship', '.ship', 'platform.db')
+  // platform.db lives at ~/.ship/platform.db — never inside a project directory.
+  return path.join(home, '.ship', 'platform.db')
 }
 
 // ── Map DB row → Job ──────────────────────────────────────────────────────
