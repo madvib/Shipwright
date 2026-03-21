@@ -1,0 +1,189 @@
+import { describe, it, expect } from 'vitest'
+import { collectProviderFiles, buildZip, crc32 } from '../download-compile-output'
+import type { CompileResult } from '#/features/compiler/types'
+
+function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
+  return {
+    mcp_servers: null,
+    mcp_config_path: null,
+    context_content: null,
+    skill_files: {},
+    claude_settings_patch: null,
+    codex_config_patch: null,
+    gemini_settings_patch: null,
+    gemini_policy_patch: null,
+    cursor_hooks_patch: null,
+    cursor_cli_permissions: null,
+    rule_files: {},
+    plugins_manifest: { install: [], scope: 'project' },
+    agent_files: {},
+    cursor_environment_json: null,
+    ...overrides,
+  }
+}
+
+describe('collectProviderFiles', () => {
+  it('returns context file with correct name per provider', () => {
+    const result = makeResult({ context_content: '# Hello' })
+
+    const claude = collectProviderFiles('claude', result)
+    expect(claude).toEqual([{ path: 'CLAUDE.md', content: '# Hello' }])
+
+    const gemini = collectProviderFiles('gemini', result)
+    expect(gemini).toEqual([{ path: 'GEMINI.md', content: '# Hello' }])
+
+    const codex = collectProviderFiles('codex', result)
+    expect(codex).toEqual([{ path: 'AGENTS.md', content: '# Hello' }])
+  })
+
+  it('returns mcp config with correct path per provider', () => {
+    const servers = { test: { command: 'test' } }
+    const result = makeResult({ mcp_servers: servers })
+
+    const claude = collectProviderFiles('claude', result)
+    expect(claude[0].path).toBe('.mcp.json')
+
+    const cursor = collectProviderFiles('cursor', result)
+    expect(cursor[0].path).toBe('.cursor/mcp.json')
+
+    const gemini = collectProviderFiles('gemini', result)
+    expect(gemini[0].path).toBe('.gemini/settings.json')
+  })
+
+  it('includes skill_files, agent_files, and rule_files', () => {
+    const result = makeResult({
+      skill_files: { '.claude/skills/foo/SKILL.md': 'skill content' },
+      agent_files: { '.claude/agents/monitor.md': 'agent content' },
+      rule_files: { '.cursor/rules/style.mdc': 'rule content' },
+    })
+
+    const files = collectProviderFiles('claude', result)
+    expect(files).toContainEqual({ path: '.cursor/rules/style.mdc', content: 'rule content' })
+    expect(files).toContainEqual({ path: '.claude/skills/foo/SKILL.md', content: 'skill content' })
+    expect(files).toContainEqual({ path: '.claude/agents/monitor.md', content: 'agent content' })
+  })
+
+  it('includes claude_settings_patch as JSON', () => {
+    const patch = { permissions: { allow: ['Bash(*)'] } }
+    const result = makeResult({ claude_settings_patch: patch })
+    const files = collectProviderFiles('claude', result)
+    expect(files).toContainEqual({
+      path: '.claude/settings.json',
+      content: JSON.stringify(patch, null, 2),
+    })
+  })
+
+  it('includes codex_config_patch', () => {
+    const toml = '[mcp_servers.test]\ncommand = "test"'
+    const result = makeResult({ codex_config_patch: toml })
+    const files = collectProviderFiles('codex', result)
+    expect(files).toContainEqual({ path: '.codex/config.toml', content: toml })
+  })
+
+  it('includes gemini_settings_patch only for gemini provider', () => {
+    const patch = { hooks: {} }
+    const result = makeResult({ gemini_settings_patch: patch })
+
+    const gemini = collectProviderFiles('gemini', result)
+    const geminiSettings = gemini.filter((f) => f.path === '.gemini/settings.json')
+    expect(geminiSettings.length).toBeGreaterThan(0)
+
+    const claude = collectProviderFiles('claude', result)
+    const claudeGeminiSettings = claude.filter((f) => f.path === '.gemini/settings.json')
+    expect(claudeGeminiSettings.length).toBe(0)
+  })
+
+  it('includes cursor-specific files', () => {
+    const result = makeResult({
+      cursor_hooks_patch: { hooks: [] },
+      cursor_cli_permissions: { version: 1 },
+      cursor_environment_json: { env: 'test' },
+    })
+    const files = collectProviderFiles('cursor', result)
+    expect(files).toContainEqual({
+      path: '.cursor/hooks.json',
+      content: JSON.stringify({ hooks: [] }, null, 2),
+    })
+    expect(files).toContainEqual({
+      path: '.cursor/cli.json',
+      content: JSON.stringify({ version: 1 }, null, 2),
+    })
+    expect(files).toContainEqual({
+      path: '.cursor/environment.json',
+      content: JSON.stringify({ env: 'test' }, null, 2),
+    })
+  })
+
+  it('returns empty array when result has no content', () => {
+    const result = makeResult()
+    const files = collectProviderFiles('claude', result)
+    expect(files).toEqual([])
+  })
+
+  it('skips null entries in skill/agent/rule files', () => {
+    const result = makeResult({
+      skill_files: { 'a.md': 'content', 'b.md': undefined as unknown as string },
+      agent_files: { 'c.md': undefined as unknown as string },
+    })
+    const files = collectProviderFiles('claude', result)
+    expect(files).toHaveLength(1)
+    expect(files[0].path).toBe('a.md')
+  })
+})
+
+describe('crc32', () => {
+  it('computes correct CRC for empty data', () => {
+    expect(crc32(new Uint8Array([]))).toBe(0)
+  })
+
+  it('computes correct CRC for known input', () => {
+    const data = new TextEncoder().encode('hello')
+    // Known CRC-32 of "hello" is 0x3610a686
+    expect(crc32(data)).toBe(0x3610a686)
+  })
+})
+
+describe('buildZip', () => {
+  it('creates a valid zip with correct header signatures', () => {
+    const encoder = new TextEncoder()
+    const zip = buildZip([
+      { path: 'test.txt', data: encoder.encode('hello world') },
+    ])
+
+    // Check local file header signature
+    const view = new DataView(zip.buffer)
+    expect(view.getUint32(0, true)).toBe(0x04034b50)
+
+    // Find EOCD signature at end
+    const eocdOffset = zip.length - 22
+    expect(view.getUint32(eocdOffset, true)).toBe(0x06054b50)
+
+    // EOCD says 1 entry
+    expect(view.getUint16(eocdOffset + 8, true)).toBe(1)
+  })
+
+  it('creates a zip with multiple files', () => {
+    const encoder = new TextEncoder()
+    const zip = buildZip([
+      { path: 'a.txt', data: encoder.encode('aaa') },
+      { path: 'b.txt', data: encoder.encode('bbb') },
+      { path: 'dir/c.txt', data: encoder.encode('ccc') },
+    ])
+
+    const view = new DataView(zip.buffer)
+    const eocdOffset = zip.length - 22
+    expect(view.getUint16(eocdOffset + 8, true)).toBe(3)
+  })
+
+  it('stores file content correctly', () => {
+    const encoder = new TextEncoder()
+    const content = 'test content here'
+    const zip = buildZip([
+      { path: 'file.txt', data: encoder.encode(content) },
+    ])
+
+    // Verify the content is stored in the zip (STORE method = uncompressed)
+    const zipString = new TextDecoder().decode(zip)
+    expect(zipString).toContain(content)
+  })
+})

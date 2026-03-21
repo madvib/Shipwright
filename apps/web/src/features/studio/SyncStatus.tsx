@@ -8,6 +8,17 @@ interface SyncStatusProps {
 }
 
 /**
+ * Combine multiple sync status values into one, using worst-wins priority:
+ * syncing > error > saved > idle
+ */
+export function combineSyncStatuses(...statuses: SyncStatusValue[]): SyncStatusValue {
+  if (statuses.some((s) => s === 'saving')) return 'saving'
+  if (statuses.some((s) => s === 'error')) return 'error'
+  if (statuses.some((s) => s === 'saved')) return 'saved'
+  return 'idle'
+}
+
+/**
  * Minimal non-blocking indicator shown while a library is being saved.
  * - idle: renders nothing
  * - saving: spinner + "Saving..."

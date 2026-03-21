@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Github, Terminal, Upload, ChevronRight, X, Copy, CheckCheck, Download, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { authClient } from '#/lib/auth-client'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import { PROVIDER_SHORT } from '#/features/compiler/components/ModeHeader'
+import { PublishDialog } from '#/features/studio/PublishDialog'
+import { PushToGitHubDialog } from '#/features/studio/PushToGitHubDialog'
+import { CliUsagePopover } from '#/features/studio/CliUsagePopover'
+import { downloadCompileOutput } from '#/features/studio/download-compile-output'
+import { useAgentStore } from '#/features/agents/useAgentStore'
 import type { CompileState } from '#/features/compiler/useCompiler'
 import type { CompileResult } from '#/features/compiler/types'
 
@@ -17,6 +23,10 @@ interface PublishPanelProps {
 
 export function PublishPanel({ auth, library, compileState, selectedProviders, onCompile, onClose }: PublishPanelProps) {
   const hasContent = (library?.skills?.length ?? 0) > 0 || (library?.mcp_servers?.length ?? 0) > 0
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [pushOpen, setPushOpen] = useState(false)
+
+  const compileOutput = compileState.status === 'ok' ? compileState.output : null
 
   return (
     <aside className="w-96 border-l border-border/60 bg-card/30 flex flex-col overflow-hidden shrink-0">
@@ -49,9 +59,24 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
         {!auth.isAuthenticated ? (
           <SignInCTA />
         ) : (
-          <DistributeSection hasContent={hasContent} isCompiled={compileState.status === 'ok'} />
+          <DistributeSection
+            hasContent={hasContent}
+            isCompiled={compileState.status === 'ok'}
+            compileState={compileState}
+            selectedProviders={selectedProviders}
+            onPublish={() => setPublishOpen(true)}
+            onPush={() => setPushOpen(true)}
+          />
         )}
       </div>
+
+      <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} />
+      <PushToGitHubDialog
+        open={pushOpen}
+        onOpenChange={setPushOpen}
+        compileOutput={compileOutput}
+        selectedProviders={selectedProviders}
+      />
     </aside>
   )
 }
@@ -180,23 +205,40 @@ function SignInCTA() {
   )
 }
 
-function DistributeSection({ hasContent, isCompiled }: { hasContent: boolean; isCompiled: boolean }) {
+function DistributeSection({ hasContent, isCompiled, compileState, selectedProviders, onPublish, onPush }: {
+  hasContent: boolean; isCompiled: boolean; compileState: CompileState; selectedProviders: string[]; onPublish: () => void; onPush: () => void
+}) {
+  const [cliOpen, setCliOpen] = useState(false)
+  const { agents, activeId } = useAgentStore()
+  const activeAgent = activeId ? agents.find((a) => a.id === activeId) : undefined
+
+  const handleDownload = () => {
+    if (compileState.status !== 'ok') return
+    downloadCompileOutput(compileState.output, selectedProviders)
+      .then(() => toast.success('Config files downloaded'))
+      .catch((err: unknown) => toast.error('Download failed', {
+        description: err instanceof Error ? err.message : 'Unknown error',
+      }))
+  }
+
   return (
     <div className="p-3 space-y-1.5">
-      <DistAction icon={<Github className="size-3.5" />} label="Push to repo" desc="Create a PR with .ship/ config" disabled={!isCompiled} />
-      <DistAction icon={<Upload className="size-3.5" />} label="Publish to registry" desc="Share with the community" disabled={!hasContent} />
-      <DistAction icon={<Download className="size-3.5" />} label="Download files" desc="Export compiled configs" disabled={!isCompiled} />
-      <DistAction icon={<Terminal className="size-3.5" />} label="Use with CLI" desc="ship use <agent>" disabled={false} />
+      <DistAction icon={<Github className="size-3.5" />} label="Push to repo" desc="Create a PR with .ship/ config" disabled={!isCompiled} onClick={onPush} />
+      <DistAction icon={<Upload className="size-3.5" />} label="Publish to registry" desc="Share with the community" disabled={!hasContent} onClick={onPublish} />
+      <DistAction icon={<Download className="size-3.5" />} label="Download files" desc="Export compiled configs" disabled={!isCompiled} onClick={handleDownload} />
+      <DistAction icon={<Terminal className="size-3.5" />} label="Use with CLI" desc="ship use <agent>" disabled={false} onClick={() => setCliOpen(true)} />
+      <CliUsagePopover open={cliOpen} onOpenChange={setCliOpen} agentName={activeAgent?.name} />
     </div>
   )
 }
 
-function DistAction({ icon, label, desc, disabled }: {
-  icon: React.ReactNode; label: string; desc: string; disabled?: boolean
+function DistAction({ icon, label, desc, disabled, onClick }: {
+  icon: React.ReactNode; label: string; desc: string; disabled?: boolean; onClick?: () => void
 }) {
   return (
     <button
       disabled={disabled}
+      onClick={onClick}
       className={`w-full flex items-center gap-2.5 rounded-lg border border-border/40 px-3 py-2 text-left transition ${
         disabled ? 'opacity-30 cursor-not-allowed' : 'hover:border-primary/30 hover:bg-primary/5'
       }`}
