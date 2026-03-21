@@ -261,27 +261,17 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     agents
 }
 
-/// Search order: agents/profiles/ (new) → modes/ (legacy), project then global.
+/// Search order: project .ship/agents/profiles/ → global ~/.ship/agents/profiles/.
 fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
-    let ship = project_root.join(".ship");
     let file = format!("{}.toml", profile_id);
 
-    // Project-local: profiles/ → presets/ (compat) → modes/ (legacy)
-    let p = ship.join("agents").join("profiles").join(&file);
+    // Project-local
+    let p = project_root.join(".ship").join("agents").join("profiles").join(&file);
     if p.exists() { return Some(p); }
-    let p_compat = ship.join("agents").join("presets").join(&file);
-    if p_compat.exists() { return Some(p_compat); }
-    let m = ship.join("modes").join(&file);
-    if m.exists() { return Some(m); }
 
-    // Global: ~/.ship
-    let home = dirs::home_dir()?;
-    let gp = home.join(".ship").join("agents").join("profiles").join(&file);
+    // Global
+    let gp = dirs::home_dir()?.join(".ship").join("agents").join("profiles").join(&file);
     if gp.exists() { return Some(gp); }
-    let gp_compat = home.join(".ship").join("agents").join("presets").join(&file);
-    if gp_compat.exists() { return Some(gp_compat); }
-    let gm = home.join(".ship").join("modes").join(&file);
-    if gm.exists() { return Some(gm); }
 
     None
 }

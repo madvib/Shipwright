@@ -1,8 +1,6 @@
-/// Stub types for ShipManifest and ShipLock.
-///
-/// TODO: Replace with types from the compiler crate once job khqBn4u2 merges.
-/// The compiler crate will own `[module]`, `[dependencies]`, and `[exports]`
-/// sections of ship.toml, and the ship.lock file format.
+/// Registry manifest and lock types used by the install/resolve pipeline.
+/// These duplicate some compiler types — consolidate when the compiler crate
+/// exposes its manifest/lock types as a public API.
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};

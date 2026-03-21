@@ -27,9 +27,24 @@ CLI fallback: `ship job list`
 
 > Never use raw `sqlite3` to access Ship data. The schema evolves. Always use MCP tools or `ship` CLI.
 
-### 2. Resolve the worktree path
+### 2. Name the worktree
 
-Default: `~/dev/ship-worktrees/<job-id>`
+Derive a short, human-readable slug from the job title. This is used for the branch name and worktree directory — the job ID stays in the queue for tracking.
+
+```
+Job title: "DB Consolidation + Dead Code Purge"  →  slug: "db-consolidation"
+Job title: "Fix ship install/use dep resolution"  →  slug: "fix-dep-resolution"
+Job title: "Events Rewrite"                       →  slug: "events-rewrite"
+```
+
+Rules:
+- Lowercase, hyphen-separated, 2-4 words max
+- No job IDs in the name — humans read directories
+- If a slug collides with an existing branch, append a short disambiguator (e.g. `events-rewrite-2`)
+
+### 3. Resolve the worktree path
+
+Default: `~/dev/ship-worktrees/<slug>`
 
 Check `~/.ship/config.toml` for override:
 ```toml
@@ -37,21 +52,21 @@ Check `~/.ship/config.toml` for override:
 dir = "~/dev/my-worktrees"
 ```
 
-### 3. Create the worktree
+### 4. Create the worktree
 
 ```bash
-git worktree add ~/dev/ship-worktrees/<job-id> -b job/<job-id>
+git worktree add ~/dev/ship-worktrees/<slug> -b job/<slug>
 ```
 
 Resuming a stalled job (branch exists):
 ```bash
-git worktree add ~/dev/ship-worktrees/<job-id> job/<job-id>
+git worktree add ~/dev/ship-worktrees/<slug> job/<slug>
 ```
 
-### 4. Compile the agent config
+### 5. Compile the agent config
 
 ```bash
-cd ~/dev/ship-worktrees/<job-id> && ship use <profile>
+cd ~/dev/ship-worktrees/<slug> && ship use <profile>
 ```
 
 This writes `CLAUDE.md`, `.mcp.json`, and permission files into the worktree. The agent reads them automatically at session start.
@@ -67,10 +82,10 @@ Profile from job payload (`preset_hint`), or:
 | Auth / Better Auth | `better-auth` |
 | Default / mixed | `default` |
 
-### 5. Write the job spec
+### 6. Write the job spec
 
 ```bash
-cat > ~/dev/ship-worktrees/<job-id>/job-spec.md << 'EOF'
+cat > ~/dev/ship-worktrees/<slug>/job-spec.md << 'EOF'
 # Job <JOB_ID> — <title>
 
 Read this file first. It is your complete context.
@@ -103,8 +118,9 @@ When acceptance criteria are met, do all three in order:
 All three are required. Commander uses all three as completion signals.
 
 ## Context
-Branch: job/<job-id>
-Worktree: ~/dev/ship-worktrees/<job-id>
+Branch: job/<slug>
+Worktree: ~/dev/ship-worktrees/<slug>
+Job ID: <JOB_ID> (use this for MCP calls)
 Profile: <profile>
 Ship MCP is active in this directory.
 EOF
@@ -112,36 +128,36 @@ EOF
 
 The compiled `CLAUDE.md` includes a rule telling the agent to read `job-spec.md` immediately and begin without waiting for instruction.
 
-### 6. Update job status
+### 7. Update job status
 
 ```
 update_job(id="<job-id>", status="running", claimed_by="<your-provider-id>")
 ```
 
-### 7. Give the human the launch command
+### 8. Give the human the launch command
 
 Terminal auto-launch is unreliable across platforms. Give the human a clean, ready-to-paste command instead.
 
 **Standard launch:**
 ```
-cd ~/dev/ship-worktrees/<job-id> && claude .
+cd ~/dev/ship-worktrees/<slug> && claude .
 ```
 
 **If the profile uses `default_mode = "bypassPermissions"`:**
 ```
-cd ~/dev/ship-worktrees/<job-id> && claude . --dangerously-skip-permissions
+cd ~/dev/ship-worktrees/<slug> && claude . --dangerously-skip-permissions
 ```
 
 Format this as a single copy block. The agent will read `job-spec.md` automatically and start — no further input needed from the human.
 
 Tell the human:
 ```
-Dispatched [<job-id>] <title>
-→ worktree: ~/dev/ship-worktrees/<job-id>
+Dispatched [<JOB_ID>] <title>
+→ worktree: ~/dev/ship-worktrees/<slug>
 → profile: <profile>
 → launch:
 
-  cd ~/dev/ship-worktrees/<job-id> && claude .
+  cd ~/dev/ship-worktrees/<slug> && claude .
 
 Paste in a new terminal tab. The agent will start automatically.
 ```
@@ -150,8 +166,8 @@ Paste in a new terminal tab. The agent will start automatically.
 
 After gate passes:
 ```bash
-git worktree remove ~/dev/ship-worktrees/<job-id>
-git branch -d job/<job-id>
+git worktree remove ~/dev/ship-worktrees/<slug>
+git branch -d job/<slug>
 ```
 
 Or use `list_stale_worktrees()` to find idle worktrees > 24h.
