@@ -1,14 +1,22 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { useState, useEffect, useRef } from 'react'
+import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { StudioDock } from '#/features/studio/StudioDock'
-import { SyncStatus } from '#/features/studio/SyncStatus'
+import { SyncStatus, combineSyncStatuses } from '#/features/studio/SyncStatus'
+import type { SyncStatusValue } from '#/features/studio/SyncStatus'
 import { PublishPanel } from '#/features/studio/PublishPanel'
 import { ProtectedRoute, useAuth } from '#/lib/components/protected-route'
 import { useLibrarySync } from '#/features/compiler/useLibrarySync'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
+import { useAgentStore } from '#/features/agents/useAgentStore'
+import { agentToLibrary } from '#/features/agents/agent-to-library'
+import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 
-export const Route = createFileRoute('/studio')({ component: StudioLayout, ssr: false })
+export const Route = createFileRoute('/studio')({
+  component: StudioLayout,
+  errorComponent: StudioErrorBoundary,
+  ssr: false,
+})
 
 function StudioLayout() {
   return (
@@ -18,26 +26,62 @@ function StudioLayout() {
   )
 }
 
+function agentSyncToStatusValue(
+  status: 'syncing' | 'synced' | 'error' | 'offline',
+): SyncStatusValue {
+  if (status === 'syncing') return 'saving'
+  if (status === 'synced') return 'saved'
+  if (status === 'error') return 'error'
+  return 'idle'
+}
+
 function StudioSyncShell() {
-  const { syncStatus } = useLibrarySync()
+  const { syncStatus: librarySyncStatus } = useLibrarySync()
   const { library, selectedProviders } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const auth = useAuth()
   const [panelOpen, setPanelOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  // Auto-compile when library changes while panel is open
+  // Detect active agent from route matches (/studio/agents/$id)
+  const matches = useMatches()
+  const activeAgentId = useMemo(() => {
+    for (const match of matches) {
+      const params = match.params as Record<string, string> | undefined
+      if (params?.id && match.routeId === '/studio/agents/$id') {
+        return params.id
+      }
+    }
+    return null
+  }, [matches])
+
+  const { getAgent, syncStatus: agentSyncStatus } = useAgentStore()
+  const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
+
+  const combinedSyncStatus = combineSyncStatuses(
+    librarySyncStatus,
+    agentSyncToStatusValue(agentSyncStatus.status),
+  )
+
+  // Build effective library: merge agent config when viewing an agent
+  const effectiveLibrary = useMemo(() => {
+    if (!library) return library
+    if (!activeAgent) return library
+    return agentToLibrary(activeAgent, library)
+  }, [library, activeAgent])
+
+  // Auto-compile when effective library changes while panel is open
   useEffect(() => {
-    if (!panelOpen || !library) return
+    if (!panelOpen || !effectiveLibrary) return
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => compile(library), 600)
+    debounceRef.current = setTimeout(() => compile(effectiveLibrary), 600)
     return () => clearTimeout(debounceRef.current)
-  }, [library, panelOpen])
+  }, [effectiveLibrary, panelOpen])
 
   // Immediate compile when panel opens
   useEffect(() => {
-    if (panelOpen && library) {
-      compile(library)
+    if (panelOpen && effectiveLibrary) {
+      compile(effectiveLibrary)
     }
   }, [panelOpen])
 
@@ -50,10 +94,10 @@ function StudioSyncShell() {
         {panelOpen && (
           <PublishPanel
             auth={auth}
-            library={library}
+            library={effectiveLibrary}
             compileState={compileState}
             selectedProviders={selectedProviders}
-            onCompile={() => { if (library) compile(library) }}
+            onCompile={() => { if (effectiveLibrary) compile(effectiveLibrary) }}
             onClose={() => setPanelOpen(false)}
           />
         )}
@@ -63,7 +107,7 @@ function StudioSyncShell() {
         onTogglePreview={() => setPanelOpen((p) => !p)}
       />
       <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
-        <SyncStatus status={syncStatus} />
+        <SyncStatus status={combinedSyncStatus} />
       </div>
     </main>
   )
