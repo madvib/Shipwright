@@ -9,7 +9,7 @@ mod dep_skills;
 mod diff;
 mod events_cmd;
 mod help_topics;
-mod import;
+mod convert;
 mod init;
 mod install;
 mod job;
@@ -41,7 +41,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
     match command {
         None => run_status(None),
         Some(cmd) => match cmd {
-            Commands::Init { global, provider, force: _ } => init::run(global, provider),
+            Commands::Init { global, provider, force: _, from } => init::run(global, provider, from),
             Commands::Config { action } => dispatch_config(action),
             Commands::Login  => auth::run_login(),
             Commands::Logout => auth::run_logout(),
@@ -54,7 +54,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
-            Commands::Import { source } => import::run_import(&source),
+            Commands::Convert { source } => convert::run_convert(&source),
             Commands::Docs { topic } => help_topics::run(topic.as_deref()),
             Commands::Job { action } => dispatch_job(action),
             Commands::Adrs => run_adrs(),

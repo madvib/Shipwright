@@ -53,6 +53,7 @@ pub fn generate() -> String {
 fn write_cli_tree(out: &mut String) {
     let entries: &[(&str, &str, Option<&[(&str, &str)]>)] = &[
         ("ship init", "Scaffold .ship/ in the current project, or configure ~/.ship/ globally", Some(&[
+            ("--from <url>", "Fetch a JSON config bundle and scaffold from it"),
             ("--global", "Configure ~/.ship/ instead of current project"),
             ("--provider <id>", "Default provider (claude, gemini, codex, cursor)"),
             ("--force", "Overwrite existing .ship/"),
@@ -96,7 +97,7 @@ fn write_cli_tree(out: &mut String) {
             ("--frozen", "Fail if lockfile would change"),
         ])),
         ("ship add <package>", "Add a dependency to .ship/ship.toml and install it", None),
-        ("ship import <source>", "Import an agent from a URL, path, or provider config", None),
+        ("ship convert <source>", "Convert provider config files (CLAUDE.md, .cursor/) into .ship/ format", None),
         ("ship validate", "Validate .ship/ config before compile", Some(&[
             ("--agent <id>", "Validate a single agent"),
             ("--json", "Emit errors as JSON"),

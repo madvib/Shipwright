@@ -4,7 +4,7 @@ use std::path::PathBuf;
 pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
-  ship init              Start here — scaffold .ship/
+  ship init [--from url] Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
   ship status            Show active agent
   ship compile           Re-compile after editing config
@@ -20,6 +20,7 @@ const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
   ship skill add <src>   Install a skill
   ship mcp add-stdio ... Register an MCP server
   ship config set k v    Set a user preference
+  ship convert <source>  Convert provider configs to .ship/
 
 \x1b[1mLearn More:\x1b[0m
   ship docs topics       List help topics
@@ -51,6 +52,9 @@ pub enum Commands {
         /// Overwrite existing .ship/ configuration
         #[arg(long)]
         force: bool,
+        /// Fetch a JSON config bundle from a URL and scaffold .ship/ from it
+        #[arg(long)]
+        from: Option<String>,
     },
 
     /// Authenticate with getship.dev
@@ -159,8 +163,8 @@ pub enum Commands {
         package: String,
     },
 
-    /// Import an agent from a getship.dev URL, local path, or provider config
-    Import {
+    /// Convert provider config files (CLAUDE.md, .cursor/) into .ship/ format
+    Convert {
         /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config
         source: String,
     },
