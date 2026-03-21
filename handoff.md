@@ -1,56 +1,68 @@
-# Handoff: SsyDGdyA — Web improvements
+# Handoff — v0.1.0 Session 2026-03-21
 
-## Summary
+## Branch: `v0.1.0`
 
-Completed all four tasks. All changes are scoped to the file scope defined in the job.
+## What happened this session
 
-## What was done
+### Completed (uncommitted on v0.1.0)
+- **TUI improvements**: Events tab + detail view, reverse tab cycling (Shift+Tab), job log scrolling, capability progress bars, auto-refresh
+- **DB schema split**: `schema.rs` → `schema/{mod,state,work,events,agents}.rs` with doc comments
+- **DB migrations**: Conditional old event_log detection + drop/recreate. ALTER TABLE for session metrics columns.
+- **Event system**: `as_db()` → public `as_str()`. Context columns with indexes.
+- **Session metrics**: 6 new columns on workspace_session_record
+- **Gate tracking**: record_gate_outcome, list_gate_outcomes with tests
+- **File ownership**: claim_files, release_claims, check_conflicts, list_claims (9 tests)
+- **CLI audit**: Removed dead Export, extracted init.rs, added 6 help topics, hidden ship surface
+- **MCP**: update_target tool with tests
+- **Permission presets fixed**: All 4 presets have explicit `tools_allow`. `Bash(ship *)` allowed everywhere.
+- **Help agent**: `ship use help` → read-only umbrella agent. `/ship-tutorial` for onboarding, `/ship-help` for troubleshooting. Skills: cli-reference, schema-reference, permissions. Never runs `ship use`/`ship compile`.
+- **Job autostart rule**: Checks `.ship-session/job-spec.md` (preferred) then CWD.
 
-### Task 1: Account page
-- Created `apps/web/src/routes/account.tsx`
-- File-based route auto-registered by TanStack Start — no manual route tree edits needed
-- Fetches `/api/me` via TanStack Query (`authKeys.me()`) when session is present
-- Displays: avatar (image or initial fallback), name, email, join date, GitHub connection status, org name + slug
-- GitHub connection detected from session user image URL (GitHub CDN heuristic — most reliable without `/api/me` returning accounts array)
-- Sign out button calls `authClient.signOut()`
-- Redirects unauthenticated users to `/` via `useEffect` after session check (client-side, consistent with ProtectedRoute pattern)
-- Full dark mode support via Tailwind semantic tokens
+### Capability map (9 marked actual)
+hbaR6ZUE, jkpsVD9S, 57TDpYFJ, wQ69bpJa, fQn266AF, bbY2ij4F, AHMsc57t, kFfZnyjT, JxszZzc6
 
-### Task 2: Header improvements
-- Updated `apps/web/src/components/Header.tsx`
-- `UserMenu` now shows user email in the identity row (already fetched from `useSession`)
-- Added "Account" nav item in the dropdown (links to `/account`)
-- Added Escape key handler to close dropdown
-- Added `aria-expanded` and `aria-haspopup` for keyboard/screen reader accessibility
-- Avatar renders at `size-6` (slightly larger than before for visual clarity)
-- Mobile: name truncated/hidden on small viewports (`hidden sm:block`)
+### Tests: 312 runtime, 6 CLI, 3 MCP — all passing
 
-### Task 3: Sync status indicator
-- Created `apps/web/src/features/studio/SyncStatus.tsx`
-  - Accepts `status: 'idle' | 'saving' | 'saved' | 'error'` prop
-  - Shows "Saving..." with spinner during save
-  - Shows "Saved" with green check, then fades out after 2s
-  - Renders nothing for `idle` and `error` states
-- Updated `apps/web/src/features/compiler/useLibrarySync.ts`
-  - Added `useState<SyncStatusValue>` for `syncStatus`
-  - Sets `saving` when debounce fires, `saved` on success, back to `idle` on error
-  - Exported `syncStatus` from the hook return value
-- Updated `apps/web/src/routes/studio.tsx`
-  - Renders `<SyncStatus status={syncStatus} />` in a fixed bottom-right position above the dock (`bottom-16 right-4`)
+### Worktrees
+- `A39uK8JX` — merged, prune
+- `agent-rename` — stale, prune
+- `mLaHiccr` — registry rework (4 files), needs gate review
+- `tutorial` — outdated (was tutor, now help agent), prune or update
 
-### Task 4: Polish pass
-- Account page: all skeleton loaders prevent empty-state flash
-- Header: consistent spacing, no layout bugs found
-- All components use semantic Tailwind tokens — `bg-card`, `text-muted-foreground`, `border-border/60` etc.
+## Next steps
 
-## Files changed
-- `apps/web/src/routes/account.tsx` — new
-- `apps/web/src/components/Header.tsx` — updated
-- `apps/web/src/features/studio/SyncStatus.tsx` — new
-- `apps/web/src/features/compiler/useLibrarySync.ts` — updated (added syncStatus)
-- `apps/web/src/routes/studio.tsx` — updated (SyncStatus wired)
+### Immediate
+1. Commit all uncommitted work on v0.1.0
+2. Prune stale worktrees: A39uK8JX, agent-rename
+3. Gate review mLaHiccr
+4. Rebuild MCP server + reinstall CLI
 
-## Notes for reviewer
-- The GitHub connection detection in account.tsx relies on the image URL heuristic. If `/api/me` is extended to return provider accounts, update `hasGithub` to use that instead.
-- `useLibrarySync` file grew slightly past 80 lines but is under the 300-line cap. No split needed.
-- No test changes — this is pure UI/presentation with no new business logic branches.
+### v0.1.0 gaps
+
+**Docs (README is #1 launch deliverable):**
+- Ybubd6Su — README that sells and explains
+- CPYSX7xM — Getting started guide
+- kWBygg8E — CLI reference with examples
+- R9v5gLtZ — Schema reference
+- ti6uZqBu — Architecture overview
+
+Create a dedicated `docs-writer` agent. Must write for external devs who have 30 seconds to decide. Run real commands, show real output.
+
+**Skills library:**
+- 28VcuDyk — Skills as documentation (verify doc-skills in exports)
+- TqwRaGHu — Curated starter set
+
+**Registry:**
+- u8eTPpks — Published agent spec
+- YcNWSHPB — Package signing
+- YVtzcbHw — JSON Schema for editor autocomplete
+
+**Compiler:**
+- gNCTZBBs — JSONC config format (NOT done, all config still TOML, defer to v0.2?)
+
+**Workflow:**
+- t9TFpfM5 — Commander showcase
+
+### Known issues
+- `ship use` from wrong CWD writes output to wrong location
+- Plugin uninstall warnings when switching agents (cosmetic)
