@@ -1,68 +1,93 @@
-# Handoff — v0.1.0 Session 2026-03-21
+# Handoff — v0.1.0 Session 2026-03-21 (continued)
 
 ## Branch: `v0.1.0`
 
 ## What happened this session
 
-### Completed (uncommitted on v0.1.0)
-- **TUI improvements**: Events tab + detail view, reverse tab cycling (Shift+Tab), job log scrolling, capability progress bars, auto-refresh
-- **DB schema split**: `schema.rs` → `schema/{mod,state,work,events,agents}.rs` with doc comments
-- **DB migrations**: Conditional old event_log detection + drop/recreate. ALTER TABLE for session metrics columns.
-- **Event system**: `as_db()` → public `as_str()`. Context columns with indexes.
-- **Session metrics**: 6 new columns on workspace_session_record
-- **Gate tracking**: record_gate_outcome, list_gate_outcomes with tests
-- **File ownership**: claim_files, release_claims, check_conflicts, list_claims (9 tests)
-- **CLI audit**: Removed dead Export, extracted init.rs, added 6 help topics, hidden ship surface
-- **MCP**: update_target tool with tests
-- **Permission presets fixed**: All 4 presets have explicit `tools_allow`. `Bash(ship *)` allowed everywhere.
-- **Help agent**: `ship use help` → read-only umbrella agent. `/ship-tutorial` for onboarding, `/ship-help` for troubleshooting. Skills: cli-reference, schema-reference, permissions. Never runs `ship use`/`ship compile`.
-- **Job autostart rule**: Checks `.ship-session/job-spec.md` (preferred) then CWD.
+### Committed (6 commits on v0.1.0)
+- `02ada1f` feat: split DB schema, enrich events, add session metrics and gate tracking
+- `5f247e1` feat: add file ownership claims for job conflict detection
+- `ce99d54` feat: add update_target MCP tool with tests
+- `7238d76` feat: TUI events tab, detail views, scrolling, and CLI audit
+- `145ed46` feat: help agent with tutorial skill, fix permission presets
+- `2d3dece` docs: update handoff for v0.1.0 session
 
-### Capability map (9 marked actual)
-hbaR6ZUE, jkpsVD9S, 57TDpYFJ, wQ69bpJa, fQn266AF, bbY2ij4F, AHMsc57t, kFfZnyjT, JxszZzc6
+### Uncommitted on v0.1.0 (ready to commit)
+- **`ship config get/set/list/path`** — user preferences CLI for `~/.ship/config.toml`
+  - Keys: terminal.program, dispatch.confirm, worktrees.dir, defaults.provider, identity.name, etc.
+  - Validation on set (terminal.program must be known value)
+  - 4 new tests, help topic added (`ship help config`)
+  - Files: config.rs, cli.rs (ConfigCommands), main.rs (dispatch_config), help_topics.rs
+- **`dispatch.sh`** — idempotent job dispatch script in spawn-agent skill
+  - Creates worktree, writes job spec, compiles agent, opens terminal — one command
+  - Confirm flow: shows spec summary, y/n/e(dit) before launching agent
+  - Terminal auto-detection: wt (WSL2), iterm, tmux, gnome, vscode, manual
+  - Resolution: flag > env var > `ship config get` > default
+  - Files: .ship/agents/skills/spawn-agent/scripts/dispatch.sh, SKILL.md rewrite
+- **spawn-agent SKILL.md rewrite** — documents dispatch.sh, env vars, batch dispatch, confirm flow
 
-### Tests: 312 runtime, 6 CLI, 3 MCP — all passing
+### Pruned worktrees
+- `A39uK8JX` — force removed (was merged)
+- `agent-rename` — force removed (stale)
+- `tutorial` — force removed (replaced by help agent)
 
-### Worktrees
-- `A39uK8JX` — merged, prune
-- `agent-rename` — stale, prune
-- `mLaHiccr` — registry rework (4 files), needs gate review
-- `tutorial` — outdated (was tutor, now help agent), prune or update
+### Work streams specced and dispatched
+6 spec agents ran in parallel, produced detailed job specs with acceptance criteria.
+6 worktrees created with job specs written to `.ship-session/job-spec.md`:
+
+| Worktree | Branch | Agent | Spec status |
+|----------|--------|-------|-------------|
+| jsonc-config | job/jsonc-config | rust-compiler | Ready — JSONC migration, JSON Schema |
+| registry | job/registry | rust-lane | Ready — publish, namespace, auth, signing |
+| docs | job/docs | default | Ready — README (#1), getting started, refs, arch |
+| skills-library | job/skills-library | default | Ready — audit, curate, fix, export |
+| commander-demo | job/commander-demo | default | Ready — docs + config only |
+| tui-interactive | job/tui-interactive | cli-lane | Ready — status cycling, launch, filter |
+
+### Worktrees still pending
+- `mLaHiccr` — registry rework (4 files), needs gate review before registry job starts
+
+### Tests: 312 runtime, 192 CLI (incl 4 new config), 3 MCP — all passing
+
+### CLI installed with `ship config` command
 
 ## Next steps
 
 ### Immediate
-1. Commit all uncommitted work on v0.1.0
-2. Prune stale worktrees: A39uK8JX, agent-rename
-3. Gate review mLaHiccr
-4. Rebuild MCP server + reinstall CLI
+1. **Commit** uncommitted work (config command + dispatch script + SKILL.md)
+2. **Gate review mLaHiccr** — registry job depends on this
+3. **Launch work streams** — use dispatch.sh:
+   ```bash
+   bash .ship/agents/skills/spawn-agent/scripts/dispatch.sh \
+     --slug docs --agent default \
+     --spec ~/dev/ship-worktrees/docs/.ship-session/job-spec.md
+   ```
+   Repeat for each worktree. Or launch manually with the commands in each worktree.
 
-### v0.1.0 gaps
+### Dependency ordering
+- **Parallel now**: docs, skills-library, commander-demo, tui-interactive
+- **Gate first**: mLaHiccr → then registry can start
+- **JSONC first**: registry published spec depends on config format decision
 
-**Docs (README is #1 launch deliverable):**
-- Ybubd6Su — README that sells and explains
-- CPYSX7xM — Getting started guide
-- kWBygg8E — CLI reference with examples
-- R9v5gLtZ — Schema reference
-- ti6uZqBu — Architecture overview
+### User config set (in ~/.ship/config.toml)
+```toml
+[worktrees]
+dir = "/home/madvib/dev/ship-worktrees"
 
-Create a dedicated `docs-writer` agent. Must write for external devs who have 30 seconds to decide. Run real commands, show real output.
+[terminal]
+program = "wt"
 
-**Skills library:**
-- 28VcuDyk — Skills as documentation (verify doc-skills in exports)
-- TqwRaGHu — Curated starter set
+[dispatch]
+confirm = true
+```
 
-**Registry:**
-- u8eTPpks — Published agent spec
-- YcNWSHPB — Package signing
-- YVtzcbHw — JSON Schema for editor autocomplete
-
-**Compiler:**
-- gNCTZBBs — JSONC config format (NOT done, all config still TOML, defer to v0.2?)
-
-**Workflow:**
-- t9TFpfM5 — Commander showcase
+### Design decisions made this session
+- **Config format**: `~/.ship/config.toml` for user prefs. TOML for now — will migrate to JSONC with the rest when gNCTZBBs lands.
+- **Dispatch UX**: Spec agents write specs to disk (not inline). dispatch.sh does worktree + spec + agent + terminal in one idempotent call. Confirm flow (y/n/e) available via `ship config set dispatch.confirm true`.
+- **Preferences over env vars**: `ship config get/set` is the primary interface. Env vars override config. Scripts call `ship config get` — no JSONC parser needed in bash.
+- **Terminal detection**: Explicit preference (`ship config set terminal.program wt`) > env var (`SHIP_DEFAULT_TERMINAL`) > auto-detect > manual fallback.
 
 ### Known issues
 - `ship use` from wrong CWD writes output to wrong location
 - Plugin uninstall warnings when switching agents (cosmetic)
+- Spec agents returned inline — wasted context. Next time: have them write to `.ship-session/specs/` directly.
