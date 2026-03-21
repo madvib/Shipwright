@@ -292,6 +292,18 @@ pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> R
     Ok(())
 }
 
+pub fn delete_capability(ship_dir: &Path, id: &str) -> Result<bool> {
+    let mut conn = open_db(ship_dir)?;
+    let rows_affected = block_on(async {
+        sqlx::query("DELETE FROM capability WHERE id = ?")
+            .bind(id)
+            .execute(&mut conn)
+            .await
+    })?
+    .rows_affected();
+    Ok(rows_affected > 0)
+}
+
 pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Result<()> {
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();

@@ -382,6 +382,12 @@ pub struct UpdateCapabilityRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct DeleteCapabilityRequest {
+    /// Capability id to delete
+    pub id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct MarkCapabilityActualRequest {
     /// Capability id
     pub id: String,

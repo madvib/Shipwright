@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use crate::requests::{
-    CreateCapabilityRequest, CreateTargetRequest, GetTargetRequest, ListCapabilitiesRequest,
-    ListTargetsRequest, MarkCapabilityActualRequest, UpdateCapabilityRequest, UpdateTargetRequest,
+    CreateCapabilityRequest, CreateTargetRequest, DeleteCapabilityRequest, GetTargetRequest,
+    ListCapabilitiesRequest, ListTargetsRequest, MarkCapabilityActualRequest,
+    UpdateCapabilityRequest, UpdateTargetRequest,
 };
 
 pub fn create_target(project_dir: &Path, req: CreateTargetRequest) -> String {
@@ -214,6 +215,15 @@ pub fn update_capability(project_dir: &Path, req: UpdateCapabilityRequest) -> St
     match runtime::db::targets::update_capability(&ship_dir, &req.id, patch) {
         Ok(()) => format!("Updated capability {}.", req.id),
         Err(e) => format!("Error updating capability: {}", e),
+    }
+}
+
+pub fn delete_capability(project_dir: &Path, req: DeleteCapabilityRequest) -> String {
+    let ship_dir = project_dir.join(".ship");
+    match runtime::db::targets::delete_capability(&ship_dir, &req.id) {
+        Ok(true) => format!("Deleted capability {}.", req.id),
+        Ok(false) => format!("Capability '{}' not found.", req.id),
+        Err(e) => format!("Error deleting capability: {}", e),
     }
 }
 

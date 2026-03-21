@@ -50,7 +50,7 @@ Waiting on you:
   [id] Production deploy — staging gate passed, awaiting sign-off
 ```
 
-Flag anything pending > 24h explicitly. When human completes: `update_job(status="done")` or re-assign for follow-on.
+Flag anything pending > 24h explicitly. When human completes: `update_job(status="complete")` or re-assign for follow-on.
 
 ## Risk Tiers
 

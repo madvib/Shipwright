@@ -37,23 +37,24 @@ Decompose the goal into verifiable slices. For each capability:
 
 | Field | What to set |
 |-------|-------------|
+| `target_id` | The surface this capability belongs to (Compiler, Studio, Runtime, etc.) |
 | `title` | One-line outcome ("GitHub OAuth login flow") |
-| `phase` | Which milestone phase |
+| `milestone_id` | Optional — which milestone this is scheduled for (v0.1, v0.2) |
 | `acceptance_criteria` | Concrete, checkable. Not goals — verification steps. |
 | `preset_hint` | Which profile executes this (`rust-runtime`, `web-lane`, `better-auth`, …) |
 | `file_scope` | Directories/files the agent may touch |
-| `depends_on` | Capability IDs that must be actual first |
 
 ### 4. Create capabilities and jobs
 
 ```
 create_capability(
+  target_id="<surface-id>",
   title="...",
-  phase="...",
-  acceptance_criteria="- [ ] ...\n- [ ] ...",
-  preset_hint="...",
-  file_scope="apps/web/src/auth/"
+  milestone_id="<milestone-id>",  # optional
 )
+
+# Then create the job for execution:
+
 
 create_job(
   title="...",
