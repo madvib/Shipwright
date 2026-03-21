@@ -14,11 +14,20 @@ fn is_dep_ref_github_prefix() {
 }
 
 #[test]
+fn is_dep_ref_any_git_host() {
+    assert!(is_dep_ref("gitlab.com/owner/pkg/skills/name"));
+    assert!(is_dep_ref("codeberg.org/owner/pkg/skills/name"));
+    assert!(is_dep_ref("git.example.com/owner/pkg/skill-name"));
+}
+
+#[test]
 fn is_dep_ref_local_refs_are_false() {
     assert!(!is_dep_ref("my-skill"));
     assert!(!is_dep_ref("review-pr"));
     assert!(!is_dep_ref(""));
     assert!(!is_dep_ref("skills/foo"));
+    // No dot in first segment — not a host
+    assert!(!is_dep_ref("owner/pkg/skill"));
 }
 
 // ── parse_dep_ref ─────────────────────────────────────────────────────
@@ -49,6 +58,33 @@ fn parse_dep_ref_too_short_returns_none() {
 #[test]
 fn parse_dep_ref_non_github_returns_none() {
     assert!(parse_dep_ref("my-skill").is_none());
+}
+
+#[test]
+fn parse_dep_ref_gitlab() {
+    let (pkg, within) = parse_dep_ref("gitlab.com/owner/pkg/skills/name").unwrap();
+    assert_eq!(pkg, "gitlab.com/owner/pkg");
+    assert_eq!(within, "skills/name");
+}
+
+#[test]
+fn parse_dep_ref_codeberg() {
+    let (pkg, within) = parse_dep_ref("codeberg.org/owner/pkg/skills/name").unwrap();
+    assert_eq!(pkg, "codeberg.org/owner/pkg");
+    assert_eq!(within, "skills/name");
+}
+
+#[test]
+fn parse_dep_ref_self_hosted() {
+    let (pkg, within) = parse_dep_ref("git.example.com/owner/pkg/skill-name").unwrap();
+    assert_eq!(pkg, "git.example.com/owner/pkg");
+    assert_eq!(within, "skill-name");
+}
+
+#[test]
+fn parse_dep_ref_no_dot_in_host_returns_none() {
+    // First segment has no dot — not a valid host
+    assert!(parse_dep_ref("owner/pkg/skill").is_none());
 }
 
 // ── hash_from_lock ────────────────────────────────────────────────────
