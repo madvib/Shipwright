@@ -1,3 +1,4 @@
+// GET /api/profiles/:id    → { profile: Profile }
 // PUT /api/profiles/:id    → { profile: Profile }
 // DELETE /api/profiles/:id → { ok: true }
 
@@ -16,6 +17,21 @@ const UpdateProfileInput = z.object({
 export const Route = createFileRoute('/api/profiles/$id')({
   server: {
     handlers: {
+      GET: async ({ request, params }) => {
+        const auth = await requireSession(request)
+        if (auth instanceof Response) return auth
+
+        const d1 = getD1()
+        if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })
+
+        const repos = createRepositories(d1)
+        const profile = await repos.getProfile(params.id, auth.org)
+        if (!profile) return Response.json({ error: 'Profile not found' }, { status: 404 })
+        if (profile.orgId !== auth.org) return Response.json({ error: 'forbidden' }, { status: 403 })
+
+        return Response.json({ profile })
+      },
+
       PUT: async ({ request, params }) => {
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
