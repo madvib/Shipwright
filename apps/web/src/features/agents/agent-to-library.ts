@@ -124,15 +124,26 @@ export function agentToLibrary(
 
 const PROVIDER_FIELD_MAP: Record<string, Record<string, string>> = {
   claude: {
+    theme: 'claude_theme',
+    auto_updates: 'claude_auto_updates',
     include_co_authored_by: 'claude_include_co_authored_by',
   },
   gemini: {
     default_approval_mode: 'gemini_default_approval_mode',
     max_session_turns: 'gemini_max_session_turns',
+    disable_yolo_mode: 'gemini_disable_yolo_mode',
+    disable_always_allow: 'gemini_disable_always_allow',
+    tools_sandbox: 'gemini_tools_sandbox',
   },
   codex: {
     approval_policy: 'codex_approval_policy',
     sandbox: 'codex_sandbox',
+    reasoning_effort: 'codex_reasoning_effort',
+    max_threads: 'codex_max_threads',
+    notify: 'codex_notify',
+  },
+  cursor: {
+    environment: 'cursor_environment',
   },
 }
 

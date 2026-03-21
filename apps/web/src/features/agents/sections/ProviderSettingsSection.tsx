@@ -1,43 +1,70 @@
 import { Settings2, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
+import { EnvVarEditor } from '#/features/agents/dialogs/EnvVarEditor'
 import { SectionShell } from './SectionShell'
 
 // ── Provider-specific field definitions ─────────────────────────────────────
 
-const CLAUDE_FIELDS = [
-  { key: 'include_co_authored_by', label: 'Include co-authored-by', type: 'toggle' as const },
+type FieldType = 'toggle' | 'select' | 'number' | 'kv'
+type FieldDef = { key: string; label: string; type: FieldType; options?: string[] }
+
+const CLAUDE_FIELDS: FieldDef[] = [
+  { key: 'theme', label: 'Theme', type: 'select', options: ['light', 'dark', 'auto'] },
+  { key: 'auto_updates', label: 'Auto-updates', type: 'toggle' },
+  { key: 'include_co_authored_by', label: 'Include co-authored-by', type: 'toggle' },
 ]
 
-const GEMINI_FIELDS = [
+const GEMINI_FIELDS: FieldDef[] = [
   {
     key: 'default_approval_mode',
     label: 'Default approval mode',
-    type: 'select' as const,
+    type: 'select',
     options: ['ask-every-time', 'auto-approve-reads', 'auto-approve-all'],
   },
-  { key: 'max_session_turns', label: 'Max session turns', type: 'number' as const },
+  { key: 'max_session_turns', label: 'Max session turns', type: 'number' },
+  { key: 'disable_yolo_mode', label: 'Disable YOLO mode', type: 'toggle' },
+  { key: 'disable_always_allow', label: 'Disable always-allow', type: 'toggle' },
+  {
+    key: 'tools_sandbox',
+    label: 'Tools sandbox',
+    type: 'select',
+    options: ['docker', 'none'],
+  },
 ]
 
-const CODEX_FIELDS = [
+const CODEX_FIELDS: FieldDef[] = [
   {
     key: 'approval_policy',
     label: 'Approval policy',
-    type: 'select' as const,
+    type: 'select',
     options: ['ask-every-time', 'unless-allow-listed', 'auto-approve'],
   },
   {
     key: 'sandbox',
     label: 'Sandbox',
-    type: 'select' as const,
+    type: 'select',
     options: ['docker', 'none'],
   },
+  {
+    key: 'reasoning_effort',
+    label: 'Reasoning effort',
+    type: 'select',
+    options: ['low', 'medium', 'high'],
+  },
+  { key: 'max_threads', label: 'Max threads', type: 'number' },
+  { key: 'notify', label: 'Notify', type: 'toggle' },
 ]
 
-const PROVIDER_FIELDS: Record<string, { key: string; label: string; type: 'toggle' | 'select' | 'number'; options?: string[] }[]> = {
+const CURSOR_FIELDS: FieldDef[] = [
+  { key: 'environment', label: 'Environment variables', type: 'kv' },
+]
+
+const PROVIDER_FIELDS: Record<string, FieldDef[]> = {
   claude: CLAUDE_FIELDS,
   gemini: GEMINI_FIELDS,
   codex: CODEX_FIELDS,
+  cursor: CURSOR_FIELDS,
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -176,7 +203,7 @@ function ProviderField({
   value,
   onChange,
 }: {
-  field: { key: string; label: string; type: 'toggle' | 'select' | 'number'; options?: string[] }
+  field: FieldDef
   value: unknown
   onChange: (v: unknown) => void
 }) {
@@ -239,5 +266,28 @@ function ProviderField({
     )
   }
 
+  if (field.type === 'kv') {
+    return <KvField value={value} onChange={onChange} />
+  }
+
   return null
+}
+
+// ── Key-value field (delegates to EnvVarEditor) ─────────────────────────────
+
+function KvField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  // cursor_environment is a JSON object { KEY: "value" } on ProjectLibrary.
+  // EnvVarEditor works with { key, value }[] entries, so convert both ways.
+  const obj = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as Record<string, string>
+  const entries = Object.entries(obj).map(([k, v]) => ({ key: k, value: String(v) }))
+
+  const handleChange = (updated: { key: string; value: string }[]) => {
+    const result: Record<string, string> = {}
+    for (const e of updated) {
+      if (e.key) result[e.key] = e.value
+    }
+    onChange(Object.keys(result).length > 0 ? result : undefined)
+  }
+
+  return <EnvVarEditor entries={entries} onChange={handleChange} />
 }
