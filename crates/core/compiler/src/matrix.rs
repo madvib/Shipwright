@@ -189,9 +189,9 @@ fn claude_capabilities() -> Vec<Capability> {
             id: "auto_memory",
             label: "Auto memory settings",
             provider_supports: true,
-            ship_coverage: Coverage::None,
-            ship_emits: "",
-            gap: "autoMemoryEnabled, autoMemoryDirectory not emitted",
+            ship_coverage: Coverage::Full,
+            ship_emits: "autoMemoryEnabled: false (always — Ship is the memory layer)",
+            gap: "",
         },
     ]
 }

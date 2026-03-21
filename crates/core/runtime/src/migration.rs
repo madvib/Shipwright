@@ -3,7 +3,7 @@ use crate::project::{
     AppState, ProjectRegistry, adrs_dir, features_dir, generated_ns, notes_dir, project_ns,
     releases_dir, specs_dir, vision_doc_path, vision_template_path,
 };
-use crate::state_db::{DatabaseMigrationReport, ensure_global_database, ensure_project_database};
+use crate::db::types::DatabaseMigrationReport;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
@@ -42,7 +42,8 @@ enum FileCopyOutcome {
 
 pub fn migrate_project_state(ship_dir: &Path) -> Result<ProjectStateMigrationReport> {
     let files = migrate_project_files(ship_dir)?;
-    let db = ensure_project_database(ship_dir)?;
+    crate::db::ensure_db(ship_dir)?;
+    let db = DatabaseMigrationReport::default();
     Ok(ProjectStateMigrationReport { files, db })
 }
 
@@ -106,7 +107,7 @@ pub fn migrate_global_state(global_dir: &Path) -> Result<GlobalStateMigrationRep
         }
     }
 
-    let db = ensure_global_database(global_dir)?;
+    let db = DatabaseMigrationReport::default();
     Ok(GlobalStateMigrationReport {
         registry_entries_before: before,
         registry_entries_after: after,

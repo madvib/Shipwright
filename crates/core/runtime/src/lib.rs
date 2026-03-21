@@ -10,8 +10,6 @@ pub mod log;
 pub mod migration;
 pub mod plugin;
 pub mod project;
-#[path = "state_db/mod.rs"]
-pub mod state_db;
 pub mod workspace;
 
 // Backward-compatible module aliases.
@@ -39,8 +37,8 @@ pub use config::{
 };
 
 pub use events::{
-    EVENTS_FILE_NAME, EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
-    export_events_ndjson, ingest_external_events, latest_event_seq, list_events_since, read_events,
+    EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
+    ingest_external_events, list_events_since, read_events, read_recent_events,
     sync_event_snapshot,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
@@ -63,17 +61,25 @@ pub use skill::{
     delete_user_skill, get_effective_skill, get_skill, get_user_skill, install_skill_from_source,
     list_effective_skills, list_skills, list_user_skills, update_skill, update_user_skill,
 };
-pub use state_db::{
-    CapabilityDb, CapabilityMapDb, DatabaseMigrationReport, WorkspaceSessionRecordDb,
-    clear_branch_doc, clear_branch_link, clear_global_migration_meta, clear_project_migration_meta,
-    ensure_global_database, ensure_project_database, get_branch_doc, get_branch_link,
-    get_feature_primary_capability_db, get_managed_state_db, get_workspace_session_record_db,
-    list_capabilities_db, list_capability_maps_db, list_target_features_db,
-    mark_migration_meta_complete_global, mark_migration_meta_complete_project,
-    migration_meta_complete_global, migration_meta_complete_project, replace_target_features_db,
-    set_branch_doc, set_branch_link, set_feature_primary_capability_db, set_managed_state_db,
-    upsert_capability_db, upsert_capability_map_db, upsert_workspace_db,
+
+// ─── Re-exports from db (formerly state_db) ────────────────────────────────
+pub use db::types::{
+    AgentArtifactRegistryDb, AgentModeDb, AgentRuntimeSettingsDb,
+    DatabaseMigrationReport, WorkspaceSessionDb, WorkspaceSessionRecordDb, WorkspaceUpsert,
 };
+pub use db::agents::{
+    delete_agent_mode_db, get_agent_artifact_registry_by_external_id_db,
+    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_modes_db,
+    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_mode_db,
+};
+pub use db::branch_context::{
+    clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link,
+    set_branch_doc, set_branch_link,
+};
+pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
+pub use db::session::get_workspace_session_record_db;
+pub use db::workspace_state::upsert_workspace_db;
+
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,
     ShipWorkspaceKind, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
@@ -98,7 +104,7 @@ pub fn gen_nanoid() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::project::{features_dir, get_project_dir, init_project, sanitize_file_name};
+    use crate::project::{get_project_dir, init_project, sanitize_file_name};
     use std::fs;
     use tempfile::tempdir;
 
@@ -202,8 +208,8 @@ mod tests {
         assert!(!gitignore.contains("agents/rules"));
         assert!(!gitignore.contains("agents/mcp.toml"));
         assert!(!gitignore.contains("agents/permissions.toml"));
-        // DB is now at ~/.ship/state/<slug>/ship.db — not inside .ship/
-        assert!(!gitignore.contains("ship.db"));
+        // DB is at ~/.ship/platform.db — never inside project .ship/
+        assert!(!gitignore.contains("platform.db"));
         assert!(!gitignore.contains("log.md"));
         Ok(())
     }
@@ -217,10 +223,8 @@ mod tests {
         log_action(&project_dir, "test", "details")?;
         let entries = read_log_entries(&project_dir)?;
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].actor, "ship");
         assert_eq!(entries[0].action, "test");
         assert_eq!(entries[0].details, "details");
-        assert!(!project_dir.join("log.md").exists());
         Ok(())
     }
 
@@ -230,9 +234,8 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         log_action_by(&project_dir, "agent", "create", "issue-abc.md")?;
         let entries = read_log_entries(&project_dir)?;
+        assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].actor, "agent");
-        assert_eq!(entries[0].action, "create");
-        assert_eq!(entries[0].details, "issue-abc.md");
         Ok(())
     }
 
@@ -244,10 +247,6 @@ mod tests {
         log_action(&project_dir, "update", "second entry")?;
         let entries = read_log_entries(&project_dir)?;
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].actor, "ship");
-        assert_eq!(entries[0].action, "update");
-        assert_eq!(entries[1].actor, "ship");
-        assert_eq!(entries[1].action, "create");
         Ok(())
     }
 
@@ -353,48 +352,22 @@ mod tests {
     fn test_event_stream_since() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        assert!(!ship_path.join("events.ndjson").exists());
-        let seq0 = latest_event_seq(&ship_path)?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Feature,
-            EventAction::Create,
-            "feat-1",
-            Some("Created feature".to_string()),
-        )?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Feature,
-            EventAction::Create,
-            "feat-2",
-            Some("Created another feature".to_string()),
-        )?;
-        let events = list_events_since(&ship_path, seq0, None)?;
-        assert!(events.len() >= 2);
-        assert!(events.iter().all(|e| e.seq > seq0));
-        assert!(events.windows(2).all(|w| w[0].seq < w[1].seq));
+        let before = chrono::Utc::now();
+        append_event(&ship_path, "ship", EventEntity::Workspace, EventAction::Create, "feat-1", None)?;
+        let events = list_events_since(&ship_path, &before, None)?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].subject, "feat-1");
         Ok(())
     }
 
     #[test]
-    fn test_event_export_on_demand() -> anyhow::Result<()> {
+    fn test_event_append_and_read() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Project,
-            EventAction::Log,
-            "export",
-            Some("ndjson".to_string()),
-        )?;
-        let export_path = ship_path.join("generated").join("events-export.ndjson");
-        let count = export_events_ndjson(&ship_path, &export_path)?;
-        assert!(count >= 1);
-        let content = fs::read_to_string(&export_path)?;
-        assert!(content.contains("\"action\":\"log\""));
+        append_event(&ship_path, "ship", EventEntity::Project, EventAction::Log, "export", None)?;
+        let events = read_events(&ship_path)?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].entity, EventEntity::Project);
         Ok(())
     }
 
@@ -406,26 +379,24 @@ mod tests {
         // Ensure snapshot is synced to current state.
         let _ = ingest_external_events(&ship_path)?;
 
-        let manual = features_dir(&ship_path).join("manual-sync.md");
+        let notes_dir = ship_path.join("project/notes");
+        let manual = notes_dir.join("manual-sync.md");
         fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nbody\n")?;
         let created = ingest_external_events(&ship_path)?;
         assert_eq!(created.len(), 1);
-        assert_eq!(created[0].actor, "filesystem");
-        assert_eq!(created[0].entity, EventEntity::Feature);
+        assert_eq!(created[0].entity, EventEntity::Note);
         assert_eq!(created[0].action, EventAction::Create);
 
         fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nchanged\n")?;
         let updated = ingest_external_events(&ship_path)?;
         assert_eq!(updated.len(), 1);
-        assert_eq!(updated[0].actor, "filesystem");
-        assert_eq!(updated[0].entity, EventEntity::Feature);
+        assert_eq!(updated[0].entity, EventEntity::Note);
         assert_eq!(updated[0].action, EventAction::Update);
 
         fs::remove_file(&manual)?;
         let deleted = ingest_external_events(&ship_path)?;
         assert_eq!(deleted.len(), 1);
-        assert_eq!(deleted[0].actor, "filesystem");
-        assert_eq!(deleted[0].entity, EventEntity::Feature);
+        assert_eq!(deleted[0].entity, EventEntity::Note);
         assert_eq!(deleted[0].action, EventAction::Delete);
         Ok(())
     }

@@ -42,7 +42,7 @@ fn fmt_ts(ts: &DateTime<Utc>) -> String {
 }
 
 pub fn run_events(
-    project_root: &Path,
+    ship_dir: &Path,
     since: Option<String>,
     actor: Option<String>,
     entity: Option<String>,
@@ -50,11 +50,6 @@ pub fn run_events(
     limit: u32,
     json: bool,
 ) -> Result<()> {
-    let ship_dir = project_root.join(".ship");
-    if !ship_dir.exists() {
-        anyhow::bail!(".ship/ not found. Run: ship init");
-    }
-
     let since_cutoff = since
         .as_deref()
         .map(parse_since)
@@ -96,16 +91,16 @@ pub fn run_events(
 
     // Table header
     println!(
-        "{:<5} {:<20} {:<16} {:<24} {}",
-        "SEQ", "TIMESTAMP", "ACTOR", "ENTITY:ACTION", "SUBJECT"
+        "{:<10} {:<20} {:<16} {:<24} {}",
+        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION", "SUBJECT"
     );
     println!("{}", "-".repeat(90));
 
     for ev in &events {
         let entity_action = format!("{:?}:{:?}", ev.entity, ev.action).to_ascii_lowercase();
         println!(
-            "{:<5} {:<20} {:<16} {:<24} {}",
-            ev.seq,
+            "{:<10} {:<20} {:<16} {:<24} {}",
+            trunc(&ev.id, 10),
             fmt_ts(&ev.timestamp),
             trunc(&ev.actor, 16),
             trunc(&entity_action, 24),

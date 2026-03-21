@@ -26,9 +26,8 @@ pub struct WorkspaceState {
 }
 
 impl WorkspaceState {
-    /// Load from platform.db, running migration from old ship.lock if present.
+    /// Load from platform.db.
     pub fn load(ship_dir: &Path) -> Self {
-        let _ = migrate_ship_lock_if_present(ship_dir);
         let mut state = WorkspaceState::default();
         if let Err(e) = runtime::db::ensure_db(ship_dir) {
             eprintln!("warning: could not open platform.db: {}", e);
@@ -67,42 +66,9 @@ impl WorkspaceState {
     }
 }
 
-// ── Migration ─────────────────────────────────────────────────────────────────
-
-/// If .ship/ship.lock is the old workspace-state TOML format (has active_profile/active_preset),
-/// migrate values into platform.db and delete the file. Idempotent.
-fn migrate_ship_lock_if_present(ship_dir: &Path) -> Result<()> {
-    let lock_path = ship_dir.join("ship.lock");
-    if !lock_path.exists() { return Ok(()); }
-    let content = std::fs::read_to_string(&lock_path)?;
-    let parsed: toml::Value = match toml::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Ok(()),
-    };
-    // Only migrate if this is the old workspace-state format.
-    let has_profile = parsed.get("active_profile").and_then(|v| v.as_str()).is_some();
-    let has_preset  = parsed.get("active_preset").and_then(|v| v.as_str()).is_some();
-    if !has_profile && !has_preset { return Ok(()); }
-
-    runtime::db::ensure_db(ship_dir).context("opening platform.db for migration")?;
-
-    let active = parsed.get("active_profile").and_then(|v| v.as_str())
-        .or_else(|| parsed.get("active_preset").and_then(|v| v.as_str()));
-    if let Some(profile) = active {
-        runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_PROFILE, &serde_json::json!(profile))?;
-    }
-    if let Some(ts) = parsed.get("compiled_at").and_then(|v| v.as_str()) {
-        runtime::db::kv::set(ship_dir, NS, KEY_COMPILED_AT, &serde_json::json!(ts))?;
-    }
-    if let Some(arr) = parsed.get("plugins").and_then(|v| v.get("installed")).and_then(|v| v.as_array()) {
-        let ids: Vec<String> = arr.iter().filter_map(|x| x.as_str().map(str::to_string)).collect();
-        runtime::db::kv::set(ship_dir, NS, KEY_PLUGINS_INSTALLED, &serde_json::json!(ids))?;
-    }
-    std::fs::remove_file(&lock_path)
-        .with_context(|| format!("deleting migrated ship.lock at {}", lock_path.display()))?;
-    eprintln!("info: migrated workspace state from {} to platform.db", lock_path.display());
-    Ok(())
-}
+// ── Migration (removed) ──────────────────────────────────────────────────────
+// ship.lock workspace-state migration was a one-time path from the old TOML
+// format to platform.db. No consumers remain. Deleted 2026-03-20.
 
 // ── Activation ────────────────────────────────────────────────────────────────
 

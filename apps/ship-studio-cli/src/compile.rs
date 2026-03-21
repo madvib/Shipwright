@@ -92,6 +92,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     }
 
     if !opts.dry_run {
+        ensure_session_gitignored(opts.project_root)?;
         println!("✓ compiled for: {}", providers.join(", "));
     }
     Ok(())
@@ -260,29 +261,43 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     agents
 }
 
-/// Search order: agents/profiles/ (new) → modes/ (legacy), project then global.
+/// Search order: project .ship/agents/profiles/ → global ~/.ship/agents/profiles/.
 fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
-    let ship = project_root.join(".ship");
     let file = format!("{}.toml", profile_id);
 
-    // Project-local: profiles/ → presets/ (compat) → modes/ (legacy)
-    let p = ship.join("agents").join("profiles").join(&file);
+    // Project-local
+    let p = project_root.join(".ship").join("agents").join("profiles").join(&file);
     if p.exists() { return Some(p); }
-    let p_compat = ship.join("agents").join("presets").join(&file);
-    if p_compat.exists() { return Some(p_compat); }
-    let m = ship.join("modes").join(&file);
-    if m.exists() { return Some(m); }
 
-    // Global: ~/.ship
-    let home = dirs::home_dir()?;
-    let gp = home.join(".ship").join("agents").join("profiles").join(&file);
+    // Global
+    let gp = dirs::home_dir()?.join(".ship").join("agents").join("profiles").join(&file);
     if gp.exists() { return Some(gp); }
-    let gp_compat = home.join(".ship").join("agents").join("presets").join(&file);
-    if gp_compat.exists() { return Some(gp_compat); }
-    let gm = home.join(".ship").join("modes").join(&file);
-    if gm.exists() { return Some(gm); }
 
     None
+}
+
+// ── Session scratch space ─────────────────────────────────────────────────────
+
+/// Ensure `.ship-session/` is listed in the root `.gitignore`.
+/// Called once per `ship use` — idempotent.
+fn ensure_session_gitignored(root: &Path) -> Result<()> {
+    const ENTRY: &str = ".ship-session/";
+    let path = root.join(".gitignore");
+    let existing = if path.exists() {
+        std::fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
+    if existing.lines().any(|l| l.trim() == ENTRY) {
+        return Ok(());
+    }
+    let updated = if existing.is_empty() || existing.ends_with('\n') {
+        format!("{}{}\n", existing, ENTRY)
+    } else {
+        format!("{}\n{}\n", existing, ENTRY)
+    };
+    std::fs::write(&path, updated)?;
+    Ok(())
 }
 
 // ── File writer ───────────────────────────────────────────────────────────────
@@ -760,6 +775,37 @@ default_mode = "bypassPermissions"
         assert_eq!(base["a"]["x"], 1, "existing key must survive");
         assert_eq!(base["a"]["y"], 2, "patch key must be added");
         assert_eq!(base["c"], 3);
+    }
+
+    #[test]
+    fn ensure_session_gitignored_adds_entry() {
+        let tmp = TempDir::new().unwrap();
+        ensure_session_gitignored(tmp.path()).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert!(content.contains(".ship-session/"), "must add .ship-session/ entry");
+    }
+
+    #[test]
+    fn ensure_session_gitignored_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        ensure_session_gitignored(tmp.path()).unwrap();
+        ensure_session_gitignored(tmp.path()).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert_eq!(
+            content.lines().filter(|l| l.trim() == ".ship-session/").count(),
+            1,
+            "must not duplicate the entry"
+        );
+    }
+
+    #[test]
+    fn ensure_session_gitignored_appends_to_existing() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join(".gitignore"), "node_modules/\n").unwrap();
+        ensure_session_gitignored(tmp.path()).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert!(content.contains("node_modules/"), "must preserve existing entries");
+        assert!(content.contains(".ship-session/"), "must add new entry");
     }
 
     #[test]

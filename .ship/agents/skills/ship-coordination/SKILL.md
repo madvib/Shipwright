@@ -1,12 +1,12 @@
 ---
 name: ship-coordination
-description: Use when logging progress, leaving cross-lane notes, or tracking work status in the Ship project. Covers ship MCP tools for session/note management and the CLI coordination protocol.
+description: Use when logging progress or tracking work status in the Ship project. Covers ship MCP tools for session management and the CLI coordination protocol.
 ---
 
 # Ship Coordination Protocol
 
 This project runs 3 parallel work lanes + 1 orchestrator.
-All lanes share a SQLite DB (`.ship/state/`) synced via Syncthing across machines.
+All lanes share a SQLite DB (`~/.ship/platform.db`) — global, not inside project `.ship/`.
 
 ## Lane → Orchestrator communication
 
@@ -16,8 +16,9 @@ Use the ship MCP tools at key milestones:
 start_session    — when beginning a significant task
 log_progress     — at each meaningful checkpoint
 end_session      — when a task or subtask is complete
-create_note      — for cross-lane signals or blockers
 ```
+
+Notes and ADRs are human-facing documents. Do NOT use `create_note` for agent coordination, plans, or scratch work. Use `log_progress` or `.ship-session/` files instead.
 
 ## What to log
 
@@ -27,9 +28,10 @@ create_note      — for cross-lane signals or blockers
 
 ## Cross-lane signals
 
-When your work unblocks another lane, `create_note` with:
-- Title: `[UNBLOCKS web-import] /api/github/import contract stable`
-- Content: the exact contract (types, errors, URL) the downstream agent needs
+When your work unblocks another lane, use `log_progress` with a clear message:
+```
+log_progress "[UNBLOCKS web-import] /api/github/import contract stable — types: ProjectLibrary, errors: 404/422"
+```
 
 ## Lane dependency map
 

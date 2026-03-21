@@ -1,51 +1,110 @@
-//! Platform DB — clean schema, no workflow-layer tables.
-//! Replaces the monolithic state_db.rs.
+//! Platform DB — single database, single schema, no migration versioning.
+//!
+//! One file: `~/.ship/platform.db`.  Schema = code.
 
 pub mod adrs;
+pub mod agents;
 pub mod branch;
+pub mod branch_context;
 pub mod events;
 pub mod jobs;
 pub mod kv;
-pub mod migrate_from_state_db;
+pub mod managed_state;
 pub mod notes;
 pub mod schema;
+pub mod session;
 pub mod targets;
+pub mod types;
 pub mod workspace;
+pub mod workspace_state;
 
 use anyhow::{Context, Result, anyhow};
-use chrono::Utc;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Connection, SqliteConnection};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-pub struct MigrationReport {
-    pub db_path: PathBuf,
-    pub created: bool,
-    pub applied: usize,
-}
-
-/// Path to this project's SQLite DB: `~/.ship/state/<slug>/platform.db`.
+/// The one database path: `~/.ship/platform.db`.
 ///
-/// Uses a separate file from `state_db`'s `ship.db` during the transition period.
-/// Once `state_db` is retired, this becomes the canonical `ship.db`.
-pub fn db_path(ship_dir: &Path) -> Result<PathBuf> {
-    let global_dir = crate::project::get_global_dir()?;
-    let slug = crate::project::project_slug_from_ship_dir(ship_dir);
-    Ok(global_dir.join("state").join(slug).join("platform.db"))
+/// Never inside a project directory. Tests get automatic isolation
+/// via `get_global_dir()`'s test-binary detection (per-thread temp dir).
+pub fn db_path() -> Result<PathBuf> {
+    Ok(crate::project::get_global_dir()?.join("platform.db"))
 }
 
-/// Open a connection, running migrations first.
+/// Open a connection, ensuring schema exists first.
+///
+/// On first call, migrates any `.ship/platform.db` from `ship_dir` to the
+/// global location so existing data is preserved.
 pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
+    migrate_local_db_to_global(ship_dir);
     ensure_db(ship_dir)?;
-    let path = db_path(ship_dir)?;
+    let path = db_path()?;
     connect(&path)
 }
 
-/// Run migrations without returning a connection. Idempotent.
-pub fn ensure_db(ship_dir: &Path) -> Result<MigrationReport> {
-    let path = db_path(ship_dir)?;
-    run_migrations(&path, schema::MIGRATIONS)
+/// Ensure the schema exists. Idempotent — every statement uses
+/// `CREATE TABLE IF NOT EXISTS`.
+pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
+    let path = db_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let url = sqlite_url(&path);
+    let opts = SqliteConnectOptions::from_str(&url)
+        .with_context(|| format!("invalid sqlite url: {url}"))?
+        .create_if_missing(true);
+    let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
+
+    // Execute each statement individually — sqlx only runs one statement at a time.
+    for stmt in schema::SCHEMA
+        .split(';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        block_on(async { sqlx::query(stmt).execute(&mut conn).await })
+            .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
+    }
+    Ok(())
+}
+
+/// One-time migration: if `~/.ship/platform.db` is missing or empty but
+/// `.ship/platform.db` inside the project has data, copy it to the global
+/// location so existing data is preserved.
+fn migrate_local_db_to_global(ship_dir: &Path) {
+    let global_path = match db_path() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let global_has_data = global_path
+        .metadata()
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
+    if global_has_data {
+        return;
+    }
+    let local_path = ship_dir.join("platform.db");
+    let local_has_data = local_path
+        .metadata()
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
+    if !local_has_data {
+        return;
+    }
+    if let Some(parent) = global_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::copy(&local_path, &global_path) {
+        Ok(_) => eprintln!(
+            "migrated platform.db from {} → {}",
+            local_path.display(),
+            global_path.display()
+        ),
+        Err(e) => eprintln!(
+            "warning: failed to migrate platform.db to {}: {e}",
+            global_path.display()
+        ),
+    }
 }
 
 fn connect(path: &Path) -> Result<SqliteConnection> {
@@ -53,70 +112,6 @@ fn connect(path: &Path) -> Result<SqliteConnection> {
     let opts = SqliteConnectOptions::from_str(&url)
         .with_context(|| format!("invalid sqlite url: {url}"))?;
     block_on(async { SqliteConnection::connect_with(&opts).await })
-}
-
-pub(crate) fn run_migrations(
-    db_path: &Path,
-    migrations: &[(&str, &str)],
-) -> Result<MigrationReport> {
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let created = !db_path.exists();
-    let url = sqlite_url(db_path);
-    let opts = SqliteConnectOptions::from_str(&url)
-        .with_context(|| format!("invalid sqlite url: {url}"))?
-        .create_if_missing(true);
-    let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
-
-    block_on(async {
-        sqlx::query("PRAGMA journal_mode = WAL;")
-            .execute(&mut conn)
-            .await
-    })?;
-    block_on(async {
-        sqlx::query("PRAGMA foreign_keys = ON;")
-            .execute(&mut conn)
-            .await
-    })?;
-
-    let mut applied = 0usize;
-    for (version, ddl) in migrations {
-        let exists = block_on(async {
-            sqlx::query("SELECT version FROM schema_migrations WHERE version = ?")
-                .bind(*version)
-                .fetch_optional(&mut conn)
-                .await
-        })
-        .ok()
-        .flatten()
-        .is_some();
-        if exists {
-            continue;
-        }
-        // Execute each statement individually — sqlx prepare only runs one statement at a time.
-        for stmt in ddl.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-            block_on(async { sqlx::query(stmt).execute(&mut conn).await })
-                .with_context(|| format!("migration {version} failed for {}", db_path.display()))?;
-        }
-        block_on(async {
-            sqlx::query(
-                "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-            )
-            .bind(*version)
-            .bind(Utc::now().to_rfc3339())
-            .execute(&mut conn)
-            .await
-        })
-        .with_context(|| format!("recording migration {version} failed"))?;
-        applied += 1;
-    }
-
-    Ok(MigrationReport {
-        db_path: db_path.to_path_buf(),
-        created,
-        applied,
-    })
 }
 
 fn sqlite_url(path: &Path) -> String {
@@ -157,9 +152,7 @@ mod tests {
     fn test_ensure_db_creates_fresh() {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        let report = ensure_db(&ship_dir).unwrap();
-        assert!(report.created);
-        assert_eq!(report.applied, schema::MIGRATIONS.len());
+        ensure_db(&ship_dir).unwrap();
     }
 
     #[test]
@@ -167,9 +160,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
         ensure_db(&ship_dir).unwrap();
-        let report2 = ensure_db(&ship_dir).unwrap();
-        assert!(!report2.created);
-        assert_eq!(report2.applied, 0);
+        ensure_db(&ship_dir).unwrap();
     }
 
     #[test]

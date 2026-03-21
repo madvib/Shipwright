@@ -65,9 +65,9 @@ fn cursor_no_settings_patch() {
 
 #[test]
 fn cursor_is_valid_provider_in_normalize() {
-    use crate::resolve::{FeatureOverrides, resolve};
+    use crate::resolve::{WorkspaceOverrides, resolve};
     use crate::types::ProjectConfig;
-    let feature = FeatureOverrides {
+    let feature = WorkspaceOverrides {
         providers: vec!["cursor".to_string()],
         ..Default::default()
     };

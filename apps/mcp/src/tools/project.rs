@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 use runtime::project::{get_active_project_global, get_project_dir, set_active_project_global};
 use runtime::{
-    get_config, list_events_since, read_log,
+    get_config, read_log, read_recent_events,
     workspace::{
         get_active_workspace_session as runtime_get_active_workspace_session,
         list_workspaces as runtime_list_workspaces,
     },
 };
-use ship_docs::{get_project_name, list_registered_projects};
+use runtime::project::{get_project_name, list_registered_projects};
 use tokio::sync::Mutex;
 
 /// Set the active project; returns (response_message, resolved_project_root).
@@ -169,15 +169,15 @@ pub async fn get_project_info(project_dir: &Path) -> String {
         }
     }
 
-    if let Ok(events) = list_events_since(project_dir, 0, Some(10))
+    if let Ok(events) = read_recent_events(project_dir, 10)
         && !events.is_empty()
     {
         out.push_str("\n## Recent Events\n");
         for e in events {
             let details = e.details.as_ref().map(|d| format!(" — {}", d)).unwrap_or_default();
             out.push_str(&format!(
-                "- #{} {} [{}] {:?}.{:?} {}{}\n",
-                e.seq,
+                "- {} {} [{}] {:?}.{:?} {}{}\n",
+                e.id,
                 e.timestamp.format("%Y-%m-%d %H:%M:%S"),
                 e.actor,
                 e.entity,

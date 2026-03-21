@@ -1,107 +1,138 @@
-//! Append-only event log. Never update or delete event records.
+//! Append-only event log backed by platform.db.
 
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sqlx::Row;
 use std::path::Path;
 
 use crate::db::{block_on, open_db};
+use crate::events::{EventAction, EventEntity, EventRecord};
+use crate::gen_nanoid;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EventRecord {
-    pub seq: i64,
-    pub timestamp: String,
-    pub actor: String,
-    pub entity: String,
-    pub action: String,
-    pub subject: String,
-    pub details: Option<String>,
-}
-
-const COLS: &str = "seq, timestamp, actor, entity, action, subject, details";
-
-pub fn append_event(
+pub fn insert_event(
     ship_dir: &Path,
     actor: &str,
-    entity: &str,
-    action: &str,
-    subject: &str,
-    details: Option<&str>,
-) -> Result<()> {
+    entity: &EventEntity,
+    entity_id: Option<&str>,
+    action: &EventAction,
+    detail: Option<&str>,
+) -> Result<EventRecord> {
     let mut conn = open_db(ship_dir)?;
+    let id = gen_nanoid();
     let now = Utc::now().to_rfc3339();
+    let entity_type = entity.as_db();
+    let action_str = action.as_db();
+
     block_on(async {
         sqlx::query(
-            "INSERT INTO event_log (timestamp, actor, entity, action, subject, details)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO event_log (id, actor, entity_type, entity_id, action, detail, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(&now)
+        .bind(&id)
         .bind(actor)
-        .bind(entity)
-        .bind(action)
-        .bind(subject)
-        .bind(details)
+        .bind(entity_type)
+        .bind(entity_id)
+        .bind(action_str)
+        .bind(detail)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
-    Ok(())
+
+    Ok(EventRecord {
+        id,
+        timestamp: Utc::now(),
+        actor: actor.to_string(),
+        entity: entity.clone(),
+        action: action.clone(),
+        subject: entity_id.unwrap_or_default().to_string(),
+        details: detail.map(str::to_string),
+    })
 }
 
-pub fn list_events(
+const SELECT_COLS: &str =
+    "id, actor, entity_type, entity_id, action, detail, created_at";
+
+pub fn list_all_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(&format!(
+            "SELECT {SELECT_COLS} FROM event_log ORDER BY created_at ASC, rowid ASC"
+        ))
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    rows.iter().map(row_to_record).collect()
+}
+
+pub fn list_events_since_time(
     ship_dir: &Path,
-    entity: Option<&str>,
-    subject: Option<&str>,
-    limit: Option<u32>,
+    since: &DateTime<Utc>,
+    limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
     let mut conn = open_db(ship_dir)?;
-    let lim = limit.unwrap_or(200);
-    let rows = match (entity, subject) {
-        (Some(e), Some(s)) => block_on(async {
+    let since_str = since.to_rfc3339();
+    let rows = match limit {
+        Some(n) => block_on(async {
             sqlx::query(&format!(
-                "SELECT {COLS} FROM event_log WHERE entity = ? AND subject = ? ORDER BY seq DESC LIMIT ?"
+                "SELECT {SELECT_COLS} FROM event_log
+                 WHERE created_at >= ? ORDER BY created_at ASC, rowid ASC LIMIT ?"
             ))
-            .bind(e).bind(s).bind(lim)
+            .bind(&since_str)
+            .bind(n as i64)
             .fetch_all(&mut conn)
             .await
         })?,
-        (Some(e), None) => block_on(async {
+        None => block_on(async {
             sqlx::query(&format!(
-                "SELECT {COLS} FROM event_log WHERE entity = ? ORDER BY seq DESC LIMIT ?"
+                "SELECT {SELECT_COLS} FROM event_log
+                 WHERE created_at >= ? ORDER BY created_at ASC, rowid ASC"
             ))
-            .bind(e).bind(lim)
-            .fetch_all(&mut conn)
-            .await
-        })?,
-        (None, Some(s)) => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {COLS} FROM event_log WHERE subject = ? ORDER BY seq DESC LIMIT ?"
-            ))
-            .bind(s).bind(lim)
-            .fetch_all(&mut conn)
-            .await
-        })?,
-        (None, None) => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {COLS} FROM event_log ORDER BY seq DESC LIMIT ?"
-            ))
-            .bind(lim)
+            .bind(&since_str)
             .fetch_all(&mut conn)
             .await
         })?,
     };
-    Ok(rows.iter().map(row_to_event).collect())
+    rows.iter().map(row_to_record).collect()
 }
 
-fn row_to_event(row: &sqlx::sqlite::SqliteRow) -> EventRecord {
-    EventRecord {
-        seq: row.get(0),
-        timestamp: row.get(1),
-        actor: row.get(2),
-        entity: row.get(3),
-        action: row.get(4),
-        subject: row.get(5),
-        details: row.get(6),
-    }
+pub fn list_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(&format!(
+            "SELECT {SELECT_COLS} FROM event_log
+             ORDER BY created_at DESC, rowid DESC LIMIT ?"
+        ))
+        .bind(limit as i64)
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    let mut records: Vec<EventRecord> = rows.iter().map(row_to_record).collect::<Result<_>>()?;
+    records.reverse(); // Return in ASC order
+    Ok(records)
+}
+
+fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
+    let entity_type: String = row.get(2);
+    let action_str: String = row.get(4);
+    let created_at: String = row.get(6);
+    let timestamp = created_at
+        .parse::<DateTime<Utc>>()
+        .or_else(|_| {
+            chrono::DateTime::parse_from_rfc3339(&created_at)
+                .map(|dt| dt.with_timezone(&Utc))
+        })
+        .unwrap_or_else(|_| Utc::now());
+
+    Ok(EventRecord {
+        id: row.get(0),
+        timestamp,
+        actor: row.get(1),
+        entity: EventEntity::from_db(&entity_type)?,
+        action: EventAction::from_db(&action_str)?,
+        subject: row.get::<Option<String>, _>(3).unwrap_or_default(),
+        details: row.get(5),
+    })
 }
 
 #[cfg(test)]
@@ -119,43 +150,53 @@ mod tests {
     }
 
     #[test]
-    fn test_append_and_list_events() {
+    fn insert_and_read_event() {
         let (_tmp, ship_dir) = setup();
-        append_event(&ship_dir, "agent-1", "workspace", "activated", "ws-001", None).unwrap();
-        append_event(&ship_dir, "agent-1", "workspace", "session_started", "ws-001", Some("{\"goal\":\"build\"}")).unwrap();
-        let events = list_events(&ship_dir, None, None, None).unwrap();
-        assert_eq!(events.len(), 2);
-        // seq should be monotonically increasing (DESC order means first item has higher seq)
-        assert!(events[0].seq > events[1].seq);
+        let record = insert_event(
+            &ship_dir,
+            "ship",
+            &EventEntity::Project,
+            Some("my-project"),
+            &EventAction::Init,
+            Some("initialized"),
+        )
+        .unwrap();
+        assert_eq!(record.entity, EventEntity::Project);
+        assert_eq!(record.subject, "my-project");
+        assert_eq!(record.actor, "ship");
+
+        let all = list_all_events(&ship_dir).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, record.id);
+        assert_eq!(all[0].entity, EventEntity::Project);
+        assert_eq!(all[0].actor, "ship");
     }
 
     #[test]
-    fn test_list_events_filtered_by_entity() {
+    fn append_only_ordering() {
         let (_tmp, ship_dir) = setup();
-        append_event(&ship_dir, "agent-1", "workspace", "activated", "ws-001", None).unwrap();
-        append_event(&ship_dir, "agent-1", "session", "started", "sess-1", None).unwrap();
-        let ws_events = list_events(&ship_dir, Some("workspace"), None, None).unwrap();
-        assert_eq!(ws_events.len(), 1);
-        assert_eq!(ws_events[0].entity, "workspace");
+        insert_event(&ship_dir, "ship", &EventEntity::Workspace, Some("feat/a"), &EventAction::Create, None).unwrap();
+        insert_event(&ship_dir, "agent", &EventEntity::Session, Some("sess-1"), &EventAction::Start, None).unwrap();
+        insert_event(&ship_dir, "logic", &EventEntity::Config, Some("ship.toml"), &EventAction::Update, None).unwrap();
+
+        let all = list_all_events(&ship_dir).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].entity, EventEntity::Workspace);
+        assert_eq!(all[1].entity, EventEntity::Session);
+        assert_eq!(all[2].entity, EventEntity::Config);
     }
 
     #[test]
-    fn test_list_events_filtered_by_subject() {
+    fn list_since_filters_by_time() {
         let (_tmp, ship_dir) = setup();
-        append_event(&ship_dir, "agent-1", "workspace", "activated", "ws-001", None).unwrap();
-        append_event(&ship_dir, "agent-1", "workspace", "deactivated", "ws-002", None).unwrap();
-        let events = list_events(&ship_dir, None, Some("ws-001"), None).unwrap();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].subject, "ws-001");
-    }
+        insert_event(&ship_dir, "ship", &EventEntity::Project, Some("p1"), &EventAction::Log, None).unwrap();
 
-    #[test]
-    fn test_events_are_append_only() {
-        // Verify no update/delete functions exist — the type system enforces this.
-        // This test documents the invariant.
-        let (_tmp, ship_dir) = setup();
-        append_event(&ship_dir, "system", "db", "initialized", "ship.db", None).unwrap();
-        let events = list_events(&ship_dir, None, None, None).unwrap();
-        assert!(!events.is_empty());
+        let future = Utc::now() + chrono::Duration::hours(1);
+        let filtered = list_events_since_time(&ship_dir, &future, None).unwrap();
+        assert!(filtered.is_empty());
+
+        let past = Utc::now() - chrono::Duration::hours(1);
+        let all = list_events_since_time(&ship_dir, &past, None).unwrap();
+        assert_eq!(all.len(), 1);
     }
 }

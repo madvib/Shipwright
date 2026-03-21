@@ -1,77 +1,77 @@
 ---
-name: Spawn Agent
-id: spawn-agent
-version: 0.1.0
-description: Dispatch a job to a specialist agent in a git worktree. Creates the worktree, compiles the agent config, writes the job spec, and opens a new terminal session. Use this from the commander when dispatching jobs.
+name: spawn-agent
+description: Dispatch a job to a specialist agent in a git worktree. Creates the worktree, compiles the agent config, writes the job spec, and gives the human a ready-to-paste launch command.
 tags: [commander, orchestration, worktree, dispatch]
 authors: [ship]
 ---
 
 # Spawn Agent
 
-Dispatch a job to a specialist agent. Follow this sequence exactly — no shortcuts.
+Dispatch a job to a specialist agent. Follow this sequence exactly.
 
 ## Prerequisites
 
-- `claude` must be authenticated: run `claude auth login` once per machine. Spawned terminals inherit the auth session — no API key management needed for Claude Code Max.
-- `ship` and `claude` CLIs must be on `$PATH`
-- Job must exist in the queue with a description and profile hint
+- `claude` authenticated: `claude auth login` once per machine
+- `ship` and `claude` on `$PATH`
+- Job exists in the queue with description, scope, and profile hint
 
 ## Sequence
 
 ### 1. Read the job
 
-Get the full job payload: title, description, acceptance criteria, scope, profile hint.
-
-**Option A — MCP tool (preferred when running inside Claude Code with Ship MCP active):**
-
 ```
-Use the MCP tool: list_jobs()
-Find the job with the matching ID in the results to get its full payload.
+list_jobs()  — find the job by ID, get full payload
 ```
 
-**Option B — CLI fallback (when MCP is not available):**
+CLI fallback: `ship job list`
 
-```bash
-ship job list
+> Never use raw `sqlite3` to access Ship data. The schema evolves. Always use MCP tools or `ship` CLI.
+
+### 2. Name the worktree
+
+Derive a short, human-readable slug from the job title. This is used for the branch name and worktree directory — the job ID stays in the queue for tracking.
+
+```
+Job title: "DB Consolidation + Dead Code Purge"  →  slug: "db-consolidation"
+Job title: "Fix ship install/use dep resolution"  →  slug: "fix-dep-resolution"
+Job title: "Events Rewrite"                       →  slug: "events-rewrite"
 ```
 
-Find the job by ID prefix in the output. For full payload detail when CLI output is truncated, ask the human to run `ship job list` and share the relevant row.
+Rules:
+- Lowercase, hyphen-separated, 2-4 words max
+- No job IDs in the name — humans read directories
+- If a slug collides with an existing branch, append a short disambiguator (e.g. `events-rewrite-2`)
 
-> **Never use raw sqlite3 to access Ship data.** The database schema evolves across releases. Always use the MCP tools or `ship` CLI — they are the stable interface.
+### 3. Resolve the worktree path
 
-### 2. Resolve the worktree path
+Default: `~/dev/ship-worktrees/<slug>`
 
-Default: `~/dev/ship-worktrees/<job-id>`
-
-Check `~/.ship/config.toml` for a `[worktrees] dir` override:
-
+Check `~/.ship/config.toml` for override:
 ```toml
 [worktrees]
 dir = "~/dev/my-worktrees"
 ```
 
-If set, use that base dir. Otherwise use `~/dev/ship-worktrees/`.
-
-### 3. Create the worktree
+### 4. Create the worktree
 
 ```bash
-git worktree add ~/dev/ship-worktrees/<job-id> -b job/<job-id>
+git worktree add ~/dev/ship-worktrees/<slug> -b job/<slug>
 ```
 
-If the branch already exists (resuming a stalled job):
+Resuming a stalled job (branch exists):
+```bash
+git worktree add ~/dev/ship-worktrees/<slug> job/<slug>
+```
+
+### 5. Compile the agent config
 
 ```bash
-git worktree add ~/dev/ship-worktrees/<job-id> job/<job-id>
+cd ~/dev/ship-worktrees/<slug> && ship use <profile>
 ```
 
-### 4. Compile the agent config
+This writes `CLAUDE.md`, `.mcp.json`, and permission files into the worktree. The agent reads them automatically at session start.
 
-```bash
-cd ~/dev/ship-worktrees/<job-id> && ship use <profile>
-```
-
-Profile comes from the job payload (`preset_hint` field) or this table:
+Profile from job payload (`preset_hint`), or:
 
 | Work type | Profile |
 |-----------|---------|
@@ -82,18 +82,24 @@ Profile comes from the job payload (`preset_hint` field) or this table:
 | Auth / Better Auth | `better-auth` |
 | Default / mixed | `default` |
 
-### 5. Write the job spec
+### 6. Write the job spec
 
-Write `job-spec.md` to the worktree root. This is the agent's opening context — they should read it on start.
-
-```markdown
+```bash
+cat > ~/dev/ship-worktrees/<slug>/job-spec.md << 'EOF'
 # Job <JOB_ID> — <title>
 
+Read this file first. It is your complete context.
+
+## Mode
+autonomous
+# autonomous — begin immediately, log questions via append_job_log
+# interactive — present your plan to the human, wait for approval before executing
+
 ## What
-<description from payload>
+<description>
 
 ## Scope
-File scope: <file_scope from payload>
+File scope: <file_scope>
 Profile: <profile>
 
 ## Acceptance Criteria
@@ -101,99 +107,86 @@ Profile: <profile>
 
 ## Constraints
 - Stay within declared file scope
-- Append touched files to job log via MCP: `append_job_log(id, "touched: path/to/file")`
-- Mark done via MCP: `update_job(id, status="complete")` — commander runs the gate
+- Log touched files: `append_job_log(id, "touched: path/to/file")`
+
+## Completion Contract
+When acceptance criteria are met, do all three in order:
+1. Commit touched files: `git add <files> && git commit -m "complete: <title>"`
+2. Write handoff.md to this directory (what you did, decisions made, anything incomplete)
+3. `update_job(id="<JOB_ID>", status="complete")`
+
+All three are required. Commander uses all three as completion signals.
 
 ## Context
-Branch: job/<job-id>
-Worktree: ~/dev/ship-worktrees/<job-id>
-```
-
-### 6. Launch the terminal
-
-Detect platform and open a new terminal session in the worktree directory.
-
-**WSL (Windows Terminal):**
-```bash
-cmd.exe /c start wt.exe -d "$(wslpath -w ~/dev/ship-worktrees/<job-id>)"
-```
-
-**macOS:**
-```bash
-osascript -e 'tell application "Terminal" to do script "cd ~/dev/ship-worktrees/<job-id> && claude ."'
-```
-
-**iTerm2 (macOS):**
-```bash
-osascript << 'EOF'
-tell application "iTerm2"
-  create window with default profile
-  tell current session of current window
-    write text "cd ~/dev/ship-worktrees/<job-id> && claude ."
-  end tell
-end tell
+Branch: job/<slug>
+Worktree: ~/dev/ship-worktrees/<slug>
+Job ID: <JOB_ID> (use this for MCP calls)
+Profile: <profile>
+Ship MCP is active in this directory.
 EOF
 ```
 
-**Fallback (unknown platform):**
-```
-echo "Open a new terminal and run:"
-echo "  cd ~/dev/ship-worktrees/<job-id> && claude ."
-```
-
-**Platform detection:**
-```bash
-if grep -qi microsoft /proc/version 2>/dev/null; then
-  echo "wsl"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  echo "macos"
-else
-  echo "linux"
-fi
-```
+The compiled `CLAUDE.md` includes a rule telling the agent to read `job-spec.md` immediately and begin without waiting for instruction.
 
 ### 7. Update job status
 
 ```
-update_job(id="<job-id>", status="running")
+update_job(id="<job-id>", status="running", claimed_by="<your-provider-id>")
 ```
 
-If the job has a `claimed_by` field in the payload, set it to the current provider ID (e.g. `"claude-main"`).
+### 8. Give the human the launch command
 
-### 8. Tell the human
+Terminal auto-launch is unreliable across platforms. Give the human a clean, ready-to-paste command instead.
 
+**Standard launch:**
 ```
-Dispatched [<job-id>] <title>
-→ worktree: ~/dev/ship-worktrees/<job-id>
+cd ~/dev/ship-worktrees/<slug> && claude .
+```
+
+**If the profile uses `default_mode = "bypassPermissions"`:**
+```
+cd ~/dev/ship-worktrees/<slug> && claude . --dangerously-skip-permissions
+```
+
+Format this as a single copy block. The agent will read `job-spec.md` automatically and start — no further input needed from the human.
+
+Tell the human:
+```
+Dispatched [<JOB_ID>] <title>
+→ worktree: ~/dev/ship-worktrees/<slug>
 → profile: <profile>
-→ terminal: opened (or: "open manually — see above")
-```
+→ launch:
 
-## Opening Message for the Agent
+  cd ~/dev/ship-worktrees/<slug> && claude .
 
-When you open the terminal manually, paste this as the opening message:
-
-```
-Read job-spec.md in this directory. That is your full context — scope, acceptance criteria, constraints. Start working. Report progress via append_job_log. Mark done via update_job when acceptance criteria are met.
+Paste in a new terminal tab. The agent will start automatically.
 ```
 
 ## Stale Worktree Cleanup
 
-After a job completes and the gate passes:
-
+After gate passes:
 ```bash
-git worktree remove ~/dev/ship-worktrees/<job-id>
-git branch -d job/<job-id>
+git worktree remove ~/dev/ship-worktrees/<slug>
+git branch -d job/<slug>
 ```
 
-Or use `list_stale_worktrees()` from the commander to find idle worktrees > 24h.
+Or use `list_stale_worktrees()` to find idle worktrees > 24h.
+
+## Agent Teams
+
+Claude Code agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) stack multiple agents in the **same directory** — they share the working tree. This is not a replacement for worktrees.
+
+Use agent teams for: research, review, debate, investigation where file isolation is not needed.
+Use worktrees for: parallel implementation, long-running jobs, agents that need their own compiled profile.
 
 ## Troubleshooting
 
-**`wt.exe` not found:** Windows Terminal not installed, or not on PATH from WSL. Install from Microsoft Store or use the fallback.
+**Agent starts but has no MCP tools:** `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session.
 
 **`claude .` opens but has no MCP tools:** The `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session in that directory.
 
-**Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship` is installed (`which ship`) and `.mcp.json` points to `ship mcp serve` correctly.
+**Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship mcp serve` is on `$PATH` (`which ship`) and `.mcp.json` is configured to run `ship mcp serve`.
+
+**`ship mcp serve` not found:** The MCP server is part of the `ship` binary. Confirm with `ship mcp serve --help`. If missing, reinstall: `cargo install --path apps/cli`.
 
 **Auth missing in spawned terminal:** Run `claude auth login` in the new terminal. With Claude Code Max, auth is per-machine OAuth — no API key needed.

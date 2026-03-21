@@ -118,13 +118,14 @@ fn resolve_dep_skill_reads_skill_md() {
     );
 
     let lock = make_lock("github.com/owner/pkg", &format!("sha256:{hex}"));
-    let skill =
+    let skills =
         resolve_dep_skill("github.com/owner/pkg/skills/my-skill", &lock, tmp.path()).unwrap();
 
-    assert_eq!(skill.id, "github.com/owner/pkg/skills/my-skill");
-    assert_eq!(skill.name, "My Skill");
-    assert_eq!(skill.description.as_deref(), Some("Does stuff"));
-    assert_eq!(skill.content, "Instructions.");
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].id, "github.com/owner/pkg/skills/my-skill");
+    assert_eq!(skills[0].name, "My Skill");
+    assert_eq!(skills[0].description.as_deref(), Some("Does stuff"));
+    assert_eq!(skills[0].content, "Instructions.");
 }
 
 #[test]
@@ -145,6 +146,74 @@ fn resolve_dep_skill_missing_skill_lists_available() {
     let msg = err.to_string();
     assert!(msg.contains("not found"), "got: {msg}");
     assert!(msg.contains("other-skill"), "got: {msg}");
+}
+
+#[test]
+fn resolve_dep_skill_expands_namespace_to_leaf_skills() {
+    // Real cache layout: better-auth/ is a namespace containing sub-skills,
+    // NOT a skill itself (no better-auth/SKILL.md).
+    let tmp = TempDir::new().unwrap();
+    let hex = "83fb025b";
+    write_file(
+        tmp.path(),
+        &format!("objects/{hex}/better-auth/best-practices/SKILL.md"),
+        "---\nname: Best Practices\n---\n\nBP content.",
+    );
+    write_file(
+        tmp.path(),
+        &format!("objects/{hex}/better-auth/create-auth/SKILL.md"),
+        "---\nname: Create Auth\n---\n\nCA content.",
+    );
+    write_file(
+        tmp.path(),
+        &format!("objects/{hex}/better-auth/emailAndPassword/SKILL.md"),
+        "---\nname: Email and Password\n---\n\nEP content.",
+    );
+    // Also create a sibling namespace to verify we only expand the target
+    write_file(
+        tmp.path(),
+        &format!("objects/{hex}/security/hardening/SKILL.md"),
+        "---\nname: Hardening\n---\n\nH content.",
+    );
+
+    let lock = make_lock("github.com/better-auth/skills", &format!("sha256:{hex}"));
+    let skills =
+        resolve_dep_skill("github.com/better-auth/skills/better-auth", &lock, tmp.path())
+            .unwrap();
+
+    assert_eq!(skills.len(), 3, "should expand to 3 leaf skills");
+    // Sorted by sub-name
+    assert_eq!(skills[0].id, "github.com/better-auth/skills/better-auth/best-practices");
+    assert_eq!(skills[0].name, "Best Practices");
+    assert_eq!(skills[1].id, "github.com/better-auth/skills/better-auth/create-auth");
+    assert_eq!(skills[2].id, "github.com/better-auth/skills/better-auth/emailAndPassword");
+}
+
+#[test]
+fn resolve_dep_skill_missing_namespace_lists_available() {
+    // When within_path doesn't match any directory at all, error lists siblings.
+    let tmp = TempDir::new().unwrap();
+    let hex = "deadbeef";
+    write_file(
+        tmp.path(),
+        &format!("objects/{hex}/better-auth/create-auth/SKILL.md"),
+        "content",
+    );
+    write_file(
+        tmp.path(),
+        &format!("objects/{hex}/security/hardening/SKILL.md"),
+        "content",
+    );
+
+    let lock = make_lock("github.com/better-auth/skills", &format!("sha256:{hex}"));
+    let err =
+        resolve_dep_skill("github.com/better-auth/skills/missing-ns", &lock, tmp.path())
+            .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(msg.contains("not found"), "got: {msg}");
+    assert!(msg.contains("better-auth"), "should list sibling dirs, got: {msg}");
+    assert!(msg.contains("security"), "should list sibling dirs, got: {msg}");
 }
 
 #[test]

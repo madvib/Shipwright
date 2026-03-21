@@ -57,9 +57,8 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
     let result = resolve_and_fetch(&registry_manifest, &lock_path, &cache, &opts)
         .context("resolving and fetching dependencies")?;
 
-    // Compile: trigger the standard compile pipeline.
-    // The resolved packages are in the cache but integrating them into the
-    // compiler library pipeline is a TODO — we run the standard compile here.
+    // Compile: the standard pipeline picks up dep skills from ship.lock + cache
+    // via dep_skills::resolve_dep_skill() during library resolution.
     let state = WorkspaceState::load(&ship_dir);
     run_compile(CompileOptions {
         project_root,

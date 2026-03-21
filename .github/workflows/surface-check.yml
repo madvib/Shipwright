@@ -1,0 +1,42 @@
+name: Surface Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ship-studio-cli/src/**'
+      - 'apps/mcp/src/server.rs'
+      - 'docs/surface.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/ship-studio-cli/src/**'
+      - 'apps/mcp/src/server.rs'
+      - 'docs/surface.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: surface-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  surface-check:
+    name: Surface drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build ship
+        run: cargo build --release -p ship-studio-cli
+
+      - name: Check surface drift
+        run: ./target/release/ship surface --check

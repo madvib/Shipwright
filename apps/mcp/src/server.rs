@@ -21,6 +21,7 @@ use crate::resources;
 use crate::tools::{
     adr, agent, events, job, notes, project, session, skills, target, workspace, workspace_ops,
 };
+use target::{update_capability as tool_update_capability, update_target as tool_update_target};
 
 // ─── Server struct ────────────────────────────────────────────────────────────
 
@@ -55,8 +56,8 @@ impl ShipServer {
         normalized
     }
 
-    pub fn is_core_tool(tool_name: &str) -> bool {
-        const CORE_TOOLS: &[&str] = &[
+    pub fn core_tools() -> &'static [&'static str] {
+        &[
             "open_project", "create_note", "update_note", "create_adr",
             "activate_workspace", "create_workspace", "complete_workspace",
             "list_stale_worktrees", "set_agent",
@@ -64,9 +65,14 @@ impl ShipServer {
             "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
             "claim_file", "get_file_owner",
             "list_events", "provider_matrix",
-        ];
+            "create_target", "update_target", "list_targets", "get_target",
+            "create_capability", "update_capability", "mark_capability_actual", "list_capabilities",
+        ]
+    }
+
+    pub fn is_core_tool(tool_name: &str) -> bool {
         let normalized = Self::normalize_mode_tool_id(tool_name);
-        CORE_TOOLS.contains(&normalized.as_str())
+        Self::core_tools().contains(&normalized.as_str())
     }
 
     pub fn is_project_workspace_tool(_tool_name: &str) -> bool {
@@ -153,7 +159,7 @@ impl ShipServer {
     #[tool(description = "Replace a note's markdown content by filename.")]
     async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
         let scope = match notes::parse_note_scope(req.scope.as_deref()) { Ok(s) => s, Err(e) => return format!("Error: {}", e) };
-        use ship_docs::NoteScope;
+        use crate::tools::notes::NoteScope;
         let dir = match scope { NoteScope::Project => match self.get_effective_project_dir().await { Ok(d) => Some(d), Err(e) => return e }, NoteScope::User => None };
         notes::update_note(scope, dir.as_deref(), &req.file_name, &req.content)
     }
@@ -240,10 +246,17 @@ impl ShipServer {
 
     // ─── Targets ──────────────────────────────────────────────────────────────
 
-    #[tool(description = "Create a target. kind='milestone' (e.g. v0.1.0) or kind='surface' (e.g. compiler, studio).")]
+    #[tool(description = "Create a target. kind='milestone' (e.g. v0.1.0) or kind='surface' (e.g. compiler, studio). \
+        Accepts phase, due_date, body_markdown, and file_scope for full intent document.")]
     async fn create_target(&self, Parameters(req): Parameters<CreateTargetRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         target::create_target(&project_dir, req)
+    }
+
+    #[tool(description = "Update a target's metadata or long-form body_markdown. Patch-style: only provided fields change.")]
+    async fn update_target(&self, Parameters(req): Parameters<UpdateTargetRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        tool_update_target(&project_dir, req)
     }
 
     #[tool(description = "List targets. Optionally filter by kind: 'milestone' or 'surface'.")]
@@ -252,16 +265,22 @@ impl ShipServer {
         target::list_targets(&project_dir, req)
     }
 
-    #[tool(description = "Get a target with its full capability list (actual and aspirational).")]
+    #[tool(description = "Get a target with its full capability progress board (done / in-progress / planned).")]
     async fn get_target(&self, Parameters(req): Parameters<GetTargetRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         target::get_target(&project_dir, req)
     }
 
-    #[tool(description = "Add an aspirational capability to a target. Optionally link to a milestone.")]
+    #[tool(description = "Add a capability to a target. Accepts phase, acceptance_criteria, preset_hint, file_scope, assigned_to, priority.")]
     async fn create_capability(&self, Parameters(req): Parameters<CreateCapabilityRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         target::create_capability(&project_dir, req)
+    }
+
+    #[tool(description = "Update a capability's fields. Patch-style. Status: aspirational | in_progress | actual.")]
+    async fn update_capability(&self, Parameters(req): Parameters<UpdateCapabilityRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        tool_update_capability(&project_dir, req)
     }
 
     #[tool(description = "Mark a capability as actual with evidence (test name, commit hash, or behavior).")]
@@ -270,7 +289,7 @@ impl ShipServer {
         target::mark_capability_actual(&project_dir, req)
     }
 
-    #[tool(description = "List capabilities. Filter by target_id, milestone_id, and/or status.")]
+    #[tool(description = "List capabilities. Filter by target_id, milestone_id, status, and/or phase.")]
     async fn list_capabilities(&self, Parameters(req): Parameters<ListCapabilitiesRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         target::list_capabilities(&project_dir, req)

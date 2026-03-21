@@ -4,6 +4,14 @@ use crate::types::{HookTrigger, Permissions, ToolPermissions};
 
 use super::fixtures::*;
 
+/// Ship always emits autoMemoryEnabled: false. When no other settings are
+/// configured, the patch contains only that field.
+fn assert_memory_only(patch: &Option<serde_json::Value>) {
+    let p = patch.as_ref().expect("patch must exist (autoMemoryEnabled)");
+    assert_eq!(p["autoMemoryEnabled"], false);
+    assert_eq!(p.as_object().unwrap().len(), 1, "expected only autoMemoryEnabled");
+}
+
 // ── defaultMode ───────────────────────────────────────────────────────────────
 
 #[test]
@@ -23,7 +31,7 @@ fn default_mode_compiles_to_permissions_default_mode() {
 #[test]
 fn default_mode_none_omitted_from_patch() {
     let out = compile(&resolved(vec![]), "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 // ── model ─────────────────────────────────────────────────────────────────────
@@ -43,7 +51,7 @@ fn model_compiles_to_settings_patch() {
 fn model_none_omits_field() {
     let r = ResolvedConfig { model: None, ..resolved(vec![]) };
     let out = compile(&r, "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 #[test]
@@ -79,7 +87,7 @@ fn additional_directories_empty_omitted() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 // ── Env vars ──────────────────────────────────────────────────────────────────
@@ -100,7 +108,7 @@ fn env_vars_emitted_in_claude_settings_patch() {
 #[test]
 fn empty_env_no_settings_patch() {
     let out = compile(&resolved(vec![]), "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 #[test]
@@ -133,7 +141,7 @@ fn available_models_emitted_in_claude_settings_patch() {
 #[test]
 fn empty_available_models_no_patch() {
     let out = compile(&resolved(vec![]), "claude").unwrap();
-    assert!(out.claude_settings_patch.is_none());
+    assert_memory_only(&out.claude_settings_patch);
 }
 
 // ── Agent profiles & team agents ──────────────────────────────────────────────

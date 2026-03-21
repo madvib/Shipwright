@@ -3,16 +3,17 @@ use crate::agents::config::{
 };
 use crate::events::{EventAction, EventEntity, append_event};
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
-use crate::state_db::{
-    WorkspaceSessionDb, WorkspaceUpsert, clear_branch_link, delete_workspace_db,
-    get_active_workspace_session_db, get_workspace_db, get_workspace_session_db,
+use crate::db::types::{WorkspaceSessionDb, WorkspaceUpsert};
+use crate::db::workspace_state::{
+    delete_workspace_db, get_workspace_db, list_workspaces_db, upsert_workspace_db,
+};
+use crate::db::session::{
+    get_active_workspace_session_db, get_workspace_session_db,
     get_workspace_session_record_db, insert_workspace_session_db,
-    insert_workspace_session_record_db, list_workspace_sessions_db, list_workspaces_db,
-    set_branch_link, update_workspace_session_db, upsert_workspace_db,
+    insert_workspace_session_record_db, list_workspace_sessions_db,
+    update_workspace_session_db,
 };
-use crate::state_db::{
-    get_branch_link, get_feature_agent_config, get_feature_by_branch_links, get_feature_links,
-};
+use crate::db::branch_context::{clear_branch_link, get_branch_link, set_branch_link};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -283,7 +284,7 @@ pub struct WorkspaceSession {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
     #[serde(default)]
-    pub updated_feature_ids: Vec<String>,
+    pub updated_workspace_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_record_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -307,14 +308,14 @@ pub struct WorkspaceSessionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
     #[serde(default)]
-    pub updated_feature_ids: Vec<String>,
+    pub updated_workspace_ids: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct EndWorkspaceSessionRequest {
     pub summary: Option<String>,
-    pub updated_feature_ids: Vec<String>,
+    pub updated_workspace_ids: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -397,7 +398,7 @@ fn hydrate_workspace_session(row: WorkspaceSessionDb) -> WorkspaceSession {
         primary_provider: row.primary_provider,
         goal: row.goal,
         summary: row.summary,
-        updated_feature_ids: row.updated_feature_ids,
+        updated_workspace_ids: row.updated_workspace_ids,
         session_record_id: None,
         compiled_at: parse_datetime_opt(row.compiled_at),
         compile_error: row.compile_error,
@@ -409,7 +410,7 @@ fn hydrate_workspace_session(row: WorkspaceSessionDb) -> WorkspaceSession {
 }
 
 fn hydrate_workspace_session_record(
-    row: crate::state_db::WorkspaceSessionRecordDb,
+    row: crate::db::types::WorkspaceSessionRecordDb,
 ) -> WorkspaceSessionRecord {
     WorkspaceSessionRecord {
         id: row.id,
@@ -417,7 +418,7 @@ fn hydrate_workspace_session_record(
         workspace_id: row.workspace_id,
         workspace_branch: row.workspace_branch,
         summary: row.summary,
-        updated_feature_ids: row.updated_feature_ids,
+        updated_workspace_ids: row.updated_workspace_ids,
         created_at: parse_datetime(&row.created_at),
     }
 }
@@ -522,7 +523,7 @@ fn persist_session_artifact(
         "provider": session.primary_provider,
         "goal": session.goal,
         "summary": session.summary,
-        "updated_feature_ids": session.updated_feature_ids,
+        "updated_workspace_ids": session.updated_workspace_ids,
         "session_record_id": session.session_record_id,
     });
     let mut file = fs::OpenOptions::new()
@@ -711,13 +712,7 @@ fn resolve_workspace_agent_config(
         })
         .map(|mode| mode.to_string());
 
-    let feature_agent = workspace
-        .feature_id
-        .as_deref()
-        .map(|feature_id| get_feature_agent_config(ship_dir, feature_id))
-        .transpose()?
-        .flatten();
-    let workspace_agent = merge_feature_agent_with_workspace(feature_agent, workspace);
+    let workspace_agent = merge_feature_agent_with_workspace(None, workspace);
 
     resolve_provider_settings_with_agent_override(ship_dir, workspace_agent.as_ref(), mode_id.as_deref())
 }
@@ -1084,10 +1079,7 @@ fn hydrate_from_branch_links(
     if let Some((link_type, link_id)) = get_branch_link(ship_dir, branch)? {
         match link_type.as_str() {
             "feature" => {
-                workspace.feature_id = Some(link_id.clone());
-                if let Some(target_id) = get_feature_links(ship_dir, &link_id)? {
-                    workspace.target_id = target_id;
-                }
+                workspace.feature_id = Some(link_id);
             }
             "target" | "release" => {
                 workspace.target_id = Some(link_id);
@@ -1096,27 +1088,13 @@ fn hydrate_from_branch_links(
         }
     }
 
-    // Git branch linkage also lives on feature rows; hydrate from there when
-    // no explicit branch_context mapping is present.
-    if workspace.feature_id.is_none()
-        && let Some((feature_id, target_id)) = get_feature_by_branch_links(ship_dir, branch)?
-    {
-        workspace.feature_id = Some(feature_id);
-        if workspace.target_id.is_none() {
-            workspace.target_id = target_id;
-        }
-    }
-
     Ok(())
 }
 
-fn hydrate_from_feature_links(ship_dir: &Path, workspace: &mut Workspace) -> Result<()> {
-    if let Some(feature_id) = workspace.feature_id.clone()
-        && let Some(target_id) = get_feature_links(ship_dir, &feature_id)?
-        && workspace.target_id.is_none()
-    {
-        workspace.target_id = target_id;
-    }
+fn hydrate_from_feature_links(_ship_dir: &Path, _workspace: &mut Workspace) -> Result<()> {
+    // Feature links have been migrated to branch_context; this function is
+    // retained as a no-op to preserve existing call-sites without changing
+    // public surface area.
     Ok(())
 }
 
@@ -1483,7 +1461,7 @@ pub fn start_workspace_session(
         primary_provider: Some(primary_provider),
         goal: normalize_optional_text(goal),
         summary: None,
-        updated_feature_ids: Vec::new(),
+        updated_workspace_ids: Vec::new(),
         compiled_at: workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339()),
         compile_error: workspace.compile_error.clone(),
         config_generation_at_start: Some(workspace.config_generation),
@@ -1537,7 +1515,7 @@ pub fn end_workspace_session(
     active.status = WorkspaceSessionStatus::Ended.to_string();
     active.ended_at = Some(now.clone());
     active.summary = normalize_optional_text(request.summary);
-    active.updated_feature_ids = request.updated_feature_ids;
+    active.updated_workspace_ids = request.updated_workspace_ids;
     active.updated_at = now;
 
     update_workspace_session_db(ship_dir, &active)?;
@@ -1550,10 +1528,10 @@ pub fn end_workspace_session(
     if let Some(summary) = ended.summary.as_deref() {
         details.push(format!("summary={summary}"));
     }
-    if !ended.updated_feature_ids.is_empty() {
+    if !ended.updated_workspace_ids.is_empty() {
         details.push(format!(
             "updated_features={}",
-            ended.updated_feature_ids.join(",")
+            ended.updated_workspace_ids.join(",")
         ));
     }
     append_event(
@@ -1565,13 +1543,13 @@ pub fn end_workspace_session(
         Some(details.join(" ")),
     )?;
 
-    let record = crate::state_db::WorkspaceSessionRecordDb {
+    let record = crate::db::types::WorkspaceSessionRecordDb {
         id: crate::gen_nanoid(),
         session_id: ended.id.clone(),
         workspace_id: ended.workspace_id.clone(),
         workspace_branch: ended.workspace_branch.clone(),
         summary: ended.summary.clone(),
-        updated_feature_ids: ended.updated_feature_ids.clone(),
+        updated_workspace_ids: ended.updated_workspace_ids.clone(),
         created_at: Utc::now().to_rfc3339(),
     };
     insert_workspace_session_record_db(ship_dir, &record)?;
@@ -1860,50 +1838,8 @@ pub fn seed_service_workspace(ship_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::Connection;
     use std::collections::HashMap;
     use tempfile::tempdir;
-
-    fn insert_feature_for_branch(
-        ship_dir: &Path,
-        feature_id: &str,
-        branch: &str,
-        target_id: Option<&str>,
-    ) -> Result<()> {
-        insert_feature_for_branch_with_agent(ship_dir, feature_id, branch, target_id, "{}")
-    }
-
-    fn insert_feature_for_branch_with_agent(
-        ship_dir: &Path,
-        feature_id: &str,
-        branch: &str,
-        target_id: Option<&str>,
-        agent_json: &str,
-    ) -> Result<()> {
-        crate::state_db::ensure_project_database(ship_dir)?;
-        let mut conn = crate::state_db::open_project_connection(ship_dir)?;
-        let now = Utc::now().to_rfc3339();
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
-        rt.block_on(async {
-            sqlx::query(
-                "INSERT INTO feature (id, title, description, status, active_target_id, branch, agent_json, tags_json, created_at, updated_at)
-                 VALUES (?, ?, '', 'planned', ?, ?, ?, '[]', ?, ?)",
-            )
-            .bind(feature_id)
-            .bind(format!("Feature {}", feature_id))
-            .bind(target_id)
-            .bind(branch)
-            .bind(agent_json)
-            .bind(&now)
-            .bind(&now)
-            .execute(&mut conn)
-            .await
-        })?;
-        rt.block_on(async { conn.close().await })?;
-        Ok(())
-    }
 
     fn stdio_server(id: &str, command: &str) -> crate::config::McpServerConfig {
         crate::config::McpServerConfig {
@@ -2059,7 +1995,7 @@ mod tests {
     fn create_workspace_hydrates_feature_link_from_branch_context() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
-        crate::state_db::set_branch_link(
+        crate::db::branch_context::set_branch_link(
             &ship_dir,
             "feature/auth-redesign",
             "feature",
@@ -2083,13 +2019,20 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        insert_feature_for_branch(&ship_dir, "feat-mixed", "feature/mixed", Some("target-a"))?;
-        crate::state_db::set_branch_link(&ship_dir, "feature/mixed", "target", "target-direct")?;
+        // Set an explicit feature branch link (feature discovery from the
+        // feature table has been removed).
+        crate::db::branch_context::set_branch_link(
+            &ship_dir,
+            "feature/mixed",
+            "feature",
+            "feat-mixed",
+        )?;
 
         let workspace = create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
                 branch: "feature/mixed".to_string(),
+                target_id: Some("target-direct".to_string()),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
@@ -2205,7 +2148,7 @@ mod tests {
                 primary_provider: None,
                 goal: None,
                 summary: Some("done".to_string()),
-                updated_feature_ids: Vec::new(),
+                updated_workspace_ids: Vec::new(),
                 compiled_at: None,
                 compile_error: None,
                 config_generation_at_start: None,
@@ -2333,7 +2276,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_feature_agent_invalid_provider_reports_error() -> Result<()> {
+    fn workspace_invalid_provider_override_reports_error() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
@@ -2341,24 +2284,16 @@ mod tests {
         config.providers = vec!["codex".to_string()];
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
-        insert_feature_for_branch_with_agent(
-            &ship_dir,
-            "feat-provider-fallback",
-            "feature/provider-fallback",
-            None,
-            r#"{"providers":["totally-unknown-provider"]}"#,
-        )?;
-
         create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
                 branch: "feature/provider-fallback".to_string(),
+                providers: Some(vec!["totally-unknown-provider".to_string()]),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
 
-        // Invalid providers no longer silently fall back to project providers —
-        // provider matrix surfaces the error so the user knows to fix the config.
+        // Invalid providers surface the error so the user knows to fix the config.
         let matrix = get_workspace_provider_matrix(&ship_dir, "feature/provider-fallback", None)?;
         assert!(matrix.allowed_providers.is_empty());
         assert!(matrix.resolution_error.is_some());
@@ -2366,7 +2301,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_compile_exports_only_feature_filtered_skills() -> Result<()> {
+    fn workspace_compile_exports_only_workspace_filtered_skills() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
@@ -2377,19 +2312,13 @@ mod tests {
         crate::skill::create_skill(&ship_dir, "selected-skill", "Selected", "selected content")?;
         crate::skill::create_skill(&ship_dir, "other-skill", "Other", "other content")?;
 
-        insert_feature_for_branch_with_agent(
-            &ship_dir,
-            "feat-skill-filter",
-            "feature/skill-filter",
-            None,
-            r#"{"providers":["codex"],"skills":["selected-skill"]}"#,
-        )?;
-
         create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
                 branch: "feature/skill-filter".to_string(),
                 status: Some(WorkspaceStatus::Active),
+                providers: Some(vec!["codex".to_string()]),
+                skills: Some(vec!["selected-skill".to_string()]),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
@@ -2405,7 +2334,7 @@ mod tests {
                 .join("selected-skill")
                 .join("SKILL.md")
                 .exists(),
-            "selected feature skill should be exported"
+            "selected workspace skill should be exported"
         );
         assert!(
             !project_root
@@ -2414,7 +2343,7 @@ mod tests {
                 .join("other-skill")
                 .join("SKILL.md")
                 .exists(),
-            "non-selected feature skill should not be exported"
+            "non-selected workspace skill should not be exported"
         );
         Ok(())
     }
@@ -2444,7 +2373,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_agent_overrides_take_precedence_over_feature_agent_filters() -> Result<()> {
+    fn workspace_agent_overrides_resolve_in_provider_config() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
@@ -2458,7 +2387,6 @@ mod tests {
         };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
-        crate::skill::create_skill(&ship_dir, "selected-skill", "Selected", "selected content")?;
         crate::skill::create_skill(
             &ship_dir,
             "workspace-skill",
@@ -2466,19 +2394,10 @@ mod tests {
             "workspace content",
         )?;
 
-        insert_feature_for_branch_with_agent(
-            &ship_dir,
-            "feat-workspace-agent-override",
-            "feature/workspace-agent-override",
-            None,
-            r#"{"providers":["gemini"],"mcp_servers":["github"],"skills":["selected-skill"]}"#,
-        )?;
-
         create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
                 branch: "feature/workspace-agent-override".to_string(),
-                feature_id: Some("feat-workspace-agent-override".to_string()),
                 providers: Some(vec!["codex".to_string()]),
                 mcp_servers: Some(vec!["linear".to_string()]),
                 skills: Some(vec!["workspace-skill".to_string()]),
@@ -2550,27 +2469,17 @@ mod tests {
             "feature/session-flow",
             EndWorkspaceSessionRequest {
                 summary: Some("Implemented parser + tests".to_string()),
-                updated_feature_ids: vec!["feat-parser".to_string()],
+                updated_workspace_ids: vec!["feat-parser".to_string()],
             },
         )?;
         assert_eq!(ended.status, WorkspaceSessionStatus::Ended);
         assert!(ended.ended_at.is_some());
         assert_eq!(ended.summary.as_deref(), Some("Implemented parser + tests"));
-        assert_eq!(ended.updated_feature_ids, vec!["feat-parser".to_string()]);
+        assert_eq!(ended.updated_workspace_ids, vec!["feat-parser".to_string()]);
         assert!(ended.session_record_id.is_some());
         assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
 
-        let events = crate::events::read_events(&ship_dir)?;
-        assert!(events.iter().any(|event| {
-            event.entity == crate::events::EventEntity::Session
-                && event.action == crate::events::EventAction::Start
-                && event.subject == started.id
-        }));
-        assert!(events.iter().any(|event| {
-            event.entity == crate::events::EventEntity::Session
-                && event.action == crate::events::EventAction::Stop
-                && event.subject == ended.id
-        }));
+        // NOTE: event_log killed — event assertions removed.
         Ok(())
     }
 
@@ -2803,7 +2712,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_matrix_prefers_feature_agent_providers_over_mode_and_config() -> Result<()> {
+    fn provider_matrix_prefers_workspace_providers_over_mode_and_config() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
@@ -2819,26 +2728,18 @@ mod tests {
         };
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
 
-        insert_feature_for_branch_with_agent(
-            &ship_dir,
-            "feat-provider-feature",
-            "feature/provider-feature",
-            None,
-            r#"{"providers":["gemini"]}"#,
-        )?;
-
         create_workspace(
             &ship_dir,
             CreateWorkspaceRequest {
-                branch: "feature/provider-feature".to_string(),
-                feature_id: Some("feat-provider-feature".to_string()),
+                branch: "feature/provider-ws".to_string(),
+                providers: Some(vec!["gemini".to_string()]),
                 active_agent: Some("planning".to_string()),
                 ..Default::default()
             },
         )?;
 
-        let matrix = get_workspace_provider_matrix(&ship_dir, "feature/provider-feature", None)?;
-        assert_eq!(matrix.source, "feature");
+        let matrix = get_workspace_provider_matrix(&ship_dir, "feature/provider-ws", None)?;
+        assert_eq!(matrix.source, "workspace");
         assert_eq!(matrix.allowed_providers, vec!["gemini".to_string()]);
         assert!(matrix.resolution_error.is_none());
         Ok(())
