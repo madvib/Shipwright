@@ -1,6 +1,6 @@
 ---
 name: ship-cli-reference
-description: Complete CLI reference for Ship commands. Use when users ask how to use a specific ship command, what flags are available, or need examples of ship CLI usage. Covers init, use, compile, agent, skill, install, add, publish, status, and help.
+description: Use when the user asks how to use a specific ship command, what flags are available, or needs examples of ship CLI usage. Covers init, use, compile, agent, skill, install, add, publish, status, and help.
 tags: [reference, cli, documentation]
 authors: [ship]
 ---

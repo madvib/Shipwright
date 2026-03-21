@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-driven development protocol — write the failing test first, then the minimal code to pass it. Use for any feature, fix, or behavior change.
+description: Use when implementing any feature, fix, or behavior change. Enforces the TDD protocol — write the failing test first, then the minimal code to pass it.
 tags: [testing, workflow, engineering]
 authors: [ship]
 ---

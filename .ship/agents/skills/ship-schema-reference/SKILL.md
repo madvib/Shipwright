@@ -1,6 +1,6 @@
 ---
 name: ship-schema-reference
-description: Schema reference for Ship configuration files — ship.toml manifest, agent profile TOML, permissions.toml, and ship.lock. Use when users ask about configuration format, available fields, valid values, or how to structure their .ship/ directory.
+description: Use when the user asks about Ship configuration format, available fields, valid values, or how to structure their .ship/ directory. Covers ship.toml manifest, agent profile TOML, permissions.toml, and ship.lock schemas.
 tags: [reference, schema, configuration, documentation]
 authors: [ship]
 ---
