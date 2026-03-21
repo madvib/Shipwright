@@ -6,6 +6,7 @@ import { SkillsSection } from '#/features/agents/sections/SkillsSection'
 import { McpSection } from '#/features/agents/sections/McpSection'
 import { SubagentsSection } from '#/features/agents/sections/SubagentsSection'
 import { PermissionsSection } from '#/features/agents/sections/PermissionsSection'
+import { ProviderSettingsSection } from '#/features/agents/sections/ProviderSettingsSection'
 import { SettingsSection } from '#/features/agents/sections/SettingsSection'
 import { HooksSection } from '#/features/agents/sections/HooksSection'
 import { RulesSection } from '#/features/agents/sections/RulesSection'
@@ -131,6 +132,17 @@ function AgentDetailPage() {
     [update],
   )
 
+  const setMaxTurns = useCallback(
+    (maxTurns: number | undefined) => update({ maxTurns }),
+    [update],
+  )
+
+  const setProviderSettings = useCallback(
+    (providerSettings: Record<string, Record<string, unknown>>) =>
+      update({ providerSettings }),
+    [update],
+  )
+
   // ── Dialog state ──────────────────────────────────────────────────────
 
   const [skillOpen, setSkillOpen] = useState(false)
@@ -164,8 +176,16 @@ function AgentDetailPage() {
         <PermissionsSection
           permissions={profile.permissions}
           activePreset={profile.permissionPreset}
+          maxTurns={profile.maxTurns}
           onPresetChange={setPermissionPreset}
+          onMaxTurnsChange={setMaxTurns}
           onEdit={() => setPermsOpen(true)}
+        />
+
+        <ProviderSettingsSection
+          providers={profile.providers}
+          providerSettings={profile.providerSettings ?? {}}
+          onChange={setProviderSettings}
         />
 
         <SettingsSection settings={profile.settings} onUpdate={updateSettings} />

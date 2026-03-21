@@ -1,7 +1,4 @@
-// ── Unified Agent Store ──────────────────────────────────────────────────────
-// Single source of truth for all agent profiles. Works identically when
-// unauthenticated (localStorage-only). When authenticated, syncs to server
-// with a 2s debounce. Uses useSyncExternalStore for cross-tab reactivity.
+// Unified agent store: localStorage + server sync via useSyncExternalStore.
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
@@ -10,6 +7,7 @@ import { fetchAgents, createAgentApi, updateAgentApi, deleteAgentApi } from './a
 import type { AgentProfile } from './types'
 import { DEFAULT_SETTINGS } from './types'
 import { DEFAULT_PERMISSIONS } from '@ship/ui'
+import { hasMigrated, migrateFromV1, finalizeMigration } from './migrate-storage'
 
 const STORAGE_KEY = 'ship-agents-v2'
 const DEBOUNCE_MS = 2000
@@ -30,8 +28,20 @@ function loadState(): StoreState {
     const raw = typeof window !== 'undefined'
       ? window.localStorage.getItem(STORAGE_KEY)
       : null
-    if (!raw) return emptyState()
-    return JSON.parse(raw) as StoreState
+    if (raw) return JSON.parse(raw) as StoreState
+
+    // No V2 data — attempt one-time migration from V1 keys
+    if (!hasMigrated()) {
+      const migrated = migrateFromV1()
+      if (migrated.agents.length > 0) {
+        const state: StoreState = { agents: migrated.agents, activeId: migrated.activeId }
+        saveState(state)
+        finalizeMigration()
+        return state
+      }
+      finalizeMigration()
+    }
+    return emptyState()
   } catch {
     return emptyState()
   }
@@ -85,6 +95,8 @@ export function makeAgent(partial?: Partial<AgentProfile>): AgentProfile {
     hooks: partial?.hooks ?? [],
     rules: partial?.rules ?? [],
     mcpToolStates: partial?.mcpToolStates ?? {},
+    maxTurns: partial?.maxTurns,
+    providerSettings: partial?.providerSettings,
   }
 }
 
