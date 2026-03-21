@@ -5,7 +5,8 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::Terminal;
 use std::time::Duration;
 
-use super::{App, Screen, Tab, actions, render};
+use super::{App, InputMode, Tab, Screen, actions, render};
+use super::input_crud;
 
 /// Main event loop — polls keyboard at 250ms intervals.
 pub fn run_loop<B: ratatui::backend::Backend + std::io::Write>(
@@ -16,29 +17,29 @@ pub fn run_loop<B: ratatui::backend::Backend + std::io::Write>(
         terminal.draw(|f| render::draw(f, app))?;
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
+                // Text input mode intercepts all keys
+                if let InputMode::TextInput(action) = app.input_mode {
+                    input_crud::handle_text_input(app, key.code, action);
+                    continue;
+                }
                 match key.code {
                     KeyCode::Char('q') => break,
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                     KeyCode::Char('r') => app.refresh(),
-                    KeyCode::Char('a') => {
-                        app.auto_refresh = !app.auto_refresh;
-                        app.status = if app.auto_refresh {
-                            "auto-refresh on".into()
-                        } else {
-                            "auto-refresh off".into()
-                        };
-                    }
                     KeyCode::Tab => app.cycle_tab(),
                     KeyCode::BackTab => app.reverse_cycle_tab(),
                     KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                     KeyCode::Up | KeyCode::Char('k') => app.move_up(),
-                    KeyCode::Enter => app.enter(),
+                    KeyCode::Enter => input_crud::handle_enter(app),
                     KeyCode::Esc | KeyCode::Backspace => app.back(),
                     KeyCode::Char('s') => handle_status_cycle(app),
                     KeyCode::Char('f') => handle_filter(app),
                     KeyCode::Char('g') => handle_jump_top(app),
                     KeyCode::Char('G') => handle_jump_bottom(app),
                     KeyCode::Char('l') => handle_launch(terminal, app)?,
+                    KeyCode::Char('a') => input_crud::handle_activate_or_add(app),
+                    KeyCode::Char('c') => input_crud::handle_create(app),
+                    KeyCode::Char('d') => input_crud::handle_delete(app),
                     _ => {}
                 }
             }
@@ -53,6 +54,8 @@ pub fn run_loop<B: ratatui::backend::Backend + std::io::Write>(
     }
     Ok(())
 }
+
+// ── Existing handlers ────────────────────────────────────────────────────────
 
 /// `s` — cycle status on Jobs list or TargetDetail capability list.
 fn handle_status_cycle(app: &mut App) {
@@ -96,6 +99,10 @@ fn handle_jump_top(app: &mut App) {
             Tab::Events => app.sel_event = 0,
             Tab::Notes => app.sel_note = 0,
             Tab::Adrs => app.sel_adr = 0,
+            Tab::Agents => app.sel_agent = 0,
+            Tab::Skills => app.sel_skill = 0,
+            Tab::Mcp => app.sel_mcp = 0,
+            Tab::Settings => app.sel_setting = 0,
         },
         (Tab::Targets, Screen::TargetDetail) => app.sel_cap = 0,
         (Tab::Notes, Screen::NoteDetail) => app.note_scroll = 0,
@@ -113,6 +120,10 @@ fn handle_jump_bottom(app: &mut App) {
             Tab::Events => app.sel_event = app.events.len().saturating_sub(1),
             Tab::Notes => app.sel_note = app.notes.len().saturating_sub(1),
             Tab::Adrs => app.sel_adr = app.adrs.len().saturating_sub(1),
+            Tab::Agents => app.sel_agent = app.agents.len().saturating_sub(1),
+            Tab::Skills => app.sel_skill = app.skills.len().saturating_sub(1),
+            Tab::Mcp => app.sel_mcp = app.mcp_servers.len().saturating_sub(1),
+            Tab::Settings => app.sel_setting = app.settings.len().saturating_sub(1),
         },
         (Tab::Targets, Screen::TargetDetail) => {
             app.sel_cap = app.caps.len().saturating_sub(1);

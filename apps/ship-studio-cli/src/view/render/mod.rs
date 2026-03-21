@@ -1,9 +1,13 @@
 //! TUI rendering — Ship design token palette translated to terminal RGB.
 
 mod adrs;
+mod agents;
 mod events;
 mod jobs;
+mod mcp_servers;
 mod notes;
+mod settings;
+mod skills;
 mod targets;
 
 use ratatui::{
@@ -14,7 +18,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Tabs},
 };
 
-use crate::view::{App, Screen, Tab};
+use crate::view::{App, InputMode, Screen, Tab};
 
 // ── Ship design tokens → terminal RGB ─────────────────────────────────────────
 // Dark mode: oklch(0.18 0.01 250) bg, oklch(0.77 0.16 70) primary (amber)
@@ -70,8 +74,15 @@ fn header_tabs(app: &App) -> Tabs<'static> {
         Tab::Events => 2,
         Tab::Notes => 3,
         Tab::Adrs => 4,
+        Tab::Agents => 5,
+        Tab::Skills => 6,
+        Tab::Mcp => 7,
+        Tab::Settings => 8,
     };
-    Tabs::new(vec!["  Targets  ", "  Jobs  ", "  Events  ", "  Notes  ", "  ADRs  "])
+    Tabs::new(vec![
+        "  Targets  ", "  Jobs  ", "  Events  ", "  Notes  ", "  ADRs  ",
+        "  Agents  ", "  Skills  ", "  MCP  ", "  Settings  ",
+    ])
         .select(selected)
         .highlight_style(
             Style::default().fg(C_PRI).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
@@ -91,6 +102,19 @@ fn header_tabs(app: &App) -> Tabs<'static> {
 }
 
 fn footer(app: &App) -> Paragraph<'static> {
+    // Text input mode — show prompt + buffer
+    if let InputMode::TextInput(_) = app.input_mode {
+        let spans = vec![
+            Span::styled(
+                format!("  {}{}", app.input_prompt, app.input_buf),
+                Style::default().fg(C_PRI),
+            ),
+            Span::styled("_", Style::default().fg(C_FG)),
+            Span::styled("  (Enter confirm · Esc cancel)", Style::default().fg(C_MUT)),
+        ];
+        return Paragraph::new(Line::from(spans)).style(Style::default().bg(C_BG));
+    }
+
     let auto = if app.auto_refresh { "on" } else { "off" };
     let hint = match (app.tab, app.screen) {
         (Tab::Jobs, Screen::List) => format!(
@@ -101,6 +125,18 @@ fn footer(app: &App) -> Paragraph<'static> {
         ),
         (Tab::Jobs, Screen::JobDetail) => format!(
             "  ↑↓ jk scroll · g/G top/end · l launch · ⌫ back · a auto({auto}) · q quit"
+        ),
+        (Tab::Agents, Screen::List) => format!(
+            "  ↑↓ jk · ⏎ detail · a activate · c create · d delete · Tab switch · q quit"
+        ),
+        (Tab::Skills, Screen::List) => format!(
+            "  ↑↓ jk · a add · d remove · Tab switch · q quit"
+        ),
+        (Tab::Mcp, Screen::List) => format!(
+            "  ↑↓ jk · ⏎ detail · d remove · Tab switch · q quit"
+        ),
+        (Tab::Settings, Screen::List) => format!(
+            "  ↑↓ jk · ⏎ edit value · Tab switch · q quit"
         ),
         (_, Screen::List) => format!(
             "  ↑↓ jk · g/G top/end · ⏎ open · Tab/⇧Tab switch · r reload · a auto({auto}) · q quit"
@@ -143,6 +179,12 @@ pub fn draw(f: &mut Frame, app: &App) {
         (Tab::Jobs, Screen::JobDetail) => jobs::draw_job_detail(f, app, body),
         (Tab::Events, Screen::List) => events::draw_events(f, app, body),
         (Tab::Events, Screen::EventDetail) => events::draw_event_detail(f, app, body),
+        (Tab::Agents, Screen::List) => agents::draw_agents(f, app, body),
+        (Tab::Agents, Screen::AgentDetail) => agents::draw_agent_detail(f, app, body),
+        (Tab::Skills, Screen::List) => skills::draw_skills(f, app, body),
+        (Tab::Mcp, Screen::List) => mcp_servers::draw_mcp(f, app, body),
+        (Tab::Mcp, Screen::McpDetail) => mcp_servers::draw_mcp_detail(f, app, body),
+        (Tab::Settings, Screen::List) => settings::draw_settings(f, app, body),
         _ => {}
     }
 }
