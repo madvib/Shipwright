@@ -1,0 +1,12 @@
+{
+  "$schema": "https://getship.dev/schemas/ship.schema.json",
+  "module": {
+    "name": "github.com/ship-starters/ship-security",
+    "version": "0.1.0",
+    "description": "Security audit agent with OWASP Top 10 and dependency audit skills"
+  },
+  "exports": {
+    "skills": ["skills/owasp-top10", "skills/dependency-audit"],
+    "agents": ["agents/ship-security.jsonc"]
+  }
+}

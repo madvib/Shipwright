@@ -1,0 +1,12 @@
+{
+  "$schema": "https://getship.dev/schemas/ship.schema.json",
+  "module": {
+    "name": "github.com/ship-starters/ship-rust",
+    "version": "0.1.0",
+    "description": "Rust agent with error handling patterns and cargo workspace skills"
+  },
+  "exports": {
+    "skills": ["skills/rust-error-handling", "skills/cargo-workspace"],
+    "agents": ["agents/ship-rust.jsonc"]
+  }
+}
