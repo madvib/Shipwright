@@ -55,6 +55,8 @@ function makeRepos(overrides: Record<string, unknown> = {}) {
     getPackageVersions: vi.fn(),
     getPackageSkills: vi.fn(),
     incrementInstalls: vi.fn(),
+    incrementStars: vi.fn(),
+    deprecatePackage: vi.fn(),
     deletePackageSkillsByVersion: vi.fn(),
     ...overrides,
   }

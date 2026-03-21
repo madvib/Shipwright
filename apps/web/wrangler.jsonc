@@ -21,7 +21,8 @@
     { "name": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
     { "name": "RATE_LIMITER_CLAIM",    "namespace_id": "1002", "simple": { "limit": 5,  "period": 60 } },
     { "name": "RATE_LIMITER_INSTALL",  "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } },
-    { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } }
+    { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
+    { "name": "RATE_LIMITER_STAR",     "namespace_id": "1005", "simple": { "limit": 30, "period": 60 } }
   ],
 
   // Production: update pattern and zone_name to match your domain
@@ -47,7 +48,8 @@
         { "name": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
         { "name": "RATE_LIMITER_CLAIM",    "namespace_id": "1002", "simple": { "limit": 5,  "period": 60 } },
         { "name": "RATE_LIMITER_INSTALL",  "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } },
-        { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } }
+        { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RATE_LIMITER_STAR",     "namespace_id": "1005", "simple": { "limit": 30, "period": 60 } }
       ]
     },
     "production": {
@@ -67,7 +69,8 @@
         { "name": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
         { "name": "RATE_LIMITER_CLAIM",    "namespace_id": "1002", "simple": { "limit": 5,  "period": 60 } },
         { "name": "RATE_LIMITER_INSTALL",  "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } },
-        { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } }
+        { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RATE_LIMITER_STAR",     "namespace_id": "1005", "simple": { "limit": 30, "period": 60 } }
       ]
     }
   }

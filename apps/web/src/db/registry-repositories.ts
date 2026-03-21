@@ -52,6 +52,10 @@ export interface RegistryRepositories {
   createPackageSkill(data: InsertPackageSkill): Promise<PackageSkill>
 
   deletePackageSkillsByVersion(versionId: string): Promise<void>
+
+  incrementStars(packageId: string): Promise<number>
+
+  deprecatePackage(packageId: string, deprecatedBy: string): Promise<void>
 }
 
 export function createRegistryRepositories(
@@ -213,6 +217,26 @@ export function createRegistryRepositories(
       await db
         .delete(packageSkills)
         .where(eq(packageSkills.versionId, versionId))
+    },
+
+    async incrementStars(packageId) {
+      await db
+        .update(packages)
+        .set({ stars: sql`${packages.stars} + 1` })
+        .where(eq(packages.id, packageId))
+      const row = await db
+        .select({ stars: packages.stars })
+        .from(packages)
+        .where(eq(packages.id, packageId))
+        .get()
+      return row?.stars ?? 0
+    },
+
+    async deprecatePackage(packageId, deprecatedBy) {
+      await db
+        .update(packages)
+        .set({ deprecatedBy, updatedAt: Date.now() })
+        .where(eq(packages.id, packageId))
     },
   }
 }
