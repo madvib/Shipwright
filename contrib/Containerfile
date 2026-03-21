@@ -1,0 +1,118 @@
+# Ship dev container — works with Podman or Docker, no VSCode required
+# Build: podman build -t ship-dev -f contrib/Containerfile .
+# Run:   contrib/ship-dev.sh
+
+FROM ubuntu:24.04
+
+ARG USERNAME=dev
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+# System deps
+RUN apt-get update && apt-get install -y \
+    curl git sudo ca-certificates unzip xz-utils zsh \
+    build-essential \
+    tmux fzf ripgrep fd-find bat btop jq file xdg-utils \
+    locales \
+    && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user (stock Ubuntu has GID/UID 1000 taken by 'ubuntu')
+RUN userdel -r ubuntu 2>/dev/null; groupdel ubuntu 2>/dev/null; \
+    groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m -s /bin/zsh $USERNAME \
+    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER $USERNAME
+ENV HOME=/home/$USERNAME
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV TERM=xterm-256color
+ENV PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:${PATH}"
+
+# Rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable \
+    && rustup target add wasm32-unknown-unknown \
+    && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# Node via fnm + pnpm
+RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir $HOME/.local/bin \
+    && $HOME/.local/bin/fnm install --lts
+RUN curl -fsSL https://get.pnpm.io/install.sh | SHELL=bash sh -
+
+# just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+    | bash -s -- --to $HOME/.local/bin
+
+# claude-code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Helix
+RUN curl -sLo /tmp/helix.tar.xz \
+    "https://github.com/helix-editor/helix/releases/download/25.07.1/helix-25.07.1-x86_64-linux.tar.xz" \
+    && tar -xf /tmp/helix.tar.xz -C /tmp \
+    && sudo cp /tmp/helix-25.07.1-x86_64-linux/hx /usr/local/bin/ \
+    && sudo cp -r /tmp/helix-25.07.1-x86_64-linux/runtime /usr/local/lib/helix \
+    && rm -rf /tmp/helix*
+
+# Binary tools
+RUN \
+    # lazygit
+    LG=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/') \
+    && curl -sLo /tmp/lg.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LG}_Linux_x86_64.tar.gz" \
+    && tar -xf /tmp/lg.tar.gz -C /tmp lazygit \
+    && sudo mv /tmp/lazygit /usr/local/bin/ \
+    # eza
+    && curl -sLo /tmp/eza.tar.gz "https://github.com/eza-community/eza/releases/latest/download/eza_x86_64-unknown-linux-musl.tar.gz" \
+    && tar -xf /tmp/eza.tar.gz -C /tmp \
+    && sudo mv /tmp/eza /usr/local/bin/ \
+    # delta
+    && DELTA=$(curl -s "https://api.github.com/repos/dandavison/delta/releases/latest" | grep '"tag_name"' | sed 's/.*"\([^"]*\)".*/\1/') \
+    && curl -sLo /tmp/delta.tar.gz "https://github.com/dandavison/delta/releases/latest/download/delta-${DELTA}-x86_64-unknown-linux-musl.tar.gz" \
+    && tar -xf /tmp/delta.tar.gz -C /tmp \
+    && sudo mv /tmp/delta-${DELTA}-x86_64-unknown-linux-musl/delta /usr/local/bin/ \
+    # zoxide
+    && curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh \
+    # starship
+    && curl -sS https://starship.rs/install.sh | sudo sh -s -- --yes \
+    # watchexec
+    && WX=$(curl -s "https://api.github.com/repos/watchexec/watchexec/releases/latest" | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/') \
+    && curl -sLo /tmp/wx.tar.xz "https://github.com/watchexec/watchexec/releases/download/v${WX}/watchexec-${WX}-x86_64-unknown-linux-musl.tar.xz" \
+    && tar -xf /tmp/wx.tar.xz -C /tmp \
+    && sudo mv /tmp/watchexec-${WX}-x86_64-unknown-linux-musl/watchexec /usr/local/bin/ \
+    # yazi
+    && curl -sLo /tmp/yazi.zip "https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-musl.zip" \
+    && cd /tmp && unzip -q yazi.zip \
+    && sudo mv /tmp/yazi-x86_64-unknown-linux-musl/yazi /usr/local/bin/ \
+    # xh
+    && XH=$(curl -s "https://api.github.com/repos/ducaale/xh/releases/latest" | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/') \
+    && curl -sLo /tmp/xh.tar.gz "https://github.com/ducaale/xh/releases/download/v${XH}/xh-v${XH}-x86_64-unknown-linux-musl.tar.gz" \
+    && tar -xf /tmp/xh.tar.gz -C /tmp \
+    && sudo mv /tmp/xh-v${XH}-x86_64-unknown-linux-musl/xh /usr/local/bin/ \
+    # clean up
+    && sudo rm -rf /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.zip /tmp/delta-* /tmp/watchexec-* /tmp/tmp.* /tmp/xh-*
+
+# Helix runtime
+RUN mkdir -p $HOME/.config/helix \
+    && ln -s /usr/local/lib/helix $HOME/.config/helix/runtime
+
+# Shell init — sourced by .zshrc (user dotfiles can override .zshrc but this always runs)
+RUN cat > $HOME/.ship-shell-init.sh <<'EOF'
+eval "$($HOME/.local/bin/fnm env)"
+eval "$(starship init zsh)"
+eval "$(zoxide init zsh)"
+export PNPM_HOME="$HOME/.local/share/pnpm"
+export PATH="$PNPM_HOME:$PATH"
+EOF
+
+# Default .zshrc (overridden if dotfiles mount a .zshrc)
+RUN cat > $HOME/.zshrc <<'EOF'
+[ -f "$HOME/.ship-shell-init.sh" ] && source "$HOME/.ship-shell-init.sh"
+EOF
+
+# Ensure .zprofile sources init too (tmux uses login shells)
+RUN cat > $HOME/.zprofile <<'EOF'
+[ -f "$HOME/.ship-shell-init.sh" ] && source "$HOME/.ship-shell-init.sh"
+EOF
+
+WORKDIR /workspaces/ship

@@ -160,6 +160,7 @@ mod wasm {
                     cursor_hooks_patch: output.cursor_hooks_patch,
                     cursor_cli_permissions: output.cursor_cli_permissions,
                     cursor_environment_json: output.cursor_environment_json,
+                    agent_files: output.agent_files,
                     plugins_manifest: output.plugins_manifest,
                 };
                 if let Ok(v) = serde_json::to_value(&result) {
