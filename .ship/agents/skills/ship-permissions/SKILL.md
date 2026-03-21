@@ -1,6 +1,6 @@
 ---
 name: ship-permissions
-description: Ship's permission model for AI agents — the 4-tier preset system, base security rules, per-profile customization, and how permissions compile into provider-specific configs. Use when users ask about agent permissions, security tiers, allowlists, deny lists, or how to control what agents can do.
+description: Use when the user asks about agent permissions, security tiers, allowlists, deny lists, or how to control what agents can do. Covers the 4-tier preset system, base security rules, per-profile customization, and how permissions compile into provider-specific configs.
 tags: [reference, security, permissions, documentation]
 authors: [ship]
 ---
