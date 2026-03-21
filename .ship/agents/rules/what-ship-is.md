@@ -17,7 +17,7 @@ These are the types agents work with. They live in the runtime and are accessed 
 
 ## Boundaries
 
-* `.ship/` is configuration — profiles, skills, rules, manifests. Not source of truth for state, not a scratchpad.
+* `.ship/` is configuration — agents, skills, rules, manifests. Not source of truth for state, not a scratchpad.
 * CLI and MCP are transport layers. Business logic belongs in the runtime.
-* Do not add workflow opinions (how to route jobs, gate protocols, phases) to platform code. Those belong in skills and agent profiles.
+* Do not add workflow opinions (how to route jobs, gate protocols, phases) to platform code. Those belong in skills and agents.
 * Data access: use MCP tools or CLI. Never query the SQLite database directly.

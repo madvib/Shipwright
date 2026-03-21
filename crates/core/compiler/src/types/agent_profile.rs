@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// An agent profile parsed from `.ship/agents/profiles/<id>.toml`.
+/// An agent parsed from `.ship/agents/<id>.toml`.
 ///
 /// Profiles define specialist agents that the compiler emits as
 /// provider-native subagent definitions (`.claude/agents/`, `.gemini/agents/`,

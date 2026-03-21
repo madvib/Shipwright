@@ -198,8 +198,8 @@ pub struct GetAdrRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct SetModeRequest {
-    /// Mode ID to activate. Omit to clear active mode.
+pub struct SetAgentRequest {
+    /// Agent ID to activate. Omit to clear active agent.
     pub id: Option<String>,
 }
 
@@ -207,7 +207,7 @@ pub struct SetModeRequest {
 pub struct ActivateWorkspaceRequest {
     /// Workspace branch/id to activate.
     pub branch: String,
-    /// Optional workspace agent profile override to apply after activation.
+    /// Optional workspace agent override to apply after activation.
     pub agent_id: Option<String>,
 }
 
@@ -217,7 +217,7 @@ pub struct StartSessionRequest {
     pub branch: Option<String>,
     /// Optional goal for this session.
     pub goal: Option<String>,
-    /// Optional agent profile override for this session/workspace.
+    /// Optional agent override for this session/workspace.
     pub agent_id: Option<String>,
     /// Optional primary provider for this session.
     pub provider_id: Option<String>,
@@ -229,7 +229,7 @@ pub struct EndSessionRequest {
     pub branch: Option<String>,
     /// End-of-session summary — what was accomplished, what changed.
     pub summary: Option<String>,
-    /// Feature IDs updated during this session.
+    /// Workspace IDs updated during this session.
     pub updated_workspace_ids: Option<Vec<String>>,
 }
 

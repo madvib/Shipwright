@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::dep_skills::resolve_dep_skills;
 use crate::loader::load_library;
-use crate::mode::{Profile, apply_profile_permissions};
+use crate::agent_config::{AgentConfig, apply_agent_permissions};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
 
     // 2. Apply mode overrides (permissions, inline rules, provider list)
     if let Some(mode_id) = opts.active_agent {
-        apply_mode_to_library(&mut library, mode_id, opts.project_root)?;
+        apply_agent_to_library(&mut library, mode_id, opts.project_root)?;
     }
     library.active_agent = opts.active_agent.map(str::to_string);
 
@@ -198,14 +198,14 @@ fn ensure_ship_mcp_allowed_cursor(project_root: &std::path::Path) -> Result<()> 
 
 // ── Mode → library ────────────────────────────────────────────────────────────
 
-fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_root: &Path) -> Result<()> {
-    let Some(path) = find_profile_file(mode_id, project_root) else { return Ok(()); };
+fn apply_agent_to_library(library: &mut ProjectLibrary, mode_id: &str, project_root: &Path) -> Result<()> {
+    let Some(path) = find_agent_file(mode_id, project_root) else { return Ok(()); };
 
-    let profile = Profile::load(&path)?;
+    let profile = AgentConfig::load(&path)?;
     let agents_dir = project_root.join(".ship").join("agents");
 
     // Permission overrides — pass agents_dir so preset sections from permissions.toml are resolved
-    library.permissions = apply_profile_permissions(library.permissions.clone(), &profile, Some(&agents_dir));
+    library.permissions = apply_agent_permissions(library.permissions.clone(), &profile, Some(&agents_dir));
 
     // Inline rules → append as a synthetic rule file
     if let Some(inline) = &profile.rules.inline {
@@ -221,7 +221,7 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         }
     }
 
-    // If profile declares a provider list, inject a ModeConfig so resolve() applies it
+    // If agent declares a provider list, inject a ModeConfig so resolve() applies it
     if !profile.meta.providers.is_empty() {
         library.modes.push(compiler::ModeConfig {
             id: mode_id.to_string(),
@@ -233,7 +233,7 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         });
     }
 
-    // Plugins — convert profile's Vec<String> install list into PluginsManifest
+    // Plugins — convert agent's Vec<String> install list into PluginsManifest
     if !profile.plugins.install.is_empty() {
         library.plugins = PluginsManifest {
             install: profile.plugins.install.iter().map(|id| PluginEntry {
@@ -244,7 +244,7 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         };
     }
 
-    // Hooks declared in [hooks] section of profile TOML
+    // Hooks declared in [hooks] section of agent TOML
     if let Some(cmd) = &profile.hooks.stop {
         let id = format!("{}-stop", mode_id);
         if !library.hooks.iter().any(|h| h.id == id) {
@@ -306,17 +306,25 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     agents
 }
 
-/// Search order: project .ship/agents/profiles/ → global ~/.ship/agents/profiles/.
-fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
-    let file = format!("{}.toml", profile_id);
+/// Search order: project .ship/agents/ → .ship/agents/profiles/ (compat) → global ~/.ship/agents/.
+fn find_agent_file(agent_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
+    let file = format!("{}.toml", agent_id);
 
-    // Project-local
-    let p = project_root.join(".ship").join("agents").join("profiles").join(&file);
+    // Project-local (primary)
+    let p = project_root.join(".ship").join("agents").join(&file);
     if p.exists() { return Some(p); }
 
-    // Global
-    let gp = dirs::home_dir()?.join(".ship").join("agents").join("profiles").join(&file);
+    // Project-local compat
+    let p_compat = project_root.join(".ship").join("agents").join("profiles").join(&file);
+    if p_compat.exists() { return Some(p_compat); }
+
+    // Global (primary)
+    let gp = dirs::home_dir()?.join(".ship").join("agents").join(&file);
     if gp.exists() { return Some(gp); }
+
+    // Global compat
+    let gp_compat = dirs::home_dir()?.join(".ship").join("agents").join("profiles").join(&file);
+    if gp_compat.exists() { return Some(gp_compat); }
 
     None
 }
@@ -677,8 +685,8 @@ deny = ["Bash(rm -rf *)"]
     #[test]
     fn compile_with_mode_applies_permissions() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/readonly.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/readonly.toml", r#"
+[agent]
 name = "ReadOnly"
 id = "readonly"
 providers = ["claude"]
@@ -699,8 +707,8 @@ preset = "ship-readonly"
     #[test]
     fn compile_with_mode_inline_rules_adds_to_context() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/strict.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/strict.toml", r#"
+[agent]
 name = "Strict"
 id = "strict"
 providers = ["claude"]
@@ -718,8 +726,8 @@ inline = "Never delete files without explicit confirmation."
     #[test]
     fn compile_with_profile_stop_hook_emits_to_settings() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/commander.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/commander.toml", r#"
+[agent]
 name = "Commander"
 id = "commander"
 providers = ["claude"]
@@ -753,8 +761,8 @@ stop = "ship permissions sync"
 default_mode = "bypassPermissions"
 tools_deny = ["Bash(git push --force*)"]
 "#);
-        write(tmp.path(), ".ship/agents/profiles/fast.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/fast.toml", r#"
+[agent]
 name = "Fast"
 id = "fast"
 providers = ["claude"]
@@ -778,8 +786,8 @@ preset = "ship-fast"
     #[test]
     fn compile_with_bypass_permissions_mode_writes_default_mode() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/autonomous.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/autonomous.toml", r#"
+[agent]
 name = "Autonomous"
 id = "autonomous"
 providers = ["claude"]

@@ -13,7 +13,7 @@ You are a Ship expert. Help the user troubleshoot issues and answer questions.
 
 ### "ship use" fails or produces empty output
 1. Check `.ship/ship.toml` exists and has `[module]` section
-2. Check the profile exists: `ship agent list`
+2. Check the agent exists: `ship agent list`
 3. Check dependencies are installed: `ship install`
 4. If skill refs fail: the dependency may not be in `ship.lock` — run `ship install`
 
@@ -21,23 +21,23 @@ You are a Ship expert. Help the user troubleshoot issues and answer questions.
 Run `ship install` to fetch and cache all declared dependencies from `ship.toml`.
 
 ### Provider config not updating
-Provider configs (CLAUDE.md, .cursor/rules, etc.) are regenerated every time you run `ship use`. They are gitignored. If they seem stale, rerun `ship use <profile>`.
+Provider configs (CLAUDE.md, .cursor/rules, etc.) are regenerated every time you run `ship use`. They are gitignored. If they seem stale, rerun `ship use <agent>`.
 
 ### Permission denied errors in agent
-The profile's permission preset controls what the agent can do:
+The agent's permission preset controls what the agent can do:
 - `ship-standard` — file edits allowed, dangerous bash asks for confirmation
 - `ship-guarded` — all writes ask for confirmation
 - `ship-plan` — read-only, no writes
 
-Check the profile's `[permissions]` section.
+Check the agent's `[permissions]` section.
 
 ## Key Concepts
 
 ### .ship/ directory
-Configuration — profiles, skills, rules, manifests. Not a scratchpad. Never edited by agents directly. Only `ship install` and `ship use` write here.
+Configuration — agents, skills, rules, manifests. Not a scratchpad. Never edited by agents directly. Only `ship install` and `ship use` write here.
 
-### Profiles
-A profile is a saved configuration snapshot: skills, MCP servers, permissions, rules. Activate with `ship use <profile>`. You can have many profiles and switch between them.
+### Agents
+An agent is a saved configuration snapshot: skills, MCP servers, permissions, rules. Activate with `ship use <agent>`. You can have many agents and switch between them.
 
 ### Skills
 Markdown instructions that get compiled into agent context. Skills teach agents how to do things — protocols, references, tutorials. Community skills live on the registry.
@@ -50,12 +50,12 @@ CLAUDE.md, .cursor/rules/, .mcp.json, etc. These are build artifacts generated b
 | Command | What it does |
 |---------|-------------|
 | `ship init` | Scaffold .ship/ in your project |
-| `ship use <profile>` | Activate and compile a profile |
-| `ship compile` | Recompile without changing active profile |
-| `ship agent list` | List available profiles |
-| `ship agent create` | Create a new profile |
+| `ship use <agent>` | Activate and compile an agent |
+| `ship compile` | Recompile without changing active agent |
+| `ship agent list` | List available agents |
+| `ship agent create` | Create a new agent |
 | `ship skill add <pkg>` | Add a skill from the registry |
 | `ship install` | Fetch and cache declared dependencies |
-| `ship status` | Show active profile and compilation state |
+| `ship status` | Show active agent and compilation state |
 | `ship publish` | Publish your package to the registry |
 | `ship help` | CLI help |

@@ -120,7 +120,7 @@ pub struct AgentArtifactRegistryDb {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentModeDb {
+pub struct AgentConfigDb {
     pub id: String,
     pub name: String,
     pub description: Option<String>,

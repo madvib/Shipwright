@@ -1,12 +1,12 @@
-//! `ship permissions sync` — import session permission decisions back into the active profile.
+//! `ship permissions sync` — import session permission decisions back into the active agent.
 //!
 //! Claude Code accumulates "Allow always" and "Deny" decisions in
 //! `.claude/settings.local.json` during a session. `ship use` overwrites the
 //! compiled config and those decisions are lost. This command reads the session
-//! decisions, diffs them against the profile's compiled allow/deny lists, and
-//! writes the delta back into the profile TOML so they survive the next `ship use`.
+//! decisions, diffs them against the agent's compiled allow/deny lists, and
+//! writes the delta back into the agent TOML so they survive the next `ship use`.
 //!
-//! Safety rule: deny rules that would shadow a tool already in the profile's
+//! Safety rule: deny rules that would shadow a tool already in the agent's
 //! allow list are flagged as warnings rather than silently imported. They may
 //! represent accidental clicks.
 
@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::Path;
 
-use crate::profile::{ShipLock, find_profile_file};
+use crate::profile::{WorkspaceState, find_agent_file};
 
 // ── Claude session settings format ────────────────────────────────────────────
 
@@ -33,9 +33,9 @@ struct ClaudeLocalPermissions {
     deny: Vec<String>,
 }
 
-// ── Profile TOML permission section ───────────────────────────────────────────
+// ── Agent TOML permission section ─────────────────────────────────────────────
 
-/// Minimal parse of the profile TOML to read and update permission lists.
+/// Minimal parse of the agent TOML to read and update permission lists.
 /// We do a targeted text patch so we don't lose comments or formatting.
 #[derive(Debug, Deserialize)]
 struct ProfileForSync {
@@ -49,7 +49,7 @@ struct ProfilePermissionsForSync {
     tools_allow: Vec<String>,
     #[serde(default)]
     tools_deny: Vec<String>,
-    /// Preset tier shorthand — used to detect what baseline the profile applies.
+    /// Preset tier shorthand — used to detect what baseline the agent applies.
     preset: Option<String>,
 }
 
@@ -58,14 +58,14 @@ struct ProfilePermissionsForSync {
 pub fn run_permissions_sync(project_root: &Path) -> Result<()> {
     let ship_dir = project_root.join(".ship");
 
-    // 1. Find the active profile.
-    let lock = ShipLock::load(&ship_dir);
-    let profile_id = lock.active_profile
+    // 1. Find the active agent.
+    let state = WorkspaceState::load(&ship_dir);
+    let agent_id = state.active_agent
         .as_deref()
-        .context("No active profile. Run: ship use <profile-id>")?;
+        .context("No active agent. Run: ship use <agent-id>")?;
 
-    let profile_path = find_profile_file(profile_id, project_root)
-        .with_context(|| format!("Profile '{}' not found in .ship/agents/profiles/", profile_id))?;
+    let profile_path = find_agent_file(agent_id, project_root)
+        .with_context(|| format!("Agent '{}' not found in .ship/agents/", agent_id))?;
 
     // 2. Read session decisions from .claude/settings.local.json
     let local_path = project_root.join(".claude").join("settings.local.json");
@@ -76,9 +76,9 @@ pub fn run_permissions_sync(project_root: &Path) -> Result<()> {
         return Ok(());
     }
 
-    // 3. Read the profile's current permission lists.
+    // 3. Read the agent's current permission lists.
     let profile_raw = std::fs::read_to_string(&profile_path)
-        .with_context(|| format!("Cannot read profile at {}", profile_path.display()))?;
+        .with_context(|| format!("Cannot read agent at {}", profile_path.display()))?;
     let profile: ProfileForSync = toml::from_str(&profile_raw)
         .with_context(|| format!("Invalid TOML in {}", profile_path.display()))?;
 
@@ -87,7 +87,7 @@ pub fn run_permissions_sync(project_root: &Path) -> Result<()> {
     let current_deny: std::collections::HashSet<String> =
         profile.permissions.tools_deny.iter().cloned().collect();
 
-    // 4. Compute the delta — only new entries not already in the profile.
+    // 4. Compute the delta — only new entries not already in the agent.
     let new_allows: Vec<String> = session.permissions.allow.iter()
         .filter(|a| !current_allow.contains(*a))
         .cloned()
@@ -100,7 +100,7 @@ pub fn run_permissions_sync(project_root: &Path) -> Result<()> {
         if current_deny.contains(deny) {
             continue; // already present
         }
-        // Warn if this deny would shadow something explicitly allowed in the profile.
+        // Warn if this deny would shadow something explicitly allowed in the agent.
         if current_allow.contains(deny) || is_shadowing_allow(deny, &profile.permissions.tools_allow) {
             warned_denies.push(deny.clone());
         } else {
@@ -109,7 +109,7 @@ pub fn run_permissions_sync(project_root: &Path) -> Result<()> {
     }
 
     if new_allows.is_empty() && new_denies.is_empty() && warned_denies.is_empty() {
-        println!("Profile '{}' already contains all session decisions — nothing to do.", profile_id);
+        println!("Agent '{}' already contains all session decisions — nothing to do.", agent_id);
         return Ok(());
     }
 
@@ -123,18 +123,18 @@ pub fn run_permissions_sync(project_root: &Path) -> Result<()> {
         for d in &new_denies { println!("  + deny: {}", d); }
     }
     if !warned_denies.is_empty() {
-        println!("WARNING: {} deny rule(s) shadow tools in the profile's allow list.", warned_denies.len());
+        println!("WARNING: {} deny rule(s) shadow tools in the agent's allow list.", warned_denies.len());
         println!("These were NOT imported — review and add manually if intentional:");
         for d in &warned_denies { println!("  ! deny: {}", d); }
     }
 
-    // 6. Patch the profile TOML in place.
+    // 6. Patch the agent TOML in place.
     let updated = patch_profile_toml(&profile_raw, &new_allows, &new_denies)?;
     std::fs::write(&profile_path, &updated)
-        .with_context(|| format!("Cannot write profile at {}", profile_path.display()))?;
+        .with_context(|| format!("Cannot write agent at {}", profile_path.display()))?;
 
-    println!("✓ updated profile '{}' at {}", profile_id, profile_path.display());
-    println!("  Run 'ship use' to recompile the updated profile.");
+    println!("✓ updated agent '{}' at {}", agent_id, profile_path.display());
+    println!("  Run 'ship use' to recompile the updated agent.");
 
     Ok(())
 }
@@ -152,7 +152,7 @@ fn load_local_settings(path: &Path) -> Result<ClaudeLocalSettings> {
 }
 
 /// Returns true if `deny_pattern` is a substring-match or exact match for any
-/// entry in the profile's allow list. Catches patterns like "Bash" matching "Bash(*)".
+/// entry in the agent's allow list. Catches patterns like "Bash" matching "Bash(*)".
 fn is_shadowing_allow(deny_pattern: &str, allow_list: &[String]) -> bool {
     allow_list.iter().any(|a| {
         a == deny_pattern
@@ -161,12 +161,12 @@ fn is_shadowing_allow(deny_pattern: &str, allow_list: &[String]) -> bool {
     })
 }
 
-/// Patch a profile TOML string by appending new allow/deny entries.
+/// Patch an agent TOML string by appending new allow/deny entries.
 ///
 /// Strategy: parse the existing tools_allow and tools_deny arrays (if present)
 /// and rebuild the [permissions] section. If no [permissions] section exists,
 /// append one. Idempotent — calling twice with the same delta is a no-op
-/// (delta is empty on the second call since values are now in the profile).
+/// (delta is empty on the second call since values are now in the agent).
 fn patch_profile_toml(
     original: &str,
     new_allows: &[String],
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn patch_adds_new_allows_to_empty_permissions() {
-        let toml = r#"[profile]
+        let toml = r#"[agent]
 name = "Test"
 id = "test"
 providers = ["claude"]
@@ -287,7 +287,7 @@ providers = ["claude"]
 
     #[test]
     fn patch_adds_new_denies() {
-        let toml = r#"[profile]
+        let toml = r#"[agent]
 name = "Test"
 id = "test"
 providers = ["claude"]
@@ -304,7 +304,7 @@ tools_allow = ["Read"]
 
     #[test]
     fn patch_is_idempotent() {
-        let toml = r#"[profile]
+        let toml = r#"[agent]
 name = "Test"
 id = "test"
 providers = ["claude"]
@@ -312,7 +312,7 @@ providers = ["claude"]
 [permissions]
 tools_allow = ["Bash(cargo test*)"]
 "#;
-        // Delta is now empty — already in profile.
+        // Delta is now empty — already in agent.
         let result = patch_profile_toml(toml, &[], &[]).unwrap();
         let parsed: ProfileForSync = toml::from_str(&result).unwrap();
         // Existing allow must survive unchanged.
@@ -355,12 +355,16 @@ tools_allow = ["Bash(cargo test*)"]
     }
 
     #[test]
-    fn sync_writes_new_allows_to_profile() {
+    fn sync_writes_new_allows_to_agent() {
         let tmp = TempDir::new().unwrap();
-        // Write ship.lock with active profile
-        write(tmp.path(), ".ship/ship.lock", "active_profile = \"test\"\n");
-        // Write the profile
-        write(tmp.path(), ".ship/agents/profiles/test.toml", r#"[profile]
+        let ship_dir = tmp.path().join(".ship");
+        write(tmp.path(), ".ship/ship.toml", "id = \"test-proj\"\nname = \"test\"\n");
+        // Write workspace state with active agent via platform.db
+        let mut state = WorkspaceState::default();
+        state.active_agent = Some("test".to_string());
+        state.save(&ship_dir).unwrap();
+        // Write the agent
+        write(tmp.path(), ".ship/agents/test.toml", r#"[agent]
 name = "Test"
 id = "test"
 providers = ["claude"]
@@ -376,7 +380,7 @@ providers = ["claude"]
 "#);
         run_permissions_sync(tmp.path()).unwrap();
         let updated = std::fs::read_to_string(
-            tmp.path().join(".ship/agents/profiles/test.toml")
+            tmp.path().join(".ship/agents/test.toml")
         ).unwrap();
         let parsed: ProfileForSync = toml::from_str(&updated).unwrap();
         assert!(parsed.permissions.tools_allow.contains(&"Bash(cargo build*)".to_string()));
@@ -385,8 +389,13 @@ providers = ["claude"]
     #[test]
     fn sync_warns_deny_that_shadows_allow_but_does_not_import() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/ship.lock", "active_profile = \"test\"\n");
-        write(tmp.path(), ".ship/agents/profiles/test.toml", r#"[profile]
+        let ship_dir = tmp.path().join(".ship");
+        write(tmp.path(), ".ship/ship.toml", "id = \"test-proj\"\nname = \"test\"\n");
+        // Write workspace state with active agent via platform.db
+        let mut state = WorkspaceState::default();
+        state.active_agent = Some("test".to_string());
+        state.save(&ship_dir).unwrap();
+        write(tmp.path(), ".ship/agents/test.toml", r#"[agent]
 name = "Test"
 id = "test"
 providers = ["claude"]
@@ -406,7 +415,7 @@ tools_allow = ["Bash(cargo*)"]
         // Should succeed without panicking; the deny must NOT be imported.
         run_permissions_sync(tmp.path()).unwrap();
         let updated = std::fs::read_to_string(
-            tmp.path().join(".ship/agents/profiles/test.toml")
+            tmp.path().join(".ship/agents/test.toml")
         ).unwrap();
         let parsed: ProfileForSync = toml::from_str(&updated).unwrap();
         assert!(!parsed.permissions.tools_deny.contains(&"Bash".to_string()),

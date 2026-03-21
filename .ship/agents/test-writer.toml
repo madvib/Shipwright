@@ -1,4 +1,4 @@
-[profile]
+[agent]
 name = "Test Writer"
 id = "test-writer"
 version = "0.1.0"

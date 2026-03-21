@@ -36,17 +36,17 @@ Report what you found:
 ## Step 3: Import or scaffold
 
 **If existing configs found:**
-Offer to import: `ship import <path>`. This lifts their config into Ship format. Show them the result in `.ship/agents/profiles/`.
+Offer to import: `ship import <path>`. This lifts their config into Ship format. Show them the result in `.ship/agents/`.
 
 **If starting fresh:**
-Ask what kind of project this is (web app, CLI tool, library, monorepo) and suggest a starter profile. Create a simple profile with sensible defaults:
+Ask what kind of project this is (web app, CLI tool, library, monorepo) and suggest a starter agent. Create a simple agent with sensible defaults:
 - 2-3 relevant skills
 - Appropriate permission tier
 - Provider targets matching what they told you in Step 1
 
 ## Step 4: First compile
 
-Run `ship use <profile-name>` with the profile you just created or imported.
+Run `ship use <agent-name>` with the agent you just created or imported.
 
 Show them what was generated:
 - "Created CLAUDE.md with your rules and skills"
@@ -61,9 +61,9 @@ Pick 1-2 based on what's relevant to their project:
 
 **Skills:** "Want to add a skill? Try `ship skill add github.com/better-auth/skills/better-auth`. Now your agents know Better Auth patterns."
 
-**Multiple profiles:** "You can have different profiles for different tasks — one for frontend work, one for backend, one for code review. Each gets different skills, permissions, and MCP tools."
+**Multiple agents:** "You can have different agents for different tasks — one for frontend work, one for backend, one for code review. Each gets different skills, permissions, and MCP tools."
 
-**Registry:** "You can publish your profiles for your team or the community: `ship publish`."
+**Registry:** "You can publish your agents for your team or the community: `ship publish`."
 
 ## Step 6: Clean exit
 
@@ -73,17 +73,16 @@ You're set up. Here's what you have:
   .ship/
   ├── ship.toml          — your package manifest
   ├── agents/
-  │   └── profiles/
-  │       └── <name>.toml — your agent profile
+  │       └── <name>.toml — your agent
   └── ship.lock          — pinned dependencies (if any)
 
 Next steps:
-  ship use <profile>     — compile and activate a profile
-  ship agent list        — see your profiles
+  ship use <agent>       — compile and activate an agent
+  ship agent list        — see your agents
   ship skill add <pkg>   — add community skills
   ship status            — check what's active
 
-To switch away from this tutorial: ship use <your-profile>
+To switch away from this tutorial: ship use <your-agent>
 ```
 
 ## Rules

@@ -26,8 +26,7 @@ pub fn ensure_global_dirs() -> anyhow::Result<()> {
 
 pub fn project_dir() -> PathBuf { PathBuf::from(".ship") }
 pub fn project_modes_dir() -> PathBuf { project_dir().join("modes") }
-pub fn project_profiles_dir() -> PathBuf { agents_dir().join("profiles") }
-/// Compat: also check agents/presets/ for projects not yet migrated.
+/// Compat: check agents/presets/ for projects not yet migrated.
 pub fn project_presets_dir() -> PathBuf { agents_dir().join("presets") }
 pub fn agents_dir() -> PathBuf { project_dir().join("agents") }
 pub fn agents_rules_dir() -> PathBuf { agents_dir().join("rules") }
@@ -43,36 +42,56 @@ pub fn project_ship_dir_required() -> anyhow::Result<std::path::PathBuf> {
 
 pub fn ensure_project_dirs() -> anyhow::Result<()> {
     for dir in [project_dir(), project_modes_dir(), agents_dir(),
-                agents_rules_dir(), agents_skills_dir(),
-                project_profiles_dir(), project_presets_dir()] {
+                agents_rules_dir(), agents_skills_dir()] {
         fs::create_dir_all(dir)?;
     }
     Ok(())
 }
 
 
-/// Return (mode_id, scope) pairs from project + global dirs.
-pub fn list_mode_ids(local_only: bool, project_only: bool) -> Vec<(String, &'static str)> {
-    let mut modes = Vec::new();
-    if !local_only
-        && let Ok(entries) = fs::read_dir(project_modes_dir())
-    {
-        for e in entries.flatten() {
-            if e.path().extension().is_some_and(|x| x == "toml") {
-                modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "project"));
+/// Return (agent_id, scope) pairs from project + global dirs.
+pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'static str)> {
+    let mut agents = Vec::new();
+    // Project agents: .ship/agents/*.toml (flat)
+    if !local_only {
+        if let Ok(entries) = fs::read_dir(agents_dir()) {
+            for e in entries.flatten() {
+                let path = e.path();
+                if path.extension().is_some_and(|x| x == "toml") && path.is_file() {
+                    let name = path.file_stem().unwrap().to_string_lossy().to_string();
+                    // Exclude known non-agent TOML files
+                    if name != "mcp" && name != "permissions" {
+                        agents.push((name, "project"));
+                    }
+                }
+            }
+        }
+        // Also check legacy modes dir
+        if let Ok(entries) = fs::read_dir(project_modes_dir()) {
+            for e in entries.flatten() {
+                if e.path().extension().is_some_and(|x| x == "toml") {
+                    let name = e.path().file_stem().unwrap().to_string_lossy().to_string();
+                    if !agents.iter().any(|(id, _)| id == &name) {
+                        agents.push((name, "project"));
+                    }
+                }
             }
         }
     }
-    if !project_only
-        && let Ok(entries) = fs::read_dir(global_modes_dir())
-    {
-        for e in entries.flatten() {
-            if e.path().extension().is_some_and(|x| x == "toml") {
-                modes.push((e.path().file_stem().unwrap().to_string_lossy().to_string(), "global"));
+    // Global agents
+    if !project_only {
+        if let Ok(entries) = fs::read_dir(global_modes_dir()) {
+            for e in entries.flatten() {
+                if e.path().extension().is_some_and(|x| x == "toml") {
+                    let name = e.path().file_stem().unwrap().to_string_lossy().to_string();
+                    if !agents.iter().any(|(id, _)| id == &name) {
+                        agents.push((name, "global"));
+                    }
+                }
             }
         }
     }
-    modes
+    agents
 }
 
 #[cfg(test)]

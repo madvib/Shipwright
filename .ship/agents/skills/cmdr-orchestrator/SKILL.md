@@ -22,7 +22,7 @@ list_capabilities               → aspirational vs actual progress
 ```
 Job blocked → read job_log for blocker context
 
-→ Resolvable by another agent?  create_job + route to right profile
+→ Resolvable by another agent?  create_job + route to right agent
 → Needs human decision?         surface immediately, don't queue it
 → Needs more info?              append_job_log with question, notify human
 ```
@@ -35,7 +35,7 @@ Agents don't call each other. They emit jobs; you route them.
 
 ```
 Agent A blocked, needs something from Agent B's domain:
-→ create_job assigned to Agent B's profile
+→ create_job assigned to Agent B
 → update Agent A's job with dependency ID
 → when B gates, unblock A
 ```
@@ -102,7 +102,7 @@ When running under `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, the runtime fires h
 
 | Hook | Commander action |
 |------|-----------------|
-| `TeammateIdle` | A teammate has no active task → check if a pending job fits their profile → dispatch or confirm idle |
+| `TeammateIdle` | A teammate has no active task → check if a pending job fits their agent → dispatch or confirm idle |
 | `TaskCompleted` | A teammate finished a task → switch to GATE mode immediately for that job |
 
 These hooks are the native triggers for gate and orchestrator modes in team sessions. Wire `TaskCompleted → gate` and `TeammateIdle → dispatch or idle-confirm`.

@@ -1,5 +1,5 @@
-//! Profile activation — `ship use [<profile-id>]`.
-//! Workspace state (active_profile, compiled_at, plugins_installed) is stored
+//! Agent activation — `ship use [<agent-id>]`.
+//! Workspace state (active_agent, compiled_at, plugins_installed) is stored
 //! in platform.db kv_state (namespace='workspace'). ship.lock is reserved for
 //! the registry lockfile format.
 
@@ -7,10 +7,10 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use crate::compile::{CompileOptions, run_compile};
-use crate::mode::Profile;
+use crate::agent_config::AgentConfig;
 
 const NS: &str = "workspace";
-const KEY_ACTIVE_PROFILE: &str = "active_profile";
+const KEY_ACTIVE_AGENT: &str = "active_agent";
 const KEY_COMPILED_AT: &str = "compiled_at";
 const KEY_PLUGINS_INSTALLED: &str = "plugins_installed";
 
@@ -20,7 +20,7 @@ const KEY_PLUGINS_INSTALLED: &str = "plugins_installed";
 /// Previously stored in .ship/ship.lock (TOML format). Migration runs on first load.
 #[derive(Debug, Clone, Default)]
 pub struct WorkspaceState {
-    pub active_profile: Option<String>,
+    pub active_agent: Option<String>,
     pub compiled_at: Option<String>,
     pub plugins_installed: Vec<String>,
 }
@@ -33,8 +33,14 @@ impl WorkspaceState {
             eprintln!("warning: could not open platform.db: {}", e);
             return state;
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_ACTIVE_PROFILE) {
-            state.active_profile = v.as_str().map(str::to_string);
+        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_ACTIVE_AGENT) {
+            state.active_agent = v.as_str().map(str::to_string);
+        }
+        // Compat: also check the old key name for projects that haven't re-activated yet
+        if state.active_agent.is_none() {
+            if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, "active_profile") {
+                state.active_agent = v.as_str().map(str::to_string);
+            }
         }
         if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_COMPILED_AT) {
             state.compiled_at = v.as_str().map(str::to_string);
@@ -53,8 +59,8 @@ impl WorkspaceState {
     /// Persist workspace state to platform.db.
     pub fn save(&self, ship_dir: &Path) -> Result<()> {
         runtime::db::ensure_db(ship_dir).context("failed to open platform.db")?;
-        if let Some(ref p) = self.active_profile {
-            runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_PROFILE, &serde_json::json!(p))?;
+        if let Some(ref p) = self.active_agent {
+            runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_AGENT, &serde_json::json!(p))?;
         }
         if let Some(ref t) = self.compiled_at {
             runtime::db::kv::set(ship_dir, NS, KEY_COMPILED_AT, &serde_json::json!(t))?;
@@ -72,33 +78,33 @@ impl WorkspaceState {
 
 // ── Activation ────────────────────────────────────────────────────────────────
 
-/// Activate a profile: compile + install plugins + persist workspace state to platform.db.
-/// If `profile_id` is None, re-runs the active profile from platform.db.
-pub fn activate_profile(profile_id: Option<&str>, project_root: &Path) -> Result<()> {
+/// Activate an agent: compile + install plugins + persist workspace state to platform.db.
+/// If `agent_id` is None, re-runs the active agent from platform.db.
+pub fn activate_agent(agent_id: Option<&str>, project_root: &Path) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     let mut state = WorkspaceState::load(&ship_dir);
-    let id = profile_id
+    let id = agent_id
         .map(str::to_string)
-        .or_else(|| state.active_profile.clone())
-        .context("No profile specified and no active profile set. Run: ship use <profile-id>")?;
+        .or_else(|| state.active_agent.clone())
+        .context("No agent specified and no active agent set. Run: ship use <agent-id>")?;
 
-    let profile_path = find_profile_file(&id, project_root)
-        .with_context(|| format!("Profile '{}' not found in .ship/agents/profiles/", id))?;
-    let profile = Profile::load(&profile_path)?;
+    let agent_path = find_agent_file(&id, project_root)
+        .with_context(|| format!("Agent '{}' not found in .ship/agents/", id))?;
+    let agent = AgentConfig::load(&agent_path)?;
 
     run_compile(CompileOptions {
         project_root, provider: None, dry_run: false, active_agent: Some(&id),
     })?;
 
-    let now_plugins: Vec<String> = profile.plugins.install.clone();
+    let now_plugins: Vec<String> = agent.plugins.install.clone();
     let prev_plugins = state.plugins_installed.clone();
-    run_plugin_lifecycle(&now_plugins, &prev_plugins, &profile.plugins.scope);
+    run_plugin_lifecycle(&now_plugins, &prev_plugins, &agent.plugins.scope);
 
-    state.active_profile = Some(id.clone());
+    state.active_agent = Some(id.clone());
     state.compiled_at = Some(chrono::Utc::now().to_rfc3339());
     state.plugins_installed = now_plugins;
     state.save(&ship_dir)?;
-    println!("✓ activated profile '{}'", id);
+    println!("✓ activated agent '{}'", id);
     Ok(())
 }
 
@@ -126,21 +132,33 @@ fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
     }
 }
 
-/// Search order: agents/profiles/ → agents/presets/ (compat) → modes/ (legacy), project then global.
-pub fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<PathBuf> {
+/// Search order: agents/ → agents/profiles/ (compat) → agents/presets/ (compat) → modes/ (legacy), project then global.
+pub fn find_agent_file(agent_id: &str, project_root: &Path) -> Option<PathBuf> {
     let ship = project_root.join(".ship");
-    let file = format!("{}.toml", profile_id);
-    let p = ship.join("agents").join("profiles").join(&file);
+    let file = format!("{}.toml", agent_id);
+    // Primary: .ship/agents/<id>.toml
+    let p = ship.join("agents").join(&file);
     if p.exists() { return Some(p); }
+    // Compat: .ship/agents/profiles/<id>.toml
+    let p_profiles = ship.join("agents").join("profiles").join(&file);
+    if p_profiles.exists() { return Some(p_profiles); }
+    // Compat: .ship/agents/presets/<id>.toml
     let p_compat = ship.join("agents").join("presets").join(&file);
     if p_compat.exists() { return Some(p_compat); }
+    // Legacy: .ship/modes/<id>.toml
     let m = ship.join("modes").join(&file);
     if m.exists() { return Some(m); }
+    // Global: ~/.ship/agents/<id>.toml
     let home = dirs::home_dir()?;
-    let gp = home.join(".ship").join("agents").join("profiles").join(&file);
+    let gp = home.join(".ship").join("agents").join(&file);
     if gp.exists() { return Some(gp); }
+    // Global compat: ~/.ship/agents/profiles/<id>.toml
+    let gp_profiles = home.join(".ship").join("agents").join("profiles").join(&file);
+    if gp_profiles.exists() { return Some(gp_profiles); }
+    // Global compat: ~/.ship/agents/presets/<id>.toml
     let gp_compat = home.join(".ship").join("agents").join("presets").join(&file);
     if gp_compat.exists() { return Some(gp_compat); }
+    // Global legacy: ~/.ship/modes/<id>.toml
     let gm = home.join(".ship").join("modes").join(&file);
     if gm.exists() { return Some(gm); }
     None
@@ -171,12 +189,12 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let ship_dir = setup_ship_dir(&tmp);
         let mut state = WorkspaceState::default();
-        state.active_profile = Some("cli-lane".to_string());
+        state.active_agent = Some("cli-lane".to_string());
         state.compiled_at = Some("2026-01-01T00:00:00Z".to_string());
         state.plugins_installed = vec!["superpowers@official".to_string()];
         state.save(&ship_dir).unwrap();
         let loaded = WorkspaceState::load(&ship_dir);
-        assert_eq!(loaded.active_profile.as_deref(), Some("cli-lane"));
+        assert_eq!(loaded.active_agent.as_deref(), Some("cli-lane"));
         assert_eq!(loaded.compiled_at.as_deref(), Some("2026-01-01T00:00:00Z"));
         assert_eq!(loaded.plugins_installed, vec!["superpowers@official"]);
     }
@@ -186,26 +204,33 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let ship_dir = setup_ship_dir(&tmp);
         let state = WorkspaceState::load(&ship_dir);
-        assert!(state.active_profile.is_none());
+        assert!(state.active_agent.is_none());
         assert!(state.plugins_installed.is_empty());
     }
 
     // ship.lock workspace-state migration tests removed — migration code deleted 2026-03-20.
 
     #[test]
-    fn find_profile_file_finds_new_location() {
+    fn find_agent_file_finds_new_location() {
         let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/agents/profiles/test.toml", "[profile]\nname=\"Test\"\nid=\"test\"\n");
-        let found = find_profile_file("test", tmp.path());
+        write_file(tmp.path(), ".ship/agents/test.toml", "[agent]\nname=\"Test\"\nid=\"test\"\n");
+        let found = find_agent_file("test", tmp.path());
+        assert!(found.is_some());
+        assert!(found.unwrap().to_string_lossy().contains("agents/test.toml"));
+    }
+
+    #[test]
+    fn find_agent_file_compat_profiles_location() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), ".ship/agents/profiles/test.toml", "[agent]\nname=\"Test\"\nid=\"test\"\n");
+        let found = find_agent_file("test", tmp.path());
         assert!(found.is_some());
         assert!(found.unwrap().to_string_lossy().contains("agents/profiles"));
     }
 
-    // Compat path tests (presets/, modes/) removed — compat paths deleted 2026-03-20.
-
     #[test]
-    fn find_profile_file_returns_none_for_missing() {
+    fn find_agent_file_returns_none_for_missing() {
         let tmp = TempDir::new().unwrap();
-        assert!(find_profile_file("nonexistent", tmp.path()).is_none());
+        assert!(find_agent_file("nonexistent", tmp.path()).is_none());
     }
 }

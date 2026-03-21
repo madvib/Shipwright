@@ -177,7 +177,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
         project_root,
         provider: None,
         dry_run: false,
-        active_agent: state.active_profile.as_deref(),
+        active_agent: state.active_agent.as_deref(),
     })
     .context("compiling after add")?;
 

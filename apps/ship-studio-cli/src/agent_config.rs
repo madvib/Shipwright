@@ -3,11 +3,11 @@ use std::path::Path;
 
 use crate::loader::load_permission_preset;
 
-/// Profile TOML format — what users author in .ship/agents/profiles/<id>.toml
+/// Agent TOML format — what users author in .ship/agents/<id>.toml
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Profile {
-    #[serde(rename = "profile")]
-    pub meta: ProfileMeta,
+pub struct AgentConfig {
+    #[serde(rename = "agent", alias = "profile")]
+    pub meta: AgentMeta,
     #[serde(default)]
     pub skills: SkillsConfig,
     #[serde(default)]
@@ -15,11 +15,11 @@ pub struct Profile {
     #[serde(default)]
     pub plugins: PluginsConfig,
     #[serde(default)]
-    pub permissions: ProfilePermissions,
+    pub permissions: AgentPermissions,
     #[serde(default)]
     pub rules: RulesConfig,
     #[serde(default)]
-    pub hooks: ProfileHooks,
+    pub hooks: AgentHooks,
     /// Provider-specific settings merged verbatim into the provider's config file.
     /// `[provider_settings.claude]` → `.claude/settings.json`.
     /// Any key/value valid in that file works here — no code change required.
@@ -28,13 +28,13 @@ pub struct Profile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProfileMeta {
+pub struct AgentMeta {
     pub name: String,
     pub id: String,
     #[serde(default = "default_version")]
     pub version: String,
     pub description: Option<String>,
-    /// Provider targets for this profile (overrides project ship.toml providers).
+    /// Provider targets for this agent (overrides project ship.toml providers).
     #[serde(default)]
     pub providers: Vec<String>,
 }
@@ -61,9 +61,9 @@ pub struct PluginsConfig {
     pub scope: String,
 }
 
-/// Permission overrides in a profile — merged on top of agents/permissions.toml.
+/// Permission overrides in an agent — merged on top of agents/permissions.toml.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProfilePermissions {
+pub struct AgentPermissions {
     /// Permission tier shorthand: "ship-readonly" | "ship-standard" | "ship-autonomous" | "ship-elevated"
     pub preset: Option<String>,
     #[serde(default)]
@@ -79,11 +79,11 @@ pub struct RulesConfig {
     pub inline: Option<String>,
 }
 
-/// Hook commands declared in a profile.
+/// Hook commands declared in an agent.
 /// Each field corresponds to a Claude Code hook trigger name.
 /// The compiler emits these into `.claude/settings.json` under `hooks`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProfileHooks {
+pub struct AgentHooks {
     /// Command to run when the agent session ends (Claude Code Stop hook).
     pub stop: Option<String>,
     /// Command to run when a sub-agent session ends (Claude Code SubagentStop hook).
@@ -93,17 +93,17 @@ pub struct ProfileHooks {
 fn default_version() -> String { "0.1.0".to_string() }
 fn default_plugin_scope() -> String { "project".to_string() }
 
-impl Profile {
+impl AgentConfig {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("invalid profile TOML at {}: {}", path.display(), e))
+            .map_err(|e| anyhow::anyhow!("invalid agent TOML at {}: {}", path.display(), e))
     }
 
-    /// Template for a new profile file.
+    /// Template for a new agent file.
     pub fn scaffold(id: &str) -> String {
         format!(
-r#"[profile]
+r#"[agent]
 name = "{name}"
 id = "{id}"
 version = "0.1.0"
@@ -138,19 +138,19 @@ servers = []
     }
 }
 
-/// Apply a profile's permission overrides on top of a base Permissions struct.
+/// Apply an agent's permission overrides on top of a base Permissions struct.
 ///
 /// `agents_dir` is optional — when provided, named preset sections from
 /// `agents/permissions.toml` (e.g. `[ship-standard]`) are consulted.
 /// When absent, built-in fallback behaviour applies.
-pub fn apply_profile_permissions(
+pub fn apply_agent_permissions(
     base: compiler::Permissions,
-    profile: &Profile,
+    agent: &AgentConfig,
     agents_dir: Option<&Path>,
 ) -> compiler::Permissions {
     use compiler::{Permissions, ToolPermissions};
 
-    let mp = &profile.permissions;
+    let mp = &agent.permissions;
 
     // Resolve the named preset. Try permissions.toml first, then built-in fallbacks.
     let preset_from_file = mp.preset.as_deref().and_then(|name| {
@@ -182,7 +182,6 @@ pub fn apply_profile_permissions(
         }
     } else {
         // Built-in fallback — no permissions.toml or section not found
-        // Start from preset in permissions.toml (resolved via file), fall back to built-in
         match mp.preset.as_deref() {
             Some("ship-readonly") => ToolPermissions {
                 allow: vec!["Read".into(), "Glob".into(), "LS".into(), "mcp__ship__*".into(), "Bash(ship *)".into()],
@@ -193,7 +192,7 @@ pub fn apply_profile_permissions(
         }
     };
 
-    // Profile-level additions always apply on top of preset
+    // Agent-level additions always apply on top of preset
     for p in &mp.tools_deny {
         if !tools.deny.contains(p) {
             tools.deny.push(p.clone());
@@ -205,7 +204,7 @@ pub fn apply_profile_permissions(
         }
     }
 
-    // default_mode: profile field wins, then preset file value, then base
+    // default_mode: agent field wins, then preset file value, then base
     let default_mode = mp.default_mode.clone()
         .or_else(|| preset_from_file.as_ref().and_then(|p| p.default_mode.clone()))
         .or(base.default_mode);
@@ -223,17 +222,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn profile_scaffold_parses() {
-        let s = Profile::scaffold("rust-expert");
-        let profile: Profile = toml::from_str(&s).expect("scaffold must be valid TOML");
-        assert_eq!(profile.meta.id, "rust-expert");
-        assert_eq!(profile.meta.providers, vec!["claude"]);
+    fn agent_scaffold_parses() {
+        let s = AgentConfig::scaffold("rust-expert");
+        let agent: AgentConfig = toml::from_str(&s).expect("scaffold must be valid TOML");
+        assert_eq!(agent.meta.id, "rust-expert");
+        assert_eq!(agent.meta.providers, vec!["claude"]);
     }
 
     #[test]
-    fn profile_key_parses() {
+    fn agent_key_parses() {
         let toml_str = r#"
-[profile]
+[agent]
 name = "CLI Lane"
 id = "cli-lane"
 providers = ["claude"]
@@ -246,7 +245,7 @@ scope = "project"
 preset = "ship-autonomous"
 tools_deny = ["Bash(rm -rf *)"]
 "#;
-        let p: Profile = toml::from_str(toml_str).unwrap();
+        let p: AgentConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.meta.id, "cli-lane");
         assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
         assert_eq!(p.plugins.scope, "project");
@@ -254,45 +253,57 @@ tools_deny = ["Bash(rm -rf *)"]
     }
 
     #[test]
-    fn apply_profile_permissions_readonly_restricts() {
+    fn legacy_profile_key_still_parses() {
+        let toml_str = r#"
+[profile]
+name = "Legacy"
+id = "legacy"
+providers = ["claude"]
+"#;
+        let p: AgentConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.meta.id, "legacy");
+    }
+
+    #[test]
+    fn apply_agent_permissions_readonly_restricts() {
         use compiler::Permissions;
         let base = Permissions::default();
         let toml_str = r#"
-[profile]
+[agent]
 name = "Reviewer"
 id = "reviewer"
 providers = ["claude"]
 [permissions]
 preset = "ship-readonly"
 "#;
-        let p: Profile = toml::from_str(toml_str).unwrap();
-        let result = apply_profile_permissions(base, &p, None);
+        let p: AgentConfig = toml::from_str(toml_str).unwrap();
+        let result = apply_agent_permissions(base, &p, None);
         assert!(result.tools.deny.contains(&"Write(*)".to_string()));
         assert!(result.tools.deny.contains(&"Edit(*)".to_string()));
         assert!(result.tools.allow.contains(&"Read".to_string()));
     }
 
     #[test]
-    fn apply_profile_permissions_readonly_restricts_allow() {
+    fn apply_agent_permissions_readonly_restricts_allow() {
         use compiler::Permissions;
         let base = Permissions::default();
         let toml_str = r#"
-[profile]
+[agent]
 name = "ReadOnly"
 id = "readonly"
 providers = ["claude"]
 [permissions]
 preset = "ship-readonly"
 "#;
-        let p: Profile = toml::from_str(toml_str).unwrap();
-        let result = apply_profile_permissions(base, &p, None);
+        let p: AgentConfig = toml::from_str(toml_str).unwrap();
+        let result = apply_agent_permissions(base, &p, None);
         assert!(result.tools.allow.contains(&"Read".to_string()));
         // ship-readonly has a narrow allow list — Grep is not included
         assert!(!result.tools.allow.contains(&"Grep".to_string()));
     }
 
     #[test]
-    fn apply_profile_permissions_uses_permissions_toml_preset() {
+    fn apply_agent_permissions_uses_permissions_toml_preset() {
         use compiler::Permissions;
         use tempfile::TempDir;
         let tmp = TempDir::new().unwrap();
@@ -304,15 +315,15 @@ tools_deny = ["Bash(git push --force*)"]
 tools_ask = ["Bash(rm -rf*)"]
 "#).unwrap();
         let toml_str = r#"
-[profile]
+[agent]
 name = "Custom"
 id = "custom"
 providers = ["claude"]
 [permissions]
 preset = "custom-preset"
 "#;
-        let p: Profile = toml::from_str(toml_str).unwrap();
-        let result = apply_profile_permissions(Permissions::default(), &p, Some(tmp.path()));
+        let p: AgentConfig = toml::from_str(toml_str).unwrap();
+        let result = apply_agent_permissions(Permissions::default(), &p, Some(tmp.path()));
         assert_eq!(result.default_mode.as_deref(), Some("bypassPermissions"));
         assert!(result.tools.deny.contains(&"Bash(git push --force*)".to_string()));
         assert!(result.tools.ask.contains(&"Bash(rm -rf*)".to_string()));

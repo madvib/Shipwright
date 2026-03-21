@@ -1,4 +1,4 @@
-[profile]
+[agent]
 name = "Code Reviewer"
 id = "reviewer"
 version = "0.1.0"

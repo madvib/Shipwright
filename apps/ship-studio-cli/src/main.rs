@@ -14,7 +14,7 @@ mod loader;
 mod logging;
 mod mcp;
 mod mcp_serve;
-mod mode;
+mod agent_config;
 mod paths;
 mod profile;
 mod skill;
@@ -41,7 +41,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Login  => auth::run_login(),
             Commands::Logout => auth::run_logout(),
             Commands::Whoami => auth::run_whoami(),
-            Commands::Use { mode, path, compile: _ } => run_use(Some(&mode), path),
+            Commands::Use { agent_id, path, compile: _ } => run_use(Some(&agent_id), path),
             Commands::Status { path } => run_status(path),
             Commands::Agent { action } => dispatch_agent(action),
             Commands::Compile { provider, dry_run, watch, path } => {
@@ -65,11 +65,11 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 add::run_add(&root, &package)
             }
-            Commands::Validate { profile, json, path } => {
+            Commands::Validate { agent, json, path } => {
                 let root = path.as_deref()
                     .map(std::fs::canonicalize).transpose()?
                     .unwrap_or_else(|| std::env::current_dir().unwrap());
-                validate::run_validate(profile.as_deref(), json, &root)
+                validate::run_validate(agent.as_deref(), json, &root)
             }
             Commands::Surface { emit, check } => surface::run(emit, check),
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
@@ -119,14 +119,14 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
                 "# Ship Configuration\n\nThis project uses [Ship](https://getship.dev) \
                  to manage AI agent configuration.\n\n\
                  Install the CLI: `curl -fsSL https://getship.dev/install | sh`\n\
-                 Then: `ship use <profile-id>` to activate.\n"
+                 Then: `ship use <agent-id>` to activate.\n"
             )?;
         }
         println!("✓ initialized .ship/ in current directory");
         println!("  providers: {}", provider.as_deref().unwrap_or("claude"));
         println!("\nNext steps:");
-        println!("  ship use <profile-id>   activate a profile (compiles immediately)");
-        println!("  ship compile            re-compile current profile");
+        println!("  ship use <agent-id>     activate an agent (compiles immediately)");
+        println!("  ship compile            re-compile current agent");
     }
     Ok(())
 }
@@ -134,9 +134,9 @@ fn run_init(global: bool, provider: Option<String>) -> Result<()> {
 
 // ── Use ───────────────────────────────────────────────────────────────────────
 
-/// Activate a profile: load → compile → install plugins → write workspace state to platform.db.
-/// `profile_id = None` re-activates the current profile from platform.db.
-fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
+/// Activate an agent: load → compile → install plugins → write workspace state to platform.db.
+/// `agent_id = None` re-activates the current agent from platform.db.
+fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let ship_dir = match path {
         Some(p) => {
             let sd = std::fs::canonicalize(&p)?.join(".ship");
@@ -146,7 +146,7 @@ fn run_use(profile_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
         None => paths::project_ship_dir_required()?,
     };
     let project_root = ship_dir.parent().unwrap().to_path_buf();
-    profile::activate_profile(profile_id, &project_root)
+    profile::activate_agent(agent_id, &project_root)
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -159,17 +159,17 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
 
     let ship_dir = target.join(".ship");
     let state = profile::WorkspaceState::load(&ship_dir);
-    match state.active_profile {
+    match state.active_agent {
         Some(ref p) => {
-            println!("active profile: {}", p);
+            println!("active agent: {}", p);
             if let Some(ref at) = state.compiled_at { println!("compiled: {}", at); }
             if !state.plugins_installed.is_empty() {
                 println!("plugins: {}", state.plugins_installed.join(", "));
             }
         }
         None => {
-            println!("No active profile for {}", target.display());
-            println!("Run: ship use <profile-id>");
+            println!("No active agent for {}", target.display());
+            println!("Run: ship use <agent-id>");
         }
     }
     Ok(())
@@ -180,45 +180,45 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
 fn dispatch_agent(action: AgentCommands) -> Result<()> {
     match action {
         AgentCommands::List { local, project } => {
-            let profiles = paths::list_mode_ids(local, project);
-            if profiles.is_empty() {
-                println!("No agent profiles found.");
+            let agents = paths::list_agent_ids(local, project);
+            if agents.is_empty() {
+                println!("No agents found.");
                 println!("Create one with: ship agent create <name>");
             } else {
-                for (id, scope) in &profiles {
+                for (id, scope) in &agents {
                     println!("  {} [{}]", id, scope);
                 }
             }
         }
         AgentCommands::Create { name, global } => {
-            let dir = if global { paths::global_modes_dir() } else { paths::project_presets_dir() };
+            let dir = if global { paths::global_modes_dir() } else { paths::agents_dir() };
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!("{}.toml", name));
             if path.exists() {
-                anyhow::bail!("Profile '{}' already exists at {}", name, path.display());
+                anyhow::bail!("Agent '{}' already exists at {}", name, path.display());
             }
-            std::fs::write(&path, mode::Profile::scaffold(&name))?;
-            println!("✓ created profile '{}' at {}", name, path.display());
+            std::fs::write(&path, agent_config::AgentConfig::scaffold(&name))?;
+            println!("✓ created agent '{}' at {}", name, path.display());
         }
         AgentCommands::Edit { name, editor } => {
-            let path = profile::find_profile_file(&name, &std::env::current_dir()?)
-                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
+            let path = profile::find_agent_file(&name, &std::env::current_dir()?)
+                .ok_or_else(|| anyhow::anyhow!("Agent '{}' not found", name))?;
             let editor = editor.or_else(|| std::env::var("EDITOR").ok()).unwrap_or_else(|| "vi".to_string());
             std::process::Command::new(&editor).arg(&path).status()?;
         }
         AgentCommands::Delete { name } => {
-            let path = profile::find_profile_file(&name, &std::env::current_dir()?)
-                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
+            let path = profile::find_agent_file(&name, &std::env::current_dir()?)
+                .ok_or_else(|| anyhow::anyhow!("Agent '{}' not found", name))?;
             std::fs::remove_file(&path)?;
-            println!("✓ deleted profile '{}'", name);
+            println!("✓ deleted agent '{}'", name);
         }
         AgentCommands::Clone { source, target } => {
             let cwd = std::env::current_dir()?;
-            let src_path = profile::find_profile_file(&source, &cwd)
-                .ok_or_else(|| anyhow::anyhow!("Source profile '{}' not found", source))?;
+            let src_path = profile::find_agent_file(&source, &cwd)
+                .ok_or_else(|| anyhow::anyhow!("Source agent '{}' not found", source))?;
             let dst_path = src_path.parent().unwrap().join(format!("{}.toml", target));
             if dst_path.exists() {
-                anyhow::bail!("Target profile '{}' already exists", target);
+                anyhow::bail!("Target agent '{}' already exists", target);
             }
             let content = std::fs::read_to_string(&src_path)?
                 .replace(&format!("id = \"{}\"", source), &format!("id = \"{}\"", target))
@@ -247,7 +247,7 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, watch: bool, path: Opt
         project_root: &project_root,
         provider,
         dry_run,
-        active_agent: state.active_profile.as_deref(),
+        active_agent: state.active_agent.as_deref(),
     })?;
 
     if watch { println!("--watch not yet implemented. Run compile manually after changes."); }

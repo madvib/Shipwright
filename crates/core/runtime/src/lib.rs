@@ -64,13 +64,13 @@ pub use skill::{
 
 // ─── Re-exports from db (formerly state_db) ────────────────────────────────
 pub use db::types::{
-    AgentArtifactRegistryDb, AgentModeDb, AgentRuntimeSettingsDb,
+    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb,
     DatabaseMigrationReport, WorkspaceSessionDb, WorkspaceSessionRecordDb, WorkspaceUpsert,
 };
 pub use db::agents::{
-    delete_agent_mode_db, get_agent_artifact_registry_by_external_id_db,
-    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_modes_db,
-    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_mode_db,
+    delete_agent_config_db, get_agent_artifact_registry_by_external_id_db,
+    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_configs_db,
+    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_config_db,
 };
 pub use db::branch_context::{
     clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link,
