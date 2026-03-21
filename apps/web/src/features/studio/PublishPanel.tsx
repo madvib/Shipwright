@@ -64,6 +64,7 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
             isCompiled={compileState.status === 'ok'}
             compileState={compileState}
             selectedProviders={selectedProviders}
+            library={library}
             onPublish={() => setPublishOpen(true)}
             onPush={() => setPushOpen(true)}
           />
@@ -205,8 +206,8 @@ function SignInCTA() {
   )
 }
 
-function DistributeSection({ hasContent, isCompiled, compileState, selectedProviders, onPublish, onPush }: {
-  hasContent: boolean; isCompiled: boolean; compileState: CompileState; selectedProviders: string[]; onPublish: () => void; onPush: () => void
+function DistributeSection({ hasContent, isCompiled, compileState, selectedProviders, library, onPublish, onPush }: {
+  hasContent: boolean; isCompiled: boolean; compileState: CompileState; selectedProviders: string[]; library: any; onPublish: () => void; onPush: () => void
 }) {
   const [cliOpen, setCliOpen] = useState(false)
   const { agents, activeId } = useAgentStore()
@@ -214,7 +215,7 @@ function DistributeSection({ hasContent, isCompiled, compileState, selectedProvi
 
   const handleDownload = () => {
     if (compileState.status !== 'ok') return
-    downloadCompileOutput(compileState.output, selectedProviders)
+    downloadCompileOutput(compileState.output, selectedProviders, library, activeAgent)
       .then(() => toast.success('Config files downloaded'))
       .catch((err: unknown) => toast.error('Download failed', {
         description: err instanceof Error ? err.message : 'Unknown error',

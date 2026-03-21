@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { collectProviderFiles, buildZip, crc32 } from '../download-compile-output'
+import { collectProviderFiles, collectShipSourceFiles, buildShipManifest, buildAgentConfig, buildZip, crc32 } from '../download-compile-output'
 import type { CompileResult } from '#/features/compiler/types'
+import type { AgentProfile } from '#/features/agents/types'
+import { DEFAULT_SETTINGS } from '#/features/agents/types'
+import { DEFAULT_PERMISSIONS } from '@ship/ui'
 
 function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
   return {
@@ -185,5 +188,131 @@ describe('buildZip', () => {
     // Verify the content is stored in the zip (STORE method = uncompressed)
     const zipString = new TextDecoder().decode(zip)
     expect(zipString).toContain(content)
+  })
+})
+
+function makeAgent(overrides: Partial<AgentProfile> = {}): AgentProfile {
+  return {
+    id: 'test-agent',
+    name: 'Test Agent',
+    description: 'A test agent for unit tests',
+    providers: ['claude', 'gemini'],
+    version: '0.1.0',
+    skills: [
+      { id: 'skill-a', name: 'skill-a', content: '', source: 'custom' },
+      { id: 'skill-b', name: 'skill-b', content: '', source: 'community' },
+    ],
+    mcpServers: [
+      { name: 'github', command: 'npx', args: [], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
+      { name: 'filesystem', command: 'npx', args: [], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
+    ],
+    subagents: [],
+    permissions: { ...DEFAULT_PERMISSIONS },
+    permissionPreset: 'ship-guarded',
+    settings: { ...DEFAULT_SETTINGS },
+    hooks: [],
+    rules: [],
+    mcpToolStates: {},
+    ...overrides,
+  }
+}
+
+describe('buildShipManifest', () => {
+  it('generates manifest with agent name and skills', () => {
+    const agent = makeAgent()
+    const raw = buildShipManifest(undefined, agent)
+    const manifest = JSON.parse(raw)
+
+    expect(manifest.$schema).toBe('https://getship.dev/schemas/ship.schema.json')
+    expect(manifest.module.name).toBe('Test Agent')
+    expect(manifest.module.version).toBe('0.1.0')
+    expect(manifest.module.description).toBe('A test agent for unit tests')
+    expect(manifest.exports.skills).toEqual(['skill-a', 'skill-b'])
+    expect(manifest.exports.agents).toEqual(['agents/test-agent.jsonc'])
+  })
+
+  it('falls back to my-project when no agent is provided', () => {
+    const raw = buildShipManifest()
+    const manifest = JSON.parse(raw)
+
+    expect(manifest.module.name).toBe('my-project')
+    expect(manifest.module.description).toBe('')
+    expect(manifest.exports.skills).toEqual([])
+    expect(manifest.exports.agents).toEqual([])
+  })
+
+  it('uses library skills when no agent is provided', () => {
+    const library = {
+      skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const }],
+    }
+    const raw = buildShipManifest(library)
+    const manifest = JSON.parse(raw)
+
+    expect(manifest.exports.skills).toEqual(['lib-skill'])
+  })
+
+  it('prefers agent skills over library skills', () => {
+    const agent = makeAgent({ skills: [{ id: 'agent-skill', name: 'agent-skill', content: '', source: 'custom' }] })
+    const library = {
+      skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const }],
+    }
+    const raw = buildShipManifest(library, agent)
+    const manifest = JSON.parse(raw)
+
+    expect(manifest.exports.skills).toEqual(['agent-skill'])
+  })
+})
+
+describe('buildAgentConfig', () => {
+  it('generates valid agent config with schema ref', () => {
+    const agent = makeAgent()
+    const raw = buildAgentConfig(agent)
+    const config = JSON.parse(raw)
+
+    expect(config.$schema).toBe('https://getship.dev/schemas/agent.schema.json')
+    expect(config.agent.id).toBe('test-agent')
+    expect(config.agent.name).toBe('Test Agent')
+    expect(config.agent.providers).toEqual(['claude', 'gemini'])
+    expect(config.skills.refs).toEqual(['skill-a', 'skill-b'])
+    expect(config.mcp.servers).toEqual(['github', 'filesystem'])
+    expect(config.permissions).toEqual(DEFAULT_PERMISSIONS)
+  })
+
+  it('handles agent with no skills or mcp servers', () => {
+    const agent = makeAgent({ skills: [], mcpServers: [] })
+    const raw = buildAgentConfig(agent)
+    const config = JSON.parse(raw)
+
+    expect(config.skills.refs).toEqual([])
+    expect(config.mcp.servers).toEqual([])
+  })
+})
+
+describe('collectShipSourceFiles', () => {
+  it('always includes ship.jsonc', () => {
+    const files = collectShipSourceFiles()
+    expect(files).toHaveLength(1)
+    expect(files[0].path).toBe('.ship/ship.jsonc')
+
+    const manifest = JSON.parse(files[0].content)
+    expect(manifest.$schema).toContain('ship.schema.json')
+  })
+
+  it('includes agent config when activeAgent is provided', () => {
+    const agent = makeAgent()
+    const files = collectShipSourceFiles(undefined, agent)
+
+    expect(files).toHaveLength(2)
+    expect(files[0].path).toBe('.ship/ship.jsonc')
+    expect(files[1].path).toBe('.ship/agents/test-agent.jsonc')
+
+    const agentConfig = JSON.parse(files[1].content)
+    expect(agentConfig.agent.id).toBe('test-agent')
+  })
+
+  it('does not include agent config when no activeAgent', () => {
+    const files = collectShipSourceFiles({ skills: [] })
+    expect(files).toHaveLength(1)
+    expect(files[0].path).toBe('.ship/ship.jsonc')
   })
 })
