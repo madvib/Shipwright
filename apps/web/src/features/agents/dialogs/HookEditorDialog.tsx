@@ -19,6 +19,7 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
   const [trigger, setTrigger] = useState('')
   const [command, setCommand] = useState('')
   const [providers, setProviders] = useState<string[]>([])
+  const [matcher, setMatcher] = useState('')
 
   const isEditing = hook !== null
 
@@ -27,6 +28,7 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
       setTrigger(hook?.trigger ?? '')
       setCommand(hook?.command ?? '')
       setProviders(hook?.providers ?? [])
+      setMatcher(hook?.matcher ?? '')
     }
   }, [open, hook])
 
@@ -49,7 +51,8 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
 
   const handleSave = () => {
     if (!valid) return
-    onSave({ trigger, command: command.trim(), providers })
+    const trimmedMatcher = matcher.trim()
+    onSave({ trigger, command: command.trim(), providers, ...(trimmedMatcher ? { matcher: trimmedMatcher } : {}) })
     close()
   }
 
@@ -96,6 +99,17 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
                 placeholder="./scripts/my-hook.sh"
                 className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary transition placeholder:text-muted-foreground/50"
               />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Matcher pattern (optional)</label>
+              <input
+                type="text"
+                value={matcher}
+                onChange={(e) => setMatcher(e.target.value)}
+                placeholder="e.g. Edit|Write — regex to match tool names"
+                className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary transition placeholder:text-muted-foreground/50"
+              />
+              <p className="text-[11px] text-muted-foreground/70">Only trigger this hook when the tool name matches this regex</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Providers</label>
