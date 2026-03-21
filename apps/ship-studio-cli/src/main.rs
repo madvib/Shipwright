@@ -2,6 +2,7 @@ mod add;
 mod agent;
 mod auth;
 mod cli;
+mod commands;
 mod compile;
 mod config;
 mod dep_skills;

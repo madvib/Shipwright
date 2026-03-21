@@ -218,6 +218,63 @@ Remove an MCP server.
 
 ---
 
+### `ship publish`
+
+Publish the current package to the Ship registry. Requires authentication via `ship login`.
+
+```bash
+ship publish
+ship publish --dry-run
+ship publish --tag beta
+```
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview what would be published without making any network requests |
+| `--tag <tag>` | Dist-tag for pre-release publishing (e.g. `beta`, `next`) |
+
+The command reads `.ship/ship.toml` for package metadata, computes a content hash of `.ship/`, and uploads to the registry. Use `--dry-run` to verify metadata before publishing.
+
+---
+
+### `ship login`
+
+Authenticate with the Ship registry via browser OAuth (PKCE S256 flow).
+
+```bash
+ship login
+```
+
+Opens your default browser for authentication. On success, stores a token in `~/.ship/credentials` (mode 0600). The token is used by `ship publish` and other registry commands.
+
+---
+
+### `ship logout`
+
+Remove the stored authentication token.
+
+```bash
+ship logout
+```
+
+Clears credentials from `~/.ship/credentials`. After logging out, `ship publish` will require `ship login` again.
+
+---
+
+### `ship whoami`
+
+Show the current authenticated identity.
+
+```bash
+ship whoami
+```
+
+If logged in, queries the registry API and prints your name and email. Falls back to local identity from `~/.ship/config.toml` if the API is unreachable. Prints "Not logged in." if no token is stored.
+
+---
+
 ### `ship install`
 
 Install all dependencies declared in `.ship/ship.toml`.
