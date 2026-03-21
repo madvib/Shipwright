@@ -16,6 +16,9 @@ skills = [
     "agents/skills/configure-agent",
     "agents/skills/find-skills",
     "agents/skills/write-adr",
+    "agents/skills/ship-cli-reference",
+    "agents/skills/ship-schema-reference",
+    "agents/skills/ship-skills-guide",
 ]
 # Private skills (commander, ship-coordination, spawn-agent) encode project-specific conventions
 # and are not exported. They remain available locally for this project's agents.

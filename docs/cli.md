@@ -1,275 +1,244 @@
-# Ship CLI Reference
+# CLI Reference
 
-The `ship` CLI is the primary interface for managing agent configuration. It compiles agents into provider-native config files (CLAUDE.md, .mcp.json, .cursor/, etc.) and manages the local platform state.
+The `ship` CLI compiles agent profiles into provider-native config files and manages platform state.
 
-Install: `curl -fsSL https://getship.dev/install | sh`
+## `ship init`
 
----
-
-## Quick start
+Scaffold `.ship/` in the current project, or configure `~/.ship/` globally.
 
 ```bash
-ship init                   # scaffold .ship/ in the current project
-ship use <agent-id>         # activate an agent and compile
-ship status                 # show active agent
+ship init                        # project-local
+ship init --global               # configure ~/.ship/
+ship init --provider gemini      # set default provider
+ship init --force                # overwrite existing .ship/
 ```
-
----
-
-## Commands
-
-### `ship init`
-
-Scaffold `.ship/` in the current project directory, or configure `~/.ship/` globally.
-
-```bash
-ship init                   # project-local
-ship init --global          # configure ~/.ship/
-ship init --provider gemini # set default provider
-```
-
-**Flags**
 
 | Flag | Description |
-|------|-------------|
+|---|---|
 | `--global` | Configure `~/.ship/` instead of the current project |
 | `--provider <id>` | Default provider: `claude`, `gemini`, `codex`, `cursor` |
 | `--force` | Overwrite existing `.ship/` |
 
-Creates `.ship/ship.toml` and `.ship/.gitignore` (ignores compiled artifacts).
+Creates `.ship/ship.toml`, `.ship/.gitignore`, and `.ship/README.md`.
 
----
-
-### `ship use <agent-id>`
-
-Activate an agent for the current directory. Installs dependencies and compiles immediately, writing provider config files (CLAUDE.md, .mcp.json, etc.).
+## `ship login` / `ship logout` / `ship whoami`
 
 ```bash
+ship login       # authenticate with getship.dev
+ship logout      # sign out
+ship whoami      # show current identity
+```
+
+## `ship use <agent-id>`
+
+Activate an agent profile. Compiles immediately, writes provider config files, and installs declared plugins.
+
+```bash
+ship use default
 ship use rust-compiler
 ship use default --path ~/projects/myapp
 ```
 
-**Flags**
-
 | Flag | Description |
-|------|-------------|
+|---|---|
 | `--path <dir>` | Bind to this path instead of the current directory |
 
-This is the primary activation command. Run it after cloning a repo with `.ship/` to set up your agent configuration.
+Finds the profile in `.ship/agents/`, resolves dependencies, compiles to all declared providers, and manages plugin lifecycle.
 
----
+## `ship status`
 
-### `ship status`
-
-Show the active agent and compilation status for the current directory.
+Show the active agent and compilation status.
 
 ```bash
 ship status
 ship status --path ~/projects/myapp
 ```
 
----
+## `ship compile`
 
-### `ship compile`
-
-Recompile the active agent to provider-native config files without changing the active agent.
+Recompile the active agent without changing it.
 
 ```bash
 ship compile
-ship compile --provider claude
-ship compile --dry-run
+ship compile --provider claude   # one provider only
+ship compile --dry-run           # preview without writing
 ```
 
-**Flags**
-
 | Flag | Description |
-|------|-------------|
+|---|---|
 | `--provider <id>` | Compile for one provider only |
 | `--dry-run` | Preview output without writing files |
 | `--watch` | Recompile on changes (not yet implemented) |
 | `--path <dir>` | Project root |
 
----
+## `ship agent`
 
-### `ship agent`
+Manage agent profiles in `.ship/agents/` (project) or `~/.ship/agents/` (global).
 
-Manage agents. Agent definitions live in `.ship/agents/` (project) or `~/.ship/agents/` (global).
-
-#### `ship agent list`
+### `ship agent list`
 
 ```bash
-ship agent list             # all agents
-ship agent list --local     # global agents only
-ship agent list --project   # project agents only
+ship agent list                  # all agents
+ship agent list --local          # global agents only
+ship agent list --project        # project agents only
 ```
 
-#### `ship agent create <name>`
-
-Scaffold a new agent TOML.
+### `ship agent create <name>`
 
 ```bash
 ship agent create my-expert
 ship agent create my-expert --global
 ```
 
-#### `ship agent edit <name>`
+### `ship agent edit <name>`
 
-Open an agent in `$EDITOR`.
+Open an agent profile in `$EDITOR`.
 
-#### `ship agent delete <name>`
+### `ship agent delete <name>`
 
-Delete an agent file.
+Delete an agent profile.
 
-#### `ship agent clone <source> <target>`
-
-Duplicate an agent under a new ID.
+### `ship agent clone <source> <target>`
 
 ```bash
 ship agent clone rust-compiler my-rust-compiler
 ```
 
----
+## `ship skill`
 
-### `ship skill`
+Manage skills. Skills are markdown instruction sets in `.ship/agents/skills/`.
 
-Manage agent skills. Skills are markdown instruction sets that extend what an agent knows how to do. They live in `.ship/agents/skills/` and are compiled into provider config.
-
-#### `ship skill add <source>`
-
-Install a skill from the registry or a local path.
+### `ship skill add <source>`
 
 ```bash
-ship skill add vercel-labs/agent-skills
-ship skill add https://github.com/owner/repo
+ship skill add github.com/owner/skill-repo
 ship skill add ./my-local-skill --skill my-skill-id
-ship skill add vercel-labs/agent-skills --global  # install to ~/.ship/skills/
+ship skill add github.com/owner/repo --global
 ```
 
-#### `ship skill list`
+| Flag | Description |
+|---|---|
+| `--skill <id>` | Skill ID within the source |
+| `--global` | Install to `~/.ship/skills/` |
+
+### `ship skill list`
 
 List installed skills (project + global).
 
-#### `ship skill remove <id>`
-
-Remove a skill by ID.
+### `ship skill remove <id>`
 
 ```bash
 ship skill remove my-skill
 ship skill remove my-skill --global
 ```
 
-#### `ship skill create <id>`
+### `ship skill create <id>`
 
-Scaffold a new skill following the Agent Skills spec.
+Scaffold a new skill directory with `SKILL.md`.
 
 ```bash
-ship skill create my-workflow --name "My Workflow" --description "Does X"
+ship skill create code-review
 ```
 
----
+## `ship mcp`
 
-### `ship mcp`
+Manage MCP server registrations.
 
-Manage MCP (Model Context Protocol) servers. MCP servers expose tools to agents at runtime.
+### `ship mcp serve`
 
-#### `ship mcp serve`
-
-Run the Ship MCP server. This is the primary way to expose Ship's platform tools to agents.
+Run the Ship MCP server.
 
 ```bash
-ship mcp serve              # stdio (default — for use in .mcp.json)
-ship mcp serve --http       # HTTP daemon
+ship mcp serve                   # stdio (for .mcp.json)
+ship mcp serve --http            # HTTP daemon
 ship mcp serve --http --port 4000
 ```
 
-Configure it in `.mcp.json` (generated by `ship use`):
-```json
-{
-  "mcpServers": {
-    "ship": { "command": "ship", "args": ["mcp", "serve"] }
-  }
-}
-```
+### `ship mcp add <id> --url <url>`
 
-#### `ship mcp add <id> --url <url>`
-
-Register an HTTP/SSE MCP server.
+Register an HTTP/SSE server.
 
 ```bash
 ship mcp add my-server --url http://localhost:3001/sse
-ship mcp add my-server --url http://localhost:3001/sse --global
 ```
 
-#### `ship mcp add-stdio <id> <command> [args...]`
+### `ship mcp add-stdio <id> <command> [args...]`
 
-Register a stdio MCP server.
+Register a stdio server.
 
 ```bash
 ship mcp add-stdio my-tool /usr/local/bin/my-tool --flag value
 ```
 
-#### `ship mcp list`
+### `ship mcp list`
 
-List all configured MCP servers.
+List configured MCP servers.
 
-#### `ship mcp remove <id>`
+### `ship mcp remove <id>`
 
 Remove an MCP server.
 
----
+## `ship install`
 
-### `ship install`
-
-Install all dependencies declared in `.ship/ship.toml`.
+Install all dependencies declared in `.ship/ship.toml`. Resolves versions, writes `ship.lock`, fetches to cache.
 
 ```bash
 ship install
-ship install --frozen    # fail if lockfile would change
+ship install --frozen            # fail if lockfile would change
 ```
 
----
+## `ship add <package>`
 
-### `ship add <package>`
-
-Add a package dependency to `.ship/ship.toml` and install it immediately.
+Add a dependency to `.ship/ship.toml` and install it.
 
 ```bash
 ship add github.com/owner/repo
-ship add github.com/owner/repo@v1.2.0
 ```
 
----
+## `ship import <source>`
 
-### `ship import <source>`
-
-Import an agent from a getship.dev URL, local path, or provider config directory.
+Import an agent from a URL, local path, or provider config directory.
 
 ```bash
 ship import https://getship.dev/p/<id>
 ship import ./my-agent.toml
-ship import .cursor/           # import from Cursor config
+ship import .cursor/
 ```
 
----
+## `ship export <provider>`
 
-### `ship validate`
+Export compiled output for a specific provider.
 
-Validate `.ship/` config before compile. Checks TOML syntax, skill references, MCP fields, and permission settings.
+```bash
+ship export claude
+ship export gemini --zip
+```
+
+| Flag | Description |
+|---|---|
+| `--zip` | Download all formats as a zip archive |
+
+## `ship validate`
+
+Validate `.ship/` config before compile. Checks TOML syntax, skill references, MCP fields, permissions.
 
 ```bash
 ship validate
-ship validate --agent rust-compiler
-ship validate --json          # machine-readable output
-ship validate --path /other/project
+ship validate --profile rust-compiler
+ship validate --json
 ```
 
-Exit code 0 = valid. Exit code 1 = validation errors printed to stdout (or as JSON with `--json`).
+| Flag | Description |
+|---|---|
+| `--profile <id>` | Validate a single profile |
+| `--json` | Machine-readable output |
+| `--path <dir>` | Project root |
 
----
+Exit code 0 = valid. Exit code 1 = errors.
 
-### `ship events list`
+## `ship events list`
 
-Query the project event log. Events are append-only records of platform state changes.
+Query the project event log.
 
 ```bash
 ship events list
@@ -278,43 +247,35 @@ ship events list --entity workspace --action create
 ship events list --limit 100 --json
 ```
 
-**Flags**
-
 | Flag | Description |
-|------|-------------|
-| `--since <time>` | ISO 8601 timestamp or relative: `1h`, `24h`, `7d` |
-| `--actor <name>` | Filter by actor (substring match) |
-| `--entity <type>` | Filter by entity type: `workspace`, `session`, `note`, `adr`, etc. |
-| `--action <name>` | Filter by action: `create`, `update`, `delete`, `start`, `stop`, etc. |
-| `--limit <n>` | Max events to show (default 50) |
+|---|---|
+| `--since <time>` | ISO 8601 or relative: `1h`, `24h`, `7d` |
+| `--actor <name>` | Filter by actor |
+| `--entity <type>` | `workspace`, `session`, `note`, `adr`, `job`, etc. |
+| `--action <name>` | `create`, `update`, `delete`, `start`, `stop`, etc. |
+| `--limit <n>` | Max events (default 50) |
 | `--json` | Output as JSON array |
 
----
+## `ship surface`
 
-### `ship surface`
-
-Print the current CLI command tree and MCP core tools as markdown. Used to verify the documented surface matches the live binary.
+Print the CLI and MCP surface as markdown. Used by CI to detect surface drift.
 
 ```bash
-ship surface                # print to stdout
-ship surface --emit         # write to docs/surface.md
-ship surface --check        # diff against docs/surface.md; exit 1 if drift
+ship surface                     # print to stdout
+ship surface --emit              # write to docs/surface.md
+ship surface --check             # diff; exit 1 if drift
 ```
-
-Used by CI to detect surface drift. Run `ship surface --emit` after adding commands, then commit `docs/surface.md`.
-
----
 
 ## Configuration files
 
 | Path | Purpose |
-|------|---------|
-| `.ship/ship.toml` | Project manifest: dependencies, exports, provider list |
-| `.ship/agents/*.toml` | Agent definition TOML files |
-| `.ship/agents/skills/` | Installed skills (compiled into provider config) |
-| `.ship/agents/mcp.toml` | MCP server registrations |
+|---|---|
+| `.ship/ship.toml` | Project manifest: module identity, deps, exports |
+| `.ship/agents/*.toml` | Agent profiles |
+| `.ship/agents/skills/` | Installed skills |
+| `.ship/agents/mcp.toml` | MCP server declarations |
 | `.ship/agents/permissions.toml` | Permission presets |
 | `~/.ship/config.toml` | Global identity and defaults |
-| `~/.ship/agents/` | Global agent definitions |
+| `~/.ship/agents/` | Global agent profiles |
 
-Compiled artifacts (CLAUDE.md, .mcp.json, .cursor/, etc.) are gitignored — they are generated from `.ship/` source and should never be committed.
+Compiled artifacts (`CLAUDE.md`, `.mcp.json`, `.cursor/`, etc.) are gitignored — generated by `ship use`, never committed.
