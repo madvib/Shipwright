@@ -43,7 +43,7 @@ pub struct AgentProviders {
     pub targets: Vec<String>,
     /// Per-provider override sub-tables, keyed by provider id.
     #[serde(default, flatten)]
-    pub overrides: IndexMap<String, toml::Value>,
+    pub overrides: IndexMap<String, serde_json::Value>,
 }
 
 // ── AgentDef ───────────────────────────────────────────────────────────────────
@@ -75,13 +75,13 @@ pub struct AgentDef {
 
 // ── Raw TOML intermediary ──────────────────────────────────────────────────────
 
-/// Raw TOML representation — handles both `[agent]` (new) and `[profile]` (legacy).
+/// Raw representation — handles both `[agent]` (new) and `[profile]` (legacy).
 ///
 /// The `mcp` field accepts either:
-/// - A TOML array of tables `[[mcp]]` (new format: `Vec<McpDecl>`)
-/// - A TOML table `[mcp]` (legacy format, ignored — has `servers = [...]`)
+/// - An array of tables `[[mcp]]` / `"mcp": [...]` (new format: `Vec<McpDecl>`)
+/// - A table `[mcp]` / `"mcp": {}` (legacy format, ignored — has `servers = [...]`)
 ///
-/// We deserialise to `toml::Value` and convert manually.
+/// We deserialise to `serde_json::Value` and convert manually.
 #[derive(Debug, Deserialize)]
 struct RawAgentFile {
     // New format
@@ -90,11 +90,11 @@ struct RawAgentFile {
     profile: Option<RawProfileSection>,
     #[serde(default)]
     permissions: RawPermissionsSection,
-    /// Can be either `[[mcp]]` array or `[mcp]` table (legacy).
+    /// Can be either array (new) or object (legacy).
     #[serde(default)]
-    mcp: Option<toml::Value>,
+    mcp: Option<serde_json::Value>,
     #[serde(default)]
-    providers: Option<toml::Value>,
+    providers: Option<serde_json::Value>,
     // Legacy fields
     #[serde(default)]
     rules: Option<RawRulesSection>,
@@ -166,21 +166,43 @@ impl AgentDef {
     /// Accepts both `[agent]` (new format) and `[profile]` (legacy format).
     /// Returns an error if neither section is present or if `name` is missing.
     pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
-        let raw: RawAgentFile =
+        // Parse TOML to a generic value, then convert to serde_json::Value
+        // so RawAgentFile's serde_json::Value fields work uniformly.
+        let toml_val: toml::Value =
             toml::from_str(s).map_err(|e| anyhow::anyhow!("Failed to parse agent TOML: {e}"))?;
+        let json_val = toml_to_json_value(&toml_val);
+        let raw: RawAgentFile = serde_json::from_value(json_val)
+            .map_err(|e| anyhow::anyhow!("Failed to parse agent TOML: {e}"))?;
         Self::from_raw(raw, None)
     }
 
     /// Parse from a TOML string, using the file stem as a fallback name.
     pub fn from_toml_str_with_stem(s: &str, file_stem: &str) -> anyhow::Result<Self> {
-        let raw: RawAgentFile =
+        let toml_val: toml::Value =
             toml::from_str(s).map_err(|e| anyhow::anyhow!("Failed to parse agent TOML: {e}"))?;
+        let json_val = toml_to_json_value(&toml_val);
+        let raw: RawAgentFile = serde_json::from_value(json_val)
+            .map_err(|e| anyhow::anyhow!("Failed to parse agent TOML: {e}"))?;
         Self::from_raw(raw, Some(file_stem))
     }
 
-    /// Read and parse from a TOML file path.
+    /// Parse an agent definition from a JSONC string.
+    pub fn from_jsonc_str(s: &str) -> anyhow::Result<Self> {
+        let raw: RawAgentFile = crate::jsonc::from_jsonc_str(s)
+            .map_err(|e| anyhow::anyhow!("Failed to parse agent JSONC: {e}"))?;
+        Self::from_raw(raw, None)
+    }
+
+    /// Parse from a JSONC string, using the file stem as a fallback name.
+    pub fn from_jsonc_str_with_stem(s: &str, file_stem: &str) -> anyhow::Result<Self> {
+        let raw: RawAgentFile = crate::jsonc::from_jsonc_str(s)
+            .map_err(|e| anyhow::anyhow!("Failed to parse agent JSONC: {e}"))?;
+        Self::from_raw(raw, Some(file_stem))
+    }
+
+    /// Read and parse from a file path. Dispatches to JSONC or TOML based on extension.
     ///
-    /// Uses the file stem as a fallback when `[agent].name` is absent.
+    /// Uses the file stem as a fallback when `[agent].name` / `"agent.name"` is absent.
     pub fn from_file(path: &std::path::Path) -> anyhow::Result<Self> {
         let stem = path
             .file_stem()
@@ -189,7 +211,11 @@ impl AgentDef {
             .to_string();
         let content = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Cannot read {}: {e}", path.display()))?;
-        Self::from_toml_str_with_stem(&content, &stem)
+        if crate::jsonc::is_jsonc_path(path) {
+            Self::from_jsonc_str_with_stem(&content, &stem)
+        } else {
+            Self::from_toml_str_with_stem(&content, &stem)
+        }
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────
@@ -275,22 +301,22 @@ impl AgentDef {
         }
     }
 
-    /// Convert the `mcp` TOML value to a list of `McpDecl`.
+    /// Convert the `mcp` value to a list of `McpDecl`.
     ///
-    /// - TOML array of tables (`[[mcp]]`) → parse each entry as `McpDecl`
-    /// - TOML table (`[mcp]`) → legacy format, return empty (no MCP decls)
+    /// - Array (`[[mcp]]` / `"mcp": [...]`) → parse each entry as `McpDecl`
+    /// - Object (`[mcp]` / `"mcp": {}`) → legacy format, return empty
     /// - Absent → empty
-    fn parse_mcp_field(val: Option<toml::Value>) -> anyhow::Result<Vec<McpDecl>> {
+    fn parse_mcp_field(val: Option<serde_json::Value>) -> anyhow::Result<Vec<McpDecl>> {
         match val {
             None => Ok(vec![]),
             // Legacy [mcp] table with `servers = [...]` — not MCP declarations
-            Some(toml::Value::Table(_)) => Ok(vec![]),
+            Some(serde_json::Value::Object(_)) => Ok(vec![]),
             // New [[mcp]] array of tables
-            Some(toml::Value::Array(arr)) => {
+            Some(serde_json::Value::Array(arr)) => {
                 let mut decls = Vec::new();
                 for item in arr {
-                    let decl: McpDecl = item.try_into().map_err(|e| {
-                        anyhow::anyhow!("Failed to parse [[mcp]] entry: {e}")
+                    let decl: McpDecl = serde_json::from_value(item).map_err(|e| {
+                        anyhow::anyhow!("Failed to parse mcp entry: {e}")
                     })?;
                     decls.push(decl);
                 }
@@ -298,24 +324,24 @@ impl AgentDef {
             }
             Some(other) => anyhow::bail!(
                 "Unexpected value type for `mcp` field: {}",
-                other.type_str()
+                json_type_str(&other)
             ),
         }
     }
 
-    fn parse_providers(val: Option<toml::Value>) -> AgentProviders {
+    fn parse_providers(val: Option<serde_json::Value>) -> AgentProviders {
         match val {
             None => AgentProviders::default(),
-            Some(toml::Value::Table(t)) => {
+            Some(serde_json::Value::Object(obj)) => {
                 let mut targets: Vec<String> = vec![];
-                let mut overrides: IndexMap<String, toml::Value> = IndexMap::new();
-                for (k, v) in t {
+                let mut overrides: IndexMap<String, serde_json::Value> = IndexMap::new();
+                for (k, v) in obj {
                     if k == "targets" {
-                        if let toml::Value::Array(arr) = v {
+                        if let serde_json::Value::Array(arr) = v {
                             targets = arr
                                 .into_iter()
                                 .filter_map(|x| {
-                                    if let toml::Value::String(s) = x {
+                                    if let serde_json::Value::String(s) = x {
                                         Some(s)
                                     } else {
                                         None
@@ -331,6 +357,40 @@ impl AgentDef {
             }
             _ => AgentProviders::default(),
         }
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Convert a `toml::Value` to `serde_json::Value` for uniform processing.
+fn toml_to_json_value(v: &toml::Value) -> serde_json::Value {
+    match v {
+        toml::Value::String(s) => serde_json::Value::String(s.clone()),
+        toml::Value::Integer(i) => serde_json::json!(*i),
+        toml::Value::Float(f) => serde_json::json!(*f),
+        toml::Value::Boolean(b) => serde_json::Value::Bool(*b),
+        toml::Value::Datetime(d) => serde_json::Value::String(d.to_string()),
+        toml::Value::Array(arr) => {
+            serde_json::Value::Array(arr.iter().map(toml_to_json_value).collect())
+        }
+        toml::Value::Table(t) => {
+            let mut map = serde_json::Map::new();
+            for (k, val) in t {
+                map.insert(k.clone(), toml_to_json_value(val));
+            }
+            serde_json::Value::Object(map)
+        }
+    }
+}
+
+fn json_type_str(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
 }
 
@@ -540,5 +600,65 @@ model = "claude-opus-4-5"
         let a = AgentDef::from_toml_str(toml_str).unwrap();
         assert_eq!(a.providers.targets, vec!["claude"]);
         assert!(a.providers.overrides.contains_key("claude"));
+    }
+
+    // ── JSONC tests ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_jsonc_agent() {
+        let jsonc = r#"{
+  // Agent definition in JSONC
+  "agent": {
+    "name": "my-agent",
+    "description": "A test agent",
+    "rules": ["rules/style.md"],
+    "skills": ["agents/skills/backend-rust"],
+  },
+  "permissions": {
+    "allow": ["Bash", "Read", "Write"],
+  },
+  "mcp": [
+    {
+      "id": "ship",
+      "command": "ship",
+      "args": ["mcp"],
+      "env": { "SHIP_TOKEN": "${SHIP_TOKEN}" },
+    },
+  ],
+  "providers": {
+    "targets": ["claude"],
+    "claude": { "model": "claude-opus-4-5" },
+  },
+}"#;
+        let a = AgentDef::from_jsonc_str(jsonc).unwrap();
+        assert_eq!(a.name, "my-agent");
+        assert_eq!(a.description.as_deref(), Some("A test agent"));
+        assert_eq!(a.rules, vec!["rules/style.md"]);
+        assert_eq!(a.skills, vec!["agents/skills/backend-rust"]);
+        assert_eq!(a.permissions.allow, vec!["Bash", "Read", "Write"]);
+        assert_eq!(a.mcp.len(), 1);
+        assert_eq!(a.mcp[0].id, "ship");
+        assert_eq!(a.providers.targets, vec!["claude"]);
+        assert!(a.providers.overrides.contains_key("claude"));
+    }
+
+    #[test]
+    fn jsonc_file_stem_used_as_fallback_name() {
+        let jsonc = r#"{ "agent": { "description": "no name" } }"#;
+        let a = AgentDef::from_jsonc_str_with_stem(jsonc, "my-agent").unwrap();
+        assert_eq!(a.name, "my-agent");
+    }
+
+    #[test]
+    fn from_file_dispatches_jsonc() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonc");
+        std::fs::write(&path, r#"{
+  "agent": { "name": "test-jsonc" },
+  "permissions": { "allow": ["Read"] },
+}"#).unwrap();
+        let a = AgentDef::from_file(&path).unwrap();
+        assert_eq!(a.name, "test-jsonc");
+        assert_eq!(a.permissions.allow, vec!["Read"]);
     }
 }

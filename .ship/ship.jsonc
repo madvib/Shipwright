@@ -1,0 +1,41 @@
+{
+  // Ship project manifest — https://getship.dev
+  "$schema": "../schemas/ship.schema.json",
+  "id": "bzwmeMdT",
+  "module": {
+    "name": "github.com/madvib/ship",
+    "version": "0.1.0",
+    "description": "Compiler and package manager for AI agent configuration",
+    "license": "MIT",
+  },
+  "dependencies": {
+    "github.com/garrytan/gstack": "main",
+    "github.com/better-auth/skills": "main",
+  },
+  "exports": {
+    // Public skills — useful to any Ship user.
+    "skills": [
+      "agents/skills/configure-agent",
+      "agents/skills/find-skills",
+      "agents/skills/write-adr",
+    ],
+    // Private skills (commander, ship-coordination, spawn-agent) are not exported.
+    "agents": [
+      "agents/profiles/better-auth.toml",
+      "agents/profiles/cli-lane.toml",
+      "agents/profiles/cloudflare.toml",
+      "agents/profiles/commander.toml",
+      "agents/profiles/default.toml",
+      "agents/profiles/gstack.toml",
+      "agents/profiles/react-architect.toml",
+      "agents/profiles/react-designer.toml",
+      "agents/profiles/reviewer.toml",
+      "agents/profiles/rust-compiler.toml",
+      "agents/profiles/rust-lane.toml",
+      "agents/profiles/rust-runtime.toml",
+      "agents/profiles/server-lane.toml",
+      "agents/profiles/test-writer.toml",
+      "agents/profiles/web-lane.toml",
+    ],
+  },
+}

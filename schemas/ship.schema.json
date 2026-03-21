@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ship Project Manifest",
+  "description": "Schema for .ship/ship.jsonc — the Ship project manifest that declares module identity, dependencies, and exports.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion."
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique project identifier (auto-generated)."
+    },
+    "project": {
+      "type": "object",
+      "description": "Project-level settings (non-registry projects).",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["claude", "cursor", "codex", "gemini"] },
+          "description": "AI provider targets for this project."
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "description": "Package identity for registry publishing.",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Namespaced package path, e.g. github.com/owner/repo.",
+          "pattern": "^[a-z0-9./_-]+$"
+        },
+        "version": {
+          "type": "string",
+          "description": "Semver version string (v-prefix optional).",
+          "pattern": "^v?\\d+\\.\\d+\\.\\d+"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable package description."
+        },
+        "license": {
+          "type": "string",
+          "description": "SPDX license identifier, e.g. MIT."
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "Registry dependencies. Keys are package paths, values are version constraints or { version, grant } objects.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "description": "Version constraint shorthand, e.g. ^1.0.0 or main." },
+          {
+            "type": "object",
+            "required": ["version"],
+            "properties": {
+              "version": { "type": "string", "description": "Version constraint." },
+              "grant": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Tool permissions to grant this dependency."
+              }
+            }
+          }
+        ]
+      }
+    },
+    "exports": {
+      "type": "object",
+      "description": "Paths exported by this module for consumers.",
+      "properties": {
+        "skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Skill directory paths relative to .ship/ (must contain SKILL.md)."
+        },
+        "agents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent config paths relative to .ship/."
+        }
+      }
+    }
+  }
+}

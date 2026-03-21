@@ -32,7 +32,25 @@ pub fn agents_dir() -> PathBuf { project_dir().join("agents") }
 pub fn agents_rules_dir() -> PathBuf { agents_dir().join("rules") }
 pub fn agents_skills_dir() -> PathBuf { agents_dir().join("skills") }
 pub fn agents_mcp_path() -> PathBuf { agents_dir().join("mcp.toml") }
+pub fn agents_mcp_jsonc_path() -> PathBuf { agents_dir().join("mcp.jsonc") }
 pub fn project_ship_toml() -> PathBuf { project_dir().join("ship.toml") }
+pub fn project_ship_jsonc() -> PathBuf { project_dir().join("ship.jsonc") }
+
+/// Returns true if the path has a .jsonc or .json extension.
+pub fn is_config_ext(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|x| x == "toml" || x == "jsonc" || x == "json")
+}
+
+/// Returns true if the path has a .jsonc or .json extension (not .toml).
+pub fn is_jsonc_ext(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|x| x == "jsonc" || x == "json")
+}
+
+/// Returns true if the path is an agent config file (not mcp.* or permissions.*).
+pub fn is_agent_config(path: &std::path::Path) -> bool {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    stem != "mcp" && stem != "permissions"
+}
 
 /// Returns the absolute path to `.ship/` for the current project, or errors.
 /// Uses git-worktree-aware traversal so this works from subdirs and worktrees.
@@ -50,17 +68,17 @@ pub fn ensure_project_dirs() -> anyhow::Result<()> {
 
 
 /// Return (agent_id, scope) pairs from project + global dirs.
+/// Scans both `.jsonc` and `.toml` files; `.jsonc` takes precedence.
 pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'static str)> {
     let mut agents = Vec::new();
-    // Project agents: .ship/agents/*.toml (flat)
+    // Project agents: .ship/agents/*.{jsonc,toml} (flat)
     if !local_only {
         if let Ok(entries) = fs::read_dir(agents_dir()) {
             for e in entries.flatten() {
                 let path = e.path();
-                if path.extension().is_some_and(|x| x == "toml") && path.is_file() {
+                if is_config_ext(&path) && path.is_file() && is_agent_config(&path) {
                     let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                    // Exclude known non-agent TOML files
-                    if name != "mcp" && name != "permissions" {
+                    if !agents.iter().any(|(id, _)| id == &name) {
                         agents.push((name, "project"));
                     }
                 }
@@ -69,8 +87,9 @@ pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'st
         // Also check legacy modes dir
         if let Ok(entries) = fs::read_dir(project_modes_dir()) {
             for e in entries.flatten() {
-                if e.path().extension().is_some_and(|x| x == "toml") {
-                    let name = e.path().file_stem().unwrap().to_string_lossy().to_string();
+                let path = e.path();
+                if is_config_ext(&path) {
+                    let name = path.file_stem().unwrap().to_string_lossy().to_string();
                     if !agents.iter().any(|(id, _)| id == &name) {
                         agents.push((name, "project"));
                     }
@@ -82,8 +101,9 @@ pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'st
     if !project_only {
         if let Ok(entries) = fs::read_dir(global_modes_dir()) {
             for e in entries.flatten() {
-                if e.path().extension().is_some_and(|x| x == "toml") {
-                    let name = e.path().file_stem().unwrap().to_string_lossy().to_string();
+                let path = e.path();
+                if is_config_ext(&path) {
+                    let name = path.file_stem().unwrap().to_string_lossy().to_string();
                     if !agents.iter().any(|(id, _)| id == &name) {
                         agents.push((name, "global"));
                     }

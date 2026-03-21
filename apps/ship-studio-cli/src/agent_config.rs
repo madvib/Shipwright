@@ -94,13 +94,55 @@ fn default_version() -> String { "0.1.0".to_string() }
 fn default_plugin_scope() -> String { "project".to_string() }
 
 impl AgentConfig {
+    /// Load an agent config from a file. Dispatches to JSONC or TOML based on extension.
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        toml::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("invalid agent TOML at {}: {}", path.display(), e))
+        if crate::paths::is_jsonc_ext(path) {
+            compiler::jsonc::from_jsonc_str(&content)
+                .map_err(|e| anyhow::anyhow!("invalid agent JSONC at {}: {}", path.display(), e))
+        } else {
+            toml::from_str(&content)
+                .map_err(|e| anyhow::anyhow!("invalid agent TOML at {}: {}", path.display(), e))
+        }
     }
 
-    /// Template for a new agent file.
+    /// Template for a new agent file in JSONC format.
+    pub fn scaffold_jsonc(id: &str) -> String {
+        format!(
+r#"{{
+  // Agent configuration — https://getship.dev/docs/agents
+  "agent": {{
+    "name": "{id}",
+    "id": "{id}",
+    "version": "0.1.0",
+    "description": "",
+    "providers": ["claude"],
+  }},
+  "skills": {{
+    // Skill IDs to activate (empty = all installed skills).
+    "refs": [],
+  }},
+  "mcp": {{
+    // MCP server IDs to activate (empty = all configured servers).
+    "servers": [],
+  }},
+  "plugins": {{
+    // "install": ["superpowers@claude-plugins-official"],
+    // "scope": "project",
+  }},
+  "permissions": {{
+    // "preset": "ship-autonomous",
+    // "tools_deny": ["mcp__*__delete*"],
+  }},
+  "rules": {{
+    // "inline": "Keep operations deterministic.\nRun tests before marking work done.",
+  }},
+}}"#,
+            id = id,
+        )
+    }
+
+    /// Template for a new agent file in TOML format (legacy).
     pub fn scaffold(id: &str) -> String {
         format!(
 r#"[agent]

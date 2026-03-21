@@ -21,6 +21,7 @@ mod paths;
 mod profile;
 mod skill;
 mod surface;
+mod toml_to_jsonc;
 mod validate;
 mod view;
 

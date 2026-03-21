@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ship Agent Configuration",
+  "description": "Schema for .ship/agents/<id>.jsonc — an agent definition that controls rules, skills, permissions, MCP servers, and provider targets.",
+  "type": "object",
+  "required": ["agent"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion."
+    },
+    "agent": {
+      "type": "object",
+      "description": "Agent identity and composition.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable agent name."
+        },
+        "id": {
+          "type": "string",
+          "description": "Machine identifier (defaults to filename stem).",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "version": {
+          "type": "string",
+          "description": "Agent version (semver).",
+          "default": "0.1.0"
+        },
+        "description": {
+          "type": "string",
+          "description": "What this agent does."
+        },
+        "providers": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["claude", "cursor", "codex", "gemini"] },
+          "description": "Provider targets (overrides project-level)."
+        },
+        "rules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Rule file paths (relative to .ship/agents/)."
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Skill directory paths (relative to .ship/agents/)."
+        }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "description": "Skill activation (CLI agent format).",
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Skill IDs to activate (empty = all)."
+        }
+      }
+    },
+    "mcp": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "MCP server activation (CLI agent format).",
+          "properties": {
+            "servers": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "MCP server IDs to activate (empty = all)."
+            }
+          }
+        },
+        {
+          "type": "array",
+          "description": "Inline MCP server declarations (compiler agent format).",
+          "items": {
+            "type": "object",
+            "required": ["id", "command"],
+            "properties": {
+              "id": { "type": "string", "description": "Unique server ID." },
+              "command": { "type": "string", "description": "Command to run." },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Command arguments."
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Environment variables. Values may use ${VAR} syntax."
+              }
+            }
+          }
+        }
+      ]
+    },
+    "plugins": {
+      "type": "object",
+      "description": "Plugin installation intent.",
+      "properties": {
+        "install": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Plugin IDs to install, e.g. superpowers@claude-plugins-official."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["project", "user"],
+          "default": "project",
+          "description": "Installation scope."
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permission overrides.",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": ["ship-readonly", "ship-standard", "ship-autonomous", "ship-elevated"],
+          "description": "Named permission preset from permissions.jsonc."
+        },
+        "allow": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool permission grants (compiler agent format)."
+        },
+        "tools_deny": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool patterns to deny."
+        },
+        "tools_ask": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool patterns requiring confirmation."
+        },
+        "default_mode": {
+          "type": "string",
+          "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
+          "description": "Default permission mode."
+        }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "description": "Inline rules.",
+      "properties": {
+        "inline": {
+          "type": "string",
+          "description": "Inline always-on rules appended after agents/rules/*.md."
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Hook commands.",
+      "properties": {
+        "stop": {
+          "type": "string",
+          "description": "Command to run when the agent session ends."
+        },
+        "subagent_stop": {
+          "type": "string",
+          "description": "Command to run when a sub-agent session ends."
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "description": "Provider targets and per-provider overrides.",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Provider IDs to compile for."
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "Per-provider override table (e.g. model, context_window)."
+      }
+    },
+    "provider_settings": {
+      "type": "object",
+      "description": "Provider-specific settings merged verbatim into the provider's config file.",
+      "additionalProperties": true
+    }
+  }
+}
