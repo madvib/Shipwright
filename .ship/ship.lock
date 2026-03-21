@@ -1,0 +1,13 @@
+version = 1
+
+[[package]]
+path = "github.com/better-auth/skills"
+version = "main"
+commit = "6a1636950a1d7fc53602639ce7505a4a5d39c797"
+hash = "sha256:83fb025b015f9472ea8504cbdf8c8e042eff86f87cb0f69757bb00fbacd5acb9"
+
+[[package]]
+path = "github.com/garrytan/gstack"
+version = "main"
+commit = "1f4b6fd7a2a349dfc6f04d158b8b7778b5b74232"
+hash = "sha256:0952a3319f662cfb8a0e8e7420135b49fb9dc118e45e735fa6e5ef14d1104895"
