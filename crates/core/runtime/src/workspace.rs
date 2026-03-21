@@ -2291,15 +2291,6 @@ mod tests {
             "expected provider config to be written to worktree root"
         );
         assert!(
-            worktree_root
-                .join(".ship")
-                .join("generated")
-                .join("runtime")
-                .join("envelope.json")
-                .exists(),
-            "expected runtime envelope artifacts in worktree root"
-        );
-        assert!(
             !tmp.path().join(".mcp.json").exists(),
             "main checkout root should not receive worktree provider config"
         );

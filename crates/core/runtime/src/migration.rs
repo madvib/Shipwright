@@ -1,6 +1,6 @@
 use crate::config::{LEGACY_CONFIG_FILE, PRIMARY_CONFIG_FILE};
 use crate::project::{
-    AppState, ProjectRegistry, adrs_dir, features_dir, generated_ns, notes_dir, project_ns,
+    AppState, ProjectRegistry, adrs_dir, features_dir, notes_dir, project_ns,
     releases_dir, specs_dir, vision_doc_path, vision_template_path,
 };
 use crate::db::types::DatabaseMigrationReport;
@@ -122,7 +122,6 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
 
     // Ensure namespace roots exist before we begin moving/copying.
     fs::create_dir_all(project_ns(ship_dir))?;
-    fs::create_dir_all(generated_ns(ship_dir))?;
     fs::create_dir_all(notes_dir(ship_dir))?;
     migrate_project_config_file(ship_dir)?;
     migrate_workflow_event_stream(ship_dir)?;
@@ -198,28 +197,8 @@ fn migrate_workflow_event_stream(_ship_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn migrate_event_index_location(ship_dir: &Path) -> Result<()> {
-    let legacy = ship_dir.join("workflow").join("event_index.json");
-    if !legacy.exists() {
-        return Ok(());
-    }
-    let target = generated_ns(ship_dir).join("event_index.json");
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    if !target.exists() {
-        move_file(&legacy, &target)?;
-        return Ok(());
-    }
-
-    let legacy_content = fs::read(&legacy)?;
-    let target_content = fs::read(&target)?;
-    if legacy_content != target_content {
-        let conflict = conflict_path_for(&target);
-        fs::write(conflict, legacy_content)?;
-    }
-    fs::remove_file(legacy)?;
+fn migrate_event_index_location(_ship_dir: &Path) -> Result<()> {
+    // Dead migration — no users to migrate from.
     Ok(())
 }
 

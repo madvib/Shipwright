@@ -1,0 +1,28 @@
+{
+  // Server Lane agent
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "server-lane",
+    "name": "Server Lane — feat/server-auth",
+    "version": "0.1.0",
+    "description": "Active context for the Server lane agent",
+    "providers": ["claude"],
+  },
+  "skills": {
+    "refs": ["github.com/better-auth/skills/better-auth", "ship-coordination"],
+  },
+  "mcp": {
+    "servers": ["ship"],
+  },
+  "plugins": {
+    "install": [],
+    "scope": "project",
+  },
+  "permissions": {
+    "preset": "ship-autonomous",
+    "tools_deny": ["Bash(rm -rf *)", "Bash(git reset --hard*)", "Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"],
+  },
+  "rules": {
+    "inline": "You are a server/backend specialist working in apps/web/ and apps/mcp/. Stay within your file scope.\nOn session start: read .ship-session/job-spec.md — that is your full task context.\nWork autonomously. Don't ask clarifying questions — make decisions and note them.\nLog progress via append_job_log. Mark done via update_job when acceptance criteria are met.",
+  },
+}

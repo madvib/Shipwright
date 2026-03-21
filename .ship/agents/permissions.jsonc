@@ -37,14 +37,20 @@
   },
 
   "ship-autonomous": {
-    // Dispatched specialist agents working in worktrees. Zero prompts.
+    // Dispatched specialist agents in worktrees. Zero prompts.
+    // Deny list is a guardrail, not a security boundary. Real security = worktree isolation + gate review.
     "default_mode": "dontAsk",
     "tools_allow": [
-      "Read",
-      "Glob",
-      "Grep",
-      "Bash(ship *)",
+      "Read", "Write", "Edit", "Glob", "Grep",
+      "Bash(*)",
       "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push*)",
+      "Bash(cargo publish*)",
+      "Bash(npm publish*)",
     ],
   },
 
@@ -52,13 +58,14 @@
     // Deploy and release agents. Unlocks git push and publish.
     "default_mode": "dontAsk",
     "tools_allow": [
-      "Read",
-      "Glob",
-      "Grep",
-      "Bash(ship *)",
-      "Bash(git push*)",
-      "Bash(*publish*)",
+      "Read", "Write", "Edit", "Glob", "Grep",
+      "Bash(*)",
       "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
     ],
   },
 }

@@ -33,11 +33,6 @@ pub fn agents_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("agents")
 }
 
-/// `.ship/generated/` — runtime-generated/transient artifacts
-pub fn generated_ns(ship_dir: &Path) -> PathBuf {
-    ship_dir.join("generated")
-}
-
 pub fn adrs_dir(ship_dir: &Path) -> PathBuf {
     project_ns(ship_dir).join("adrs")
 }
@@ -76,11 +71,11 @@ pub fn rules_dir(ship_dir: &Path) -> PathBuf {
 }
 
 pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("mcp.toml")
+    agents_ns(ship_dir).join("mcp.jsonc")
 }
 
 pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("permissions.toml")
+    agents_ns(ship_dir).join("permissions.jsonc")
 }
 
 /// `.ship/vision.md` — project north-star document
@@ -102,7 +97,7 @@ pub fn project_slug_from_ship_dir(ship_dir: &Path) -> String {
 
 fn project_namespace_slug(ship_dir: &Path) -> String {
     let project_root = project_root_from_ship_dir(ship_dir);
-    let mut identity = read_project_identity_from_toml(ship_dir).unwrap_or_default();
+    let mut identity = read_project_identity(ship_dir).unwrap_or_default();
 
     if identity.id.is_none()
         && let Ok(id) = ensure_project_id(ship_dir)
@@ -139,10 +134,23 @@ struct ProjectIdentity {
     name: Option<String>,
 }
 
-fn read_project_identity_from_toml(ship_dir: &Path) -> Option<ProjectIdentity> {
-    let path = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
+fn read_project_identity(ship_dir: &Path) -> Option<ProjectIdentity> {
+    let primary = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
+    let legacy = ship_dir.join(crate::config::LEGACY_CONFIG_FILE);
+    let (path, is_jsonc) = if primary.exists() {
+        (primary, true)
+    } else if legacy.exists() {
+        (legacy, false)
+    } else {
+        return None;
+    };
     let content = fs::read_to_string(path).ok()?;
-    let parsed: toml::Value = toml::from_str(&content).ok()?;
+    let parsed: serde_json::Value = if is_jsonc {
+        compiler::jsonc::from_jsonc_str(&content).ok()?
+    } else {
+        let tv: toml::Value = toml::from_str(&content).ok()?;
+        serde_json::to_value(&tv).ok()?
+    };
 
     let id = parsed
         .get("id")
@@ -278,9 +286,9 @@ fn legacy_path_slug_from_ship_dir(ship_dir: &Path) -> String {
     }
 }
 
-/// Ensure a project has a persistent `ship.toml:id` and return it.
+/// Ensure a project has a persistent id in ship.jsonc and return it.
 pub fn ensure_project_id(ship_dir: &Path) -> Result<String> {
-    if let Some(identity) = read_project_identity_from_toml(ship_dir)
+    if let Some(identity) = read_project_identity(ship_dir)
         && let Some(id) = identity.id
     {
         return Ok(id);
@@ -289,26 +297,27 @@ pub fn ensure_project_id(ship_dir: &Path) -> Result<String> {
     let path = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
     let content = fs::read_to_string(&path).with_context(|| {
         format!(
-            "Project at {} has no readable ship.toml. Re-run `ship init` to initialize it.",
+            "Project at {} has no readable ship.jsonc. Re-run `ship init` to initialize it.",
             ship_dir.display()
         )
     })?;
 
-    let mut parsed: toml::Value = toml::from_str(&content).with_context(|| {
-        format!(
-            "Project at {} has an invalid ship.toml. Re-run `ship init` or fix the file.",
-            ship_dir.display()
-        )
-    })?;
+    let mut parsed: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)
+        .with_context(|| {
+            format!(
+                "Project at {} has an invalid ship.jsonc. Re-run `ship init` or fix the file.",
+                ship_dir.display()
+            )
+        })?;
 
-    let table = parsed
-        .as_table_mut()
-        .ok_or_else(|| anyhow!("ship.toml must contain a top-level table."))?;
+    let obj = parsed
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("ship.jsonc must contain a top-level object."))?;
 
     let generated_id = crate::gen_nanoid();
-    table.insert("id".to_string(), toml::Value::String(generated_id.clone()));
+    obj.insert("id".to_string(), serde_json::Value::String(generated_id.clone()));
 
-    let updated = toml::to_string_pretty(&parsed)?;
+    let updated = serde_json::to_string_pretty(&parsed)?;
     crate::fs_util::write_atomic(&path, updated)?;
 
     Ok(generated_id)
@@ -1019,7 +1028,7 @@ mod tests {
         fs::create_dir_all(&ship)?;
         fs::write(
             ship.join(crate::config::PRIMARY_CONFIG_FILE),
-            "id = 'AbC123xy'\nname = 'Platform API'\n",
+            r#"{"id": "AbC123xy", "name": "Platform API"}"#,
         )?;
 
         let slug = project_slug_from_ship_dir(&ship);
@@ -1052,14 +1061,14 @@ mod tests {
         fs::create_dir_all(&ship)?;
         fs::write(
             ship.join(crate::config::PRIMARY_CONFIG_FILE),
-            "version = '1'\nname = 'legacy-project'\n",
+            r#"{"module": {"name": "legacy-project", "version": "1.0.0"}}"#,
         )?;
 
         let id = ensure_project_id(&ship)?;
         assert!(!id.trim().is_empty());
 
         let raw = fs::read_to_string(ship.join(crate::config::PRIMARY_CONFIG_FILE))?;
-        let parsed: toml::Value = toml::from_str(&raw)?;
+        let parsed: serde_json::Value = serde_json::from_str(&raw)?;
         let persisted_id = parsed
             .get("id")
             .and_then(|value| value.as_str())
@@ -1146,7 +1155,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         "project/releases",
         "project/notes",
         "agents/skills",
-        "generated",
     ] {
         fs::create_dir_all(ship_path.join(rel))?;
     }

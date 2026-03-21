@@ -9,8 +9,8 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-pub const PRIMARY_CONFIG_FILE: &str = "ship.toml";
-pub const LEGACY_CONFIG_FILE: &str = "config.toml";
+pub const PRIMARY_CONFIG_FILE: &str = "ship.jsonc";
+pub const LEGACY_CONFIG_FILE: &str = "ship.toml";
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ impl Default for GitConfig {
         Self {
             ignore: Vec::new(),
             commit: vec![
-                "ship.toml".to_string(),
+                "ship.jsonc".to_string(),
                 "mcp".to_string(),
                 "permissions".to_string(),
                 "rules".to_string(),
@@ -184,11 +184,6 @@ fn default_namespaces() -> Vec<NamespaceConfig> {
             id: "agents".to_string(),
             path: "agents".to_string(),
             owner: "agents".to_string(),
-        },
-        NamespaceConfig {
-            id: "generated".to_string(),
-            path: "generated".to_string(),
-            owner: "runtime".to_string(),
         },
     ]
 }
@@ -399,19 +394,18 @@ pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
         None => get_global_dir()?,
     };
 
-    // Prefer ship.toml, then legacy config.toml.
+    // Prefer ship.jsonc, then legacy ship.toml.
     let primary_path = config_dir.join(PRIMARY_CONFIG_FILE);
     let legacy_path = config_dir.join(LEGACY_CONFIG_FILE);
     let json_path = config_dir.join("config.json");
 
     let mut config = None;
-    for path in [&primary_path, &legacy_path] {
-        if !path.exists() {
-            continue;
-        }
-        let content = fs::read_to_string(path)?;
+    if primary_path.exists() {
+        let content = fs::read_to_string(&primary_path)?;
+        config = Some(compiler::jsonc::from_jsonc_str(&content)?);
+    } else if legacy_path.exists() {
+        let content = fs::read_to_string(&legacy_path)?;
         config = Some(toml::from_str(&content)?);
-        break;
     }
 
     let mut config = if let Some(config) = config {
@@ -931,8 +925,8 @@ fn project_core_file(config: &ProjectConfig) -> ProjectCoreFile {
 
 fn write_project_core_config(path: &Path, config: &ProjectConfig) -> Result<()> {
     let core = project_core_file(config);
-    let toml_str = toml::to_string_pretty(&core)?;
-    write_atomic(path, toml_str)?;
+    let json_str = serde_json::to_string_pretty(&core)?;
+    write_atomic(path, json_str)?;
     Ok(())
 }
 
@@ -963,7 +957,7 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
             id: String,
         }
         if let Ok(content) = fs::read_to_string(&path) {
-            let parsed: MinConfig = toml::from_str(&content).unwrap_or_default();
+            let parsed: MinConfig = compiler::jsonc::from_jsonc_str(&content).unwrap_or_default();
             if !parsed.id.trim().is_empty() {
                 effective.id = parsed.id;
             }
@@ -973,8 +967,8 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
         effective.id = crate::gen_nanoid();
     }
 
-    // Bootstrap ship.toml with project identity before any SQLite-backed writes.
-    // save_runtime_settings/open_project_db resolve the DB key from ship.toml:id.
+    // Bootstrap ship.jsonc with project identity before any SQLite-backed writes.
+    // save_runtime_settings/open_project_db resolve the DB key from ship.jsonc:id.
     if !path.exists() {
         write_project_core_config(&path, &effective)?;
     }
@@ -985,7 +979,7 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
     save_mcp_config(&config_dir, &effective.mcp_servers)?;
     save_modes_config(&config_dir, &effective.modes)?;
 
-    // Keep ship.toml focused on stable project identity only.
+    // Keep ship.jsonc focused on stable project identity only.
     write_project_core_config(&path, &effective)?;
     Ok(())
 }
@@ -1227,7 +1221,7 @@ pub fn ensure_registered_namespaces(
     const RESERVED_TOP_LEVEL: &[&str] = &[
         "project",
         "agents",
-        "generated",
+        "ship.jsonc",
         "ship.toml",
         "config.toml",
         "log.md",
@@ -1738,42 +1732,42 @@ mod tests {
 
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let ship_toml = fs::read_to_string(ship_dir.join("ship.toml"))?;
+        let ship_config = fs::read_to_string(ship_dir.join(PRIMARY_CONFIG_FILE))?;
         assert!(
-            !ship_toml.contains("[[modes]]"),
-            "ship.toml must not persist mode definitions"
+            !ship_config.contains("modes"),
+            "ship.jsonc must not persist mode definitions"
         );
         assert!(
-            !ship_toml.contains("[[mcp_servers]]"),
-            "ship.toml must not persist MCP servers"
+            !ship_config.contains("mcp_servers"),
+            "ship.jsonc must not persist MCP servers"
         );
         assert!(
-            !ship_toml.contains("[agent]"),
-            "ship.toml must not persist agent block"
+            !ship_config.contains("\"agent\""),
+            "ship.jsonc must not persist agent block"
         );
         assert!(
-            !ship_toml.contains("providers ="),
-            "ship.toml must not persist providers"
+            !ship_config.contains("\"providers\""),
+            "ship.jsonc must not persist providers"
         );
         assert!(
-            !ship_toml.contains("active_agent ="),
-            "ship.toml must not persist active_agent"
+            !ship_config.contains("active_agent"),
+            "ship.jsonc must not persist active_agent"
         );
         assert!(
-            !ship_toml.contains("[[statuses]]"),
-            "ship.toml must not persist statuses"
+            !ship_config.contains("statuses"),
+            "ship.jsonc must not persist statuses"
         );
         assert!(
-            !ship_toml.contains("[git]"),
-            "ship.toml must not persist git policy"
+            !ship_config.contains("\"git\""),
+            "ship.jsonc must not persist git policy"
         );
         assert!(
-            !ship_toml.contains("[ai]"),
-            "ship.toml must not persist ai block"
+            !ship_config.contains("\"ai\""),
+            "ship.jsonc must not persist ai block"
         );
         assert!(
-            !ship_toml.contains("[[namespaces]]"),
-            "ship.toml must not persist namespace claims"
+            !ship_config.contains("namespaces"),
+            "ship.jsonc must not persist namespace claims"
         );
 
         assert!(
@@ -1796,14 +1790,14 @@ mod tests {
                 .as_deref()
                 .is_some_and(|raw| raw.contains("\"codex\""))
         );
-        assert!(runtime_settings.git_json.contains("\"ship.toml\""));
+        assert!(runtime_settings.git_json.contains("\"ship.jsonc\""));
         assert!(runtime_settings.namespaces_json.contains("\"project\""));
 
         let mode_rows = crate::db::agents::list_agent_configs_db(&ship_dir)?;
         assert_eq!(mode_rows.len(), 1);
         assert_eq!(mode_rows[0].id, "planning");
 
-        let mcp_cfg = fs::read_to_string(ship_dir.join("agents").join("mcp.toml"))?;
+        let mcp_cfg = fs::read_to_string(ship_dir.join("agents").join("mcp.jsonc"))?;
         assert!(mcp_cfg.contains("[mcp.servers.github]"));
         Ok(())
     }

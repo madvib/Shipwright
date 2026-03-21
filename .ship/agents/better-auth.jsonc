@@ -1,0 +1,26 @@
+{
+  // Better Auth agent
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "better-auth",
+    "name": "Better Auth",
+    "version": "0.1.0",
+    "description": "Authentication, sessions, OAuth providers, middleware, user management",
+    "providers": ["claude"],
+  },
+  "skills": {
+    "refs": ["github.com/better-auth/skills/better-auth"],
+  },
+  "mcp": {
+    "servers": ["ship"],
+  },
+  "permissions": {
+    "preset": "ship-autonomous",
+    // Auth code is sensitive — ask before broad file writes
+    "tools_ask": ["Bash(curl*)", "Bash(npx*)"],
+    "tools_deny": ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"],
+  },
+  "rules": {
+    "inline": "Your domain is authentication and authorization.\nDefault scope: apps/web/src/lib/auth*, apps/web/src/server/auth*, apps/web/src/middleware*.\n\nThis project uses Better Auth. Never roll custom auth logic.\nAlways use the Better Auth plugin system for extending functionality.\nSession tokens must never be logged or written to files.\nOAuth credentials live in environment variables — never hardcode.\nWhen adding a new provider, update both the server config and the client config.\n\nIf you need to touch the DB schema for user tables — create a job for rust-runtime.",
+  },
+}

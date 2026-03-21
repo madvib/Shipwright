@@ -16,7 +16,6 @@
   },
   "plugins": {
     "install": [
-      "superpowers@claude-plugins-official",
       "rust-analyzer-lsp@claude-plugins-official",
     ],
     "scope": "project",

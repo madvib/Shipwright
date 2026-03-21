@@ -341,5 +341,5 @@ pub fn resolve_dep_skills(
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[path = "dep_skills_tests.rs"]
+#[path = "dep_skills_tests_resolve.rs"]
 mod tests;

@@ -268,7 +268,6 @@ mod tests {
         assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/notes").is_dir());
         assert!(ship_path.join("vision.md").is_file());
-        assert!(ship_path.join("generated").is_dir());
         let project_skills_dir = crate::project::skills_dir(&ship_path);
         assert!(project_skills_dir.is_dir());
         // shared
@@ -281,7 +280,7 @@ mod tests {
             "new projects should not seed legacy planning/code/config modes by default"
         );
         assert!(!ship_path.join("events.ndjson").is_file());
-        assert!(ship_path.join("ship.toml").is_file());
+        assert!(ship_path.join("ship.jsonc").is_file());
         // default skill seeded
         assert!(project_skills_dir.join("task-policy/SKILL.md").is_file());
         let skill_content = fs::read_to_string(project_skills_dir.join("task-policy/SKILL.md"))?;
