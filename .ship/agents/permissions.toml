@@ -36,14 +36,40 @@ tools_allow = [
 ]
 
 [ship-autonomous]
-# Dispatched specialist agents working in worktrees. Zero prompts.
+# Dispatched specialist agents working in worktrees. Zero prompts, explicit allow list.
+# dontAsk + allow = agent works autonomously within the boundary.
+# bypassPermissions is for ephemeral environments only (CI, devcontainers).
 default_mode = "dontAsk"
 tools_allow = [
   "Read",
+  "Write",
+  "Edit",
   "Glob",
   "Grep",
+  "Bash(cargo *)",
+  "Bash(git add *)",
+  "Bash(git commit *)",
+  "Bash(git status*)",
+  "Bash(git diff*)",
+  "Bash(git log*)",
+  "Bash(git branch*)",
+  "Bash(npm *)",
+  "Bash(pnpm *)",
   "Bash(ship *)",
+  "Bash(wc *)",
+  "Bash(ls *)",
+  "Bash(cat *)",
+  "Bash(head *)",
+  "Bash(tail *)",
+  "Bash(mkdir *)",
   "mcp__ship__*",
+]
+tools_deny = [
+  "Bash(rm -rf *)",
+  "Bash(git reset --hard*)",
+  "Bash(git push --force*)",
+  "Bash(cargo publish*)",
+  "Bash(npm publish*)",
 ]
 
 [ship-elevated]
@@ -51,10 +77,25 @@ tools_allow = [
 default_mode = "dontAsk"
 tools_allow = [
   "Read",
+  "Write",
+  "Edit",
   "Glob",
   "Grep",
+  "Bash(cargo *)",
+  "Bash(git *)",
+  "Bash(npm *)",
+  "Bash(pnpm *)",
   "Bash(ship *)",
-  "Bash(git push*)",
-  "Bash(*publish*)",
+  "Bash(wc *)",
+  "Bash(ls *)",
+  "Bash(cat *)",
+  "Bash(head *)",
+  "Bash(tail *)",
+  "Bash(mkdir *)",
   "mcp__ship__*",
+]
+tools_deny = [
+  "Bash(rm -rf *)",
+  "Bash(git reset --hard*)",
+  "Bash(git push --force*)",
 ]
