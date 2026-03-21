@@ -132,11 +132,14 @@ fn migrate_local_db_to_global(ship_dir: &Path) {
         let _ = std::fs::create_dir_all(parent);
     }
     match std::fs::copy(&local_path, &global_path) {
-        Ok(_) => eprintln!(
-            "migrated platform.db from {} → {}",
-            local_path.display(),
-            global_path.display()
-        ),
+        Ok(_) => {
+            eprintln!(
+                "migrated platform.db from {} → {}",
+                local_path.display(),
+                global_path.display()
+            );
+            let _ = std::fs::remove_file(&local_path);
+        }
         Err(e) => eprintln!(
             "warning: failed to migrate platform.db to {}: {e}",
             global_path.display()
