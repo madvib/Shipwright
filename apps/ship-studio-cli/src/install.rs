@@ -23,13 +23,13 @@ use crate::profile::WorkspaceState;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Run `ship install [--frozen]`.
+/// Run `ship install [--frozen] [--offline]`.
 ///
 /// 1. Parse `.ship/ship.toml` as a registry manifest.
 /// 2. Resolve and fetch all declared dependencies.
 /// 3. Write updated `.ship/ship.lock`.
 /// 4. Compile resolved packages into provider targets.
-pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
+pub fn run_install(project_root: &Path, frozen: bool, offline: bool) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     // Prefer ship.jsonc over ship.toml
     let jsonc_path = ship_dir.join("ship.jsonc");
@@ -54,7 +54,7 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
 
     let lock_path = ship_dir.join("ship.lock");
     let cache = PackageCache::new().context("initializing package cache")?;
-    let opts = InstallOptions { frozen };
+    let opts = InstallOptions { frozen, offline };
 
     let result = resolve_and_fetch(&registry_manifest, &lock_path, &cache, &opts)
         .context("resolving and fetching dependencies")?;
@@ -158,7 +158,7 @@ mod tests {
     fn install_no_ship_toml_errors() {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join(".ship")).unwrap();
-        let err = run_install(tmp.path(), false).unwrap_err();
+        let err = run_install(tmp.path(), false, false).unwrap_err();
         assert!(
             err.to_string().contains("No .ship/ship.jsonc or .ship/ship.toml"),
             "got: {err}"
@@ -174,7 +174,7 @@ mod tests {
             ".ship/ship.toml",
             "[defaults]\nproviders = [\"claude\"]\n",
         );
-        let err = run_install(tmp.path(), false).unwrap_err();
+        let err = run_install(tmp.path(), false, false).unwrap_err();
         assert!(
             err.to_string().contains("module") || err.to_string().contains("manifest"),
             "got: {err}"
@@ -191,7 +191,7 @@ mod tests {
         );
         // install with no deps should succeed (no network needed)
         // Note: compile step will be a no-op since there are no agents
-        let result = run_install(tmp.path(), false);
+        let result = run_install(tmp.path(), false, false);
         // compile succeeds when .ship/agents/ is absent (loads empty library)
         // lockfile should be written with version=1 and no packages
         if result.is_ok() {
@@ -214,7 +214,7 @@ mod tests {
         );
         // Write an empty lock (out of sync — dep is in manifest but not lock)
         write(tmp.path(), ".ship/ship.lock", "version = 1\n");
-        let err = run_install(tmp.path(), true).unwrap_err();
+        let err = run_install(tmp.path(), true, false).unwrap_err();
         // The error chain contains the frozen/out-of-sync message from the registry;
         // our context wraps it so check the full chain.
         let chain = format!("{:#}", err);

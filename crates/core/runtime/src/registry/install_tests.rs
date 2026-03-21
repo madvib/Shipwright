@@ -27,7 +27,7 @@ fn test_frozen_fails_on_added_dep() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let opts = InstallOptions { frozen: true };
+    let opts = InstallOptions { frozen: true, offline: true };
     let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();

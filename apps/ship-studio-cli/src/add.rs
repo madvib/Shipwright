@@ -174,7 +174,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     }
 
     let cache = PackageCache::new().context("initializing package cache")?;
-    let opts = InstallOptions { frozen: false };
+    let opts = InstallOptions { frozen: false, offline: false };
 
     let result = resolve_and_fetch(&registry_manifest, &lock_path, &cache, &opts)
         .with_context(|| format!("resolving {pkg_path}"))?;

@@ -102,7 +102,7 @@ fn frozen_install_fails_when_lock_is_stale() {
         Dependency { version: "main".to_string(), grant: vec![] },
     );
 
-    let opts = InstallOptions { frozen: true };
+    let opts = InstallOptions { frozen: true, offline: false };
     let err = resolve_and_fetch(&manifest, &lock_path, &cache, &opts).unwrap_err();
     let chain = format!("{:#}", err);
     assert!(
