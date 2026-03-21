@@ -25,7 +25,7 @@ mod validate;
 mod view;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, EventsCommands, JobCommands, McpCommands, SkillCommands};
+use cli::{AgentCommands, Cli, Commands, ConfigCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -40,6 +40,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
         None => run_status(None),
         Some(cmd) => match cmd {
             Commands::Init { global, provider, force: _ } => init::run(global, provider),
+            Commands::Config { action } => dispatch_config(action),
             Commands::Login  => auth::run_login(),
             Commands::Logout => auth::run_logout(),
             Commands::Whoami => auth::run_whoami(),
@@ -80,6 +81,44 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
         },
     }
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+fn dispatch_config(action: ConfigCommands) -> Result<()> {
+    match action {
+        ConfigCommands::Get { key } => {
+            let cfg = config::ShipConfig::load();
+            match cfg.get(&key) {
+                Some(v) => println!("{}", v),
+                None => {
+                    eprintln!("{} is not set", key);
+                    std::process::exit(1);
+                }
+            }
+        }
+        ConfigCommands::Set { key, value } => {
+            let mut cfg = config::ShipConfig::load();
+            cfg.set(&key, &value)?;
+            cfg.save()?;
+            println!("{} = {}", key, value);
+        }
+        ConfigCommands::List => {
+            let cfg = config::ShipConfig::load();
+            let entries = cfg.list();
+            if entries.is_empty() {
+                println!("No config set. File: {}", config::ShipConfig::path().display());
+            } else {
+                for (k, v) in &entries {
+                    println!("{} = {}", k, v);
+                }
+            }
+        }
+        ConfigCommands::Path => {
+            println!("{}", config::ShipConfig::path().display());
+        }
+    }
+    Ok(())
 }
 
 // ── Use ───────────────────────────────────────────────────────────────────────

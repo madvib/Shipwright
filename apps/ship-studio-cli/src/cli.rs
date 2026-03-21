@@ -48,6 +48,12 @@ pub enum Commands {
     /// Show current identity
     Whoami,
 
+    /// Read or write user preferences (~/.ship/config.toml)
+    Config {
+        #[command(subcommand)]
+        action: ConfigCommands,
+    },
+
     // ── Daily Use ────────────────────────────────────────────────────────────
     /// Activate an agent for the current (or specified) directory
     Use {
@@ -182,6 +188,26 @@ pub enum Commands {
         #[arg(long)]
         milestone: Option<String>,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommands {
+    /// Get a config value (e.g. ship config get terminal.program)
+    Get {
+        /// Dot-path key (e.g. terminal.program, dispatch.confirm, worktrees.dir)
+        key: String,
+    },
+    /// Set a config value (e.g. ship config set terminal.program wt)
+    Set {
+        /// Dot-path key
+        key: String,
+        /// Value to set
+        value: String,
+    },
+    /// List all set config values
+    List,
+    /// Show config file path
+    Path,
 }
 
 #[derive(Subcommand, Debug)]

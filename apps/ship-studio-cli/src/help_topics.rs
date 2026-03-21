@@ -31,6 +31,7 @@ fn print_topic_list() {
 const TOPICS: &[(&str, &str)] = &[
     ("agents", "Creating and managing agent definitions"),
     ("compile", "How compilation works and provider output"),
+    ("config", "User preferences and environment variables"),
     ("mcp", "MCP server configuration and the Ship MCP server"),
     ("providers", "Supported providers and their output formats"),
     ("skills", "Adding and authoring agent skills"),
@@ -41,6 +42,7 @@ fn lookup(topic: &str) -> Option<&'static str> {
     match topic {
         "agents" => Some(TOPIC_AGENTS),
         "compile" => Some(TOPIC_COMPILE),
+        "config" => Some(TOPIC_CONFIG),
         "mcp" => Some(TOPIC_MCP),
         "providers" => Some(TOPIC_PROVIDERS),
         "skills" => Some(TOPIC_SKILLS),
@@ -84,6 +86,36 @@ single output per provider. Output files are build artifacts and should be
 gitignored.
 
 Run `ship validate` before compile to catch config errors early.
+";
+
+const TOPIC_CONFIG: &str = "\
+Configuration
+
+User preferences live in ~/.ship/config.toml. Read and write them with:
+
+  ship config get <key>       Read a value
+  ship config set <key> <val> Write a value
+  ship config list            Show all set values
+  ship config path            Show config file location
+
+Available keys:
+
+  terminal.program    Terminal for dispatch: wt, iterm, tmux, gnome, vscode, manual
+  dispatch.confirm    Show spec and ask y/n before launching agent (true/false)
+  worktrees.dir       Base directory for worktrees (default: ~/dev/ship-worktrees)
+  defaults.provider   Default compilation provider (claude, gemini, codex, cursor)
+  defaults.mode       Default agent permission mode
+  identity.name       Your display name
+  identity.email      Your email
+  cloud.base_url      Ship API base URL
+
+Environment variables override config values when set:
+
+  SHIP_DEFAULT_TERMINAL   Overrides terminal.program
+  SHIP_DISPATCH_CONFIRM   Set to 1 to override dispatch.confirm
+  SHIP_WORKTREE_DIR       Overrides worktrees.dir
+
+Resolution order: command flag > env var > ship config > default.
 ";
 
 const TOPIC_MCP: &str = "\
