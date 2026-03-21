@@ -59,7 +59,7 @@ fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
 // ── Permissions ───────────────────────────────────────────────────────────────
 
 /// A named permission preset section from `agents/permissions.toml`.
-/// Matches the `[ship-standard]`, `[ship-guarded]`, etc. blocks.
+/// Matches the `[ship-standard]`, `[ship-autonomous]`, etc. blocks.
 #[derive(Deserialize, Default, Clone)]
 pub struct PermissionPreset {
     #[serde(default)]

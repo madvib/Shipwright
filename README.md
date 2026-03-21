@@ -61,8 +61,7 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
-default_mode = "plan"
+preset = "ship-autonomous"
 ```
 
 `ship use rust-expert` installs skills, configures MCP, installs plugins, emits all provider files.

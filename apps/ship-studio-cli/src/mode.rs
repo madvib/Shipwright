@@ -64,7 +64,7 @@ pub struct PluginsConfig {
 /// Permission overrides in a profile — merged on top of agents/permissions.toml.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProfilePermissions {
-    /// Permission tier shorthand: "ship-standard" | "ship-guarded" | "read-only" | "full-access"
+    /// Permission tier shorthand: "ship-readonly" | "ship-standard" | "ship-autonomous" | "ship-elevated"
     pub preset: Option<String>,
     #[serde(default)]
     pub tools_deny: Vec<String>,
@@ -123,9 +123,8 @@ servers = []
 # scope = "project"   # project | user
 
 [permissions]
-# preset = "ship-guarded"   # ship-standard | ship-guarded | read-only | full-access
+# preset = "ship-autonomous"   # ship-readonly | ship-standard | ship-autonomous | ship-elevated
 # tools_deny = ["mcp__*__delete*"]
-# default_mode = "plan"     # default | acceptEdits | plan | bypassPermissions
 
 [rules]
 # inline = """
@@ -183,24 +182,11 @@ pub fn apply_profile_permissions(
         }
     } else {
         // Built-in fallback — no permissions.toml or section not found
+        // Start from preset in permissions.toml (resolved via file), fall back to built-in
         match mp.preset.as_deref() {
-            Some("read-only") => ToolPermissions {
-                allow: vec!["Read".into(), "Glob".into(), "LS".into()],
-                deny: vec![],
-                ask: vec![],
-            },
-            Some("ship-guarded") => ToolPermissions {
-                allow: base.tools.allow.clone(),
-                deny: {
-                    let mut d = base.tools.deny.clone();
-                    d.extend(["mcp__*__delete*".into(), "mcp__*__drop*".into()]);
-                    d
-                },
-                ask: base.tools.ask.clone(),
-            },
-            Some("full-access") => ToolPermissions {
-                allow: vec!["*".into()],
-                deny: vec![],
+            Some("ship-readonly") => ToolPermissions {
+                allow: vec!["Read".into(), "Glob".into(), "LS".into(), "mcp__ship__*".into(), "Bash(ship *)".into()],
+                deny: vec!["Write(*)".into(), "Edit(*)".into(), "Bash(rm*)".into()],
                 ask: vec![],
             },
             _ => base.tools.clone(),
@@ -257,50 +243,52 @@ install = ["superpowers@claude-plugins-official"]
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-autonomous"
 tools_deny = ["Bash(rm -rf *)"]
 "#;
         let p: Profile = toml::from_str(toml_str).unwrap();
         assert_eq!(p.meta.id, "cli-lane");
         assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
         assert_eq!(p.plugins.scope, "project");
-        assert_eq!(p.permissions.preset.as_deref(), Some("ship-guarded"));
+        assert_eq!(p.permissions.preset.as_deref(), Some("ship-autonomous"));
     }
 
     #[test]
-    fn apply_profile_permissions_guarded_adds_deny() {
+    fn apply_profile_permissions_readonly_restricts() {
         use compiler::Permissions;
         let base = Permissions::default();
         let toml_str = r#"
 [profile]
-name = "Guarded"
-id = "guarded"
+name = "Reviewer"
+id = "reviewer"
 providers = ["claude"]
 [permissions]
-preset = "ship-guarded"
+preset = "ship-readonly"
 "#;
         let p: Profile = toml::from_str(toml_str).unwrap();
-        // No agents_dir — falls back to built-in behaviour
         let result = apply_profile_permissions(base, &p, None);
-        assert!(result.tools.deny.contains(&"mcp__*__delete*".to_string()));
+        assert!(result.tools.deny.contains(&"Write(*)".to_string()));
+        assert!(result.tools.deny.contains(&"Edit(*)".to_string()));
+        assert!(result.tools.allow.contains(&"Read".to_string()));
     }
 
     #[test]
-    fn apply_profile_permissions_read_only_restricts_allow() {
+    fn apply_profile_permissions_readonly_restricts_allow() {
         use compiler::Permissions;
         let base = Permissions::default();
         let toml_str = r#"
 [profile]
 name = "ReadOnly"
-id = "read-only"
+id = "readonly"
 providers = ["claude"]
 [permissions]
-preset = "read-only"
+preset = "ship-readonly"
 "#;
         let p: Profile = toml::from_str(toml_str).unwrap();
         let result = apply_profile_permissions(base, &p, None);
         assert!(result.tools.allow.contains(&"Read".to_string()));
-        assert!(!result.tools.allow.contains(&"*".to_string()));
+        // ship-readonly has a narrow allow list — Grep is not included
+        assert!(!result.tools.allow.contains(&"Grep".to_string()));
     }
 
     #[test]

@@ -13,8 +13,6 @@ servers = ["ship", "shadcn"]
 
 [permissions]
 preset = "ship-standard"
-tools_deny = []
-default_mode = "default"
 
 [rules]
 inline = """

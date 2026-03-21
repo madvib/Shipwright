@@ -12,11 +12,8 @@ refs = ["ship-coordination"]
 servers = ["ship"]
 
 [permissions]
-preset = "ship-guarded"
-# Only this preset touches DB migrations
+preset = "ship-autonomous"
 tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
-tools_ask = ["Bash(rm -rf*)"]
-default_mode = "bypassPermissions"
 
 [rules]
 inline = """

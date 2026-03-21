@@ -193,7 +193,7 @@ pub fn get_permissions(ship_dir: PathBuf) -> Result<Permissions> {
         return Ok(Permissions::default());
     }
     let content = fs::read_to_string(&path)?;
-    // If the file uses named-section format (e.g. [ship-standard], [ship-guarded]),
+    // If the file uses named-section format (e.g. [ship-standard], [ship-autonomous]),
     // the flat Permissions struct cannot deserialize it — all fields default to empty.
     // Detect this case: if the TOML has top-level table keys that are not recognized
     // flat-format section names, treat the file as a named-preset reference and
@@ -229,7 +229,7 @@ pub fn save_permissions(ship_dir: PathBuf, permissions: &Permissions) -> Result<
         fs::create_dir_all(parent)?;
     }
     // Do not overwrite a human-authored named-preset file with a flat permissions
-    // struct. The named-preset format ([ship-standard], [ship-guarded], etc.) is
+    // struct. The named-preset format ([ship-standard], [ship-autonomous], etc.) is
     // a user-maintained reference that the compile path reads via profile presets.
     // Overwriting it would destroy the named sections on every `ship use`.
     if path.exists()
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn get_permissions_returns_defaults_for_named_preset_format() {
-        // A permissions.toml that uses named sections ([ship-standard], [ship-guarded])
+        // A permissions.toml that uses named sections ([ship-standard], [ship-autonomous])
         // must not be silently misread as a flat Permissions struct. get_permissions()
         // should return Permissions::default() rather than data from the named sections.
         let tmp = TempDir::new().unwrap();
@@ -309,8 +309,8 @@ default_mode = "acceptEdits"
 tools_ask = ["Bash(rm -rf*)"]
 tools_deny = ["Bash(git push --force*)"]
 
-[ship-guarded]
-default_mode = "default"
+[ship-autonomous]
+default_mode = "dontAsk"
 tools_ask = ["Bash(*deploy*)"]
 "#;
         std::fs::write(agents_dir.join("permissions.toml"), named_section_content).unwrap();

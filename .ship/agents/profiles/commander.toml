@@ -23,7 +23,6 @@ preset = "ship-standard"
 tools_deny = []
 # Commander should confirm before destructive git operations
 tools_ask = ["Bash(git reset*)", "Bash(git push --force*)"]
-default_mode = "default"
 
 [rules]
 inline = """

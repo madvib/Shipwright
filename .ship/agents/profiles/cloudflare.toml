@@ -12,10 +12,9 @@ refs = []
 servers = ["ship"]
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-autonomous"
 # Cloudflare infra changes are hard to reverse
 tools_ask = ["Bash(wrangler deploy*)", "Bash(wrangler d1 execute*)", "Bash(npx wrangler*)"]
-default_mode = "bypassPermissions"
 tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 
 [rules]

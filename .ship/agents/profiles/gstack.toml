@@ -26,7 +26,6 @@ servers = []
 
 [permissions]
 preset = "ship-standard"
-default_mode = "default"
 
 [rules]
 inline = """

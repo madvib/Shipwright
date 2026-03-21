@@ -19,9 +19,8 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-standard"
+preset = "ship-autonomous"
 tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
-default_mode = "acceptEdits"
 
 [rules]
 inline = """

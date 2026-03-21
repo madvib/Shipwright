@@ -12,10 +12,9 @@ refs = ["github.com/better-auth/skills/better-auth"]
 servers = ["ship"]
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-autonomous"
 # Auth code is sensitive — ask before broad file writes
 tools_ask = ["Bash(curl*)", "Bash(npx*)"]
-default_mode = "bypassPermissions"
 tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
 
 [rules]

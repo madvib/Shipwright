@@ -677,23 +677,23 @@ deny = ["Bash(rm -rf *)"]
     #[test]
     fn compile_with_mode_applies_permissions() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/guarded.toml", r#"
+        write(tmp.path(), ".ship/agents/profiles/readonly.toml", r#"
 [profile]
-name = "Guarded"
-id = "guarded"
+name = "ReadOnly"
+id = "readonly"
 providers = ["claude"]
 [permissions]
-preset = "ship-guarded"
+preset = "ship-readonly"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_agent: Some("guarded"),
+            dry_run: false, active_agent: Some("readonly"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
         ).unwrap();
         let deny = v["permissions"]["deny"].as_array().unwrap();
-        assert!(deny.iter().any(|d| d == "mcp__*__delete*"));
+        assert!(deny.iter().any(|d| d == "Write(*)"));
     }
 
     #[test]

@@ -63,7 +63,7 @@ pub struct PluginRefs {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProfilePermissions {
-    /// Permission preset name (e.g. "ship-standard", "ship-guarded").
+    /// Permission preset name (e.g. "ship-standard", "ship-autonomous").
     #[serde(default)]
     pub preset: Option<String>,
     #[serde(default)]

@@ -47,8 +47,8 @@ Guides setting up agent workspaces with the right permission tier, profile, and 
 **When to use:** Any time a commander or human is setting up a new specialist agent — selecting profile, permission tier, scope constraints, and worktree path.
 
 **Key behaviors:**
-- Permission tier selection: `ship-open` → `ship-standard` → `ship-guarded` → `ship-plan`
-- Profile → tier mapping table (e.g. `rust-runtime` needs `ship-guarded`, most others use `ship-standard`)
+- Permission preset selection: `ship-readonly` → `ship-standard` → `ship-autonomous` → `ship-elevated`
+- Profile → preset mapping table (e.g. dispatched agents use `ship-autonomous`, interactive sessions use `ship-standard`)
 - Worktree setup: canonical path from `~/.ship/config.toml [worktrees] dir`
 - Scope constraint guidance: profile = capability, scope = authority
 - Pre-flight checklist before starting any agent

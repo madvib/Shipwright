@@ -207,10 +207,9 @@ install = [
 scope = "project"             # "project" (default) or "user"
 
 [permissions]
-preset = "ship-guarded"       # ship-standard | ship-guarded | read-only | full-access
+preset = "ship-standard"       # ship-readonly | ship-standard | ship-autonomous | ship-elevated
 tools_deny = []
 tools_ask = ["Bash(rm -rf*)"]
-default_mode = "default"      # "default" | "acceptEdits" | "plan" | "bypassPermissions"
 
 [rules]
 inline = """
@@ -219,9 +218,10 @@ Freeform rule text injected directly into the context output.
 ```
 
 **Permission resolution order** (highest wins):
-1. `[permissions] default_mode` in profile TOML
-2. `default_mode` in the named preset section in `agents/permissions.toml`
-3. Base `Permissions::default()`
+1. `default_mode` in the named preset section in `agents/permissions.toml`
+2. Base `Permissions::default()`
+
+Profiles add `tools_deny` and `tools_ask` on top of presets but do not override `default_mode` — presets own the mode.
 
 ---
 

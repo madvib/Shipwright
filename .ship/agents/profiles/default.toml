@@ -19,8 +19,7 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
+preset = "ship-standard"
 tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
-default_mode = "default"
 
 [rules]
