@@ -11,11 +11,22 @@ license = "MIT"
 "github.com/better-auth/skills" = "main"
 
 [exports]
-# Public skills — useful to any Ship user. Installed when someone adds this module as a dependency.
+# Universal skills — useful to any Ship user
 skills = [
     "agents/skills/configure-agent",
     "agents/skills/find-skills",
     "agents/skills/write-adr",
+    "agents/skills/tdd",
+    "agents/skills/visual-brainstorm",
+    "agents/skills/visual-spec",
+    "agents/skills/ship-skills-guide",
+    "agents/skills/ship-help",
+    "agents/skills/ship-publishing",
+    # Doc-skills — help agent references
+    "agents/skills/ship-tutorial",
+    "agents/skills/ship-cli-reference",
+    "agents/skills/ship-schema-reference",
+    "agents/skills/ship-permissions",
 ]
 # Private skills (commander, ship-coordination, spawn-agent) encode project-specific conventions
 # and are not exported. They remain available locally for this project's agents.

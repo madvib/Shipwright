@@ -1,6 +1,8 @@
 ---
 name: visual-brainstorm
 description: Use to generate and iterate on HTML mockups for UI design goals. Serves a local preview server, iterates on feedback, and outputs final HTML + intent for handoff to visual-spec.
+tags: [design, ui, mockups, prototyping]
+authors: [ship]
 ---
 
 # Visual Brainstorm
