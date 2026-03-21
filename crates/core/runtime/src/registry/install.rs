@@ -1,3 +1,4 @@
+use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 
 use anyhow::Context;
@@ -84,34 +85,78 @@ pub fn resolve_and_fetch(
             .collect()
     };
 
-    for (dep_path, dep) in deps_to_resolve {
-        let constraint = parse_constraint(&dep.version)
+    // BFS queue: (dep_path, version_constraint, ancestor_chain).
+    // ancestor_chain tracks the dependency path for cycle detection.
+    let mut queue: VecDeque<(String, String, Vec<String>)> = deps_to_resolve
+        .iter()
+        .map(|(k, v)| ((*k).clone(), v.version.clone(), vec!["ship.toml".into()]))
+        .collect();
+
+    // Track already-resolved dep paths to avoid duplicate work.
+    let mut visited: HashSet<String> = HashSet::new();
+    // Track resolved versions per dep path for conflict detection.
+    let mut resolved_versions: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+
+    while let Some((dep_path, version_str, ancestors)) = queue.pop_front() {
+        let requestor = ancestors.last().cloned().unwrap_or_default();
+
+        if visited.contains(&dep_path) {
+            // Check for version conflicts.
+            if let Some((prev_ver, prev_requestor)) = resolved_versions.get(&dep_path) {
+                if *prev_ver != version_str {
+                    anyhow::bail!(
+                        "version conflict for {}: {} requires '{}' but {} requires '{}'",
+                        dep_path,
+                        requestor,
+                        version_str,
+                        prev_requestor,
+                        prev_ver
+                    );
+                }
+            }
+            continue;
+        }
+        visited.insert(dep_path.clone());
+        resolved_versions.insert(
+            dep_path.clone(),
+            (version_str.clone(), requestor.clone()),
+        );
+
+        let constraint = parse_constraint(&version_str)
             .with_context(|| format!("parsing constraint for {dep_path}"))?;
 
-        let resolved = resolve_version(dep_path, &constraint)
+        let resolved = resolve_version(&dep_path, &constraint)
             .with_context(|| format!("resolving {dep_path}"))?;
 
         // Fetch if not cached.
-        let cached = match cache.get(dep_path, &resolved.tag) {
+        let cached = match cache.get(&dep_path, &resolved.tag) {
             Some(pkg) => {
-                // Verify before trusting the cache.
                 if cache.verify(&pkg).is_ok() {
                     pkg
                 } else {
-                    fetch_and_store(cache, dep_path, &resolved.tag, &resolved.commit)?
+                    fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit)?
                 }
             }
-            None => fetch_and_store(cache, dep_path, &resolved.tag, &resolved.commit)?,
+            None => fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit)?,
         };
 
         // Record in lock.
-        locked.retain(|p| p.path != *dep_path);
+        locked.retain(|p| p.path != dep_path);
         locked.push(LockedPackage {
             path: dep_path.clone(),
             version: resolved.tag.clone(),
             commit: resolved.commit.clone(),
             hash: cached.hash.clone(),
         });
+
+        // Discover transitive deps from cached package's ship.toml.
+        let mut child_ancestors = ancestors.clone();
+        child_ancestors.push(dep_path.clone());
+        let sub_deps = discover_transitive_deps(&cached.dir, &dep_path, &child_ancestors)?;
+        for (sub_path, sub_ver) in sub_deps {
+            queue.push_back((sub_path, sub_ver, child_ancestors.clone()));
+        }
     }
 
     // For deps already in lock (unchanged), ensure they are in the cache.
@@ -151,6 +196,40 @@ pub fn resolve_and_fetch(
     }
 
     Ok(InstallResult { packages, lockfile_written })
+}
+
+/// Check a cached package directory for a `ship.toml` with `[dependencies]`.
+/// Returns `(dep_path, version_string)` pairs for transitive deps.
+/// Errors if a sub-dep is already in the ancestor chain (cycle).
+fn discover_transitive_deps(
+    cached_dir: &Path,
+    parent_path: &str,
+    ancestors: &[String],
+) -> anyhow::Result<Vec<(String, String)>> {
+    let manifest_path = cached_dir.join("ship.toml");
+    if !manifest_path.exists() {
+        return Ok(vec![]);
+    }
+    let sub_manifest = compiler::manifest::ShipManifest::from_file(&manifest_path)
+        .with_context(|| {
+            format!("parsing ship.toml in transitive dep {parent_path}")
+        })?;
+    let mut deps = Vec::new();
+    for (path, dep_val) in sub_manifest.dependencies {
+        if ancestors.contains(&path) {
+            let chain: Vec<&str> = ancestors.iter().map(|s| s.as_str()).collect();
+            anyhow::bail!(
+                "dependency cycle detected: {} -> {} (chain: {} -> {})",
+                parent_path,
+                path,
+                chain.join(" -> "),
+                path
+            );
+        }
+        let version = dep_val.into_dep().version;
+        deps.push((path, version));
+    }
+    Ok(deps)
 }
 
 fn load_lock_if_present(path: &Path) -> anyhow::Result<Option<ShipLock>> {
@@ -204,80 +283,5 @@ fn write_lock_atomic(path: &Path, lock: &ShipLock) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-    use tempfile::tempdir;
-
-    use super::super::types::Dependency;
-
-    fn make_cache() -> anyhow::Result<(tempfile::TempDir, PackageCache)> {
-        let dir = tempdir()?;
-        let cache = PackageCache::with_root(dir.path().to_path_buf());
-        Ok((dir, cache))
-    }
-
-    #[test]
-    fn test_frozen_fails_on_added_dep() -> anyhow::Result<()> {
-        let (_cache_dir, cache) = make_cache()?;
-        let lock_dir = tempdir()?;
-        let lock_path = lock_dir.path().join("ship.lock");
-
-        // Write an empty lock.
-        let empty_lock = ShipLock { version: 1, package: vec![] };
-        write_lock_atomic(&lock_path, &empty_lock)?;
-
-        // Manifest has a dep not in the lock.
-        let manifest = ShipManifest {
-            dependencies: [
-                ("github.com/owner/pkg".into(), Dependency { version: "main".into(), grant: vec![] }),
-            ].into(),
-            ..Default::default()
-        };
-
-        let opts = InstallOptions { frozen: true };
-        let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts);
-        assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("--frozen") || msg.contains("out of sync"), "got: {msg}");
-        Ok(())
-    }
-
-    #[test]
-    fn test_no_lock_no_deps_writes_empty_lock() -> anyhow::Result<()> {
-        let (_cache_dir, cache) = make_cache()?;
-        let lock_dir = tempdir()?;
-        let lock_path = lock_dir.path().join("ship.lock");
-
-        let manifest = ShipManifest::default();
-        let opts = InstallOptions::default();
-        let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts)?;
-
-        assert!(result.lockfile_written);
-        assert!(lock_path.exists());
-        let content = std::fs::read_to_string(&lock_path)?;
-        assert!(content.contains("version = 1"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_in_sync_lock_no_deps_no_write() -> anyhow::Result<()> {
-        let (_cache_dir, cache) = make_cache()?;
-        let lock_dir = tempdir()?;
-        let lock_path = lock_dir.path().join("ship.lock");
-
-        // Write an already-correct lock.
-        let lock = ShipLock { version: 1, package: vec![] };
-        write_lock_atomic(&lock_path, &lock)?;
-        let mtime_before = std::fs::metadata(&lock_path)?.modified()?;
-
-        let manifest = ShipManifest::default();
-        let opts = InstallOptions::default();
-        let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts)?;
-
-        assert!(!result.lockfile_written);
-        let mtime_after = std::fs::metadata(&lock_path)?.modified()?;
-        assert_eq!(mtime_before, mtime_after, "lock file must not be rewritten");
-        Ok(())
-    }
-}
+#[path = "install_tests.rs"]
+mod tests;

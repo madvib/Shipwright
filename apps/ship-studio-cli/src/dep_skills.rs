@@ -1,7 +1,7 @@
 //! Resolve dep skill refs from the package cache into [`Skill`] values.
 //!
-//! Dep skill refs look like `github.com/owner/pkg/skill-name`.
-//! Local refs (no `github.com/` prefix) are left to the caller to handle.
+//! Dep skill refs look like `host.tld/owner/pkg/skill-name` (any git host).
+//! Local refs (no hostname prefix) are left to the caller to handle.
 //!
 //! Resolution path:
 //!   dep ref → split package path + within-package path
@@ -18,36 +18,49 @@ use std::path::{Path, PathBuf};
 
 // ── Dep ref detection ─────────────────────────────────────────────────────────
 
-/// Return `true` if `ref_str` is a dep skill ref (starts with `github.com/`).
+/// Return `true` if `ref_str` is a dep skill ref (`host.tld/owner/pkg/…`).
 ///
+/// A dep ref has a first slash-separated segment containing a dot (the hostname)
+/// and at least two more slashes (owner + package + within-package path).
 /// Local refs are plain skill ids such as `my-skill` or `review-pr`.
 pub fn is_dep_ref(ref_str: &str) -> bool {
-    ref_str.starts_with("github.com/")
+    let Some(first_slash) = ref_str.find('/') else {
+        return false;
+    };
+    let host = &ref_str[..first_slash];
+    // Host must contain a dot (e.g. github.com, git.example.com)
+    if !host.contains('.') {
+        return false;
+    }
+    // Need at least two more slashes after host: owner/pkg/within
+    let after_host = &ref_str[first_slash + 1..];
+    after_host.matches('/').count() >= 2
 }
 
 /// Parse a dep skill ref into `(package_path, within_package_path)`.
 ///
 /// The package path is the first three slash-separated segments
-/// (`github.com/owner/pkg`). Everything after is the within-package path
+/// (`host.tld/owner/pkg`). Everything after is the within-package path
 /// (`skills/skill-name`).
 ///
 /// Returns `None` if the ref has fewer than four segments (no within-package
-/// path) or does not start with `github.com/`.
+/// path) or if the first segment contains no dot (not a hostname).
 pub fn parse_dep_ref(ref_str: &str) -> Option<(&str, &str)> {
-    if !ref_str.starts_with("github.com/") {
+    // Split into segments: host / owner / pkg / within...
+    let first_slash = ref_str.find('/')?;
+    let host = &ref_str[..first_slash];
+    if !host.contains('.') {
         return None;
     }
-    // Find the third slash (after "github.com/owner/pkg")
-    let after_scheme = &ref_str["github.com/".len()..];
-    // after_scheme is "owner/pkg/skills/skill-name"
-    // We need two more slashes for owner and pkg
-    let first_slash = after_scheme.find('/')?;
-    let after_owner = &after_scheme[first_slash + 1..];
-    let second_slash = after_owner.find('/')?;
-    let pkg_end = "github.com/".len() + first_slash + 1 + second_slash;
+    // Find owner and pkg slashes
+    let after_host = &ref_str[first_slash + 1..];
+    let owner_slash = after_host.find('/')?;
+    let after_owner = &after_host[owner_slash + 1..];
+    let pkg_slash = after_owner.find('/')?;
 
+    let pkg_end = first_slash + 1 + owner_slash + 1 + pkg_slash;
     let package_path = &ref_str[..pkg_end];
-    let within_path = &ref_str[pkg_end + 1..]; // skip the third slash
+    let within_path = &ref_str[pkg_end + 1..];
 
     if within_path.is_empty() {
         return None;
@@ -262,7 +275,7 @@ fn list_available_skills(skills_dir: &Path) -> Vec<String> {
 /// Resolve all dep skill refs found in `skill_refs`, merging them with
 /// `local_skills` (which remain unchanged).
 ///
-/// - Refs without `github.com/` prefix are skipped (they are local).
+/// - Refs without a hostname prefix are skipped (they are local).
 /// - Refs already present by id in `local_skills` are skipped (no duplicates).
 /// - A missing lock or cache hit causes a hard error with an actionable message.
 ///
