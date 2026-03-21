@@ -29,6 +29,9 @@ pub fn end_session(project_dir: &Path, req: EndSessionRequest, branch: &str) -> 
     let end_req = RuntimeEndWorkspaceSessionRequest {
         summary: req.summary,
         updated_workspace_ids,
+        model: req.model,
+        files_changed: req.files_changed,
+        gate_result: req.gate_result,
     };
     match runtime_end_workspace_session(project_dir, branch, end_req) {
         Ok(session) => serde_json::to_string_pretty(&session)

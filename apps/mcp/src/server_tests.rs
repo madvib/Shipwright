@@ -141,6 +141,15 @@ fn core_tools_are_recognized() {
         "update_job",
         "list_jobs",
         "provider_matrix",
+        "create_target",
+        "update_target",
+        "list_targets",
+        "get_target",
+        "create_capability",
+        "update_capability",
+        "delete_capability",
+        "mark_capability_actual",
+        "list_capabilities",
     ];
     for tool in core_tools {
         assert!(ShipServer::is_core_tool(tool), "{tool} should be a core tool");
@@ -185,4 +194,70 @@ fn normalization_applied_to_both_sides() {
     let active = vec!["ship_create_spec_tool".to_string()];
     assert!(ShipServer::mode_allows_tool("create_spec", &active));
     assert!(ShipServer::mode_allows_tool("ship_create_spec_tool", &active));
+}
+
+// ── update_target handler ──────────────────────────────────────────
+
+#[test]
+fn update_target_patches_fields() {
+    let tmp = tempdir().expect("tempdir");
+    let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
+
+    let create_req = crate::requests::CreateTargetRequest {
+        kind: "surface".into(),
+        title: "Original Title".into(),
+        description: Some("Original desc".into()),
+        goal: Some("Original goal".into()),
+        status: Some("active".into()),
+        phase: None,
+        due_date: None,
+        body_markdown: Some("# Original body".into()),
+        file_scope: None,
+    };
+    let created = crate::tools::target::create_target(&project_dir, create_req);
+    assert!(created.starts_with("Created target:"), "unexpected: {}", created);
+
+    let id = created.split("id: ").nth(1).unwrap().split(',').next().unwrap().to_string();
+
+    let update_req = crate::requests::UpdateTargetRequest {
+        id: id.clone(),
+        title: Some("Updated Title".into()),
+        description: Some("Updated desc".into()),
+        goal: Some("Updated goal".into()),
+        status: Some("planned".into()),
+        phase: None,
+        due_date: None,
+        body_markdown: Some("# Updated body".into()),
+        file_scope: None,
+    };
+    let updated = crate::tools::target::update_target(&project_dir, update_req);
+    assert!(updated.contains("Updated target"), "unexpected: {}", updated);
+
+    let get_req = crate::requests::GetTargetRequest { id };
+    let detail = crate::tools::target::get_target(&project_dir, get_req);
+    assert!(detail.contains("Updated Title"), "title not updated: {}", detail);
+    assert!(detail.contains("Updated desc"), "description not updated: {}", detail);
+    assert!(detail.contains("Updated goal"), "goal not updated: {}", detail);
+    assert!(detail.contains("planned"), "status not updated: {}", detail);
+    assert!(detail.contains("# Updated body"), "body_markdown not updated: {}", detail);
+}
+
+#[test]
+fn update_target_nonexistent_returns_error() {
+    let tmp = tempdir().expect("tempdir");
+    let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
+
+    let update_req = crate::requests::UpdateTargetRequest {
+        id: "nonexistent_id".into(),
+        title: Some("Wont matter".into()),
+        description: None,
+        goal: None,
+        status: None,
+        phase: None,
+        due_date: None,
+        body_markdown: None,
+        file_scope: None,
+    };
+    let result = crate::tools::target::update_target(&project_dir, update_req);
+    assert!(result.contains("Error"), "expected error for nonexistent target: {}", result);
 }

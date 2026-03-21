@@ -231,6 +231,12 @@ pub struct EndSessionRequest {
     pub summary: Option<String>,
     /// Workspace IDs updated during this session.
     pub updated_workspace_ids: Option<Vec<String>>,
+    /// Model ID used during the session (e.g. "claude-opus-4-20250514").
+    pub model: Option<String>,
+    /// Count of files modified during the session.
+    pub files_changed: Option<i64>,
+    /// Gate result for gated sessions: "pass", "fail", or null.
+    pub gate_result: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
