@@ -7,6 +7,9 @@ pub mod agents;
 pub mod branch;
 pub mod branch_context;
 pub mod events;
+#[cfg(test)]
+mod events_tests;
+pub mod file_claims;
 pub mod jobs;
 pub mod kv;
 pub mod managed_state;
@@ -56,14 +59,48 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
         .create_if_missing(true);
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
+    // Migrations — idempotent, ignore errors (already applied or table absent).
+    let migrations: &[&str] = &[
+        "ALTER TABLE agent_mode RENAME TO agent_config",
+        // Session record gained optional metrics columns.
+        "ALTER TABLE workspace_session_record ADD COLUMN duration_secs INTEGER",
+        "ALTER TABLE workspace_session_record ADD COLUMN provider TEXT",
+        "ALTER TABLE workspace_session_record ADD COLUMN model TEXT",
+        "ALTER TABLE workspace_session_record ADD COLUMN agent_id TEXT",
+        "ALTER TABLE workspace_session_record ADD COLUMN files_changed INTEGER",
+        "ALTER TABLE workspace_session_record ADD COLUMN gate_result TEXT",
+    ];
+    for sql in migrations {
+        let _ = block_on(async { sqlx::query(sql).execute(&mut conn).await });
+    }
+
+    // Old event_log (pre-v0.1.0) used incompatible columns (seq, timestamp, entity, subject).
+    // Detect by checking for the old `seq` column; if present, drop and let DDL recreate.
+    let has_old_schema = block_on(async {
+        sqlx::query("SELECT seq FROM event_log LIMIT 0")
+            .execute(&mut conn)
+            .await
+    })
+    .is_ok();
+    if has_old_schema {
+        let _ = block_on(async {
+            sqlx::query("DROP TABLE event_log")
+                .execute(&mut conn)
+                .await
+        });
+    }
+
     // Execute each statement individually — sqlx only runs one statement at a time.
-    for stmt in schema::SCHEMA
-        .split(';')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        block_on(async { sqlx::query(stmt).execute(&mut conn).await })
-            .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
+    // Strip SQL comments first since they may contain semicolons.
+    for part in schema::SCHEMA_PARTS {
+        let stripped: String = part.lines()
+            .filter(|l| !l.trim_start().starts_with("--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for stmt in stripped.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            block_on(async { sqlx::query(stmt).execute(&mut conn).await })
+                .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
+        }
     }
     Ok(())
 }
@@ -95,11 +132,14 @@ fn migrate_local_db_to_global(ship_dir: &Path) {
         let _ = std::fs::create_dir_all(parent);
     }
     match std::fs::copy(&local_path, &global_path) {
-        Ok(_) => eprintln!(
-            "migrated platform.db from {} → {}",
-            local_path.display(),
-            global_path.display()
-        ),
+        Ok(_) => {
+            eprintln!(
+                "migrated platform.db from {} → {}",
+                local_path.display(),
+                global_path.display()
+            );
+            let _ = std::fs::remove_file(&local_path);
+        }
         Err(e) => eprintln!(
             "warning: failed to migrate platform.db to {}: {e}",
             global_path.display()

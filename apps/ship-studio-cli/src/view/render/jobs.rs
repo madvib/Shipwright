@@ -6,15 +6,24 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::view::App;
+use crate::view::{App, JobFilter};
 use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, panel, status_color, status_sym};
+
+fn jobs_panel_title(app: &App) -> String {
+    let count = app.jobs.len();
+    match app.job_filter {
+        JobFilter::All => format!("Jobs  ({count})"),
+        f => format!("Jobs  ({count}) [{filter}]", filter = f.label()),
+    }
+}
 
 pub fn draw_jobs(f: &mut Frame, app: &App, area: Rect) {
     if app.jobs.is_empty() {
+        let title = jobs_panel_title(app);
         f.render_widget(
             Paragraph::new("  No jobs.")
                 .style(Style::default().fg(C_MUT).bg(C_BG))
-                .block(panel("Jobs")),
+                .block(panel(title)),
             area,
         );
         return;
@@ -42,7 +51,7 @@ pub fn draw_jobs(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(app.sel_job));
     f.render_stateful_widget(
         List::new(items)
-            .block(panel(format!("Jobs  ({})", app.jobs.len())))
+            .block(panel(jobs_panel_title(app)))
             .highlight_style(Style::default().bg(C_SEL))
             .highlight_symbol("▶ "),
         area,
@@ -128,7 +137,8 @@ pub fn draw_job_detail(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(
         Paragraph::new(log_lines)
             .block(panel("Log  (recent 20)"))
-            .wrap(Wrap { trim: false }),
+            .wrap(Wrap { trim: false })
+            .scroll((app.log_scroll, 0)),
         chunks[1],
     );
 }

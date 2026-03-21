@@ -5,7 +5,7 @@ use chrono::Utc;
 use sqlx::Row;
 use std::path::Path;
 
-use super::types::{AgentArtifactRegistryDb, AgentModeDb, AgentRuntimeSettingsDb};
+use super::types::{AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb};
 use super::{block_on, open_db};
 
 pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRuntimeSettingsDb>> {
@@ -205,12 +205,12 @@ pub fn get_agent_artifact_registry_by_external_id_db(
     }))
 }
 
-pub fn list_agent_modes_db(ship_dir: &Path) -> Result<Vec<AgentModeDb>> {
+pub fn list_agent_configs_db(ship_dir: &Path) -> Result<Vec<AgentConfigDb>> {
     let mut conn = open_db(ship_dir)?;
     let rows = block_on(async {
         sqlx::query(
             "SELECT id, name, description, active_tools_json, mcp_refs_json, skill_refs_json, rule_refs_json, prompt_id, hooks_json, permissions_json, target_agents_json
-             FROM agent_mode
+             FROM agent_config
              ORDER BY id ASC",
         )
         .fetch_all(&mut conn)
@@ -219,7 +219,7 @@ pub fn list_agent_modes_db(ship_dir: &Path) -> Result<Vec<AgentModeDb>> {
 
     let mut modes = Vec::with_capacity(rows.len());
     for row in rows {
-        modes.push(AgentModeDb {
+        modes.push(AgentConfigDb {
             id: row.get(0),
             name: row.get(1),
             description: row.get(2),
@@ -236,12 +236,12 @@ pub fn list_agent_modes_db(ship_dir: &Path) -> Result<Vec<AgentModeDb>> {
     Ok(modes)
 }
 
-pub fn upsert_agent_mode_db(ship_dir: &Path, mode: &AgentModeDb) -> Result<()> {
+pub fn upsert_agent_config_db(ship_dir: &Path, mode: &AgentConfigDb) -> Result<()> {
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
-            "INSERT INTO agent_mode
+            "INSERT INTO agent_config
                 (id, name, description, active_tools_json, mcp_refs_json, skill_refs_json, rule_refs_json, prompt_id, hooks_json, permissions_json, target_agents_json, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
@@ -275,10 +275,10 @@ pub fn upsert_agent_mode_db(ship_dir: &Path, mode: &AgentModeDb) -> Result<()> {
     Ok(())
 }
 
-pub fn delete_agent_mode_db(ship_dir: &Path, id: &str) -> Result<()> {
+pub fn delete_agent_config_db(ship_dir: &Path, id: &str) -> Result<()> {
     let mut conn = open_db(ship_dir)?;
     block_on(async {
-        sqlx::query("DELETE FROM agent_mode WHERE id = ?")
+        sqlx::query("DELETE FROM agent_config WHERE id = ?")
             .bind(id)
             .execute(&mut conn)
             .await

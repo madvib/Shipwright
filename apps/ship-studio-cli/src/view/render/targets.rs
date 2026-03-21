@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph},
 };
 
-use crate::view::App;
-use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, panel, status_color, status_sym};
+use crate::view::{App, data};
+use super::{C_BG, C_FG, C_GREEN, C_MUT, C_PRI, C_SEL, panel, status_color, status_sym};
 
 pub fn draw_targets(f: &mut Frame, app: &App, area: Rect) {
     if app.targets.is_empty() {
@@ -24,11 +24,21 @@ pub fn draw_targets(f: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|t| {
             let sc = status_color(&t.status);
+            let (actual, total) = data::load_cap_progress(&app.ship_dir, &t.id);
+            let progress = if total > 0 {
+                let pct = (actual * 100) / total;
+                let bar_w = 10;
+                let filled = (actual * bar_w) / total;
+                let bar: String = "█".repeat(filled) + &"░".repeat(bar_w - filled);
+                format!(" {bar} {actual}/{total} ({pct}%)")
+            } else {
+                String::new()
+            };
             let line = Line::from(vec![
                 Span::styled(format!(" {} ", status_sym(&t.status)), Style::default().fg(sc)),
-                Span::styled(format!("{:<40}", t.title), Style::default().fg(C_FG)),
-                Span::styled(format!("  {:<12}", t.kind), Style::default().fg(C_MUT)),
-                Span::styled(t.status.clone(), Style::default().fg(sc)),
+                Span::styled(format!("{:<32}", t.title), Style::default().fg(C_FG)),
+                Span::styled(format!(" {:<10}", t.kind), Style::default().fg(C_MUT)),
+                Span::styled(progress, Style::default().fg(C_GREEN)),
             ]);
             ListItem::new(line)
         })

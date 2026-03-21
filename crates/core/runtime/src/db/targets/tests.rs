@@ -178,6 +178,29 @@ fn list_capabilities_all_filters() {
 }
 
 #[test]
+fn delete_capability_removes_row() {
+    let (_tmp, ship_dir) = setup();
+    let t = create_target(&ship_dir, "surface", "cli", None, None, None).unwrap();
+    let c = create_capability(&ship_dir, &t.id, "ephemeral cap", None).unwrap();
+
+    assert!(get_capability(&ship_dir, &c.id).unwrap().is_some());
+    let deleted = delete_capability(&ship_dir, &c.id).unwrap();
+    assert!(deleted);
+    assert!(get_capability(&ship_dir, &c.id).unwrap().is_none());
+
+    // Second delete returns false (not found)
+    let deleted_again = delete_capability(&ship_dir, &c.id).unwrap();
+    assert!(!deleted_again);
+}
+
+#[test]
+fn delete_capability_nonexistent_returns_false() {
+    let (_tmp, ship_dir) = setup();
+    let deleted = delete_capability(&ship_dir, "nonexistent_id").unwrap();
+    assert!(!deleted);
+}
+
+#[test]
 fn capability_priority_ordering() {
     let (_tmp, ship_dir) = setup();
     let t = create_target(&ship_dir, "surface", "cli", None, None, None).unwrap();

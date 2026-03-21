@@ -1,6 +1,7 @@
 //! TUI rendering — Ship design token palette translated to terminal RGB.
 
 mod adrs;
+mod events;
 mod jobs;
 mod notes;
 mod targets;
@@ -36,7 +37,7 @@ pub(super) fn status_color(s: &str) -> Color {
         "actual" | "complete" | "done" => C_GREEN,
         "pending" => C_BLUE,
         "aspirational" => C_PURPLE,
-        "active" | "running" => C_AMBER,
+        "active" | "running" | "in_progress" => C_AMBER,
         "failed" | "blocked" => C_RED,
         _ => C_MUT,
     }
@@ -47,7 +48,7 @@ pub(super) fn status_sym(s: &str) -> &'static str {
         "actual" | "complete" | "done" => "●",
         "pending" => "○",
         "aspirational" => "◎",
-        "active" | "running" => "◆",
+        "active" | "running" | "in_progress" => "◆",
         "failed" | "blocked" => "✖",
         _ => "·",
     }
@@ -65,11 +66,12 @@ pub(super) fn panel(title: impl Into<String>) -> Block<'static> {
 fn header_tabs(app: &App) -> Tabs<'static> {
     let selected = match app.tab {
         Tab::Targets => 0,
-        Tab::Notes => 1,
-        Tab::Adrs => 2,
-        Tab::Jobs => 3,
+        Tab::Jobs => 1,
+        Tab::Events => 2,
+        Tab::Notes => 3,
+        Tab::Adrs => 4,
     };
-    Tabs::new(vec!["  Targets  ", "  Notes  ", "  ADRs  ", "  Jobs  "])
+    Tabs::new(vec!["  Targets  ", "  Jobs  ", "  Events  ", "  Notes  ", "  ADRs  "])
         .select(selected)
         .highlight_style(
             Style::default().fg(C_PRI).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
@@ -89,11 +91,25 @@ fn header_tabs(app: &App) -> Tabs<'static> {
 }
 
 fn footer(app: &App) -> Paragraph<'static> {
-    let hint = match app.screen {
-        Screen::List => "  ↑↓ jk · ⏎ open · Tab switch tab · r reload · q quit",
-        _ => "  ↑↓ jk · ⏎ open · ⌫ Esc back · r reload · q quit",
+    let auto = if app.auto_refresh { "on" } else { "off" };
+    let hint = match (app.tab, app.screen) {
+        (Tab::Jobs, Screen::List) => format!(
+            "  ↑↓ jk · g/G top/end · ⏎ open · s cycle-status · f filter · Tab switch · a auto({auto}) · q quit"
+        ),
+        (Tab::Targets, Screen::TargetDetail) => format!(
+            "  ↑↓ jk · g/G top/end · ⏎ open · s cycle-status · ⌫ back · a auto({auto}) · q quit"
+        ),
+        (Tab::Jobs, Screen::JobDetail) => format!(
+            "  ↑↓ jk scroll · g/G top/end · l launch · ⌫ back · a auto({auto}) · q quit"
+        ),
+        (_, Screen::List) => format!(
+            "  ↑↓ jk · g/G top/end · ⏎ open · Tab/⇧Tab switch · r reload · a auto({auto}) · q quit"
+        ),
+        _ => format!(
+            "  ↑↓ jk scroll · g/G top/end · ⌫ Esc back · r reload · a auto({auto}) · q quit"
+        ),
     };
-    let mut spans = vec![Span::styled(hint.to_string(), Style::default().fg(C_MUT))];
+    let mut spans = vec![Span::styled(hint, Style::default().fg(C_MUT))];
     if !app.status.is_empty() {
         spans.push(Span::styled(
             format!("   ·  {}", app.status),
@@ -125,6 +141,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         (Tab::Adrs, Screen::AdrDetail) => adrs::draw_adr_detail(f, app, body),
         (Tab::Jobs, Screen::List) => jobs::draw_jobs(f, app, body),
         (Tab::Jobs, Screen::JobDetail) => jobs::draw_job_detail(f, app, body),
+        (Tab::Events, Screen::List) => events::draw_events(f, app, body),
+        (Tab::Events, Screen::EventDetail) => events::draw_event_detail(f, app, body),
         _ => {}
     }
 }

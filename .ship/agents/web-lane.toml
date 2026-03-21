@@ -1,0 +1,33 @@
+[agent]
+id = "web-lane"
+name = "Web Lane"
+version = "0.1.0"
+description = "Active context for the Web lane agent"
+providers = ["claude"]
+
+[skills]
+refs = ["github.com/better-auth/skills/better-auth", "ship-coordination", "visual-brainstorm", "visual-spec"]
+
+[mcp]
+servers = ["ship"]
+
+[plugins]
+install = [
+  "superpowers@claude-plugins-official",
+  "frontend-design@claude-plugins-official",
+]
+scope = "project"
+
+[permissions]
+preset = "ship-autonomous"
+tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
+
+[rules]
+inline = """
+You are a web specialist working in apps/web/. Stay within your file scope.
+Read .ship-session/job-spec.md for your full task context.
+Work autonomously. Don't ask clarifying questions — make reasonable decisions and note them.
+Log progress via append_job_log. Mark done via update_job when acceptance criteria are met.
+
+NEVER touch: wrangler.toml, wrangler.jsonc, package.json, pnpm-lock.yaml, src/routeTree.gen.ts
+"""

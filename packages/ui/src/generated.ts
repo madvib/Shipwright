@@ -246,7 +246,7 @@ export type ProfileMeta = { id: string; name: string; version?: string | null; d
 
 export type ProfilePermissions = { 
 /**
- * Permission preset name (e.g. "ship-standard", "ship-guarded").
+ * Permission preset name (e.g. "ship-standard", "ship-autonomous").
  */
 preset?: string | null; tools_allow?: string[]; tools_ask?: string[]; tools_deny?: string[]; 
 /**

@@ -309,6 +309,18 @@ pub struct WorkspaceSessionRecord {
     pub summary: Option<String>,
     #[serde(default)]
     pub updated_workspace_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_changed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gate_result: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -316,6 +328,9 @@ pub struct WorkspaceSessionRecord {
 pub struct EndWorkspaceSessionRequest {
     pub summary: Option<String>,
     pub updated_workspace_ids: Vec<String>,
+    pub model: Option<String>,
+    pub files_changed: Option<i64>,
+    pub gate_result: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -419,6 +434,12 @@ fn hydrate_workspace_session_record(
         workspace_branch: row.workspace_branch,
         summary: row.summary,
         updated_workspace_ids: row.updated_workspace_ids,
+        duration_secs: row.duration_secs,
+        provider: row.provider,
+        model: row.model,
+        agent_id: row.agent_id,
+        files_changed: row.files_changed,
+        gate_result: row.gate_result,
         created_at: parse_datetime(&row.created_at),
     }
 }
@@ -610,8 +631,8 @@ fn run_post_session_hooks(ship_dir: &Path, session: &WorkspaceSession) -> Result
     Ok(())
 }
 
-fn normalize_mode_ref(mode: &str) -> Option<String> {
-    let trimmed = mode.trim();
+fn normalize_agent_ref(agent: &str) -> Option<String> {
+    let trimmed = agent.trim();
     if trimmed.is_empty() {
         None
     } else {
@@ -671,23 +692,23 @@ fn merge_feature_agent_with_workspace(
     if has_override { Some(merged) } else { None }
 }
 
-fn validate_mode_exists(ship_dir: &Path, mode_id: &str) -> Result<String> {
-    let normalized = normalize_mode_ref(mode_id)
-        .ok_or_else(|| anyhow::anyhow!("Workspace mode cannot be empty"))?;
+fn validate_agent_exists(ship_dir: &Path, agent_id: &str) -> Result<String> {
+    let normalized = normalize_agent_ref(agent_id)
+        .ok_or_else(|| anyhow::anyhow!("Workspace agent cannot be empty"))?;
     let effective = crate::config::get_effective_config(Some(ship_dir.to_path_buf()))?;
     if effective.modes.iter().any(|mode| mode.id == normalized) {
         Ok(normalized)
     } else {
-        Err(anyhow::anyhow!("Mode '{}' not found", normalized))
+        Err(anyhow::anyhow!("Agent '{}' not found", normalized))
     }
 }
 
 fn resolve_session_providers(
     ship_dir: &Path,
     workspace: &Workspace,
-    mode_id: Option<&str>,
+    agent_id: Option<&str>,
 ) -> Result<Vec<String>> {
-    let resolved = resolve_workspace_agent_config(ship_dir, workspace, mode_id)?;
+    let resolved = resolve_workspace_agent_config(ship_dir, workspace, agent_id)?;
     if resolved.providers.is_empty() {
         return Err(anyhow!(
             "No valid providers resolved for workspace '{}'",
@@ -700,35 +721,35 @@ fn resolve_session_providers(
 fn resolve_workspace_agent_config(
     ship_dir: &Path,
     workspace: &Workspace,
-    mode_id: Option<&str>,
+    agent_id: Option<&str>,
 ) -> Result<ProviderSettings> {
-    let mode_id = mode_id
-        .and_then(normalize_mode_ref)
+    let agent_id = agent_id
+        .and_then(normalize_agent_ref)
         .or_else(|| {
             workspace
                 .active_agent
                 .as_deref()
-                .and_then(normalize_mode_ref)
+                .and_then(normalize_agent_ref)
         })
-        .map(|mode| mode.to_string());
+        .map(|a| a.to_string());
 
     let workspace_agent = merge_feature_agent_with_workspace(None, workspace);
 
-    resolve_provider_settings_with_agent_override(ship_dir, workspace_agent.as_ref(), mode_id.as_deref())
+    resolve_provider_settings_with_agent_override(ship_dir, workspace_agent.as_ref(), agent_id.as_deref())
 }
 
 fn build_workspace_provider_matrix(
     ship_dir: &Path,
     workspace: &Workspace,
-    mode_id: Option<&str>,
+    agent_id: Option<&str>,
 ) -> Result<WorkspaceProviderMatrix> {
-    let resolved_mode_id = mode_id.and_then(normalize_mode_ref).or_else(|| {
+    let resolved_agent_id = agent_id.and_then(normalize_agent_ref).or_else(|| {
         workspace
             .active_agent
             .as_deref()
-            .and_then(normalize_mode_ref)
+            .and_then(normalize_agent_ref)
     });
-    let resolved = resolve_workspace_agent_config(ship_dir, workspace, mode_id)?;
+    let resolved = resolve_workspace_agent_config(ship_dir, workspace, agent_id)?;
     let providers = resolved.providers;
 
     let supported_providers = crate::agents::export::list_providers(ship_dir)?
@@ -747,13 +768,13 @@ fn build_workspace_provider_matrix(
 
     Ok(WorkspaceProviderMatrix {
         workspace_branch: workspace.branch.clone(),
-        agent_id: resolved_mode_id,
+        agent_id: resolved_agent_id,
         source: if !workspace.providers.is_empty() {
             "workspace".to_string()
         } else if workspace.feature_id.is_some() {
             "feature".to_string()
         } else if resolved.active_agent.is_some() {
-            "mode/config".to_string()
+            "agent/config".to_string()
         } else {
             "config/default".to_string()
         },
@@ -868,12 +889,12 @@ fn compute_workspace_context_hash(
 pub fn get_workspace_provider_matrix(
     ship_dir: &Path,
     branch: &str,
-    mode_id: Option<&str>,
+    agent_id: Option<&str>,
 ) -> Result<WorkspaceProviderMatrix> {
     let branch = ensure_branch_key(branch)?;
     let workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow!("Workspace not found for branch '{}'", branch))?;
-    build_workspace_provider_matrix(ship_dir, &workspace, mode_id)
+    build_workspace_provider_matrix(ship_dir, &workspace, agent_id)
 }
 
 pub fn repair_workspace(
@@ -913,8 +934,8 @@ pub fn repair_workspace(
 
     if !dry_run && needs_recompile && matrix.resolution_error.is_none() {
         if workspace.status == WorkspaceStatus::Active {
-            let mode = workspace.active_agent.clone();
-            workspace = set_workspace_active_agent(ship_dir, branch, mode.as_deref())?;
+            let active = workspace.active_agent.clone();
+            workspace = set_workspace_active_agent(ship_dir, branch, active.as_deref())?;
             matrix =
                 get_workspace_provider_matrix(ship_dir, branch, workspace.active_agent.as_deref())?;
             missing_provider_configs =
@@ -949,14 +970,14 @@ pub fn repair_workspace(
 fn compile_workspace_context(
     ship_dir: &Path,
     workspace: &mut Workspace,
-    mode_id_override: Option<&str>,
+    agent_id_override: Option<&str>,
 ) -> Result<()> {
-    let mode_id = mode_id_override
-        .map(|mode| mode.to_string())
+    let agent_id = agent_id_override
+        .map(|a| a.to_string())
         .or_else(|| workspace.active_agent.clone());
-    let mode_id = mode_id.and_then(|value| normalize_optional_text(Some(value)));
+    let agent_id = agent_id.and_then(|value| normalize_optional_text(Some(value)));
     let resolved_agent =
-        match resolve_workspace_agent_config(ship_dir, workspace, mode_id.as_deref()) {
+        match resolve_workspace_agent_config(ship_dir, workspace, agent_id.as_deref()) {
             Ok(agent) => agent,
             Err(error) => {
                 let now = Utc::now();
@@ -1013,7 +1034,7 @@ fn compile_workspace_context(
                 provider,
                 Some(mcp_server_filter.as_slice()),
                 Some(skill_filter.as_slice()),
-                mode_id.as_deref(),
+                agent_id.as_deref(),
                 &context_root,
             )
         {
@@ -1543,6 +1564,10 @@ pub fn end_workspace_session(
         Some(details.join(" ")),
     )?;
 
+    let duration_secs = ended
+        .ended_at
+        .map(|end| (end - ended.started_at).num_seconds());
+
     let record = crate::db::types::WorkspaceSessionRecordDb {
         id: crate::gen_nanoid(),
         session_id: ended.id.clone(),
@@ -1550,6 +1575,12 @@ pub fn end_workspace_session(
         workspace_branch: ended.workspace_branch.clone(),
         summary: ended.summary.clone(),
         updated_workspace_ids: ended.updated_workspace_ids.clone(),
+        duration_secs,
+        provider: ended.primary_provider.clone(),
+        model: request.model,
+        agent_id: ended.agent_id.clone(),
+        files_changed: request.files_changed,
+        gate_result: request.gate_result,
         created_at: Utc::now().to_rfc3339(),
     };
     insert_workspace_session_record_db(ship_dir, &record)?;
@@ -1588,7 +1619,7 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
         workspace.target_id = Some(target_id);
     }
     if let Some(active_agent) = request.active_agent {
-        workspace.active_agent = Some(validate_mode_exists(ship_dir, &active_agent)?);
+        workspace.active_agent = Some(validate_agent_exists(ship_dir, &active_agent)?);
     }
     if let Some(providers) = request.providers {
         workspace.providers = providers;
@@ -1771,18 +1802,18 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     Ok(workspace)
 }
 
-/// Set or clear workspace-level mode override for a branch workspace.
+/// Set or clear workspace-level agent override for a branch workspace.
 pub fn set_workspace_active_agent(
     ship_dir: &Path,
     branch: &str,
-    mode_id: Option<&str>,
+    agent_id: Option<&str>,
 ) -> Result<Workspace> {
     let branch = ensure_branch_key(branch)?;
     let mut workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
 
-    workspace.active_agent = match mode_id {
-        Some(mode) => Some(validate_mode_exists(ship_dir, mode)?),
+    workspace.active_agent = match agent_id {
+        Some(a) => Some(validate_agent_exists(ship_dir, a)?),
         None => None,
     };
     workspace.resolved_at = Utc::now();
@@ -2470,6 +2501,9 @@ mod tests {
             EndWorkspaceSessionRequest {
                 summary: Some("Implemented parser + tests".to_string()),
                 updated_workspace_ids: vec!["feat-parser".to_string()],
+                model: None,
+                files_changed: None,
+                gate_result: None,
             },
         )?;
         assert_eq!(ended.status, WorkspaceSessionStatus::Ended);
@@ -2480,6 +2514,94 @@ mod tests {
         assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
 
         // NOTE: event_log killed — event assertions removed.
+        Ok(())
+    }
+
+    #[test]
+    fn session_record_captures_metrics_on_end() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/metrics".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        let started = start_workspace_session(
+            &ship_dir,
+            "feature/metrics",
+            Some("test metrics".to_string()),
+            None,
+            None,
+        )?;
+
+        let ended = end_workspace_session(
+            &ship_dir,
+            "feature/metrics",
+            EndWorkspaceSessionRequest {
+                summary: Some("done".to_string()),
+                updated_workspace_ids: vec![],
+                model: Some("claude-opus-4-20250514".to_string()),
+                files_changed: Some(5),
+                gate_result: Some("pass".to_string()),
+            },
+        )?;
+
+        let record = get_workspace_session_record(&ship_dir, &ended.id)?
+            .expect("session record should exist after end");
+
+        assert_eq!(record.session_id, started.id);
+        assert!(record.duration_secs.is_some());
+        assert!(record.duration_secs.unwrap() >= 0);
+        assert_eq!(record.provider.as_deref(), Some("claude"));
+        assert_eq!(record.model.as_deref(), Some("claude-opus-4-20250514"));
+        assert_eq!(record.agent_id, started.agent_id);
+        assert_eq!(record.files_changed, Some(5));
+        assert_eq!(record.gate_result.as_deref(), Some("pass"));
+        Ok(())
+    }
+
+    #[test]
+    fn session_record_metrics_default_to_none() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feature/metrics-defaults".to_string(),
+                status: Some(WorkspaceStatus::Active),
+                ..Default::default()
+            },
+        )?;
+
+        start_workspace_session(
+            &ship_dir,
+            "feature/metrics-defaults",
+            None,
+            None,
+            None,
+        )?;
+
+        let ended = end_workspace_session(
+            &ship_dir,
+            "feature/metrics-defaults",
+            EndWorkspaceSessionRequest::default(),
+        )?;
+
+        let record = get_workspace_session_record(&ship_dir, &ended.id)?
+            .expect("session record should exist");
+
+        assert!(record.duration_secs.is_some());
+        assert!(record.duration_secs.unwrap() >= 0);
+        assert!(record.provider.is_some()); // inherited from session
+        assert!(record.model.is_none());
+        assert!(record.files_changed.is_none());
+        assert!(record.gate_result.is_none());
         Ok(())
     }
 
@@ -2634,7 +2756,7 @@ mod tests {
         )
         .expect_err("expected invalid agent to be rejected");
 
-        assert!(err.to_string().contains("Mode 'ghost' not found"));
+        assert!(err.to_string().contains("Agent 'ghost' not found"));
         Ok(())
     }
 
@@ -2712,7 +2834,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_matrix_prefers_workspace_providers_over_mode_and_config() -> Result<()> {
+    fn provider_matrix_prefers_workspace_providers_over_agent_and_config() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 

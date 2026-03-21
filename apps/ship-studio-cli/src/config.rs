@@ -16,6 +16,8 @@ pub struct ShipConfig {
     pub defaults: Option<Defaults>,
     pub worktrees: Option<WorktreesConfig>,
     pub cloud: Option<CloudConfig>,
+    pub terminal: Option<TerminalConfig>,
+    pub dispatch: Option<DispatchConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,15 +26,21 @@ pub struct Identity {
     pub email: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Defaults {
-    pub provider: Option<String>,
-    pub mode: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorktreesConfig {
     pub dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TerminalConfig {
+    /// Terminal to open for dispatched agents: wt, iterm, tmux, gnome, vscode, manual
+    pub program: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DispatchConfig {
+    /// Show spec and ask y/n before launching agent
+    pub confirm: Option<bool>,
 }
 
 /// ~/.ship/credentials — auth token storage (separate from general config).
@@ -100,9 +108,110 @@ impl ShipConfig {
         }
     }
 
-    fn path() -> PathBuf {
+    pub fn save(&self) -> anyhow::Result<()> {
+        let path = Self::path();
+        if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
+        std::fs::write(&path, toml::to_string_pretty(self)?)?;
+        Ok(())
+    }
+
+    pub fn path() -> PathBuf {
         dirs::home_dir().unwrap_or_default().join(".ship").join("config.toml")
     }
+
+    /// Get a config value by dot-path key. Returns None if unset.
+    pub fn get(&self, key: &str) -> Option<String> {
+        match key {
+            "identity.name" => self.identity.as_ref().map(|i| i.name.clone()),
+            "identity.email" => self.identity.as_ref()?.email.clone(),
+            "defaults.provider" => self.defaults.as_ref()?.provider.clone(),
+            "defaults.mode" => self.defaults.as_ref()?.mode.clone(),
+            "worktrees.dir" => self.worktrees.as_ref()?.dir.clone(),
+            "terminal.program" => self.terminal.as_ref()?.program.clone(),
+            "dispatch.confirm" => {
+                self.dispatch.as_ref()?.confirm.map(|b| b.to_string())
+            }
+            "cloud.base_url" => self.cloud.as_ref()?.base_url.clone(),
+            _ => None,
+        }
+    }
+
+    /// Set a config value by dot-path key.
+    pub fn set(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
+        match key {
+            "identity.name" => {
+                self.identity.get_or_insert_with(|| Identity {
+                    name: String::new(), email: None,
+                }).name = value.to_string();
+            }
+            "identity.email" => {
+                self.identity.get_or_insert_with(|| Identity {
+                    name: String::new(), email: None,
+                }).email = Some(value.to_string());
+            }
+            "defaults.provider" => {
+                self.defaults.get_or_insert_with(Defaults::default)
+                    .provider = Some(value.to_string());
+            }
+            "defaults.mode" => {
+                self.defaults.get_or_insert_with(Defaults::default)
+                    .mode = Some(value.to_string());
+            }
+            "worktrees.dir" => {
+                self.worktrees.get_or_insert_with(WorktreesConfig::default)
+                    .dir = Some(value.to_string());
+            }
+            "terminal.program" => {
+                let valid = ["wt", "iterm", "tmux", "gnome", "vscode", "manual", "auto"];
+                if !valid.contains(&value) {
+                    anyhow::bail!(
+                        "terminal.program must be one of: {}. Got: \"{}\"",
+                        valid.join(", "), value
+                    );
+                }
+                self.terminal.get_or_insert_with(TerminalConfig::default)
+                    .program = Some(value.to_string());
+            }
+            "dispatch.confirm" => {
+                let b = match value {
+                    "true" | "1" | "yes" => true,
+                    "false" | "0" | "no" => false,
+                    _ => anyhow::bail!("dispatch.confirm must be true or false"),
+                };
+                self.dispatch.get_or_insert_with(DispatchConfig::default)
+                    .confirm = Some(b);
+            }
+            "cloud.base_url" => {
+                self.cloud.get_or_insert_with(CloudConfig::default)
+                    .base_url = Some(value.to_string());
+            }
+            _ => anyhow::bail!(
+                "Unknown key: \"{}\". Valid keys: identity.name, identity.email, \
+                 defaults.provider, defaults.mode, worktrees.dir, terminal.program, \
+                 dispatch.confirm, cloud.base_url",
+                key
+            ),
+        }
+        Ok(())
+    }
+
+    /// List all set config keys and their values.
+    pub fn list(&self) -> Vec<(String, String)> {
+        let keys = [
+            "identity.name", "identity.email", "defaults.provider",
+            "defaults.mode", "worktrees.dir", "terminal.program",
+            "dispatch.confirm", "cloud.base_url",
+        ];
+        keys.iter()
+            .filter_map(|k| self.get(k).map(|v| (k.to_string(), v)))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Defaults {
+    pub provider: Option<String>,
+    pub mode: Option<String>,
 }
 
 
@@ -117,6 +226,8 @@ mod tests {
             defaults: Some(Defaults { provider: Some("claude".into()), mode: None }),
             worktrees: None,
             cloud: None,
+            terminal: None,
+            dispatch: None,
         };
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: ShipConfig = toml::from_str(&s).unwrap();
@@ -139,4 +250,41 @@ mod tests {
         assert_eq!(creds.token(), None);
     }
 
+    #[test]
+    fn config_get_set_round_trips() {
+        let mut cfg = ShipConfig::default();
+        assert_eq!(cfg.get("terminal.program"), None);
+
+        cfg.set("terminal.program", "wt").unwrap();
+        assert_eq!(cfg.get("terminal.program"), Some("wt".to_string()));
+
+        cfg.set("dispatch.confirm", "true").unwrap();
+        assert_eq!(cfg.get("dispatch.confirm"), Some("true".to_string()));
+
+        cfg.set("worktrees.dir", "/tmp/wt").unwrap();
+        assert_eq!(cfg.get("worktrees.dir"), Some("/tmp/wt".to_string()));
+    }
+
+    #[test]
+    fn config_set_rejects_invalid_terminal() {
+        let mut cfg = ShipConfig::default();
+        assert!(cfg.set("terminal.program", "invalid").is_err());
+    }
+
+    #[test]
+    fn config_set_rejects_unknown_key() {
+        let mut cfg = ShipConfig::default();
+        assert!(cfg.set("nonexistent.key", "value").is_err());
+    }
+
+    #[test]
+    fn config_list_returns_only_set_values() {
+        let mut cfg = ShipConfig::default();
+        assert!(cfg.list().is_empty());
+
+        cfg.set("terminal.program", "tmux").unwrap();
+        let entries = cfg.list();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0], ("terminal.program".to_string(), "tmux".to_string()));
+    }
 }

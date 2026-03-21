@@ -1,0 +1,25 @@
+[agent]
+id = "default"
+name = "Ship Dev"
+version = "0.1.0"
+description = "Default development preset for the Ship project"
+providers = ["claude"]
+
+[skills]
+refs = []
+
+[mcp]
+servers = []
+
+[plugins]
+install = [
+  "superpowers@claude-plugins-official",
+  "rust-analyzer-lsp@claude-plugins-official",
+]
+scope = "project"
+
+[permissions]
+preset = "ship-standard"
+tools_deny = ["Bash(rm -rf *)", "Bash(git reset --hard*)"]
+
+[rules]

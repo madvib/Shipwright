@@ -25,7 +25,9 @@ pub fn load_library(agents_dir: &Path) -> Result<ProjectLibrary> {
 // ── MCP servers ───────────────────────────────────────────────────────────────
 
 fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
-    let path = agents_dir.join("mcp.toml");
+    // Prefer mcp.jsonc over mcp.toml
+    let jsonc_path = agents_dir.join("mcp.jsonc");
+    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("mcp.toml") };
     let file = crate::mcp::McpFile::load(&path)?;
     Ok(file.servers.into_iter().map(|e| {
         let server_type = match e.server_type.as_deref() {
@@ -59,7 +61,7 @@ fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
 // ── Permissions ───────────────────────────────────────────────────────────────
 
 /// A named permission preset section from `agents/permissions.toml`.
-/// Matches the `[ship-standard]`, `[ship-guarded]`, etc. blocks.
+/// Matches the `[ship-standard]`, `[ship-autonomous]`, etc. blocks.
 #[derive(Deserialize, Default, Clone)]
 pub struct PermissionPreset {
     #[serde(default)]
@@ -74,26 +76,45 @@ pub struct PermissionPreset {
 
 
 fn load_permissions(agents_dir: &Path) -> Result<Permissions> {
-    let path = agents_dir.join("permissions.toml");
+    // Prefer permissions.jsonc over permissions.toml
+    let jsonc_path = agents_dir.join("permissions.jsonc");
+    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("permissions.toml") };
     if !path.exists() { return Ok(Permissions::default()); }
     let s = std::fs::read_to_string(&path)?;
     // Try flat Permissions first, fall back to default on parse error.
-    // The named-preset sections ([ship-standard] etc.) are ignored here —
+    // The named-preset sections are ignored here —
     // they are resolved via load_permission_preset() when a profile activates.
-    match toml::from_str::<Permissions>(&s) {
-        Ok(p) => Ok(p),
-        Err(_) => Ok(Permissions::default()),
+    if crate::paths::is_jsonc_ext(&path) {
+        match compiler::jsonc::from_jsonc_str::<Permissions>(&s) {
+            Ok(p) => Ok(p),
+            Err(_) => Ok(Permissions::default()),
+        }
+    } else {
+        match toml::from_str::<Permissions>(&s) {
+            Ok(p) => Ok(p),
+            Err(_) => Ok(Permissions::default()),
+        }
     }
 }
 
-/// Load a named permission preset section (e.g. `[ship-standard]`) from
-/// `agents/permissions.toml`. Returns `None` if the file or section is absent.
+/// Load a named permission preset section (e.g. `[ship-standard]` / `"ship-standard"`)
+/// from `agents/permissions.{jsonc,toml}`. Returns `None` if the file or section is absent.
 pub fn load_permission_preset(agents_dir: &Path, preset_name: &str) -> Option<PermissionPreset> {
-    let path = agents_dir.join("permissions.toml");
+    // Prefer permissions.jsonc over permissions.toml
+    let jsonc_path = agents_dir.join("permissions.jsonc");
+    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("permissions.toml") };
     if !path.exists() { return None; }
     let s = std::fs::read_to_string(&path).ok()?;
-    let val: toml::Value = toml::from_str(&s).ok()?;
-    let section = val.get(preset_name)?.as_table()?;
+
+    let val: serde_json::Value = if crate::paths::is_jsonc_ext(&path) {
+        compiler::jsonc::from_jsonc_str(&s).ok()?
+    } else {
+        // Parse TOML then convert to serde_json::Value
+        let tv: toml::Value = toml::from_str(&s).ok()?;
+        serde_json::to_value(&tv).ok()?
+    };
+
+    let section = val.get(preset_name)?.as_object()?;
 
     let get_str_list = |key: &str| -> Vec<String> {
         section.get(key)
@@ -131,9 +152,16 @@ struct HookEntry {
 }
 
 fn load_hooks(agents_dir: &Path) -> Result<Vec<HookConfig>> {
-    let path = agents_dir.join("hooks.toml");
+    // Prefer hooks.jsonc over hooks.toml
+    let jsonc_path = agents_dir.join("hooks.jsonc");
+    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("hooks.toml") };
     if !path.exists() { return Ok(vec![]); }
-    let file: HooksFile = toml::from_str(&std::fs::read_to_string(&path)?)?;
+    let s = std::fs::read_to_string(&path)?;
+    let file: HooksFile = if crate::paths::is_jsonc_ext(&path) {
+        compiler::jsonc::from_jsonc_str(&s)?
+    } else {
+        toml::from_str(&s)?
+    };
     Ok(file.hooks.into_iter().filter_map(|e| {
         let trigger = match e.trigger.as_str() {
             "pre_tool_use"  | "PreToolUse"  => HookTrigger::PreToolUse,
@@ -310,9 +338,14 @@ fn load_agent_profiles(agents_dir: &Path) -> Result<Vec<AgentProfile>> {
     let mut profiles = Vec::new();
     for entry in std::fs::read_dir(&profiles_dir)?.flatten() {
         let path = entry.path();
-        if path.extension().is_some_and(|x| x == "toml") {
+        if crate::paths::is_config_ext(&path) {
             let content = std::fs::read_to_string(&path)?;
-            match toml::from_str::<AgentProfile>(&content) {
+            let result: Result<AgentProfile, String> = if crate::paths::is_jsonc_ext(&path) {
+                compiler::jsonc::from_jsonc_str(&content).map_err(|e| e.to_string())
+            } else {
+                toml::from_str(&content).map_err(|e| e.to_string())
+            };
+            match result {
                 Ok(profile) => profiles.push(profile),
                 Err(e) => {
                     eprintln!(

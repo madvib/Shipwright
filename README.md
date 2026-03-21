@@ -1,57 +1,48 @@
 # Ship
 
-**Compiler and package manager for AI agent configuration.**
+Compiler and package manager for AI agent configuration.
 
-`ship use <preset>` — one command activates your agent stack: writes context files, installs skills, configures MCP servers, and manages Claude Code plugins. Works with Claude, Gemini, Codex, and Cursor. Switching git branches switches your agent config automatically.
+Ship compiles a single `.ship/` source directory into provider-native config files for Claude Code, Gemini CLI, OpenAI Codex, and Cursor. One command — `ship use <agent>` — writes context files, installs skills, configures MCP servers, and manages plugins.
 
----
+## Provider output matrix
 
-## What it does
-
-Your agent tools each read config from different places in different formats. Ship is the single source of truth that compiles to all of them:
-
-| Provider | Context | MCP | Skills | Plugins |
+| Provider | Context file | MCP config | Skills | Plugins |
 |---|---|---|---|---|
 | Claude Code | `CLAUDE.md` | `.mcp.json` | `.claude/skills/` | `claude plugin install` |
 | Gemini CLI | `GEMINI.md` | `.gemini/settings.json` | `.agents/skills/` | — |
 | OpenAI Codex | `AGENTS.md` | `.codex/config.toml` | `.agents/skills/` | — |
 | Cursor | — | `.cursor/mcp.json` | `.cursor/rules/` | — |
 
-Your `.ship/` directory is the source. Provider files are generated artifacts — gitignored, never committed. `ship use` produces them on demand.
-
----
+`.ship/` is the source of truth. Provider files are generated artifacts — gitignored, never hand-edited.
 
 ## Quick start
 
 ```bash
-# Fresh machine — handles Rust, ship binary, Node, pnpm, plugins
-bash scripts/setup.sh
-
-# In your project
-ship init
-ship use default
-# → CLAUDE.md, .mcp.json, .claude/skills/ written
-# → Claude Code plugins declared in preset installed
+ship init                  # scaffold .ship/ in the current project
+ship use default           # activate the default agent → writes provider files
+ship status                # show active agent and compile state
 ```
 
----
+`ship init` creates `.ship/ship.toml` and a `.gitignore`. `ship use` finds the agent profile in `.ship/agents/`, compiles it, writes all provider config files, and installs any declared plugins.
 
-## Preset format
+See [Getting Started](docs/getting-started.md) for the full walkthrough.
 
-A preset is what you activate. It declares everything your agent stack needs:
+## Agent profiles
+
+An agent profile is a TOML file in `.ship/agents/` that declares everything an agent needs:
 
 ```toml
-[preset]
+[agent]
 id = "rust-expert"
 name = "Rust Expert"
 version = "0.1.0"
 providers = ["claude", "gemini"]
 
 [skills]
-refs = ["rust-idioms", "cargo-workflow"]
+refs = ["ship-coordination"]
 
 [mcp]
-servers = ["github", "rust-docs"]
+servers = ["ship"]
 
 [plugins]
 install = [
@@ -61,32 +52,50 @@ install = [
 scope = "project"
 
 [permissions]
-preset = "ship-guarded"
-default_mode = "plan"
+preset = "ship-autonomous"
+tools_deny = ["Bash(git push --force*)"]
+
+[rules]
+inline = """
+Your domain is Rust backend code.
+Run cargo test before marking work done.
+"""
 ```
 
-`ship use rust-expert` installs skills, configures MCP, installs plugins, emits all provider files.
+`ship use rust-expert` resolves skills, configures MCP servers, applies permissions, compiles to every declared provider, and installs plugins.
 
----
+## How compilation works
 
-## Branch-aware config
-
-Ship tracks which preset is active per branch in a local SQLite DB (`~/.ship/platform.db`).
-
-```bash
-git checkout feature/payments    # post-checkout hook fires (planned)
-# → ship looks up stored preset for this branch
-# → runs ship use <preset> silently
-# → your agent stack switches without any manual steps
+```
+.ship/                           Compiled output
+├── ship.toml          ──┐
+├── agents/            ──┤       CLAUDE.md
+│   ├── default.toml     │       GEMINI.md
+│   ├── rust-expert.toml ├──→    AGENTS.md
+│   ├── permissions.toml │       .mcp.json
+│   ├── mcp.toml         │       .claude/skills/
+│   └── skills/        ──┘       .cursor/rules/
+└── ship.lock
 ```
 
-The post-checkout hook is planned — `ship init` will install it automatically. Until then, run `ship use <preset>` manually after switching branches.
+The compiler reads agent profiles, resolves skill references and MCP servers, merges permission presets, and emits provider-native files. The compiler is built as WASM — the same compilation logic runs in the CLI (native), the MCP server, and Ship Studio (browser).
 
----
+## Permission presets
+
+Presets control what tools an agent can use. Four tiers, strict to loose:
+
+| Preset | Use case | Default mode |
+|---|---|---|
+| `ship-readonly` | Reviewers, auditors, tutors | `plan` |
+| `ship-standard` | Interactive sessions, paired work | `default` |
+| `ship-autonomous` | Specialist agents in worktrees | `dontAsk` |
+| `ship-elevated` | Deploy and release agents | `dontAsk` |
+
+Define custom presets in `.ship/agents/permissions.toml`. Override per-agent with `tools_allow` / `tools_deny` in the profile.
 
 ## Registry
 
-Ship uses a git-native package model. Skills and presets are published from git repos, not a central blob store:
+Ship uses a git-native package model. Dependencies point to GitHub repos:
 
 ```toml
 # .ship/ship.toml
@@ -95,67 +104,75 @@ name = "github.com/owner/repo"
 version = "0.1.0"
 
 [dependencies]
-# "github.com/org/skill-pack" = "v1.0.0"
+"github.com/garrytan/gstack" = "main"
 
 [exports]
-skills = ["agents/skills/my-skill"]
+skills = ["agents/skills/configure-agent"]
 agents = ["agents/profiles/default.toml"]
 ```
 
-`ship install` resolves dependencies, writes `ship.lock`, and fetches to `~/.ship/cache/`.
+`ship install` resolves dependencies, writes `ship.lock`, and caches packages locally. `ship add github.com/owner/repo` adds a dependency and installs it.
 
----
+## Project layout
 
-## Distribution
-
-Ship participates in the [agentskills.io](https://agentskills.io) open standard. Skills emitted to `.agents/skills/` are automatically readable by all compliant providers — no per-marketplace submissions.
-
-The viral loop: anyone can paste a GitHub URL into Ship Studio, extract the repo's agent config, compile it for their stack. For project owners, `ship use` + a PR that adds `.ship/` means every collaborator gets your agent config on checkout.
-
----
+```
+.ship/
+├── ship.toml                 # project manifest: module identity, deps, exports
+├── ship.lock                 # pinned dependency versions
+└── agents/
+    ├── *.toml                # agent profiles
+    ├── permissions.toml      # permission presets
+    ├── mcp.toml              # MCP server declarations
+    ├── rules/                # shared rule files
+    ├── skills/               # installed skills (SKILL.md per directory)
+    └── teams/                # team coordination config
+```
 
 ## Architecture
 
 ```
 apps/
-  web/         — Ship Studio (TanStack Start + Cloudflare Workers) — active
-  mcp/         — MCP server library (served via `ship mcp serve`) — active
-crates/
-  core/
-    compiler/  — WASM compiler: ProjectLibrary → provider files
-    runtime/   — workspace, session, event, preset, skill data model
+  ship-studio-cli/   CLI binary (ship init, ship use, ship compile, ...)
+  mcp/               MCP stdio server (workspace, session, job, skill tools)
+  web/               Ship Studio (TanStack Start + Cloudflare Workers)
+crates/core/
+  compiler/          WASM compiler: ProjectLibrary → ResolvedConfig → CompileOutput
+  runtime/           State management: workspaces, sessions, events, agents (SQLite)
+  cli-framework/     Shared CLI scaffolding
+  mcp-framework/     Shared MCP scaffolding
 packages/
-  compiler/    — @ship/compiler WASM output (consumed by Studio)
-  primitives/  — @ship/primitives shared UI components
+  compiler/          @ship/compiler — WASM output consumed by Studio
+  primitives/        @ship/primitives — shared UI components
 ```
 
-The compiler is WASM — runs in the browser (Studio) and on the server (CLI via native). Same compilation logic everywhere.
+The compiler is a pure function: project files in, provider config out. The runtime manages persistent state in `~/.ship/platform.db` (SQLite). CLI and MCP are thin transport layers — domain logic lives in the runtime crate.
 
----
+## Documentation
 
-## Repo layout for contributors
-
-```
-ARCHITECTURE.md  — platform principles, layer separation, naming conventions
-REFERENCE.md     — provider matrix, CLI commands, MCP tools, schemas
-scripts/setup.sh — fresh machine setup (run this first)
-```
-
----
+- [Getting Started](docs/getting-started.md) — install, init, create an agent, compile, verify
+- [CLI Reference](docs/cli.md) — every command with flags and examples
+- [Schema Reference](docs/schema.md) — ship.toml, agent profiles, permissions, database entities
+- [Architecture](docs/architecture.md) — compiler pipeline, runtime model, repo layout
 
 ## Status
 
-Early. Used to build itself. The compiler and Studio UI work end-to-end.
+v0.1.0 — used to build itself. 312 runtime tests, 6 CLI tests, 3 MCP tests passing.
 
 **Working:**
-- WASM compiler: ProjectLibrary → CLAUDE.md / GEMINI.md / AGENTS.md / .mcp.json
-- Ship Studio: paste any GitHub URL → extract agent config → compile → download
-- `ship mcp serve`: workspace, session, skill, note, job coordination tools
+- WASM compiler: `.ship/` → CLAUDE.md, GEMINI.md, AGENTS.md, .mcp.json, skills, plugins
+- `ship init`, `ship use`, `ship compile`, `ship status`, `ship validate`
+- Agent management: `ship agent list/create/edit/delete/clone`
+- Skill management: `ship skill add/list/remove/create`
+- MCP server with 24 core tools (workspace, session, job, skill, event coordination)
+- Permission presets with 4-tier continuum
+- Event log, session tracking, file ownership claims
+- TUI dashboard (`ship view`)
 
-**In progress:**
-- `ship init` + `ship use` (CLI)
-- Better Auth + GitHub OAuth + `/api/github/import`
-- Studio import UI + auth
-- Branch-preset tracking with post-checkout hook
-- Plugin lifecycle management via `ship use`
-- Registry: `ship install` dep resolution from git sources
+**Not yet implemented:**
+- Post-checkout hook for automatic agent switching (run `ship use` manually after branch switch)
+- `ship compile --watch`
+- Ship Studio import UI and auth
+
+## License
+
+MIT

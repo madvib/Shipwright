@@ -30,40 +30,47 @@ use runtime::registry::{
 /// 8. On error after step 3, restore backup.
 pub fn run_add(project_root: &Path, package_spec: &str) -> Result<()> {
     let ship_dir = project_root.join(".ship");
-    let manifest_path = ship_dir.join("ship.toml");
+    // Prefer ship.jsonc over ship.toml
+    let jsonc_path = ship_dir.join("ship.jsonc");
+    let manifest_path = if jsonc_path.exists() { jsonc_path } else { ship_dir.join("ship.toml") };
 
     if !manifest_path.exists() {
         anyhow::bail!(
-            "No .ship/ship.toml found. Run `ship init` first, then add a [module] section \
-             to use ship add."
+            "No .ship/ship.jsonc or .ship/ship.toml found. Run `ship init` first, then add \
+             a [module]/\"module\" section to use ship add."
         );
     }
 
     let (pkg_path, version) = parse_package_spec(package_spec);
 
+    let is_jsonc = crate::paths::is_jsonc_ext(&manifest_path);
+
     // Read and parse current manifest to check for duplicates.
-    let raw_toml = std::fs::read_to_string(&manifest_path)
-        .context("reading .ship/ship.toml")?;
-    let manifest = ShipManifest::from_toml_str(&raw_toml).with_context(|| {
-        "Failed to parse .ship/ship.toml as a registry manifest. \
-         Ensure it has [module] name and version sections."
+    let raw_content = std::fs::read_to_string(&manifest_path)
+        .context("reading ship manifest")?;
+    let manifest = ShipManifest::from_file(&manifest_path).with_context(|| {
+        "Failed to parse ship manifest. Ensure it has a module section with name and version."
     })?;
 
     // Check duplicate.
     if manifest.dependencies.contains_key(&pkg_path) {
         anyhow::bail!(
-            "{} is already in [dependencies]",
+            "{} is already in dependencies",
             pkg_path
         );
     }
 
     // Backup before modifying.
-    let backup = raw_toml.clone();
+    let backup = raw_content.clone();
 
-    // Append dep to ship.toml (non-destructive — preserve existing content).
-    let updated_toml = append_dependency(&raw_toml, &pkg_path, &version);
-    if let Err(e) = std::fs::write(&manifest_path, &updated_toml) {
-        anyhow::bail!("Failed to write .ship/ship.toml: {e}");
+    // Append dep (non-destructive — preserve existing content).
+    let updated = if is_jsonc {
+        append_dependency_jsonc(&raw_content, &pkg_path, &version)
+    } else {
+        append_dependency(&raw_content, &pkg_path, &version)
+    };
+    if let Err(e) = std::fs::write(&manifest_path, &updated) {
+        anyhow::bail!("Failed to write {}: {e}", manifest_path.display());
     }
 
     // Resolve + fetch + lock + compile. Restore on failure.
@@ -72,7 +79,7 @@ pub fn run_add(project_root: &Path, package_spec: &str) -> Result<()> {
         Err(e) => {
             // Restore backup.
             let _ = std::fs::write(&manifest_path, &backup);
-            Err(e.context("ship add failed; restored .ship/ship.toml"))
+            Err(e.context("ship add failed; restored manifest"))
         }
     }
 }
@@ -141,15 +148,16 @@ fn append_dependency(raw: &str, path: &str, version: &str) -> String {
     }
 }
 
-/// Resolve, fetch, lock, and compile after modifying ship.toml.
+/// Resolve, fetch, lock, and compile after modifying the manifest.
 fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     let ship_dir = project_root.join(".ship");
-    let manifest_path = ship_dir.join("ship.toml");
+    // Prefer ship.jsonc over ship.toml
+    let jsonc_path = ship_dir.join("ship.jsonc");
+    let manifest_path = if jsonc_path.exists() { jsonc_path } else { ship_dir.join("ship.toml") };
     let lock_path = ship_dir.join("ship.lock");
 
     // Re-parse updated manifest.
-    let raw = std::fs::read_to_string(&manifest_path)?;
-    let compiler_manifest = ShipManifest::from_toml_str(&raw)?;
+    let compiler_manifest = ShipManifest::from_file(&manifest_path)?;
 
     // Build registry manifest (only the new dep needs resolving — but
     // resolve_and_fetch handles partial re-resolution via lock comparison).
@@ -177,7 +185,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
         project_root,
         provider: None,
         dry_run: false,
-        active_agent: state.active_profile.as_deref(),
+        active_agent: state.active_agent.as_deref(),
     })
     .context("compiling after add")?;
 
@@ -190,6 +198,60 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     );
 
     Ok(())
+}
+
+/// Append a dependency to a JSONC manifest string.
+///
+/// If a `"dependencies"` key exists, inserts before its closing `}`.
+/// Otherwise, inserts a `"dependencies"` section before the final `}`.
+fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
+    let dep_entry = format!("    \"{}\": \"{}\"", path, version);
+
+    if let Some(deps_pos) = raw.find("\"dependencies\"") {
+        // Find the closing brace of the dependencies object
+        let after = &raw[deps_pos..];
+        if let Some(open) = after.find('{') {
+            let abs_open = deps_pos + open;
+            // Find the matching closing brace
+            let mut depth = 0;
+            let mut close_pos = None;
+            for (i, ch) in raw[abs_open..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close_pos = Some(abs_open + i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(close) = close_pos {
+                let before_close = &raw[..close];
+                let trimmed = before_close.trim_end();
+                let needs_comma = trimmed.ends_with('"')
+                    || trimmed.ends_with('}')
+                    || trimmed.ends_with(']');
+                let comma = if needs_comma { "," } else { "" };
+                return format!("{}{}\n{}\n{}", before_close, comma, dep_entry, &raw[close..]);
+            }
+        }
+    }
+
+    // No "dependencies" section — insert one before the final }
+    if let Some(last_brace) = raw.rfind('}') {
+        let before = &raw[..last_brace];
+        let trimmed = before.trim_end();
+        let needs_comma = trimmed.ends_with('"')
+            || trimmed.ends_with('}')
+            || trimmed.ends_with(']');
+        let comma = if needs_comma { "," } else { "" };
+        return format!("{}{}\n  \"dependencies\": {{\n{}\n  }}\n}}", before, comma, dep_entry);
+    }
+
+    raw.to_string()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -261,7 +323,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join(".ship")).unwrap();
         let err = run_add(tmp.path(), "github.com/owner/repo").unwrap_err();
-        assert!(err.to_string().contains("No .ship/ship.toml"), "got: {err}");
+        assert!(err.to_string().contains("No .ship/ship.jsonc or .ship/ship.toml"), "got: {err}");
     }
 
     #[test]
@@ -275,7 +337,7 @@ mod tests {
         let original = std::fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
         let err = run_add(tmp.path(), "github.com/owner/pkg").unwrap_err();
         assert!(
-            err.to_string().contains("already in [dependencies]"),
+            err.to_string().contains("already in dependencies"),
             "got: {err}"
         );
         // ship.toml must be unchanged
@@ -295,7 +357,7 @@ mod tests {
         let original = std::fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
         let err = run_add(tmp.path(), "github.com/owner/pkg").unwrap_err();
         assert!(
-            err.to_string().contains("[module]") || err.to_string().contains("registry manifest"),
+            err.to_string().contains("[module]") || err.to_string().contains("module section"),
             "got: {err}"
         );
         let after = std::fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();

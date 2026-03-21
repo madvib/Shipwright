@@ -31,20 +31,22 @@ use crate::profile::WorkspaceState;
 /// 4. Compile resolved packages into provider targets.
 pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
     let ship_dir = project_root.join(".ship");
-    let manifest_path = ship_dir.join("ship.toml");
+    // Prefer ship.jsonc over ship.toml
+    let jsonc_path = ship_dir.join("ship.jsonc");
+    let manifest_path = if jsonc_path.exists() { jsonc_path } else { ship_dir.join("ship.toml") };
 
     if !manifest_path.exists() {
         anyhow::bail!(
-            "No .ship/ship.toml found. Create one to use ship install.\n\
-             A registry manifest requires [module] and [dependencies] sections."
+            "No .ship/ship.jsonc or .ship/ship.toml found. Create one to use ship install.\n\
+             A registry manifest requires a module section with name and version."
         );
     }
 
-    // Parse as registry manifest (requires [module] section).
+    // Parse as registry manifest (requires module section).
     let compiler_manifest = ShipManifest::from_file(&manifest_path)
         .with_context(|| {
-            "Failed to parse .ship/ship.toml as a registry manifest.\n\
-             Ensure it has [module] name, version, and optionally [dependencies]."
+            "Failed to parse ship manifest. Ensure it has a module section with \
+             name, version, and optionally dependencies."
         })?;
 
     // Convert compiler manifest to registry stub types used by resolve_and_fetch.
@@ -64,7 +66,7 @@ pub fn run_install(project_root: &Path, frozen: bool) -> Result<()> {
         project_root,
         provider: None,
         dry_run: false,
-        active_agent: state.active_profile.as_deref(),
+        active_agent: state.active_agent.as_deref(),
     })
     .context("compiling after install")?;
 
@@ -100,9 +102,10 @@ fn compiler_to_registry_manifest(m: &ShipManifest) -> RegistryManifest {
     reg
 }
 
-/// Detect configured providers from the project's ship.toml (best-effort).
+/// Detect configured providers from the project's manifest (best-effort).
 fn detect_providers_from_project(project_root: &Path) -> String {
-    let path = project_root.join(".ship").join("ship.toml");
+    let jsonc_path = project_root.join(".ship").join("ship.jsonc");
+    let path = if jsonc_path.exists() { jsonc_path } else { project_root.join(".ship").join("ship.toml") };
     if let Ok(content) = std::fs::read_to_string(&path)
         && let Ok(val) = toml::from_str::<toml::Value>(&content)
     {
@@ -157,7 +160,7 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join(".ship")).unwrap();
         let err = run_install(tmp.path(), false).unwrap_err();
         assert!(
-            err.to_string().contains("No .ship/ship.toml"),
+            err.to_string().contains("No .ship/ship.jsonc or .ship/ship.toml"),
             "got: {err}"
         );
     }
@@ -173,7 +176,7 @@ mod tests {
         );
         let err = run_install(tmp.path(), false).unwrap_err();
         assert!(
-            err.to_string().contains("[module]") || err.to_string().contains("registry manifest"),
+            err.to_string().contains("module") || err.to_string().contains("manifest"),
             "got: {err}"
         );
     }

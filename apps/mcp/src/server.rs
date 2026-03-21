@@ -21,7 +21,10 @@ use crate::resources;
 use crate::tools::{
     adr, agent, events, job, notes, project, session, skills, target, workspace, workspace_ops,
 };
-use target::{update_capability as tool_update_capability, update_target as tool_update_target};
+use target::{
+    delete_capability as tool_delete_capability, update_capability as tool_update_capability,
+    update_target as tool_update_target,
+};
 
 // ─── Server struct ────────────────────────────────────────────────────────────
 
@@ -66,7 +69,8 @@ impl ShipServer {
             "claim_file", "get_file_owner",
             "list_events", "provider_matrix",
             "create_target", "update_target", "list_targets", "get_target",
-            "create_capability", "update_capability", "mark_capability_actual", "list_capabilities",
+            "create_capability", "update_capability", "delete_capability",
+            "mark_capability_actual", "list_capabilities",
         ]
     }
 
@@ -176,7 +180,7 @@ impl ShipServer {
     // ─── Agent ────────────────────────────────────────────────────────────────
 
     #[tool(description = "Activate an agent profile by id, or clear active agent by passing null/omitting id.")]
-    async fn set_agent(&self, Parameters(req): Parameters<SetModeRequest>) -> String {
+    async fn set_agent(&self, Parameters(req): Parameters<SetAgentRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         agent::set_agent(project_dir, req.id.as_deref())
     }
@@ -281,6 +285,12 @@ impl ShipServer {
     async fn update_capability(&self, Parameters(req): Parameters<UpdateCapabilityRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         tool_update_capability(&project_dir, req)
+    }
+
+    #[tool(description = "Delete a capability by id. Returns confirmation or not-found.")]
+    async fn delete_capability(&self, Parameters(req): Parameters<DeleteCapabilityRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
+        tool_delete_capability(&project_dir, req)
     }
 
     #[tool(description = "Mark a capability as actual with evidence (test name, commit hash, or behavior).")]

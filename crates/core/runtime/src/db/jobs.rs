@@ -1,5 +1,9 @@
 //! Job queue and job_log for agent coordination.
 //! Written by `ship agent job` commands; referenced from skills.
+//!
+//! NOTE: `append_log` and `list_logs` still write to the deprecated `job_log`
+//! table. New callers should use `db::events::insert_event` with
+//! entity_type='job' instead. See `schema/work.rs` for removal criteria.
 
 pub mod file_ownership;
 pub use file_ownership::{claim_file, get_file_owner};

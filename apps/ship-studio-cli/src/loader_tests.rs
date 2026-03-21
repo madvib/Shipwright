@@ -157,8 +157,8 @@ default_mode = "acceptEdits"
 tools_ask = ["Bash(rm -rf*)"]
 tools_deny = ["Bash(git push --force*)"]
 
-[ship-open]
-default_mode = "bypassPermissions"
+[ship-elevated]
+default_mode = "dontAsk"
 "#);
     let preset = load_permission_preset(tmp.path(), "ship-standard").unwrap();
     assert_eq!(preset.default_mode.as_deref(), Some("acceptEdits"));
@@ -169,7 +169,7 @@ default_mode = "bypassPermissions"
 #[test]
 fn load_permission_preset_missing_section_returns_none() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "permissions.toml", "[ship-open]\ndefault_mode = \"bypassPermissions\"\n");
+    write(tmp.path(), "permissions.toml", "[ship-elevated]\ndefault_mode = \"dontAsk\"\n");
     let result = load_permission_preset(tmp.path(), "nonexistent");
     assert!(result.is_none());
 }

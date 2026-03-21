@@ -6,39 +6,39 @@ use std::path::Path;
 
 use crate::loader::load_permission_preset;
 use crate::mcp::{McpEntry, McpFile};
-use crate::mode::Profile;
-use crate::profile::find_profile_file;
+use crate::agent_config::AgentConfig;
+use crate::profile::find_agent_file;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct ValidationError {
-    pub profile: String,
+    pub agent: String,
     pub file: String,
     pub error: String,
 }
 
-/// Per-profile result: name + collected errors.
+/// Per-agent result: name + collected errors.
 #[derive(Debug)]
-pub struct ProfileReport {
-    pub profile_id: String,
+pub struct AgentReport {
+    pub agent_id: String,
     pub errors: Vec<ValidationError>,
 }
 
 // ── Public entry points ───────────────────────────────────────────────────────
 
-/// Run validation for one or all profiles. Print results. Return Err if any error found.
-pub fn run_validate(profile_id: Option<&str>, json: bool, project_root: &Path) -> Result<()> {
+/// Run validation for one or all agents. Print results. Return Err if any error found.
+pub fn run_validate(agent_id: Option<&str>, json: bool, project_root: &Path) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     if !ship_dir.exists() {
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
     let agents_dir = ship_dir.join("agents");
 
-    let reports = if let Some(id) = profile_id {
-        let profile_path = find_profile_file(id, project_root)
-            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", id))?;
-        vec![validate_profile(id, &profile_path, &agents_dir)]
+    let reports = if let Some(id) = agent_id {
+        let agent_path = find_agent_file(id, project_root)
+            .ok_or_else(|| anyhow::anyhow!("Agent '{}' not found", id))?;
+        vec![validate_agent(id, &agent_path, &agents_dir)]
     } else {
         validate_all(&agents_dir, project_root)
     };
@@ -58,10 +58,10 @@ pub fn run_validate(profile_id: Option<&str>, json: bool, project_root: &Path) -
     let mut any_errors = false;
     for report in &reports {
         if report.errors.is_empty() {
-            println!("✓ profile {} — valid", report.profile_id);
+            println!("✓ agent {} — valid", report.agent_id);
         } else {
             any_errors = true;
-            println!("✗ profile {} — {} error{}", report.profile_id, report.errors.len(),
+            println!("✗ agent {} — {} error{}", report.agent_id, report.errors.len(),
                 if report.errors.len() == 1 { "" } else { "s" });
             for e in &report.errors {
                 println!("  {} — {}", e.file, e.error);
@@ -77,96 +77,112 @@ pub fn run_validate(profile_id: Option<&str>, json: bool, project_root: &Path) -
 
 // ── Core validation ───────────────────────────────────────────────────────────
 
-/// Validate all profiles found in agents/profiles/.
-fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<ProfileReport> {
-    let profiles_dir = agents_dir.join("profiles");
-    if !profiles_dir.exists() {
-        return vec![];
-    }
+/// Validate all agents found in agents/ (primary) and agents/profiles/ (compat).
+fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<AgentReport> {
     let mut reports = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&profiles_dir) {
+    let mut seen_ids = std::collections::HashSet::new();
+
+    // Primary: agents/*.{jsonc,toml} (flat)
+    if let Ok(entries) = std::fs::read_dir(agents_dir) {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+            .filter(|e| crate::paths::is_config_ext(&e.path()) && e.path().is_file())
+            // Exclude known non-agent config files
+            .filter(|e| crate::paths::is_agent_config(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
             let path = entry.path();
             let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            reports.push(validate_profile(&id, &path, agents_dir));
+            seen_ids.insert(id.clone());
+            reports.push(validate_agent(&id, &path, agents_dir));
         }
     }
+
+    // Compat: agents/profiles/*.{jsonc,toml}
+    let profiles_dir = agents_dir.join("profiles");
+    if profiles_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&profiles_dir)
+    {
+        let mut paths: Vec<_> = entries.flatten()
+            .filter(|e| crate::paths::is_config_ext(&e.path()))
+            .collect();
+        paths.sort_by_key(|e| e.file_name());
+        for entry in paths {
+            let path = entry.path();
+            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            // Skip if already found in agents/
+            if seen_ids.contains(&id) { continue; }
+            seen_ids.insert(id.clone());
+            reports.push(validate_agent(&id, &path, agents_dir));
+        }
+    }
+
     // Also check any compat presets dir
     let presets_dir = agents_dir.join("presets");
     if presets_dir.exists()
         && let Ok(entries) = std::fs::read_dir(&presets_dir)
     {
         let mut paths: Vec<_> = entries.flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+            .filter(|e| crate::paths::is_config_ext(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
             let path = entry.path();
             let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            // Skip if already found in agents/profiles/
-            if find_profile_file(&id, project_root)
-                .is_some_and(|p| p.to_string_lossy().contains("agents/profiles"))
-            {
-                continue;
-            }
-            reports.push(validate_profile(&id, &path, agents_dir));
+            // Skip if already found in agents/ or agents/profiles/
+            if seen_ids.contains(&id) { continue; }
+            reports.push(validate_agent(&id, &path, agents_dir));
         }
     }
     reports
 }
 
-/// Validate a single profile at `profile_path` against `agents_dir`.
-pub fn validate_profile(profile_id: &str, profile_path: &Path, agents_dir: &Path) -> ProfileReport {
+/// Validate a single agent at `agent_path` against `agents_dir`.
+pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> AgentReport {
     let mut errors = Vec::new();
 
-    // 1. Parse TOML
-    let profile = match std::fs::read_to_string(profile_path)
-        .map_err(|e| e.to_string())
-        .and_then(|s| toml::from_str::<Profile>(&s).map_err(|e| e.to_string()))
-    {
+    // 1. Parse config (JSONC or TOML based on extension)
+    let agent = match AgentConfig::load(agent_path) {
         Ok(p) => p,
         Err(e) => {
             errors.push(ValidationError {
-                profile: profile_id.to_string(),
-                file: profile_path.display().to_string(),
-                error: format!("TOML parse error: {}", e),
+                agent: agent_id.to_string(),
+                file: agent_path.display().to_string(),
+                error: format!("config parse error: {}", e),
             });
-            return ProfileReport { profile_id: profile_id.to_string(), errors };
+            return AgentReport { agent_id: agent_id.to_string(), errors };
         }
     };
 
-    let profile_file = profile_path.display().to_string();
+    let agent_file = agent_path.display().to_string();
 
     // 2. Skill refs exist in agents/skills/
     let skills_dir = agents_dir.join("skills");
-    for skill_id in &profile.skills.refs {
+    for skill_id in &agent.skills.refs {
         if !skill_ref_exists(&skills_dir, skill_id) {
             errors.push(ValidationError {
-                profile: profile_id.to_string(),
-                file: profile_file.clone(),
+                agent: agent_id.to_string(),
+                file: agent_file.clone(),
                 error: format!("skill '{}' not found in agents/skills/", skill_id),
             });
         }
     }
 
-    // 3. MCP server refs exist in mcp.toml AND have required fields
-    let mcp_path = agents_dir.join("mcp.toml");
+    // 3. MCP server refs exist in mcp config AND have required fields
+    let mcp_jsonc = agents_dir.join("mcp.jsonc");
+    let mcp_path = if mcp_jsonc.exists() { mcp_jsonc } else { agents_dir.join("mcp.toml") };
     let mcp_file = load_mcp_file(&mcp_path);
-    for server_id in &profile.mcp.servers {
+    for server_id in &agent.mcp.servers {
         match mcp_file.servers.iter().find(|s| &s.id == server_id) {
             None => errors.push(ValidationError {
-                profile: profile_id.to_string(),
+                agent: agent_id.to_string(),
                 file: "agents/mcp.toml".to_string(),
                 error: format!("mcp server '{}' not found in mcp.toml", server_id),
             }),
             Some(s) => {
                 if let Some(e) = check_mcp_entry(s) {
                     errors.push(ValidationError {
-                        profile: profile_id.to_string(),
+                        agent: agent_id.to_string(),
                         file: "agents/mcp.toml".to_string(),
                         error: format!("mcp.servers.{} — {}", server_id, e),
                     });
@@ -175,11 +191,11 @@ pub fn validate_profile(profile_id: &str, profile_path: &Path, agents_dir: &Path
         }
     }
 
-    // 4. Validate all mcp.toml entries (regardless of profile refs)
+    // 4. Validate all mcp.toml entries (regardless of agent refs)
     for server in &mcp_file.servers {
         if let Some(e) = check_mcp_entry(server) {
             errors.push(ValidationError {
-                profile: profile_id.to_string(),
+                agent: agent_id.to_string(),
                 file: "agents/mcp.toml".to_string(),
                 error: format!("mcp.servers.{} — {}", server.id, e),
             });
@@ -189,18 +205,19 @@ pub fn validate_profile(profile_id: &str, profile_path: &Path, agents_dir: &Path
     errors.dedup_by(|a, b| a.file == b.file && a.error == b.error);
 
     // 5. permissions.preset references a known preset
-    if let Some(preset_name) = &profile.permissions.preset {
+    if let Some(preset_name) = &agent.permissions.preset {
         if preset_name.trim().is_empty() {
             errors.push(ValidationError {
-                profile: profile_id.to_string(),
-                file: profile_file.clone(),
+                agent: agent_id.to_string(),
+                file: agent_file.clone(),
                 error: "permissions.preset must be a non-empty string".to_string(),
             });
         } else {
-            let perm_path = agents_dir.join("permissions.toml");
+            let perm_jsonc = agents_dir.join("permissions.jsonc");
+            let perm_path = if perm_jsonc.exists() { perm_jsonc } else { agents_dir.join("permissions.toml") };
             if perm_path.exists() && load_permission_preset(agents_dir, preset_name).is_none() {
                 errors.push(ValidationError {
-                    profile: profile_id.to_string(),
+                    agent: agent_id.to_string(),
                     file: "agents/permissions.toml".to_string(),
                     error: format!("preset '{}' not found in permissions.toml", preset_name),
                 });
@@ -208,7 +225,7 @@ pub fn validate_profile(profile_id: &str, profile_path: &Path, agents_dir: &Path
         }
     }
 
-    ProfileReport { profile_id: profile_id.to_string(), errors }
+    AgentReport { agent_id: agent_id.to_string(), errors }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -257,8 +274,8 @@ mod tests {
         std::fs::write(p, content).unwrap();
     }
 
-    fn valid_profile_toml() -> &'static str {
-        r#"[profile]
+    fn valid_agent_toml() -> &'static str {
+        r#"[agent]
 name = "test"
 id = "test"
 providers = ["claude"]
@@ -275,27 +292,26 @@ preset = "ship-standard"
         let tmp = TempDir::new().unwrap();
         let agents_dir = tmp.path().join(".ship").join("agents");
         std::fs::create_dir_all(&agents_dir).unwrap();
-        std::fs::create_dir_all(agents_dir.join("profiles")).unwrap();
         write(tmp.path(), ".ship/agents/permissions.toml",
             "[ship-standard]\ndefault_mode = \"acceptEdits\"\n");
         (tmp, agents_dir)
     }
 
     #[test]
-    fn valid_profile_passes() {
+    fn valid_agent_passes() {
         let (tmp, agents_dir) = setup();
-        write(tmp.path(), ".ship/agents/profiles/test.toml", valid_profile_toml());
-        let profile_path = agents_dir.join("profiles").join("test.toml");
-        let report = validate_profile("test", &profile_path, &agents_dir);
+        write(tmp.path(), ".ship/agents/test.toml", valid_agent_toml());
+        let agent_path = agents_dir.join("test.toml");
+        let report = validate_agent("test", &agent_path, &agents_dir);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
     }
 
     #[test]
     fn malformed_toml_reports_error() {
         let (tmp, agents_dir) = setup();
-        write(tmp.path(), ".ship/agents/profiles/bad.toml", "this is not [[valid toml");
-        let profile_path = agents_dir.join("profiles").join("bad.toml");
-        let report = validate_profile("bad", &profile_path, &agents_dir);
+        write(tmp.path(), ".ship/agents/bad.toml", "this is not [[valid toml");
+        let agent_path = agents_dir.join("bad.toml");
+        let report = validate_agent("bad", &agent_path, &agents_dir);
         assert_eq!(report.errors.len(), 1);
         assert!(report.errors[0].error.contains("TOML parse error"), "{:?}", report.errors[0].error);
     }
@@ -303,7 +319,7 @@ preset = "ship-standard"
     #[test]
     fn missing_skill_ref_reports_error() {
         let (tmp, agents_dir) = setup();
-        let toml = r#"[profile]
+        let toml = r#"[agent]
 name = "test"
 id = "test"
 providers = ["claude"]
@@ -312,8 +328,8 @@ refs = ["nonexistent-skill"]
 [mcp]
 servers = []
 "#;
-        write(tmp.path(), ".ship/agents/profiles/test.toml", toml);
-        let report = validate_profile("test", &agents_dir.join("profiles").join("test.toml"), &agents_dir);
+        write(tmp.path(), ".ship/agents/test.toml", toml);
+        let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
         assert!(report.errors.iter().any(|e| e.error.contains("nonexistent-skill")), "{:?}", report.errors);
     }
 
@@ -321,7 +337,7 @@ servers = []
     fn existing_skill_ref_passes() {
         let (tmp, agents_dir) = setup();
         write(tmp.path(), ".ship/agents/skills/my-skill.md", "---\nname: My Skill\n---\nContent.");
-        let toml = r#"[profile]
+        let toml = r#"[agent]
 name = "test"
 id = "test"
 providers = ["claude"]
@@ -330,8 +346,8 @@ refs = ["my-skill"]
 [mcp]
 servers = []
 "#;
-        write(tmp.path(), ".ship/agents/profiles/test.toml", toml);
-        let report = validate_profile("test", &agents_dir.join("profiles").join("test.toml"), &agents_dir);
+        write(tmp.path(), ".ship/agents/test.toml", toml);
+        let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
     }
 
@@ -343,8 +359,8 @@ servers = []
 id = "bad-stdio"
 server_type = "stdio"
 "#);
-        write(tmp.path(), ".ship/agents/profiles/test.toml", valid_profile_toml());
-        let report = validate_profile("test", &agents_dir.join("profiles").join("test.toml"), &agents_dir);
+        write(tmp.path(), ".ship/agents/test.toml", valid_agent_toml());
+        let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
         assert!(report.errors.iter().any(|e| e.error.contains("missing 'command'")), "{:?}", report.errors);
     }
 
@@ -356,15 +372,15 @@ server_type = "stdio"
 id = "bad-http"
 server_type = "http"
 "#);
-        write(tmp.path(), ".ship/agents/profiles/test.toml", valid_profile_toml());
-        let report = validate_profile("test", &agents_dir.join("profiles").join("test.toml"), &agents_dir);
+        write(tmp.path(), ".ship/agents/test.toml", valid_agent_toml());
+        let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
         assert!(report.errors.iter().any(|e| e.error.contains("missing 'url'")), "{:?}", report.errors);
     }
 
     #[test]
     fn unknown_permissions_preset_reports_error() {
         let (tmp, agents_dir) = setup();
-        let toml = r#"[profile]
+        let toml = r#"[agent]
 name = "test"
 id = "test"
 providers = ["claude"]
@@ -375,31 +391,31 @@ servers = []
 [permissions]
 preset = "nonexistent-preset"
 "#;
-        write(tmp.path(), ".ship/agents/profiles/test.toml", toml);
-        let report = validate_profile("test", &agents_dir.join("profiles").join("test.toml"), &agents_dir);
+        write(tmp.path(), ".ship/agents/test.toml", toml);
+        let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
         assert!(report.errors.iter().any(|e| e.error.contains("nonexistent-preset")), "{:?}", report.errors);
     }
 
     #[test]
     fn run_validate_exits_nonzero_on_errors() {
-        let (tmp, agents_dir) = setup();
-        write(tmp.path(), ".ship/agents/profiles/bad.toml", "not valid toml [[");
+        let (tmp, _agents_dir) = setup();
+        write(tmp.path(), ".ship/agents/bad.toml", "not valid toml [[");
         let result = run_validate(None, false, tmp.path());
         assert!(result.is_err());
     }
 
     #[test]
     fn run_validate_json_flag_emits_array() {
-        let (tmp, agents_dir) = setup();
-        write(tmp.path(), ".ship/agents/profiles/bad.toml", "not valid toml [[");
+        let (tmp, _agents_dir) = setup();
+        write(tmp.path(), ".ship/agents/bad.toml", "not valid toml [[");
         // json mode returns Err (errors found) but prints JSON — we just check no panic
         let _ = run_validate(None, true, tmp.path());
     }
 
     #[test]
     fn run_validate_passes_on_valid_config() {
-        let (tmp, agents_dir) = setup();
-        write(tmp.path(), ".ship/agents/profiles/test.toml", valid_profile_toml());
+        let (tmp, _agents_dir) = setup();
+        write(tmp.path(), ".ship/agents/test.toml", valid_agent_toml());
         let result = run_validate(None, false, tmp.path());
         assert!(result.is_ok(), "{:?}", result);
     }

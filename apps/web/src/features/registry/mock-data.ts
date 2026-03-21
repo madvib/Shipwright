@@ -52,9 +52,9 @@ export const MOCK_PACKAGES: RegistryPackage[] = [
     deprecated_by: null, stars: 78, installs: 4560, indexed_at: '2026-03-02T14:00:00Z', updated_at: '2026-03-12T15:10:00Z',
   },
   {
-    id: 'pkg_08', path: 'github.com/ship-dev/ship-guarded', name: 'Ship Guarded',
-    description: 'Restrictive agent configuration — ask-first permissions, no filesystem writes without confirmation, audit logging.',
-    scope: 'official', repo_url: 'https://github.com/ship-dev/ship-guarded', default_branch: 'main',
+    id: 'pkg_08', path: 'github.com/ship-dev/ship-autonomous', name: 'Ship Autonomous',
+    description: 'Zero-interruption agent configuration — dontAsk mode, scoped deny rules, full tool access within scope.',
+    scope: 'official', repo_url: 'https://github.com/ship-dev/ship-autonomous', default_branch: 'main',
     latest_version: '1.0.0', content_hash: 'vwx234', source_type: 'native', claimed_by: 'u_ship',
     deprecated_by: null, stars: 94, installs: 3780, indexed_at: '2026-01-10T08:00:00Z', updated_at: '2026-03-11T09:00:00Z',
   },

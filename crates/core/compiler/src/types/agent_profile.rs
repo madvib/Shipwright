@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// An agent profile parsed from `.ship/agents/profiles/<id>.toml`.
+/// An agent parsed from `.ship/agents/<id>.toml`.
 ///
 /// Profiles define specialist agents that the compiler emits as
 /// provider-native subagent definitions (`.claude/agents/`, `.gemini/agents/`,
@@ -63,7 +63,7 @@ pub struct PluginRefs {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProfilePermissions {
-    /// Permission preset name (e.g. "ship-standard", "ship-guarded").
+    /// Permission preset name (e.g. "ship-standard", "ship-autonomous").
     #[serde(default)]
     pub preset: Option<String>,
     #[serde(default)]

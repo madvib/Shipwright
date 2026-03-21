@@ -37,9 +37,10 @@ pub use config::{
 };
 
 pub use events::{
-    EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
-    ingest_external_events, list_events_since, read_events, read_recent_events,
-    sync_event_snapshot,
+    EventAction, EventContext, EventEntity, EventRecord,
+    append_event, append_event_with_context,
+    list_events_since, list_gate_outcomes, read_events, read_recent_events,
+    record_gate_outcome,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
@@ -64,17 +65,20 @@ pub use skill::{
 
 // ─── Re-exports from db (formerly state_db) ────────────────────────────────
 pub use db::types::{
-    AgentArtifactRegistryDb, AgentModeDb, AgentRuntimeSettingsDb,
+    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb,
     DatabaseMigrationReport, WorkspaceSessionDb, WorkspaceSessionRecordDb, WorkspaceUpsert,
 };
 pub use db::agents::{
-    delete_agent_mode_db, get_agent_artifact_registry_by_external_id_db,
-    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_modes_db,
-    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_mode_db,
+    delete_agent_config_db, get_agent_artifact_registry_by_external_id_db,
+    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_configs_db,
+    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_config_db,
 };
 pub use db::branch_context::{
     clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link,
     set_branch_doc, set_branch_link,
+};
+pub use db::file_claims::{
+    FileClaim, claim_files, release_claims, check_conflicts, list_claims,
 };
 pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
 pub use db::session::get_workspace_session_record_db;
@@ -368,36 +372,6 @@ mod tests {
         let events = read_events(&ship_path)?;
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].entity, EventEntity::Project);
-        Ok(())
-    }
-
-    #[test]
-    fn test_ingest_external_events_detects_filesystem_changes() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let ship_path = init_project(tmp.path().to_path_buf())?;
-
-        // Ensure snapshot is synced to current state.
-        let _ = ingest_external_events(&ship_path)?;
-
-        let notes_dir = ship_path.join("project/notes");
-        let manual = notes_dir.join("manual-sync.md");
-        fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nbody\n")?;
-        let created = ingest_external_events(&ship_path)?;
-        assert_eq!(created.len(), 1);
-        assert_eq!(created[0].entity, EventEntity::Note);
-        assert_eq!(created[0].action, EventAction::Create);
-
-        fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nchanged\n")?;
-        let updated = ingest_external_events(&ship_path)?;
-        assert_eq!(updated.len(), 1);
-        assert_eq!(updated[0].entity, EventEntity::Note);
-        assert_eq!(updated[0].action, EventAction::Update);
-
-        fs::remove_file(&manual)?;
-        let deleted = ingest_external_events(&ship_path)?;
-        assert_eq!(deleted.len(), 1);
-        assert_eq!(deleted[0].entity, EventEntity::Note);
-        assert_eq!(deleted[0].action, EventAction::Delete);
         Ok(())
     }
 

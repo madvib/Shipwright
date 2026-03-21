@@ -7,73 +7,82 @@ authors: [ship]
 
 # Spawn Agent
 
-Dispatch a job to a specialist agent. Follow this sequence exactly.
+Dispatch a job to a specialist agent in a git worktree. Idempotent — safe to re-run.
 
-## Prerequisites
+## Available scripts
 
-- `claude` authenticated: `claude auth login` once per machine
-- `ship` and `claude` on `$PATH`
-- Job exists in the queue with description, scope, and profile hint
+- **`scripts/dispatch.sh`** — Creates worktree, writes job spec, compiles agent, opens terminal. One command does everything.
 
-## Sequence
+## Environment variables
 
-### 1. Read the job
+Ship dispatch respects these env vars for user preferences. Set them in your shell profile.
 
-```
-list_jobs()  — find the job by ID, get full payload
-```
+| Variable | Values | Default | Purpose |
+|----------|--------|---------|---------|
+| `SHIP_DEFAULT_TERMINAL` | `wt`, `iterm`, `tmux`, `gnome`, `vscode`, `manual` | auto-detect | Which terminal to open new tabs in |
+| `SHIP_DISPATCH_CONFIRM` | `1` | unset (no confirm) | Show spec summary and ask y/n before launching agent |
+| `SHIP_WORKTREE_DIR` | path | `~/dev/ship-worktrees` | Default base directory for worktrees |
 
-CLI fallback: `ship job list`
+Auto-detection checks: `$WT_SESSION` → wt, `$TMUX` → tmux, `$TERM_PROGRAM` → iterm/vscode/apple-terminal, `gnome-terminal` on PATH → gnome. Set `SHIP_DEFAULT_TERMINAL` to override.
 
-> Never use raw `sqlite3` to access Ship data. The schema evolves. Always use MCP tools or `ship` CLI.
+## Quick dispatch (preferred)
 
-### 2. Name the worktree
-
-Derive a short, human-readable slug from the job title. This is used for the branch name and worktree directory — the job ID stays in the queue for tracking.
-
-```
-Job title: "DB Consolidation + Dead Code Purge"  →  slug: "db-consolidation"
-Job title: "Fix ship install/use dep resolution"  →  slug: "fix-dep-resolution"
-Job title: "Events Rewrite"                       →  slug: "events-rewrite"
-```
-
-Rules:
-- Lowercase, hyphen-separated, 2-4 words max
-- No job IDs in the name — humans read directories
-- If a slug collides with an existing branch, append a short disambiguator (e.g. `events-rewrite-2`)
-
-### 3. Resolve the worktree path
-
-Default: `~/dev/ship-worktrees/<slug>`
-
-Check `~/.ship/config.toml` for override:
-```toml
-[worktrees]
-dir = "~/dev/my-worktrees"
-```
-
-### 4. Create the worktree
+Write a job spec file, then dispatch:
 
 ```bash
-git worktree add ~/dev/ship-worktrees/<slug> -b job/<slug>
+bash scripts/dispatch.sh --slug jsonc-config --agent rust-compiler --spec /path/to/spec.md
 ```
 
-Resuming a stalled job (branch exists):
+This is idempotent. Running it again skips existing worktrees, only updates the spec if changed, and re-compiles the agent config.
+
+Options:
+- `--slug <name>` — Worktree and branch name (required)
+- `--agent <agent>` — Ship agent profile (required)
+- `--spec <file>` — Path to job-spec.md (required)
+- `--base <branch>` — Branch to fork from (default: current branch)
+- `--dir <path>` — Worktree base directory (overrides `SHIP_WORKTREE_DIR`)
+- `--no-open` — Skip terminal auto-open, print launch command instead
+- `--confirm` — Show spec and ask y/n before launching (or set `SHIP_DISPATCH_CONFIRM=1`)
+- `--dry-run` — Show what would happen
+
+### Confirm flow
+
+With `--confirm` or `SHIP_DISPATCH_CONFIRM=1`, the script provisions the worktree and writes the spec, then pauses:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Job: jsonc-config
+  Agent: rust-compiler
+  Title: JSONC Config Format Migration
+  Mode: autonomous
+  Acceptance criteria: 18
+  Scope:
+    - crates/core/compiler/src/manifest.rs
+    - apps/ship-studio-cli/src/init.rs
+    ...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Launch agent? [y/N/e(dit spec)]
+```
+
+- **y** — compiles agent and opens terminal
+- **n** — aborts, worktree preserved for later
+- **e** — prints spec path so you can edit, then re-run
+
+## Batch dispatch
+
+Dispatch multiple jobs from a directory of spec files:
+
 ```bash
-git worktree add ~/dev/ship-worktrees/<slug> job/<slug>
+for spec in .ship-session/specs/*.md; do
+    slug=$(basename "$spec" .md)
+    agent=$(head -20 "$spec" | grep -A1 '## Agent' | tail -1 | tr -d ' ')
+    bash scripts/dispatch.sh --slug "$slug" --agent "${agent:-default}" --spec "$spec"
+done
 ```
 
-### 5. Compile the agent config
+## Agent selection
 
-```bash
-cd ~/dev/ship-worktrees/<slug> && ship use <profile>
-```
-
-This writes `CLAUDE.md`, `.mcp.json`, and permission files into the worktree. The agent reads them automatically at session start.
-
-Profile from job payload (`preset_hint`), or:
-
-| Work type | Profile |
+| Work type | Agent |
 |-----------|---------|
 | Rust runtime / DB / platform | `rust-runtime` |
 | Rust compiler / CLI | `rust-compiler` |
@@ -82,85 +91,45 @@ Profile from job payload (`preset_hint`), or:
 | Auth / Better Auth | `better-auth` |
 | Default / mixed | `default` |
 
-### 6. Write the job spec
+## Manual sequence (reference)
 
-```bash
-cat > ~/dev/ship-worktrees/<slug>/job-spec.md << 'EOF'
-# Job <JOB_ID> — <title>
+If the script doesn't fit your situation, the steps are:
 
-Read this file first. It is your complete context.
-
-## Mode
-autonomous
-# autonomous — begin immediately, log questions via append_job_log
-# interactive — present your plan to the human, wait for approval before executing
-
-## What
-<description>
-
-## Scope
-File scope: <file_scope>
-Profile: <profile>
-
-## Acceptance Criteria
-<acceptance_criteria checklist>
-
-## Constraints
-- Stay within declared file scope
-- Log touched files: `append_job_log(id, "touched: path/to/file")`
-
-## Completion Contract
-When acceptance criteria are met, do all three in order:
-1. Commit touched files: `git add <files> && git commit -m "complete: <title>"`
-2. Write handoff.md to this directory (what you did, decisions made, anything incomplete)
-3. `update_job(id="<JOB_ID>", status="complete")`
-
-All three are required. Commander uses all three as completion signals.
-
-## Context
-Branch: job/<slug>
-Worktree: ~/dev/ship-worktrees/<slug>
-Job ID: <JOB_ID> (use this for MCP calls)
-Profile: <profile>
-Ship MCP is active in this directory.
-EOF
+### 1. Read the job
+```
+list_jobs()  — find the job, get full payload
 ```
 
-The compiled `CLAUDE.md` includes a rule telling the agent to read `job-spec.md` immediately and begin without waiting for instruction.
+### 2. Name the worktree
+Derive a slug from the job title: lowercase, hyphen-separated, 2-4 words.
 
-### 7. Update job status
+### 3. Create the worktree
+```bash
+git worktree add -b job/<slug> ~/dev/ship-worktrees/<slug> <base-branch>
+```
 
+### 4. Write the job spec
+```bash
+mkdir -p ~/dev/ship-worktrees/<slug>/.ship-session
+cp <spec-file> ~/dev/ship-worktrees/<slug>/.ship-session/job-spec.md
+```
+
+### 5. Compile the agent config
+```bash
+cd ~/dev/ship-worktrees/<slug> && ship use <agent>
+```
+
+### 6. Update job status
 ```
 update_job(id="<job-id>", status="running", claimed_by="<your-provider-id>")
 ```
 
-### 8. Give the human the launch command
-
-Terminal auto-launch is unreliable across platforms. Give the human a clean, ready-to-paste command instead.
-
-**Standard launch:**
+### 7. Launch
 ```
 cd ~/dev/ship-worktrees/<slug> && claude .
 ```
 
-**If the profile uses `default_mode = "bypassPermissions"`:**
-```
-cd ~/dev/ship-worktrees/<slug> && claude . --dangerously-skip-permissions
-```
-
-Format this as a single copy block. The agent will read `job-spec.md` automatically and start — no further input needed from the human.
-
-Tell the human:
-```
-Dispatched [<JOB_ID>] <title>
-→ worktree: ~/dev/ship-worktrees/<slug>
-→ profile: <profile>
-→ launch:
-
-  cd ~/dev/ship-worktrees/<slug> && claude .
-
-Paste in a new terminal tab. The agent will start automatically.
-```
+The agent reads `.ship-session/job-spec.md` automatically and starts.
 
 ## Stale Worktree Cleanup
 
@@ -177,13 +146,13 @@ Or use `list_stale_worktrees()` to find idle worktrees > 24h.
 Claude Code agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) stack multiple agents in the **same directory** — they share the working tree. This is not a replacement for worktrees.
 
 Use agent teams for: research, review, debate, investigation where file isolation is not needed.
-Use worktrees for: parallel implementation, long-running jobs, agents that need their own compiled profile.
+Use worktrees for: parallel implementation, long-running jobs, agents that need their own compiled agent.
 
 ## Troubleshooting
 
-**Agent starts but has no MCP tools:** `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session.
+**Agent starts but has no MCP tools:** `.mcp.json` wasn't generated. Run `ship use <agent>` again in the worktree, then restart the Claude session.
 
-**`claude .` opens but has no MCP tools:** The `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session in that directory.
+**`claude .` opens but has no MCP tools:** The `.mcp.json` wasn't generated. Run `ship use <agent>` again in the worktree, then restart the Claude session in that directory.
 
 **Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship mcp serve` is on `$PATH` (`which ship`) and `.mcp.json` is configured to run `ship mcp serve`.
 

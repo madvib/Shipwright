@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::dep_skills::resolve_dep_skills;
 use crate::loader::load_library;
-use crate::mode::{Profile, apply_profile_permissions};
+use crate::agent_config::{AgentConfig, apply_agent_permissions};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
 
     // 2. Apply mode overrides (permissions, inline rules, provider list)
     if let Some(mode_id) = opts.active_agent {
-        apply_mode_to_library(&mut library, mode_id, opts.project_root)?;
+        apply_agent_to_library(&mut library, mode_id, opts.project_root)?;
     }
     library.active_agent = opts.active_agent.map(str::to_string);
 
@@ -80,15 +80,21 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         }
     }
 
-    // 6. Write mcp__ship__* to global ~/.claude/settings.json when compiling for claude.
-    //    The ship MCP server is always injected by the compiler into every claude compile.
-    //    This is a one-time global allow — avoids per-session approval prompts for ship MCP.
-    if !opts.dry_run
-        && providers.contains(&"claude".to_string())
-        && let Err(e) = ensure_ship_mcp_globally_allowed()
-    {
-        // Non-fatal — log warning but don't fail compile
-        eprintln!("warning: could not update global Claude settings: {e}");
+    // 6. Pre-approve ship MCP tools globally for each provider.
+    //    The ship-mcp server is always injected by the compiler into every compile.
+    //    This avoids per-session approval prompts for ship MCP tools.
+    if !opts.dry_run {
+        for provider in &providers {
+            let result = match provider.as_str() {
+                "claude" => ensure_ship_mcp_allowed_claude(),
+                "gemini" => ensure_ship_mcp_allowed_gemini(),
+                "cursor" => ensure_ship_mcp_allowed_cursor(opts.project_root),
+                _ => Ok(()),
+            };
+            if let Err(e) = result {
+                eprintln!("warning: could not update {provider} MCP permissions: {e}");
+            }
+        }
     }
 
     if !opts.dry_run {
@@ -98,69 +104,108 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     Ok(())
 }
 
-// ── Global Claude settings ─────────────────────────────────────────────────────
+// ── Global MCP allow-listing ──────────────────────────────────────────────────
 
-/// Write `mcp__ship__*` to `~/.claude/settings.json` permissions allow list.
-/// This pre-approves all ship MCP tools globally so agents aren't prompted on
-/// every session when the ship server is active.
-/// Idempotent — safe to call on every `ship use`.
-fn ensure_ship_mcp_globally_allowed() -> Result<()> {
-    let home = dirs::home_dir()
-        .context("could not determine home directory")?;
-    let path = home.join(".claude").join("settings.json");
-    ensure_parent(&path)?;
+/// Ensure a JSON pattern is in an array at the given JSON pointer path.
+/// Creates intermediate objects if needed. Returns Ok(false) if already present.
+fn ensure_json_array_entry(settings: &mut serde_json::Value, pointer_parts: &[&str], pattern: &str) -> Result<bool> {
+    // Check if already present
+    let pointer = format!("/{}", pointer_parts.join("/"));
+    let already_present = settings
+        .pointer(&pointer)
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(pattern)));
+    if already_present {
+        return Ok(false);
+    }
 
+    // Navigate/create path to the array
+    let mut current = settings.as_object_mut().context("root must be object")?;
+    for &part in &pointer_parts[..pointer_parts.len() - 1] {
+        let entry = current.entry(part).or_insert(serde_json::json!({}));
+        current = entry.as_object_mut().context("intermediate must be object")?;
+    }
+    let last = pointer_parts.last().context("empty path")?;
+    let arr_val = current.entry(*last).or_insert(serde_json::json!([]));
+    let arr = arr_val.as_array_mut().context("leaf must be array")?;
+    arr.push(serde_json::json!(pattern));
+    Ok(true)
+}
+
+/// Read-modify-write a JSON settings file. Calls `mutate` to apply changes.
+/// Creates the file and parent dirs if they don't exist.
+fn update_json_settings(path: &std::path::Path, mutate: impl FnOnce(&mut serde_json::Value) -> Result<bool>) -> Result<()> {
+    ensure_parent(path)?;
     let mut settings: serde_json::Value = if path.exists() {
-        serde_json::from_str(&std::fs::read_to_string(&path)?)
+        serde_json::from_str(&std::fs::read_to_string(path)?)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
-
-    let ship_pattern = "mcp__ship__*";
-
-    // Check if already present — use a non-mutable read
-    let already_present = settings
-        .pointer("/permissions/allow")
-        .and_then(|v| v.as_array())
-        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)));
-
-    if already_present {
-        return Ok(());
+    if mutate(&mut settings)? {
+        std::fs::write(path, serde_json::to_string_pretty(&settings)?)?;
     }
-
-    // Not present — ensure permissions.allow exists and add the pattern
-    {
-        let root = settings
-            .as_object_mut()
-            .context("settings.json must be an object")?;
-        let perms = root
-            .entry("permissions")
-            .or_insert(serde_json::json!({}));
-        let perms_obj = perms.as_object_mut()
-            .context("permissions must be an object")?;
-        let allow_arr = perms_obj
-            .entry("allow")
-            .or_insert(serde_json::json!([]));
-        let arr = allow_arr.as_array_mut()
-            .context("permissions.allow must be an array")?;
-        arr.push(serde_json::json!(ship_pattern));
-    }
-
-    std::fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
     Ok(())
+}
+
+/// Claude: write `mcp__ship__*` to `~/.claude/settings.json` permissions.allow.
+fn ensure_ship_mcp_allowed_claude() -> Result<()> {
+    let path = dirs::home_dir()
+        .context("could not determine home directory")?
+        .join(".claude").join("settings.json");
+    update_json_settings(&path, |s| {
+        ensure_json_array_entry(s, &["permissions", "allow"], "mcp__ship__*")
+    })
+}
+
+/// Gemini: write allow policy for ship MCP to `~/.gemini/policies/ship-mcp.toml`.
+fn ensure_ship_mcp_allowed_gemini() -> Result<()> {
+    let path = dirs::home_dir()
+        .context("could not determine home directory")?
+        .join(".gemini").join("policies").join("ship-mcp.toml");
+    ensure_parent(&path)?;
+
+    let content = r#"# Generated by Ship. Pre-approves ship MCP tools globally.
+
+[[tool_policies]]
+tool = "mcp"
+pattern = "ship/.*"
+decision = "allow"
+"#;
+
+    // Idempotent — only write if missing or different
+    if path.exists() {
+        let existing = std::fs::read_to_string(&path)?;
+        if existing == content {
+            return Ok(());
+        }
+    }
+    std::fs::write(&path, content)?;
+    Ok(())
+}
+
+/// Cursor: write `Mcp(ship:*)` to project `.cursor/cli.json` permissions.allow.
+fn ensure_ship_mcp_allowed_cursor(project_root: &std::path::Path) -> Result<()> {
+    let path = project_root.join(".cursor").join("cli.json");
+    update_json_settings(&path, |s| {
+        // Ensure version field exists
+        if s.get("version").is_none() {
+            s["version"] = serde_json::json!(1);
+        }
+        ensure_json_array_entry(s, &["permissions", "allow"], "Mcp(ship:*)")
+    })
 }
 
 // ── Mode → library ────────────────────────────────────────────────────────────
 
-fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_root: &Path) -> Result<()> {
-    let Some(path) = find_profile_file(mode_id, project_root) else { return Ok(()); };
+fn apply_agent_to_library(library: &mut ProjectLibrary, mode_id: &str, project_root: &Path) -> Result<()> {
+    let Some(path) = find_agent_file(mode_id, project_root) else { return Ok(()); };
 
-    let profile = Profile::load(&path)?;
+    let profile = AgentConfig::load(&path)?;
     let agents_dir = project_root.join(".ship").join("agents");
 
     // Permission overrides — pass agents_dir so preset sections from permissions.toml are resolved
-    library.permissions = apply_profile_permissions(library.permissions.clone(), &profile, Some(&agents_dir));
+    library.permissions = apply_agent_permissions(library.permissions.clone(), &profile, Some(&agents_dir));
 
     // Inline rules → append as a synthetic rule file
     if let Some(inline) = &profile.rules.inline {
@@ -176,7 +221,7 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         }
     }
 
-    // If profile declares a provider list, inject a ModeConfig so resolve() applies it
+    // If agent declares a provider list, inject a ModeConfig so resolve() applies it
     if !profile.meta.providers.is_empty() {
         library.modes.push(compiler::ModeConfig {
             id: mode_id.to_string(),
@@ -188,7 +233,7 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         });
     }
 
-    // Plugins — convert profile's Vec<String> install list into PluginsManifest
+    // Plugins — convert agent's Vec<String> install list into PluginsManifest
     if !profile.plugins.install.is_empty() {
         library.plugins = PluginsManifest {
             install: profile.plugins.install.iter().map(|id| PluginEntry {
@@ -199,7 +244,7 @@ fn apply_mode_to_library(library: &mut ProjectLibrary, mode_id: &str, project_ro
         };
     }
 
-    // Hooks declared in [hooks] section of profile TOML
+    // Hooks declared in [hooks] section of agent TOML
     if let Some(cmd) = &profile.hooks.stop {
         let id = format!("{}-stop", mode_id);
         if !library.hooks.iter().any(|h| h.id == id) {
@@ -261,17 +306,25 @@ fn load_team_agents(project_root: &Path, provider_id: &str) -> Vec<(String, Stri
     agents
 }
 
-/// Search order: project .ship/agents/profiles/ → global ~/.ship/agents/profiles/.
-fn find_profile_file(profile_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
-    let file = format!("{}.toml", profile_id);
+/// Search order: project .ship/agents/ → .ship/agents/profiles/ (compat) → global ~/.ship/agents/.
+fn find_agent_file(agent_id: &str, project_root: &Path) -> Option<std::path::PathBuf> {
+    let file = format!("{}.toml", agent_id);
 
-    // Project-local
-    let p = project_root.join(".ship").join("agents").join("profiles").join(&file);
+    // Project-local (primary)
+    let p = project_root.join(".ship").join("agents").join(&file);
     if p.exists() { return Some(p); }
 
-    // Global
-    let gp = dirs::home_dir()?.join(".ship").join("agents").join("profiles").join(&file);
+    // Project-local compat
+    let p_compat = project_root.join(".ship").join("agents").join("profiles").join(&file);
+    if p_compat.exists() { return Some(p_compat); }
+
+    // Global (primary)
+    let gp = dirs::home_dir()?.join(".ship").join("agents").join(&file);
     if gp.exists() { return Some(gp); }
+
+    // Global compat
+    let gp_compat = dirs::home_dir()?.join(".ship").join("agents").join("profiles").join(&file);
+    if gp_compat.exists() { return Some(gp_compat); }
 
     None
 }
@@ -632,30 +685,30 @@ deny = ["Bash(rm -rf *)"]
     #[test]
     fn compile_with_mode_applies_permissions() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/guarded.toml", r#"
-[profile]
-name = "Guarded"
-id = "guarded"
+        write(tmp.path(), ".ship/agents/readonly.toml", r#"
+[agent]
+name = "ReadOnly"
+id = "readonly"
 providers = ["claude"]
 [permissions]
-preset = "ship-guarded"
+preset = "ship-readonly"
 "#);
         run_compile(CompileOptions {
             project_root: tmp.path(), provider: Some("claude"),
-            dry_run: false, active_agent: Some("guarded"),
+            dry_run: false, active_agent: Some("readonly"),
         }).unwrap();
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(tmp.path().join(".claude/settings.json")).unwrap()
         ).unwrap();
         let deny = v["permissions"]["deny"].as_array().unwrap();
-        assert!(deny.iter().any(|d| d == "mcp__*__delete*"));
+        assert!(deny.iter().any(|d| d == "Write(*)"));
     }
 
     #[test]
     fn compile_with_mode_inline_rules_adds_to_context() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/strict.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/strict.toml", r#"
+[agent]
 name = "Strict"
 id = "strict"
 providers = ["claude"]
@@ -673,8 +726,8 @@ inline = "Never delete files without explicit confirmation."
     #[test]
     fn compile_with_profile_stop_hook_emits_to_settings() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/commander.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/commander.toml", r#"
+[agent]
 name = "Commander"
 id = "commander"
 providers = ["claude"]
@@ -708,8 +761,8 @@ stop = "ship permissions sync"
 default_mode = "bypassPermissions"
 tools_deny = ["Bash(git push --force*)"]
 "#);
-        write(tmp.path(), ".ship/agents/profiles/fast.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/fast.toml", r#"
+[agent]
 name = "Fast"
 id = "fast"
 providers = ["claude"]
@@ -733,8 +786,8 @@ preset = "ship-fast"
     #[test]
     fn compile_with_bypass_permissions_mode_writes_default_mode() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), ".ship/agents/profiles/autonomous.toml", r#"
-[profile]
+        write(tmp.path(), ".ship/agents/autonomous.toml", r#"
+[agent]
 name = "Autonomous"
 id = "autonomous"
 providers = ["claude"]

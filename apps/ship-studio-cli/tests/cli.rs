@@ -44,7 +44,7 @@ fn init_creates_ship_structure() {
         .stdout(predicate::str::contains("initialized .ship/"));
 
     assert!(tmp.path().join(".ship").is_dir());
-    assert!(tmp.path().join(".ship/ship.toml").exists());
+    assert!(tmp.path().join(".ship/ship.jsonc").exists());
     assert!(tmp.path().join(".ship/README.md").exists());
     assert!(tmp.path().join(".ship/.gitignore").exists());
 }
@@ -55,13 +55,13 @@ fn init_is_idempotent() {
 
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
 
-    let original = fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
+    let original = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
 
     // Second run must succeed without overwriting existing files.
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
 
-    let after = fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
-    assert_eq!(original, after, "init must not overwrite existing ship.toml");
+    let after = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
+    assert_eq!(original, after, "init must not overwrite existing ship.jsonc");
 }
 
 #[test]
@@ -74,60 +74,60 @@ fn init_with_provider_sets_provider_in_toml() {
         .assert()
         .success();
 
-    let toml = fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
-    assert!(toml.contains("gemini"), "provider should appear in ship.toml");
+    let content = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
+    assert!(content.contains("gemini"), "provider should appear in ship.jsonc");
 }
 
 // ── ship use ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn use_activates_profile_writes_claude_md_and_lock() {
+fn use_activates_agent_writes_claude_md_and_state() {
     let tmp = TempDir::new().unwrap();
 
     ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
-        ".ship/agents/profiles/my-profile.toml",
-        r#"[profile]
-name = "My Profile"
-id = "my-profile"
+        ".ship/agents/my-agent.toml",
+        r#"[agent]
+name = "My Agent"
+id = "my-agent"
 providers = ["claude"]
 "#,
     );
 
     ship_in(&tmp)
-        .args(["use", "my-profile", "--path", tmp.path().to_str().unwrap()])
+        .args(["use", "my-agent", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicate::str::contains("activated profile 'my-profile'"));
+        .stdout(predicate::str::contains("activated agent 'my-agent'"));
 
     // State is persisted to platform.db (at ~/.ship/). Verify via ship status.
     ship_in(&tmp)
         .args(["status", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicate::str::contains("my-profile"));
+        .stdout(predicate::str::contains("my-agent"));
     assert!(tmp.path().join("CLAUDE.md").exists(), "CLAUDE.md must be written");
 }
 
 #[test]
-fn use_same_profile_twice_is_idempotent() {
+fn use_same_agent_twice_is_idempotent() {
     let tmp = TempDir::new().unwrap();
 
     ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
-        ".ship/agents/profiles/my-profile.toml",
-        r#"[profile]
-name = "My Profile"
-id = "my-profile"
+        ".ship/agents/my-agent.toml",
+        r#"[agent]
+name = "My Agent"
+id = "my-agent"
 providers = ["claude"]
 "#,
     );
 
-    let args = ["use", "my-profile", "--path", tmp.path().to_str().unwrap()];
+    let args = ["use", "my-agent", "--path", tmp.path().to_str().unwrap()];
     ship_in(&tmp).args(args).assert().success();
     ship_in(&tmp).args(args).assert().success();
 
@@ -135,7 +135,7 @@ providers = ["claude"]
         .args(["status", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicate::str::contains("my-profile"));
+        .stdout(predicate::str::contains("my-agent"));
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn use_fails_without_ship_dir() {
 }
 
 #[test]
-fn use_fails_for_unknown_profile() {
+fn use_fails_for_unknown_agent() {
     let tmp = TempDir::new().unwrap();
 
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
@@ -265,53 +265,53 @@ fn skill_list_shows_global_skill() {
         .stdout(predicate::str::contains("Global skills"));
 }
 
-// ── ship export ───────────────────────────────────────────────────────────────
+// ── ship compile --provider ───────────────────────────────────────────────────
 
 #[test]
-fn export_gemini_writes_gemini_md() {
+fn compile_provider_gemini_writes_gemini_md() {
     let tmp = TempDir::new().unwrap();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["export", "gemini"])
+        .args(["compile", "--provider", "gemini"])
         .current_dir(tmp.path())
         .assert()
         .success();
 
-    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written for gemini export");
+    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written for gemini compile");
     let content = fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
     assert!(content.contains("Use explicit types."));
 }
 
 #[test]
-fn export_codex_writes_agents_md() {
+fn compile_provider_codex_writes_agents_md() {
     let tmp = TempDir::new().unwrap();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["export", "codex"])
+        .args(["compile", "--provider", "codex"])
         .current_dir(tmp.path())
         .assert()
         .success();
 
-    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written for codex export");
+    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written for codex compile");
     let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
     assert!(content.contains("Use explicit types."));
 }
 
 #[test]
-fn export_codex_writes_codex_config_toml() {
+fn compile_provider_codex_writes_codex_config_toml() {
     let tmp = TempDir::new().unwrap();
     write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["export", "codex"])
+        .args(["compile", "--provider", "codex"])
         .current_dir(tmp.path())
         .assert()
         .success();
 
     let path = tmp.path().join(".codex/config.toml");
-    assert!(path.exists(), ".codex/config.toml must be written for codex export");
+    assert!(path.exists(), ".codex/config.toml must be written for codex compile");
     let content = fs::read_to_string(&path).unwrap();
     assert!(content.contains("mcp_servers"), "config.toml must contain mcp_servers");
 }
@@ -319,7 +319,7 @@ fn export_codex_writes_codex_config_toml() {
 // ── ship status ───────────────────────────────────────────────────────────────
 
 #[test]
-fn status_shows_no_active_profile_before_use() {
+fn status_shows_no_active_agent_before_use() {
     let tmp = TempDir::new().unwrap();
 
     ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
@@ -328,7 +328,7 @@ fn status_shows_no_active_profile_before_use() {
         .args(["status", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicate::str::contains("No active profile"));
+        .stdout(predicate::str::contains("No active agent"));
 }
 
 // ── ship compile idempotency ───────────────────────────────────────────────────
@@ -362,14 +362,14 @@ fn install_no_manifest_exits_nonzero() {
     let tmp = TempDir::new().unwrap();
     ship().args(["init"]).current_dir(tmp.path()).assert().success();
 
-    // .ship/ship.toml from `ship init` is a project-config file (no [module]),
+    // .ship/ship.jsonc from `ship init` is a project-config file (no "module"),
     // so install must fail with a clear error.
     ship()
         .args(["install"])
         .current_dir(tmp.path())
         .assert()
         .failure()
-        .stderr(predicate::str::contains("[module]").or(predicate::str::contains("registry manifest")));
+        .stderr(predicate::str::contains("module").or(predicate::str::contains("manifest")));
 }
 
 #[test]
@@ -407,8 +407,8 @@ fn validate_passes_on_valid_config() {
     );
     write(
         tmp.path(),
-        ".ship/agents/profiles/default.toml",
-        r#"[profile]
+        ".ship/agents/default.toml",
+        r#"[agent]
 name = "Default"
 id = "default"
 providers = ["claude"]
@@ -431,7 +431,7 @@ preset = "ship-standard"
 #[test]
 fn validate_reports_error_on_bad_toml() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/profiles/bad.toml", "not valid toml [[");
+    write(tmp.path(), ".ship/agents/bad.toml", "not valid toml [[");
 
     ship()
         .args(["validate", "--path", tmp.path().to_str().unwrap()])
