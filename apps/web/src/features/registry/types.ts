@@ -74,7 +74,13 @@ export const SCOPE_FILTERS: { value: ScopeFilter; label: string }[] = [
 
 /** Scope badge color mapping. */
 export const SCOPE_COLORS: Record<PackageScope, { bg: string; text: string; border: string }> = {
-  official: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20' },
-  community: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-  unofficial: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
+  official: { bg: 'bg-blue-500/10', text: 'text-blue-500', border: 'border-blue-500/20' },
+  community: { bg: 'bg-emerald-500/10', text: 'text-emerald-500', border: 'border-emerald-500/20' },
+  unofficial: { bg: 'bg-muted', text: 'text-muted-foreground', border: 'border-border/60' },
+}
+
+/** Extract the GitHub owner from a repo URL. Returns null if not a GitHub URL. */
+export function extractGitHubOwner(repoUrl: string): string | null {
+  const match = repoUrl.match(/github\.com\/([^/]+)/)
+  return match?.[1] ?? null
 }

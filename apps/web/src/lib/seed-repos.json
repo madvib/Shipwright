@@ -23,5 +23,20 @@
   { "url": "https://github.com/modelcontextprotocol/servers", "category": "ai-tools" },
   { "url": "https://github.com/supabase/supabase", "category": "web-frameworks" },
   { "url": "https://github.com/drizzle-team/drizzle-orm", "category": "web-frameworks" },
-  { "url": "https://github.com/biomejs/biome", "category": "devops" }
+  { "url": "https://github.com/biomejs/biome", "category": "devops" },
+  { "url": "https://github.com/openai/codex", "category": "ai-tools" },
+  { "url": "https://github.com/modelcontextprotocol/typescript-sdk", "category": "ai-tools" },
+  { "url": "https://github.com/continuedev/continue", "category": "ai-tools" },
+  { "url": "https://github.com/cline/cline", "category": "ai-tools" },
+  { "url": "https://github.com/aider-ai/aider", "category": "ai-tools" },
+  { "url": "https://github.com/remix-run/remix", "category": "web-frameworks" },
+  { "url": "https://github.com/nuxt/nuxt", "category": "web-frameworks" },
+  { "url": "https://github.com/trpc/trpc", "category": "web-frameworks" },
+  { "url": "https://github.com/prisma/prisma", "category": "web-frameworks" },
+  { "url": "https://github.com/turborepo/turborepo", "category": "devops" },
+  { "url": "https://github.com/withastro/astro", "category": "web-frameworks" },
+  { "url": "https://github.com/tauri-apps/tauri", "category": "web-frameworks" },
+  { "url": "https://github.com/eslint/eslint", "category": "devops" },
+  { "url": "https://github.com/prettier/prettier", "category": "devops" },
+  { "url": "https://github.com/pnpm/pnpm", "category": "devops" }
 ]

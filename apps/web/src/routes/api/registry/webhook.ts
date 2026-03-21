@@ -13,6 +13,8 @@ import {
   parseShipToml,
 } from '#/lib/registry-github'
 
+const WEBHOOK_MAX_AGE_MS = 5 * 60 * 1000 // 5 minutes
+
 export const Route = createFileRoute('/api/registry/webhook')({
   server: {
     handlers: {
@@ -39,6 +41,15 @@ export const Route = createFileRoute('/api/registry/webhook')({
 
         const event = request.headers.get('x-github-event')
         const payload = JSON.parse(body) as Record<string, unknown>
+
+        // Reject stale payloads to prevent replay attacks (5-minute window)
+        const payloadAge = getPayloadAgeMs(payload)
+        if (payloadAge !== null && payloadAge > WEBHOOK_MAX_AGE_MS) {
+          return Response.json(
+            { error: 'Webhook payload too old — rejecting to prevent replay' },
+            { status: 400 },
+          )
+        }
 
         if (event === 'create' && payload.ref_type === 'tag') {
           return handleTagCreate(payload)
@@ -144,6 +155,39 @@ async function handleInstallation(
     status: 'acknowledged',
     action,
   })
+}
+
+/**
+ * Extract timestamp from a GitHub webhook payload and return its age in ms.
+ * Checks repository.pushed_at (Unix epoch) and common ISO 8601 fields.
+ * Returns null if no parseable timestamp is found (caller should allow).
+ */
+function getPayloadAgeMs(payload: Record<string, unknown>): number | null {
+  const now = Date.now()
+
+  // GitHub create/push events: repository.pushed_at is a Unix epoch (seconds)
+  const repo = payload.repository as Record<string, unknown> | undefined
+  if (repo?.pushed_at && typeof repo.pushed_at === 'number') {
+    return now - repo.pushed_at * 1000
+  }
+
+  // Installation events: updated_at ISO 8601
+  const installation = payload.installation as Record<string, unknown> | undefined
+  if (installation?.updated_at && typeof installation.updated_at === 'string') {
+    const ts = Date.parse(installation.updated_at)
+    if (!Number.isNaN(ts)) return now - ts
+  }
+
+  // Fallback: top-level created_at or updated_at
+  for (const field of ['created_at', 'updated_at'] as const) {
+    const val = payload[field]
+    if (typeof val === 'string') {
+      const ts = Date.parse(val)
+      if (!Number.isNaN(ts)) return now - ts
+    }
+  }
+
+  return null
 }
 
 async function verifySignature(

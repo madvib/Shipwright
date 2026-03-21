@@ -140,8 +140,9 @@ export const Route = createFileRoute('/api/registry/claim')({
           )
         }
 
-        // Set claimedBy via upsert
-        await repos.upsertPackage({ ...pkg, claimedBy: auth.sub, updatedAt: Date.now() })
+        // Set claimedBy and transition scope from 'unofficial' to 'community'
+        const newScope = pkg.scope === 'unofficial' ? 'community' : pkg.scope
+        await repos.upsertPackage({ ...pkg, claimedBy: auth.sub, scope: newScope, updatedAt: Date.now() })
 
         return Response.json({ claimed: true, package_path: pkg.path })
       },

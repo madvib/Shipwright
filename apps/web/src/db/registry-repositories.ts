@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1'
-import { and, desc, eq, like, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
 
 import {
   packages,
@@ -17,6 +17,8 @@ import {
 // Registry repository interface
 // ---------------------------------------------------------------------------
 
+export type SortOrder = 'installs' | 'recent' | 'name'
+
 export interface SearchResult {
   packages: Package[]
   total: number
@@ -29,6 +31,7 @@ export interface RegistryRepositories {
     scope: string | undefined,
     page: number,
     limit: number,
+    sort?: SortOrder,
   ): Promise<SearchResult>
 
   getPackage(path: string): Promise<Package | null>
@@ -57,7 +60,7 @@ export function createRegistryRepositories(
   const db = drizzle(d1)
 
   return {
-    async searchPackages(query, scope, page, limit) {
+    async searchPackages(query, scope, page, limit, sort = 'installs' as SortOrder) {
       const conditions = []
       if (scope) {
         conditions.push(eq(packages.scope, scope))
@@ -76,12 +79,19 @@ export function createRegistryRepositories(
       const where = conditions.length > 0 ? and(...conditions) : undefined
       const offset = (page - 1) * limit
 
+      const orderBy =
+        sort === 'recent'
+          ? desc(packages.indexedAt)
+          : sort === 'name'
+            ? asc(packages.name)
+            : desc(packages.installs)
+
       const [rows, countResult] = await Promise.all([
         db
           .select()
           .from(packages)
           .where(where)
-          .orderBy(desc(packages.installs))
+          .orderBy(orderBy)
           .limit(limit)
           .offset(offset)
           .all(),
@@ -120,6 +130,8 @@ export function createRegistryRepositories(
             latestVersion: data.latestVersion,
             contentHash: data.contentHash,
             defaultBranch: data.defaultBranch,
+            scope: data.scope,
+            claimedBy: data.claimedBy,
             updatedAt: data.updatedAt,
           },
         })

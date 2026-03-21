@@ -1,15 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import type { ElementType } from 'react'
 import { useState, useDeferredValue, useCallback } from 'react'
-import { Search, Download, Clock, Heart, TrendingUp } from 'lucide-react'
+import { Search, Download, Clock, Heart, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { useRegistrySearch } from '#/features/registry/useRegistry'
-import { CardSection } from '#/features/registry/RegistryCardGrid'
-import {
-  REGISTRY_CARDS,
-  REGISTRY_STATS,
-  filterByType,
-  filterBySearch,
-} from '#/features/registry/registry-cards'
+import type { SortParam } from '#/features/registry/useRegistry'
+import { PackageCard } from '#/features/registry/PackageCard'
+import { Pagination } from '#/features/registry/Pagination'
 import type { TypeFilter, CategoryTab } from '#/features/registry/registry-cards'
 import type { ScopeFilter } from '#/features/registry/types'
 
@@ -46,108 +42,96 @@ const SCOPE_MAP: Record<TypeFilter, ScopeFilter> = {
   mcp: 'unofficial',
 }
 
+/** Map category tab to sort order and optional scope override. */
+const CATEGORY_CONFIG: Record<CategoryTab, { sort: SortParam; scopeOverride?: ScopeFilter }> = {
+  trending: { sort: 'installs' },
+  new: { sort: 'recent' },
+  'most-installed': { sort: 'installs' },
+  curated: { sort: 'installs', scopeOverride: 'official' },
+}
+
+const ITEMS_PER_PAGE = 12
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 function RegistryPage() {
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [category, setCategory] = useState<CategoryTab>('trending')
-  const [installedIds, setInstalledIds] = useState<Set<string>>(() => {
-    return new Set(
-      REGISTRY_CARDS.filter((c) => c.installed).map((c) => c.id),
-    )
-  })
+  const [page, setPage] = useState(1)
 
   const deferredQuery = useDeferredValue(query)
 
-  // Wire into real API search -- falls back to mock when API is unavailable
-  useRegistrySearch(deferredQuery, SCOPE_MAP[typeFilter], 1)
-
-  // Local filtering over mock cards until API supports type-based search
-  const filtered = filterBySearch(
-    filterByType(REGISTRY_CARDS, typeFilter),
-    deferredQuery,
-  )
-
-  const handleInstall = useCallback((id: string) => {
-    setInstalledIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-        console.log(`[Registry] Install requested: ${id}`)
-      }
-      return next
-    })
+  const handleQueryChange = useCallback((q: string) => {
+    setQuery(q)
+    setPage(1)
   }, [])
 
-  // Group by type for sectioned display when showing all
-  const skills = filtered.filter((c) => c.type === 'skill')
-  const agents = filtered.filter((c) => c.type === 'agent')
-  const mcpServers = filtered.filter((c) => c.type === 'mcp')
-  const showSections = typeFilter === 'all' && !deferredQuery
+  const handleTypeFilterChange = useCallback((f: TypeFilter) => {
+    setTypeFilter(f)
+    setPage(1)
+  }, [])
+
+  const handleCategoryChange = useCallback((tab: CategoryTab) => {
+    setCategory(tab)
+    setPage(1)
+  }, [])
+
+  const config = CATEGORY_CONFIG[category]
+  const scope = config.scopeOverride ?? SCOPE_MAP[typeFilter]
+
+  const { data, error, isLoading, refetch } = useRegistrySearch(
+    deferredQuery,
+    scope,
+    page,
+    config.sort,
+  )
+
+  const packages = data?.packages ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
 
   return (
     <div className="h-full flex flex-col overflow-auto">
       <div className="max-w-[960px] w-full mx-auto px-5 pb-24">
         <HeroSection
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={handleQueryChange}
           typeFilter={typeFilter}
-          onTypeFilterChange={setTypeFilter}
+          onTypeFilterChange={handleTypeFilterChange}
         />
 
-        {/* Stats bar: hidden until registry has real data */}
-        {(REGISTRY_STATS.skills > 0 || REGISTRY_STATS.agents > 0) && <StatsBar />}
+        <CategoryTabs active={category} onChange={handleCategoryChange} />
 
-        <CategoryTabs active={category} onChange={setCategory} />
-
-        {/* Featured banner: hidden until a real pack is published */}
-
-        {filtered.length === 0 ? (
+        {error ? (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        ) : isLoading ? (
+          <LoadingState />
+        ) : packages.length === 0 ? (
           <EmptyResults
             query={query}
             typeFilter={typeFilter}
             onClear={() => {
               setQuery('')
               setTypeFilter('all')
+              setPage(1)
             }}
           />
-        ) : showSections ? (
-          <>
-            {skills.length > 0 && (
-              <CardSection
-                title="Popular Skills"
-                cards={skills}
-                installedIds={installedIds}
-                onInstall={handleInstall}
-              />
-            )}
-            {agents.length > 0 && (
-              <CardSection
-                title="Popular Agents"
-                cards={agents}
-                installedIds={installedIds}
-                onInstall={handleInstall}
-              />
-            )}
-            {mcpServers.length > 0 && (
-              <CardSection
-                title="Popular MCP Servers"
-                cards={mcpServers}
-                installedIds={installedIds}
-                onInstall={handleInstall}
-              />
-            )}
-          </>
         ) : (
-          <CardSection
-            title="Results"
-            cards={filtered}
-            installedIds={installedIds}
-            onInstall={handleInstall}
-          />
+          <div className="mb-7">
+            <div className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-3 pl-1">
+              {deferredQuery ? 'Results' : 'Packages'}{' '}
+              <span className="text-muted-foreground/30">({total})</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {packages.map((pkg) => (
+                <PackageCard key={pkg.id} pkg={pkg} />
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -207,31 +191,6 @@ function HeroSection({
   )
 }
 
-function StatsBar() {
-  return (
-    <div className="flex justify-center gap-6 pb-6 max-w-[560px] mx-auto">
-      <StatItem value={String(REGISTRY_STATS.skills)} label="Skills" />
-      <StatItem value={String(REGISTRY_STATS.agents)} label="Agents" />
-      <StatItem
-        value={String(REGISTRY_STATS.mcpServers)}
-        label="MCP Servers"
-      />
-      <StatItem value={REGISTRY_STATS.totalInstalls} label="Installs" />
-    </div>
-  )
-}
-
-function StatItem({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="text-center">
-      <div className="text-lg font-bold text-foreground">{value}</div>
-      <div className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">
-        {label}
-      </div>
-    </div>
-  )
-}
-
 function CategoryTabs({
   active,
   onChange,
@@ -254,6 +213,44 @@ function CategoryTabs({
           <Icon className="size-3.5" />
           {label}
         </button>
+      ))}
+    </div>
+  )
+}
+
+function ErrorState({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex size-12 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/5 text-destructive mb-3">
+        <AlertTriangle className="size-5" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Failed to load registry</p>
+      <p className="mt-1 text-xs text-muted-foreground max-w-xs">
+        {error.message || 'An unexpected error occurred while fetching packages.'}
+      </p>
+      <button
+        onClick={onRetry}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+      >
+        <RefreshCw className="size-3" />
+        Retry
+      </button>
+    </div>
+  )
+}
+
+function LoadingState() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-xl border border-border/60 bg-card p-4"
+        >
+          <div className="h-4 bg-muted/50 rounded w-2/3 mb-3" />
+          <div className="h-3 bg-muted/30 rounded w-full mb-2" />
+          <div className="h-3 bg-muted/30 rounded w-1/2" />
+        </div>
       ))}
     </div>
   )

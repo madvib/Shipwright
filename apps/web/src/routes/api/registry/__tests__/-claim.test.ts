@@ -156,6 +156,20 @@ describe('POST /api/registry/claim', () => {
     expect(res.status).toBe(409)
   })
 
+  it('transitions scope from unofficial to community on claim', async () => {
+    const unofficialPkg = { ...VALID_PACKAGE, scope: 'unofficial', claimedBy: null }
+    const repos = makeRepos({ getPackage: vi.fn().mockResolvedValue(unofficialPkg) })
+    vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
+      repos as ReturnType<typeof registryRepositories.createRegistryRepositories>
+    )
+    const req = makeRequest({ package_path: 'github.com/testowner/testrepo' })
+    const res = await POST({ request: req } as Parameters<typeof POST>[0])
+    expect(res.status).toBe(200)
+    expect(repos.upsertPackage).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: 'community', claimedBy: 'user-1' })
+    )
+  })
+
   it('returns 200 idempotently when already claimed by same user', async () => {
     vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
       makeRepos({

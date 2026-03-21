@@ -9,6 +9,7 @@ import { getD1, nanoid } from '#/lib/d1'
 import { parseGithubUrl, extractLibrary } from '#/lib/github-import'
 import { fetchRepoFiles } from '#/lib/fetch-repo-files'
 import { computeContentHash } from '#/lib/content-hash'
+import { fetchFileFromGitHub, parseShipToml } from '#/lib/registry-github'
 import { createRegistryRepositories, type RegistryRepositories } from '#/db/registry-repositories'
 import type { InsertPackage } from '#/db/schema'
 import seedReposJson from '#/lib/seed-repos.json'
@@ -27,7 +28,7 @@ interface SeedEntry {
 
 interface SeedResult {
   imported: number
-  skipped: number
+  skipped: string[]
   errors: string[]
 }
 
@@ -35,16 +36,20 @@ async function importRepo(
   entry: SeedEntry,
   token: string | undefined,
   db: RegistryRepositories,
-): Promise<'imported' | 'skipped' | string> {
+): Promise<{ status: 'imported' | 'skipped' | 'error'; reason?: string }> {
   const parsed = parseGithubUrl(entry.url)
-  if (!parsed) return `Invalid URL: ${entry.url}`
+  if (!parsed) return { status: 'error', reason: `Invalid URL: ${entry.url}` }
 
   const { owner, repo } = parsed
   const files = await fetchRepoFiles(owner, repo, token)
-  if (files === 'not_found') return `Repo not found: ${owner}/${repo}`
+  if (files === 'not_found') {
+    return { status: 'skipped', reason: `Repo not found: ${owner}/${repo}` }
+  }
 
   const library = extractLibrary(files)
-  if (!library) return 'skipped'
+  if (!library) {
+    return { status: 'skipped', reason: `No agent config found: ${owner}/${repo}` }
+  }
 
   const pkgPath = `unofficial/${owner}-${repo}`.toLowerCase()
   const now = Date.now()
@@ -71,7 +76,6 @@ async function importRepo(
   const pkg = await db.upsertPackage(pkgData)
 
   // Index skills: rules become skills in the package
-  // Note: no version record for imported packages (no git tag)
   for (const rule of (library.rules ?? [])) {
     const hash = await computeContentHash(rule.content)
     await db.createPackageSkill({
@@ -86,7 +90,7 @@ async function importRepo(
     })
   }
 
-  // Index native skills from .ship/ projects
+  // Index native skills from .ship/agents/ directories
   for (const skill of (library.skills ?? [])) {
     const hash = await computeContentHash(skill.content)
     await db.createPackageSkill({
@@ -101,7 +105,44 @@ async function importRepo(
     })
   }
 
-  return 'imported'
+  // Index native Ship skills from .ship/ship.toml [exports].skills
+  await indexShipTomlSkills(owner, repo, pkg.id, db)
+
+  return { status: 'imported' }
+}
+
+/** Fetch .ship/ship.toml and index any exported skills from .ship/skills/. */
+async function indexShipTomlSkills(
+  owner: string,
+  repo: string,
+  packageId: string,
+  db: RegistryRepositories,
+): Promise<void> {
+  const tomlContent = await fetchFileFromGitHub(owner, repo, '.ship/ship.toml', 'HEAD')
+  if (!tomlContent) return
+
+  const toml = parseShipToml(tomlContent)
+  const skillIds = toml.exports?.skills ?? []
+  if (skillIds.length === 0) return
+
+  for (const skillId of skillIds) {
+    const content = await fetchFileFromGitHub(
+      owner, repo, `.ship/skills/${skillId}.md`, 'HEAD',
+    )
+    if (!content) continue
+
+    const hash = await computeContentHash(content)
+    await db.createPackageSkill({
+      id: nanoid(),
+      packageId,
+      versionId: '',
+      skillId,
+      name: skillId,
+      description: null,
+      contentHash: hash,
+      contentLength: new TextEncoder().encode(content).byteLength,
+    })
+  }
 }
 
 export const Route = createFileRoute('/api/registry/seed')({
@@ -132,14 +173,17 @@ export const Route = createFileRoute('/api/registry/seed')({
           repos = seedReposJson
         }
 
-        const result: SeedResult = { imported: 0, skipped: 0, errors: [] }
+        const result: SeedResult = { imported: 0, skipped: [], errors: [] }
 
         for (const entry of repos) {
           try {
             const outcome = await importRepo(entry, token || undefined, db)
-            if (outcome === 'imported') result.imported++
-            else if (outcome === 'skipped') result.skipped++
-            else result.errors.push(outcome)
+            if (outcome.status === 'imported') result.imported++
+            else if (outcome.status === 'skipped') {
+              result.skipped.push(outcome.reason ?? entry.url)
+            } else {
+              result.errors.push(outcome.reason ?? entry.url)
+            }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
             result.errors.push(`${entry.url}: ${msg}`)

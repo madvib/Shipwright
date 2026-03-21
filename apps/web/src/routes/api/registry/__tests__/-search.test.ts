@@ -11,9 +11,18 @@ vi.mock('#/lib/d1', () => ({
   nanoid: vi.fn(() => 'test-id'),
 }))
 
+vi.mock('#/lib/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, retryAfter: 0 }),
+  rateLimitResponse: vi.fn(() => Response.json(
+    { error: 'Rate limit exceeded', retryAfter: 60 },
+    { status: 429 },
+  )),
+}))
+
 import { Route } from '../search'
 import * as registryRepositories from '#/db/registry-repositories'
 import * as d1Lib from '#/lib/d1'
+import * as rateLimitLib from '#/lib/rate-limit'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GET = (Route.options.server!.handlers as any).GET!
@@ -69,6 +78,7 @@ function makeRequest(params: Record<string, string> = {}): Request {
 
 beforeEach(() => {
   vi.mocked(d1Lib.getD1).mockReturnValue({} as D1Database)
+  vi.mocked(rateLimitLib.checkRateLimit).mockResolvedValue({ allowed: true, retryAfter: 0 })
   vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
     makeRepos() as ReturnType<typeof registryRepositories.createRegistryRepositories>
   )
@@ -163,5 +173,42 @@ describe('GET /api/registry/search', () => {
     const searchCall = vi.mocked(repos.searchPackages).mock.calls[0]
     expect(searchCall?.[2]).toBe(1)
     expect(searchCall?.[3]).toBe(20)
+  })
+
+  it('returns 429 when rate limited', async () => {
+    vi.mocked(rateLimitLib.checkRateLimit).mockResolvedValue({ allowed: false, retryAfter: 60 })
+    const req = makeRequest({ q: 'test' })
+    const res = await GET({ request: req } as Parameters<typeof GET>[0])
+    expect(res.status).toBe(429)
+  })
+
+  it('sort param is forwarded to repository', async () => {
+    const repos = makeRepos()
+    vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
+      repos as ReturnType<typeof registryRepositories.createRegistryRepositories>
+    )
+    const req = makeRequest({ sort: 'recent' })
+    await GET({ request: req } as Parameters<typeof GET>[0])
+    const searchCall = vi.mocked(repos.searchPackages).mock.calls[0]
+    expect(searchCall?.[4]).toBe('recent')
+  })
+
+  it('returns 400 for invalid sort value', async () => {
+    const req = makeRequest({ sort: 'bogus' })
+    const res = await GET({ request: req } as Parameters<typeof GET>[0])
+    expect(res.status).toBe(400)
+    const body = await res.json() as Record<string, unknown>
+    expect(String(body.error)).toMatch(/sort/i)
+  })
+
+  it('defaults sort to installs when not provided', async () => {
+    const repos = makeRepos()
+    vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
+      repos as ReturnType<typeof registryRepositories.createRegistryRepositories>
+    )
+    const req = makeRequest()
+    await GET({ request: req } as Parameters<typeof GET>[0])
+    const searchCall = vi.mocked(repos.searchPackages).mock.calls[0]
+    expect(searchCall?.[4]).toBe('installs')
   })
 })

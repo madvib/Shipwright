@@ -4,19 +4,21 @@
 //
 // Fetches .ship/ship.toml from the repo at the given tag (or HEAD).
 // Validates [module] section, reads [exports], indexes skill metadata.
-// Auth optional: authenticated users get claimed_by set.
+// Requires authentication — claimed_by is always set to the session user.
 
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod/v4'
 import { createRegistryRepositories } from '#/db/registry-repositories'
 import { getD1, nanoid } from '#/lib/d1'
-import { optionalSession } from '#/lib/session-auth'
+import { requireSession } from '#/lib/session-auth'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 import {
   parseGithubUrl,
   fetchFileFromGitHub,
   parseShipToml,
 } from '#/lib/registry-github'
+import { scanSkillContent } from '#/lib/skill-scan'
+import { computeContentHash } from '#/lib/content-hash'
 
 const TOML_MAX_BYTES = 102400 // 100 KB
 const SKILL_MAX_BYTES = 51200 // 50 KB
@@ -66,7 +68,9 @@ export const Route = createFileRoute('/api/registry/publish')({
             { status: 503 },
           )
 
-        const session = await optionalSession(request)
+        const sessionResult = await requireSession(request)
+        if (sessionResult instanceof Response) return sessionResult
+        const session = sessionResult
         const ref = tag || 'HEAD'
 
         // Fetch .ship/ship.toml
@@ -108,7 +112,7 @@ export const Route = createFileRoute('/api/registry/publish')({
 
         // Check for ownership conflict
         const existing = await repos.getPackage(packagePath)
-        if (existing?.claimedBy && session && existing.claimedBy !== session.sub) {
+        if (existing?.claimedBy && existing.claimedBy !== session.sub) {
           return Response.json(
             { error: 'Package already claimed by another user' },
             { status: 409 },
@@ -141,7 +145,7 @@ export const Route = createFileRoute('/api/registry/publish')({
           latestVersion: toml.module.version || null,
           contentHash: null,
           sourceType: 'native',
-          claimedBy: session?.sub || existing?.claimedBy || null,
+          claimedBy: session.sub || existing?.claimedBy || null,
           deprecatedBy: existing?.deprecatedBy || null,
           stars: existing?.stars ?? 0,
           installs: existing?.installs ?? 0,
@@ -181,8 +185,9 @@ export const Route = createFileRoute('/api/registry/publish')({
           }
         }
 
-        // Index exported skills
+        // Index exported skills and scan for injection patterns
         let skillsIndexed = 0
+        const scanWarnings: string[] = []
         for (const skillId of skillIds) {
           const skillPath = `.ship/skills/${skillId}.md`
           const content = await fetchFileFromGitHub(
@@ -195,11 +200,18 @@ export const Route = createFileRoute('/api/registry/publish')({
 
           const skillBytes = new TextEncoder().encode(content).length
           if (skillBytes > SKILL_MAX_BYTES) {
-            // Skip oversized skill files with a warning — don't fail the whole publish
             console.warn(
               `Skipping skill ${skillId}: file size ${skillBytes} bytes exceeds limit of ${SKILL_MAX_BYTES} bytes`,
             )
             continue
+          }
+
+          // Scan skill content for injection patterns
+          const scan = scanSkillContent(content)
+          if (!scan.safe) {
+            const prefixed = scan.warnings.map((w) => `[${skillId}] ${w}`)
+            scanWarnings.push(...prefixed)
+            console.warn(`Skill scan warnings for ${skillId}:`, scan.warnings)
           }
 
           const hash = await computeContentHash(content)
@@ -216,24 +228,19 @@ export const Route = createFileRoute('/api/registry/publish')({
           skillsIndexed++
         }
 
-        return Response.json({
+        const response: Record<string, unknown> = {
           package_id: pkg.id,
           version: version.version,
           skills_indexed: skillsIndexed,
-        })
+        }
+        if (scanWarnings.length > 0) {
+          response.scan_warnings = scanWarnings
+        }
+        return Response.json(response)
       },
     },
   },
 })
-
-async function computeContentHash(content: string): Promise<string> {
-  const normalized = content.replace(/\r\n/g, '\n').trim()
-  const encoded = new TextEncoder().encode(normalized)
-  const hash = await crypto.subtle.digest('SHA-256', encoded)
-  return Array.from(new Uint8Array(hash), (b) =>
-    b.toString(16).padStart(2, '0'),
-  ).join('')
-}
 
 function extractSkillDescription(content: string): string | null {
   // Extract description from YAML frontmatter if present

@@ -1,12 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import {
-  ArrowLeft, ExternalLink, Download, Copy, Check, AlertTriangle,
+  ArrowLeft, ExternalLink, Download, Copy, Check, CheckCircle2, AlertTriangle,
   ShieldAlert, Plus, Loader2, Github, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { usePackageDetail } from '#/features/registry/useRegistry'
-import { SCOPE_COLORS } from '#/features/registry/types'
+import { useQueryClient } from '@tanstack/react-query'
+import { usePackageDetail, registryKeys } from '#/features/registry/useRegistry'
+import { SCOPE_COLORS, extractGitHubOwner } from '#/features/registry/types'
 import { SkillsList } from '#/features/registry/SkillsList'
 import { VersionsTable } from '#/features/registry/VersionsTable'
 import { useLibrary } from '#/features/compiler/useLibrary'
@@ -36,9 +37,10 @@ interface ClaimDialogProps {
   packagePath: string
   repoUrl: string
   onClose: () => void
+  onClaimed: () => void
 }
 
-function ClaimDialog({ open, packagePath, repoUrl, onClose }: ClaimDialogProps) {
+function ClaimDialog({ open, packagePath, repoUrl, onClose, onClaimed }: ClaimDialogProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const { data: session } = authClient.useSession()
@@ -79,6 +81,8 @@ function ClaimDialog({ open, packagePath, repoUrl, onClose }: ClaimDialogProps) 
         return
       }
       setStatus('success')
+      toast.success('Package claimed successfully.')
+      onClaimed()
     } catch {
       setStatus('error')
       setErrorMsg('Network error — please try again.')
@@ -125,7 +129,12 @@ function ClaimDialog({ open, packagePath, repoUrl, onClose }: ClaimDialogProps) 
             ) : (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Claim ownership of this unofficial package by verifying you are a maintainer of{' '}
+                  You become the maintainer of this package. You can publish updates and manage versions.
+                  The package scope will transition from <span className="font-medium text-amber-400">unofficial</span> to{' '}
+                  <span className="font-medium text-emerald-400">community</span>.
+                </p>
+                <p className="text-[11px] text-muted-foreground/60">
+                  We verify your GitHub account has admin or write access to{' '}
                   <a
                     href={repoUrl}
                     target="_blank"
@@ -134,10 +143,7 @@ function ClaimDialog({ open, packagePath, repoUrl, onClose }: ClaimDialogProps) 
                   >
                     {repoUrl.replace('https://', '')}
                   </a>
-                  .
-                </p>
-                <p className="text-[11px] text-muted-foreground/60">
-                  We verify your GitHub account has admin or write access to the source repository.
+                  {' '}before granting ownership.
                 </p>
                 {!isSignedIn && (
                   <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
@@ -200,13 +206,14 @@ function ClaimDialog({ open, packagePath, repoUrl, onClose }: ClaimDialogProps) 
 function PackageDetailPage() {
   const { path } = Route.useParams()
   const decodedPath = decodeURIComponent(path)
-  const { data, isLoading } = usePackageDetail(decodedPath)
+  const { data, isLoading, error, refetch } = usePackageDetail(decodedPath)
   const [tab, setTab] = useState<DetailTab>('skills')
   const [copied, setCopied] = useState(false)
   const [adding, setAdding] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
   const { addSkill } = useLibrary()
   const { data: session } = authClient.useSession()
+  const queryClient = useQueryClient()
 
   const installCmd = `ship add ${decodedPath}`
 
@@ -260,6 +267,35 @@ function PackageDetailPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3 p-5">
+        <div className="flex size-12 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/5 text-destructive mb-1">
+          <AlertTriangle className="size-5" />
+        </div>
+        <p className="text-sm font-medium text-foreground">Failed to load package</p>
+        <p className="text-[11px] text-muted-foreground max-w-xs text-center">
+          {error.message || 'An unexpected error occurred.'}
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void refetch()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+          >
+            Retry
+          </button>
+          <Link
+            to="/registry"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground no-underline"
+          >
+            <ArrowLeft className="size-3" />
+            Back to registry
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   if (!data) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 p-5">
@@ -279,6 +315,7 @@ function PackageDetailPage() {
   const pkg = data.package
   const colors = SCOPE_COLORS[pkg.scope]
   const isSignedIn = !!session?.user
+  const owner = extractGitHubOwner(pkg.repo_url)
 
   return (
     <div className="h-full flex flex-col">
@@ -312,6 +349,24 @@ function PackageDetailPage() {
           </div>
         )}
 
+        {/* Owner info */}
+        {owner && (
+          <div className="flex items-center gap-2 mb-3">
+            <DetailOwnerAvatar owner={owner} />
+            <a
+              href={`https://github.com/${owner}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors no-underline"
+            >
+              {owner}
+            </a>
+            {pkg.claimed_by && (
+              <CheckCircle2 className="size-3.5 text-blue-500" aria-label="Verified owner" />
+            )}
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-5">
           <div className="flex items-start gap-3 mb-2">
@@ -319,10 +374,16 @@ function PackageDetailPage() {
             <span className={`shrink-0 mt-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}>
               {pkg.scope}
             </span>
-            {pkg.scope === 'unofficial' && (
+            {pkg.scope === 'unofficial' && !pkg.claimed_by && (
               <span className="shrink-0 mt-1 flex items-center gap-1 rounded-md bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5">
                 <ShieldAlert className="size-3 text-amber-500/70" />
                 <span className="text-[10px] font-medium text-amber-500/70">Unverified</span>
+              </span>
+            )}
+            {pkg.claimed_by && pkg.claimed_by === session?.user?.id && (
+              <span className="shrink-0 mt-1 flex items-center gap-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5">
+                <Check className="size-3 text-emerald-500" />
+                <span className="text-[10px] font-medium text-emerald-400">Claimed by you</span>
               </span>
             )}
           </div>
@@ -429,6 +490,7 @@ function PackageDetailPage() {
         packagePath={decodedPath}
         repoUrl={pkg.repo_url}
         onClose={() => setClaimOpen(false)}
+        onClaimed={() => void queryClient.invalidateQueries({ queryKey: registryKeys.detail(decodedPath) })}
       />
     </div>
   )
@@ -448,5 +510,33 @@ function TabButton({ active, onClick, count, children }: { active: boolean; onCl
         <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-[2px] rounded-full bg-primary" />
       )}
     </button>
+  )
+}
+
+/** Owner avatar for the detail view with error fallback. */
+function DetailOwnerAvatar({ owner }: { owner: string }) {
+  const [failed, setFailed] = useState(false)
+
+  if (failed) {
+    return (
+      <div
+        className="size-7 shrink-0 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold text-muted-foreground uppercase"
+        aria-hidden="true"
+      >
+        {owner[0]}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={`https://github.com/${owner}.png?size=56`}
+      alt={`${owner} avatar`}
+      width={28}
+      height={28}
+      loading="lazy"
+      className="size-7 shrink-0 rounded-full"
+      onError={() => setFailed(true)}
+    />
   )
 }

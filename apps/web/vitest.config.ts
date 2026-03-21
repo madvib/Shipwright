@@ -22,6 +22,7 @@ export default defineConfig({
       '@ship/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),
       '@ship/primitives': fileURLToPath(new URL('../../packages/primitives/src/index.ts', import.meta.url)),
       'sql.js': fileURLToPath(new URL('./src/__mocks__/sql.js.ts', import.meta.url)),
+      'cloudflare:workers': fileURLToPath(new URL('./src/__mocks__/cloudflare-workers.ts', import.meta.url)),
     },
   },
 })
