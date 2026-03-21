@@ -37,9 +37,9 @@ pub use config::{
 };
 
 pub use events::{
-    EventAction, EventEntity, EventRecord, append_event, ensure_event_log,
-    ingest_external_events, list_events_since, read_events, read_recent_events,
-    sync_event_snapshot,
+    EventAction, EventContext, EventEntity, EventRecord,
+    append_event, append_event_with_context,
+    list_events_since, read_events, read_recent_events,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
@@ -368,36 +368,6 @@ mod tests {
         let events = read_events(&ship_path)?;
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].entity, EventEntity::Project);
-        Ok(())
-    }
-
-    #[test]
-    fn test_ingest_external_events_detects_filesystem_changes() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
-        let ship_path = init_project(tmp.path().to_path_buf())?;
-
-        // Ensure snapshot is synced to current state.
-        let _ = ingest_external_events(&ship_path)?;
-
-        let notes_dir = ship_path.join("project/notes");
-        let manual = notes_dir.join("manual-sync.md");
-        fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nbody\n")?;
-        let created = ingest_external_events(&ship_path)?;
-        assert_eq!(created.len(), 1);
-        assert_eq!(created[0].entity, EventEntity::Note);
-        assert_eq!(created[0].action, EventAction::Create);
-
-        fs::write(&manual, "+++\ntitle = \"Manual\"\n+++\n\nchanged\n")?;
-        let updated = ingest_external_events(&ship_path)?;
-        assert_eq!(updated.len(), 1);
-        assert_eq!(updated[0].entity, EventEntity::Note);
-        assert_eq!(updated[0].action, EventAction::Update);
-
-        fs::remove_file(&manual)?;
-        let deleted = ingest_external_events(&ship_path)?;
-        assert_eq!(deleted.len(), 1);
-        assert_eq!(deleted[0].entity, EventEntity::Note);
-        assert_eq!(deleted[0].action, EventAction::Delete);
         Ok(())
     }
 

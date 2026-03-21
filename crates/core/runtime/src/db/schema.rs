@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS job (
 CREATE INDEX IF NOT EXISTS job_status_idx ON job(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS job_branch_idx ON job(branch, status);
 
+-- DEPRECATED: job_log is superseded by event_log with entity_type='job'.
+-- New code should use event_log. This table is retained for migration only.
+-- Removal criteria: all callers migrated, no reads from job_log in codebase.
 CREATE TABLE IF NOT EXISTS job_log (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id     TEXT,
@@ -212,14 +215,20 @@ CREATE INDEX IF NOT EXISTS capability_preset_idx ON capability(preset_hint);
 
 -- ─── Event log ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS event_log (
-    id          TEXT PRIMARY KEY NOT NULL,
-    actor       TEXT NOT NULL DEFAULT 'ship',
-    entity_type TEXT NOT NULL,
-    entity_id   TEXT,
-    action      TEXT NOT NULL,
-    detail      TEXT,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    id            TEXT PRIMARY KEY NOT NULL,
+    actor         TEXT NOT NULL DEFAULT 'ship',
+    entity_type   TEXT NOT NULL,
+    entity_id     TEXT,
+    action        TEXT NOT NULL,
+    detail        TEXT,
+    workspace_id  TEXT,
+    session_id    TEXT,
+    job_id        TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_event_workspace ON event_log(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_event_session ON event_log(session_id);
+CREATE INDEX IF NOT EXISTS idx_event_job ON event_log(job_id);
 
 -- ─── Agent runtime ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS agent_runtime_settings (

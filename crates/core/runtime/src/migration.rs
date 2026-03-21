@@ -193,8 +193,9 @@ fn migrate_project_config_file(ship_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn migrate_workflow_event_stream(ship_dir: &Path) -> Result<()> {
-    crate::events::ensure_event_log(ship_dir)
+fn migrate_workflow_event_stream(_ship_dir: &Path) -> Result<()> {
+    // Schema is applied by db::ensure_db — nothing to do here.
+    Ok(())
 }
 
 fn migrate_event_index_location(ship_dir: &Path) -> Result<()> {

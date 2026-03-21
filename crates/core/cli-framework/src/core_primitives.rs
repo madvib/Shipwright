@@ -3,7 +3,7 @@ use runtime::{
     AgentProfile, McpServerConfig, McpServerType, SkillInstallScope, add_agent, add_mcp_server,
     autodetect_providers, create_skill, create_user_skill, delete_skill, delete_user_skill,
     disable_provider, enable_provider, get_active_agent, get_config, get_effective_skill,
-    ingest_external_events, list_effective_skills, list_mcp_servers,
+    list_effective_skills, list_mcp_servers,
     list_models, list_providers, list_skills, list_user_skills, log_action, remove_agent,
     remove_mcp_server, set_active_agent, update_skill, update_user_skill,
 };
@@ -68,7 +68,6 @@ pub enum ModeAction {
 #[derive(Debug, Clone)]
 pub enum EventAction {
     List { limit: usize },
-    Ingest,
 }
 
 #[derive(Debug, Clone)]
@@ -312,31 +311,6 @@ pub fn handle_event_action(action: EventAction, project_dir: &Path) -> Result<()
             if events.is_empty() {
                 println!("No events found.");
             } else {
-                for event in events {
-                    let details = event
-                        .details
-                        .as_ref()
-                        .map(|details| format!(" — {}", details))
-                        .unwrap_or_default();
-                    println!(
-                        "{} {} [{}] {:?}.{:?} {}{}",
-                        event.id,
-                        event.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                        event.actor,
-                        event.entity,
-                        event.action,
-                        event.subject,
-                        details
-                    );
-                }
-            }
-        }
-        EventAction::Ingest => {
-            let events = ingest_external_events(project_dir)?;
-            if events.is_empty() {
-                println!("No external filesystem changes detected.");
-            } else {
-                println!("Ingested {} filesystem event(s).", events.len());
                 for event in events {
                     let details = event
                         .details

@@ -1,18 +1,8 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::{BTreeSet, HashMap};
-use std::fs;
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
-
-const EVENT_INDEX_FILE: &str = "generated/event_index.json";
-const TRACKED_DIRS: &[&str] = &[
-    "project/notes",
-    "project/adrs",
-];
-const TRACKED_FILES: &[&str] = &[crate::config::PRIMARY_CONFIG_FILE];
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
@@ -29,6 +19,10 @@ pub enum EventEntity {
     Time,
     Agent,
     Mcp,
+    Gate,
+    Capability,
+    Target,
+    Job,
 }
 
 impl EventEntity {
@@ -46,6 +40,10 @@ impl EventEntity {
             EventEntity::Time => "time",
             EventEntity::Agent => "agent",
             EventEntity::Mcp => "mcp",
+            EventEntity::Gate => "gate",
+            EventEntity::Capability => "capability",
+            EventEntity::Target => "target",
+            EventEntity::Job => "job",
         }
     }
 
@@ -63,6 +61,10 @@ impl EventEntity {
             "time" => Ok(EventEntity::Time),
             "agent" => Ok(EventEntity::Agent),
             "mcp" => Ok(EventEntity::Mcp),
+            "gate" => Ok(EventEntity::Gate),
+            "capability" => Ok(EventEntity::Capability),
+            "target" => Ok(EventEntity::Target),
+            "job" => Ok(EventEntity::Job),
             other => Err(anyhow!("Unknown event entity '{}'", other)),
         }
     }
@@ -87,6 +89,11 @@ pub enum EventAction {
     Start,
     Stop,
     Log,
+    Pass,
+    Fail,
+    Complete,
+    Claim,
+    Dispatch,
 }
 
 impl EventAction {
@@ -108,6 +115,11 @@ impl EventAction {
             EventAction::Start => "start",
             EventAction::Stop => "stop",
             EventAction::Log => "log",
+            EventAction::Pass => "pass",
+            EventAction::Fail => "fail",
+            EventAction::Complete => "complete",
+            EventAction::Claim => "claim",
+            EventAction::Dispatch => "dispatch",
         }
     }
 
@@ -129,6 +141,11 @@ impl EventAction {
             "start" => Ok(EventAction::Start),
             "stop" => Ok(EventAction::Stop),
             "log" => Ok(EventAction::Log),
+            "pass" => Ok(EventAction::Pass),
+            "fail" => Ok(EventAction::Fail),
+            "complete" => Ok(EventAction::Complete),
+            "claim" => Ok(EventAction::Claim),
+            "dispatch" => Ok(EventAction::Dispatch),
             other => Err(anyhow!("Unknown event action '{}'", other)),
         }
     }
@@ -144,31 +161,23 @@ pub struct EventRecord {
     pub subject: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
 }
 
-// ─── Filesystem ingestion types (internal) ──────────────────────────────────
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-struct FileFingerprint {
-    modified_nanos: u128,
-    size: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct EventSnapshot {
-    files: HashMap<String, FileFingerprint>,
-}
-
-fn event_index_path(project_dir: &Path) -> PathBuf {
-    project_dir.join(EVENT_INDEX_FILE)
+/// Optional context for event insertion.
+#[derive(Debug, Default, Clone)]
+pub struct EventContext<'a> {
+    pub workspace_id: Option<&'a str>,
+    pub session_id: Option<&'a str>,
+    pub job_id: Option<&'a str>,
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
-
-pub fn ensure_event_log(_project_dir: &Path) -> Result<()> {
-    // Schema is applied by db::ensure_db — nothing to do here.
-    Ok(())
-}
 
 pub fn append_event(
     ship_dir: &Path,
@@ -177,6 +186,18 @@ pub fn append_event(
     action: EventAction,
     subject: impl Into<String>,
     details: Option<String>,
+) -> Result<EventRecord> {
+    append_event_with_context(ship_dir, actor, entity, action, subject, details, &EventContext::default())
+}
+
+pub fn append_event_with_context(
+    ship_dir: &Path,
+    actor: &str,
+    entity: EventEntity,
+    action: EventAction,
+    subject: impl Into<String>,
+    details: Option<String>,
+    ctx: &EventContext<'_>,
 ) -> Result<EventRecord> {
     let subject = subject.into();
     let entity_id = if subject.is_empty() { None } else { Some(subject.as_str()) };
@@ -187,6 +208,9 @@ pub fn append_event(
         entity_id,
         &action,
         details.as_deref(),
+        ctx.workspace_id,
+        ctx.session_id,
+        ctx.job_id,
     )
 }
 
@@ -204,210 +228,4 @@ pub fn list_events_since(
 
 pub fn read_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
     crate::db::events::list_recent_events(ship_dir, limit)
-}
-
-// ─── Filesystem ingestion ───────────────────────────────────────────────────
-
-fn load_snapshot(project_dir: &Path) -> Result<EventSnapshot> {
-    let path = event_index_path(project_dir);
-    if !path.exists() {
-        return Ok(EventSnapshot::default());
-    }
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read event index: {}", path.display()))?;
-    if content.trim().is_empty() {
-        return Ok(EventSnapshot::default());
-    }
-    Ok(serde_json::from_str(&content).unwrap_or_default())
-}
-
-fn save_snapshot(project_dir: &Path, snapshot: &EventSnapshot) -> Result<()> {
-    let path = event_index_path(project_dir);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let json = serde_json::to_string_pretty(snapshot)?;
-    fs::write(path, json)?;
-    Ok(())
-}
-
-fn modified_nanos(path: &Path) -> Option<u128> {
-    fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos())
-}
-
-fn collect_tracked_files(project_dir: &Path) -> Result<HashMap<String, FileFingerprint>> {
-    let mut files: HashMap<String, FileFingerprint> = HashMap::new();
-
-    for dir in TRACKED_DIRS {
-        let root = project_dir.join(dir);
-        if !root.exists() {
-            continue;
-        }
-        for entry in WalkDir::new(&root) {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-            if !path.is_file() || path.extension().is_none_or(|ext| ext != "md") {
-                continue;
-            }
-            let file_name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("");
-            if file_name == "TEMPLATE.md" || file_name == "README.md" {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(project_dir)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let metadata = fs::metadata(path)
-                .with_context(|| format!("Failed to stat tracked file: {}", path.display()))?;
-            if let Some(modified) = modified_nanos(path) {
-                files.insert(
-                    rel,
-                    FileFingerprint {
-                        modified_nanos: modified,
-                        size: metadata.len(),
-                    },
-                );
-            }
-        }
-    }
-
-    for file in TRACKED_FILES {
-        let path = project_dir.join(file);
-        if !path.exists() || !path.is_file() {
-            continue;
-        }
-        let rel = path
-            .strip_prefix(project_dir)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let metadata = fs::metadata(&path)
-            .with_context(|| format!("Failed to stat tracked file: {}", path.display()))?;
-        if let Some(modified) = modified_nanos(&path) {
-            files.insert(
-                rel,
-                FileFingerprint {
-                    modified_nanos: modified,
-                    size: metadata.len(),
-                },
-            );
-        }
-    }
-
-    Ok(files)
-}
-
-pub fn sync_event_snapshot(project_dir: &Path) -> Result<usize> {
-    let snapshot = EventSnapshot {
-        files: collect_tracked_files(project_dir)?,
-    };
-    let count = snapshot.files.len();
-    save_snapshot(project_dir, &snapshot)?;
-    Ok(count)
-}
-
-fn classify_path(rel_path: &str) -> Option<(EventEntity, String, Option<String>)> {
-    if let Some(file) = rel_path.strip_prefix("project/adrs/") {
-        return Some((
-            EventEntity::Adr,
-            file.to_string(),
-            Some(format!("path={}", rel_path)),
-        ));
-    }
-    if let Some(file) = rel_path.strip_prefix("project/notes/") {
-        return Some((
-            EventEntity::Note,
-            file.to_string(),
-            Some(format!("path={}", rel_path)),
-        ));
-    }
-    if rel_path == crate::config::PRIMARY_CONFIG_FILE
-        || rel_path == crate::config::LEGACY_CONFIG_FILE
-    {
-        return Some((
-            EventEntity::Config,
-            rel_path.to_string(),
-            Some(format!("path={}", rel_path)),
-        ));
-    }
-    None
-}
-
-fn merge_details(lhs: Option<String>, rhs: Option<String>) -> Option<String> {
-    match (lhs, rhs) {
-        (None, None) => None,
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (Some(a), Some(b)) => Some(format!("{} {}", a, b)),
-    }
-}
-
-pub fn ingest_external_events(project_dir: &Path) -> Result<Vec<EventRecord>> {
-    ensure_event_log(project_dir)?;
-    let previous = load_snapshot(project_dir)?;
-    let current_files = collect_tracked_files(project_dir)?;
-    let current_snapshot = EventSnapshot {
-        files: current_files.clone(),
-    };
-
-    let mut keys: BTreeSet<String> = BTreeSet::new();
-    keys.extend(previous.files.keys().cloned());
-    keys.extend(current_files.keys().cloned());
-
-    let mut emitted = Vec::new();
-    for key in keys {
-        let prev = previous.files.get(&key);
-        let curr = current_files.get(&key);
-
-        let action = match (prev, curr) {
-            (None, Some(_)) => Some(EventAction::Create),
-            (Some(_), None) => Some(EventAction::Delete),
-            (Some(a), Some(b)) if a != b => Some(EventAction::Update),
-            _ => None,
-        };
-        let Some(action) = action else {
-            continue;
-        };
-        let Some((entity, subject, base_details)) = classify_path(&key) else {
-            continue;
-        };
-
-        let details = match action {
-            EventAction::Update => {
-                let delta = match (prev, curr) {
-                    (Some(a), Some(b)) => Some(format!(
-                        "size={}→{} mtime={}→{}",
-                        a.size, b.size, a.modified_nanos, b.modified_nanos
-                    )),
-                    _ => None,
-                };
-                merge_details(base_details, delta)
-            }
-            _ => base_details,
-        };
-
-        let record = append_event(
-            project_dir,
-            "filesystem",
-            entity,
-            action,
-            subject,
-            details,
-        )?;
-        emitted.push(record);
-    }
-
-    save_snapshot(project_dir, &current_snapshot)?;
-    Ok(emitted)
 }

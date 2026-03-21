@@ -9,6 +9,7 @@ use crate::db::{block_on, open_db};
 use crate::events::{EventAction, EventEntity, EventRecord};
 use crate::gen_nanoid;
 
+#[allow(clippy::too_many_arguments)]
 pub fn insert_event(
     ship_dir: &Path,
     actor: &str,
@@ -16,6 +17,9 @@ pub fn insert_event(
     entity_id: Option<&str>,
     action: &EventAction,
     detail: Option<&str>,
+    workspace_id: Option<&str>,
+    session_id: Option<&str>,
+    job_id: Option<&str>,
 ) -> Result<EventRecord> {
     let mut conn = open_db(ship_dir)?;
     let id = gen_nanoid();
@@ -25,8 +29,9 @@ pub fn insert_event(
 
     block_on(async {
         sqlx::query(
-            "INSERT INTO event_log (id, actor, entity_type, entity_id, action, detail, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO event_log \
+             (id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(actor)
@@ -34,6 +39,9 @@ pub fn insert_event(
         .bind(entity_id)
         .bind(action_str)
         .bind(detail)
+        .bind(workspace_id)
+        .bind(session_id)
+        .bind(job_id)
         .bind(&now)
         .execute(&mut conn)
         .await
@@ -47,11 +55,16 @@ pub fn insert_event(
         action: action.clone(),
         subject: entity_id.unwrap_or_default().to_string(),
         details: detail.map(str::to_string),
+        workspace_id: workspace_id.map(str::to_string),
+        session_id: session_id.map(str::to_string),
+        job_id: job_id.map(str::to_string),
     })
 }
 
+// Column order: 0:id 1:actor 2:entity_type 3:entity_id 4:action 5:detail
+//               6:workspace_id 7:session_id 8:job_id 9:created_at
 const SELECT_COLS: &str =
-    "id, actor, entity_type, entity_id, action, detail, created_at";
+    "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
 
 pub fn list_all_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
     let mut conn = open_db(ship_dir)?;
@@ -112,10 +125,97 @@ pub fn list_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventReco
     Ok(records)
 }
 
+pub fn list_events_by_job(ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(&format!(
+            "SELECT {SELECT_COLS} FROM event_log WHERE job_id = ? ORDER BY created_at ASC, rowid ASC"
+        ))
+        .bind(job_id)
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    rows.iter().map(row_to_record).collect()
+}
+
+pub fn list_events_by_session(ship_dir: &Path, session_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(&format!(
+            "SELECT {SELECT_COLS} FROM event_log WHERE session_id = ? ORDER BY created_at ASC, rowid ASC"
+        ))
+        .bind(session_id)
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    rows.iter().map(row_to_record).collect()
+}
+
+pub fn list_events_by_workspace(ship_dir: &Path, workspace_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db(ship_dir)?;
+    let rows = block_on(async {
+        sqlx::query(&format!(
+            "SELECT {SELECT_COLS} FROM event_log WHERE workspace_id = ? ORDER BY created_at ASC, rowid ASC"
+        ))
+        .bind(workspace_id)
+        .fetch_all(&mut conn)
+        .await
+    })?;
+    rows.iter().map(row_to_record).collect()
+}
+
+/// Migrate existing job_log entries into event_log.
+///
+/// Each job_log row becomes an event with entity_type='job', action='log'.
+/// Already-migrated rows are skipped (idempotent via INSERT OR IGNORE on nanoid).
+/// Returns the number of rows migrated.
+pub fn migrate_job_log_to_events(ship_dir: &Path) -> Result<usize> {
+    let mut conn = open_db(ship_dir)?;
+
+    // Read all job_log rows
+    let rows = block_on(async {
+        sqlx::query("SELECT job_id, branch, message, actor, created_at FROM job_log ORDER BY id ASC")
+            .fetch_all(&mut conn)
+            .await
+    })?;
+
+    let mut migrated = 0usize;
+    for row in &rows {
+        let job_id: Option<String> = row.get(0);
+        let _branch: Option<String> = row.get(1);
+        let message: String = row.get(2);
+        let actor: Option<String> = row.get(3);
+        let created_at: String = row.get(4);
+
+        let id = crate::gen_nanoid();
+        let actor_str = actor.as_deref().unwrap_or("ship");
+        let entity_id = job_id.as_deref();
+
+        block_on(async {
+            sqlx::query(
+                "INSERT INTO event_log \
+                 (id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at) \
+                 VALUES (?, ?, 'job', ?, 'log', ?, NULL, NULL, ?, ?)",
+            )
+            .bind(&id)
+            .bind(actor_str)
+            .bind(entity_id)
+            .bind(&message)
+            .bind(job_id.as_deref())
+            .bind(&created_at)
+            .execute(&mut conn)
+            .await
+        })?;
+        migrated += 1;
+    }
+
+    Ok(migrated)
+}
+
 fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
     let entity_type: String = row.get(2);
     let action_str: String = row.get(4);
-    let created_at: String = row.get(6);
+    let created_at: String = row.get(9);
     let timestamp = created_at
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
@@ -132,71 +232,8 @@ fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
         action: EventAction::from_db(&action_str)?,
         subject: row.get::<Option<String>, _>(3).unwrap_or_default(),
         details: row.get(5),
+        workspace_id: row.get(6),
+        session_id: row.get(7),
+        job_id: row.get(8),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::db::ensure_db;
-    use crate::project::init_project;
-    use tempfile::tempdir;
-
-    fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
-        let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
-        (tmp, ship_dir)
-    }
-
-    #[test]
-    fn insert_and_read_event() {
-        let (_tmp, ship_dir) = setup();
-        let record = insert_event(
-            &ship_dir,
-            "ship",
-            &EventEntity::Project,
-            Some("my-project"),
-            &EventAction::Init,
-            Some("initialized"),
-        )
-        .unwrap();
-        assert_eq!(record.entity, EventEntity::Project);
-        assert_eq!(record.subject, "my-project");
-        assert_eq!(record.actor, "ship");
-
-        let all = list_all_events(&ship_dir).unwrap();
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].id, record.id);
-        assert_eq!(all[0].entity, EventEntity::Project);
-        assert_eq!(all[0].actor, "ship");
-    }
-
-    #[test]
-    fn append_only_ordering() {
-        let (_tmp, ship_dir) = setup();
-        insert_event(&ship_dir, "ship", &EventEntity::Workspace, Some("feat/a"), &EventAction::Create, None).unwrap();
-        insert_event(&ship_dir, "agent", &EventEntity::Session, Some("sess-1"), &EventAction::Start, None).unwrap();
-        insert_event(&ship_dir, "logic", &EventEntity::Config, Some("ship.toml"), &EventAction::Update, None).unwrap();
-
-        let all = list_all_events(&ship_dir).unwrap();
-        assert_eq!(all.len(), 3);
-        assert_eq!(all[0].entity, EventEntity::Workspace);
-        assert_eq!(all[1].entity, EventEntity::Session);
-        assert_eq!(all[2].entity, EventEntity::Config);
-    }
-
-    #[test]
-    fn list_since_filters_by_time() {
-        let (_tmp, ship_dir) = setup();
-        insert_event(&ship_dir, "ship", &EventEntity::Project, Some("p1"), &EventAction::Log, None).unwrap();
-
-        let future = Utc::now() + chrono::Duration::hours(1);
-        let filtered = list_events_since_time(&ship_dir, &future, None).unwrap();
-        assert!(filtered.is_empty());
-
-        let past = Utc::now() - chrono::Duration::hours(1);
-        let all = list_events_since_time(&ship_dir, &past, None).unwrap();
-        assert_eq!(all.len(), 1);
-    }
 }

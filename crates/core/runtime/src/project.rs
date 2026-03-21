@@ -1178,7 +1178,6 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         crate::config::save_config(&config, Some(ship_path.clone()))?;
     }
 
-    crate::events::ensure_event_log(&ship_path)?;
     write_if_missing(
         &skills_dir(&ship_path).join("task-policy").join("SKILL.md"),
         r#"---
