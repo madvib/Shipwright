@@ -15,9 +15,11 @@ fn test_frozen_fails_on_added_dep() -> anyhow::Result<()> {
     let lock_dir = tempdir()?;
     let lock_path = lock_dir.path().join("ship.lock");
 
+    // Write an empty lock.
     let empty_lock = ShipLock { version: 1, package: vec![] };
     write_lock_atomic(&lock_path, &empty_lock)?;
 
+    // Manifest has a dep not in the lock.
     let manifest = ShipManifest {
         dependencies: [
             ("github.com/owner/pkg".into(), Dependency { version: "main".into(), grant: vec![] }),
@@ -51,11 +53,52 @@ fn test_no_lock_no_deps_writes_empty_lock() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_install_aborts_on_hash_mismatch() -> anyhow::Result<()> {
+    let (_cache_dir, cache) = make_cache()?;
+    let lock_dir = tempdir()?;
+    let lock_path = lock_dir.path().join("ship.lock");
+
+    // Store a real package in cache so `get()` returns a CachedPackage.
+    let content = tempdir()?;
+    std::fs::write(content.path().join("README.md"), "hello")?;
+    let _cached = cache.store("github.com/owner/pkg", "v1.0.0", &"a".repeat(40), content.path())?;
+
+    // Write a lockfile with the WRONG hash — the real hash won't match.
+    let lock = ShipLock {
+        version: 1,
+        package: vec![LockedPackage {
+            path: "github.com/owner/pkg".into(),
+            version: "v1.0.0".into(),
+            commit: "a".repeat(40),
+            hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
+        }],
+    };
+    write_lock_atomic(&lock_path, &lock)?;
+
+    // The manifest matches the lock so no re-resolution happens — but the
+    // hash check should fail.
+    let manifest = ShipManifest {
+        dependencies: [
+            ("github.com/owner/pkg".into(), Dependency { version: "v1.0.0".into(), grant: vec![] }),
+        ].into(),
+        ..Default::default()
+    };
+
+    let opts = InstallOptions::default();
+    let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts);
+    assert!(result.is_err(), "expected hash mismatch error");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("hash mismatch"), "got: {msg}");
+    Ok(())
+}
+
+#[test]
 fn test_in_sync_lock_no_deps_no_write() -> anyhow::Result<()> {
     let (_cache_dir, cache) = make_cache()?;
     let lock_dir = tempdir()?;
     let lock_path = lock_dir.path().join("ship.lock");
 
+    // Write an already-correct lock.
     let lock = ShipLock { version: 1, package: vec![] };
     write_lock_atomic(&lock_path, &lock)?;
     let mtime_before = std::fs::metadata(&lock_path)?.modified()?;

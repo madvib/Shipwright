@@ -178,6 +178,23 @@ List configured MCP servers.
 
 Remove an MCP server.
 
+## `ship publish`
+
+Publish the current package to the Ship registry. Requires authentication via `ship login`.
+
+```bash
+ship publish
+ship publish --dry-run
+ship publish --tag beta
+```
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Preview what would be published without making any network requests |
+| `--tag <tag>` | Dist-tag for pre-release publishing (e.g. `beta`, `next`) |
+
+The command reads `.ship/ship.toml` for package metadata, computes a content hash of `.ship/`, and uploads to the registry. Use `--dry-run` to verify metadata before publishing.
+
 ## `ship install`
 
 Install all dependencies declared in `.ship/ship.toml`. Resolves versions, writes `ship.lock`, fetches to cache.

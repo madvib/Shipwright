@@ -248,3 +248,40 @@ Ship stores runtime state in `~/.ship/platform.db` (SQLite). Key entities:
 | Capability | Feature tracked against a target | `list_capabilities` |
 
 **Do not access the database directly.** Use MCP tools or the `ship` CLI. The schema is internal and changes between releases.
+
+## ship.toml Manifest — validation details
+
+The project manifest at `.ship/ship.toml` declares package identity, dependencies, and exports. The schema is documented above in [ship.toml — project manifest](#shiptoml--project-manifest). This section covers validation rules enforced by the compiler.
+
+### `[module]` validation
+
+| Field | Rule |
+|-------|------|
+| `name` | Must match `^[a-z0-9._/@-]+$`. Examples: `github.com/owner/repo`, `@scope/name`. |
+| `version` | Semver. Optional `v` prefix is stripped before validation. |
+| `license` | SPDX expression, e.g. `MIT`, `MIT OR Apache-2.0`. |
+| `authors` | String array, e.g. `["Alice <alice@example.com>"]`. |
+
+### `[dependencies]` validation
+
+Key-value map where the key is a package path and the value is either a version string (shorthand) or a full table.
+
+```toml
+# Shorthand — version constraint only
+"github.com/owner/skills" = "^1.0.0"
+
+# Full form — version + permission grants
+"github.com/owner/tools" = { version = "~2.1.0", grant = ["Bash", "Read"] }
+```
+
+| Field | Rule |
+|-------|------|
+| `version` | Semver range, branch name, or 40-char commit SHA. Must not be empty. |
+| `grant` | Tool permissions granted to this dependency's skills. |
+
+### `[exports]` validation
+
+| Field | Rule |
+|-------|------|
+| `skills` | Skill directory paths relative to `.ship/` (each must contain `SKILL.md`). |
+| `agents` | Agent TOML paths relative to `.ship/` (each must end in `.toml`). |
