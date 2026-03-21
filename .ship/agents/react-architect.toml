@@ -1,4 +1,4 @@
-[profile]
+[agent]
 name = "React Architect"
 id = "react-architect"
 version = "0.1.0"

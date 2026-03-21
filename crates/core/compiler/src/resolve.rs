@@ -42,7 +42,7 @@ pub struct ResolvedConfig {
     /// Pass-through from `[provider_settings.claude]` in the preset TOML.
     /// Merged verbatim into `.claude/settings.json`.
     pub claude_settings_extra: Option<serde_json::Value>,
-    /// Agent profiles parsed from `.ship/agents/profiles/*.toml`.
+    /// Agent profiles parsed from `.ship/agents/*.toml`.
     /// Compiled into provider-native subagent definitions.
     pub agent_profiles: Vec<AgentProfile>,
     /// Team agent files for the Claude provider (legacy passthrough).
@@ -124,7 +124,7 @@ pub struct ProjectLibrary {
     /// Merged verbatim into `.claude/settings.json` on compile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_settings_extra: Option<serde_json::Value>,
-    /// Agent profiles from `.ship/agents/profiles/*.toml`.
+    /// Agent profiles from `.ship/agents/*.toml`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_profiles: Vec<AgentProfile>,
     /// Team agent files: `.ship/agents/teams/claude/<name>.md` → `.claude/agents/<name>.md`.

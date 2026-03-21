@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS agent_artifact_registry (
 CREATE INDEX IF NOT EXISTS agent_artifact_kind_idx
   ON agent_artifact_registry(kind);
 
-CREATE TABLE IF NOT EXISTS agent_mode (
+CREATE TABLE IF NOT EXISTS agent_config (
   id                 TEXT PRIMARY KEY,
   name               TEXT NOT NULL,
   description        TEXT,

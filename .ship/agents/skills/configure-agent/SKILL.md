@@ -1,6 +1,6 @@
 ---
 name: Configure Agent
-description: Use when setting up a workspace for a specialist agent — selecting profile, permission tier, scope, and worktree path. Ensures agents are productive (not over-restricted) and safe (not under-restricted).
+description: Use when setting up a workspace for a specialist agent — selecting agent, permission tier, scope, and worktree path. Ensures agents are productive (not over-restricted) and safe (not under-restricted).
 ---
 
 ## Permission Preset Selection
@@ -19,7 +19,7 @@ Over-restricting kills productivity — every approval interruption breaks flow.
 
 ## Base Rules (all presets)
 
-Every preset inherits these rules — they cannot be overridden by profiles:
+Every preset inherits these rules — they cannot be overridden by agents:
 
 - **Always allow:** `mcp__ship__*`, `Bash(ship *)`
 - **Always deny:** `Bash(sqlite3 ~/.ship/*)`, `Bash(git push*)`, `Bash(*publish*)`, secrets files (`.env`, `credentials*`)
@@ -47,9 +47,9 @@ preset = "ship-autonomous"
 tools_deny = ["Bash(rm -rf*)"]
 ```
 
-## Profile → Preset Mapping
+## Agent → Preset Mapping
 
-| Profile | Recommended preset | Rationale |
+| Agent | Recommended preset | Rationale |
 |---------|-------------------|-----------|
 | commander | `ship-standard` | Orchestration, needs confirmation for dispatch |
 | react-architect | `ship-standard` | Interactive architecture work |
@@ -73,7 +73,7 @@ WORKTREE_PATH="$WORKTREE_BASE/<slug>"
 
 git worktree add "$WORKTREE_PATH" -b job/<job-id>
 cd "$WORKTREE_PATH"
-ship use <profile>
+ship use <agent>
 ```
 
 Never use `../<branch>` — always use the configured path.
@@ -81,7 +81,7 @@ Never use Claude Code's native worktree UI — it won't respect the config.
 
 ## Scope Constraints
 
-Always set explicit file scope in the job spec. The profile constrains capability
+Always set explicit file scope in the job spec. The agent constrains capability
 (what the agent knows how to do). Scope constrains authority (what it's allowed to touch).
 
 ```
@@ -93,10 +93,10 @@ Agents WILL respect explicit scope instructions. Don't rely on preset alone.
 
 ## Checklist Before Starting an Agent
 
-- [ ] Correct profile for the domain?
+- [ ] Correct agent for the domain?
 - [ ] Permission preset matched to blast radius (default to ship-autonomous for worktrees)?
 - [ ] Worktree created at canonical path?
-- [ ] `ship use <profile>` run IN the worktree?
+- [ ] `ship use <agent>` run IN the worktree?
 - [ ] Job spec includes scope + off-limits?
 - [ ] Acceptance criteria written (not just "make it work")?
 - [ ] Dependencies noted (what must already be true)?

@@ -1,4 +1,4 @@
-[profile]
+[agent]
 name = "Better Auth"
 id = "better-auth"
 version = "0.1.0"

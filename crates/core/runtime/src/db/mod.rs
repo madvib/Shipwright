@@ -58,6 +58,13 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
         .create_if_missing(true);
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
+    // Migration: rename agent_mode → agent_config (idempotent, ignore if old table absent).
+    let _ = block_on(async {
+        sqlx::query("ALTER TABLE agent_mode RENAME TO agent_config")
+            .execute(&mut conn)
+            .await
+    });
+
     // Execute each statement individually — sqlx only runs one statement at a time.
     for stmt in schema::SCHEMA
         .split(';')

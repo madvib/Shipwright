@@ -13,7 +13,7 @@ Dispatch a job to a specialist agent. Follow this sequence exactly.
 
 - `claude` authenticated: `claude auth login` once per machine
 - `ship` and `claude` on `$PATH`
-- Job exists in the queue with description, scope, and profile hint
+- Job exists in the queue with description, scope, and agent hint
 
 ## Sequence
 
@@ -66,14 +66,14 @@ git worktree add ~/dev/ship-worktrees/<slug> job/<slug>
 ### 5. Compile the agent config
 
 ```bash
-cd ~/dev/ship-worktrees/<slug> && ship use <profile>
+cd ~/dev/ship-worktrees/<slug> && ship use <agent>
 ```
 
 This writes `CLAUDE.md`, `.mcp.json`, and permission files into the worktree. The agent reads them automatically at session start.
 
-Profile from job payload (`preset_hint`), or:
+Agent from job payload (`preset_hint`), or:
 
-| Work type | Profile |
+| Work type | Agent |
 |-----------|---------|
 | Rust runtime / DB / platform | `rust-runtime` |
 | Rust compiler / CLI | `rust-compiler` |
@@ -100,7 +100,7 @@ autonomous
 
 ## Scope
 File scope: <file_scope>
-Profile: <profile>
+Agent: <agent>
 
 ## Acceptance Criteria
 <acceptance_criteria checklist>
@@ -121,7 +121,7 @@ All three are required. Commander uses all three as completion signals.
 Branch: job/<slug>
 Worktree: ~/dev/ship-worktrees/<slug>
 Job ID: <JOB_ID> (use this for MCP calls)
-Profile: <profile>
+Agent: <agent>
 Ship MCP is active in this directory.
 EOF
 ```
@@ -143,7 +143,7 @@ Terminal auto-launch is unreliable across platforms. Give the human a clean, rea
 cd ~/dev/ship-worktrees/<slug> && claude .
 ```
 
-**If the profile uses `default_mode = "bypassPermissions"`:**
+**If the agent uses `default_mode = "bypassPermissions"`:**
 ```
 cd ~/dev/ship-worktrees/<slug> && claude . --dangerously-skip-permissions
 ```
@@ -154,7 +154,7 @@ Tell the human:
 ```
 Dispatched [<JOB_ID>] <title>
 → worktree: ~/dev/ship-worktrees/<slug>
-→ profile: <profile>
+→ agent: <agent>
 → launch:
 
   cd ~/dev/ship-worktrees/<slug> && claude .
@@ -177,13 +177,13 @@ Or use `list_stale_worktrees()` to find idle worktrees > 24h.
 Claude Code agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) stack multiple agents in the **same directory** — they share the working tree. This is not a replacement for worktrees.
 
 Use agent teams for: research, review, debate, investigation where file isolation is not needed.
-Use worktrees for: parallel implementation, long-running jobs, agents that need their own compiled profile.
+Use worktrees for: parallel implementation, long-running jobs, agents that need their own compiled agent.
 
 ## Troubleshooting
 
-**Agent starts but has no MCP tools:** `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session.
+**Agent starts but has no MCP tools:** `.mcp.json` wasn't generated. Run `ship use <agent>` again in the worktree, then restart the Claude session.
 
-**`claude .` opens but has no MCP tools:** The `.mcp.json` wasn't generated. Run `ship use <profile>` again in the worktree, then restart the Claude session in that directory.
+**`claude .` opens but has no MCP tools:** The `.mcp.json` wasn't generated. Run `ship use <agent>` again in the worktree, then restart the Claude session in that directory.
 
 **Agent can't see job queue:** MCP server not running or wrong project path. Confirm `ship mcp serve` is on `$PATH` (`which ship`) and `.mcp.json` is configured to run `ship mcp serve`.
 

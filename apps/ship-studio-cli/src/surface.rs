@@ -60,24 +60,24 @@ fn write_cli_tree(out: &mut String) {
         ("ship login", "Authenticate with getship.dev", None),
         ("ship logout", "Sign out", None),
         ("ship whoami", "Show current identity", None),
-        ("ship use <profile-id>", "Activate a profile (compiles immediately)", Some(&[
+        ("ship use <agent-id>", "Activate an agent (compiles immediately)", Some(&[
             ("--path <dir>", "Bind to this path instead of cwd"),
         ])),
-        ("ship status", "Show active profile and compilation status", Some(&[
+        ("ship status", "Show active agent and compilation status", Some(&[
             ("--path <dir>", "Target directory"),
         ])),
-        ("ship compile", "Compile the active profile to provider-native config files", Some(&[
+        ("ship compile", "Compile the active agent to provider-native config files", Some(&[
             ("--provider <id>", "Compile for a specific provider only"),
             ("--dry-run", "Preview without writing files"),
             ("--watch", "Recompile on changes (not yet implemented)"),
             ("--path <dir>", "Project root"),
         ])),
-        ("ship agent", "Manage agent profiles", Some(&[
-            ("list [--local] [--project]", "List available profiles"),
-            ("create <name> [--global]", "Create a new profile"),
-            ("edit <name>", "Open profile in $EDITOR"),
-            ("delete <name>", "Delete a profile"),
-            ("clone <source> <target>", "Clone a profile under a new ID"),
+        ("ship agent", "Manage agents", Some(&[
+            ("list [--local] [--project]", "List available agents"),
+            ("create <name> [--global]", "Create a new agent"),
+            ("edit <name>", "Open agent in $EDITOR"),
+            ("delete <name>", "Delete an agent"),
+            ("clone <source> <target>", "Clone an agent under a new ID"),
         ])),
         ("ship skill", "Manage agent skills", Some(&[
             ("add <source> [--skill <id>] [--global]", "Install a skill"),
@@ -96,12 +96,12 @@ fn write_cli_tree(out: &mut String) {
             ("--frozen", "Fail if lockfile would change"),
         ])),
         ("ship add <package>", "Add a dependency to .ship/ship.toml and install it", None),
-        ("ship import <source>", "Import a profile from a URL, path, or provider config", None),
+        ("ship import <source>", "Import an agent from a URL, path, or provider config", None),
         ("ship export <provider>", "Export compiled output for a specific provider", Some(&[
             ("--zip", "Download all formats as a zip archive"),
         ])),
         ("ship validate", "Validate .ship/ config before compile", Some(&[
-            ("--profile <id>", "Validate a single profile"),
+            ("--agent <id>", "Validate a single agent"),
             ("--json", "Emit errors as JSON"),
             ("--path <dir>", "Project root"),
         ])),

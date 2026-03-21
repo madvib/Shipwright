@@ -1,7 +1,7 @@
 //! Agent TOML definition parser.
 //!
 //! Parses `.ship/agents/<name>.toml` (new format: `[agent]` section)
-//! and also accepts the legacy `.ship/agents/profiles/<name>.toml` format
+//! Also accepts the legacy `[profile]` section format
 //! (`[profile]` section) without error.
 //!
 //! New format sections: [agent], [permissions], [[mcp]], [providers]
@@ -420,10 +420,10 @@ Your domain is the Ship compiler.
     }
 
     #[test]
-    fn parse_legacy_profiles_dir() {
-        // Verify real profile files parse without error
+    fn parse_agents_dir() {
+        // Verify real agent files parse without error
         let profiles_dir =
-            std::path::Path::new("/workspaces/ship/.ship/agents/profiles");
+            std::path::Path::new("/workspaces/ship/.ship/agents");
         if profiles_dir.exists() {
             for entry in std::fs::read_dir(profiles_dir).unwrap() {
                 let path = entry.unwrap().path();

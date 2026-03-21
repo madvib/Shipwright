@@ -2,7 +2,7 @@
 
 ## .ship/ is configuration — do not write to it
 
-`.ship/` contains profiles, skills, rules, and manifests. The only writers are `ship install` and `ship use`. Agents never create, modify, or delete files in `.ship/`.
+`.ship/` contains agents, skills, rules, and manifests. The only writers are `ship install` and `ship use`. Agents never create, modify, or delete files in `.ship/`.
 
 ## .ship-session/ is your scratchpad
 

@@ -1,4 +1,4 @@
-[profile]
+[agent]
 name = "Rust Lane"
 id = "rust-lane"
 version = "0.1.0"

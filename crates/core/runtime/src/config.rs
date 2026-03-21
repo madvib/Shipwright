@@ -672,7 +672,7 @@ fn resolve_external_ids_to_refs(
 fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let mode_rows = crate::db::agents::list_agent_modes_db(ship_dir)?;
+    let mode_rows = crate::db::agents::list_agent_configs_db(ship_dir)?;
     let mut modes = Vec::new();
     for row in mode_rows {
         let active_tools: Vec<String> =
@@ -708,7 +708,7 @@ fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
 fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let existing_ids: HashSet<String> = crate::db::agents::list_agent_modes_db(ship_dir)?
+    let existing_ids: HashSet<String> = crate::db::agents::list_agent_configs_db(ship_dir)?
         .into_iter()
         .map(|row| row.id)
         .collect();
@@ -716,7 +716,7 @@ fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
 
     for mode in modes {
         next_ids.insert(mode.id.clone());
-        let db_mode = crate::db::types::AgentModeDb {
+        let db_mode = crate::db::types::AgentConfigDb {
             id: mode.id.clone(),
             name: mode.name.clone(),
             description: mode.description.clone(),
@@ -741,12 +741,12 @@ fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
             permissions_json: serde_json::to_string(&mode.permissions)?,
             target_agents_json: serde_json::to_string(&mode.target_agents)?,
         };
-        crate::db::agents::upsert_agent_mode_db(ship_dir, &db_mode)?;
+        crate::db::agents::upsert_agent_config_db(ship_dir, &db_mode)?;
     }
 
     for id in existing_ids {
         if !next_ids.contains(&id) {
-            crate::db::agents::delete_agent_mode_db(ship_dir, &id)?;
+            crate::db::agents::delete_agent_config_db(ship_dir, &id)?;
         }
     }
 
@@ -1799,7 +1799,7 @@ mod tests {
         assert!(runtime_settings.git_json.contains("\"ship.toml\""));
         assert!(runtime_settings.namespaces_json.contains("\"project\""));
 
-        let mode_rows = crate::db::agents::list_agent_modes_db(&ship_dir)?;
+        let mode_rows = crate::db::agents::list_agent_configs_db(&ship_dir)?;
         assert_eq!(mode_rows.len(), 1);
         assert_eq!(mode_rows[0].id, "planning");
 

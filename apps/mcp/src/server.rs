@@ -180,7 +180,7 @@ impl ShipServer {
     // ─── Agent ────────────────────────────────────────────────────────────────
 
     #[tool(description = "Activate an agent profile by id, or clear active agent by passing null/omitting id.")]
-    async fn set_agent(&self, Parameters(req): Parameters<SetModeRequest>) -> String {
+    async fn set_agent(&self, Parameters(req): Parameters<SetAgentRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await { Ok(d) => d, Err(e) => return e };
         agent::set_agent(project_dir, req.id.as_deref())
     }

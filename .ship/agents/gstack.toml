@@ -1,4 +1,4 @@
-[profile]
+[agent]
 name = "gstack"
 id = "gstack"
 version = "0.1.0"

@@ -1,4 +1,4 @@
-//! `ship import <source>` — import a profile from a URL, local path, or provider config.
+//! `ship import <source>` — import an agent from a URL, local path, or provider config.
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -156,24 +156,24 @@ fn import_from_github_with_base(url: &str, base_url: &str) -> Result<()> {
     // Extract owner/repo from URL for the summary line
     let repo_slug = extract_github_slug(url).unwrap_or_else(|| url.to_string());
 
-    let profiles_dir = ship_dir.join("agents").join("profiles");
+    let agents_out_dir = ship_dir.join("agents");
     let rules_dir = ship_dir.join("agents").join("rules");
-    std::fs::create_dir_all(&profiles_dir)?;
+    std::fs::create_dir_all(&agents_out_dir)?;
     std::fs::create_dir_all(&rules_dir)?;
 
-    let mut n_profiles = 0usize;
+    let mut n_agents = 0usize;
     for mode in &library.modes {
         let name = mode
             .name
             .clone()
-            .unwrap_or_else(|| format!("profile-{}", n_profiles + 1));
+            .unwrap_or_else(|| format!("agent-{}", n_agents + 1));
         let safe_name = sanitize_filename(&name);
-        let dest = profiles_dir.join(format!("{}.toml", safe_name));
+        let dest = agents_out_dir.join(format!("{}.toml", safe_name));
         // Serialise the whole mode JSON value as TOML
         let toml_str = json_value_to_toml(&mode.extra, library.name.as_deref(), &name)?;
         std::fs::write(&dest, &toml_str)
-            .with_context(|| format!("Failed to write profile {}", dest.display()))?;
-        n_profiles += 1;
+            .with_context(|| format!("Failed to write agent {}", dest.display()))?;
+        n_agents += 1;
     }
 
     let mut n_rules = 0usize;
@@ -226,8 +226,8 @@ fn import_from_github_with_base(url: &str, base_url: &str) -> Result<()> {
     }
 
     println!(
-        "imported from {}: {} profiles, {} rules, {} MCP servers",
-        repo_slug, n_profiles, n_rules, n_mcp
+        "imported from {}: {} agents, {} rules, {} MCP servers",
+        repo_slug, n_agents, n_rules, n_mcp
     );
     Ok(())
 }
@@ -255,10 +255,10 @@ fn sanitize_filename(name: &str) -> String {
         .to_string()
 }
 
-/// Convert a JSON value to a minimal TOML profile string.
+/// Convert a JSON value to a minimal TOML agent string.
 ///
 /// Since the server returns a full mode JSON, we do a best-effort conversion:
-/// wrap in a [profile] table with the name field plus any extra fields that
+/// wrap in an [agent] table with the name field plus any extra fields that
 /// survive serde_json → toml::Value conversion.
 fn json_value_to_toml(
     extra: &serde_json::Value,
@@ -281,10 +281,10 @@ fn json_value_to_toml(
 
     let root = toml::Value::Table({
         let mut r = toml::map::Map::new();
-        r.insert("profile".into(), toml::Value::Table(map));
+        r.insert("agent".into(), toml::Value::Table(map));
         r
     });
-    toml::to_string_pretty(&root).context("Failed to serialise profile to TOML")
+    toml::to_string_pretty(&root).context("Failed to serialise agent to TOML")
 }
 
 fn json_to_toml_value(v: &serde_json::Value) -> Result<toml::Value> {
@@ -324,7 +324,7 @@ fn is_getship_url(source: &str) -> bool {
         || source.starts_with("https://www.getship.dev/")
 }
 
-/// Extract profile ID from a getship.dev URL path.
+/// Extract agent ID from a getship.dev URL path.
 /// Expects paths like `/p/<id>`, `/profiles/<id>`, or just uses the last path segment.
 fn extract_profile_id(url: &str) -> Result<String> {
     let path = url
@@ -336,11 +336,11 @@ fn extract_profile_id(url: &str) -> Result<String> {
     match segments.as_slice() {
         [_, id, ..] => Ok((*id).to_string()),
         [id] => Ok((*id).to_string()),
-        _ => anyhow::bail!("Could not extract profile ID from URL: {}", url),
+        _ => anyhow::bail!("Could not extract agent ID from URL: {}", url),
     }
 }
 
-/// Fetch a profile from getship.dev and install it locally.
+/// Fetch an agent from getship.dev and install it locally.
 fn import_from_url(url: &str) -> Result<()> {
     let project_root = std::env::current_dir()?;
     let ship_dir = project_root.join(".ship");
@@ -348,9 +348,9 @@ fn import_from_url(url: &str) -> Result<()> {
         anyhow::bail!(".ship/ not found. Run: ship init");
     }
 
-    let profile_id = extract_profile_id(url)?;
+    let agent_id = extract_profile_id(url)?;
 
-    println!("Fetching profile '{}' from {}...", profile_id, url);
+    println!("Fetching agent '{}' from {}...", agent_id, url);
 
     let body: String = ureq::get(url)
         .header("Accept", "application/json")
@@ -362,21 +362,21 @@ fn import_from_url(url: &str) -> Result<()> {
 
     // Parse JSON response into a ProjectLibrary to validate the shape
     let library: compiler::ProjectLibrary = serde_json::from_str(&body)
-        .context("Invalid profile data received from getship.dev")?;
+        .context("Invalid agent data received from getship.dev")?;
 
-    // Serialize to TOML and write to profiles directory
-    let profiles_dir = ship_dir.join("agents").join("profiles");
-    std::fs::create_dir_all(&profiles_dir)?;
-    let profile_path = profiles_dir.join(format!("{}.toml", profile_id));
+    // Serialize to TOML and write to agents directory
+    let agents_out_dir = ship_dir.join("agents");
+    std::fs::create_dir_all(&agents_out_dir)?;
+    let agent_path = agents_out_dir.join(format!("{}.toml", agent_id));
 
     let toml_content = toml::to_string_pretty(&library)
-        .context("Failed to serialize profile to TOML")?;
-    std::fs::write(&profile_path, &toml_content)?;
+        .context("Failed to serialize agent to TOML")?;
+    std::fs::write(&agent_path, &toml_content)?;
 
-    println!("  wrote {}", profile_path.display());
+    println!("  wrote {}", agent_path.display());
 
-    // Activate the profile immediately
-    profile::activate_profile(Some(&profile_id), &project_root)?;
+    // Activate the agent immediately
+    profile::activate_agent(Some(&agent_id), &project_root)?;
 
     println!();
     println!("Create an account to sync across machines: ship login");
@@ -514,7 +514,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(tmp.join(".ship/agents/profiles/rust-expert.toml").exists(), "profile written");
+            assert!(tmp.join(".ship/agents/rust-expert.toml").exists(), "agent written");
             assert!(tmp.join(".ship/agents/rules/no-panics.md").exists(), "rule written");
             let rule = std::fs::read_to_string(tmp.join(".ship/agents/rules/no-panics.md")).unwrap();
             assert_eq!(rule, "Never use unwrap()");

@@ -33,11 +33,11 @@ pub enum Commands {
     /// Show current identity
     Whoami,
 
-    // ── Agent profile activation ──────────────────────────────────────────────
-    /// Activate an agent profile for the current (or specified) directory
+    // ── Agent activation ──────────────────────────────────────────────────────
+    /// Activate an agent for the current (or specified) directory
     Use {
-        /// Agent profile ID or registry reference (e.g. rust-expert, @org/profile, https://...)
-        mode: String,
+        /// Agent ID or registry reference (e.g. rust-expert, @org/agent, https://...)
+        agent_id: String,
         /// Bind to this path instead of the current directory
         #[arg(long)]
         path: Option<PathBuf>,
@@ -46,14 +46,14 @@ pub enum Commands {
         compile: bool,
     },
 
-    /// Show the active mode and compilation status for the current directory
+    /// Show the active agent and compilation status for the current directory
     Status {
         #[arg(long)]
         path: Option<PathBuf>,
     },
 
     // ── Compilation ───────────────────────────────────────────────────────────
-    /// Compile the active mode to provider-native config files
+    /// Compile the active agent to provider-native config files
     Compile {
         /// Compile for a specific provider only (claude, gemini, codex, cursor)
         #[arg(long)]
@@ -61,7 +61,7 @@ pub enum Commands {
         /// Preview output without writing any files
         #[arg(long)]
         dry_run: bool,
-        /// Recompile automatically when mode or agent files change
+        /// Recompile automatically when agent files change
         #[arg(long)]
         watch: bool,
         /// Path to project root (defaults to current directory)
@@ -98,7 +98,7 @@ pub enum Commands {
     },
 
     // ── Import / Export ───────────────────────────────────────────────────────
-    /// Import a profile from a getship.dev URL, local path, or provider config
+    /// Import an agent from a getship.dev URL, local path, or provider config
     Import {
         /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config directory
         source: String,
@@ -136,9 +136,9 @@ pub enum Commands {
     // ── Validation ────────────────────────────────────────────────────────────
     /// Validate .ship/ config before compile — checks TOML, skill refs, MCP fields, permissions
     Validate {
-        /// Validate a single profile (omit to validate all)
+        /// Validate a single agent (omit to validate all)
         #[arg(long)]
-        profile: Option<String>,
+        agent: Option<String>,
         /// Emit errors as JSON array instead of human-readable output
         #[arg(long)]
         json: bool,
@@ -172,8 +172,8 @@ pub enum Commands {
         action: EventsCommands,
     },
 
-    // ── Agent profiles ────────────────────────────────────────────────────────
-    /// Manage agent profiles
+    // ── Agents ────────────────────────────────────────────────────────────────
+    /// Manage agents
     Agent {
         #[command(subcommand)]
         action: AgentCommands,
@@ -252,35 +252,35 @@ pub enum EventsCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum AgentCommands {
-    /// List available agent profiles
+    /// List available agents
     List {
         /// Show only ~/.ship/modes/
         #[arg(long)]
         local: bool,
-        /// Show only .ship/modes/
+        /// Show only .ship/agents/
         #[arg(long)]
         project: bool,
     },
-    /// Create a new agent profile (project-local by default)
+    /// Create a new agent (project-local by default)
     Create {
-        /// Profile ID (lowercase, hyphens — e.g. rust-expert)
+        /// Agent ID (lowercase, hyphens — e.g. rust-expert)
         name: String,
-        /// Create in ~/.ship/modes/ instead of .ship/modes/
+        /// Create in ~/.ship/modes/ instead of .ship/agents/
         #[arg(long)]
         global: bool,
     },
-    /// Open an agent profile in $EDITOR
+    /// Open an agent in $EDITOR
     Edit {
         name: String,
         /// Editor to use (defaults to $EDITOR)
         #[arg(long)]
         editor: Option<String>,
     },
-    /// Delete an agent profile
+    /// Delete an agent
     Delete {
         name: String,
     },
-    /// Clone an agent profile under a new ID
+    /// Clone an agent under a new ID
     Clone {
         source: String,
         target: String,
