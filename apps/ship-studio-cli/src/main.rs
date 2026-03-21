@@ -22,7 +22,6 @@ mod paths;
 mod profile;
 mod publish;
 mod skill;
-mod surface;
 mod toml_to_jsonc;
 mod validate;
 mod view;
@@ -56,7 +55,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
             Commands::Import { source } => import::run_import(&source),
-            Commands::Help { topic } => help_topics::run(topic.as_deref()),
+            Commands::Docs { topic } => help_topics::run(topic.as_deref()),
             Commands::Job { action } => dispatch_job(action),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
@@ -79,7 +78,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                     .unwrap_or_else(|| std::env::current_dir().unwrap());
                 validate::run_validate(agent.as_deref(), json, &root)
             }
-            Commands::Surface { emit, check } => surface::run(emit, check),
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Events { action } => dispatch_events(action),
             Commands::View => {

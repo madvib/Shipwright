@@ -110,10 +110,8 @@ fn write_cli_tree(out: &mut String) {
             ("--limit <n>", "Max events (default 50)"),
             ("--json", "Output as JSON"),
         ])),
-        ("ship surface", "Print CLI + MCP surface as markdown", Some(&[
-            ("--emit", "Write output to docs/surface.md"),
-            ("--check", "Diff against docs/surface.md; exit 1 if drift detected"),
-        ])),
+        ("ship docs [topic]", "Show detailed help for a topic (run `ship docs topics` to list)", None),
+        ("ship view", "Browse and manage project state in the terminal UI", None),
     ];
 
     for (cmd, desc, flags) in entries {

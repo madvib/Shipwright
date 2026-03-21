@@ -1,4 +1,4 @@
-//! `ship help <topic>` — extended help for common workflows.
+//! `ship docs <topic>` — extended help for common workflows.
 
 use anyhow::Result;
 
@@ -11,7 +11,7 @@ pub fn run(topic: Option<&str>) -> Result<()> {
                 eprintln!("Unknown help topic: {}", t);
                 eprintln!();
                 print_topic_list();
-                anyhow::bail!("run `ship help topics` to see available topics");
+                anyhow::bail!("run `ship docs topics` to see available topics");
             }
         },
     }
@@ -25,7 +25,7 @@ fn print_topic_list() {
         println!("  {:<12} {}", name, summary);
     }
     println!();
-    println!("Run `ship help <topic>` for details.");
+    println!("Run `ship docs <topic>` for details.");
 }
 
 const TOPICS: &[(&str, &str)] = &[

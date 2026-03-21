@@ -3,15 +3,27 @@ use std::path::PathBuf;
 
 pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 
-const AFTER_HELP: &str = "\x1b[1mGetting Started:\x1b[0m
-  ship init              Scaffold .ship/ in the current project
-  ship agent create id   Create an agent definition
+const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
+  ship init              Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
-  ship compile           Re-compile after editing agent config
+  ship status            Show active agent
+  ship compile           Re-compile after editing config
+  ship view              Browse state in the TUI
+
+\x1b[1mPackages:\x1b[0m
+  ship add <package>     Add a dependency
+  ship install           Resolve all dependencies
+  ship publish           Share your package on the registry
+
+\x1b[1mConfiguration:\x1b[0m
+  ship agent create <n>  Create an agent definition
+  ship skill add <src>   Install a skill
+  ship mcp add-stdio ... Register an MCP server
+  ship config set k v    Set a user preference
 
 \x1b[1mLearn More:\x1b[0m
-  ship help topics       List available help topics
-  ship help <topic>      Show detailed help for a topic
+  ship docs topics       List help topics
+  ship docs <topic>      Detailed help for a topic
   https://getship.dev/docs";
 
 #[derive(Parser, Debug)]
@@ -160,24 +172,13 @@ pub enum Commands {
         action: EventsCommands,
     },
 
-    /// Browse workflow state in a terminal UI (read-only)
+    /// Browse and manage project state in the terminal UI
     View,
 
-    /// Show detailed help for a topic (run `ship help topics` to list)
-    Help {
+    /// Show detailed help for a topic (run `ship docs topics` to list)
+    Docs {
         /// Topic name (e.g. agents, skills, mcp, compile, providers)
         topic: Option<String>,
-    },
-
-    // ── Hidden / Internal ────────────────────────────────────────────────────
-    #[command(hide = true)]
-    Surface {
-        /// Write output to docs/surface.md
-        #[arg(long)]
-        emit: bool,
-        /// Diff against committed docs/surface.md; exit 1 if drift detected
-        #[arg(long)]
-        check: bool,
     },
 
     #[command(hide = true)]
