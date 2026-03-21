@@ -9,7 +9,7 @@ import { LandingFooter } from '../components/landing/LandingFooter'
 
 const LandingNav = lazy(() => import('../components/landing/LandingNav'))
 
-export const Route = createFileRoute('/')({ component: LandingPage })
+export const Route = createFileRoute('/')({ ssr: false, component: LandingPage })
 
 function LandingPage() {
   return (

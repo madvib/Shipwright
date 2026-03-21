@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import {
-  User, Github, Settings as SettingsIcon, Link2, Terminal,
-  AlertTriangle, Plus,
+  User, Github, Settings as SettingsIcon, Link2, Terminal, Plus,
 } from 'lucide-react'
 import { Button, Badge, Switch, Separator } from '@ship/primitives'
+import { toast } from 'sonner'
 import { authClient } from '#/lib/auth-client'
 import type { SettingsData } from './settingsData'
 import {
@@ -74,17 +75,15 @@ export function GitHubSection({
   update: UpdateFn
 }) {
   const { data: session } = authClient.useSession()
-  const isConnected = !!session?.user
+  const [disconnected, setDisconnected] = useState(false)
+  const isConnected = !!session?.user && !disconnected
+  const disconnect = () => fetch('/api/github/disconnect', { method: 'POST' })
+    .then((r) => { if (!r.ok) throw r; setDisconnected(true); toast.success('GitHub disconnected') })
+    .catch(() => toast.error('Failed to disconnect GitHub'))
 
   return (
-    <SettingsSection
-      icon={<Github className="size-[15px]" />}
-      title="GitHub"
-      action={
-        isConnected ? (
-          <Button variant="ghost" size="xs">Disconnect <OrangeDot /></Button>
-        ) : null
-      }
+    <SettingsSection icon={<Github className="size-[15px]" />} title="GitHub"
+      action={isConnected ? <Button variant="ghost" size="xs" onClick={() => void disconnect()}>Disconnect</Button> : null}
     >
       {isConnected ? (
         <>
@@ -284,15 +283,4 @@ export function CLISection() {
 
 // ── Danger zone ──────────────────────────────────────────────────────────────
 
-export function DangerZoneSection() {
-  return (
-    <SettingsSection icon={<AlertTriangle className="size-[15px]" />} title="Danger Zone" danger>
-      <SettingsRow label="Delete all agents" sublabel="Permanently remove all agent configurations">
-        <Button variant="destructive" size="xs">Delete all <OrangeDot /></Button>
-      </SettingsRow>
-      <SettingsRow label="Delete account" sublabel="Remove your account and all data from Ship">
-        <Button variant="destructive" size="xs">Delete account <OrangeDot /></Button>
-      </SettingsRow>
-    </SettingsSection>
-  )
-}
+export { DangerZoneSection } from './DangerZoneSection'
