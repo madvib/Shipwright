@@ -1,23 +1,27 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { useProfiles } from '#/features/studio/useProfiles'
+import { useAgentStore } from '#/features/agents/useAgentStore'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { useAuth } from '#/lib/components/protected-route'
 import { Plus, Users, Zap, Server, Github, Package, ArrowRight } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
 import { CreateAgentDialog } from '#/features/agents/dialogs/CreateAgentDialog'
+import { DashboardSkeleton } from '#/features/studio/StudioSkeleton'
 
-export const Route = createFileRoute('/studio/')({ component: StudioHome })
+export const Route = createFileRoute('/studio/')({
+  component: StudioHome,
+  pendingComponent: DashboardSkeleton,
+})
 
 function StudioHome() {
-  const { profiles } = useProfiles()
+  const { agents } = useAgentStore()
   const { library } = useLibrary()
   const auth = useAuth()
   const [createOpen, setCreateOpen] = useState(false)
 
   const skillCount = library.skills?.length ?? 0
   const mcpCount = library.mcp_servers?.length ?? 0
-  const agentCount = profiles.length
+  const agentCount = agents.length
 
   if (agentCount === 0 && !auth.isAuthenticated) {
     return (

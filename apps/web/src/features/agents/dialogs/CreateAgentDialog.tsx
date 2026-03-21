@@ -5,7 +5,7 @@ import {
 } from '@ship/primitives'
 import { Input } from '@ship/primitives'
 import { Button } from '@ship/primitives'
-import { useProfiles } from '#/features/studio/useProfiles'
+import { useAgentStore } from '#/features/agents/useAgentStore'
 import { PROVIDERS } from '#/features/compiler/types'
 
 interface CreateAgentDialogProps {
@@ -14,7 +14,7 @@ interface CreateAgentDialogProps {
 }
 
 export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps) {
-  const { addProfile, updateProfile } = useProfiles()
+  const { createAgent } = useAgentStore()
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -28,11 +28,10 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
   const handleCreate = () => {
     if (!name.trim()) return
-    const id = addProfile()
-    updateProfile(id, {
+    const id = createAgent({
       name: name.trim(),
-      persona: description.trim(),
-      selectedProviders,
+      description: description.trim(),
+      providers: selectedProviders,
     })
     onOpenChange(false)
     setName('')

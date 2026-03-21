@@ -3,7 +3,7 @@ import {
 } from '@ship/primitives'
 import { Badge } from '@ship/primitives'
 import { Users } from 'lucide-react'
-import { useProfiles } from '#/features/studio/useProfiles'
+import { useAgentStore } from '#/features/agents/useAgentStore'
 import type { SubagentRef } from '../types'
 
 interface AddSubagentDialogProps {
@@ -15,13 +15,13 @@ interface AddSubagentDialogProps {
 }
 
 export function AddSubagentDialog({ open, onOpenChange, currentAgentId, existingIds, onAdd }: AddSubagentDialogProps) {
-  const { profiles } = useProfiles()
-  const available = profiles.filter(
-    (p) => p.id !== currentAgentId && !existingIds.includes(p.id),
+  const { agents } = useAgentStore()
+  const available = agents.filter(
+    (a) => a.id !== currentAgentId && !existingIds.includes(a.id),
   )
 
-  const handleSelect = (p: typeof profiles[0]) => {
-    onAdd({ id: p.id, name: p.name, description: `${p.skills.length} skills · ${p.mcpServers.length} MCP` })
+  const handleSelect = (a: typeof agents[0]) => {
+    onAdd({ id: a.id, name: a.name, description: `${a.skills.length} skills · ${a.mcpServers.length} MCP` })
     onOpenChange(false)
   }
 
@@ -38,19 +38,19 @@ export function AddSubagentDialog({ open, onOpenChange, currentAgentId, existing
         </CommandEmpty>
         {available.length > 0 && (
           <CommandGroup heading="Your agents">
-            {available.map((p) => (
-              <CommandItem key={p.id} onSelect={() => handleSelect(p)} className="flex items-center gap-3">
+            {available.map((a) => (
+              <CommandItem key={a.id} onSelect={() => handleSelect(a)} className="flex items-center gap-3">
                 <div className="size-7 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                  <span className="text-xs font-bold text-violet-500">{p.name.charAt(0).toUpperCase()}</span>
+                  <span className="text-xs font-bold text-violet-500">{a.name.charAt(0).toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{p.name}</span>
+                    <span className="text-sm font-medium">{a.name}</span>
                     <Badge variant="secondary" className="text-[9px]">
-                      {p.skills.length} skills
+                      {a.skills.length} skills
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">{p.mcpServers.length} MCP servers</p>
+                  <p className="text-xs text-muted-foreground">{a.mcpServers.length} MCP servers</p>
                 </div>
               </CommandItem>
             ))}

@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
-import { useAgentDetail } from '#/features/agents/useAgentDetail'
+import { useState, useCallback } from 'react'
+import { useAgentStore, makeAgent } from '#/features/agents/useAgentStore'
 import { AgentHeader } from '#/features/agents/sections/AgentHeader'
 import { SkillsSection } from '#/features/agents/sections/SkillsSection'
 import { McpSection } from '#/features/agents/sections/McpSection'
@@ -16,16 +16,122 @@ import { EditAgentDialog } from '#/features/agents/dialogs/EditAgentDialog'
 import { PermissionsDialog } from '#/features/agents/dialogs/PermissionsDialog'
 import { HookEditorDialog } from '#/features/agents/dialogs/HookEditorDialog'
 import { RuleEditorDialog } from '#/features/agents/dialogs/RuleEditorDialog'
-import type { HookConfig } from '#/features/agents/types'
+import type { HookConfig, AgentProfile, AgentSettings, ToolPermission } from '#/features/agents/types'
+import type { Skill, Rule, Permissions } from '@ship/ui'
+
+import { AgentDetailSkeleton } from '#/features/studio/StudioSkeleton'
+import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 
 export const Route = createFileRoute('/studio/agents/$id')({
   component: AgentDetailPage,
+  pendingComponent: AgentDetailSkeleton,
+  errorComponent: StudioErrorBoundary,
   ssr: false,
 })
 
 function AgentDetailPage() {
   const { id } = Route.useParams()
-  const agent = useAgentDetail(id)
+  const { getAgent, updateAgent } = useAgentStore()
+  const profile = getAgent(id) ?? makeAgent({ id, name: id })
+
+  // ── Convenience mutators (same API as old useAgentDetail) ─────────────
+
+  const update = useCallback(
+    (patch: Partial<AgentProfile>) => updateAgent(id, patch),
+    [id, updateAgent],
+  )
+
+  const removeSkill = useCallback(
+    (skillId: string) => update({ skills: profile.skills.filter((s) => s.id !== skillId) }),
+    [update, profile.skills],
+  )
+
+  const addSkill = useCallback(
+    (skill: Skill) => {
+      if (profile.skills.some((s) => s.id === skill.id)) return
+      update({ skills: [...profile.skills, skill] })
+    },
+    [update, profile.skills],
+  )
+
+  const removeServer = useCallback(
+    (name: string) => update({ mcpServers: profile.mcpServers.filter((s) => s.name !== name) }),
+    [update, profile.mcpServers],
+  )
+
+  const removeSubagent = useCallback(
+    (subId: string) => update({ subagents: profile.subagents.filter((s) => s.id !== subId) }),
+    [update, profile.subagents],
+  )
+
+  const setPermissionPreset = useCallback(
+    (preset: string) => update({ permissionPreset: preset }),
+    [update],
+  )
+
+  const updateSettings = useCallback(
+    (patch: Partial<AgentSettings>) => update({ settings: { ...profile.settings, ...patch } }),
+    [update, profile.settings],
+  )
+
+  const setToolPermission = useCallback(
+    (serverName: string, toolName: string, permission: ToolPermission) => {
+      const serverTools = profile.mcpToolStates[serverName] ?? {}
+      update({
+        mcpToolStates: {
+          ...profile.mcpToolStates,
+          [serverName]: { ...serverTools, [toolName]: permission },
+        },
+      })
+    },
+    [update, profile.mcpToolStates],
+  )
+
+  const setGroupPermission = useCallback(
+    (serverName: string, toolNames: string[], permission: ToolPermission) => {
+      const serverTools = { ...(profile.mcpToolStates[serverName] ?? {}) }
+      for (const name of toolNames) serverTools[name] = permission
+      update({
+        mcpToolStates: { ...profile.mcpToolStates, [serverName]: serverTools },
+      })
+    },
+    [update, profile.mcpToolStates],
+  )
+
+  const addHook = useCallback(
+    (hook: HookConfig) => update({ hooks: [...profile.hooks, hook] }),
+    [update, profile.hooks],
+  )
+  const updateHook = useCallback(
+    (index: number, hook: HookConfig) =>
+      update({ hooks: profile.hooks.map((h, i) => (i === index ? hook : h)) }),
+    [update, profile.hooks],
+  )
+  const removeHook = useCallback(
+    (index: number) => update({ hooks: profile.hooks.filter((_, i) => i !== index) }),
+    [update, profile.hooks],
+  )
+
+  const addRule = useCallback(
+    (rule: Rule) => update({ rules: [...profile.rules, rule] }),
+    [update, profile.rules],
+  )
+  const updateRule = useCallback(
+    (index: number, rule: Rule) =>
+      update({ rules: profile.rules.map((r, i) => (i === index ? rule : r)) }),
+    [update, profile.rules],
+  )
+  const removeRule = useCallback(
+    (index: number) => update({ rules: profile.rules.filter((_, i) => i !== index) }),
+    [update, profile.rules],
+  )
+
+  const updatePermissions = useCallback(
+    (permissions: Permissions) => update({ permissions, permissionPreset: 'custom' }),
+    [update],
+  )
+
+  // ── Dialog state ──────────────────────────────────────────────────────
 
   const [skillOpen, setSkillOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
@@ -35,58 +141,47 @@ function AgentDetailPage() {
   const [hookOpen, setHookOpen] = useState(false)
   const [hookEdit, setHookEdit] = useState<{ index: number; hook: HookConfig } | null>(null)
   const [ruleOpen, setRuleOpen] = useState(false)
-  const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: { file_name: string; content: string } } | null>(null)
+  const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: Rule } | null>(null)
 
   return (
     <main className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[800px]">
-        <AgentHeader profile={agent.profile} onEdit={() => setEditOpen(true)} />
+        <AgentHeader profile={profile} onEdit={() => setEditOpen(true)} />
 
-        <SkillsSection
-          skills={agent.profile.skills}
-          onRemove={agent.removeSkill}
-          onAdd={() => setSkillOpen(true)}
-        />
+        <SkillsSection skills={profile.skills} onRemove={removeSkill} onAdd={() => setSkillOpen(true)} />
 
         <McpSection
-          servers={agent.profile.mcpServers}
-          toolStates={agent.profile.mcpToolStates}
-          onRemove={agent.removeServer}
-          onSetToolPermission={agent.setToolPermission}
-          onSetGroupPermission={agent.setGroupPermission}
+          servers={profile.mcpServers}
+          toolStates={profile.mcpToolStates}
+          onRemove={removeServer}
+          onSetToolPermission={setToolPermission}
+          onSetGroupPermission={setGroupPermission}
           onAdd={() => setMcpOpen(true)}
         />
 
-        <SubagentsSection
-          subagents={agent.profile.subagents}
-          onRemove={agent.removeSubagent}
-          onAdd={() => setSubagentOpen(true)}
-        />
+        <SubagentsSection subagents={profile.subagents} onRemove={removeSubagent} onAdd={() => setSubagentOpen(true)} />
 
         <PermissionsSection
-          permissions={agent.profile.permissions}
-          activePreset={agent.profile.permissionPreset}
-          onPresetChange={agent.setPermissionPreset}
+          permissions={profile.permissions}
+          activePreset={profile.permissionPreset}
+          onPresetChange={setPermissionPreset}
           onEdit={() => setPermsOpen(true)}
         />
 
-        <SettingsSection
-          settings={agent.profile.settings}
-          onUpdate={agent.updateSettings}
-        />
+        <SettingsSection settings={profile.settings} onUpdate={updateSettings} />
 
         <HooksSection
-          hooks={agent.profile.hooks}
+          hooks={profile.hooks}
           onAdd={() => { setHookEdit(null); setHookOpen(true) }}
-          onEdit={(i) => { setHookEdit({ index: i, hook: agent.profile.hooks[i] }); setHookOpen(true) }}
-          onRemove={agent.removeHook}
+          onEdit={(i) => { setHookEdit({ index: i, hook: profile.hooks[i] }); setHookOpen(true) }}
+          onRemove={removeHook}
         />
 
         <RulesSection
-          rules={agent.profile.rules}
+          rules={profile.rules}
           onAdd={() => { setRuleEdit(null); setRuleOpen(true) }}
-          onEdit={(i) => { setRuleEdit({ index: i, rule: agent.profile.rules[i] }); setRuleOpen(true) }}
-          onRemove={agent.removeRule}
+          onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }}
+          onRemove={removeRule}
         />
 
         <div className="h-24" />
@@ -95,37 +190,37 @@ function AgentDetailPage() {
       <AddSkillDialog
         open={skillOpen}
         onOpenChange={setSkillOpen}
-        existingIds={agent.profile.skills.map((s) => s.id)}
-        onAdd={agent.addSkill}
+        existingIds={profile.skills.map((s) => s.id)}
+        onAdd={addSkill}
       />
 
       <AddMcpDialog
         open={mcpOpen}
         onOpenChange={setMcpOpen}
-        existingNames={agent.profile.mcpServers.map((s) => s.name)}
-        onAdd={(server) => agent.updateProfile({ mcpServers: [...agent.profile.mcpServers, server] })}
+        existingNames={profile.mcpServers.map((s) => s.name)}
+        onAdd={(server) => update({ mcpServers: [...profile.mcpServers, server] })}
       />
 
       <AddSubagentDialog
         open={subagentOpen}
         onOpenChange={setSubagentOpen}
         currentAgentId={id}
-        existingIds={agent.profile.subagents.map((s) => s.id)}
-        onAdd={(ref) => agent.updateProfile({ subagents: [...agent.profile.subagents, ref] })}
+        existingIds={profile.subagents.map((s) => s.id)}
+        onAdd={(ref) => update({ subagents: [...profile.subagents, ref] })}
       />
 
       <EditAgentDialog
         open={editOpen}
         onOpenChange={setEditOpen}
-        profile={agent.profile}
-        onSave={(patch) => agent.updateProfile(patch)}
+        profile={profile}
+        onSave={(patch) => update(patch)}
       />
 
       <PermissionsDialog
         open={permsOpen}
         onOpenChange={setPermsOpen}
-        permissions={agent.profile.permissions}
-        onSave={agent.updatePermissions}
+        permissions={profile.permissions}
+        onSave={updatePermissions}
       />
 
       <HookEditorDialog
@@ -133,10 +228,10 @@ function AgentDetailPage() {
         onOpenChange={setHookOpen}
         hook={hookEdit?.hook ?? null}
         onSave={(hook) => {
-          if (hookEdit) agent.updateHook(hookEdit.index, hook)
-          else agent.addHook(hook)
+          if (hookEdit) updateHook(hookEdit.index, hook)
+          else addHook(hook)
         }}
-        onDelete={hookEdit ? () => agent.removeHook(hookEdit.index) : undefined}
+        onDelete={hookEdit ? () => removeHook(hookEdit.index) : undefined}
       />
 
       <RuleEditorDialog
@@ -144,10 +239,10 @@ function AgentDetailPage() {
         onOpenChange={setRuleOpen}
         rule={ruleEdit?.rule ?? null}
         onSave={(rule) => {
-          if (ruleEdit) agent.updateRule(ruleEdit.index, rule)
-          else agent.addRule(rule)
+          if (ruleEdit) updateRule(ruleEdit.index, rule)
+          else addRule(rule)
         }}
-        onDelete={ruleEdit ? () => agent.removeRule(ruleEdit.index) : undefined}
+        onDelete={ruleEdit ? () => removeRule(ruleEdit.index) : undefined}
       />
     </main>
   )
