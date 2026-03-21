@@ -38,6 +38,8 @@ export interface RegistryRepositories {
 
   upsertPackage(data: InsertPackage): Promise<Package>
 
+  getLatestVersion(packageId: string): Promise<PackageVersion | null>
+
   getPackageVersions(packageId: string): Promise<PackageVersion[]>
 
   getPackageSkills(
@@ -149,6 +151,17 @@ export function createRegistryRepositories(
           `upsertPackage: row not found after write (path=${data.path})`,
         )
       return row
+    },
+
+    async getLatestVersion(packageId) {
+      const row = await db
+        .select()
+        .from(packageVersions)
+        .where(eq(packageVersions.packageId, packageId))
+        .orderBy(desc(packageVersions.indexedAt))
+        .limit(1)
+        .get()
+      return row ?? null
     },
 
     async getPackageVersions(packageId) {

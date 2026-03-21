@@ -12,6 +12,8 @@ import {
   fetchFileFromGitHub,
   parseShipToml,
 } from '#/lib/registry-github'
+import { isNewerVersion } from '#/lib/semver'
+import { verifySignature, getPayloadAgeMs } from '#/lib/webhook-verify'
 
 const WEBHOOK_MAX_AGE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -56,6 +58,10 @@ export const Route = createFileRoute('/api/registry/webhook')({
         }
 
         if (event === 'installation') {
+          return handleInstallation(payload)
+        }
+
+        if (event === 'installation_repositories') {
           return handleInstallation(payload)
         }
 
@@ -105,6 +111,13 @@ async function handleTagCreate(
   const now = Date.now()
 
   const existing = await repos.getPackage(packagePath)
+  const incomingVersion = toml.module.version || tag
+  const shouldUpdateVersion =
+    !existing?.latestVersion ||
+    isNewerVersion(incomingVersion, existing.latestVersion)
+  const latestVersion = shouldUpdateVersion
+    ? incomingVersion
+    : existing?.latestVersion ?? null
   const pkg = await repos.upsertPackage({
     id: existing?.id || nanoid(),
     path: packagePath,
@@ -113,7 +126,7 @@ async function handleTagCreate(
     description: toml.module.description || null,
     repoUrl,
     defaultBranch,
-    latestVersion: toml.module.version || tag,
+    latestVersion,
     contentHash: null,
     sourceType: 'native',
     claimedBy: existing?.claimedBy || null,
@@ -150,71 +163,89 @@ async function handleInstallation(
   payload: Record<string, unknown>,
 ): Promise<Response> {
   const action = payload.action as string
-  // Log installation events for now — full storage TBD
-  return Response.json({
-    status: 'acknowledged',
-    action,
-  })
-}
+  const installation = payload.installation as Record<string, unknown> | undefined
+  if (!installation?.id) {
+    return Response.json({ status: 'acknowledged', action })
+  }
 
-/**
- * Extract timestamp from a GitHub webhook payload and return its age in ms.
- * Checks repository.pushed_at (Unix epoch) and common ISO 8601 fields.
- * Returns null if no parseable timestamp is found (caller should allow).
- */
-function getPayloadAgeMs(payload: Record<string, unknown>): number | null {
+  const installationId = installation.id as number
+  const account = installation.account as Record<string, unknown> | undefined
+  const accountLogin = (account?.login as string) ?? 'unknown'
+  const accountType = (account?.type as string) ?? 'User'
+
+  const d1 = getD1()
+  if (!d1) {
+    // No DB — acknowledge without persisting
+    return Response.json({ status: 'acknowledged', action })
+  }
+
   const now = Date.now()
 
-  // GitHub create/push events: repository.pushed_at is a Unix epoch (seconds)
-  const repo = payload.repository as Record<string, unknown> | undefined
-  if (repo?.pushed_at && typeof repo.pushed_at === 'number') {
-    return now - repo.pushed_at * 1000
+  if (action === 'created') {
+    const repos = (payload.repositories as Array<Record<string, unknown>>) ?? []
+    const repoList = repos.map((r) => ({
+      id: r.id as number,
+      full_name: r.full_name as string,
+      private: r.private as boolean,
+    }))
+    const id = nanoid()
+
+    await d1
+      .prepare(
+        `INSERT INTO github_installations (id, installation_id, account_login, account_type, repos_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(installation_id) DO UPDATE SET
+           account_login = excluded.account_login,
+           repos_json = excluded.repos_json,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(id, installationId, accountLogin, accountType, JSON.stringify(repoList), now, now)
+      .run()
+
+    return Response.json({ status: 'stored', action, installation_id: installationId })
   }
 
-  // Installation events: updated_at ISO 8601
-  const installation = payload.installation as Record<string, unknown> | undefined
-  if (installation?.updated_at && typeof installation.updated_at === 'string') {
-    const ts = Date.parse(installation.updated_at)
-    if (!Number.isNaN(ts)) return now - ts
+  if (action === 'deleted') {
+    await d1
+      .prepare('DELETE FROM github_installations WHERE installation_id = ?')
+      .bind(installationId)
+      .run()
+
+    return Response.json({ status: 'removed', action, installation_id: installationId })
   }
 
-  // Fallback: top-level created_at or updated_at
-  for (const field of ['created_at', 'updated_at'] as const) {
-    const val = payload[field]
-    if (typeof val === 'string') {
-      const ts = Date.parse(val)
-      if (!Number.isNaN(ts)) return now - ts
+  // Handle repos added/removed to an existing installation
+  if (action === 'added' || action === 'removed') {
+    const existing = await d1
+      .prepare('SELECT repos_json FROM github_installations WHERE installation_id = ?')
+      .bind(installationId)
+      .first<{ repos_json: string }>()
+
+    if (existing) {
+      let currentRepos = JSON.parse(existing.repos_json) as Array<{ id: number; full_name: string; private: boolean }>
+
+      if (action === 'added') {
+        const added = (payload.repositories_added as Array<Record<string, unknown>>) ?? []
+        for (const r of added) {
+          if (!currentRepos.some((cr) => cr.id === r.id)) {
+            currentRepos.push({ id: r.id as number, full_name: r.full_name as string, private: r.private as boolean })
+          }
+        }
+      } else {
+        const removed = (payload.repositories_removed as Array<Record<string, unknown>>) ?? []
+        const removedIds = new Set(removed.map((r) => r.id as number))
+        currentRepos = currentRepos.filter((cr) => !removedIds.has(cr.id))
+      }
+
+      await d1
+        .prepare('UPDATE github_installations SET repos_json = ?, updated_at = ? WHERE installation_id = ?')
+        .bind(JSON.stringify(currentRepos), now, installationId)
+        .run()
     }
+
+    return Response.json({ status: 'updated', action, installation_id: installationId })
   }
 
-  return null
+  return Response.json({ status: 'acknowledged', action })
 }
 
-async function verifySignature(
-  secret: string,
-  body: string,
-  signature: string,
-): Promise<boolean> {
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body))
-  const expected =
-    'sha256=' +
-    Array.from(new Uint8Array(sig), (b) =>
-      b.toString(16).padStart(2, '0'),
-    ).join('')
-
-  // Constant-time comparison
-  if (expected.length !== signature.length) return false
-  let result = 0
-  for (let i = 0; i < expected.length; i++) {
-    result |= expected.charCodeAt(i) ^ signature.charCodeAt(i)
-  }
-  return result === 0
-}

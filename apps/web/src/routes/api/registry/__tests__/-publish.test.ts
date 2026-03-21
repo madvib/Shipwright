@@ -52,6 +52,7 @@ function makeRepos(overrides: Record<string, unknown> = {}) {
     createPackageVersion: vi.fn().mockResolvedValue({ id: 'ver-1', version: '1.0.0' }),
     createPackageSkill: vi.fn().mockResolvedValue({}),
     searchPackages: vi.fn(),
+    getLatestVersion: vi.fn().mockResolvedValue(null),
     getPackageVersions: vi.fn(),
     getPackageSkills: vi.fn(),
     incrementInstalls: vi.fn(),
@@ -189,6 +190,64 @@ describe('POST /api/registry/publish', () => {
     const req = makeRequest({ repo_url: 'https://github.com/owner/repo' })
     const res = await POST({ request: req } as Parameters<typeof POST>[0])
     expect(res.status).toBe(409)
+  })
+
+  it('does not downgrade latestVersion when publishing an older version', async () => {
+    const repos = makeRepos({
+      getPackage: vi.fn().mockResolvedValue({
+        id: 'pkg-1',
+        path: 'github.com/owner/repo',
+        claimedBy: 'user-1',
+        latestVersion: '2.0.0',
+        stars: 5,
+        installs: 10,
+        indexedAt: Date.now(),
+        deprecatedBy: null,
+      }),
+      getPackageVersions: vi.fn().mockResolvedValue([]),
+    })
+    vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
+      repos as ReturnType<typeof registryRepositories.createRegistryRepositories>
+    )
+    vi.mocked(registryGithub.parseShipToml).mockReturnValue({
+      module: { name: 'my-skill-pack', version: '1.0.0', description: 'test' },
+    })
+
+    const req = makeRequest({ repo_url: 'https://github.com/owner/repo', tag: 'v1.0.0' })
+    const res = await POST({ request: req } as Parameters<typeof POST>[0])
+    expect(res.status).toBe(200)
+
+    const upsertCall = vi.mocked(repos.upsertPackage).mock.calls[0]?.[0]
+    expect(upsertCall?.latestVersion).toBe('2.0.0')
+  })
+
+  it('upgrades latestVersion when publishing a newer version', async () => {
+    const repos = makeRepos({
+      getPackage: vi.fn().mockResolvedValue({
+        id: 'pkg-1',
+        path: 'github.com/owner/repo',
+        claimedBy: 'user-1',
+        latestVersion: '1.0.0',
+        stars: 5,
+        installs: 10,
+        indexedAt: Date.now(),
+        deprecatedBy: null,
+      }),
+      getPackageVersions: vi.fn().mockResolvedValue([]),
+    })
+    vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
+      repos as ReturnType<typeof registryRepositories.createRegistryRepositories>
+    )
+    vi.mocked(registryGithub.parseShipToml).mockReturnValue({
+      module: { name: 'my-skill-pack', version: '2.0.0', description: 'test' },
+    })
+
+    const req = makeRequest({ repo_url: 'https://github.com/owner/repo', tag: 'v2.0.0' })
+    const res = await POST({ request: req } as Parameters<typeof POST>[0])
+    expect(res.status).toBe(200)
+
+    const upsertCall = vi.mocked(repos.upsertPackage).mock.calls[0]?.[0]
+    expect(upsertCall?.latestVersion).toBe('2.0.0')
   })
 
   it('includes scan_warnings in response when skill content has injection patterns', async () => {
