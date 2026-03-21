@@ -3,6 +3,8 @@
 pub mod actions;
 mod data;
 mod input;
+mod input_crud;
+mod nav;
 mod render;
 
 use anyhow::Result;
@@ -13,10 +15,23 @@ use runtime::db::{adrs::AdrRecord, jobs::Job, jobs::JobLogEntry, notes::Note, ta
 use std::{io, path::PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab { Targets, Notes, Adrs, Jobs, Events }
+pub enum Tab { Targets, Notes, Adrs, Jobs, Events, Agents, Skills, Mcp, Settings }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, AdrDetail, JobDetail, EventDetail }
+pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, AdrDetail, JobDetail, EventDetail, AgentDetail, McpDetail }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode { Normal, TextInput(InputAction) }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputAction {
+    CreateAgent,
+    AddSkill,
+    EditSetting,
+    ConfirmDeleteAgent,
+    ConfirmDeleteSkill,
+    ConfirmDeleteMcp,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobFilter { All, Pending, Running, Complete, Failed }
@@ -61,6 +76,26 @@ pub struct App {
     pub events: Vec<EventRecord>,
     pub sel_event: usize,
     pub log_scroll: u16,
+    // Agents tab
+    pub agents: Vec<(String, String)>,
+    pub sel_agent: usize,
+    pub active_agent: Option<String>,
+    pub compiled_at: Option<String>,
+    pub agent_detail_text: String,
+    // Skills tab
+    pub skills: Vec<(String, String)>,
+    pub sel_skill: usize,
+    // MCP tab
+    pub mcp_servers: Vec<crate::mcp::McpEntry>,
+    pub sel_mcp: usize,
+    // Settings tab
+    pub settings: Vec<(String, String)>,
+    pub sel_setting: usize,
+    // Input mode
+    pub input_mode: InputMode,
+    pub input_buf: String,
+    pub input_prompt: String,
+    // General
     pub auto_refresh: bool,
     pub refresh_counter: u8,
     pub ship_dir: PathBuf,
@@ -75,6 +110,11 @@ impl App {
         let adrs = data::load_adrs(&ship_dir);
         let jobs = data::load_jobs_filtered(&ship_dir, None);
         let events = data::load_events(&ship_dir, 50);
+        let agents = data::load_agents();
+        let (active_agent, compiled_at) = data::load_workspace_state(&ship_dir);
+        let skills = data::load_skills();
+        let mcp_servers = data::load_mcp_servers();
+        let settings = data::load_settings();
         Self {
             tab: Tab::Targets,
             screen: Screen::List,
@@ -93,6 +133,20 @@ impl App {
             events,
             sel_event: 0,
             log_scroll: 0,
+            agents,
+            sel_agent: 0,
+            active_agent,
+            compiled_at,
+            agent_detail_text: String::new(),
+            skills,
+            sel_skill: 0,
+            mcp_servers,
+            sel_mcp: 0,
+            settings,
+            sel_setting: 0,
+            input_mode: InputMode::Normal,
+            input_buf: String::new(),
+            input_prompt: String::new(),
             auto_refresh: true,
             refresh_counter: 0,
             ship_dir,
@@ -107,6 +161,13 @@ impl App {
         self.adrs = data::load_adrs(&self.ship_dir);
         self.jobs = self.load_filtered_jobs();
         self.events = data::load_events(&self.ship_dir, 50);
+        self.agents = data::load_agents();
+        let (active_agent, compiled_at) = data::load_workspace_state(&self.ship_dir);
+        self.active_agent = active_agent;
+        self.compiled_at = compiled_at;
+        self.skills = data::load_skills();
+        self.mcp_servers = data::load_mcp_servers();
+        self.settings = data::load_settings();
         match (self.tab, self.screen) {
             (Tab::Targets, Screen::TargetDetail) | (Tab::Targets, Screen::CapDetail) => {
                 if let Some(t) = self.targets.get(self.sel_target) {
@@ -127,6 +188,10 @@ impl App {
         self.sel_adr = self.sel_adr.min(self.adrs.len().saturating_sub(1));
         self.sel_job = self.sel_job.min(self.jobs.len().saturating_sub(1));
         self.sel_event = self.sel_event.min(self.events.len().saturating_sub(1));
+        self.sel_agent = self.sel_agent.min(self.agents.len().saturating_sub(1));
+        self.sel_skill = self.sel_skill.min(self.skills.len().saturating_sub(1));
+        self.sel_mcp = self.sel_mcp.min(self.mcp_servers.len().saturating_sub(1));
+        self.sel_setting = self.sel_setting.min(self.settings.len().saturating_sub(1));
         self.status = "refreshed".into();
     }
 
@@ -136,146 +201,6 @@ impl App {
             f => Some(f.label()),
         };
         data::load_jobs_filtered(&self.ship_dir, filter)
-    }
-
-    pub fn cycle_tab(&mut self) {
-        if self.screen != Screen::List { return; }
-        self.tab = match self.tab {
-            Tab::Targets => Tab::Jobs,
-            Tab::Jobs => Tab::Events,
-            Tab::Events => Tab::Notes,
-            Tab::Notes => Tab::Adrs,
-            Tab::Adrs => Tab::Targets,
-        };
-        self.status.clear();
-    }
-
-    pub fn reverse_cycle_tab(&mut self) {
-        if self.screen != Screen::List { return; }
-        self.tab = match self.tab {
-            Tab::Targets => Tab::Adrs,
-            Tab::Adrs => Tab::Notes,
-            Tab::Notes => Tab::Events,
-            Tab::Events => Tab::Jobs,
-            Tab::Jobs => Tab::Targets,
-        };
-        self.status.clear();
-    }
-
-    pub fn move_down(&mut self) {
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::List) => {
-                if !self.targets.is_empty() {
-                    self.sel_target = (self.sel_target + 1).min(self.targets.len() - 1);
-                }
-            }
-            (Tab::Targets, Screen::TargetDetail) => {
-                if !self.caps.is_empty() {
-                    self.sel_cap = (self.sel_cap + 1).min(self.caps.len() - 1);
-                }
-            }
-            (Tab::Notes, Screen::List) => {
-                if !self.notes.is_empty() {
-                    self.sel_note = (self.sel_note + 1).min(self.notes.len() - 1);
-                }
-            }
-            (Tab::Notes, Screen::NoteDetail) => {
-                self.note_scroll = self.note_scroll.saturating_add(3);
-            }
-            (Tab::Adrs, Screen::List) => {
-                if !self.adrs.is_empty() {
-                    self.sel_adr = (self.sel_adr + 1).min(self.adrs.len() - 1);
-                }
-            }
-            (Tab::Jobs, Screen::List) => {
-                if !self.jobs.is_empty() {
-                    self.sel_job = (self.sel_job + 1).min(self.jobs.len() - 1);
-                }
-            }
-            (Tab::Jobs, Screen::JobDetail) => {
-                self.log_scroll = self.log_scroll.saturating_add(3);
-            }
-            (Tab::Events, Screen::List) => {
-                if !self.events.is_empty() {
-                    self.sel_event = (self.sel_event + 1).min(self.events.len() - 1);
-                }
-            }
-            (Tab::Events, Screen::EventDetail) => {}
-            _ => {}
-        }
-    }
-
-    pub fn move_up(&mut self) {
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::List) => self.sel_target = self.sel_target.saturating_sub(1),
-            (Tab::Targets, Screen::TargetDetail) => self.sel_cap = self.sel_cap.saturating_sub(1),
-            (Tab::Notes, Screen::List) => self.sel_note = self.sel_note.saturating_sub(1),
-            (Tab::Notes, Screen::NoteDetail) => {
-                self.note_scroll = self.note_scroll.saturating_sub(3);
-            }
-            (Tab::Adrs, Screen::List) => self.sel_adr = self.sel_adr.saturating_sub(1),
-            (Tab::Jobs, Screen::List) => self.sel_job = self.sel_job.saturating_sub(1),
-            (Tab::Jobs, Screen::JobDetail) => {
-                self.log_scroll = self.log_scroll.saturating_sub(3);
-            }
-            (Tab::Events, Screen::List) => self.sel_event = self.sel_event.saturating_sub(1),
-            _ => {}
-        }
-    }
-
-    pub fn enter(&mut self) {
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::List) => {
-                if let Some(t) = self.targets.get(self.sel_target) {
-                    let id = t.id.clone();
-                    self.caps = data::load_caps(&self.ship_dir, &id);
-                    self.sel_cap = 0;
-                    self.screen = Screen::TargetDetail;
-                }
-            }
-            (Tab::Targets, Screen::TargetDetail) => {
-                if !self.caps.is_empty() {
-                    self.screen = Screen::CapDetail;
-                }
-            }
-            (Tab::Notes, Screen::List) => {
-                if !self.notes.is_empty() {
-                    self.note_scroll = 0;
-                    self.screen = Screen::NoteDetail;
-                }
-            }
-            (Tab::Adrs, Screen::List) => {
-                if !self.adrs.is_empty() {
-                    self.screen = Screen::AdrDetail;
-                }
-            }
-            (Tab::Jobs, Screen::List) => {
-                if let Some(j) = self.jobs.get(self.sel_job) {
-                    let id = j.id.clone();
-                    self.logs = data::load_logs(&self.ship_dir, &id);
-                    self.log_scroll = 0;
-                    self.screen = Screen::JobDetail;
-                }
-            }
-            (Tab::Events, Screen::List) => {
-                if !self.events.is_empty() {
-                    self.screen = Screen::EventDetail;
-                }
-            }
-            _ => {}
-        }
-        self.status.clear();
-    }
-
-    pub fn back(&mut self) {
-        self.screen = match self.screen {
-            Screen::CapDetail => Screen::TargetDetail,
-            Screen::TargetDetail | Screen::NoteDetail | Screen::AdrDetail | Screen::JobDetail | Screen::EventDetail => {
-                Screen::List
-            }
-            Screen::List => Screen::List,
-        };
-        self.status.clear();
     }
 }
 
