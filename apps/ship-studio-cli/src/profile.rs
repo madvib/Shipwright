@@ -190,52 +190,7 @@ mod tests {
         assert!(state.plugins_installed.is_empty());
     }
 
-    #[test]
-    fn migrate_ship_lock_active_profile() {
-        let tmp = TempDir::new().unwrap();
-        let ship_dir = setup_ship_dir(&tmp);
-        std::fs::write(
-            ship_dir.join("ship.lock"),
-            "active_profile = \"cli-lane\"\ncompiled_at = \"2026-01-01T00:00:00Z\"\n\
-             \n[plugins]\ninstalled = [\"superpowers@official\"]\n",
-        ).unwrap();
-        let state = WorkspaceState::load(&ship_dir);
-        assert_eq!(state.active_profile.as_deref(), Some("cli-lane"));
-        assert_eq!(state.compiled_at.as_deref(), Some("2026-01-01T00:00:00Z"));
-        assert_eq!(state.plugins_installed, vec!["superpowers@official"]);
-        assert!(!ship_dir.join("ship.lock").exists(), "ship.lock must be deleted after migration");
-    }
-
-    #[test]
-    fn migrate_ship_lock_active_preset_fallback() {
-        let tmp = TempDir::new().unwrap();
-        let ship_dir = setup_ship_dir(&tmp);
-        std::fs::write(ship_dir.join("ship.lock"), "active_preset = \"cli-lane\"\n").unwrap();
-        let state = WorkspaceState::load(&ship_dir);
-        assert_eq!(state.active_profile.as_deref(), Some("cli-lane"));
-        assert!(!ship_dir.join("ship.lock").exists());
-    }
-
-    #[test]
-    fn migrate_ship_lock_is_idempotent() {
-        let tmp = TempDir::new().unwrap();
-        let ship_dir = setup_ship_dir(&tmp);
-        std::fs::write(ship_dir.join("ship.lock"), "active_profile = \"web-lane\"\n").unwrap();
-        let _ = WorkspaceState::load(&ship_dir); // first load: migrates and deletes
-        assert!(!ship_dir.join("ship.lock").exists());
-        let state = WorkspaceState::load(&ship_dir); // second load: reads from DB
-        assert_eq!(state.active_profile.as_deref(), Some("web-lane"));
-    }
-
-    #[test]
-    fn registry_ship_lock_not_migrated() {
-        let tmp = TempDir::new().unwrap();
-        let ship_dir = setup_ship_dir(&tmp);
-        let registry_lock = "version = 1\n\n[[package]]\npath = \"github.com/owner/pkg\"\ncommit = \"abc\"\nhash = \"sha256:xyz\"\n";
-        std::fs::write(ship_dir.join("ship.lock"), registry_lock).unwrap();
-        let _ = WorkspaceState::load(&ship_dir);
-        assert!(ship_dir.join("ship.lock").exists(), "registry-format ship.lock must not be deleted");
-    }
+    // ship.lock workspace-state migration tests removed — migration code deleted 2026-03-20.
 
     #[test]
     fn find_profile_file_finds_new_location() {
@@ -246,19 +201,11 @@ mod tests {
         assert!(found.unwrap().to_string_lossy().contains("agents/profiles"));
     }
 
-    #[test]
-    fn find_profile_file_falls_back_to_modes() {
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/modes/legacy.toml", "[mode]\nname=\"Legacy\"\nid=\"legacy\"\n");
-        assert!(find_profile_file("legacy", tmp.path()).is_some());
-    }
+    // Compat path tests (presets/, modes/) removed — compat paths deleted 2026-03-20.
 
     #[test]
-    fn find_profile_file_prefers_profiles_over_modes() {
+    fn find_profile_file_returns_none_for_missing() {
         let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/agents/profiles/both.toml", "[profile]\nname=\"New\"\nid=\"both\"\n");
-        write_file(tmp.path(), ".ship/modes/both.toml", "[mode]\nname=\"Old\"\nid=\"both\"\n");
-        let found = find_profile_file("both", tmp.path()).unwrap();
-        assert!(found.to_string_lossy().contains("agents/profiles"));
+        assert!(find_profile_file("nonexistent", tmp.path()).is_none());
     }
 }

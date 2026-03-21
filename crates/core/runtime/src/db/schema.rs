@@ -270,31 +270,4 @@ CREATE TABLE IF NOT EXISTS managed_mcp_state (
   updated_at       TEXT NOT NULL
 );
 
--- ─── Runtime primitives (environments, processes, git workspaces) ───────────
-CREATE TABLE IF NOT EXISTS environment (
-  id               TEXT PRIMARY KEY,
-  name             TEXT,
-  tools_json       TEXT NOT NULL DEFAULT '[]',
-  rules_json       TEXT NOT NULL DEFAULT '[]',
-  permissions_json TEXT NOT NULL DEFAULT '{}',
-  providers_json   TEXT NOT NULL DEFAULT '[]',
-  hooks_json       TEXT NOT NULL DEFAULT '{}',
-  mcp_servers_json TEXT NOT NULL DEFAULT '[]',
-  created_at       TEXT NOT NULL,
-  updated_at       TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS runtime_process (
-  id           TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL,
-  status       TEXT NOT NULL,
-  provider     TEXT,
-  capability   TEXT,
-  started_at   TEXT NOT NULL,
-  ended_at     TEXT,
-  error        TEXT
-);
-CREATE INDEX IF NOT EXISTS runtime_process_workspace_idx
-  ON runtime_process(workspace_id, started_at DESC);
-
 "#;

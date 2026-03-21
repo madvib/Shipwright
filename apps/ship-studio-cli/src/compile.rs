@@ -80,15 +80,21 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         }
     }
 
-    // 6. Write mcp__ship__* to global ~/.claude/settings.json when compiling for claude.
-    //    The ship-mcp server is always injected by the compiler into every claude compile.
-    //    This is a one-time global allow — avoids per-session approval prompts for ship MCP.
-    if !opts.dry_run
-        && providers.contains(&"claude".to_string())
-        && let Err(e) = ensure_ship_mcp_globally_allowed()
-    {
-        // Non-fatal — log warning but don't fail compile
-        eprintln!("warning: could not update global Claude settings: {e}");
+    // 6. Pre-approve ship MCP tools globally for each provider.
+    //    The ship-mcp server is always injected by the compiler into every compile.
+    //    This avoids per-session approval prompts for ship MCP tools.
+    if !opts.dry_run {
+        for provider in &providers {
+            let result = match provider.as_str() {
+                "claude" => ensure_ship_mcp_allowed_claude(),
+                "gemini" => ensure_ship_mcp_allowed_gemini(),
+                "cursor" => ensure_ship_mcp_allowed_cursor(opts.project_root),
+                _ => Ok(()),
+            };
+            if let Err(e) = result {
+                eprintln!("warning: could not update {provider} MCP permissions: {e}");
+            }
+        }
     }
 
     if !opts.dry_run {
@@ -98,57 +104,96 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     Ok(())
 }
 
-// ── Global Claude settings ─────────────────────────────────────────────────────
+// ── Global MCP allow-listing ──────────────────────────────────────────────────
 
-/// Write `mcp__ship__*` to `~/.claude/settings.json` permissions allow list.
-/// This pre-approves all ship MCP tools globally so agents aren't prompted on
-/// every session when the ship server is active.
-/// Idempotent — safe to call on every `ship use`.
-fn ensure_ship_mcp_globally_allowed() -> Result<()> {
-    let home = dirs::home_dir()
-        .context("could not determine home directory")?;
-    let path = home.join(".claude").join("settings.json");
-    ensure_parent(&path)?;
+/// Ensure a JSON pattern is in an array at the given JSON pointer path.
+/// Creates intermediate objects if needed. Returns Ok(false) if already present.
+fn ensure_json_array_entry(settings: &mut serde_json::Value, pointer_parts: &[&str], pattern: &str) -> Result<bool> {
+    // Check if already present
+    let pointer = format!("/{}", pointer_parts.join("/"));
+    let already_present = settings
+        .pointer(&pointer)
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(pattern)));
+    if already_present {
+        return Ok(false);
+    }
 
+    // Navigate/create path to the array
+    let mut current = settings.as_object_mut().context("root must be object")?;
+    for &part in &pointer_parts[..pointer_parts.len() - 1] {
+        let entry = current.entry(part).or_insert(serde_json::json!({}));
+        current = entry.as_object_mut().context("intermediate must be object")?;
+    }
+    let last = pointer_parts.last().context("empty path")?;
+    let arr_val = current.entry(*last).or_insert(serde_json::json!([]));
+    let arr = arr_val.as_array_mut().context("leaf must be array")?;
+    arr.push(serde_json::json!(pattern));
+    Ok(true)
+}
+
+/// Read-modify-write a JSON settings file. Calls `mutate` to apply changes.
+/// Creates the file and parent dirs if they don't exist.
+fn update_json_settings(path: &std::path::Path, mutate: impl FnOnce(&mut serde_json::Value) -> Result<bool>) -> Result<()> {
+    ensure_parent(path)?;
     let mut settings: serde_json::Value = if path.exists() {
-        serde_json::from_str(&std::fs::read_to_string(&path)?)
+        serde_json::from_str(&std::fs::read_to_string(path)?)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
-
-    let ship_pattern = "mcp__ship__*";
-
-    // Check if already present — use a non-mutable read
-    let already_present = settings
-        .pointer("/permissions/allow")
-        .and_then(|v| v.as_array())
-        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(ship_pattern)));
-
-    if already_present {
-        return Ok(());
+    if mutate(&mut settings)? {
+        std::fs::write(path, serde_json::to_string_pretty(&settings)?)?;
     }
-
-    // Not present — ensure permissions.allow exists and add the pattern
-    {
-        let root = settings
-            .as_object_mut()
-            .context("settings.json must be an object")?;
-        let perms = root
-            .entry("permissions")
-            .or_insert(serde_json::json!({}));
-        let perms_obj = perms.as_object_mut()
-            .context("permissions must be an object")?;
-        let allow_arr = perms_obj
-            .entry("allow")
-            .or_insert(serde_json::json!([]));
-        let arr = allow_arr.as_array_mut()
-            .context("permissions.allow must be an array")?;
-        arr.push(serde_json::json!(ship_pattern));
-    }
-
-    std::fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
     Ok(())
+}
+
+/// Claude: write `mcp__ship__*` to `~/.claude/settings.json` permissions.allow.
+fn ensure_ship_mcp_allowed_claude() -> Result<()> {
+    let path = dirs::home_dir()
+        .context("could not determine home directory")?
+        .join(".claude").join("settings.json");
+    update_json_settings(&path, |s| {
+        ensure_json_array_entry(s, &["permissions", "allow"], "mcp__ship__*")
+    })
+}
+
+/// Gemini: write allow policy for ship MCP to `~/.gemini/policies/ship-mcp.toml`.
+fn ensure_ship_mcp_allowed_gemini() -> Result<()> {
+    let path = dirs::home_dir()
+        .context("could not determine home directory")?
+        .join(".gemini").join("policies").join("ship-mcp.toml");
+    ensure_parent(&path)?;
+
+    let content = r#"# Generated by Ship. Pre-approves ship MCP tools globally.
+
+[[tool_policies]]
+tool = "mcp"
+pattern = "ship/.*"
+decision = "allow"
+"#;
+
+    // Idempotent — only write if missing or different
+    if path.exists() {
+        let existing = std::fs::read_to_string(&path)?;
+        if existing == content {
+            return Ok(());
+        }
+    }
+    std::fs::write(&path, content)?;
+    Ok(())
+}
+
+/// Cursor: write `Mcp(ship:*)` to project `.cursor/cli.json` permissions.allow.
+fn ensure_ship_mcp_allowed_cursor(project_root: &std::path::Path) -> Result<()> {
+    let path = project_root.join(".cursor").join("cli.json");
+    update_json_settings(&path, |s| {
+        // Ensure version field exists
+        if s.get("version").is_none() {
+            s["version"] = serde_json::json!(1);
+        }
+        ensure_json_array_entry(s, &["permissions", "allow"], "Mcp(ship:*)")
+    })
 }
 
 // ── Mode → library ────────────────────────────────────────────────────────────

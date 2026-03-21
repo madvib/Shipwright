@@ -218,11 +218,6 @@ pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
             .execute(&mut conn)
             .await?;
 
-        sqlx::query("DELETE FROM runtime_process WHERE workspace_id = ?")
-            .bind(&workspace_id)
-            .execute(&mut conn)
-            .await?;
-
         let result = sqlx::query("DELETE FROM workspace WHERE branch = ?")
             .bind(branch)
             .execute(&mut conn)
