@@ -1,6 +1,6 @@
-//! ship.toml manifest parser.
+//! Ship manifest parser (JSONC primary, TOML legacy).
 //!
-//! Parses and validates the three-section ship.toml format:
+//! Parses and validates the three-section manifest format:
 //! - [module]  — package identity (name, version, description, license)
 //! - [dependencies] — direct dependency map (path → version or full table)
 //! - [exports]  — skills and agent paths this module exports
@@ -114,7 +114,7 @@ struct RawShipManifest {
 
 // ── Root manifest ──────────────────────────────────────────────────────────────
 
-/// Parsed and validated `ship.toml` manifest.
+/// Parsed and validated Ship manifest.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShipManifest {
     pub module: ManifestModule,

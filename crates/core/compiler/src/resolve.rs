@@ -86,29 +86,29 @@ pub struct ResolvedConfig {
 /// Resolve the effective agent config from pre-loaded project data.
 ///
 /// Resolution order (highest wins):
-/// 1. Project defaults (`ship.toml` types + `agents/` content)
+/// 1. Project defaults (manifest types + `agents/` content)
 /// 2. Active mode filter (restricts servers/skills/rules)
 /// 3. Feature overrides (model, providers, additional server/skill filter)
 ///
 /// A self-contained library of agent config assets loaded from the `agents/`
 /// directory. This is the primary input for the compiler in the new config model:
-/// ship.toml holds identity only; the library holds everything the compiler needs.
+/// The manifest holds identity only; the library holds everything the compiler needs.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ProjectLibrary {
-    /// Mode definitions from `agents/modes/*.toml`.
+    /// Agent definitions from `agents/*.jsonc`.
     #[serde(default)]
     pub modes: Vec<ModeConfig>,
-    /// Active mode for this resolve (e.g. workspace override).
+    /// Active agent for this resolve (e.g. workspace override).
     #[serde(default)]
     pub active_agent: Option<String>,
-    /// MCP server definitions from `agents/mcp.toml`.
+    /// MCP server definitions from `mcp.jsonc`.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
-    /// Skills from `agents/skills/`.
+    /// Skills from `skills/`.
     #[serde(default)]
     pub skills: Vec<Skill>,
-    /// Rules from `agents/rules/` or `agents/rules.md`.
+    /// Rules from `rules/`.
     #[serde(default)]
     pub rules: Vec<Rule>,
     /// Permissions from `agents/permissions.toml`.
