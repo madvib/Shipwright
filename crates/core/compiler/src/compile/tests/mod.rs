@@ -11,3 +11,4 @@ mod gemini_policy_tests;
 mod gemini_tests;
 mod mcp_tests;
 mod provider_tests;
+mod realistic_tests;
