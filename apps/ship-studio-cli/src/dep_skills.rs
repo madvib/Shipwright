@@ -209,7 +209,7 @@ fn parse_dep_skill(dep_ref: &str, raw: &str) -> Skill {
             } else if let Some(v) = line.strip_prefix("compatibility:") {
                 compatibility = Some(v.trim().to_string());
             } else if let Some(v) = line.strip_prefix("allowed-tools:") {
-                allowed_tools = v.trim().split_whitespace().map(str::to_string).collect();
+                allowed_tools = v.split_whitespace().map(str::to_string).collect();
             } else if line.trim_end() == "metadata:" {
                 in_metadata = true;
             } else if let Some(v) = line.strip_prefix("version:") {

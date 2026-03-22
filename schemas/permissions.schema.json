@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getship.dev/schemas/permissions.schema.json",
+  "title": "Ship Permission Presets",
+  "description": "Schema for .ship/permissions.jsonc — named permission presets on a strict-to-loose continuum. Referenced by agent configs via \"permissions\": { \"preset\": \"<name>\" }.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/PermissionPreset"
+  },
+  "$defs": {
+    "PermissionPreset": {
+      "type": "object",
+      "description": "A named permission preset. Defines tool access rules and a default permission mode.",
+      "properties": {
+        "default_mode": {
+          "type": "string",
+          "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
+          "description": "Default permission mode for agents using this preset. Controls how much autonomy the agent has: plan (read-only), default (ask for writes), acceptEdits (auto-approve edits), dontAsk (fully autonomous), bypassPermissions (no restrictions)."
+        },
+        "tools_allow": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool patterns to allow. Supports glob patterns. Examples: Read, Bash(*), mcp__ship__*, Bash(ship *)."
+        },
+        "tools_deny": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool patterns to deny. Takes precedence over tools_allow. Examples: Bash(rm -rf *), Bash(git push --force*)."
+        },
+        "tools_ask": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool patterns requiring user confirmation. Applied before tools_allow but after tools_deny."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

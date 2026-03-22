@@ -103,8 +103,8 @@ pub fn resolve_and_fetch(
 
         if visited.contains(&dep_path) {
             // Check for version conflicts.
-            if let Some((prev_ver, prev_requestor)) = resolved_versions.get(&dep_path) {
-                if *prev_ver != version_str {
+            if let Some((prev_ver, prev_requestor)) = resolved_versions.get(&dep_path)
+                && *prev_ver != version_str {
                     anyhow::bail!(
                         "version conflict for {}: {} requires '{}' but {} requires '{}'",
                         dep_path,
@@ -114,7 +114,6 @@ pub fn resolve_and_fetch(
                         prev_ver
                     );
                 }
-            }
             continue;
         }
         visited.insert(dep_path.clone());

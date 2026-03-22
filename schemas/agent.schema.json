@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getship.dev/schemas/agent.schema.json",
   "title": "Ship Agent Configuration",
-  "description": "Schema for .ship/agents/<id>.jsonc — an agent definition that controls rules, skills, permissions, MCP servers, and provider targets.",
+  "description": "Schema for .ship/agents/<id>.jsonc — an agent definition that controls identity, skills, MCP servers, plugins, permissions, rules, hooks, and provider settings.",
   "type": "object",
   "required": ["agent"],
   "properties": {
@@ -11,8 +12,8 @@
     },
     "agent": {
       "type": "object",
-      "description": "Agent identity and composition.",
-      "required": ["name"],
+      "description": "Agent identity and metadata.",
+      "required": ["name", "id"],
       "properties": {
         "name": {
           "type": "string",
@@ -20,7 +21,7 @@
         },
         "id": {
           "type": "string",
-          "description": "Machine identifier (defaults to filename stem).",
+          "description": "Machine identifier. Must match the filename stem (e.g. rust-compiler.jsonc has id rust-compiler).",
           "pattern": "^[a-z0-9-]+$"
         },
         "version": {
@@ -30,164 +31,128 @@
         },
         "description": {
           "type": "string",
-          "description": "What this agent does."
+          "description": "What this agent does — shown in `ship agents` and editor UI."
         },
         "providers": {
           "type": "array",
-          "items": { "type": "string", "enum": ["claude", "cursor", "codex", "gemini"] },
-          "description": "Provider targets (overrides project-level)."
-        },
-        "rules": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Rule file paths (relative to .ship/agents/)."
-        },
-        "skills": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Skill directory paths (relative to .ship/agents/)."
+          "items": {
+            "type": "string",
+            "enum": ["claude", "cursor", "codex", "gemini"]
+          },
+          "description": "Provider targets for this agent. Overrides the project-level providers list."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "skills": {
       "type": "object",
-      "description": "Skill activation (CLI agent format).",
+      "description": "Skill activation. Controls which skills are available to this agent.",
       "properties": {
         "refs": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Skill IDs to activate (empty = all)."
+          "description": "Skill IDs to activate. An empty array means all installed skills are available. Supports local IDs (e.g. tdd) and namespaced IDs (e.g. github.com/owner/repo/skill-name)."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "mcp": {
-      "oneOf": [
-        {
-          "type": "object",
-          "description": "MCP server activation (CLI agent format).",
-          "properties": {
-            "servers": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "MCP server IDs to activate (empty = all)."
-            }
-          }
-        },
-        {
+      "type": "object",
+      "description": "MCP server activation. Controls which MCP servers from mcp.jsonc are available to this agent.",
+      "properties": {
+        "servers": {
           "type": "array",
-          "description": "Inline MCP server declarations (compiler agent format).",
-          "items": {
-            "type": "object",
-            "required": ["id", "command"],
-            "properties": {
-              "id": { "type": "string", "description": "Unique server ID." },
-              "command": { "type": "string", "description": "Command to run." },
-              "args": {
-                "type": "array",
-                "items": { "type": "string" },
-                "description": "Command arguments."
-              },
-              "env": {
-                "type": "object",
-                "additionalProperties": { "type": "string" },
-                "description": "Environment variables. Values may use ${VAR} syntax."
-              }
-            }
-          }
+          "items": { "type": "string" },
+          "description": "MCP server IDs to activate from .ship/mcp.jsonc. An empty array means all configured servers are available."
+        },
+        "active_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "MCP tool names to make visible beyond the default set. Used by orchestrator agents that need extended platform access."
         }
-      ]
+      },
+      "additionalProperties": false
     },
     "plugins": {
       "type": "object",
-      "description": "Plugin installation intent.",
+      "description": "Plugin installation intent. The compiler emits a manifest; the CLI executes the installs.",
       "properties": {
         "install": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Plugin IDs to install, e.g. superpowers@claude-plugins-official."
+          "description": "Plugin IDs to install, e.g. superpowers@claude-plugins-official, frontend-design@claude-plugins-official."
         },
         "scope": {
           "type": "string",
           "enum": ["project", "user"],
           "default": "project",
-          "description": "Installation scope."
+          "description": "Installation scope. project installs locally, user installs globally."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "permissions": {
       "type": "object",
-      "description": "Permission overrides.",
+      "description": "Permission overrides. Merged on top of the named preset from permissions.jsonc.",
       "properties": {
         "preset": {
           "type": "string",
           "enum": ["ship-readonly", "ship-standard", "ship-autonomous", "ship-elevated"],
-          "description": "Named permission preset from permissions.jsonc."
-        },
-        "allow": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Tool permission grants (compiler agent format)."
+          "description": "Named permission preset from .ship/permissions.jsonc. Defines the base permission tier."
         },
         "tools_deny": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Tool patterns to deny."
+          "description": "Tool patterns to deny. Merged on top of the preset's deny list. Supports glob patterns, e.g. Bash(rm -rf *), mcp__*__delete*."
         },
         "tools_ask": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Tool patterns requiring confirmation."
+          "description": "Tool patterns requiring user confirmation before execution. Merged on top of the preset's ask list."
         },
         "default_mode": {
           "type": "string",
           "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
-          "description": "Default permission mode."
+          "description": "Default permission mode for the agent session. Overrides the preset's default_mode if set."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "rules": {
       "type": "object",
-      "description": "Inline rules.",
+      "description": "Inline rules appended to the agent's system prompt after .ship/rules/*.md files.",
       "properties": {
         "inline": {
           "type": "string",
-          "description": "Inline always-on rules appended after agents/rules/*.md."
+          "description": "Inline always-on rules. Use \\n for line breaks. Appended after rule files from .ship/rules/."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "hooks": {
       "type": "object",
-      "description": "Hook commands.",
+      "description": "Hook commands triggered by agent lifecycle events. Emitted into provider-specific hook config.",
       "properties": {
         "stop": {
           "type": "string",
-          "description": "Command to run when the agent session ends."
+          "description": "Shell command to run when the agent session ends (Stop hook)."
         },
         "subagent_stop": {
           "type": "string",
-          "description": "Command to run when a sub-agent session ends."
-        }
-      }
-    },
-    "providers": {
-      "type": "object",
-      "description": "Provider targets and per-provider overrides.",
-      "properties": {
-        "targets": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Provider IDs to compile for."
+          "description": "Shell command to run when a sub-agent session ends (SubagentStop hook)."
         }
       },
-      "additionalProperties": {
-        "type": "object",
-        "description": "Per-provider override table (e.g. model, context_window)."
-      }
+      "additionalProperties": false
     },
     "provider_settings": {
       "type": "object",
-      "description": "Provider-specific settings merged verbatim into the provider's config file.",
-      "additionalProperties": true
+      "description": "Provider-specific settings merged verbatim into the provider's config file. Keys are provider names (e.g. claude, cursor). Values are arbitrary objects passed through without transformation.",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Settings object for a specific provider. Any key/value valid in that provider's config file works here.",
+        "additionalProperties": true
+      }
     }
-  }
+  },
+  "additionalProperties": false
 }

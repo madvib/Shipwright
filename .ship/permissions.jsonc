@@ -1,5 +1,6 @@
 {
   // Ship permission presets — strict → loose continuum.
+  "$schema": "../schemas/permissions.schema.json",
   //
   // Referenced via: "permissions": { "preset": "<name>" }
   // Presets are templates, not security boundaries.

@@ -37,11 +37,10 @@ impl WorkspaceState {
             state.active_agent = v.as_str().map(str::to_string);
         }
         // Compat: also check the old key name for projects that haven't re-activated yet
-        if state.active_agent.is_none() {
-            if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, "active_profile") {
+        if state.active_agent.is_none()
+            && let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, "active_profile") {
                 state.active_agent = v.as_str().map(str::to_string);
             }
-        }
         if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_COMPILED_AT) {
             state.compiled_at = v.as_str().map(str::to_string);
         }

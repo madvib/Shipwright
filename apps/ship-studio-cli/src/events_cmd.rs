@@ -55,7 +55,7 @@ pub fn run_events(
         .map(parse_since)
         .transpose()?;
 
-    let mut events = runtime::events::read_events(&ship_dir)?;
+    let mut events = runtime::events::read_events(ship_dir)?;
 
     // Apply filters
     if let Some(cutoff) = since_cutoff {
@@ -91,8 +91,8 @@ pub fn run_events(
 
     // Table header
     println!(
-        "{:<10} {:<20} {:<16} {:<24} {}",
-        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION", "SUBJECT"
+        "{:<10} {:<20} {:<16} {:<24} SUBJECT",
+        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION"
     );
     println!("{}", "-".repeat(90));
 

@@ -92,7 +92,7 @@ impl ServerHandler for ShipServer {
                     }
                     active_agent
                         .as_ref()
-                        .map_or(false, |m| Self::mode_allows_tool(n, &m.active_tools))
+                        .is_some_and(|m| Self::mode_allows_tool(n, &m.active_tools))
                 })
                 .collect()
         } else {

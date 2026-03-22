@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 use runtime::workspace::{
@@ -104,7 +104,7 @@ pub fn create_workspace(project_dir: &Path, req: CreateWorkspaceRequest) -> Stri
 
 fn create_git_worktree(
     project_root: &Path,
-    worktree_path: &PathBuf,
+    worktree_path: &Path,
     branch: &str,
     base_branch: &str,
 ) -> Option<String> {
@@ -162,7 +162,7 @@ pub(crate) struct WorkspaceConfig {
 }
 
 fn write_workspace_config(
-    worktree_path: &PathBuf,
+    worktree_path: &Path,
     name: &str,
     kind: &str,
     preset_id: &Option<String>,

@@ -110,14 +110,13 @@ fn run_from_url(url: &str) -> Result<()> {
     }
 
     // Write permissions
-    if let Some(ref perms) = bundle.permissions {
-        if let Some(ref preset) = perms.preset {
+    if let Some(ref perms) = bundle.permissions
+        && let Some(ref preset) = perms.preset {
             let dest = paths::project_dir().join("permissions.toml");
             let content = format!("[permissions]\npreset = {}\n", quote_toml(preset));
             std::fs::write(&dest, &content)
                 .with_context(|| format!("Failed to write {}", dest.display()))?;
         }
-    }
 
     let preset_msg = bundle.permissions.as_ref()
         .and_then(|p| p.preset.as_deref())

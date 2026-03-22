@@ -132,13 +132,12 @@ pub(super) fn build_gemini_settings_patch(resolved: &ResolvedConfig) -> Option<J
     }
 
     // settings_extra — merged verbatim last
-    if let Some(extra) = &resolved.gemini_settings_extra {
-        if let Some(obj) = extra.as_object() {
+    if let Some(extra) = &resolved.gemini_settings_extra
+        && let Some(obj) = extra.as_object() {
             for (k, v) in obj {
                 patch[k] = v.clone();
             }
         }
-    }
 
     Some(patch)
 }

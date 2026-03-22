@@ -96,8 +96,8 @@ pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'st
         }
     }
     // Global agents
-    if !project_only {
-        if let Ok(entries) = fs::read_dir(global_modes_dir()) {
+    if !project_only
+        && let Ok(entries) = fs::read_dir(global_modes_dir()) {
             for e in entries.flatten() {
                 let path = e.path();
                 if is_config_ext(&path) {
@@ -108,7 +108,6 @@ pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'st
                 }
             }
         }
-    }
     agents
 }
 

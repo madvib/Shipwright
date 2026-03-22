@@ -118,8 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_adr_status ON adr(status);
 "#;
 
 /// Target: a named goal. Two kinds:
-/// - milestone: time-bounded (v0.1, v0.2), has due_date
-/// - surface: evergreen capability domain (Compiler, Studio, Registry)
+///   - milestone: time-bounded (v0.1, v0.2), has due_date
+///   - surface: evergreen capability domain (Compiler, Studio, Registry)
+///
 /// Carries body_markdown as a living document.
 pub const TARGET: &str = r#"
 -- target: named goal. kind='milestone' (time-bounded) or 'surface' (evergreen).

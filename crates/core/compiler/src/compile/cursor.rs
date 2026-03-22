@@ -192,13 +192,12 @@ pub(super) fn build_cursor_cli_json(resolved: &ResolvedConfig) -> Option<Json> {
     let mut out = permissions_json.unwrap_or_else(|| serde_json::json!({ "version": 1 }));
 
     // Merge cursor_settings_extra verbatim.
-    if let Some(extra) = &resolved.cursor_settings_extra {
-        if let Some(obj) = extra.as_object() {
+    if let Some(extra) = &resolved.cursor_settings_extra
+        && let Some(obj) = extra.as_object() {
             for (k, v) in obj {
                 out[k] = v.clone();
             }
         }
-    }
 
     Some(out)
 }
@@ -213,11 +212,10 @@ pub(super) fn build_cursor_server_entry(
     let mut entry = super::mcp::server_entry(desc, s);
 
     // envFile for stdio servers.
-    if matches!(s.server_type, McpServerType::Stdio) {
-        if let Some(env_file) = &s.cursor_env_file {
+    if matches!(s.server_type, McpServerType::Stdio)
+        && let Some(env_file) = &s.cursor_env_file {
             entry["envFile"] = Json::String(env_file.clone());
         }
-    }
 
     entry
 }

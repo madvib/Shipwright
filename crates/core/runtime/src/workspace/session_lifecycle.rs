@@ -99,7 +99,7 @@ pub fn start_workspace_session(
 
     if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
         let mut existing = hydrate_workspace_session(active);
-        let _ = annotate_session_stale_state(
+        annotate_session_stale_state(
             &mut existing,
             &std::collections::HashMap::new(),
         );

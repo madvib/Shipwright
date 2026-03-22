@@ -77,25 +77,23 @@ pub fn load_agent_detail(agent_id: &str) -> String {
 pub fn load_skills() -> Vec<(String, String)> {
     let mut skills = Vec::new();
     let project_dir = skills_dir();
-    if project_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&project_dir) {
+    if project_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&project_dir) {
             for e in entries.flatten() {
                 if e.path().is_dir() && e.path().join("SKILL.md").exists() {
                     skills.push((e.file_name().to_string_lossy().to_string(), "local".to_string()));
                 }
             }
         }
-    }
     let global_dir = global_skills_dir();
-    if global_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&global_dir) {
+    if global_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&global_dir) {
             for e in entries.flatten() {
                 if e.path().is_dir() && e.path().join("SKILL.md").exists() {
                     skills.push((e.file_name().to_string_lossy().to_string(), "global".to_string()));
                 }
             }
         }
-    }
     skills.sort_by(|a, b| a.0.cmp(&b.0));
     skills
 }

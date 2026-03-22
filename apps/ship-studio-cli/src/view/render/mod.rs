@@ -126,18 +126,10 @@ fn footer(app: &App) -> Paragraph<'static> {
         (Tab::Jobs, Screen::JobDetail) => format!(
             "  ↑↓ jk scroll · g/G top/end · l launch · ⌫ back · a auto({auto}) · q quit"
         ),
-        (Tab::Agents, Screen::List) => format!(
-            "  ↑↓ jk · ⏎ detail · a activate · c create · d delete · Tab switch · q quit"
-        ),
-        (Tab::Skills, Screen::List) => format!(
-            "  ↑↓ jk · a add · d remove · Tab switch · q quit"
-        ),
-        (Tab::Mcp, Screen::List) => format!(
-            "  ↑↓ jk · ⏎ detail · d remove · Tab switch · q quit"
-        ),
-        (Tab::Settings, Screen::List) => format!(
-            "  ↑↓ jk · ⏎ edit value · Tab switch · q quit"
-        ),
+        (Tab::Agents, Screen::List) => "  ↑↓ jk · ⏎ detail · a activate · c create · d delete · Tab switch · q quit".to_string(),
+        (Tab::Skills, Screen::List) => "  ↑↓ jk · a add · d remove · Tab switch · q quit".to_string(),
+        (Tab::Mcp, Screen::List) => "  ↑↓ jk · ⏎ detail · d remove · Tab switch · q quit".to_string(),
+        (Tab::Settings, Screen::List) => "  ↑↓ jk · ⏎ edit value · Tab switch · q quit".to_string(),
         (_, Screen::List) => format!(
             "  ↑↓ jk · g/G top/end · ⏎ open · Tab/⇧Tab switch · r reload · a auto({auto}) · q quit"
         ),

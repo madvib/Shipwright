@@ -164,13 +164,12 @@ impl ShipManifest {
         })?;
 
         // Validate SPDX license if provided.
-        if let Some(ref lic) = raw_module.license {
-            if !lic.is_empty() {
+        if let Some(ref lic) = raw_module.license
+            && !lic.is_empty() {
                 validate_spdx(lic).map_err(|e| {
                     anyhow::anyhow!("[module].license '{}' is not a valid SPDX expression: {e}", lic)
                 })?;
             }
-        }
 
         // Validate dependency version strings.
         for (path, dep_val) in &raw.dependencies {

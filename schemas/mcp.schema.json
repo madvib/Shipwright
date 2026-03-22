@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getship.dev/schemas/mcp.schema.json",
+  "title": "Ship MCP Server Definitions",
+  "description": "Schema for .ship/mcp.jsonc — shared MCP server definitions referenced by agent configs via \"mcp\": { \"servers\": [\"<id>\", ...] }.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion."
+    },
+    "mcp": {
+      "type": "object",
+      "description": "MCP configuration section.",
+      "properties": {
+        "servers": {
+          "type": "object",
+          "description": "Server definitions keyed by server ID. Each key becomes the server's id if the id field is empty.",
+          "additionalProperties": {
+            "$ref": "#/$defs/McpServerEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "McpServerEntry": {
+      "type": "object",
+      "description": "An MCP server definition.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Server identifier. Defaults to the object key in the servers map."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable server name shown in `ship mcp list` and editor UI."
+        },
+        "command": {
+          "type": "string",
+          "description": "Binary to run for stdio servers, e.g. npx, ship, antigravity."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Command-line arguments passed to the server binary."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables for the server process. Values may use ${VAR} syntax for shell variable expansion."
+        },
+        "url": {
+          "type": "string",
+          "description": "URL for http or sse transport servers. Required when server_type is http or sse."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["project", "global"],
+          "default": "project",
+          "description": "Server scope — project-local or globally available."
+        },
+        "server_type": {
+          "type": "string",
+          "enum": ["stdio", "sse", "http"],
+          "default": "stdio",
+          "description": "Transport type. stdio (default) runs a local process; http and sse connect to a URL."
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the server definition is retained but not activated during compilation."
+        },
+        "timeout_secs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Connection timeout in seconds for this server."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

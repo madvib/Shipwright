@@ -11,6 +11,7 @@ use crate::types::{HookConfig, HookTrigger, Permissions};
 /// must never write a settings file that silently restricts what Claude can do.
 /// If no overrides are present, Claude Code's own defaults govern — which is the
 /// safest and least surprising behaviour.
+#[allow(clippy::too_many_arguments)]
 pub fn build_claude_settings_patch(
     permissions: &Permissions,
     hooks: &[HookConfig],

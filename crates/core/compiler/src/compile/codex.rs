@@ -144,11 +144,10 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
     }
 
     // Notify (JSON value → TOML).
-    if let Some(notify) = &resolved.codex_notify {
-        if let Some(toml_val) = json_to_toml(notify) {
+    if let Some(notify) = &resolved.codex_notify
+        && let Some(toml_val) = json_to_toml(notify) {
             root.insert("notify".into(), toml_val);
         }
-    }
 
     // [agents] table.
     let has_agents = resolved.codex_max_threads.is_some()
@@ -172,15 +171,14 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
     root.insert("mcp_servers".into(), toml::Value::Table(mcp));
 
     // settings_extra: merge verbatim after typed fields.
-    if let Some(extra) = &resolved.codex_settings_extra {
-        if let Some(obj) = extra.as_object() {
+    if let Some(extra) = &resolved.codex_settings_extra
+        && let Some(obj) = extra.as_object() {
             for (k, v) in obj {
                 if let Some(toml_val) = json_to_toml(v) {
                     root.insert(k.clone(), toml_val);
                 }
             }
         }
-    }
 
     toml::to_string(&root).ok()
 }
@@ -194,11 +192,7 @@ fn json_to_toml(v: &serde_json::Value) -> Option<toml::Value> {
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Some(toml::Value::Integer(i))
-            } else if let Some(f) = n.as_f64() {
-                Some(toml::Value::Float(f))
-            } else {
-                None
-            }
+            } else { n.as_f64().map(toml::Value::Float) }
         }
         serde_json::Value::String(s) => Some(toml::Value::String(s.clone())),
         serde_json::Value::Array(arr) => {
