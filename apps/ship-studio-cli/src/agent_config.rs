@@ -188,15 +188,15 @@ servers = []
 pub fn apply_agent_permissions(
     base: compiler::Permissions,
     agent: &AgentConfig,
-    agents_dir: Option<&Path>,
+    ship_dir: Option<&Path>,
 ) -> compiler::Permissions {
     use compiler::{Permissions, ToolPermissions};
 
     let mp = &agent.permissions;
 
-    // Resolve the named preset. Try permissions.toml first, then built-in fallbacks.
+    // Resolve the named preset from permissions.jsonc at .ship/ root.
     let preset_from_file = mp.preset.as_deref().and_then(|name| {
-        agents_dir.and_then(|dir| load_permission_preset(dir, name))
+        ship_dir.and_then(|dir| load_permission_preset(dir, name))
     });
 
     let mut tools = if let Some(ref preset) = preset_from_file {

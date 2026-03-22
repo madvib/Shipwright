@@ -159,7 +159,7 @@ pub fn convert_from_github_with_base(url: &str, base_url: &str) -> Result<()> {
     let repo_slug = extract_github_slug(url).unwrap_or_else(|| url.to_string());
 
     let agents_out_dir = ship_dir.join("agents");
-    let rules_dir = ship_dir.join("agents").join("rules");
+    let rules_dir = ship_dir.join("rules");
     std::fs::create_dir_all(&agents_out_dir)?;
     std::fs::create_dir_all(&rules_dir)?;
 
@@ -193,7 +193,7 @@ pub fn convert_from_github_with_base(url: &str, base_url: &str) -> Result<()> {
 
     let mut n_mcp = 0usize;
     if !library.mcp_servers.is_empty() {
-        let mcp_path = ship_dir.join("agents").join("mcp.toml");
+        let mcp_path = ship_dir.join("mcp.toml");
         std::fs::create_dir_all(mcp_path.parent().unwrap())?;
         let mut mcp_file = McpFile::load(&mcp_path)?;
 

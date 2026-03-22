@@ -8,16 +8,19 @@ use std::path::Path;
 
 // ── Top-level entry point ─────────────────────────────────────────────────────
 
-/// Load a [`ProjectLibrary`] from an `agents/` directory.
+/// Load a [`ProjectLibrary`] from a `.ship/` directory (flat layout).
+///
+/// Looks for mcp, permissions, hooks, rules, skills at the `.ship/` root,
+/// and agent profiles under `.ship/agents/profiles/`.
 /// Missing files and dirs are silently skipped — an empty library is valid.
-pub fn load_library(agents_dir: &Path) -> Result<ProjectLibrary> {
+pub fn load_library(ship_dir: &Path) -> Result<ProjectLibrary> {
     Ok(ProjectLibrary {
-        mcp_servers: load_mcp_servers(agents_dir)?,
-        permissions: load_permissions(agents_dir)?,
-        hooks: load_hooks(agents_dir)?,
-        rules: load_rules(agents_dir)?,
-        skills: load_skills(agents_dir)?,
-        agent_profiles: load_agent_profiles(agents_dir)?,
+        mcp_servers: load_mcp_servers(ship_dir)?,
+        permissions: load_permissions(ship_dir)?,
+        hooks: load_hooks(ship_dir)?,
+        rules: load_rules(ship_dir)?,
+        skills: load_skills(ship_dir)?,
+        agent_profiles: load_agent_profiles(ship_dir)?,
         ..Default::default()
     })
 }
@@ -332,8 +335,9 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
 
 // ── Agent profiles ────────────────────────────────────────────────────────────
 
-fn load_agent_profiles(agents_dir: &Path) -> Result<Vec<AgentProfile>> {
-    let profiles_dir = agents_dir.join("profiles");
+fn load_agent_profiles(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
+    // Profiles live under agents/profiles/ in the .ship/ directory
+    let profiles_dir = ship_dir.join("agents").join("profiles");
     if !profiles_dir.exists() { return Ok(vec![]); }
     let mut profiles = Vec::new();
     for entry in std::fs::read_dir(&profiles_dir)?.flatten() {

@@ -85,15 +85,11 @@ fn use_activates_agent_writes_claude_md_and_state() {
     let tmp = TempDir::new().unwrap();
 
     ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
-        ".ship/agents/my-agent.toml",
-        r#"[agent]
-name = "My Agent"
-id = "my-agent"
-providers = ["claude"]
-"#,
+        ".ship/agents/my-agent.jsonc",
+        r#"{ "agent": { "name": "My Agent", "id": "my-agent", "providers": ["claude"] } }"#,
     );
 
     ship_in(&tmp)
@@ -116,15 +112,11 @@ fn use_same_agent_twice_is_idempotent() {
     let tmp = TempDir::new().unwrap();
 
     ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
-        ".ship/agents/my-agent.toml",
-        r#"[agent]
-name = "My Agent"
-id = "my-agent"
-providers = ["claude"]
-"#,
+        ".ship/agents/my-agent.jsonc",
+        r#"{ "agent": { "name": "My Agent", "id": "my-agent", "providers": ["claude"] } }"#,
     );
 
     let args = ["use", "my-agent", "--path", tmp.path().to_str().unwrap()];
@@ -167,7 +159,7 @@ fn use_fails_for_unknown_agent() {
 #[test]
 fn compile_writes_claude_md() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     ship()
         .args(["compile", "--provider", "claude", "--path", tmp.path().to_str().unwrap()])
@@ -181,7 +173,7 @@ fn compile_writes_claude_md() {
 #[test]
 fn compile_dry_run_writes_nothing() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     ship()
         .args([
@@ -270,7 +262,7 @@ fn skill_list_shows_global_skill() {
 #[test]
 fn compile_provider_gemini_writes_gemini_md() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     ship()
         .args(["compile", "--provider", "gemini"])
@@ -286,7 +278,7 @@ fn compile_provider_gemini_writes_gemini_md() {
 #[test]
 fn compile_provider_codex_writes_agents_md() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     ship()
         .args(["compile", "--provider", "codex"])
@@ -302,7 +294,7 @@ fn compile_provider_codex_writes_agents_md() {
 #[test]
 fn compile_provider_codex_writes_codex_config_toml() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     ship()
         .args(["compile", "--provider", "codex"])
@@ -336,7 +328,7 @@ fn status_shows_no_active_agent_before_use() {
 #[test]
 fn compile_is_idempotent() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/rules/style.md", "Use explicit types.");
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     let args = [
         "compile",
@@ -402,23 +394,18 @@ fn validate_passes_on_valid_config() {
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
-        ".ship/agents/permissions.toml",
-        "[ship-standard]\ndefault_mode = \"acceptEdits\"\n",
+        ".ship/permissions.jsonc",
+        r#"{ "ship-standard": { "default_mode": "acceptEdits" } }"#,
     );
     write(
         tmp.path(),
-        ".ship/agents/default.toml",
-        r#"[agent]
-name = "Default"
-id = "default"
-providers = ["claude"]
-[skills]
-refs = []
-[mcp]
-servers = []
-[permissions]
-preset = "ship-standard"
-"#,
+        ".ship/agents/default.jsonc",
+        r#"{
+  "agent": { "name": "Default", "id": "default", "providers": ["claude"] },
+  "skills": { "refs": [] },
+  "mcp": { "servers": [] },
+  "permissions": { "preset": "ship-standard" }
+}"#,
     );
 
     ship()
@@ -429,15 +416,15 @@ preset = "ship-standard"
 }
 
 #[test]
-fn validate_reports_error_on_bad_toml() {
+fn validate_reports_error_on_bad_config() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), ".ship/agents/bad.toml", "not valid toml [[");
+    write(tmp.path(), ".ship/agents/bad.jsonc", "not valid json {{{");
 
     ship()
         .args(["validate", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .failure()
-        .stdout(predicate::str::contains("TOML parse error").or(predicate::str::contains("✗")));
+        .stdout(predicate::str::contains("✗"));
 }
 
 // ── auth ──────────────────────────────────────────────────────────────────────

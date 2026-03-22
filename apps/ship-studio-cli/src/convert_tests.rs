@@ -118,10 +118,10 @@ fn github_convert_writes_profiles_rules_and_mcp() {
         .unwrap();
 
         assert!(tmp.join(".ship/agents/rust-expert.toml").exists(), "agent written");
-        assert!(tmp.join(".ship/agents/rules/no-panics.md").exists(), "rule written");
-        let rule = std::fs::read_to_string(tmp.join(".ship/agents/rules/no-panics.md")).unwrap();
+        assert!(tmp.join(".ship/rules/no-panics.md").exists(), "rule written");
+        let rule = std::fs::read_to_string(tmp.join(".ship/rules/no-panics.md")).unwrap();
         assert_eq!(rule, "Never use unwrap()");
-        assert!(tmp.join(".ship/agents/mcp.toml").exists(), "mcp written");
+        assert!(tmp.join(".ship/mcp.toml").exists(), "mcp written");
     });
 
     mock.assert();
@@ -171,7 +171,7 @@ fn github_convert_skips_duplicate_mcp_servers() {
         // Second call should not duplicate the MCP entry
         convert_github::convert_from_github_with_base("https://github.com/acme/repo", &base).unwrap();
 
-        let mcp_path = tmp.join(".ship/agents/mcp.toml");
+        let mcp_path = tmp.join(".ship/mcp.toml");
         let mcp = McpFile::load(&mcp_path).unwrap();
         assert_eq!(mcp.servers.len(), 1, "duplicate MCP entry should be skipped");
     });

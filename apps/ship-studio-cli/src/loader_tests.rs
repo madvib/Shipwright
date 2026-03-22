@@ -184,7 +184,7 @@ fn load_permission_preset_missing_file_returns_none() {
 #[test]
 fn loads_agent_profiles_from_profiles_dir() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "profiles/web-lane.toml", r#"
+    write(tmp.path(), "agents/profiles/web-lane.toml", r#"
 [profile]
 id = "web-lane"
 name = "Web Lane"
@@ -196,7 +196,7 @@ refs = ["tanstack-start"]
 [permissions]
 preset = "ship-standard"
 "#);
-    write(tmp.path(), "profiles/server-lane.toml", r#"
+    write(tmp.path(), "agents/profiles/server-lane.toml", r#"
 [profile]
 id = "server-lane"
 name = "Server Lane"
@@ -219,12 +219,12 @@ fn agent_profiles_empty_when_dir_missing() {
 #[test]
 fn agent_profiles_skips_invalid_toml() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "profiles/good.toml", r#"
+    write(tmp.path(), "agents/profiles/good.toml", r#"
 [profile]
 id = "good"
 name = "Good"
 "#);
-    write(tmp.path(), "profiles/bad.toml", "this is not valid toml { { {");
+    write(tmp.path(), "agents/profiles/bad.toml", "this is not valid toml { { {");
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.agent_profiles.len(), 1);
     assert_eq!(lib.agent_profiles[0].profile.id, "good");
