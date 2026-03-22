@@ -1,11 +1,11 @@
 // POST /api/auth/delete-account
 //
-// Authenticated endpoint — permanently deletes the user's account.
-// Removes: profiles, libraries, workflows, Better Auth records (session, account, user).
+// Authenticated endpoint -- permanently deletes the user's account.
+// Removes: Better Auth records (session, account, user) from AUTH_DB.
 
 import { createFileRoute } from '@tanstack/react-router'
 import { requireSession } from '#/lib/session-auth'
-import { getD1 } from '#/lib/d1'
+import { getAuthDb } from '#/lib/d1'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
 export const Route = createFileRoute('/api/auth/delete-account')({
@@ -18,7 +18,7 @@ export const Route = createFileRoute('/api/auth/delete-account')({
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
-        const d1 = getD1()
+        const d1 = getAuthDb()
         if (!d1)
           return Response.json(
             { error: 'Database unavailable' },
@@ -27,13 +27,11 @@ export const Route = createFileRoute('/api/auth/delete-account')({
 
         const userId = auth.sub
 
-        // Delete user data tables (order: leaves first, then auth tables)
+        // Delete auth tables (order: leaves first, then user)
         await d1.batch([
-          d1.prepare('DELETE FROM profiles WHERE user_id = ?').bind(userId),
-          d1.prepare('DELETE FROM libraries WHERE user_id = ?').bind(userId),
-          d1.prepare('DELETE FROM workflows WHERE user_id = ?').bind(userId),
           d1.prepare('DELETE FROM session WHERE userId = ?').bind(userId),
           d1.prepare('DELETE FROM account WHERE userId = ?').bind(userId),
+          d1.prepare('DELETE FROM cli_auth_codes WHERE user_id = ?').bind(userId),
           d1.prepare('DELETE FROM user WHERE id = ?').bind(userId),
         ])
 

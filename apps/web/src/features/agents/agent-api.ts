@@ -1,73 +1,26 @@
-// ── Agent API client ────────────────────────────────────────────────────────
-// Server-side persistence for agent profiles. All calls require authentication.
-// The `content` field stores the serialized AgentProfile JSON.
+// Agent API client -- localStorage only.
+// Server-side persistence (profiles table) has been removed.
+// These functions are kept as stubs to avoid breaking callers.
+// Agent data lives exclusively in localStorage via useAgentStore.
 
-import { fetchApi } from '#/lib/api-errors'
 import type { AgentProfile } from './types'
 
-interface ServerProfile {
-  id: string
-  orgId: string
-  userId: string
-  name: string
-  content: string
-  provider: string | null
-  createdAt: number
-  updatedAt: number
-}
-
-function parseServerProfile(sp: ServerProfile): AgentProfile {
-  try {
-    return JSON.parse(sp.content) as AgentProfile
-  } catch {
-    throw new Error(`Failed to parse agent profile content for id=${sp.id}`)
-  }
-}
-
-function serializeAgent(agent: AgentProfile): string {
-  return JSON.stringify(agent)
-}
-
 export async function fetchAgents(): Promise<AgentProfile[]> {
-  const { profiles } = await fetchApi<{ profiles: ServerProfile[] }>(
-    '/api/profiles',
-    { credentials: 'include' },
-  )
-  return profiles.map(parseServerProfile)
+  // No server storage -- return empty to let localStorage be authoritative
+  return []
 }
 
-export async function createAgentApi(agent: AgentProfile): Promise<void> {
-  await fetchApi<{ profile: ServerProfile }>('/api/profiles', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      name: agent.name,
-      content: serializeAgent(agent),
-      provider: agent.providers[0] ?? null,
-    }),
-  })
+export async function createAgentApi(_agent: AgentProfile): Promise<void> {
+  // No-op: server profiles table removed
 }
 
 export async function updateAgentApi(
-  id: string,
-  agent: AgentProfile,
+  _id: string,
+  _agent: AgentProfile,
 ): Promise<void> {
-  await fetchApi<{ profile: ServerProfile }>(`/api/profiles/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      name: agent.name,
-      content: serializeAgent(agent),
-      provider: agent.providers[0] ?? null,
-    }),
-  })
+  // No-op: server profiles table removed
 }
 
-export async function deleteAgentApi(id: string): Promise<void> {
-  await fetchApi<{ ok: boolean }>(`/api/profiles/${id}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
+export async function deleteAgentApi(_id: string): Promise<void> {
+  // No-op: server profiles table removed
 }

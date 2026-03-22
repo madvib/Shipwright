@@ -6,7 +6,7 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { createRegistryRepositories } from '#/db/registry-repositories'
-import { getD1, nanoid } from '#/lib/d1'
+import { getRegistryDb, nanoid } from '#/lib/d1'
 import { env as cloudflareEnv } from 'cloudflare:workers'
 import {
   fetchFileFromGitHub,
@@ -103,7 +103,7 @@ async function handleTagCreate(
     })
   }
 
-  const d1 = getD1()
+  const d1 = getRegistryDb()
   if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })
 
   const repos = createRegistryRepositories(d1)
@@ -173,7 +173,7 @@ async function handleInstallation(
   const accountLogin = (account?.login as string) ?? 'unknown'
   const accountType = (account?.type as string) ?? 'User'
 
-  const d1 = getD1()
+  const d1 = getRegistryDb()
   if (!d1) {
     // No DB — acknowledge without persisting
     return Response.json({ status: 'acknowledged', action })

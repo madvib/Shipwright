@@ -11,7 +11,7 @@ import {
   type Package,
   type PackageVersion,
   type PackageSkill,
-} from './schema'
+} from './registry-schema'
 
 // ---------------------------------------------------------------------------
 // Registry repository interface

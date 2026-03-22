@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('cloudflare:workers', () => ({ env: { DB: {} } }))
+vi.mock('cloudflare:workers', () => ({ env: { AUTH_DB: {}, REGISTRY_DB: {} } }))
 
 vi.mock('#/lib/session-auth', () => ({
   requireSession: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock('#/db/registry-repositories', () => ({
 }))
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(),
+  getRegistryDb: vi.fn(),
 }))
 
 vi.mock('#/lib/rate-limit', () => ({
@@ -73,7 +73,7 @@ function makeRequest(body: unknown): Request {
 }
 
 beforeEach(() => {
-  vi.mocked(d1Lib.getD1).mockReturnValue({} as D1Database)
+  vi.mocked(d1Lib.getRegistryDb).mockReturnValue({} as D1Database)
   vi.mocked(sessionAuth.requireSession).mockResolvedValue({ sub: 'user-1', org: 'user-1' })
   vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
     makeRepos() as ReturnType<typeof registryRepositories.createRegistryRepositories>,
@@ -164,7 +164,7 @@ describe('POST /api/registry/:path/deprecate', () => {
   })
 
   it('returns 503 when database is unavailable', async () => {
-    vi.mocked(d1Lib.getD1).mockReturnValue(null)
+    vi.mocked(d1Lib.getRegistryDb).mockReturnValue(null)
     const req = makeRequest({ deprecated_by: 'replacement' })
     const res = await POST({
       request: req,

@@ -3,7 +3,7 @@
 // Public endpoint — no auth required.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getD1 } from '#/lib/d1'
+import { getRegistryDb } from '#/lib/d1'
 
 export const Route = createFileRoute('/api/registry/duplicates')({
   server: {
@@ -24,7 +24,7 @@ export const Route = createFileRoute('/api/registry/duplicates')({
           )
         }
 
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })
 
         // Search for skills with matching content hash across all packages

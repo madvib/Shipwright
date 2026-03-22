@@ -9,7 +9,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod/v4'
 import { createRegistryRepositories } from '#/db/registry-repositories'
-import { getD1, nanoid } from '#/lib/d1'
+import { getRegistryDb, nanoid } from '#/lib/d1'
 import { requireSession } from '#/lib/session-auth'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 import {
@@ -62,7 +62,7 @@ export const Route = createFileRoute('/api/registry/publish')({
           )
         }
 
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1)
           return Response.json(
             { error: 'Database unavailable' },
@@ -232,7 +232,6 @@ export const Route = createFileRoute('/api/registry/publish')({
             name: skillId,
             description: extractSkillDescription(content),
             contentHash: hash,
-            contentLength: new TextEncoder().encode(content).length,
           })
           skillsIndexed++
         }

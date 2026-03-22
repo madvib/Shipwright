@@ -3,7 +3,8 @@
 // Runtime types generated with workerd@1.20260317.1 2025-09-02 nodejs_compat
 declare namespace Cloudflare {
 	interface StagingEnv {
-		DB: D1Database;
+		AUTH_DB: D1Database;
+		REGISTRY_DB: D1Database;
 		RATE_LIMITER_PUBLISH: RateLimit;
 		RATE_LIMITER_CLAIM: RateLimit;
 		RATE_LIMITER_INSTALL: RateLimit;
@@ -13,7 +14,8 @@ declare namespace Cloudflare {
 		SEED_SECRET: string;
 	}
 	interface ProductionEnv {
-		DB: D1Database;
+		AUTH_DB: D1Database;
+		REGISTRY_DB: D1Database;
 		RATE_LIMITER_PUBLISH: RateLimit;
 		RATE_LIMITER_CLAIM: RateLimit;
 		RATE_LIMITER_INSTALL: RateLimit;
@@ -23,7 +25,8 @@ declare namespace Cloudflare {
 		SEED_SECRET: string;
 	}
 	interface Env {
-		DB: D1Database;
+		AUTH_DB: D1Database;
+		REGISTRY_DB: D1Database;
 		RATE_LIMITER_PUBLISH: RateLimit;
 		RATE_LIMITER_CLAIM: RateLimit;
 		RATE_LIMITER_INSTALL: RateLimit;

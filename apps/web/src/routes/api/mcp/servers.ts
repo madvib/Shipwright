@@ -5,7 +5,7 @@
 // Falls back to curated list when registry and cache are both unavailable.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getD1 } from '#/lib/d1'
+import { getRegistryDb } from '#/lib/d1'
 import { fetchMcpServers } from '#/lib/mcp-registry'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
@@ -42,7 +42,7 @@ export const Route = createFileRoute('/api/mcp/servers')({
             ? Math.min(limitParam, MAX_LIMIT)
             : DEFAULT_LIMIT
 
-        const db = getD1()
+        const db = getRegistryDb()
         const result = await fetchMcpServers(db, query, vetted)
 
         return Response.json({

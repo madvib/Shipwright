@@ -8,7 +8,7 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { signJwt, verifyJwt, getSecret, type JwtPayload } from '#/lib/cloud-auth'
-import { getD1 } from '#/lib/d1'
+import { getAuthDb } from '#/lib/d1'
 
 function base64urlDecode(input: string): Uint8Array {
   const padded = input
@@ -53,7 +53,7 @@ export const Route = createFileRoute('/api/auth/refresh')({
           )
         }
 
-        const db = getD1()
+        const db = getAuthDb()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }

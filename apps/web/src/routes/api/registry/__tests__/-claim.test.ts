@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('cloudflare:workers', () => ({ env: { DB: {} } }))
+vi.mock('cloudflare:workers', () => ({ env: { AUTH_DB: {}, REGISTRY_DB: {} } }))
 
 vi.mock('#/lib/session-auth', () => ({
   requireSession: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('#/db/registry-repositories', () => ({
 }))
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(),
+  getRegistryDb: vi.fn(),
   nanoid: vi.fn(() => 'test-id'),
 }))
 
@@ -83,7 +83,7 @@ function makeRequest(body: unknown, cookieToken = 'gh-token-abc'): Request {
 }
 
 beforeEach(() => {
-  vi.mocked(d1Lib.getD1).mockReturnValue({} as D1Database)
+  vi.mocked(d1Lib.getRegistryDb).mockReturnValue({} as D1Database)
   vi.mocked(sessionAuth.requireSession).mockResolvedValue({ sub: 'user-1', org: 'user-1' })
   vi.mocked(githubApp.getTokenFromCookie).mockReturnValue('gh-token-abc')
   vi.mocked(githubApp.getUser).mockResolvedValue({ login: 'testowner', avatar_url: '' })

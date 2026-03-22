@@ -100,8 +100,8 @@ const CURATED_FALLBACK: McpServer[] = [
 // ── Cache row ↔ McpServer mapping ──────────────────────────────────────────
 
 interface CacheRow {
-  id: string
   name: string
+  title: string | null
   description: string | null
   homepage: string | null
   tags: string | null
@@ -111,13 +111,13 @@ interface CacheRow {
   args: string | null
   vetted: number
   image_url: string | null
-  cached_at: number
+  synced_at: number
 }
 
 function rowToServer(row: CacheRow): McpServer {
   return {
-    id: row.id,
-    name: row.name,
+    id: row.name,
+    name: row.title ?? row.name,
     description: row.description,
     homepage: row.homepage,
     tags: row.tags ? JSON.parse(row.tags) : [],
@@ -133,8 +133,8 @@ function rowToServer(row: CacheRow): McpServer {
 function upstreamToRow(s: UpstreamServer, now: number): CacheRow {
   const id = s.id ?? s.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
   return {
-    id,
-    name: s.name,
+    name: id,
+    title: s.name,
     description: s.description ?? null,
     homepage: s.homepage ?? null,
     tags: s.tags ? JSON.stringify(s.tags) : null,
@@ -144,7 +144,7 @@ function upstreamToRow(s: UpstreamServer, now: number): CacheRow {
     args: s.package?.args ? JSON.stringify(s.package.args) : null,
     vetted: VETTED_SERVERS.includes(id) ? 1 : 0,
     image_url: resolveImageUrl(s.homepage) ?? resolveImageUrl(s.repository),
-    cached_at: now,
+    synced_at: now,
   }
 }
 
@@ -152,7 +152,7 @@ function upstreamToRow(s: UpstreamServer, now: number): CacheRow {
 
 async function isCacheFresh(db: D1Database): Promise<boolean> {
   const row = await db
-    .prepare('SELECT MAX(cached_at) as latest FROM mcp_servers_cache')
+    .prepare('SELECT MAX(synced_at) as latest FROM mcp_servers')
     .first<{ latest: number | null }>()
   if (!row?.latest) return false
   return Date.now() - row.latest < CACHE_TTL_MS
@@ -163,21 +163,21 @@ async function upsertCache(
   rows: CacheRow[],
 ): Promise<void> {
   const stmt = db.prepare(
-    `INSERT OR REPLACE INTO mcp_servers_cache
-       (id, name, description, homepage, tags, vendor, package_registry,
-        command, args, vetted, image_url, cached_at)
+    `INSERT OR REPLACE INTO mcp_servers
+       (name, title, description, homepage, tags, vendor, package_registry,
+        command, args, vetted, image_url, synced_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-  // D1 batch limit is 100 statements — chunk if needed
+  // D1 batch limit is 100 statements -- chunk if needed
   const BATCH_SIZE = 50
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const chunk = rows.slice(i, i + BATCH_SIZE)
     await db.batch(
       chunk.map((r) =>
         stmt.bind(
-          r.id, r.name, r.description, r.homepage, r.tags,
+          r.name, r.title, r.description, r.homepage, r.tags,
           r.vendor, r.package_registry, r.command, r.args,
-          r.vetted, r.image_url, r.cached_at,
+          r.vetted, r.image_url, r.synced_at,
         ),
       ),
     )
@@ -243,16 +243,16 @@ async function queryCache(
   query?: string,
   vetted?: boolean,
 ): Promise<CacheRow[]> {
-  let sql = 'SELECT * FROM mcp_servers_cache WHERE 1=1'
+  let sql = "SELECT * FROM mcp_servers WHERE status = 'active'"
   const bindings: (string | number)[] = []
 
   if (vetted) {
     sql += ' AND vetted = 1'
   }
   if (query) {
-    sql += ' AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)'
+    sql += ' AND (name LIKE ? OR title LIKE ? OR description LIKE ? OR tags LIKE ?)'
     const like = `%${query}%`
-    bindings.push(like, like, like)
+    bindings.push(like, like, like, like)
   }
   sql += ' ORDER BY vetted DESC, name ASC'
 

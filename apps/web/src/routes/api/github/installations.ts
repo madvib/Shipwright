@@ -4,7 +4,7 @@
 // Used by the import page to show repos where the user has installed the Ship app.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getD1 } from '#/lib/d1'
+import { getRegistryDb } from '#/lib/d1'
 
 interface InstallationRepo {
   id: number
@@ -23,7 +23,7 @@ export const Route = createFileRoute('/api/github/installations')({
   server: {
     handlers: {
       GET: async () => {
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }

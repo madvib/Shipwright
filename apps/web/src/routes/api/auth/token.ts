@@ -4,7 +4,7 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { signJwt, getSecret } from '#/lib/cloud-auth'
-import { getD1 } from '#/lib/d1'
+import { getAuthDb } from '#/lib/d1'
 
 async function sha256Base64url(input: string): Promise<string> {
   const data = new TextEncoder().encode(input)
@@ -33,7 +33,7 @@ export const Route = createFileRoute('/api/auth/token')({
 
         const { code, verifier } = b as { code: string; verifier: string }
 
-        const db = getD1()
+        const db = getAuthDb()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }
@@ -48,12 +48,11 @@ export const Route = createFileRoute('/api/auth/token')({
 
         const row = await db
           .prepare(
-            'SELECT user_id, org_id, code_challenge, created_at, used FROM cli_auth_codes WHERE code = ?',
+            'SELECT user_id, code_challenge, created_at, used FROM cli_auth_codes WHERE code = ?',
           )
           .bind(code)
           .first<{
             user_id: string
-            org_id: string
             code_challenge: string
             created_at: number
             used: number
@@ -77,7 +76,7 @@ export const Route = createFileRoute('/api/auth/token')({
 
         await db.prepare('UPDATE cli_auth_codes SET used = 1 WHERE code = ?').bind(code).run()
 
-        const token = await signJwt({ sub: row.user_id, org: row.org_id }, secret)
+        const token = await signJwt({ sub: row.user_id, org: row.user_id }, secret)
         return Response.json({ token })
       },
     },

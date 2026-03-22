@@ -42,9 +42,16 @@ jobs:
           GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
 
-      - name: Run D1 migrations (production)
+      - name: Run D1 migrations - ship-auth (production)
         working-directory: apps/web
-        run: pnpm wrangler d1 migrations apply ship --remote
+        run: pnpm wrangler d1 migrations apply ship-auth --remote
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Run D1 migrations - ship-registry (production)
+        working-directory: apps/web
+        run: pnpm wrangler d1 migrations apply ship-registry --remote
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
