@@ -13,7 +13,10 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "cf:types": "wrangler types",
-    "deploy": "pnpm run build && wrangler deploy"
+    "deploy": "pnpm run build && wrangler deploy",
+    "db:generate:auth": "drizzle-kit generate --config drizzle-auth.config.ts",
+    "db:generate:registry": "drizzle-kit generate --config drizzle-registry.config.ts",
+    "db:generate": "pnpm db:generate:auth && pnpm db:generate:registry"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.28.0",
