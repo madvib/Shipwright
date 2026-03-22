@@ -28,9 +28,14 @@ pub fn project_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("project")
 }
 
-/// `.ship/agents/` — rules, permissions, MCP config
+/// `.ship/agents/` — agent profile `.jsonc` files only.
+/// Rules, skills, permissions, MCP config, and teams live at the `.ship/` root.
 pub fn agents_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("agents")
+}
+
+pub fn teams_dir(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("teams")
 }
 
 pub fn adrs_dir(ship_dir: &Path) -> PathBuf {
@@ -67,15 +72,15 @@ pub fn skills_dir(ship_dir: &Path) -> PathBuf {
 }
 
 pub fn rules_dir(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("rules")
+    ship_dir.join("rules")
 }
 
 pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("mcp.jsonc")
+    ship_dir.join("mcp.jsonc")
 }
 
 pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("permissions.jsonc")
+    ship_dir.join("permissions.jsonc")
 }
 
 /// `.ship/vision.md` — project north-star document
@@ -330,14 +335,14 @@ pub fn user_skills_dir() -> PathBuf {
         .join("skills")
 }
 
-/// Project-scoped skills store: `.ship/agents/skills/`
+/// Project-scoped skills store: `.ship/skills/`
 pub fn project_skills_dir(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("skills")
+    ship_dir.join("skills")
 }
 
-/// Legacy project-scoped skills store used by older builds: `.ship/skills/`
-pub fn legacy_repo_project_skills_dir(ship_dir: &Path) -> PathBuf {
-    ship_dir.join("skills")
+/// Legacy skills path from pre-flatten layout: `.ship/agents/skills/`
+pub fn legacy_agents_skills_dir(ship_dir: &Path) -> PathBuf {
+    agents_ns(ship_dir).join("skills")
 }
 
 /// Legacy project-scoped skills store used by pre-release builds:
@@ -1154,7 +1159,8 @@ pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
         "project/features",
         "project/releases",
         "project/notes",
-        "agents/skills",
+        "skills",
+        "rules",
     ] {
         fs::create_dir_all(ship_path.join(rel))?;
     }

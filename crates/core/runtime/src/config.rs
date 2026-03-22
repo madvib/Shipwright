@@ -125,7 +125,7 @@ pub struct HookConfig {
 }
 
 /// Mode-scoped tool permission overrides.
-/// These overlay canonical `.ship/agents/permissions.toml` `tools.allow/deny`
+/// These overlay canonical `.ship/permissions.jsonc` `tools.allow/deny`
 /// when a mode is active.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct PermissionConfig {
@@ -1182,12 +1182,10 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         ("adrs", "project/adrs"),
         ("notes", "project/notes"),
         ("vision", "vision.md"),
-        ("mcp", "agents/mcp.jsonc"),
-        ("permissions", "agents/permissions.jsonc"),
-        ("rules", "agents/rules"),
-        ("skills", "agents/skills"),
-        ("agent-docs", "agents/README.md"),
-        ("agent-strategy", "agents/skill-library-strategy.md"),
+        ("mcp", "mcp.jsonc"),
+        ("permissions", "permissions.jsonc"),
+        ("rules", "rules"),
+        ("skills", "skills"),
         ("ship-readme", "README.md"),
         ("project-readme", "project/README.md"),
         ("ship.jsonc", "ship.jsonc"),
@@ -1793,7 +1791,7 @@ mod tests {
         assert_eq!(mode_rows.len(), 1);
         assert_eq!(mode_rows[0].id, "planning");
 
-        let mcp_cfg = fs::read_to_string(ship_dir.join("agents").join("mcp.jsonc"))?;
+        let mcp_cfg = fs::read_to_string(ship_dir.join("mcp.jsonc"))?;
         assert!(mcp_cfg.contains("\"github\""));
         Ok(())
     }

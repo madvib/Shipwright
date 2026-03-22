@@ -182,7 +182,7 @@ impl Default for AgentLimits {
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 fn permissions_path(ship_dir: &std::path::Path) -> PathBuf {
-    ship_dir.join("agents").join("permissions.toml")
+    crate::project::permissions_config_path(ship_dir)
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────

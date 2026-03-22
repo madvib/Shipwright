@@ -102,7 +102,7 @@ fn run_from_url(url: &str) -> Result<()> {
     // Write skills
     for skill in &bundle.skills {
         let safe_id = sanitize_filename(&skill.id);
-        let dest = paths::agents_skills_dir().join(format!("{}.md", safe_id));
+        let dest = paths::skills_dir().join(format!("{}.md", safe_id));
         let content = skill.content.as_deref().unwrap_or("");
         std::fs::write(&dest, content)
             .with_context(|| format!("Failed to write skill {}", dest.display()))?;
@@ -112,7 +112,7 @@ fn run_from_url(url: &str) -> Result<()> {
     // Write permissions
     if let Some(ref perms) = bundle.permissions {
         if let Some(ref preset) = perms.preset {
-            let dest = paths::agents_dir().join("permissions.toml");
+            let dest = paths::project_dir().join("permissions.toml");
             let content = format!("[permissions]\npreset = {}\n", quote_toml(preset));
             std::fs::write(&dest, &content)
                 .with_context(|| format!("Failed to write {}", dest.display()))?;
@@ -260,8 +260,8 @@ mod tests {
             assert!(tmp.join(".ship/agents/default.toml").exists());
             let agent = std::fs::read_to_string(tmp.join(".ship/agents/default.toml")).unwrap();
             assert!(agent.contains("name = \"default\""));
-            assert!(tmp.join(".ship/agents/skills/tdd.md").exists());
-            let perms = std::fs::read_to_string(tmp.join(".ship/agents/permissions.toml")).unwrap();
+            assert!(tmp.join(".ship/skills/tdd.md").exists());
+            let perms = std::fs::read_to_string(tmp.join(".ship/permissions.toml")).unwrap();
             assert!(perms.contains("preset = \"elevated\""));
         });
     }

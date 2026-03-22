@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
-/// A rule file from `agents/rules/*.md`. Rules are always active for the agent.
+/// A rule file from `rules/*.md`. Rules are always active for the agent.
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct Rule {
     pub file_name: String,
@@ -17,7 +17,7 @@ pub struct Rule {
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 fn rules_dir(ship_dir: &std::path::Path) -> PathBuf {
-    ship_dir.join("agents").join("rules")
+    crate::project::rules_dir(ship_dir)
 }
 
 fn normalize_rule_file_name(file_name: &str) -> Result<String> {

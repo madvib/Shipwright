@@ -30,10 +30,9 @@ pub fn project_modes_dir() -> PathBuf { project_dir().join("modes") }
 /// Compat: check agents/presets/ for projects not yet migrated.
 pub fn project_presets_dir() -> PathBuf { agents_dir().join("presets") }
 pub fn agents_dir() -> PathBuf { project_dir().join("agents") }
-pub fn agents_rules_dir() -> PathBuf { agents_dir().join("rules") }
-pub fn agents_skills_dir() -> PathBuf { agents_dir().join("skills") }
-pub fn agents_mcp_path() -> PathBuf { agents_dir().join("mcp.toml") }
-pub fn agents_mcp_jsonc_path() -> PathBuf { agents_dir().join("mcp.jsonc") }
+pub fn rules_dir() -> PathBuf { project_dir().join("rules") }
+pub fn skills_dir() -> PathBuf { project_dir().join("skills") }
+pub fn mcp_path() -> PathBuf { project_dir().join("mcp.jsonc") }
 pub fn project_ship_toml() -> PathBuf { project_dir().join("ship.toml") }
 pub fn project_ship_jsonc() -> PathBuf { project_dir().join("ship.jsonc") }
 
@@ -61,7 +60,7 @@ pub fn project_ship_dir_required() -> anyhow::Result<std::path::PathBuf> {
 
 pub fn ensure_project_dirs() -> anyhow::Result<()> {
     for dir in [project_dir(), project_modes_dir(), agents_dir(),
-                agents_rules_dir(), agents_skills_dir()] {
+                rules_dir(), skills_dir()] {
         fs::create_dir_all(dir)?;
     }
     Ok(())
@@ -131,6 +130,6 @@ mod tests {
     fn project_paths_are_relative() {
         assert_eq!(project_dir(), PathBuf::from(".ship"));
         assert_eq!(agents_dir(), PathBuf::from(".ship/agents"));
-        assert_eq!(agents_mcp_path(), PathBuf::from(".ship/agents/mcp.toml"));
+        assert_eq!(mcp_path(), PathBuf::from(".ship/mcp.jsonc"));
     }
 }

@@ -48,7 +48,7 @@ pub fn load_cap_progress(ship_dir: &Path, target_id: &str) -> (usize, usize) {
 // ── CRUD tab loaders ─────────────────────────────────────────────────────────
 
 use crate::mcp::McpEntry;
-use crate::paths::{list_agent_ids, agents_skills_dir, global_skills_dir, agents_mcp_path};
+use crate::paths::{list_agent_ids, skills_dir, global_skills_dir, mcp_path};
 use crate::profile::WorkspaceState;
 use crate::config::ShipConfig;
 
@@ -76,7 +76,7 @@ pub fn load_agent_detail(agent_id: &str) -> String {
 
 pub fn load_skills() -> Vec<(String, String)> {
     let mut skills = Vec::new();
-    let project_dir = agents_skills_dir();
+    let project_dir = skills_dir();
     if project_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&project_dir) {
             for e in entries.flatten() {
@@ -101,7 +101,7 @@ pub fn load_skills() -> Vec<(String, String)> {
 }
 
 pub fn load_mcp_servers() -> Vec<McpEntry> {
-    let path = agents_mcp_path();
+    let path = mcp_path();
     crate::mcp::McpFile::load(&path).map(|f| f.servers).unwrap_or_default()
 }
 

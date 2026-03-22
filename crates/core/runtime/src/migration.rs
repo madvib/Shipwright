@@ -124,6 +124,7 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
     fs::create_dir_all(project_ns(ship_dir))?;
     fs::create_dir_all(notes_dir(ship_dir))?;
     migrate_project_config_file(ship_dir)?;
+    migrate_flat_ship_layout(ship_dir, &mut report)?;
     migrate_template_layout(ship_dir, &mut report)?;
 
     let mappings = [
@@ -187,6 +188,34 @@ fn migrate_project_config_file(ship_dir: &Path) -> Result<()> {
             fs::remove_file(legacy)?;
         }
     }
+    Ok(())
+}
+
+/// Move files from the legacy `.ship/agents/` nesting to the flat `.ship/` root.
+fn migrate_flat_ship_layout(
+    ship_dir: &Path,
+    report: &mut ProjectFileMigrationReport,
+) -> Result<()> {
+    use crate::project::agents_ns;
+    let agents = agents_ns(ship_dir);
+
+    for name in ["mcp.toml", "mcp.jsonc", "permissions.toml", "permissions.jsonc"] {
+        let old = agents.join(name);
+        let new = ship_dir.join(name);
+        if old.exists() && !new.exists() {
+            move_file(&old, &new)?;
+            report.copied_files += 1;
+        }
+    }
+
+    for dir_name in ["rules", "skills", "teams"] {
+        let old = agents.join(dir_name);
+        let new = ship_dir.join(dir_name);
+        if old.exists() && old.is_dir() {
+            migrate_directory_tree(&old, &new, report)?;
+        }
+    }
+
     Ok(())
 }
 

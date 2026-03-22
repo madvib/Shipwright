@@ -3,7 +3,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::paths::{agents_skills_dir, global_skills_dir};
+use crate::paths::{skills_dir, global_skills_dir};
 
 // ── Source parsing ────────────────────────────────────────────────────────────
 
@@ -198,7 +198,7 @@ pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
         SkillSource::GitHub { owner, repo } => {
             eprintln!("warning: installing skills from external sources — review SKILL.md before use");
             let skills = resolve_github_skills(&owner, &repo, skill_id)?;
-            let base = if global { global_skills_dir() } else { agents_skills_dir() };
+            let base = if global { global_skills_dir() } else { skills_dir() };
             for (id, content) in skills {
                 let dir = base.join(&id);
                 std::fs::create_dir_all(&dir)?;
@@ -215,7 +215,7 @@ pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
 pub fn list() -> Result<()> {
     let mut found = false;
 
-    let project_dir = agents_skills_dir();
+    let project_dir = skills_dir();
     if project_dir.exists() {
         let skills = collect_skill_ids(&project_dir);
         if !skills.is_empty() {
@@ -246,7 +246,7 @@ pub fn create(id: &str, name: Option<&str>, description: Option<&str>) -> Result
     if !is_valid_id(id) {
         anyhow::bail!("Invalid skill ID '{}'. Use lowercase letters, digits, and hyphens.", id);
     }
-    let skill_dir = agents_skills_dir().join(id);
+    let skill_dir = skills_dir().join(id);
     if skill_dir.exists() {
         anyhow::bail!("Skill '{}' already exists at {}", id, skill_dir.display());
     }
@@ -271,7 +271,7 @@ description: {description}
 }
 
 pub fn remove(id: &str, global: bool) -> Result<()> {
-    let dir = if global { global_skills_dir().join(id) } else { agents_skills_dir().join(id) };
+    let dir = if global { global_skills_dir().join(id) } else { skills_dir().join(id) };
     if !dir.exists() {
         anyhow::bail!("Skill '{}' not found at {}", id, dir.display());
     }

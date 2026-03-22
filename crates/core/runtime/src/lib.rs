@@ -157,15 +157,15 @@ mod tests {
 
         set_category_committed(&project_dir, "agents", false)?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
-        assert!(gitignore.contains("agents/rules"));
-        assert!(gitignore.contains("agents/mcp.jsonc"));
-        assert!(gitignore.contains("agents/permissions.jsonc"));
+        assert!(gitignore.contains("\nrules\n") || gitignore.contains("\nrules"));
+        assert!(gitignore.contains("mcp.jsonc"));
+        assert!(gitignore.contains("permissions.jsonc"));
 
         set_category_committed(&project_dir, "agents", true)?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
-        assert!(!gitignore.contains("agents/rules"));
-        assert!(!gitignore.contains("agents/mcp.jsonc"));
-        assert!(!gitignore.contains("agents/permissions.jsonc"));
+        assert!(!gitignore.contains("\nrules\n") && !gitignore.contains("\nrules"));
+        assert!(!gitignore.contains("mcp.jsonc"));
+        assert!(!gitignore.contains("permissions.jsonc"));
         Ok(())
     }
 
@@ -207,11 +207,10 @@ mod tests {
         assert!(gitignore.contains("project/adrs"));
         assert!(gitignore.contains("project/notes"));
         assert!(gitignore.contains("vision.md"));
-        assert!(gitignore.contains("agents/skills"));
-        assert!(gitignore.contains("agents/README.md"));
-        assert!(!gitignore.contains("agents/rules"));
-        assert!(!gitignore.contains("agents/mcp.toml"));
-        assert!(!gitignore.contains("agents/permissions.toml"));
+        assert!(gitignore.contains("skills"));
+        assert!(!gitignore.contains("\nrules\n") && !gitignore.contains("\nrules"));
+        assert!(!gitignore.contains("mcp.jsonc"));
+        assert!(!gitignore.contains("permissions.jsonc"));
         // DB is at ~/.ship/platform.db — never inside project .ship/
         assert!(!gitignore.contains("platform.db"));
         assert!(!gitignore.contains("log.md"));

@@ -1,6 +1,6 @@
 {
   // Shared MCP server definitions — referenced by agent configs via "servers": ["ship", ...]
-  "$schema": "../../schemas/agent.schema.json",
+  "$schema": "../schemas/agent.schema.json",
   "mcp": {
     "servers": {
       "antigravity": {

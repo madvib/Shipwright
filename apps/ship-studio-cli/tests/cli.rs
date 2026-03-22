@@ -231,7 +231,7 @@ fn skill_list_shows_project_skill() {
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
-        ".ship/agents/skills/rust-expert/SKILL.md",
+        ".ship/skills/rust-expert/SKILL.md",
         "---\nname: Rust Expert\ndescription: Rust coding\n---\n\nBe a Rust expert.",
     );
 

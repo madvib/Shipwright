@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::paths::agents_mcp_path;
+use crate::paths::mcp_path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpEntry {
@@ -128,7 +128,7 @@ impl McpFile {
 }
 
 pub fn add_http(id: &str, name: Option<String>, url: &str) -> Result<()> {
-    let path = agents_mcp_path();
+    let path = mcp_path();
     let mut file = McpFile::load(&path)?;
     if file.servers.iter().any(|s| s.id == id) {
         anyhow::bail!("MCP server '{}' already registered. Remove it first.", id);
@@ -145,7 +145,7 @@ pub fn add_http(id: &str, name: Option<String>, url: &str) -> Result<()> {
 }
 
 pub fn add_stdio(id: &str, name: Option<String>, command: &str, args: Vec<String>) -> Result<()> {
-    let path = agents_mcp_path();
+    let path = mcp_path();
     let mut file = McpFile::load(&path)?;
     if file.servers.iter().any(|s| s.id == id) {
         anyhow::bail!("MCP server '{}' already registered. Remove it first.", id);
@@ -162,7 +162,7 @@ pub fn add_stdio(id: &str, name: Option<String>, command: &str, args: Vec<String
 }
 
 pub fn list() -> Result<()> {
-    let path = agents_mcp_path();
+    let path = mcp_path();
     let file = McpFile::load(&path)?;
     if file.servers.is_empty() {
         println!("No MCP servers configured.");
@@ -180,7 +180,7 @@ pub fn list() -> Result<()> {
 }
 
 pub fn remove(id: &str) -> Result<()> {
-    let path = agents_mcp_path();
+    let path = mcp_path();
     let mut file = McpFile::load(&path)?;
     let before = file.servers.len();
     file.servers.retain(|s| s.id != id);
