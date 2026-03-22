@@ -5,14 +5,19 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
 
-
-  // D1 database — run `wrangler d1 create ship` to provision and fill in database_id
+  // D1 databases — split into auth and registry concerns
   "d1_databases": [
     {
-      "binding": "DB",
-      "database_name": "ship",
-      "database_id": "1d30f1aa-0ea9-417b-9179-d21911404727",
-      "migrations_dir": "migrations"
+      "binding": "AUTH_DB",
+      "database_name": "ship-auth",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations/auth"
+    },
+    {
+      "binding": "REGISTRY_DB",
+      "database_name": "ship-registry",
+      "database_id": "00000000-0000-0000-0000-000000000002",
+      "migrations_dir": "migrations/registry"
     }
   ],
 
@@ -38,10 +43,16 @@
       ],
       "d1_databases": [
         {
-          "binding": "DB",
-          "database_name": "ship-staging",
-          "database_id": "a7811f35-5a14-4719-a476-e9fc4d9ddede",
-          "migrations_dir": "migrations"
+          "binding": "AUTH_DB",
+          "database_name": "ship-auth-staging",
+          "database_id": "00000000-0000-0000-0000-000000000003",
+          "migrations_dir": "migrations/auth"
+        },
+        {
+          "binding": "REGISTRY_DB",
+          "database_name": "ship-registry-staging",
+          "database_id": "00000000-0000-0000-0000-000000000004",
+          "migrations_dir": "migrations/registry"
         }
       ],
       "ratelimits": [
@@ -59,10 +70,16 @@
       ],
       "d1_databases": [
         {
-          "binding": "DB",
-          "database_name": "ship",
-          "database_id": "1d30f1aa-0ea9-417b-9179-d21911404727",
-          "migrations_dir": "migrations"
+          "binding": "AUTH_DB",
+          "database_name": "ship-auth",
+          "database_id": "00000000-0000-0000-0000-000000000001",
+          "migrations_dir": "migrations/auth"
+        },
+        {
+          "binding": "REGISTRY_DB",
+          "database_name": "ship-registry",
+          "database_id": "00000000-0000-0000-0000-000000000002",
+          "migrations_dir": "migrations/registry"
         }
       ],
       "ratelimits": [

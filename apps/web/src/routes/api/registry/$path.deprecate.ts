@@ -5,7 +5,7 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { createRegistryRepositories } from '#/db/registry-repositories'
-import { getD1 } from '#/lib/d1'
+import { getRegistryDb } from '#/lib/d1'
 import { requireSession } from '#/lib/session-auth'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
@@ -23,7 +23,7 @@ export const Route = createFileRoute('/api/registry/$path/deprecate')({
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1)
           return Response.json(
             { error: 'Database unavailable' },

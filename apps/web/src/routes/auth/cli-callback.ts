@@ -1,9 +1,9 @@
-// GET /auth/cli-callback — GitHub OAuth callback for CLI login
-// Exchanges GitHub code for user, upserts to D1, issues a short-lived auth code,
-// then redirects to the CLI's local callback server.
+// GET /auth/cli-callback -- GitHub OAuth callback for CLI login
+// Exchanges GitHub code for user, upserts to D1 AUTH_DB, issues a short-lived
+// auth code, then redirects to the CLI's local callback server.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getD1, nanoid } from '#/lib/d1'
+import { getAuthDb, nanoid } from '#/lib/d1'
 
 type GitHubUser = {
   id: number
@@ -67,7 +67,7 @@ export const Route = createFileRoute('/auth/cli-callback')({
         if (error) return errorRedirect(error)
         if (!code || !state) return errorRedirect('missing_params')
 
-        const db = getD1()
+        const db = getAuthDb()
         if (!db) return errorRedirect('db_unavailable')
 
         const pending = await db
@@ -79,7 +79,7 @@ export const Route = createFileRoute('/auth/cli-callback')({
 
         if (!pending) return errorRedirect('invalid_state')
 
-        // Delete state immediately — single use
+        // Delete state immediately -- single use
         await db.prepare('DELETE FROM cli_auth_state WHERE state = ?').bind(state).run()
 
         if (Date.now() - pending.created_at > 10 * 60 * 1000) {
@@ -118,42 +118,13 @@ export const Route = createFileRoute('/auth/cli-callback')({
             .run()
         }
 
-        // Find or create personal org
-        const orgSlug = ghUser.login.toLowerCase()
-        const existingOrg = await db
-          .prepare('SELECT id FROM orgs WHERE slug = ?')
-          .bind(orgSlug)
-          .first<{ id: string }>()
-
-        const orgId = existingOrg?.id ?? nanoid()
-        if (!existingOrg) {
-          await db
-            .prepare('INSERT INTO orgs (id, name, slug, created_at) VALUES (?, ?, ?, ?)')
-            .bind(orgId, ghUser.login, orgSlug, now)
-            .run()
-        }
-
-        const existingMember = await db
-          .prepare('SELECT id FROM org_members WHERE org_id = ? AND user_id = ?')
-          .bind(orgId, userId)
-          .first<{ id: string }>()
-
-        if (!existingMember) {
-          await db
-            .prepare(
-              'INSERT INTO org_members (id, org_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)',
-            )
-            .bind(nanoid(), orgId, userId, 'owner', now)
-            .run()
-        }
-
         // Issue short-lived auth code (5 min TTL)
         const authCode = nanoid()
         await db
           .prepare(
-            'INSERT INTO cli_auth_codes (code, user_id, org_id, code_challenge, created_at, used) VALUES (?, ?, ?, ?, ?, 0)',
+            'INSERT INTO cli_auth_codes (code, user_id, code_challenge, created_at, used) VALUES (?, ?, ?, ?, 0)',
           )
-          .bind(authCode, userId, orgId, pending.code_challenge, now)
+          .bind(authCode, userId, pending.code_challenge, now)
           .run()
 
         // Redirect CLI to its local callback server with the auth code

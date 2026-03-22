@@ -5,13 +5,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { env as cloudflareEnv } from 'cloudflare:workers'
 import { requireSession } from '#/lib/session-auth'
-import { getD1, nanoid } from '#/lib/d1'
+import { getRegistryDb, nanoid } from '#/lib/d1'
 import { parseGithubUrl, extractLibrary } from '#/lib/github-import'
 import { fetchRepoFiles } from '#/lib/fetch-repo-files'
 import { computeContentHash } from '#/lib/content-hash'
 import { fetchFileFromGitHub, parseShipToml } from '#/lib/registry-github'
 import { createRegistryRepositories, type RegistryRepositories } from '#/db/registry-repositories'
-import type { InsertPackage } from '#/db/schema'
+import type { InsertPackage } from '#/db/registry-schema'
 import seedReposJson from '#/lib/seed-repos.json'
 
 /** Convert "owner/repo" to a human-friendly package name. */
@@ -86,7 +86,6 @@ async function importRepo(
       name: rule.file_name,
       description: null,
       contentHash: hash,
-      contentLength: new TextEncoder().encode(rule.content).byteLength,
     })
   }
 
@@ -101,7 +100,6 @@ async function importRepo(
       name: skill.name,
       description: null,
       contentHash: hash,
-      contentLength: new TextEncoder().encode(skill.content).byteLength,
     })
   }
 
@@ -140,7 +138,6 @@ async function indexShipTomlSkills(
       name: skillId,
       description: null,
       contentHash: hash,
-      contentLength: new TextEncoder().encode(content).byteLength,
     })
   }
 }
@@ -158,7 +155,7 @@ export const Route = createFileRoute('/api/registry/seed')({
           return Response.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })
 
         const db = createRegistryRepositories(d1)

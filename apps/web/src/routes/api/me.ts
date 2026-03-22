@@ -1,8 +1,8 @@
-// GET /api/me — return { user, org } for the authenticated user
+// GET /api/me -- return { user } for the authenticated user
 
 import { createFileRoute } from '@tanstack/react-router'
 import { requireSession } from '#/lib/session-auth'
-import { getD1 } from '#/lib/d1'
+import { getAuthDb } from '#/lib/d1'
 
 export const Route = createFileRoute('/api/me')({
   server: {
@@ -11,7 +11,7 @@ export const Route = createFileRoute('/api/me')({
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
-        const db = getD1()
+        const db = getAuthDb()
         if (!db) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }
@@ -25,12 +25,7 @@ export const Route = createFileRoute('/api/me')({
           return Response.json({ error: 'User not found' }, { status: 404 })
         }
 
-        const org = await db
-          .prepare('SELECT id, name, slug, created_at FROM orgs WHERE id = ?')
-          .bind(auth.org)
-          .first<{ id: string; name: string; slug: string; created_at: number }>()
-
-        return Response.json({ user, org })
+        return Response.json({ user })
       },
     },
   },

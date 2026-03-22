@@ -6,13 +6,13 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { createRegistryRepositories } from '#/db/registry-repositories'
-import { getD1 } from '#/lib/d1'
+import { getRegistryDb } from '#/lib/d1'
 
 export const Route = createFileRoute('/api/registry/$path')({
   server: {
     handlers: {
       GET: async ({ params }) => {
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1)
           return Response.json(
             { error: 'Database unavailable' },
@@ -58,7 +58,6 @@ export const Route = createFileRoute('/api/registry/$path')({
             name: s.name,
             description: s.description,
             contentHash: s.contentHash,
-            contentLength: s.contentLength,
           })),
         })
       },

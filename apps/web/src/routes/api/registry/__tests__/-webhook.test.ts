@@ -9,7 +9,7 @@ vi.mock('#/db/registry-repositories', () => ({
 }))
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(),
+  getRegistryDb: vi.fn(),
   nanoid: vi.fn(() => 'test-id'),
 }))
 

@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('cloudflare:workers', () => ({ env: { DB: {} } }))
+vi.mock('cloudflare:workers', () => ({ env: { AUTH_DB: {}, REGISTRY_DB: {} } }))
 
 vi.mock('#/db/registry-repositories', () => ({
   createRegistryRepositories: vi.fn(),
 }))
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(),
+  getRegistryDb: vi.fn(),
   nanoid: vi.fn(() => 'test-id'),
 }))
 
@@ -80,7 +80,7 @@ function makeRequest(params: Record<string, string> = {}): Request {
 }
 
 beforeEach(() => {
-  vi.mocked(d1Lib.getD1).mockReturnValue({} as D1Database)
+  vi.mocked(d1Lib.getRegistryDb).mockReturnValue({} as D1Database)
   vi.mocked(rateLimitLib.checkRateLimit).mockResolvedValue({ allowed: true, retryAfter: 0 })
   vi.mocked(registryRepositories.createRegistryRepositories).mockReturnValue(
     makeRepos() as ReturnType<typeof registryRepositories.createRegistryRepositories>
@@ -147,7 +147,7 @@ describe('GET /api/registry/search', () => {
   })
 
   it('returns 503 when database is unavailable', async () => {
-    vi.mocked(d1Lib.getD1).mockReturnValue(null)
+    vi.mocked(d1Lib.getRegistryDb).mockReturnValue(null)
     const req = makeRequest({ q: 'test' })
     const res = await GET({ request: req } as Parameters<typeof GET>[0])
     expect(res.status).toBe(503)

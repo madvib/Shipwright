@@ -7,7 +7,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireSession } from '#/lib/session-auth'
 import { getTokenFromCookie, getUser } from '#/lib/github-app'
-import { getD1 } from '#/lib/d1'
+import { getRegistryDb } from '#/lib/d1'
 import { createRegistryRepositories } from '#/db/registry-repositories'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
@@ -93,7 +93,7 @@ export const Route = createFileRoute('/api/registry/claim')({
           return Response.json({ error: 'Missing package_path' }, { status: 400 })
         }
 
-        const d1 = getD1()
+        const d1 = getRegistryDb()
         if (!d1) return Response.json({ error: 'Database unavailable' }, { status: 503 })
 
         const repos = createRegistryRepositories(d1)

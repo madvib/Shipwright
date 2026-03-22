@@ -15,7 +15,10 @@
     "cf:types": "wrangler types",
     "deploy": "pnpm run build && wrangler deploy",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "db:generate:auth": "drizzle-kit generate --config drizzle-auth.config.ts",
+    "db:generate:registry": "drizzle-kit generate --config drizzle-registry.config.ts",
+    "db:generate": "pnpm db:generate:auth && pnpm db:generate:registry"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.28.0",

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock cloudflare:workers before importing any module that depends on it
-vi.mock('cloudflare:workers', () => ({ env: { DB: {} } }))
+vi.mock('cloudflare:workers', () => ({ env: { AUTH_DB: {}, REGISTRY_DB: {} } }))
 
 vi.mock('#/lib/session-auth', () => ({
   requireSession: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('#/db/registry-repositories', () => ({
 }))
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(),
+  getRegistryDb: vi.fn(),
   nanoid: vi.fn(() => 'test-id-123'),
 }))
 
@@ -79,7 +79,7 @@ function makeRequest(body: unknown): Request {
 }
 
 beforeEach(() => {
-  vi.mocked(d1Lib.getD1).mockReturnValue({} as D1Database)
+  vi.mocked(d1Lib.getRegistryDb).mockReturnValue({} as D1Database)
   vi.mocked(sessionAuth.requireSession).mockResolvedValue({ sub: 'user-1', org: 'user-1' })
   vi.mocked(registryGithub.parseGithubUrl).mockReturnValue({ owner: 'owner', repo: 'repo' })
   vi.mocked(registryGithub.fetchFileFromGitHub).mockResolvedValue(validToml)
@@ -148,7 +148,7 @@ describe('POST /api/registry/publish', () => {
   })
 
   it('returns 503 when database is unavailable', async () => {
-    vi.mocked(d1Lib.getD1).mockReturnValue(null)
+    vi.mocked(d1Lib.getRegistryDb).mockReturnValue(null)
     const req = makeRequest({ repo_url: 'https://github.com/owner/repo' })
     const res = await POST({ request: req } as Parameters<typeof POST>[0])
     expect(res.status).toBe(503)
