@@ -210,7 +210,7 @@ fn skill_list_no_skills_installed() {
 
     // Isolate HOME so no real global skills are picked up.
     ship()
-        .args(["skill", "list"])
+        .args(["skills", "list"])
         .current_dir(tmp.path())
         .env("HOME", tmp.path())
         .assert()
@@ -228,7 +228,7 @@ fn skill_list_shows_project_skill() {
     );
 
     ship()
-        .args(["skill", "list"])
+        .args(["skills", "list"])
         .current_dir(tmp.path())
         .env("HOME", tmp.path())
         .assert()
@@ -248,7 +248,7 @@ fn skill_list_shows_global_skill() {
     );
 
     ship()
-        .args(["skill", "list"])
+        .args(["skills", "list"])
         .current_dir(tmp.path())
         .env("HOME", tmp.path())
         .assert()
