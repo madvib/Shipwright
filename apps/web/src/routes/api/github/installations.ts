@@ -5,6 +5,7 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { getD1 } from '#/lib/d1'
+import { requireSession } from '#/lib/session-auth'
 
 interface InstallationRepo {
   id: number
@@ -22,17 +23,26 @@ interface InstallationRow {
 export const Route = createFileRoute('/api/github/installations')({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
+        const sessionResult = await requireSession(request)
+        if (sessionResult instanceof Response) return sessionResult
+
         const d1 = getD1()
         if (!d1) {
           return Response.json({ error: 'Database unavailable' }, { status: 503 })
         }
 
         try {
+          // Filter to installations where account_login matches one of the user's org slugs
           const rows = await d1
             .prepare(
-              'SELECT installation_id, account_login, account_type, repos_json FROM github_installations ORDER BY updated_at DESC',
+              `SELECT gi.installation_id, gi.account_login, gi.account_type, gi.repos_json
+               FROM github_installations gi
+               INNER JOIN orgs o ON LOWER(gi.account_login) = o.slug
+               INNER JOIN org_members om ON om.org_id = o.id AND om.user_id = ?
+               ORDER BY gi.updated_at DESC`,
             )
+            .bind(sessionResult.sub)
             .all<InstallationRow>()
 
           const installations = (rows.results ?? []).map((row: InstallationRow) => ({

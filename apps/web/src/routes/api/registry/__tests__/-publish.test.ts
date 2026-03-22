@@ -250,7 +250,7 @@ describe('POST /api/registry/publish', () => {
     expect(upsertCall?.latestVersion).toBe('2.0.0')
   })
 
-  it('includes scan_warnings in response when skill content has injection patterns', async () => {
+  it('returns 400 when skill content fails security scan', async () => {
     vi.mocked(sessionAuth.requireSession).mockResolvedValue({ sub: 'user-1', org: 'user-1' })
     vi.mocked(registryGithub.parseShipToml).mockReturnValue({
       module: { name: 'my-skill-pack', version: '1.0.0', description: 'test' },
@@ -269,10 +269,11 @@ describe('POST /api/registry/publish', () => {
 
     const req = makeRequest({ repo_url: 'https://github.com/owner/repo' })
     const res = await POST({ request: req } as Parameters<typeof POST>[0])
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(400)
     const body = await res.json() as Record<string, unknown>
-    expect(body.scan_warnings).toBeDefined()
-    const warnings = body.scan_warnings as string[]
+    expect(body.error).toMatch(/security scan/i)
+    expect(body.warnings).toBeDefined()
+    const warnings = body.warnings as string[]
     expect(warnings.length).toBeGreaterThan(0)
     expect(warnings[0]).toContain('bad-skill')
   })
