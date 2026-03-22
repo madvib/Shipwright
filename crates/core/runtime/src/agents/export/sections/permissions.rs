@@ -228,10 +228,6 @@ fn hooks_for_provider(provider_id: &str, hooks: &[HookConfig]) -> Vec<HookConfig
     merged
 }
 
-fn network_allowed(policy: &crate::permissions::NetworkPolicy) -> bool {
-    !matches!(policy, crate::permissions::NetworkPolicy::None)
-}
-
 fn export_claude_settings(
     project_root: &Path,
     hooks: &[HookConfig],

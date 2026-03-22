@@ -1,6 +1,6 @@
 //! File writing — emitting compiler output to the filesystem.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use compiler::{CompileOutput, get_provider};
 use std::path::Path;
 

@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 
 use super::crud::{get_workspace, list_workspaces};
 use super::helpers::*;
-use super::types::*;
 use super::types_session::*;
 
 // ---- Hydration helpers -----------------------------------------------------

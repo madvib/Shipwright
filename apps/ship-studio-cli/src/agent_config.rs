@@ -142,42 +142,6 @@ r#"{{
         )
     }
 
-    /// Template for a new agent file in TOML format (legacy).
-    pub fn scaffold(id: &str) -> String {
-        format!(
-r#"[agent]
-name = "{name}"
-id = "{id}"
-version = "0.1.0"
-description = ""
-providers = ["claude"]
-
-[skills]
-# Skill IDs to activate (empty = all installed skills).
-refs = []
-
-[mcp]
-# MCP server IDs to activate (empty = all configured servers).
-servers = []
-
-[plugins]
-# install = ["superpowers@claude-plugins-official"]
-# scope = "project"   # project | user
-
-[permissions]
-# preset = "ship-autonomous"   # ship-readonly | ship-standard | ship-autonomous | ship-elevated
-# tools_deny = ["mcp__*__delete*"]
-
-[rules]
-# inline = """
-# Keep operations deterministic.
-# Run tests before marking work done.
-# """
-"#,
-            name = id,
-            id = id,
-        )
-    }
 }
 
 /// Apply an agent's permission overrides on top of a base Permissions struct.
@@ -264,9 +228,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn agent_scaffold_parses() {
-        let s = AgentConfig::scaffold("rust-expert");
-        let agent: AgentConfig = toml::from_str(&s).expect("scaffold must be valid TOML");
+    fn agent_scaffold_jsonc_parses() {
+        let s = AgentConfig::scaffold_jsonc("rust-expert");
+        let agent: AgentConfig = compiler::jsonc::from_jsonc_str(&s).expect("scaffold must be valid JSONC");
         assert_eq!(agent.meta.id, "rust-expert");
         assert_eq!(agent.meta.providers, vec!["claude"]);
     }

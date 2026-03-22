@@ -1,6 +1,6 @@
 use crate::db::branch_context::{clear_branch_link, get_branch_link, set_branch_link};
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;

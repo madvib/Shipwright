@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::helpers::*;
-    use super::types::*;
+    use crate::workspace::helpers::*;
+    use crate::workspace::types::*;
     use std::str::FromStr;
 
     #[test]

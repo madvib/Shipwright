@@ -24,15 +24,15 @@ pub fn build_claude_settings_patch(
 ) -> Option<Json> {
     let has_perms = has_permission_overrides(permissions);
     let has_hooks = !hooks.is_empty();
-    let has_agent_limits = permissions.agent.max_cost_per_session.is_some()
+    let _has_agent_limits = permissions.agent.max_cost_per_session.is_some()
         || permissions.agent.max_turns.is_some();
-    let has_model = model.is_some();
-    let has_extra = extra.is_some_and(|v: &Json| !v.is_null());
+    let _has_model = model.is_some();
+    let _has_extra = extra.is_some_and(|v: &Json| !v.is_null());
     let has_env = !env.is_empty();
     let has_available_models = !available_models.is_empty();
-    let has_theme = theme.is_some();
-    let has_auto_updates = auto_updates.is_some();
-    let has_co_authored = include_co_authored_by.is_some();
+    let _has_theme = theme.is_some();
+    let _has_auto_updates = auto_updates.is_some();
+    let _has_co_authored = include_co_authored_by.is_some();
 
     let mut patch = serde_json::json!({});
 

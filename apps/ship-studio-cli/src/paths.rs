@@ -27,8 +27,6 @@ pub fn ensure_global_dirs() -> anyhow::Result<()> {
 
 pub fn project_dir() -> PathBuf { PathBuf::from(".ship") }
 pub fn project_modes_dir() -> PathBuf { project_dir().join("modes") }
-/// Compat: check agents/presets/ for projects not yet migrated.
-pub fn project_presets_dir() -> PathBuf { agents_dir().join("presets") }
 pub fn agents_dir() -> PathBuf { project_dir().join("agents") }
 pub fn rules_dir() -> PathBuf { project_dir().join("rules") }
 pub fn skills_dir() -> PathBuf { project_dir().join("skills") }

@@ -1,5 +1,5 @@
-mod types;
-mod types_session;
+pub(crate) mod types;
+pub(crate) mod types_session;
 pub(crate) mod helpers;
 mod context_hash;
 pub(crate) mod compile;

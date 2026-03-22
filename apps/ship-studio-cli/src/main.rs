@@ -22,7 +22,6 @@ mod paths;
 mod profile;
 mod publish;
 mod skill;
-mod toml_to_jsonc;
 mod validate;
 mod view;
 

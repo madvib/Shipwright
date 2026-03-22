@@ -81,7 +81,7 @@ pub fn run_validate(agent_id: Option<&str>, json: bool, project_root: &Path) -> 
 // ── Core validation ───────────────────────────────────────────────────────────
 
 /// Validate all agents found in agents/ (primary) and agents/profiles/ (compat).
-fn validate_all(agents_dir: &Path, project_root: &Path) -> Vec<AgentReport> {
+fn validate_all(agents_dir: &Path, _project_root: &Path) -> Vec<AgentReport> {
     let mut reports = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 

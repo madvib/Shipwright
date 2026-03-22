@@ -3,11 +3,11 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::{List, ListItem, ListState},
 };
 
 use crate::view::App;
-use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, panel};
+use super::{C_FG, C_MUT, C_PRI, C_SEL, panel};
 
 pub fn draw_settings(f: &mut Frame, app: &App, area: Rect) {
     let mut items: Vec<ListItem> = Vec::new();
