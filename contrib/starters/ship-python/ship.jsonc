@@ -1,0 +1,12 @@
+{
+  "$schema": "https://getship.dev/schemas/ship.schema.json",
+  "module": {
+    "name": "github.com/ship-starters/ship-python",
+    "version": "0.1.0",
+    "description": "Python agent with typing enforcement and pytest patterns"
+  },
+  "exports": {
+    "skills": ["skills/python-typing", "skills/pytest-patterns"],
+    "agents": ["agents/ship-python.jsonc"]
+  }
+}

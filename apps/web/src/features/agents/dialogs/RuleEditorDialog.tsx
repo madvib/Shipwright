@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { FileText, X, Trash2 } from 'lucide-react'
 import type { Rule } from '@ship/ui'
 
-type RuleData = Pick<Rule, 'file_name' | 'content'>
+type RuleData = Pick<Rule, 'file_name' | 'content' | 'always_apply' | 'globs'>
 
 interface RuleEditorDialogProps {
   open: boolean
@@ -15,12 +15,16 @@ interface RuleEditorDialogProps {
 export function RuleEditorDialog({ open, onOpenChange, rule, onSave, onDelete }: RuleEditorDialogProps) {
   const [fileName, setFileName] = useState('')
   const [content, setContent] = useState('')
+  const [alwaysApply, setAlwaysApply] = useState(true)
+  const [globs, setGlobs] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) {
       setFileName(rule?.file_name ?? '')
       setContent(rule?.content ?? '')
+      setAlwaysApply(rule?.always_apply ?? true)
+      setGlobs(rule?.globs?.join(', ') ?? '')
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open, rule])
@@ -42,7 +46,13 @@ export function RuleEditorDialog({ open, onOpenChange, rule, onSave, onDelete }:
 
   const handleSave = () => {
     if (!valid) return
-    onSave({ file_name: trimmed, content: content.trim() })
+    const parsedGlobs = globs.split(',').map((g) => g.trim()).filter(Boolean)
+    onSave({
+      file_name: trimmed,
+      content: content.trim(),
+      always_apply: alwaysApply,
+      ...(parsedGlobs.length > 0 && !alwaysApply ? { globs: parsedGlobs } : {}),
+    })
     close()
   }
 
@@ -80,6 +90,24 @@ export function RuleEditorDialog({ open, onOpenChange, rule, onSave, onDelete }:
               <label className="text-xs font-medium text-muted-foreground">Content</label>
               <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={6} placeholder="Write rule content in markdown..." className={`${inputCls} font-mono resize-y`} />
             </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={alwaysApply}
+                  onChange={(e) => setAlwaysApply(e.target.checked)}
+                  className="size-3.5 rounded border-border/60 accent-primary"
+                />
+                <span className="text-xs font-medium text-muted-foreground">Always apply this rule</span>
+              </label>
+            </div>
+            {!alwaysApply && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">File patterns (comma-separated)</label>
+                <input type="text" value={globs} onChange={(e) => setGlobs(e.target.value)} placeholder="e.g. src/**/*.ts, tests/**" className={inputCls} />
+                <p className="text-[11px] text-muted-foreground/70">When always_apply is off, this rule only applies to files matching these patterns</p>
+              </div>
+            )}
           </div>
           {/* Footer */}
           <div className="flex items-center justify-between border-t border-border/60 px-5 py-3.5">

@@ -214,4 +214,34 @@ describe('agentToLibrary', () => {
     expect(result.skills).toHaveLength(2)
     expect(result.mcp_servers).toHaveLength(1)
   })
+
+  it('preserves advanced MCP fields (env, disabled, timeout, server_type, url)', () => {
+    const agent = makeTestAgent({
+      mcpServers: [
+        {
+          name: 'remote-api',
+          command: '',
+          args: [],
+          server_type: 'sse',
+          url: 'https://example.com/mcp',
+          timeout_secs: 60,
+          disabled: true,
+          env: { API_KEY: 'secret-123', DEBUG: 'true' },
+          codex_enabled_tools: [],
+          codex_disabled_tools: [],
+          gemini_include_tools: [],
+          gemini_exclude_tools: [],
+        },
+      ],
+    })
+    const result = agentToLibrary(agent, makeBaseLibrary())
+
+    const server = result.mcp_servers?.find((s) => s.name === 'remote-api')
+    expect(server).toBeDefined()
+    expect(server!.server_type).toBe('sse')
+    expect(server!.url).toBe('https://example.com/mcp')
+    expect(server!.timeout_secs).toBe(60)
+    expect(server!.disabled).toBe(true)
+    expect(server!.env).toEqual({ API_KEY: 'secret-123', DEBUG: 'true' })
+  })
 })

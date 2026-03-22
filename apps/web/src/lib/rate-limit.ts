@@ -4,7 +4,7 @@
 
 import { env as cloudflareEnv } from 'cloudflare:workers'
 
-type RateLimitBinding = 'RATE_LIMITER_PUBLISH' | 'RATE_LIMITER_CLAIM' | 'RATE_LIMITER_INSTALL' | 'RATE_LIMITER_SEARCH'
+type RateLimitBinding = 'RATE_LIMITER_PUBLISH' | 'RATE_LIMITER_CLAIM' | 'RATE_LIMITER_INSTALL' | 'RATE_LIMITER_SEARCH' | 'RATE_LIMITER_STAR'
 
 export async function checkRateLimit(
   request: Request,

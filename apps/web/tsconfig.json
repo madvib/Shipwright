@@ -1,5 +1,5 @@
 {
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "worker-configuration.d.ts"],
   "exclude": ["node_modules", "dist", "src/_archive"],
   "compilerOptions": {
     "target": "ES2022",

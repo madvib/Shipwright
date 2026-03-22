@@ -20,6 +20,7 @@ export interface HookConfig {
   trigger: string
   command: string
   providers: string[]
+  matcher?: string
 }
 
 export interface AgentSettings {
@@ -44,6 +45,8 @@ export interface AgentProfile {
   hooks: HookConfig[]
   rules: Rule[]
   mcpToolStates: Record<string, ToolToggleState>
+  maxTurns?: number
+  providerSettings?: Record<string, Record<string, unknown>>
 }
 
 export interface SubagentRef {

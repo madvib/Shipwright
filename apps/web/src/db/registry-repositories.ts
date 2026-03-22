@@ -38,6 +38,8 @@ export interface RegistryRepositories {
 
   upsertPackage(data: InsertPackage): Promise<Package>
 
+  getLatestVersion(packageId: string): Promise<PackageVersion | null>
+
   getPackageVersions(packageId: string): Promise<PackageVersion[]>
 
   getPackageSkills(
@@ -52,6 +54,10 @@ export interface RegistryRepositories {
   createPackageSkill(data: InsertPackageSkill): Promise<PackageSkill>
 
   deletePackageSkillsByVersion(versionId: string): Promise<void>
+
+  incrementStars(packageId: string): Promise<number>
+
+  deprecatePackage(packageId: string, deprecatedBy: string): Promise<void>
 }
 
 export function createRegistryRepositories(
@@ -147,6 +153,17 @@ export function createRegistryRepositories(
       return row
     },
 
+    async getLatestVersion(packageId) {
+      const row = await db
+        .select()
+        .from(packageVersions)
+        .where(eq(packageVersions.packageId, packageId))
+        .orderBy(desc(packageVersions.indexedAt))
+        .limit(1)
+        .get()
+      return row ?? null
+    },
+
     async getPackageVersions(packageId) {
       return db
         .select()
@@ -213,6 +230,26 @@ export function createRegistryRepositories(
       await db
         .delete(packageSkills)
         .where(eq(packageSkills.versionId, versionId))
+    },
+
+    async incrementStars(packageId) {
+      await db
+        .update(packages)
+        .set({ stars: sql`${packages.stars} + 1` })
+        .where(eq(packages.id, packageId))
+      const row = await db
+        .select({ stars: packages.stars })
+        .from(packages)
+        .where(eq(packages.id, packageId))
+        .get()
+      return row?.stars ?? 0
+    },
+
+    async deprecatePackage(packageId, deprecatedBy) {
+      await db
+        .update(packages)
+        .set({ deprecatedBy, updatedAt: Date.now() })
+        .where(eq(packages.id, packageId))
     },
   }
 }

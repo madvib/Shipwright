@@ -7,6 +7,7 @@ use super::cache::{CachedPackage, PackageCache};
 use super::constraint::parse_constraint;
 use super::fetch::fetch_package_content;
 use super::resolver::resolve_version;
+use super::tracking::track_install;
 use super::types::{LockedPackage, ShipLock, ShipManifest, parse_ship_lock, serialize_ship_lock};
 
 /// Options passed to `resolve_and_fetch`.
@@ -14,6 +15,8 @@ use super::types::{LockedPackage, ShipLock, ShipManifest, parse_ship_lock, seria
 pub struct InstallOptions {
     /// If `true`, fail when the lockfile would change rather than updating it.
     pub frozen: bool,
+    /// If `true`, skip install tracking (no network POST to registry).
+    pub offline: bool,
 }
 
 /// Returned by `resolve_and_fetch`.
@@ -132,10 +135,10 @@ pub fn resolve_and_fetch(
                 if cache.verify(&pkg).is_ok() {
                     pkg
                 } else {
-                    fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit)?
+                    fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit, opts.offline)?
                 }
             }
-            None => fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit)?,
+            None => fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit, opts.offline)?,
         };
 
         // Record in lock.
@@ -161,7 +164,7 @@ pub fn resolve_and_fetch(
     for lp in &locked {
         let cached = match cache.get(&lp.path, &lp.version) {
             Some(pkg) if cache.verify(&pkg).is_ok() => pkg,
-            _ => fetch_and_store(cache, &lp.path, &lp.version, &lp.commit)?,
+            _ => fetch_and_store(cache, &lp.path, &lp.version, &lp.commit, opts.offline)?,
         };
 
         // Enforce hash matches what's in the lockfile.
@@ -242,14 +245,20 @@ fn fetch_and_store(
     dep_path: &str,
     version: &str,
     commit: &str,
+    offline: bool,
 ) -> anyhow::Result<CachedPackage> {
     let tmp = tempfile::tempdir().context("creating tempdir for package fetch")?;
     let git_url = format!("https://{}.git", dep_path);
     fetch_package_content(&git_url, commit, tmp.path())
         .with_context(|| format!("fetching {dep_path} @ {commit}"))?;
-    cache
+    let cached = cache
         .store(dep_path, version, commit, tmp.path())
-        .with_context(|| format!("storing {dep_path}@{version} in cache"))
+        .with_context(|| format!("storing {dep_path}@{version} in cache"))?;
+
+    // Fire-and-forget install tracking for freshly downloaded packages.
+    track_install(dep_path, offline);
+
+    Ok(cached)
 }
 
 fn should_write_lock(existing: &Option<ShipLock>, new: &ShipLock) -> bool {

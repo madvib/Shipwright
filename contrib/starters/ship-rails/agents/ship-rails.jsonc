@@ -1,0 +1,16 @@
+{
+  "$schema": "https://getship.dev/schemas/agent.schema.json",
+  "agent": {
+    "id": "ship-rails",
+    "name": "Rails Developer",
+    "version": "0.1.0",
+    "description": "Specialist for Ruby on Rails projects with RuboCop and RSpec",
+    "providers": ["claude", "gemini", "codex", "cursor"]
+  },
+  "skills": { "refs": ["rails-conventions", "rspec-patterns"] },
+  "mcp": [],
+  "permissions": { "preset": "ship-standard" },
+  "rules": {
+    "inline": "Run `bundle exec rubocop --autocorrect` before every commit. Zero offenses policy.\nFollow Rails conventions: fat models, skinny controllers. Controllers handle HTTP, models handle business logic.\nNever bypass validations with `update_column` or `save(validate: false)` unless in a data migration with explicit justification.\nUse strong parameters in every controller action that accepts input. No mass assignment without permit.\nDatabase migrations must be reversible. Include both `up` and `down` methods, or use `change` with reversible operations only.\nQuery objects or scopes for complex queries. No raw SQL in controllers.\nBackground jobs for anything taking >100ms: email, API calls, report generation.\nAll new models must have corresponding factory definitions (FactoryBot) and model specs."
+  }
+}

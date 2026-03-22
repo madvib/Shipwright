@@ -58,11 +58,14 @@ function makeRepos(overrides: Record<string, unknown> = {}) {
     }),
     getPackage: vi.fn(),
     upsertPackage: vi.fn(),
+    getLatestVersion: vi.fn().mockResolvedValue(null),
     getPackageVersions: vi.fn(),
     getPackageSkills: vi.fn(),
     createPackageVersion: vi.fn(),
     createPackageSkill: vi.fn(),
     incrementInstalls: vi.fn(),
+    incrementStars: vi.fn(),
+    deprecatePackage: vi.fn(),
     deletePackageSkillsByVersion: vi.fn(),
     ...overrides,
   }
@@ -161,6 +164,8 @@ describe('GET /api/registry/search', () => {
     expect(pkg).toHaveProperty('name')
     expect(pkg).toHaveProperty('scope')
     expect(pkg).toHaveProperty('installs')
+    expect(pkg).toHaveProperty('latestVersion')
+    expect(pkg).toHaveProperty('updatedAt')
   })
 
   it('defaults page to 1 and limit to 20 when not provided', async () => {

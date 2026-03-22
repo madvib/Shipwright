@@ -1,22 +1,28 @@
-import { Lock, Wrench, FileText, Terminal, Globe } from 'lucide-react'
+import { useMemo } from 'react'
+import { Lock, Wrench, FileText, Terminal, Globe, RotateCw } from 'lucide-react'
 import type { Permissions } from '@ship/ui'
 import { SectionShell } from './SectionShell'
-
-const PRESETS = ['read-only', 'ship-guarded', 'ship-standard', 'full-access', 'custom'] as const
+import { getFieldEnum } from '#/features/agents/schema-hints'
 
 interface PermissionsSectionProps {
   permissions: Permissions
   activePreset: string
+  maxTurns?: number
   onPresetChange: (preset: string) => void
+  onMaxTurnsChange: (value: number | undefined) => void
   onEdit?: () => void
 }
 
 export function PermissionsSection({
   permissions,
   activePreset,
+  maxTurns,
   onPresetChange,
+  onMaxTurnsChange,
   onEdit,
 }: PermissionsSectionProps) {
+  const schemaPresets = useMemo(() => getFieldEnum('permissions.preset'), [])
+
   return (
     <SectionShell
       icon={<Lock className="size-4" />}
@@ -26,7 +32,7 @@ export function PermissionsSection({
     >
       {/* Preset bar */}
       <div className="flex gap-1 mb-3">
-        {PRESETS.map((preset) => (
+        {schemaPresets.map((preset) => (
           <button
             key={preset}
             onClick={() => onPresetChange(preset)}
@@ -67,6 +73,27 @@ export function PermissionsSection({
           allow={permissions.network?.allow_hosts ?? []}
           deny={[]}
         />
+      </div>
+
+      {/* Agent limits */}
+      <div className="mt-3 rounded-lg border border-border/40 bg-card/30 px-3 py-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
+            <RotateCw className="size-3" />
+            Max turns per session
+          </div>
+          <input
+            type="number"
+            min={1}
+            value={maxTurns ?? ''}
+            onChange={(e) => {
+              const v = e.target.value
+              onMaxTurnsChange(v === '' ? undefined : Number(v))
+            }}
+            placeholder="unlimited"
+            className="w-24 rounded-md border border-border/40 bg-card/50 px-2 py-1 text-[11px] text-foreground/80 outline-none focus:border-primary text-right"
+          />
+        </div>
       </div>
     </SectionShell>
   )

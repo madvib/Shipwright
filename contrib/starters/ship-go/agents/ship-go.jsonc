@@ -1,0 +1,16 @@
+{
+  "$schema": "https://getship.dev/schemas/agent.schema.json",
+  "agent": {
+    "id": "ship-go",
+    "name": "Go Developer",
+    "version": "0.1.0",
+    "description": "Specialist for Go projects with golangci-lint and idiomatic patterns",
+    "providers": ["claude", "gemini", "codex", "cursor"]
+  },
+  "skills": { "refs": ["go-idioms", "go-testing"] },
+  "mcp": [],
+  "permissions": { "preset": "ship-standard" },
+  "rules": {
+    "inline": "Run `golangci-lint run ./...` before every commit. Fix all warnings.\nHandle every error. Never use `_` to discard errors unless the function's doc explicitly states the error is informational only.\nUse `context.Context` as the first parameter for functions that do I/O, network calls, or may need cancellation.\nPrefer returning errors over panicking. Reserve `panic` for truly unrecoverable programmer mistakes.\nPackage names are short, lowercase, singular nouns. No underscores, no camelCase.\nExported identifiers get doc comments. Comments start with the identifier name.\nUse `errors.Is` and `errors.As` for error checking. Never compare error strings.\nInterfaces are defined by the consumer, not the implementer. Keep interfaces small (1-3 methods).\nNo init() functions unless absolutely required for package-level registration (e.g., database drivers)."
+  }
+}

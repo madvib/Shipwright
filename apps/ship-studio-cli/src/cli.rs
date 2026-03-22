@@ -147,6 +147,9 @@ pub enum Commands {
         /// Fail if the lockfile would change rather than updating it
         #[arg(long)]
         frozen: bool,
+        /// Skip install tracking (no network POST to registry)
+        #[arg(long)]
+        offline: bool,
     },
 
     /// Publish this package to the Ship registry

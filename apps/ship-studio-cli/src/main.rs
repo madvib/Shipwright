@@ -78,9 +78,9 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 publish::run_publish(&root, dry_run, tag.as_deref())
             }
-            Commands::Install { frozen } => {
+            Commands::Install { frozen, offline } => {
                 let root = std::env::current_dir()?;
-                install::run_install(&root, frozen)
+                install::run_install(&root, frozen, offline)
             }
             Commands::Add { package } => {
                 let root = std::env::current_dir()?;

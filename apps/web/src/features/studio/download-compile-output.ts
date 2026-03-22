@@ -1,4 +1,5 @@
-import type { CompileResult } from '#/features/compiler/types'
+import type { CompileResult, ProjectLibrary } from '#/features/compiler/types'
+import type { AgentProfile } from '#/features/agents/types'
 
 /** File entry for ZIP assembly */
 interface ZipEntry {
@@ -82,12 +83,7 @@ function collectProviderFiles(provider: string, result: CompileResult): Array<{ 
   return files
 }
 
-/**
- * Build a minimal ZIP archive from file entries.
- *
- * Uses the STORE method (no compression) so we need zero external dependencies.
- * The ZIP format is: local file headers + data, then central directory, then EOCD.
- */
+/** Build a minimal ZIP archive (STORE method, no compression, zero deps). */
 function buildZip(entries: ZipEntry[]): Uint8Array {
   const encoder = new TextEncoder()
   const localParts: Uint8Array[] = []
@@ -197,15 +193,68 @@ function crc32(data: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0
 }
 
+/** Build a .ship/ship.jsonc manifest from library and agent data. */
+function buildShipManifest(library?: ProjectLibrary, agent?: AgentProfile): string {
+  const name = agent?.name ?? 'my-project'
+  const description = agent?.description ?? ''
+  const skillRefs = (agent?.skills ?? library?.skills ?? []).map((s) => s.id)
+  const agentExports = agent ? [`agents/${agent.id}.jsonc`] : []
+
+  const manifest: Record<string, unknown> = {
+    $schema: 'https://getship.dev/schemas/ship.schema.json',
+    module: { name, version: '0.1.0', description },
+    exports: { skills: skillRefs, agents: agentExports },
+  }
+  return JSON.stringify(manifest, null, 2)
+}
+
+/** Build a .ship/agents/<id>.jsonc agent config from an AgentProfile. */
+function buildAgentConfig(agent: AgentProfile): string {
+  const mcpServerNames = agent.mcpServers.map((s) => s.name)
+  const skillRefs = agent.skills.map((s) => s.id)
+
+  const config: Record<string, unknown> = {
+    $schema: 'https://getship.dev/schemas/agent.schema.json',
+    agent: {
+      id: agent.id,
+      name: agent.name,
+      providers: agent.providers,
+    },
+    skills: { refs: skillRefs },
+    mcp: { servers: mcpServerNames },
+    permissions: agent.permissions,
+  }
+  return JSON.stringify(config, null, 2)
+}
+
+/** Collect .ship/ source files for inclusion in the ZIP. */
+function collectShipSourceFiles(
+  library?: ProjectLibrary,
+  activeAgent?: AgentProfile,
+): Array<{ path: string; content: string }> {
+  const files: Array<{ path: string; content: string }> = []
+  files.push({ path: '.ship/ship.jsonc', content: buildShipManifest(library, activeAgent) })
+  if (activeAgent) {
+    files.push({
+      path: `.ship/agents/${activeAgent.id}.jsonc`,
+      content: buildAgentConfig(activeAgent),
+    })
+  }
+  return files
+}
+
 /**
  * Download all compiled output files as a ZIP archive.
  *
  * Files are organized as `<provider>/<filename>` inside the ZIP.
+ * Also includes `.ship/` source config for round-trippable CLI usage.
  * Triggers a browser download via a temporary object URL.
  */
 export async function downloadCompileOutput(
   output: Record<string, CompileResult>,
   selectedProviders: string[],
+  library?: ProjectLibrary,
+  activeAgent?: AgentProfile,
 ): Promise<void> {
   const encoder = new TextEncoder()
   const entries: ZipEntry[] = []
@@ -223,6 +272,12 @@ export async function downloadCompileOutput(
     }
   }
 
+  // Always include .ship/ source files regardless of selected providers
+  const shipFiles = collectShipSourceFiles(library, activeAgent)
+  for (const file of shipFiles) {
+    entries.push({ path: file.path, data: encoder.encode(file.content) })
+  }
+
   if (entries.length === 0) {
     throw new Error('No files to download')
   }
@@ -238,5 +293,5 @@ export async function downloadCompileOutput(
 }
 
 // Exported for testing
-export { collectProviderFiles, buildZip, crc32 }
+export { collectProviderFiles, collectShipSourceFiles, buildShipManifest, buildAgentConfig, buildZip, crc32 }
 export type { ZipEntry }

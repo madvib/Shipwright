@@ -81,6 +81,7 @@ export const Route = createFileRoute('/api/registry/search')({
             description: p.description,
             scope: p.scope,
             latestVersion: p.latestVersion,
+            updatedAt: p.updatedAt,
             installs: p.installs,
             stars: p.stars,
             deprecatedBy: p.deprecatedBy,

@@ -8,7 +8,7 @@ import { FacetedFilter } from '../faceted-filter';
 import { AutocompleteInput } from '../autocomplete-input';
 import { cn } from '@/lib/utils';
 import {
-    FrontmatterDelimiter,
+    type FrontmatterDelimiter,
     readFrontmatterSummary,
     setFrontmatterStringField,
     setFrontmatterStringListField,

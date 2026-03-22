@@ -1,0 +1,12 @@
+{
+  "$schema": "https://getship.dev/schemas/ship.schema.json",
+  "module": {
+    "name": "github.com/ship-starters/ship-test-writer",
+    "version": "0.1.0",
+    "description": "Test generation agent with test strategy and mocking skills"
+  },
+  "exports": {
+    "skills": ["skills/test-strategy", "skills/mocking-patterns"],
+    "agents": ["agents/ship-test-writer.jsonc"]
+  }
+}

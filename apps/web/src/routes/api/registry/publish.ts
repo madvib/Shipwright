@@ -19,6 +19,7 @@ import {
 } from '#/lib/registry-github'
 import { scanSkillContent } from '#/lib/skill-scan'
 import { computeContentHash } from '#/lib/content-hash'
+import { isNewerVersion } from '#/lib/semver'
 
 const TOML_MAX_BYTES = 102400 // 100 KB
 const SKILL_MAX_BYTES = 51200 // 50 KB
@@ -134,6 +135,14 @@ export const Route = createFileRoute('/api/registry/publish')({
         }
 
         const now = Date.now()
+        const incomingVersion = toml.module.version || null
+        const shouldUpdateVersion =
+          !existing?.latestVersion ||
+          !incomingVersion ||
+          isNewerVersion(incomingVersion, existing.latestVersion)
+        const latestVersion = shouldUpdateVersion
+          ? incomingVersion
+          : existing?.latestVersion ?? null
         const pkg = await repos.upsertPackage({
           id: existing?.id || nanoid(),
           path: packagePath,
@@ -142,7 +151,7 @@ export const Route = createFileRoute('/api/registry/publish')({
           description: toml.module.description || null,
           repoUrl: repo_url,
           defaultBranch: 'main',
-          latestVersion: toml.module.version || null,
+          latestVersion,
           contentHash: null,
           sourceType: 'native',
           claimedBy: session.sub || existing?.claimedBy || null,

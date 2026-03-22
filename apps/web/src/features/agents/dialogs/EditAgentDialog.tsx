@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Pencil, X } from 'lucide-react'
 import type { AgentProfile } from '../types'
-import { PROVIDERS } from '#/features/compiler/types'
+import { getFieldEnum } from '#/features/agents/schema-hints'
+import { validateAgentProfile } from '#/features/agents/schema-validation'
 
 interface EditAgentDialogProps {
   open: boolean
@@ -16,7 +17,9 @@ export function EditAgentDialog({ open, onOpenChange, profile, onSave }: EditAge
   const [name, setName] = useState(profile.name)
   const [description, setDescription] = useState(profile.description)
   const [selectedProviders, setSelectedProviders] = useState<string[]>(profile.providers)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
   const nameRef = useRef<HTMLInputElement>(null)
+  const schemaProviders = useMemo(() => getFieldEnum('agent.providers'), [])
 
   useEffect(() => {
     if (!open) return
@@ -44,6 +47,19 @@ export function EditAgentDialog({ open, onOpenChange, profile, onSave }: EditAge
   const canSave = name.trim().length > 0 && selectedProviders.length > 0
   const handleSave = () => {
     if (!canSave) return
+    // Validate providers against schema
+    const draft: AgentProfile = {
+      ...profile,
+      name: name.trim(),
+      description: description.trim(),
+      providers: selectedProviders,
+    }
+    const result = validateAgentProfile(draft)
+    if (!result.valid) {
+      setValidationErrors(result.errors.map((e) => e.message))
+      return
+    }
+    setValidationErrors([])
     onSave({ name: name.trim(), description: description.trim(), providers: selectedProviders })
     close()
   }
@@ -77,22 +93,30 @@ export function EditAgentDialog({ open, onOpenChange, profile, onSave }: EditAge
             <div>
               <label className="text-xs font-medium text-foreground mb-1.5 block">Target providers</label>
               <div className="flex flex-wrap gap-2">
-                {PROVIDERS.map((p) => (
+                {schemaProviders.map((id) => (
                   <button
-                    key={p.id}
+                    key={id}
                     type="button"
-                    onClick={() => toggleProvider(p.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                      selectedProviders.includes(p.id)
+                    onClick={() => toggleProvider(id)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition capitalize ${
+                      selectedProviders.includes(id)
                         ? 'border-primary/30 bg-primary/10 text-primary'
                         : 'border-border/60 text-muted-foreground hover:border-border'
                     }`}
                   >
-                    {p.name.split(' ')[0]}
+                    {id}
                   </button>
                 ))}
               </div>
             </div>
+
+            {validationErrors.length > 0 && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                {validationErrors.map((err, i) => (
+                  <p key={i} className="text-xs text-destructive">{err}</p>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3.5">

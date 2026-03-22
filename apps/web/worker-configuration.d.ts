@@ -7,6 +7,8 @@ declare namespace Cloudflare {
 		RATE_LIMITER_PUBLISH: RateLimit;
 		RATE_LIMITER_CLAIM: RateLimit;
 		RATE_LIMITER_INSTALL: RateLimit;
+		RATE_LIMITER_SEARCH: RateLimit;
+		RATE_LIMITER_STAR: RateLimit;
 		GITHUB_WEBHOOK_SECRET: string;
 		SEED_SECRET: string;
 	}
@@ -15,6 +17,8 @@ declare namespace Cloudflare {
 		RATE_LIMITER_PUBLISH: RateLimit;
 		RATE_LIMITER_CLAIM: RateLimit;
 		RATE_LIMITER_INSTALL: RateLimit;
+		RATE_LIMITER_SEARCH: RateLimit;
+		RATE_LIMITER_STAR: RateLimit;
 		GITHUB_WEBHOOK_SECRET: string;
 		SEED_SECRET: string;
 	}
@@ -23,6 +27,8 @@ declare namespace Cloudflare {
 		RATE_LIMITER_PUBLISH: RateLimit;
 		RATE_LIMITER_CLAIM: RateLimit;
 		RATE_LIMITER_INSTALL: RateLimit;
+		RATE_LIMITER_SEARCH: RateLimit;
+		RATE_LIMITER_STAR: RateLimit;
 		GITHUB_WEBHOOK_SECRET: string;
 		SEED_SECRET: string;
 	}

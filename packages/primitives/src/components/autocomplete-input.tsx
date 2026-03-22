@@ -1,4 +1,4 @@
-import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import {
   Combobox,
   ComboboxContent,

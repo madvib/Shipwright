@@ -1,0 +1,16 @@
+{
+  "$schema": "https://getship.dev/schemas/agent.schema.json",
+  "agent": {
+    "id": "ship-react",
+    "name": "React Developer",
+    "version": "0.1.0",
+    "description": "Specialist for React, Next.js, and Vite projects",
+    "providers": ["claude", "gemini", "codex", "cursor"]
+  },
+  "skills": { "refs": ["react-patterns", "component-testing"] },
+  "mcp": [],
+  "permissions": { "preset": "ship-standard" },
+  "rules": {
+    "inline": "Use functional components with hooks. Never use class components unless wrapping a legacy error boundary.\nPrefer named exports over default exports for all components and hooks.\nColocate component files: Component.tsx, Component.test.tsx, Component.module.css in the same directory.\nUse TypeScript strict mode. No `any` types — use `unknown` and narrow with type guards.\nState management hierarchy: local state > context > external store. Only escalate when the simpler option causes prop drilling through 3+ levels.\nAll event handlers must be prefixed with `handle` (handleClick, handleSubmit). Props callbacks use `on` prefix (onClick, onSubmit).\nServer components are the default in Next.js App Router. Only add 'use client' when the component needs browser APIs, event handlers, or hooks.\nEvery new component must have a corresponding test file. No exceptions."
+  }
+}

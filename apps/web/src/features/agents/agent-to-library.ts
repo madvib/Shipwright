@@ -37,7 +37,7 @@ export function agentToLibrary(
     id: `${modeId}-hook-${i}`,
     trigger: h.trigger as RustHookConfig['trigger'],
     command: h.command,
-    matcher: null,
+    matcher: h.matcher ?? null,
     cursor_event: null,
     gemini_event: null,
   }))
@@ -93,6 +93,17 @@ export function agentToLibrary(
   const baseProfiles = baseLibrary.agent_profiles ?? []
   const filteredProfiles = baseProfiles.filter((p) => p.profile.id !== agent.id)
 
+  // Merge max_turns into permissions.agent
+  const mergedPermissions = agent.maxTurns
+    ? {
+        ...agent.permissions,
+        agent: { ...agent.permissions.agent, max_turns: agent.maxTurns },
+      }
+    : agent.permissions
+
+  // Map provider settings to top-level library fields
+  const providerFields = mapProviderSettings(agent.providerSettings ?? {})
+
   return {
     ...baseLibrary,
     modes: mergedModes,
@@ -100,8 +111,55 @@ export function agentToLibrary(
     mcp_servers: mergedServers,
     skills: mergedSkills,
     rules: mergedRules,
-    permissions: agent.permissions,
+    permissions: mergedPermissions,
     hooks: mergedHooks,
     agent_profiles: [...filteredProfiles, rustProfile],
+    ...providerFields,
   }
+}
+
+// ── Provider settings mapping ────────────────────────────────────────────────
+// Maps the UI's nested providerSettings into the flat top-level fields
+// that the compiler expects on ProjectLibrary.
+
+const PROVIDER_FIELD_MAP: Record<string, Record<string, string>> = {
+  claude: {
+    theme: 'claude_theme',
+    auto_updates: 'claude_auto_updates',
+    include_co_authored_by: 'claude_include_co_authored_by',
+  },
+  gemini: {
+    default_approval_mode: 'gemini_default_approval_mode',
+    max_session_turns: 'gemini_max_session_turns',
+    disable_yolo_mode: 'gemini_disable_yolo_mode',
+    disable_always_allow: 'gemini_disable_always_allow',
+    tools_sandbox: 'gemini_tools_sandbox',
+  },
+  codex: {
+    approval_policy: 'codex_approval_policy',
+    sandbox: 'codex_sandbox',
+    reasoning_effort: 'codex_reasoning_effort',
+    max_threads: 'codex_max_threads',
+    notify: 'codex_notify',
+  },
+  cursor: {
+    environment: 'cursor_environment',
+  },
+}
+
+function mapProviderSettings(
+  settings: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [provider, values] of Object.entries(settings)) {
+    const fieldMap = PROVIDER_FIELD_MAP[provider]
+    if (!fieldMap) continue
+    for (const [key, value] of Object.entries(values)) {
+      const libraryKey = fieldMap[key]
+      if (libraryKey && value !== undefined) {
+        result[libraryKey] = value
+      }
+    }
+  }
+  return result
 }

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://getship.dev/schemas/ship.schema.json",
+  "module": {
+    "name": "github.com/ship-starters/ship-reviewer",
+    "version": "0.1.0",
+    "description": "Code review agent with review checklist and security review skills"
+  },
+  "exports": {
+    "skills": ["skills/review-checklist", "skills/security-review"],
+    "agents": ["agents/ship-reviewer.jsonc"]
+  }
+}
