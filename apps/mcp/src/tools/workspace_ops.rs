@@ -12,28 +12,14 @@ pub fn complete_workspace(project_dir: &Path, req: CompleteWorkspaceRequest) -> 
     let workspace_id = req.workspace_id.trim();
     let worktree_path = configured_worktree_dir(project_root).join(workspace_id);
 
-    let toml_path = worktree_path.join("workspace.toml");
-    let (ws_name, ws_kind, ws_preset) = if toml_path.exists() {
-        match std::fs::read_to_string(&toml_path) {
+    let config_path = worktree_path.join("workspace.jsonc");
+    let (ws_name, ws_kind, ws_preset) = if config_path.exists() {
+        match std::fs::read_to_string(&config_path) {
             Ok(content) => {
-                let name = content
-                    .lines()
-                    .find(|l| l.starts_with("name = "))
-                    .and_then(|l| l.split('=').nth(1))
-                    .map(|v| v.trim().trim_matches('"').to_string())
-                    .unwrap_or_else(|| workspace_id.to_string());
-                let kind = content
-                    .lines()
-                    .find(|l| l.starts_with("kind = "))
-                    .and_then(|l| l.split('=').nth(1))
-                    .map(|v| v.trim().trim_matches('"').to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                let preset = content
-                    .lines()
-                    .find(|l| l.starts_with("preset_id = "))
-                    .and_then(|l| l.split('=').nth(1))
-                    .map(|v| v.trim().trim_matches('"').to_string());
-                (name, kind, preset)
+                match serde_json::from_str::<super::workspace::WorkspaceConfig>(&content) {
+                    Ok(cfg) => (cfg.name, cfg.kind, cfg.preset_id),
+                    Err(_) => (workspace_id.to_string(), "unknown".to_string(), None),
+                }
             }
             Err(_) => (workspace_id.to_string(), "unknown".to_string(), None),
         }

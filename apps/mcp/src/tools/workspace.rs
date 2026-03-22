@@ -86,7 +86,7 @@ pub fn create_workspace(project_dir: &Path, req: CreateWorkspaceRequest) -> Stri
         if let Some(msg) = create_git_worktree(project_root, &worktree_path, &branch, base_branch) {
             return msg;
         }
-        if let Err(warn) = write_workspace_toml(&worktree_path, &req.name, &kind, &req.preset_id, &req.file_scope) {
+        if let Err(warn) = write_workspace_config(&worktree_path, &req.name, &kind, &req.preset_id, &req.file_scope) {
             return warn;
         }
         format!(
@@ -150,28 +150,37 @@ fn create_git_worktree(
     None
 }
 
-fn write_workspace_toml(
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct WorkspaceConfig {
+    pub name: String,
+    pub kind: String,
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_scope: Option<String>,
+}
+
+fn write_workspace_config(
     worktree_path: &PathBuf,
     name: &str,
     kind: &str,
     preset_id: &Option<String>,
     file_scope: &Option<String>,
 ) -> Result<(), String> {
-    let workspace_toml_path = worktree_path.join("workspace.toml");
-    let created_at = chrono::Utc::now().to_rfc3339();
-    let mut toml_content = format!(
-        "name = \"{}\"\nkind = \"{}\"\ncreated_at = \"{}\"\n",
-        name, kind, created_at
-    );
-    if let Some(pid) = preset_id {
-        toml_content.push_str(&format!("preset_id = \"{}\"\n", pid));
-    }
-    if let Some(scope) = file_scope {
-        toml_content.push_str(&format!("file_scope = \"{}\"\n", scope));
-    }
-    std::fs::write(&workspace_toml_path, &toml_content).map_err(|e| {
+    let config = WorkspaceConfig {
+        name: name.to_string(),
+        kind: kind.to_string(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        preset_id: preset_id.clone(),
+        file_scope: file_scope.clone(),
+    };
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize workspace config: {}", e))?;
+    let path = worktree_path.join("workspace.jsonc");
+    std::fs::write(&path, json).map_err(|e| {
         format!(
-            "Warning: worktree created at '{}' but failed to write workspace.toml: {}",
+            "Warning: worktree created at '{}' but failed to write workspace.jsonc: {}",
             worktree_path.display(),
             e
         )
