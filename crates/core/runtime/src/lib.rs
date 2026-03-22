@@ -158,14 +158,14 @@ mod tests {
         set_category_committed(&project_dir, "agents", false)?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
         assert!(gitignore.contains("agents/rules"));
-        assert!(gitignore.contains("agents/mcp.toml"));
-        assert!(gitignore.contains("agents/permissions.toml"));
+        assert!(gitignore.contains("agents/mcp.jsonc"));
+        assert!(gitignore.contains("agents/permissions.jsonc"));
 
         set_category_committed(&project_dir, "agents", true)?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
         assert!(!gitignore.contains("agents/rules"));
-        assert!(!gitignore.contains("agents/mcp.toml"));
-        assert!(!gitignore.contains("agents/permissions.toml"));
+        assert!(!gitignore.contains("agents/mcp.jsonc"));
+        assert!(!gitignore.contains("agents/permissions.jsonc"));
         Ok(())
     }
 
@@ -199,7 +199,7 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
         // Default config keeps project docs local unless explicitly included.
-        assert!(gitignore.contains("generated/"));
+        assert!(!gitignore.contains("generated/"));
         assert!(gitignore.contains(".tmp-global/"));
         assert!(gitignore.contains("project/releases"));
         assert!(gitignore.contains("project/features"));

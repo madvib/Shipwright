@@ -506,7 +506,7 @@ pub fn get_mcp_config(ship_dir: &Path) -> Result<Vec<McpServerConfig>> {
     }
 
     let content = fs::read_to_string(&path)?;
-    let raw: McpConfig = toml::from_str(&content)?;
+    let raw: McpConfig = compiler::jsonc::from_jsonc_str(&content)?;
 
     let mut servers = Vec::new();
     for (id, mut server) in raw.mcp.servers {
@@ -534,7 +534,7 @@ fn save_mcp_config(ship_dir: &Path, servers: &[McpServerConfig]) -> Result<()> {
     let raw = McpConfig {
         mcp: McpSection { servers: by_id },
     };
-    write_atomic(&path, toml::to_string_pretty(&raw)?)?;
+    write_atomic(&path, serde_json::to_string_pretty(&raw)?)?;
     Ok(())
 }
 
@@ -1182,15 +1182,15 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         ("adrs", "project/adrs"),
         ("notes", "project/notes"),
         ("vision", "vision.md"),
-        ("mcp", "agents/mcp.toml"),
-        ("permissions", "agents/permissions.toml"),
+        ("mcp", "agents/mcp.jsonc"),
+        ("permissions", "agents/permissions.jsonc"),
         ("rules", "agents/rules"),
         ("skills", "agents/skills"),
         ("agent-docs", "agents/README.md"),
         ("agent-strategy", "agents/skill-library-strategy.md"),
         ("ship-readme", "README.md"),
         ("project-readme", "project/README.md"),
-        ("ship.toml", "ship.toml"),
+        ("ship.jsonc", "ship.jsonc"),
         ("templates", "**/TEMPLATE.md"),
     ];
     let mut lines = vec![
@@ -1201,10 +1201,6 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         if !git.commit.contains(&key.to_string()) {
             lines.push(path.to_string());
         }
-    }
-    // Runtime-managed local artifacts are always ignored.
-    if !lines.iter().any(|line| line == "generated/") {
-        lines.push("generated/".to_string());
     }
     if !lines.iter().any(|line| line == ".tmp-global/") {
         lines.push(".tmp-global/".to_string());
@@ -1798,7 +1794,7 @@ mod tests {
         assert_eq!(mode_rows[0].id, "planning");
 
         let mcp_cfg = fs::read_to_string(ship_dir.join("agents").join("mcp.jsonc"))?;
-        assert!(mcp_cfg.contains("[mcp.servers.github]"));
+        assert!(mcp_cfg.contains("\"github\""));
         Ok(())
     }
 

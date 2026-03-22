@@ -124,8 +124,6 @@ fn migrate_project_files(ship_dir: &Path) -> Result<ProjectFileMigrationReport> 
     fs::create_dir_all(project_ns(ship_dir))?;
     fs::create_dir_all(notes_dir(ship_dir))?;
     migrate_project_config_file(ship_dir)?;
-    migrate_workflow_event_stream(ship_dir)?;
-    migrate_event_index_location(ship_dir)?;
     migrate_template_layout(ship_dir, &mut report)?;
 
     let mappings = [
@@ -192,15 +190,6 @@ fn migrate_project_config_file(ship_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn migrate_workflow_event_stream(_ship_dir: &Path) -> Result<()> {
-    // Schema is applied by db::ensure_db — nothing to do here.
-    Ok(())
-}
-
-fn migrate_event_index_location(_ship_dir: &Path) -> Result<()> {
-    // Dead migration — no users to migrate from.
-    Ok(())
-}
 
 fn migrate_template_layout(ship_dir: &Path, report: &mut ProjectFileMigrationReport) -> Result<()> {
     let legacy_templates = ship_dir.join("templates");
