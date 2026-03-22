@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use super::types::WorkspaceStatus;
+use super::types::{ShipWorkspaceKind, WorkspaceStatus};
 
 // ---- Session types ---------------------------------------------------------
 
@@ -140,7 +140,7 @@ pub struct WorkspaceRepairReport {
 #[derive(Debug, Clone, Default)]
 pub struct CreateWorkspaceRequest {
     pub branch: String,
-    pub workspace_type: Option<super::types::ShipWorkspaceKind>,
+    pub workspace_type: Option<ShipWorkspaceKind>,
     pub status: Option<WorkspaceStatus>,
     pub environment_id: Option<String>,
     pub feature_id: Option<String>,
