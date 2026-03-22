@@ -175,7 +175,7 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
             let agents = paths::list_agent_ids(local, project);
             if agents.is_empty() {
                 println!("No agents found.");
-                println!("Create one with: ship agent create <name>");
+                println!("Create one with: ship agents create <name>");
             } else {
                 for (id, scope) in &agents {
                     println!("  {} [{}]", id, scope);

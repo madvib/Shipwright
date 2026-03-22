@@ -54,18 +54,18 @@ fn lookup(topic: &str) -> Option<&'static str> {
 const TOPIC_AGENTS: &str = "\
 Agents
 
-An agent is a TOML file in .ship/agents/ that declares an AI assistant's
+An agent is a JSONC file in .ship/agents/ that declares an AI assistant's
 identity, skills, permissions, and provider targets.
 
-  Create:   ship agent create rust-expert
-  List:     ship agent list
-  Edit:     ship agent edit rust-expert
+  Create:   ship agents create rust-expert
+  List:     ship agents list
+  Edit:     ship agents edit rust-expert
   Activate: ship use rust-expert
-  Delete:   ship agent delete rust-expert
-  Clone:    ship agent clone rust-expert go-expert
+  Delete:   ship agents delete rust-expert
+  Clone:    ship agents clone rust-expert go-expert
 
-Agent files live in .ship/agents/<id>.toml. Global agents live in
-~/.ship/agents/<id>.toml (create with --global).
+Agent files live in .ship/agents/<id>.jsonc. Global agents live in
+~/.ship/agents/<id>.jsonc (create with --global).
 
 After editing an agent, run `ship compile` or `ship use <id>` to regenerate
 provider-native config files.
@@ -160,11 +160,11 @@ Skills
 Skills are markdown files that add domain knowledge or workflow instructions
 to an agent. They live in .ship/agents/skills/.
 
-  Install from registry: ship skill add ship-coordination
-  Install from path:     ship skill add ./my-skills/review
-  Create a new skill:    ship skill create my-skill
-  List installed:        ship skill list
-  Remove:                ship skill remove my-skill
+  Install from registry: ship skills add ship-coordination
+  Install from path:     ship skills add ./my-skills/review
+  Create a new skill:    ship skills create my-skill
+  List installed:        ship skills list
+  Remove:                ship skills remove my-skill
 
 Skills are referenced in agent TOML files:
   [skills]
@@ -180,10 +180,10 @@ Typical Workflow
    ship init
 
 2. Create an agent:
-   ship agent create my-agent
+   ship agents create my-agent
 
 3. Edit the agent to add skills, permissions, providers:
-   ship agent edit my-agent
+   ship agents edit my-agent
 
 4. Activate and compile:
    ship use my-agent

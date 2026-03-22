@@ -16,8 +16,8 @@ const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
   ship publish           Share your package on the registry
 
 \x1b[1mConfiguration:\x1b[0m
-  ship agent create <n>  Create an agent definition
-  ship skill add <src>   Install a skill
+  ship agents create <n> Create an agent definition
+  ship skills add <src>  Install a skill
   ship mcp add-stdio ... Register an MCP server
   ship config set k v    Set a user preference
   ship convert <source>  Convert provider configs to .ship/
@@ -129,6 +129,7 @@ pub enum Commands {
     },
 
     /// Manage agent skills (add, list, remove, create)
+    #[command(name = "skills")]
     Skill {
         #[command(subcommand)]
         action: SkillCommands,
