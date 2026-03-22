@@ -15,19 +15,19 @@
   "exports": {
     // Public skills — useful to any Ship user.
     "skills": [
-      "agents/skills/configure-agent",
-      "agents/skills/find-skills",
-      "agents/skills/write-adr",
-      "agents/skills/tdd",
-      "agents/skills/visual-brainstorm",
-      "agents/skills/visual-spec",
-      "agents/skills/ship-skills-guide",
-      "agents/skills/ship-help",
-      "agents/skills/ship-publishing",
-      "agents/skills/ship-tutorial",
-      "agents/skills/ship-cli-reference",
-      "agents/skills/ship-schema-reference",
-      "agents/skills/ship-permissions",
+      "skills/configure-agent",
+      "skills/find-skills",
+      "skills/write-adr",
+      "skills/tdd",
+      "skills/visual-brainstorm",
+      "skills/visual-spec",
+      "skills/ship-skills-guide",
+      "skills/ship-help",
+      "skills/ship-publishing",
+      "skills/ship-tutorial",
+      "skills/ship-cli-reference",
+      "skills/ship-schema-reference",
+      "skills/ship-permissions",
     ],
     // Private skills (commander, ship-coordination, spawn-agent) are project-specific.
     "agents": [
