@@ -1,23 +1,16 @@
+mod handler;
+mod tool_gate;
+
 use anyhow::{Result, anyhow};
 use rmcp::transport::stdio;
 use rmcp::{
-    ErrorData, RoleServer, ServerHandler, ServiceExt,
-    handler::server::{router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters},
-    model::{
-        CallToolRequestParams, CallToolResult, Content, Implementation,
-        ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
-        ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, ResourceContents,
-        ServerCapabilities, ServerInfo, Tool,
-    },
-    service::RequestContext,
+    ServiceExt,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     tool, tool_router,
 };
-use runtime::{get_active_agent, workspace::get_active_workspace_type};
-use std::path::{Path, PathBuf};
-use std::process::Command as ProcessCommand;
+use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::resources;
 use crate::tools::{
     adr, agent, events, job, notes, project, session, skills, target, workspace, workspace_ops,
 };
@@ -26,7 +19,7 @@ use target::{
     update_target as tool_update_target,
 };
 
-// ─── Server struct ────────────────────────────────────────────────────────────
+// ---- Server struct ----
 
 #[derive(Debug, Clone)]
 pub struct ShipServer {
@@ -48,103 +41,7 @@ impl ShipServer {
         project::get_effective_project_dir(&self.active_project).await
     }
 
-    pub fn normalize_mode_tool_id(raw: &str) -> String {
-        let mut normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
-        if let Some(stripped) = normalized.strip_prefix("ship_") {
-            normalized = stripped.to_string();
-        }
-        if let Some(stripped) = normalized.strip_suffix("_tool") {
-            normalized = stripped.to_string();
-        }
-        normalized
-    }
-
-    pub fn core_tools() -> &'static [&'static str] {
-        &[
-            "open_project", "create_note", "update_note", "create_adr",
-            "activate_workspace", "create_workspace", "complete_workspace",
-            "list_stale_worktrees", "set_agent",
-            "list_workspaces", "start_session", "end_session", "log_progress",
-            "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
-            "claim_file", "get_file_owner",
-            "list_events", "provider_matrix",
-            "create_target", "update_target", "list_targets", "get_target",
-            "create_capability", "update_capability", "delete_capability",
-            "mark_capability_actual", "list_capabilities",
-        ]
-    }
-
-    pub fn is_core_tool(tool_name: &str) -> bool {
-        let normalized = Self::normalize_mode_tool_id(tool_name);
-        Self::core_tools().contains(&normalized.as_str())
-    }
-
-    pub fn is_project_workspace_tool(_tool_name: &str) -> bool {
-        false
-    }
-
-    pub fn mode_allows_tool(tool_name: &str, active_tools: &[String]) -> bool {
-        if active_tools.is_empty() {
-            return true;
-        }
-        let normalized_tool = Self::normalize_mode_tool_id(tool_name);
-        active_tools
-            .iter()
-            .map(|t| Self::normalize_mode_tool_id(t))
-            .any(|allowed| allowed == normalized_tool)
-    }
-
-    pub fn enforce_mode_tool_gate(project_dir: &Path, tool_name: &str) -> Result<(), String> {
-        if Self::is_core_tool(tool_name) {
-            return Ok(());
-        }
-        if Self::is_project_workspace_tool(tool_name) {
-            let active_type = get_active_workspace_type(project_dir).unwrap_or(None);
-            if matches!(active_type, Some(runtime::ShipWorkspaceKind::Service)) {
-                return Ok(());
-            }
-        }
-        let active_agent = get_active_agent(Some(project_dir.to_path_buf()))
-            .map_err(|e| e.to_string())?;
-        if let Some(ref mode) = active_agent {
-            if Self::mode_allows_tool(tool_name, &mode.active_tools) {
-                return Ok(());
-            }
-            let allowed = if mode.active_tools.is_empty() {
-                "all tools".to_string()
-            } else {
-                mode.active_tools.join(", ")
-            };
-            return Err(format!(
-                "Tool '{}' blocked by active mode '{}' (allowed: {}).",
-                tool_name, mode.id, allowed
-            ));
-        }
-        Err(format!(
-            "Tool '{}' is not in the core workflow surface. \
-             Activate the service workspace ('ship') or a mode with this tool in its \
-             active_tools list to use it.",
-            tool_name
-        ))
-    }
-
-    fn resolve_workspace_branch_for_project(
-        project_dir: &Path,
-        branch: Option<&str>,
-    ) -> Result<String, String> {
-        if let Some(b) = branch {
-            let trimmed = b.trim();
-            if !trimmed.is_empty() {
-                return Ok(trimmed.to_string());
-            }
-        }
-        let Some(root) = project_dir.parent() else {
-            return Err("Error: Could not resolve project root".to_string());
-        };
-        current_branch(root).map_err(|e| e.to_string())
-    }
-
-    // ─── Project ──────────────────────────────────────────────────────────────
+    // ---- Project ----
 
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
@@ -152,7 +49,7 @@ impl ShipServer {
         msg
     }
 
-    // ─── Notes ────────────────────────────────────────────────────────────────
+    // ---- Notes ----
 
     #[tool(description = "Create a standalone note attached to this project.")]
     async fn create_note(&self, Parameters(req): Parameters<CreateNoteRequest>) -> String {
@@ -168,7 +65,7 @@ impl ShipServer {
         notes::update_note(scope, dir.as_deref(), &req.file_name, &req.content)
     }
 
-    // ─── ADR ──────────────────────────────────────────────────────────────────
+    // ---- ADR ----
 
     #[tool(description = "Create a new Architecture Decision Record (ADR). Use when committing to a \
         technical approach, trade-off, or design choice that future contributors need to understand.")]
@@ -177,7 +74,7 @@ impl ShipServer {
         adr::create_adr(&project_dir, &req.title, &req.decision)
     }
 
-    // ─── Agent ────────────────────────────────────────────────────────────────
+    // ---- Agent ----
 
     #[tool(description = "Activate an agent profile by id, or clear active agent by passing null/omitting id.")]
     async fn set_agent(&self, Parameters(req): Parameters<SetAgentRequest>) -> String {
@@ -185,7 +82,7 @@ impl ShipServer {
         agent::set_agent(project_dir, req.id.as_deref())
     }
 
-    // ─── Workspace ────────────────────────────────────────────────────────────
+    // ---- Workspace ----
 
     #[tool(description = "Activate a workspace by branch/id and optionally set its mode override.")]
     async fn activate_workspace(&self, Parameters(req): Parameters<ActivateWorkspaceRequest>) -> String {
@@ -217,7 +114,7 @@ impl ShipServer {
         workspace_ops::list_stale_worktrees(&project_dir, req)
     }
 
-    // ─── Session ──────────────────────────────────────────────────────────────
+    // ---- Session ----
 
     #[tool(description = "Start a workspace session for the active compiled context and selected provider.")]
     async fn start_session(&self, Parameters(req): Parameters<StartSessionRequest>) -> String {
@@ -240,7 +137,7 @@ impl ShipServer {
         session::log_progress(&project_dir, req, &branch)
     }
 
-    // ─── Skills ───────────────────────────────────────────────────────────────
+    // ---- Skills ----
 
     #[tool(description = "List skills available to the active project. Optionally filter by search query.")]
     async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
@@ -248,7 +145,7 @@ impl ShipServer {
         skills::list_skills(&project_dir, req)
     }
 
-    // ─── Targets ──────────────────────────────────────────────────────────────
+    // ---- Targets ----
 
     #[tool(description = "Create a target. kind='milestone' (e.g. v0.1.0) or kind='surface' (e.g. compiler, studio). \
         Accepts phase, due_date, body_markdown, and file_scope for full intent document.")]
@@ -305,7 +202,7 @@ impl ShipServer {
         target::list_capabilities(&project_dir, req)
     }
 
-    // ─── Events ───────────────────────────────────────────────────────────────
+    // ---- Events ----
 
     #[tool(description = "Query the project event log. Returns JSON array of events. \
         Filter by since (ISO 8601 or relative: '1h', '24h', '7d'), actor, entity, or action. \
@@ -315,7 +212,7 @@ impl ShipServer {
         events::list_events(&project_dir, req)
     }
 
-    // ─── Jobs ─────────────────────────────────────────────────────────────────
+    // ---- Jobs ----
 
     #[tool(description = "Create a new coordination job. Returns the new job id.")]
     async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
@@ -353,7 +250,7 @@ impl ShipServer {
         job::get_file_owner(&project_dir, &req.path)
     }
 
-    // ─── Provider matrix ─────────────────────────────────────────────────────
+    // ---- Provider matrix ----
 
     #[tool(description = "Show the provider capability matrix with gap analysis.")]
     async fn provider_matrix(&self, Parameters(req): Parameters<ProviderMatrixRequest>) -> String {
@@ -372,134 +269,7 @@ impl ShipServer {
     }
 }
 
-// ─── Resource resolution ──────────────────────────────────────────────────────
-
-impl ShipServer {
-    pub async fn resolve_resource_uri(&self, uri: &str, dir: &Path) -> Option<String> {
-        resources::resolve_resource_uri(uri, dir, project::get_project_info(dir)).await
-    }
-}
-
-// ─── ServerHandler ────────────────────────────────────────────────────────────
-
-impl ServerHandler for ShipServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities::builder().enable_tools().enable_resources().build(),
-            server_info: Implementation {
-                name: "Ship Project Tracker".into(),
-                version: "0.2.0".into(),
-                ..Default::default()
-            },
-            instructions: Some(
-                "Ship project intelligence — three-stage workflow:\n\n\
-                 PLANNING: get_project_info → create_note / create_adr\n\
-                 WORKSPACE: list_workspaces → activate_workspace → set_agent\n\
-                 SESSION: start_session → (work) → log_progress → end_session\n\n\
-                 By default only core workflow tools are visible. To access extended tools, \
-                 activate a mode that includes them in its active_tools list. \
-                 Call open_project first if the project is not auto-detected. \
-                 Use resources (ship://) for read-heavy workflows."
-                    .into(),
-            ),
-        }
-    }
-
-    async fn call_tool(
-        &self,
-        request: CallToolRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let tool_name = request.name.to_string();
-        if let Ok(project_dir) = self.get_effective_project_dir().await
-            && let Err(message) = Self::enforce_mode_tool_gate(&project_dir, &tool_name)
-        {
-            return Ok(CallToolResult::error(vec![Content::text(message)]));
-        }
-        self.tool_router.call(ToolCallContext::new(self, request, context)).await
-    }
-
-    async fn list_tools(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, ErrorData> {
-        let all_tools = self.tool_router.list_all();
-        let visible = if let Ok(project_dir) = self.get_effective_project_dir().await {
-            let active_agent = get_active_agent(Some(project_dir.clone())).unwrap_or(None);
-            let in_svc = matches!(
-                get_active_workspace_type(&project_dir).unwrap_or(None),
-                Some(runtime::ShipWorkspaceKind::Service)
-            );
-            all_tools.into_iter().filter(|t| {
-                let n = t.name.as_ref();
-                if Self::is_core_tool(n) { return true; }
-                if in_svc && Self::is_project_workspace_tool(n) { return true; }
-                active_agent.as_ref().map_or(false, |m| Self::mode_allows_tool(n, &m.active_tools))
-            }).collect()
-        } else {
-            all_tools.into_iter().filter(|t| Self::is_core_tool(t.name.as_ref())).collect()
-        };
-        Ok(ListToolsResult::with_all_items(visible))
-    }
-
-    fn get_tool(&self, name: &str) -> Option<Tool> {
-        self.tool_router.get(name).cloned()
-    }
-
-    async fn list_resources(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, ErrorData> {
-        Ok(ListResourcesResult::with_all_items(resources::static_resource_list()))
-    }
-
-    async fn list_resource_templates(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ListResourceTemplatesResult, ErrorData> {
-        Ok(ListResourceTemplatesResult::with_all_items(resources::static_resource_template_list()))
-    }
-
-    async fn read_resource(
-        &self,
-        request: ReadResourceRequestParams,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, ErrorData> {
-        let Ok(dir) = self.get_effective_project_dir().await else {
-            return Err(ErrorData::internal_error("No active project", None));
-        };
-        match self.resolve_resource_uri(&request.uri, &dir).await {
-            Some(text) => Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(text, &request.uri)],
-            }),
-            None => Err(ErrorData::resource_not_found(
-                format!("Resource not found: {}", request.uri),
-                None,
-            )),
-        }
-    }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-fn current_branch(project_root: &Path) -> Result<String> {
-    let output = ProcessCommand::new("git")
-        .args(["branch", "--show-current"])
-        .current_dir(project_root)
-        .output()?;
-    if !output.status.success() {
-        anyhow::bail!("Failed to determine current git branch");
-    }
-    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if branch.is_empty() {
-        anyhow::bail!("Current HEAD is detached; cannot map to a feature branch");
-    }
-    Ok(branch)
-}
+// ---- Server entry point ----
 
 pub async fn run_server() -> Result<()> {
     let service = ShipServer::new();
@@ -514,8 +284,8 @@ pub async fn run_server() -> Result<()> {
     Ok(())
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// ---- Tests ----
 
 #[cfg(test)]
-#[path = "server_tests.rs"]
+#[path = "../server_tests.rs"]
 mod server_tests;
