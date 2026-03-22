@@ -12,5 +12,7 @@
 * Stage explicit files only. Keep commit subjects imperative and concise.
 * Commit types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
 * No AI attribution or co-author noise in commit messages.
+* One way to do things. One auth system (Better Auth), one parser (WASM compiler), one migration tool (drizzle-kit). If a solution exists, use it. Do not build a parallel system.
 * No backward compatibility without downstream consumers. Make hard breaks.
 * Only allow temporary compat for data-safety migrations. Must include explicit scope, removal criteria, and a test that fails once the exception is no longer needed.
+

@@ -20,14 +20,20 @@ tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm pub
 [rules]
 inline = """
 Your domain is Cloudflare infrastructure and bindings.
-Default scope: apps/web/wrangler.toml, apps/web/src/server/, apps/web/worker*.
+Default scope: apps/web/wrangler.jsonc, apps/web/src/db/, apps/web/worker*.
 
-This project runs on Cloudflare Pages + Workers. DB is D1. Object storage is R2.
-Prefer Workers bindings over fetch() to internal services.
-D1 migrations go in drizzle/ — never hand-edit production schema.
+This project runs on Cloudflare Workers. Two D1 databases: ship-auth and ship-registry.
 KV is for ephemeral/cache data only — not source of truth.
-Test D1 changes locally with `wrangler d1 execute --local` before proposing a migration.
 Cloudflare infra mistakes are expensive to roll back — plan before making changes.
 
-For app-level data model changes — create a job for react-architect or rust-runtime.
+## D1 Migrations
+
+Two databases, two schemas, two drizzle configs:
+- ship-auth: src/db/auth-schema.ts → drizzle-auth.config.ts → migrations/auth/
+- ship-registry: src/db/registry-schema.ts → drizzle-registry.config.ts → migrations/registry/
+
+NEVER write migration SQL directly. Permissions deny Write/Edit to migrations/**/*.sql.
+Edit the schema file, then run `pnpm db:generate:auth` or `pnpm db:generate:registry`.
+Commit both the schema change and the generated SQL together.
+Test locally with `wrangler d1 execute --local` before proposing changes.
 """

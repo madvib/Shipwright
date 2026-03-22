@@ -34,6 +34,11 @@
       "Bash(ship *)",
       "mcp__ship__*",
     ],
+    "tools_deny": [
+      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
+      "Write(**/migrations/**/*.sql)",
+      "Edit(**/migrations/**/*.sql)",
+    ],
   },
 
   "ship-autonomous": {
@@ -45,6 +50,11 @@
       "Grep",
       "Bash(ship *)",
       "mcp__ship__*",
+    ],
+    "tools_deny": [
+      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
+      "Write(**/migrations/**/*.sql)",
+      "Edit(**/migrations/**/*.sql)",
     ],
   },
 
@@ -59,6 +69,11 @@
       "Bash(git push*)",
       "Bash(*publish*)",
       "mcp__ship__*",
+    ],
+    "tools_deny": [
+      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
+      "Write(**/migrations/**/*.sql)",
+      "Edit(**/migrations/**/*.sql)",
     ],
   },
 }
