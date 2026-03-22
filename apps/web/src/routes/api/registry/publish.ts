@@ -196,7 +196,6 @@ export const Route = createFileRoute('/api/registry/publish')({
 
         // Index exported skills and scan for injection patterns
         let skillsIndexed = 0
-        const scanWarnings: string[] = []
         for (const skillId of skillIds) {
           const skillPath = `.ship/skills/${skillId}.md`
           const content = await fetchFileFromGitHub(
@@ -215,12 +214,14 @@ export const Route = createFileRoute('/api/registry/publish')({
             continue
           }
 
-          // Scan skill content for injection patterns
+          // Scan skill content for injection patterns — reject on failure
           const scan = scanSkillContent(content)
           if (!scan.safe) {
             const prefixed = scan.warnings.map((w) => `[${skillId}] ${w}`)
-            scanWarnings.push(...prefixed)
-            console.warn(`Skill scan warnings for ${skillId}:`, scan.warnings)
+            return Response.json(
+              { error: 'Skill content flagged by security scan', warnings: prefixed },
+              { status: 400 },
+            )
           }
 
           const hash = await computeContentHash(content)
@@ -236,15 +237,11 @@ export const Route = createFileRoute('/api/registry/publish')({
           skillsIndexed++
         }
 
-        const response: Record<string, unknown> = {
+        return Response.json({
           package_id: pkg.id,
           version: version.version,
           skills_indexed: skillsIndexed,
-        }
-        if (scanWarnings.length > 0) {
-          response.scan_warnings = scanWarnings
-        }
-        return Response.json(response)
+        })
       },
     },
   },

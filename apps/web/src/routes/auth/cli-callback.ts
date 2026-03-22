@@ -1,9 +1,9 @@
-// GET /auth/cli-callback -- GitHub OAuth callback for CLI login
-// Exchanges GitHub code for user, upserts to D1 AUTH_DB, issues a short-lived
-// auth code, then redirects to the CLI's local callback server.
+// GET /auth/cli-callback — GitHub OAuth callback for CLI login
+// Exchanges GitHub code for user, upserts to D1, issues a short-lived auth code,
+// then redirects to the CLI's local callback server.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getAuthDb, nanoid } from '#/lib/d1'
+import { getD1, nanoid } from '#/lib/d1'
 
 type GitHubUser = {
   id: number
@@ -79,12 +79,14 @@ export const Route = createFileRoute('/auth/cli-callback')({
 
         if (!pending) return errorRedirect('invalid_state')
 
-        // Delete state immediately -- single use
-        await db.prepare('DELETE FROM cli_auth_state WHERE state = ?').bind(state).run()
-
+        // Check expiry BEFORE deleting state to avoid TOCTOU: if expired, clean up and reject
         if (Date.now() - pending.created_at > 10 * 60 * 1000) {
+          await db.prepare('DELETE FROM cli_auth_state WHERE state = ?').bind(state).run()
           return errorRedirect('state_expired')
         }
+
+        // Delete state after validation passes — single use
+        await db.prepare('DELETE FROM cli_auth_state WHERE state = ?').bind(state).run()
 
         const clientId = getEnv('GITHUB_CLIENT_ID')
         const clientSecret = getEnv('GITHUB_CLIENT_SECRET')
@@ -97,34 +99,59 @@ export const Route = createFileRoute('/auth/cli-callback')({
         const githubEmail = ghUser.email ?? `${ghUser.login}@users.noreply.github.com`
         const userName = ghUser.name ?? ghUser.login
 
-        // Upsert user
-        const existingUser = await db
+        // Upsert user — atomic INSERT ... ON CONFLICT to avoid check-then-insert race
+        const newUserId = nanoid()
+        await db
+          .prepare(
+            `INSERT INTO user (id, name, email, emailVerified, image, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(email) DO UPDATE SET name = excluded.name, image = excluded.image, updatedAt = excluded.updatedAt`,
+          )
+          .bind(newUserId, userName, githubEmail, 1, ghUser.avatar_url, now, now)
+          .run()
+
+        // Retrieve the actual user ID (may differ from newUserId if user already existed)
+        const userRow = await db
           .prepare('SELECT id FROM user WHERE email = ?')
           .bind(githubEmail)
           .first<{ id: string }>()
+        const userId = userRow!.id
 
-        const userId = existingUser?.id ?? nanoid()
-        if (existingUser) {
-          await db
-            .prepare('UPDATE user SET name = ?, updatedAt = ? WHERE id = ?')
-            .bind(userName, now, userId)
-            .run()
-        } else {
-          await db
-            .prepare(
-              'INSERT INTO user (id, name, email, emailVerified, image, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            )
-            .bind(userId, userName, githubEmail, 1, ghUser.avatar_url, now, now)
-            .run()
-        }
+        // Find or create personal org — atomic upsert
+        const orgSlug = ghUser.login.toLowerCase()
+        const newOrgId = nanoid()
+        await db
+          .prepare(
+            `INSERT INTO orgs (id, name, slug, created_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(slug) DO UPDATE SET name = excluded.name`,
+          )
+          .bind(newOrgId, ghUser.login, orgSlug, now)
+          .run()
+
+        const orgRow = await db
+          .prepare('SELECT id FROM orgs WHERE slug = ?')
+          .bind(orgSlug)
+          .first<{ id: string }>()
+        const orgId = orgRow!.id
+
+        // Ensure org membership — atomic upsert
+        await db
+          .prepare(
+            `INSERT INTO org_members (id, org_id, user_id, role, created_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(org_id, user_id) DO UPDATE SET role = excluded.role`,
+          )
+          .bind(nanoid(), orgId, userId, 'owner', now)
+          .run()
 
         // Issue short-lived auth code (5 min TTL)
         const authCode = nanoid()
         await db
           .prepare(
-            'INSERT INTO cli_auth_codes (code, user_id, code_challenge, created_at, used) VALUES (?, ?, ?, ?, 0)',
+            'INSERT INTO cli_auth_codes (code, user_id, org_id, code_challenge, created_at, used) VALUES (?, ?, ?, ?, ?, 0)',
           )
-          .bind(authCode, userId, pending.code_challenge, now)
+          .bind(authCode, userId, orgId, pending.code_challenge, now)
           .run()
 
         // Redirect CLI to its local callback server with the auth code

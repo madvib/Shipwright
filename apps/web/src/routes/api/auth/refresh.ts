@@ -9,6 +9,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { signJwt, verifyJwt, getSecret, type JwtPayload } from '#/lib/cloud-auth'
 import { getAuthDb } from '#/lib/d1'
+import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
 function base64urlDecode(input: string): Uint8Array {
   const padded = input
@@ -39,6 +40,9 @@ export const Route = createFileRoute('/api/auth/refresh')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const rl = await checkRateLimit(request, 'RATE_LIMITER_CLAIM', 60)
+        if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
         const authHeader = request.headers.get('Authorization')
         if (!authHeader?.startsWith('Bearer ')) {
           return Response.json({ error: 'Missing Authorization header' }, { status: 401 })

@@ -182,7 +182,8 @@ async function handleInstallation(
   const now = Date.now()
 
   if (action === 'created') {
-    const repos = (payload.repositories as Array<Record<string, unknown>>) ?? []
+    const rawRepos = payload.repositories
+    const repos = Array.isArray(rawRepos) ? (rawRepos as Array<Record<string, unknown>>) : []
     const repoList = repos.map((r) => ({
       id: r.id as number,
       full_name: r.full_name as string,

@@ -5,6 +5,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { signJwt, getSecret } from '#/lib/cloud-auth'
 import { getAuthDb } from '#/lib/d1'
+import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 
 async function sha256Base64url(input: string): Promise<string> {
   const data = new TextEncoder().encode(input)
@@ -19,6 +20,9 @@ export const Route = createFileRoute('/api/auth/token')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const rl = await checkRateLimit(request, 'RATE_LIMITER_CLAIM', 60)
+        if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
         let body: unknown
         try {
           body = await request.json()
@@ -46,23 +50,34 @@ export const Route = createFileRoute('/api/auth/token')({
           )
         }
 
+        // Atomically claim the code: UPDATE ... WHERE used = 0 prevents race conditions
+        const claim = await db
+          .prepare(
+            'UPDATE cli_auth_codes SET used = 1 WHERE code = ? AND used = 0',
+          )
+          .bind(code)
+          .run()
+
+        if (!claim.meta.changes) {
+          // Either the code doesn't exist or was already consumed
+          return Response.json({ error: 'Invalid or already-used auth code' }, { status: 401 })
+        }
+
+        // Fetch the row data now that we hold exclusive ownership
         const row = await db
           .prepare(
-            'SELECT user_id, code_challenge, created_at, used FROM cli_auth_codes WHERE code = ?',
+            'SELECT user_id, org_id, code_challenge, created_at FROM cli_auth_codes WHERE code = ?',
           )
           .bind(code)
           .first<{
             user_id: string
+            org_id: string
             code_challenge: string
             created_at: number
-            used: number
           }>()
 
         if (!row) {
           return Response.json({ error: 'Invalid auth code' }, { status: 401 })
-        }
-        if (row.used) {
-          return Response.json({ error: 'Auth code already used' }, { status: 401 })
         }
         if (Date.now() - row.created_at > 5 * 60 * 1000) {
           return Response.json({ error: 'Auth code expired' }, { status: 401 })
@@ -74,9 +89,7 @@ export const Route = createFileRoute('/api/auth/token')({
           return Response.json({ error: 'PKCE verification failed' }, { status: 401 })
         }
 
-        await db.prepare('UPDATE cli_auth_codes SET used = 1 WHERE code = ?').bind(code).run()
-
-        const token = await signJwt({ sub: row.user_id, org: row.user_id }, secret)
+        const token = await signJwt({ sub: row.user_id, org: row.org_id }, secret)
         return Response.json({ token })
       },
     },
