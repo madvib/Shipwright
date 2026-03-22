@@ -10,6 +10,7 @@ pub fn global_dir() -> PathBuf {
 }
 
 pub fn global_modes_dir() -> PathBuf { global_dir().join("modes") }
+pub fn global_agents_dir() -> PathBuf { global_dir().join("agents") }
 pub fn global_skills_dir() -> PathBuf { global_dir().join("skills") }
 pub fn global_mcp_dir() -> PathBuf { global_dir().join("mcp") }
 pub fn global_cache_dir() -> PathBuf { global_dir().join("cache") }

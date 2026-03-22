@@ -48,7 +48,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Whoami => auth::run_whoami(),
             Commands::Use { agent_id, path, compile: _ } => run_use(Some(&agent_id), path),
             Commands::Status { path } => run_status(path),
-            Commands::Agent { action } => dispatch_agent(action),
+            Commands::Agents { action } => dispatch_agent(action),
             Commands::Compile { provider, dry_run, watch, path } => {
                 run_compile_cmd(provider.as_deref(), dry_run, watch, path)
             }
@@ -184,13 +184,13 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
             }
         }
         AgentCommands::Create { name, global } => {
-            let dir = if global { paths::global_modes_dir() } else { paths::agents_dir() };
+            let dir = if global { paths::global_agents_dir() } else { paths::agents_dir() };
             std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{}.toml", name));
+            let path = dir.join(format!("{}.jsonc", name));
             if path.exists() {
                 anyhow::bail!("Agent '{}' already exists at {}", name, path.display());
             }
-            std::fs::write(&path, agent_config::AgentConfig::scaffold(&name))?;
+            std::fs::write(&path, agent_config::AgentConfig::scaffold_jsonc(&name))?;
             println!("created agent '{}' at {}", name, path.display());
         }
         AgentCommands::Edit { name, editor } => {
@@ -210,13 +210,13 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
             let cwd = std::env::current_dir()?;
             let src_path = profile::find_agent_file(&source, &cwd)
                 .ok_or_else(|| anyhow::anyhow!("Source agent '{}' not found", source))?;
-            let dst_path = src_path.parent().unwrap().join(format!("{}.toml", target));
+            let dst_path = src_path.parent().unwrap().join(format!("{}.jsonc", target));
             if dst_path.exists() {
                 anyhow::bail!("Target agent '{}' already exists", target);
             }
             let content = std::fs::read_to_string(&src_path)?
-                .replace(&format!("id = \"{}\"", source), &format!("id = \"{}\"", target))
-                .replace(&format!("name = \"{}\"", source), &format!("name = \"{}\"", target));
+                .replace(&format!("\"id\": \"{}\"", source), &format!("\"id\": \"{}\"", target))
+                .replace(&format!("\"name\": \"{}\"", source), &format!("\"name\": \"{}\"", target));
             std::fs::write(&dst_path, content)?;
             println!("cloned '{}' -> '{}'", source, target);
         }

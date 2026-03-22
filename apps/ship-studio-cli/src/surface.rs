@@ -73,7 +73,7 @@ fn write_cli_tree(out: &mut String) {
             ("--watch", "Recompile on changes (not yet implemented)"),
             ("--path <dir>", "Project root"),
         ])),
-        ("ship agent", "Manage agents", Some(&[
+        ("ship agents", "Manage agents", Some(&[
             ("list [--local] [--project]", "List available agents"),
             ("create <name> [--global]", "Create a new agent"),
             ("edit <name>", "Open agent in $EDITOR"),

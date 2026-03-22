@@ -122,7 +122,8 @@ pub enum Commands {
 
     // ── Agent Configuration ──────────────────────────────────────────────────
     /// Manage agents (create, list, edit, delete, clone)
-    Agent {
+    #[command(name = "agents")]
+    Agents {
         #[command(subcommand)]
         action: AgentCommands,
     },
