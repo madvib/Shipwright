@@ -111,18 +111,24 @@ fn run_from_url(url: &str) -> Result<()> {
 
     // Write permissions
     if let Some(ref perms) = bundle.permissions
-        && let Some(ref preset) = perms.preset {
-            let dest = paths::project_dir().join("permissions.toml");
-            let content = format!("[permissions]\npreset = {}\n", quote_toml(preset));
-            std::fs::write(&dest, &content)
-                .with_context(|| format!("Failed to write {}", dest.display()))?;
-        }
+        && let Some(ref preset) = perms.preset
+    {
+        let dest = paths::project_dir().join("permissions.toml");
+        let content = format!("[permissions]\npreset = {}\n", quote_toml(preset));
+        std::fs::write(&dest, &content)
+            .with_context(|| format!("Failed to write {}", dest.display()))?;
+    }
 
-    let preset_msg = bundle.permissions.as_ref()
+    let preset_msg = bundle
+        .permissions
+        .as_ref()
         .and_then(|p| p.preset.as_deref())
         .map(|p| format!(", preset: {}", p))
         .unwrap_or_default();
-    println!("initialized .ship/ from {}: {} agents, {} skills{}", url, n_agents, n_skills, preset_msg);
+    println!(
+        "initialized .ship/ from {}: {} agents, {} skills{}",
+        url, n_agents, n_skills, preset_msg
+    );
     println!("\nNext steps:");
     println!("  ship use <agent-id>     activate an agent");
     Ok(())
@@ -136,7 +142,13 @@ fn quote_toml(s: &str) -> String {
 /// Replace characters that are not safe in filenames.
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -149,10 +161,16 @@ fn run_global() -> Result<()> {
     let gdir = paths::global_dir();
     let cfg_path = gdir.join("config.toml");
     if !cfg_path.exists() {
-        std::fs::write(&cfg_path, "# Ship global configuration\n\n[identity]\nname = \"\"\n")?;
+        std::fs::write(
+            &cfg_path,
+            "# Ship global configuration\n\n[identity]\nname = \"\"\n",
+        )?;
     }
     if !gdir.join("README.md").exists() {
-        std::fs::write(gdir.join("README.md"), "# Ship\n\nSee https://getship.dev\n")?;
+        std::fs::write(
+            gdir.join("README.md"),
+            "# Ship\n\nSee https://getship.dev\n",
+        )?;
     }
     println!("initialized global config at ~/.ship/");
     println!("  Edit ~/.ship/config.toml to set your identity");
@@ -165,18 +183,25 @@ fn run_project(provider: Option<String>) -> Result<()> {
     // Scaffold .ship/ship.jsonc when no config exists (prefer JSONC over TOML)
     if !ship_jsonc.exists() && !paths::project_ship_toml().exists() {
         let prov = provider.as_deref().unwrap_or("claude");
-        std::fs::write(&ship_jsonc, format!(
-            "{{\n  \"$schema\": \"../schemas/ship.schema.json\",\n  \"project\": {{\n    \"providers\": [\"{prov}\"],\n  }},\n}}"
-        ))?;
+        std::fs::write(
+            &ship_jsonc,
+            format!(
+                "{{\n  \"$schema\": \"../schemas/ship.schema.json\",\n  \"project\": {{\n    \"providers\": [\"{prov}\"],\n  }},\n}}"
+            ),
+        )?;
     }
     let pdir = paths::project_dir();
     if !pdir.join(".gitignore").exists() {
-        std::fs::write(pdir.join(".gitignore"),
-            "# Ship compiled artifacts\n/secrets/\nCLAUDE.md\nGEMINI.md\nAGENTS.md\n.mcp.json\n.codex/\n.gemini/\n.cursor/\n")?;
+        std::fs::write(
+            pdir.join(".gitignore"),
+            "# Ship compiled artifacts\n/secrets/\nCLAUDE.md\nGEMINI.md\nAGENTS.md\n.mcp.json\n.codex/\n.gemini/\n.cursor/\n",
+        )?;
     }
     if !pdir.join("README.md").exists() {
-        std::fs::write(pdir.join("README.md"),
-            "# Ship Configuration\n\nManaged by [Ship](https://getship.dev). Run `ship use <agent-id>` to activate.\n")?;
+        std::fs::write(
+            pdir.join("README.md"),
+            "# Ship Configuration\n\nManaged by [Ship](https://getship.dev). Run `ship use <agent-id>` to activate.\n",
+        )?;
     }
     println!("initialized .ship/ in current directory");
     println!("  providers: {}", provider.as_deref().unwrap_or("claude"));
@@ -200,8 +225,8 @@ mod tests {
 
     #[test]
     fn init_from_flag_parsed() {
-        use clap::Parser;
         use crate::cli::Cli;
+        use clap::Parser;
         let cli = Cli::parse_from(["ship", "init", "--from", "https://example.com/c.json"]);
         match cli.command {
             Some(crate::cli::Commands::Init { from, .. }) => {
@@ -213,8 +238,8 @@ mod tests {
 
     #[test]
     fn init_without_from_flag_parsed() {
-        use clap::Parser;
         use crate::cli::Cli;
+        use clap::Parser;
         let cli = Cli::parse_from(["ship", "init"]);
         match cli.command {
             Some(crate::cli::Commands::Init { from, .. }) => assert!(from.is_none()),
@@ -232,13 +257,19 @@ mod tests {
 
     #[test]
     fn config_bundle_parses() {
-        let full: ConfigBundle = serde_json::from_str(r#"{
+        let full: ConfigBundle = serde_json::from_str(
+            r#"{
             "agents": [{"name": "default", "model": "sonnet"}],
             "skills": [{"id": "tdd", "content": "..."}],
             "permissions": {"preset": "elevated"}
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         assert_eq!(full.agents.len(), 1);
-        assert_eq!(full.permissions.unwrap().preset.as_deref(), Some("elevated"));
+        assert_eq!(
+            full.permissions.unwrap().preset.as_deref(),
+            Some("elevated")
+        );
 
         let empty: ConfigBundle = serde_json::from_str("{}").unwrap();
         assert!(empty.agents.is_empty());
@@ -247,12 +278,17 @@ mod tests {
     #[test]
     fn run_from_url_scaffolds_files() {
         let mut server = mockito::Server::new();
-        let _m = server.mock("GET", "/c.json").with_status(200)
-            .with_body(r#"{
+        let _m = server
+            .mock("GET", "/c.json")
+            .with_status(200)
+            .with_body(
+                r#"{
                 "agents": [{"name": "default", "description": "Main", "model": "sonnet"}],
                 "skills": [{"id": "tdd", "content": "Write tests first"}],
                 "permissions": {"preset": "elevated"}
-            }"#).create();
+            }"#,
+            )
+            .create();
 
         run_in_tmp(|tmp| {
             run_from_url(&format!("{}/c.json", server.url())).unwrap();
@@ -268,7 +304,11 @@ mod tests {
     #[test]
     fn run_from_url_errors_on_bad_json() {
         let mut server = mockito::Server::new();
-        let _m = server.mock("GET", "/bad").with_status(200).with_body("not json").create();
+        let _m = server
+            .mock("GET", "/bad")
+            .with_status(200)
+            .with_body("not json")
+            .create();
         run_in_tmp(|_| {
             let err = run_from_url(&format!("{}/bad", server.url())).unwrap_err();
             assert!(err.to_string().contains("Invalid JSON"), "got: {err}");

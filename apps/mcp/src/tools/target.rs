@@ -33,10 +33,16 @@ pub fn create_target(project_dir: &Path, req: CreateTargetRequest) -> String {
             ..Default::default()
         };
         if let Err(e) = runtime::db::targets::update_target(&ship_dir, &t.id, patch) {
-            return format!("Created target {} but failed to apply extra fields: {}", t.id, e);
+            return format!(
+                "Created target {} but failed to apply extra fields: {}",
+                t.id, e
+            );
         }
     }
-    format!("Created target: {} (id: {}, kind: {})", t.title, t.id, t.kind)
+    format!(
+        "Created target: {} (id: {}, kind: {})",
+        t.title, t.id, t.kind
+    )
 }
 
 pub fn update_target(project_dir: &Path, req: UpdateTargetRequest) -> String {
@@ -156,7 +162,11 @@ pub fn get_target(project_dir: &Path, req: GetTargetRequest) -> String {
     if !aspirational.is_empty() {
         out.push_str("\n## Planned\n");
         for c in &aspirational {
-            let phase_tag = c.phase.as_deref().map(|p| format!(" [{}]", p)).unwrap_or_default();
+            let phase_tag = c
+                .phase
+                .as_deref()
+                .map(|p| format!(" [{}]", p))
+                .unwrap_or_default();
             out.push_str(&format!("- [ ] {}{} (id: {})\n", c.title, phase_tag, c.id));
         }
     }
@@ -194,7 +204,10 @@ pub fn create_capability(project_dir: &Path, req: CreateCapabilityRequest) -> St
             ..Default::default()
         };
         if let Err(e) = runtime::db::targets::update_capability(&ship_dir, &c.id, patch) {
-            return format!("Created capability {} but failed to apply extra fields: {}", c.id, e);
+            return format!(
+                "Created capability {} but failed to apply extra fields: {}",
+                c.id, e
+            );
         }
     }
     format!("Created capability: {} (id: {})", c.title, c.id)
@@ -268,7 +281,10 @@ pub fn list_capabilities(project_dir: &Path, req: ListCapabilitiesRequest) -> St
                     out.push_str(&format!("  assigned: {}\n", a));
                 }
                 if !c.acceptance_criteria.is_empty() {
-                    out.push_str(&format!("  criteria: {}\n", c.acceptance_criteria.join(" | ")));
+                    out.push_str(&format!(
+                        "  criteria: {}\n",
+                        c.acceptance_criteria.join(" | ")
+                    ));
                 }
                 if let Some(ref e) = c.evidence {
                     out.push_str(&format!("  evidence: {}\n", e));

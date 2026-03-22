@@ -9,33 +9,45 @@ use super::fixtures::*;
 #[test]
 fn gemini_hooks_pre_tool_maps_to_before_tool() {
     let r = ResolvedConfig {
-        hooks: vec![make_hook(HookTrigger::PreToolUse, "ship check", Some("Bash"))],
+        hooks: vec![make_hook(
+            HookTrigger::PreToolUse,
+            "ship check",
+            Some("Bash"),
+        )],
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("gemini must emit hooks patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("gemini must emit hooks patch");
     assert!(patch["hooks"]["BeforeTool"].is_array());
     assert_eq!(patch["hooks"]["BeforeTool"][0]["matcher"], "Bash");
-    assert_eq!(patch["hooks"]["BeforeTool"][0]["hooks"][0]["command"], "ship check");
+    assert_eq!(
+        patch["hooks"]["BeforeTool"][0]["hooks"][0]["command"],
+        "ship check"
+    );
 }
 
 #[test]
 fn gemini_hooks_trigger_mapping() {
     let hooks = vec![
-        make_hook(HookTrigger::PreToolUse,  "cmd-pre",    None),
-        make_hook(HookTrigger::PostToolUse, "cmd-post",   None),
-        make_hook(HookTrigger::Stop,        "cmd-stop",   None),
-        make_hook(HookTrigger::PreCompact,  "cmd-compact",None),
-        make_hook(HookTrigger::Notification,"cmd-notify", None),
+        make_hook(HookTrigger::PreToolUse, "cmd-pre", None),
+        make_hook(HookTrigger::PostToolUse, "cmd-post", None),
+        make_hook(HookTrigger::Stop, "cmd-stop", None),
+        make_hook(HookTrigger::PreCompact, "cmd-compact", None),
+        make_hook(HookTrigger::Notification, "cmd-notify", None),
     ];
-    let r = ResolvedConfig { hooks, ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        hooks,
+        ..resolved(vec![])
+    };
     let out = compile(&r, "gemini").unwrap();
     let patch = out.gemini_settings_patch.unwrap();
     let h = &patch["hooks"];
-    assert!(h["BeforeTool"].is_array(),   "PreToolUse → BeforeTool");
-    assert!(h["AfterTool"].is_array(),    "PostToolUse → AfterTool");
-    assert!(h["SessionEnd"].is_array(),   "Stop → SessionEnd");
-    assert!(h["PreCompress"].is_array(),  "PreCompact → PreCompress");
+    assert!(h["BeforeTool"].is_array(), "PreToolUse → BeforeTool");
+    assert!(h["AfterTool"].is_array(), "PostToolUse → AfterTool");
+    assert!(h["SessionEnd"].is_array(), "Stop → SessionEnd");
+    assert!(h["PreCompress"].is_array(), "PreCompact → PreCompress");
     assert!(h["Notification"].is_array(), "Notification → Notification");
     assert!(h.get("SubagentStop").is_none());
 }
@@ -62,9 +74,24 @@ fn gemini_hooks_not_emitted_for_other_providers() {
         hooks: vec![make_hook(HookTrigger::PreToolUse, "cmd", None)],
         ..resolved(vec![])
     };
-    assert!(compile(&r, "claude").unwrap().gemini_settings_patch.is_none());
-    assert!(compile(&r, "codex").unwrap().gemini_settings_patch.is_none());
-    assert!(compile(&r, "cursor").unwrap().gemini_settings_patch.is_none());
+    assert!(
+        compile(&r, "claude")
+            .unwrap()
+            .gemini_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .gemini_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "cursor")
+            .unwrap()
+            .gemini_settings_patch
+            .is_none()
+    );
 }
 
 // ── Model selection for Gemini ────────────────────────────────────────────────
@@ -77,7 +104,9 @@ fn gemini_model_emitted_in_settings_patch() {
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("model should trigger gemini patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("model should trigger gemini patch");
     assert_eq!(patch["model"]["name"], "gemini-2.5-pro");
 }
 
@@ -100,7 +129,9 @@ fn library_model_flows_to_gemini_patch() {
     };
     let resolved = resolve_library(&library, None, None);
     let out = compile(&resolved, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("model must trigger gemini patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("model must trigger gemini patch");
     assert_eq!(patch["model"]["name"], "gemini-2.5-flash");
 }
 
@@ -117,8 +148,13 @@ fn gemini_default_approval_mode_translate() {
             ..resolved(vec![])
         };
         let out = compile(&r, "gemini").unwrap();
-        let patch = out.gemini_settings_patch.expect("approval mode must trigger patch");
-        assert_eq!(patch["general"]["defaultApprovalMode"], expected, "input '{input}'");
+        let patch = out
+            .gemini_settings_patch
+            .expect("approval mode must trigger patch");
+        assert_eq!(
+            patch["general"]["defaultApprovalMode"], expected,
+            "input '{input}'"
+        );
     }
 }
 
@@ -129,7 +165,9 @@ fn gemini_max_session_turns_emitted() {
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("maxSessionTurns must trigger patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("maxSessionTurns must trigger patch");
     assert_eq!(patch["general"]["maxSessionTurns"], 50);
 }
 
@@ -141,7 +179,9 @@ fn gemini_security_flags_emitted() {
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("security flags must trigger patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("security flags must trigger patch");
     assert_eq!(patch["security"]["disableYoloMode"], true);
     assert_eq!(patch["security"]["disableAlwaysAllow"], false);
 }
@@ -153,7 +193,9 @@ fn gemini_tools_sandbox_emitted() {
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("tools.sandbox must trigger patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("tools.sandbox must trigger patch");
     assert_eq!(patch["tools"]["sandbox"], "docker");
 }
 
@@ -164,7 +206,9 @@ fn gemini_settings_extra_merged_last() {
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("settings_extra must trigger patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("settings_extra must trigger patch");
     assert_eq!(patch["telemetry"]["enabled"], false);
 }
 
@@ -183,11 +227,21 @@ fn gemini_raw_event_bypasses_trigger_mapping() {
         ..resolved(vec![])
     };
     let out = compile(&r, "gemini").unwrap();
-    let patch = out.gemini_settings_patch.expect("raw event must trigger patch");
+    let patch = out
+        .gemini_settings_patch
+        .expect("raw event must trigger patch");
     // SessionStart not normally mapped, but raw event bypasses that.
-    assert!(patch["hooks"]["SessionStart"].is_array(), "raw gemini_event must emit under SessionStart");
+    assert!(
+        patch["hooks"]["SessionStart"].is_array(),
+        "raw gemini_event must emit under SessionStart"
+    );
     // SessionEnd must NOT have an entry (trigger mapping bypassed).
-    assert!(patch["hooks"].get("SessionEnd").is_none() || patch["hooks"]["SessionEnd"].as_array().map_or(true, |a| a.is_empty()));
+    assert!(
+        patch["hooks"].get("SessionEnd").is_none()
+            || patch["hooks"]["SessionEnd"]
+                .as_array()
+                .is_none_or(|a| a.is_empty())
+    );
 }
 
 #[test]

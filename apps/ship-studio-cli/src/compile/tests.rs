@@ -11,11 +11,7 @@ fn write(dir: &Path, rel: &str, content: &str) {
 }
 
 fn setup_minimal_project(tmp: &TempDir) {
-    write(
-        tmp.path(),
-        ".ship/rules/style.md",
-        "Use explicit types.",
-    );
+    write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
         ".ship/mcp.jsonc",
@@ -145,7 +141,10 @@ fn compile_codex_writes_toml_config_with_mcp_servers() {
     })
     .unwrap();
     let path = tmp.path().join(".codex/config.toml");
-    assert!(path.exists(), ".codex/config.toml must be written for codex");
+    assert!(
+        path.exists(),
+        ".codex/config.toml must be written for codex"
+    );
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(
         content.contains("mcp_servers"),

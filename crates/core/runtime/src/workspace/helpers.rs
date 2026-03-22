@@ -77,10 +77,7 @@ pub(crate) fn workspace_id_from_branch(branch: &str) -> String {
     sanitize_file_name(branch)
 }
 
-pub(crate) fn infer_workspace_type(
-    branch: &str,
-    feature_id: Option<&str>,
-) -> ShipWorkspaceKind {
+pub(crate) fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> ShipWorkspaceKind {
     if feature_id.is_some() {
         return ShipWorkspaceKind::Feature;
     }
@@ -219,10 +216,7 @@ pub(crate) fn default_global_worktree_root(ship_dir: &Path) -> Option<PathBuf> {
     Some(global_dir.join("projects").join(slug).join("worktrees"))
 }
 
-pub(crate) fn default_worktree_path(
-    ship_dir: &Path,
-    branch: &str,
-) -> Option<String> {
+pub(crate) fn default_worktree_path(ship_dir: &Path, branch: &str) -> Option<String> {
     let branch_token = sanitize_file_name(branch);
     let project_root = default_project_worktree_root(ship_dir);
     if std::fs::create_dir_all(&project_root).is_ok() {

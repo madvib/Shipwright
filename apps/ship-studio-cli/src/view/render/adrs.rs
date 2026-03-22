@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::view::App;
 use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, panel};
+use crate::view::App;
 
 fn adr_status_color(s: &str) -> Color {
     match s {
@@ -46,7 +46,10 @@ pub fn draw_adrs(f: &mut Frame, app: &App, area: Rect) {
             let sc = adr_status_color(&a.status);
             let date = a.date.get(..10).unwrap_or("");
             let line = Line::from(vec![
-                Span::styled(format!(" {} ", adr_status_sym(&a.status)), Style::default().fg(sc)),
+                Span::styled(
+                    format!(" {} ", adr_status_sym(&a.status)),
+                    Style::default().fg(sc),
+                ),
                 Span::styled(format!("{:<48}", a.title), Style::default().fg(C_FG)),
                 Span::styled(format!("  {:<12}", a.status), Style::default().fg(sc)),
                 Span::styled(date.to_string(), Style::default().fg(C_MUT)),
@@ -67,7 +70,9 @@ pub fn draw_adrs(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn draw_adr_detail(f: &mut Frame, app: &App, area: Rect) {
-    let Some(a) = app.adrs.get(app.sel_adr) else { return };
+    let Some(a) = app.adrs.get(app.sel_adr) else {
+        return;
+    };
     let sc = adr_status_color(&a.status);
     let date = a.date.get(..10).unwrap_or("");
     let mut lines = vec![
@@ -76,7 +81,10 @@ pub fn draw_adr_detail(f: &mut Frame, app: &App, area: Rect) {
                 format!(" {} ", adr_status_sym(&a.status)),
                 Style::default().fg(sc),
             ),
-            Span::styled(a.title.clone(), Style::default().fg(C_FG).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                a.title.clone(),
+                Style::default().fg(C_FG).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(vec![
             Span::styled("   status  ", Style::default().fg(C_MUT)),

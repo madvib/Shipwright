@@ -97,19 +97,12 @@ pub enum AgentCommands {
         editor: Option<String>,
     },
     /// Delete an agent
-    Delete {
-        name: String,
-    },
+    Delete { name: String },
     /// Clone an agent under a new ID
-    Clone {
-        source: String,
-        target: String,
-    },
+    Clone { source: String, target: String },
     /// Append a timestamped log entry to .ship/agent.log (agent-facing)
     #[command(hide = true)]
-    Log {
-        message: String,
-    },
+    Log { message: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -183,7 +176,5 @@ pub enum McpCommands {
     /// List configured MCP servers
     List,
     /// Remove an MCP server
-    Remove {
-        id: String,
-    },
+    Remove { id: String },
 }

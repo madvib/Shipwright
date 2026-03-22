@@ -624,7 +624,8 @@ mod tests {
             vec!["rt-plan-skill"]
         );
 
-        let overridden = resolve_provider_settings_with_agent_override(&ship_dir, None, Some("code"))?;
+        let overridden =
+            resolve_provider_settings_with_agent_override(&ship_dir, None, Some("code"))?;
         assert_eq!(overridden.active_agent.as_deref(), Some("code"));
         assert_eq!(
             overridden

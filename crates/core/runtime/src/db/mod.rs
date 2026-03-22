@@ -83,23 +83,21 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
     })
     .is_ok();
     if has_old_schema {
-        let _ = block_on(async {
-            sqlx::query("DROP TABLE event_log")
-                .execute(&mut conn)
-                .await
-        });
+        let _ = block_on(async { sqlx::query("DROP TABLE event_log").execute(&mut conn).await });
     }
 
     // Execute each statement individually — sqlx only runs one statement at a time.
     // Strip SQL comments first since they may contain semicolons.
     for part in schema::SCHEMA_PARTS {
-        let stripped: String = part.lines()
+        let stripped: String = part
+            .lines()
             .filter(|l| !l.trim_start().starts_with("--"))
             .collect::<Vec<_>>()
             .join("\n");
         for stmt in stripped.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-            block_on(async { sqlx::query(stmt).execute(&mut conn).await })
-                .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
+            block_on(async { sqlx::query(stmt).execute(&mut conn).await }).with_context(|| {
+                format!("schema init failed on: {}", &stmt[..stmt.len().min(80)])
+            })?;
         }
     }
     Ok(())
@@ -113,18 +111,12 @@ fn migrate_local_db_to_global(ship_dir: &Path) {
         Ok(p) => p,
         Err(_) => return,
     };
-    let global_has_data = global_path
-        .metadata()
-        .map(|m| m.len() > 0)
-        .unwrap_or(false);
+    let global_has_data = global_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     if global_has_data {
         return;
     }
     let local_path = ship_dir.join("platform.db");
-    let local_has_data = local_path
-        .metadata()
-        .map(|m| m.len() > 0)
-        .unwrap_or(false);
+    let local_has_data = local_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     if !local_has_data {
         return;
     }

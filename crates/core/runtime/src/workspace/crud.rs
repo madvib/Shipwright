@@ -10,8 +10,8 @@ use super::compile::{
     build_workspace_provider_matrix, missing_provider_configs_for_workspace,
     resolve_workspace_context_root,
 };
-use super::lifecycle::set_workspace_active_agent;
 use super::helpers::*;
+use super::lifecycle::set_workspace_active_agent;
 use super::types::*;
 use super::types_session::*;
 
@@ -99,9 +99,7 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
         let parsed_type = parse_workspace_type_required(&workspace_type)
             .map_err(|err| anyhow!("Workspace '{}' has invalid type value: {}", branch, err))?;
         let parsed_status = parse_workspace_status_required(&status)
-            .map_err(|err| {
-                anyhow!("Workspace '{}' has invalid status value: {}", branch, err)
-            })?;
+            .map_err(|err| anyhow!("Workspace '{}' has invalid status value: {}", branch, err))?;
 
         workspaces.push(Workspace {
             id,
@@ -198,11 +196,8 @@ pub fn repair_workspace(
     let branch = ensure_branch_key(branch)?;
     let mut workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow!("Workspace not found for branch '{}'", branch))?;
-    let mut matrix = get_workspace_provider_matrix(
-        ship_dir,
-        branch,
-        workspace.active_agent.as_deref(),
-    )?;
+    let mut matrix =
+        get_workspace_provider_matrix(ship_dir, branch, workspace.active_agent.as_deref())?;
     let context_root = resolve_workspace_context_root(ship_dir, &workspace);
 
     let mut actions = Vec::new();
@@ -232,15 +227,10 @@ pub fn repair_workspace(
         if workspace.status == WorkspaceStatus::Active {
             let active = workspace.active_agent.clone();
             workspace = set_workspace_active_agent(ship_dir, branch, active.as_deref())?;
-            matrix = get_workspace_provider_matrix(
-                ship_dir,
-                branch,
-                workspace.active_agent.as_deref(),
-            )?;
-            missing_provider_configs = missing_provider_configs_for_workspace(
-                &context_root,
-                &matrix.allowed_providers,
-            );
+            matrix =
+                get_workspace_provider_matrix(ship_dir, branch, workspace.active_agent.as_deref())?;
+            missing_provider_configs =
+                missing_provider_configs_for_workspace(&context_root, &matrix.allowed_providers);
             reapplied_compile = true;
             needs_recompile = workspace.compile_error.is_some()
                 || workspace.compiled_at.is_none()
@@ -248,8 +238,7 @@ pub fn repair_workspace(
             actions.push("recompiled active workspace context".to_string());
         } else {
             actions.push(
-                "workspace is not active; activate workspace to apply compile repair"
-                    .to_string(),
+                "workspace is not active; activate workspace to apply compile repair".to_string(),
             );
         }
     }

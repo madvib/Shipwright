@@ -307,8 +307,8 @@ pub fn ensure_project_id(ship_dir: &Path) -> Result<String> {
         )
     })?;
 
-    let mut parsed: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)
-        .with_context(|| {
+    let mut parsed: serde_json::Value =
+        compiler::jsonc::from_jsonc_str(&content).with_context(|| {
             format!(
                 "Project at {} has an invalid ship.jsonc. Re-run `ship init` or fix the file.",
                 ship_dir.display()
@@ -320,7 +320,10 @@ pub fn ensure_project_id(ship_dir: &Path) -> Result<String> {
         .ok_or_else(|| anyhow!("ship.jsonc must contain a top-level object."))?;
 
     let generated_id = crate::gen_nanoid();
-    obj.insert("id".to_string(), serde_json::Value::String(generated_id.clone()));
+    obj.insert(
+        "id".to_string(),
+        serde_json::Value::String(generated_id.clone()),
+    );
 
     let updated = serde_json::to_string_pretty(&parsed)?;
     crate::fs_util::write_atomic(&path, updated)?;
@@ -921,6 +924,107 @@ pub fn get_project_name(ship_path: &Path) -> String {
         .to_string()
 }
 
+pub fn register_ship_namespace(
+    ship_path: &Path,
+    namespace: crate::config::NamespaceConfig,
+) -> Result<()> {
+    let mut config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
+    if let Some(existing) = config
+        .namespaces
+        .iter_mut()
+        .find(|entry| entry.id == namespace.id)
+    {
+        *existing = namespace;
+    } else {
+        config.namespaces.push(namespace);
+    }
+    crate::config::save_config(&config, Some(ship_path.to_path_buf()))?;
+    crate::config::ensure_registered_namespaces(ship_path, &config.namespaces)
+}
+
+fn write_if_missing(path: &Path, content: &str) -> Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, content)?;
+    Ok(())
+}
+
+/// Lightweight project bootstrap for runtime unit tests.
+/// The full production project scaffolding lives in `ship-module-project`.
+pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
+    let ship_path = base_dir.join(SHIP_DIR_NAME);
+    fs::create_dir_all(&ship_path)?;
+
+    for rel in [
+        "project/adrs",
+        "project/specs",
+        "project/features",
+        "project/releases",
+        "project/notes",
+        "skills",
+        "rules",
+    ] {
+        fs::create_dir_all(ship_path.join(rel))?;
+    }
+
+    write_if_missing(
+        &ship_path.join("project/features/TEMPLATE.md"),
+        "+++\nrelease_id = \"\"\n+++\n\n## Why\n\n## Delivery Todos\n",
+    )?;
+    write_if_missing(
+        &ship_path.join("project/releases/TEMPLATE.md"),
+        "+++\nversion = \"\"\n+++\n\n## Scope\n",
+    )?;
+    write_if_missing(
+        &ship_path.join("project/notes/TEMPLATE.md"),
+        "+++\ntitle = \"\"\n+++\n\n",
+    )?;
+    write_if_missing(
+        &vision_doc_path(&ship_path),
+        "# Vision\n\nDescribe what this project is trying to achieve.\n",
+    )?;
+
+    // Write ship.toml (with a stable project ID) BEFORE any DB access so that
+    // project_db_key can read the ID and derive a stable state directory path.
+    if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
+        let config = crate::config::ProjectConfig {
+            id: crate::gen_nanoid(),
+            ..Default::default()
+        };
+        crate::config::save_config(&config, Some(ship_path.clone()))?;
+    }
+
+    write_if_missing(
+        &skills_dir(&ship_path).join("task-policy").join("SKILL.md"),
+        r#"---
+name: task-policy
+description: Ship workflow policy and execution guardrails for daily delivery.
+metadata:
+  display_name: Ship Workflow Policy
+  source: builtin
+---
+
+# Ship Workflow Policy
+
+Use Ship as the system of record for workflow state changes.
+
+## Canonical Flow
+
+Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
+"#,
+    )?;
+
+    let config = crate::config::get_config(Some(ship_path.clone()))?;
+    crate::config::ensure_registered_namespaces(&ship_path, &config.namespaces)?;
+    crate::config::generate_gitignore(&ship_path, &config.git)?;
+
+    Ok(ship_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1116,105 +1220,4 @@ mod tests {
         assert!(!normalize_app_state_paths(&mut state));
         Ok(())
     }
-}
-
-pub fn register_ship_namespace(
-    ship_path: &Path,
-    namespace: crate::config::NamespaceConfig,
-) -> Result<()> {
-    let mut config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
-    if let Some(existing) = config
-        .namespaces
-        .iter_mut()
-        .find(|entry| entry.id == namespace.id)
-    {
-        *existing = namespace;
-    } else {
-        config.namespaces.push(namespace);
-    }
-    crate::config::save_config(&config, Some(ship_path.to_path_buf()))?;
-    crate::config::ensure_registered_namespaces(ship_path, &config.namespaces)
-}
-
-fn write_if_missing(path: &Path, content: &str) -> Result<()> {
-    if path.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, content)?;
-    Ok(())
-}
-
-/// Lightweight project bootstrap for runtime unit tests.
-/// The full production project scaffolding lives in `ship-module-project`.
-pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
-    let ship_path = base_dir.join(SHIP_DIR_NAME);
-    fs::create_dir_all(&ship_path)?;
-
-    for rel in [
-        "project/adrs",
-        "project/specs",
-        "project/features",
-        "project/releases",
-        "project/notes",
-        "skills",
-        "rules",
-    ] {
-        fs::create_dir_all(ship_path.join(rel))?;
-    }
-
-    write_if_missing(
-        &ship_path.join("project/features/TEMPLATE.md"),
-        "+++\nrelease_id = \"\"\n+++\n\n## Why\n\n## Delivery Todos\n",
-    )?;
-    write_if_missing(
-        &ship_path.join("project/releases/TEMPLATE.md"),
-        "+++\nversion = \"\"\n+++\n\n## Scope\n",
-    )?;
-    write_if_missing(
-        &ship_path.join("project/notes/TEMPLATE.md"),
-        "+++\ntitle = \"\"\n+++\n\n",
-    )?;
-    write_if_missing(
-        &vision_doc_path(&ship_path),
-        "# Vision\n\nDescribe what this project is trying to achieve.\n",
-    )?;
-
-    // Write ship.toml (with a stable project ID) BEFORE any DB access so that
-    // project_db_key can read the ID and derive a stable state directory path.
-    if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
-        let config = crate::config::ProjectConfig {
-            id: crate::gen_nanoid(),
-            ..Default::default()
-        };
-        crate::config::save_config(&config, Some(ship_path.clone()))?;
-    }
-
-    write_if_missing(
-        &skills_dir(&ship_path).join("task-policy").join("SKILL.md"),
-        r#"---
-name: task-policy
-description: Ship workflow policy and execution guardrails for daily delivery.
-metadata:
-  display_name: Ship Workflow Policy
-  source: builtin
----
-
-# Ship Workflow Policy
-
-Use Ship as the system of record for workflow state changes.
-
-## Canonical Flow
-
-Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
-"#,
-    )?;
-
-    let config = crate::config::get_config(Some(ship_path.clone()))?;
-    crate::config::ensure_registered_namespaces(&ship_path, &config.namespaces)?;
-    crate::config::generate_gitignore(&ship_path, &config.git)?;
-
-    Ok(ship_path)
 }

@@ -75,16 +75,16 @@ fn convert_from_url(url: &str) -> Result<()> {
         .context("Failed to read response body")?;
 
     // Parse JSON response into a ProjectLibrary to validate the shape
-    let library: compiler::ProjectLibrary = serde_json::from_str(&body)
-        .context("Invalid agent data received from getship.dev")?;
+    let library: compiler::ProjectLibrary =
+        serde_json::from_str(&body).context("Invalid agent data received from getship.dev")?;
 
     // Serialize to TOML and write to agents directory
     let agents_out_dir = ship_dir.join("agents");
     std::fs::create_dir_all(&agents_out_dir)?;
     let agent_path = agents_out_dir.join(format!("{}.toml", agent_id));
 
-    let toml_content = toml::to_string_pretty(&library)
-        .context("Failed to serialize agent to TOML")?;
+    let toml_content =
+        toml::to_string_pretty(&library).context("Failed to serialize agent to TOML")?;
     std::fs::write(&agent_path, &toml_content)?;
 
     println!("  wrote {}", agent_path.display());
@@ -101,11 +101,17 @@ fn convert_from_url(url: &str) -> Result<()> {
 fn convert_from_path(source: &str) -> Result<()> {
     let path = Path::new(source);
     if path.is_dir() {
-        println!("[convert] Local directory conversion from {} — not yet implemented.", source);
+        println!(
+            "[convert] Local directory conversion from {} — not yet implemented.",
+            source
+        );
         println!("  This will detect existing provider configs (CLAUDE.md, .cursor/, etc.)");
         println!("  and convert them into .ship/agents/.");
     } else {
-        println!("[convert] Local file conversion from {} — not yet implemented.", source);
+        println!(
+            "[convert] Local file conversion from {} — not yet implemented.",
+            source
+        );
     }
     Ok(())
 }

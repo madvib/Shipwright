@@ -1,6 +1,5 @@
 use crate::db::session::{
-    get_active_workspace_session_db, get_workspace_session_record_db,
-    list_workspace_sessions_db,
+    get_active_workspace_session_db, get_workspace_session_record_db, list_workspace_sessions_db,
 };
 use crate::db::types::WorkspaceSessionDb;
 use crate::events::{EventAction, EventEntity, append_event};
@@ -84,10 +83,7 @@ pub(super) fn annotate_session_record(
 
 // ---- Session artifacts -----------------------------------------------------
 
-pub(super) fn session_artifacts_dir(
-    ship_dir: &Path,
-    session_id: &str,
-) -> Option<PathBuf> {
+pub(super) fn session_artifacts_dir(ship_dir: &Path, session_id: &str) -> Option<PathBuf> {
     let slug = project_slug_from_ship_dir(ship_dir);
     let global_dir = get_global_dir().ok()?;
     let root = global_dir.join("projects").join(slug).join("sessions");
@@ -130,11 +126,7 @@ pub(super) fn persist_session_artifact(
     Ok(())
 }
 
-fn append_session_note_artifact(
-    ship_dir: &Path,
-    session_id: &str,
-    note: &str,
-) -> Result<()> {
+fn append_session_note_artifact(ship_dir: &Path, session_id: &str, note: &str) -> Result<()> {
     let Some(session_dir) = session_artifacts_dir(ship_dir, session_id) else {
         return Ok(());
     };
@@ -195,8 +187,7 @@ pub fn list_workspace_sessions(
         }
     } else {
         for workspace in list_workspaces(ship_dir)? {
-            workspace_generation_by_branch
-                .insert(workspace.branch, workspace.config_generation);
+            workspace_generation_by_branch.insert(workspace.branch, workspace.config_generation);
         }
         None
     };
@@ -225,18 +216,12 @@ pub fn get_workspace_session_record(
     )
 }
 
-pub fn record_workspace_session_progress(
-    ship_dir: &Path,
-    branch: &str,
-    note: &str,
-) -> Result<()> {
+pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &str) -> Result<()> {
     let branch = ensure_branch_key(branch)?;
     let workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
     let active = get_active_workspace_session_db(ship_dir, &workspace.id)?
-        .ok_or_else(|| {
-            anyhow::anyhow!("No active workspace session for '{}'", workspace.branch)
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("No active workspace session for '{}'", workspace.branch))?;
 
     let normalized_note = note.trim();
     if normalized_note.is_empty() {

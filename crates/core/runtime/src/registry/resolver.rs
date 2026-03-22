@@ -43,10 +43,7 @@ pub fn list_remote_refs(git_url: &str) -> anyhow::Result<RemoteRefs> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "git ls-remote failed for {git_url}: {}",
-            stderr.trim()
-        );
+        anyhow::bail!("git ls-remote failed for {git_url}: {}", stderr.trim());
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -137,10 +134,7 @@ pub fn resolve_version(
             candidates.sort_by(|a, b| b.0.cmp(&a.0));
             let (_, tag, sha) = candidates.remove(0);
 
-            Ok(ResolvedVersion {
-                tag,
-                commit: sha,
-            })
+            Ok(ResolvedVersion { tag, commit: sha })
         }
     }
 }

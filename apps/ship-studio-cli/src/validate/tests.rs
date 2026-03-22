@@ -25,8 +25,11 @@ fn setup() -> (TempDir, std::path::PathBuf) {
     let tmp = TempDir::new().unwrap();
     let agents_dir = tmp.path().join(".ship").join("agents");
     std::fs::create_dir_all(&agents_dir).unwrap();
-    write(tmp.path(), ".ship/agents/permissions.toml",
-        "[ship-standard]\ndefault_mode = \"acceptEdits\"\n");
+    write(
+        tmp.path(),
+        ".ship/agents/permissions.toml",
+        "[ship-standard]\ndefault_mode = \"acceptEdits\"\n",
+    );
     (tmp, agents_dir)
 }
 
@@ -42,11 +45,19 @@ fn valid_agent_passes() {
 #[test]
 fn malformed_toml_reports_error() {
     let (tmp, agents_dir) = setup();
-    write(tmp.path(), ".ship/agents/bad.toml", "this is not [[valid toml");
+    write(
+        tmp.path(),
+        ".ship/agents/bad.toml",
+        "this is not [[valid toml",
+    );
     let agent_path = agents_dir.join("bad.toml");
     let report = validate_agent("bad", &agent_path, &agents_dir);
     assert_eq!(report.errors.len(), 1);
-    assert!(report.errors[0].error.contains("TOML parse error"), "{:?}", report.errors[0].error);
+    assert!(
+        report.errors[0].error.contains("TOML parse error"),
+        "{:?}",
+        report.errors[0].error
+    );
 }
 
 #[test]
@@ -63,13 +74,24 @@ servers = []
 "#;
     write(tmp.path(), ".ship/agents/test.toml", toml);
     let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
-    assert!(report.errors.iter().any(|e| e.error.contains("nonexistent-skill")), "{:?}", report.errors);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.error.contains("nonexistent-skill")),
+        "{:?}",
+        report.errors
+    );
 }
 
 #[test]
 fn existing_skill_ref_passes() {
     let (tmp, agents_dir) = setup();
-    write(tmp.path(), ".ship/agents/skills/my-skill.md", "---\nname: My Skill\n---\nContent.");
+    write(
+        tmp.path(),
+        ".ship/agents/skills/my-skill.md",
+        "---\nname: My Skill\n---\nContent.",
+    );
     let toml = r#"[agent]
 name = "test"
 id = "test"
@@ -87,27 +109,49 @@ servers = []
 #[test]
 fn stdio_mcp_missing_command_reports_error() {
     let (tmp, agents_dir) = setup();
-    write(tmp.path(), ".ship/agents/mcp.toml", r#"
+    write(
+        tmp.path(),
+        ".ship/agents/mcp.toml",
+        r#"
 [[servers]]
 id = "bad-stdio"
 server_type = "stdio"
-"#);
+"#,
+    );
     write(tmp.path(), ".ship/agents/test.toml", valid_agent_toml());
     let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
-    assert!(report.errors.iter().any(|e| e.error.contains("missing 'command'")), "{:?}", report.errors);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.error.contains("missing 'command'")),
+        "{:?}",
+        report.errors
+    );
 }
 
 #[test]
 fn http_mcp_missing_url_reports_error() {
     let (tmp, agents_dir) = setup();
-    write(tmp.path(), ".ship/agents/mcp.toml", r#"
+    write(
+        tmp.path(),
+        ".ship/agents/mcp.toml",
+        r#"
 [[servers]]
 id = "bad-http"
 server_type = "http"
-"#);
+"#,
+    );
     write(tmp.path(), ".ship/agents/test.toml", valid_agent_toml());
     let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
-    assert!(report.errors.iter().any(|e| e.error.contains("missing 'url'")), "{:?}", report.errors);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.error.contains("missing 'url'")),
+        "{:?}",
+        report.errors
+    );
 }
 
 #[test]
@@ -126,7 +170,14 @@ preset = "nonexistent-preset"
 "#;
     write(tmp.path(), ".ship/agents/test.toml", toml);
     let report = validate_agent("test", &agents_dir.join("test.toml"), &agents_dir);
-    assert!(report.errors.iter().any(|e| e.error.contains("nonexistent-preset")), "{:?}", report.errors);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.error.contains("nonexistent-preset")),
+        "{:?}",
+        report.errors
+    );
 }
 
 #[test]

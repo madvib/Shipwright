@@ -90,8 +90,12 @@ pub struct AgentHooks {
     pub subagent_stop: Option<String>,
 }
 
-fn default_version() -> String { "0.1.0".to_string() }
-fn default_plugin_scope() -> String { "project".to_string() }
+fn default_version() -> String {
+    "0.1.0".to_string()
+}
+fn default_plugin_scope() -> String {
+    "project".to_string()
+}
 
 impl AgentConfig {
     /// Load an agent config from a file. Dispatches to JSONC or TOML based on extension.
@@ -109,7 +113,7 @@ impl AgentConfig {
     /// Template for a new agent file in JSONC format.
     pub fn scaffold_jsonc(id: &str) -> String {
         format!(
-r#"{{
+            r#"{{
   // Agent configuration — https://getship.dev/docs/agents
   "agent": {{
     "name": "{id}",
@@ -141,7 +145,6 @@ r#"{{
             id = id,
         )
     }
-
 }
 
 /// Apply an agent's permission overrides on top of a base Permissions struct.
@@ -159,9 +162,10 @@ pub fn apply_agent_permissions(
     let mp = &agent.permissions;
 
     // Resolve the named preset from permissions.jsonc at .ship/ root.
-    let preset_from_file = mp.preset.as_deref().and_then(|name| {
-        ship_dir.and_then(|dir| load_permission_preset(dir, name))
-    });
+    let preset_from_file = mp
+        .preset
+        .as_deref()
+        .and_then(|name| ship_dir.and_then(|dir| load_permission_preset(dir, name)));
 
     let mut tools = if let Some(ref preset) = preset_from_file {
         // Use data from permissions.toml section
@@ -174,14 +178,18 @@ pub fn apply_agent_permissions(
             deny: {
                 let mut d = base.tools.deny.clone();
                 for p in &preset.tools_deny {
-                    if !d.contains(p) { d.push(p.clone()); }
+                    if !d.contains(p) {
+                        d.push(p.clone());
+                    }
                 }
                 d
             },
             ask: {
                 let mut a = base.tools.ask.clone();
                 for p in &preset.tools_ask {
-                    if !a.contains(p) { a.push(p.clone()); }
+                    if !a.contains(p) {
+                        a.push(p.clone());
+                    }
                 }
                 a
             },
@@ -190,7 +198,13 @@ pub fn apply_agent_permissions(
         // Built-in fallback — no permissions.toml or section not found
         match mp.preset.as_deref() {
             Some("ship-readonly") => ToolPermissions {
-                allow: vec!["Read".into(), "Glob".into(), "LS".into(), "mcp__ship__*".into(), "Bash(ship *)".into()],
+                allow: vec![
+                    "Read".into(),
+                    "Glob".into(),
+                    "LS".into(),
+                    "mcp__ship__*".into(),
+                    "Bash(ship *)".into(),
+                ],
                 deny: vec!["Write(*)".into(), "Edit(*)".into(), "Bash(rm*)".into()],
                 ask: vec![],
             },
@@ -211,8 +225,14 @@ pub fn apply_agent_permissions(
     }
 
     // default_mode: agent field wins, then preset file value, then base
-    let default_mode = mp.default_mode.clone()
-        .or_else(|| preset_from_file.as_ref().and_then(|p| p.default_mode.clone()))
+    let default_mode = mp
+        .default_mode
+        .clone()
+        .or_else(|| {
+            preset_from_file
+                .as_ref()
+                .and_then(|p| p.default_mode.clone())
+        })
         .or(base.default_mode);
 
     Permissions {
@@ -222,7 +242,6 @@ pub fn apply_agent_permissions(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,7 +249,8 @@ mod tests {
     #[test]
     fn agent_scaffold_jsonc_parses() {
         let s = AgentConfig::scaffold_jsonc("rust-expert");
-        let agent: AgentConfig = compiler::jsonc::from_jsonc_str(&s).expect("scaffold must be valid JSONC");
+        let agent: AgentConfig =
+            compiler::jsonc::from_jsonc_str(&s).expect("scaffold must be valid JSONC");
         assert_eq!(agent.meta.id, "rust-expert");
         assert_eq!(agent.meta.providers, vec!["claude"]);
     }
@@ -253,7 +273,10 @@ tools_deny = ["Bash(rm -rf *)"]
 "#;
         let p: AgentConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.meta.id, "cli-lane");
-        assert_eq!(p.plugins.install, vec!["superpowers@claude-plugins-official"]);
+        assert_eq!(
+            p.plugins.install,
+            vec!["superpowers@claude-plugins-official"]
+        );
         assert_eq!(p.plugins.scope, "project");
         assert_eq!(p.permissions.preset.as_deref(), Some("ship-autonomous"));
     }
@@ -314,12 +337,16 @@ preset = "ship-readonly"
         use tempfile::TempDir;
         let tmp = TempDir::new().unwrap();
         // Write a permissions.toml with a named preset section
-        std::fs::write(tmp.path().join("permissions.toml"), r#"
+        std::fs::write(
+            tmp.path().join("permissions.toml"),
+            r#"
 [custom-preset]
 default_mode = "bypassPermissions"
 tools_deny = ["Bash(git push --force*)"]
 tools_ask = ["Bash(rm -rf*)"]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let toml_str = r#"
 [agent]
 name = "Custom"
@@ -331,7 +358,12 @@ preset = "custom-preset"
         let p: AgentConfig = toml::from_str(toml_str).unwrap();
         let result = apply_agent_permissions(Permissions::default(), &p, Some(tmp.path()));
         assert_eq!(result.default_mode.as_deref(), Some("bypassPermissions"));
-        assert!(result.tools.deny.contains(&"Bash(git push --force*)".to_string()));
+        assert!(
+            result
+                .tools
+                .deny
+                .contains(&"Bash(git push --force*)".to_string())
+        );
         assert!(result.tools.ask.contains(&"Bash(rm -rf*)".to_string()));
     }
 }

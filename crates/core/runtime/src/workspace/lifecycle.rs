@@ -11,10 +11,7 @@ use super::types_session::*;
 
 /// Create or update a workspace record without requiring a git checkout.
 /// This is the runtime-native entrypoint for workspace lifecycle management.
-pub fn create_workspace(
-    ship_dir: &Path,
-    request: CreateWorkspaceRequest,
-) -> Result<Workspace> {
+pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Result<Workspace> {
     let branch = ensure_branch_key(&request.branch)?.to_string();
     let now = Utc::now();
 
@@ -78,9 +75,7 @@ pub fn create_workspace(
         existing
             .as_ref()
             .map(|entry| entry.workspace_type)
-            .unwrap_or_else(|| {
-                infer_workspace_type(&branch, workspace.feature_id.as_deref())
-            })
+            .unwrap_or_else(|| infer_workspace_type(&branch, workspace.feature_id.as_deref()))
     });
 
     hydrate_from_feature_links(ship_dir, &mut workspace)?;
@@ -189,8 +184,7 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     workspace.id = workspace_id_from_branch(branch);
     workspace.branch = branch.to_string();
     if workspace.workspace_type == ShipWorkspaceKind::Feature {
-        workspace.workspace_type =
-            infer_workspace_type(branch, workspace.feature_id.as_deref());
+        workspace.workspace_type = infer_workspace_type(branch, workspace.feature_id.as_deref());
     }
     validate_workspace_transition(
         workspace.workspace_type,
@@ -249,9 +243,7 @@ pub fn sync_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 }
 
 /// Returns the type of the currently active workspace, or `None` if none is active.
-pub fn get_active_workspace_type(
-    ship_dir: &Path,
-) -> Result<Option<ShipWorkspaceKind>> {
+pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<ShipWorkspaceKind>> {
     let workspaces = list_workspaces(ship_dir)?;
     Ok(workspaces
         .iter()

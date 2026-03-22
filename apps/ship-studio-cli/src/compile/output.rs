@@ -24,8 +24,7 @@ pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> R
         if provider_id == "gemini" {
             let path = root.join(mcp_path);
             ensure_parent(&path)?;
-            let mut patch =
-                serde_json::json!({ desc.mcp_key.as_str(): &output.mcp_servers });
+            let mut patch = serde_json::json!({ desc.mcp_key.as_str(): &output.mcp_servers });
             if let Some(hooks) = &output.gemini_settings_patch {
                 merge_json(&mut patch, hooks);
             }
@@ -154,10 +153,7 @@ pub(crate) fn merge_json(base: &mut serde_json::Value, patch: &serde_json::Value
     match (base, patch) {
         (serde_json::Value::Object(b), serde_json::Value::Object(p)) => {
             for (k, v) in p {
-                merge_json(
-                    b.entry(k.clone()).or_insert(serde_json::Value::Null),
-                    v,
-                );
+                merge_json(b.entry(k.clone()).or_insert(serde_json::Value::Null), v);
             }
         }
         (base, patch) => *base = patch.clone(),

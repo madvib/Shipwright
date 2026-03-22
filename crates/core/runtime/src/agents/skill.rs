@@ -285,7 +285,8 @@ fn validate_skill_install_request(source: &str, skill_id: &str) -> Result<()> {
     if source.contains('\n') || source.contains('\r') {
         return Err(anyhow!("source must be a single-line value"));
     }
-    let is_skills_command = source.contains(char::is_whitespace) && looks_like_skills_cli_command(source);
+    let is_skills_command =
+        source.contains(char::is_whitespace) && looks_like_skills_cli_command(source);
     if skill_id.is_empty() {
         if !is_skills_command {
             return Err(anyhow!(
@@ -655,7 +656,8 @@ pub fn install_skill_from_source(
             let project_dir =
                 project_dir.ok_or_else(|| anyhow!("Project scope requires project_dir"))?;
             let dest_root = ensure_project_skills_storage(project_dir)?;
-            let installed = install_skill_from_source_into_dir(&dest_root, source, skill_id, force)?;
+            let installed =
+                install_skill_from_source_into_dir(&dest_root, source, skill_id, force)?;
 
             let mut config = crate::config::get_config(Some(project_dir.to_path_buf()))?;
             if !config.agent.skills.contains(&installed.id) {
@@ -885,9 +887,9 @@ mod tests {
         fs::create_dir_all(&invalid_dir)?;
         write_atomic(
             &invalid_dir.join("skill.toml"),
-            "id = \"broken-skill\"\nname = \"Broken Skill\"\n".to_string(),
+            "id = \"broken-skill\"\nname = \"Broken Skill\"\n",
         )?;
-        write_atomic(&invalid_dir.join("index.md"), "broken body".to_string())?;
+        write_atomic(&invalid_dir.join("index.md"), "broken body")?;
         let err = get_skill(tmp.path(), "broken-skill").expect_err("expected parse failure");
         assert!(err.to_string().contains("Missing SKILL.md"));
         Ok(())
@@ -1159,8 +1161,9 @@ Legacy body.
 
     #[test]
     fn install_skill_rejects_non_skills_command_source() {
-        let err = validate_skill_install_request("curl https://example.com/skill.sh", "skill-creator")
-            .expect_err("non-skills command should be rejected");
+        let err =
+            validate_skill_install_request("curl https://example.com/skill.sh", "skill-creator")
+                .expect_err("non-skills command should be rejected");
         assert!(err.to_string().contains("Unsupported source"));
     }
 
@@ -1178,7 +1181,10 @@ Legacy body.
             "skill-creator",
         )
         .expect_err("git URL sources should be rejected");
-        assert!(err.to_string().contains("Git URL sources are not supported"));
+        assert!(
+            err.to_string()
+                .contains("Git URL sources are not supported")
+        );
     }
 
     #[test]

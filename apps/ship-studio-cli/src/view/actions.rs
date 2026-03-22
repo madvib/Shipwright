@@ -5,7 +5,7 @@
 
 use runtime::db::{
     jobs::update_job_status,
-    targets::{update_capability, CapabilityPatch},
+    targets::{CapabilityPatch, update_capability},
 };
 use std::path::Path;
 
@@ -121,8 +121,11 @@ pub fn update_setting(key: &str, value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::db::{ensure_db, jobs::{create_job, get_job}};
-    use runtime::db::targets::{create_target, create_capability, get_capability};
+    use runtime::db::targets::{create_capability, create_target, get_capability};
+    use runtime::db::{
+        ensure_db,
+        jobs::{create_job, get_job},
+    };
     use runtime::project::init_project;
     use tempfile::TempDir;
 
@@ -139,9 +142,18 @@ mod tests {
 
         // ── Job: full cycle pending → running → complete → failed → pending ──
         let job = create_job(
-            &ship_dir, "test", None, None, None, None, 0, None,
-            vec![], vec![],
-        ).unwrap();
+            &ship_dir,
+            "test",
+            None,
+            None,
+            None,
+            None,
+            0,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap();
         assert_eq!(job.status, "pending");
 
         let transitions = [
@@ -160,10 +172,9 @@ mod tests {
         }
 
         // ── Capability: aspirational → in_progress → actual → aspirational ──
-        let target = create_target(&ship_dir, "milestone", "Test Target", None, None, None)
-            .unwrap();
-        let cap = create_capability(&ship_dir, &target.id, "Test Cap", None)
-            .unwrap();
+        let target =
+            create_target(&ship_dir, "milestone", "Test Target", None, None, None).unwrap();
+        let cap = create_capability(&ship_dir, &target.id, "Test Cap", None).unwrap();
         assert_eq!(cap.status, "aspirational");
 
         let cap_transitions = [
@@ -205,7 +216,10 @@ mod tests {
             assert!(content.contains("\"name\": \"my-bot\""));
             assert!(content.contains("\"id\": \"my-bot\""));
             assert!(content.contains("\"providers\""));
-            assert!(!content.contains("[tools]"), "must not contain invalid TOML field");
+            assert!(
+                !content.contains("[tools]"),
+                "must not contain invalid TOML field"
+            );
         });
     }
 

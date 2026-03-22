@@ -113,13 +113,10 @@ impl PackageCache {
         commit: &str,
         content_dir: &Path,
     ) -> anyhow::Result<CachedPackage> {
-        std::fs::create_dir_all(self.objects_dir())
-            .context("creating cache objects dir")?;
-        std::fs::create_dir_all(self.index_dir())
-            .context("creating cache index dir")?;
+        std::fs::create_dir_all(self.objects_dir()).context("creating cache objects dir")?;
+        std::fs::create_dir_all(self.index_dir()).context("creating cache index dir")?;
 
-        let hash = compute_tree_hash(content_dir)
-            .context("computing content hash")?;
+        let hash = compute_tree_hash(content_dir).context("computing content hash")?;
         let hex = hash.strip_prefix("sha256:").unwrap_or(&hash);
 
         let object_dir = self.objects_dir().join(hex);
@@ -139,8 +136,7 @@ impl PackageCache {
         if object_dir.exists() {
             std::fs::remove_dir_all(&tmp_dir).ok();
         } else {
-            std::fs::rename(&tmp_dir, &object_dir)
-                .context("renaming tmp dir to object dir")?;
+            std::fs::rename(&tmp_dir, &object_dir).context("renaming tmp dir to object dir")?;
         }
 
         // Write index entry atomically.
@@ -175,8 +171,7 @@ impl PackageCache {
             );
         }
 
-        let actual = compute_tree_hash(&pkg.dir)
-            .context("re-hashing cached package")?;
+        let actual = compute_tree_hash(&pkg.dir).context("re-hashing cached package")?;
 
         if actual != pkg.hash {
             // Corrupt entry — delete index so caller re-fetches.

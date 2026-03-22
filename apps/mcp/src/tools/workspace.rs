@@ -2,14 +2,11 @@ use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 use runtime::workspace::{
-    activate_workspace as runtime_activate_workspace,
-    list_workspaces as runtime_list_workspaces,
+    activate_workspace as runtime_activate_workspace, list_workspaces as runtime_list_workspaces,
     set_workspace_active_agent,
 };
 
-use crate::requests::{
-    ActivateWorkspaceRequest, CreateWorkspaceRequest, ListWorkspacesRequest,
-};
+use crate::requests::{ActivateWorkspaceRequest, CreateWorkspaceRequest, ListWorkspacesRequest};
 use crate::util::configured_worktree_dir;
 
 pub fn activate_workspace(project_dir: &Path, req: ActivateWorkspaceRequest) -> String {
@@ -63,15 +60,25 @@ pub fn create_workspace(project_dir: &Path, req: CreateWorkspaceRequest) -> Stri
         return "Error: could not resolve project root from ship dir".to_string();
     };
 
-    let branch = req.branch.as_deref().map(|b| b.to_string()).unwrap_or_else(|| {
-        req.name
-            .to_ascii_lowercase()
-            .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
-            .collect::<String>()
-            .trim_matches('-')
-            .to_string()
-    });
+    let branch = req
+        .branch
+        .as_deref()
+        .map(|b| b.to_string())
+        .unwrap_or_else(|| {
+            req.name
+                .to_ascii_lowercase()
+                .chars()
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '-' {
+                        c
+                    } else {
+                        '-'
+                    }
+                })
+                .collect::<String>()
+                .trim_matches('-')
+                .to_string()
+        });
 
     let worktrees_dir = configured_worktree_dir(project_root);
     let worktree_path = worktrees_dir.join(&branch);
@@ -86,12 +93,21 @@ pub fn create_workspace(project_dir: &Path, req: CreateWorkspaceRequest) -> Stri
         if let Some(msg) = create_git_worktree(project_root, &worktree_path, &branch, base_branch) {
             return msg;
         }
-        if let Err(warn) = write_workspace_config(&worktree_path, &req.name, &kind, &req.preset_id, &req.file_scope) {
+        if let Err(warn) = write_workspace_config(
+            &worktree_path,
+            &req.name,
+            &kind,
+            &req.preset_id,
+            &req.file_scope,
+        ) {
             return warn;
         }
         format!(
             "Created workspace '{}' (branch: {}, kind: {})\nWorktree: {}",
-            req.name, branch, kind, worktree_path.display()
+            req.name,
+            branch,
+            kind,
+            worktree_path.display()
         )
     } else {
         format!(
@@ -142,7 +158,7 @@ fn create_git_worktree(
                     "Error: git worktree add failed for branch '{}'. \
                     The branch may not exist or the worktree path is already in use.",
                     branch
-                ))
+                ));
             }
             Err(e) => return Some(format!("Error running git worktree add: {}", e)),
         }

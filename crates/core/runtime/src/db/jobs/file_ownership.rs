@@ -17,14 +17,12 @@ pub fn claim_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<bool> {
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     let result = block_on(async {
-        sqlx::query(
-            "INSERT OR IGNORE INTO job_file (path, job_id, claimed_at) VALUES (?, ?, ?)",
-        )
-        .bind(path)
-        .bind(job_id)
-        .bind(&now)
-        .execute(&mut conn)
-        .await
+        sqlx::query("INSERT OR IGNORE INTO job_file (path, job_id, claimed_at) VALUES (?, ?, ?)")
+            .bind(path)
+            .bind(job_id)
+            .bind(&now)
+            .execute(&mut conn)
+            .await
     })?;
     Ok(result.rows_affected() == 1)
 }
@@ -58,7 +56,7 @@ pub fn release_job_files(ship_dir: &Path, job_id: &str) -> Result<()> {
 mod tests {
     use super::*;
     use crate::db::ensure_db;
-    use crate::db::jobs::{create_job, update_job, JobPatch};
+    use crate::db::jobs::{JobPatch, create_job, update_job};
     use crate::project::init_project;
     use tempfile::tempdir;
 
@@ -70,9 +68,20 @@ mod tests {
     }
 
     fn mkjob(ship_dir: &Path, kind: &str) -> String {
-        create_job(ship_dir, kind, None, None, None, None, 0, None, vec![], vec![])
-            .unwrap()
-            .id
+        create_job(
+            ship_dir,
+            kind,
+            None,
+            None,
+            None,
+            None,
+            0,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap()
+        .id
     }
 
     /// First caller wins; second caller for the same path gets false.
@@ -117,15 +126,23 @@ mod tests {
         );
 
         // Complete job_a — its claims must be released.
-        update_job(&ship_dir, &job_a, JobPatch {
-            status: Some("complete".to_string()),
-            ..Default::default()
-        }).unwrap();
+        update_job(
+            &ship_dir,
+            &job_a,
+            JobPatch {
+                status: Some("complete".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         assert_eq!(get_file_owner(&ship_dir, "src/main.rs").unwrap(), None);
 
         // job_b can now claim the file.
         let claimed = claim_file(&ship_dir, &job_b, "src/main.rs").unwrap();
-        assert!(claimed, "file should be claimable after original owner completes");
+        assert!(
+            claimed,
+            "file should be claimable after original owner completes"
+        );
     }
 }

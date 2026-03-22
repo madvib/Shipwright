@@ -12,19 +12,22 @@ const MAX_LIMIT: u32 = 200;
 fn parse_since(raw: &str) -> anyhow::Result<DateTime<Utc>> {
     let s = raw.trim();
     if let Some(h) = s.strip_suffix('h') {
-        let hours: i64 = h.parse().map_err(|_| anyhow!("Invalid hours value: '{}'", s))?;
+        let hours: i64 = h
+            .parse()
+            .map_err(|_| anyhow!("Invalid hours value: '{}'", s))?;
         return Ok(Utc::now() - Duration::hours(hours));
     }
     if let Some(d) = s.strip_suffix('d') {
-        let days: i64 = d.parse().map_err(|_| anyhow!("Invalid days value: '{}'", s))?;
+        let days: i64 = d
+            .parse()
+            .map_err(|_| anyhow!("Invalid days value: '{}'", s))?;
         return Ok(Utc::now() - Duration::days(days));
     }
-    s.parse::<DateTime<Utc>>()
-        .or_else(|_| {
-            chrono::DateTime::parse_from_rfc3339(s)
-                .map(|dt| dt.with_timezone(&Utc))
-                .map_err(|e| anyhow!("Could not parse '{}' as a timestamp: {}", s, e))
-        })
+    s.parse::<DateTime<Utc>>().or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .map(|dt| dt.with_timezone(&Utc))
+            .map_err(|e| anyhow!("Could not parse '{}' as a timestamp: {}", s, e))
+    })
 }
 
 pub fn list_events(project_dir: &Path, req: ListEventsRequest) -> String {
@@ -102,7 +105,7 @@ mod tests {
     #[test]
     fn limit_capped_at_max() {
         // Verify the cap constant is sane
-        assert!(MAX_LIMIT <= 200);
-        assert!(DEFAULT_LIMIT <= MAX_LIMIT);
+        const { assert!(MAX_LIMIT <= 200) };
+        const { assert!(DEFAULT_LIMIT <= MAX_LIMIT) };
     }
 }

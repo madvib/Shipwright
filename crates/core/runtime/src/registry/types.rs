@@ -79,13 +79,10 @@ impl SyncStatus {
 
 /// Parse a ship.lock TOML file.
 pub fn parse_ship_lock(content: &str) -> anyhow::Result<ShipLock> {
-    let raw: toml::Value = toml::from_str(content)
-        .map_err(|e| anyhow::anyhow!("invalid ship.lock: {}", e))?;
+    let raw: toml::Value =
+        toml::from_str(content).map_err(|e| anyhow::anyhow!("invalid ship.lock: {}", e))?;
 
-    let version = raw
-        .get("version")
-        .and_then(|v| v.as_integer())
-        .unwrap_or(1) as u32;
+    let version = raw.get("version").and_then(|v| v.as_integer()).unwrap_or(1) as u32;
 
     let packages = match raw.get("package") {
         Some(toml::Value::Array(arr)) => arr
@@ -111,13 +108,21 @@ pub fn parse_ship_lock(content: &str) -> anyhow::Result<ShipLock> {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("[[package]] missing 'hash'"))?
                     .to_string();
-                Ok(LockedPackage { path, version: ver, commit, hash })
+                Ok(LockedPackage {
+                    path,
+                    version: ver,
+                    commit,
+                    hash,
+                })
             })
             .collect::<anyhow::Result<Vec<_>>>()?,
         _ => Vec::new(),
     };
 
-    Ok(ShipLock { version, package: packages })
+    Ok(ShipLock {
+        version,
+        package: packages,
+    })
 }
 
 /// Serialize a ShipLock to TOML.
@@ -193,10 +198,14 @@ hash = "sha256:abc123"
     #[test]
     fn test_check_sync_in_sync() {
         let manifest = ShipManifest {
-            dependencies: [
-                ("github.com/owner/pkg".into(), Dependency { version: "^1.0".into(), grant: vec![] }),
-            ].into(),
-            ..Default::default()
+            dependencies: [(
+                "github.com/owner/pkg".into(),
+                Dependency {
+                    version: "^1.0".into(),
+                    grant: vec![],
+                },
+            )]
+            .into(),
         };
         let lock = ShipLock {
             version: 1,
@@ -213,12 +222,19 @@ hash = "sha256:abc123"
     #[test]
     fn test_check_sync_added() {
         let manifest = ShipManifest {
-            dependencies: [
-                ("github.com/owner/new".into(), Dependency { version: "^1.0".into(), grant: vec![] }),
-            ].into(),
-            ..Default::default()
+            dependencies: [(
+                "github.com/owner/new".into(),
+                Dependency {
+                    version: "^1.0".into(),
+                    grant: vec![],
+                },
+            )]
+            .into(),
         };
-        let lock = ShipLock { version: 1, package: vec![] };
+        let lock = ShipLock {
+            version: 1,
+            package: vec![],
+        };
         let status = lock.check_sync(&manifest);
         assert!(!status.is_in_sync());
         assert!(status.added.contains(&"github.com/owner/new".to_string()));

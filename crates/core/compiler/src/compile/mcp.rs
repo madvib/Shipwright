@@ -8,10 +8,7 @@ pub(super) fn build_mcp_servers(desc: &ProviderDescriptor, servers: &[McpServerC
     let mut map = serde_json::Map::new();
 
     // Ship's own self-hosted MCP server is always injected first.
-    map.insert(
-        "ship".to_string(),
-        ship_server_entry(desc.emit_type_field),
-    );
+    map.insert("ship".to_string(), ship_server_entry(desc.emit_type_field));
 
     for s in servers {
         if s.disabled {

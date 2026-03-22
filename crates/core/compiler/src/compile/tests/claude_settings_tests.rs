@@ -1,15 +1,21 @@
 use crate::compile::compile;
 use crate::resolve::ResolvedConfig;
-use crate::types::{HookTrigger, Permissions, ToolPermissions};
+use crate::types::Permissions;
 
 use super::fixtures::*;
 
 /// Ship always emits autoMemoryEnabled: false. When no other settings are
 /// configured, the patch contains only that field.
 fn assert_memory_only(patch: &Option<serde_json::Value>) {
-    let p = patch.as_ref().expect("patch must exist (autoMemoryEnabled)");
+    let p = patch
+        .as_ref()
+        .expect("patch must exist (autoMemoryEnabled)");
     assert_eq!(p["autoMemoryEnabled"], false);
-    assert_eq!(p.as_object().unwrap().len(), 1, "expected only autoMemoryEnabled");
+    assert_eq!(
+        p.as_object().unwrap().len(),
+        1,
+        "expected only autoMemoryEnabled"
+    );
 }
 
 // ── defaultMode ───────────────────────────────────────────────────────────────
@@ -24,7 +30,9 @@ fn default_mode_compiles_to_permissions_default_mode() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("default_mode must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("default_mode must emit a patch");
     assert_eq!(patch["permissions"]["defaultMode"], "plan");
 }
 
@@ -49,17 +57,38 @@ fn model_compiles_to_settings_patch() {
 
 #[test]
 fn model_none_omits_field() {
-    let r = ResolvedConfig { model: None, ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        model: None,
+        ..resolved(vec![])
+    };
     let out = compile(&r, "claude").unwrap();
     assert_memory_only(&out.claude_settings_patch);
 }
 
 #[test]
 fn model_only_for_claude_not_other_providers() {
-    let r = ResolvedConfig { model: Some("claude-opus-4-6".to_string()), ..resolved(vec![]) };
-    assert!(compile(&r, "gemini").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "codex").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "cursor").unwrap().claude_settings_patch.is_none());
+    let r = ResolvedConfig {
+        model: Some("claude-opus-4-6".to_string()),
+        ..resolved(vec![])
+    };
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "cursor")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
 }
 
 // ── additionalDirectories ─────────────────────────────────────────────────────
@@ -74,8 +103,12 @@ fn additional_directories_emitted_when_set() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("additionalDirectories must emit a patch");
-    let dirs = patch["permissions"]["additionalDirectories"].as_array().unwrap();
+    let patch = out
+        .claude_settings_patch
+        .expect("additionalDirectories must emit a patch");
+    let dirs = patch["permissions"]["additionalDirectories"]
+        .as_array()
+        .unwrap();
     assert_eq!(dirs.len(), 1);
     assert_eq!(dirs[0], "/tmp/project");
 }
@@ -83,7 +116,10 @@ fn additional_directories_emitted_when_set() {
 #[test]
 fn additional_directories_empty_omitted() {
     let r = ResolvedConfig {
-        permissions: Permissions { additional_directories: vec![], ..Default::default() },
+        permissions: Permissions {
+            additional_directories: vec![],
+            ..Default::default()
+        },
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
@@ -95,11 +131,19 @@ fn additional_directories_empty_omitted() {
 #[test]
 fn env_vars_emitted_in_claude_settings_patch() {
     let mut env = std::collections::HashMap::new();
-    env.insert("ANTHROPIC_MODEL".to_string(), "claude-sonnet-4-20250514".to_string());
+    env.insert(
+        "ANTHROPIC_MODEL".to_string(),
+        "claude-sonnet-4-20250514".to_string(),
+    );
     env.insert("DEBUG".to_string(), "true".to_string());
-    let r = ResolvedConfig { env, ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        env,
+        ..resolved(vec![])
+    };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("env should trigger settings patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("env should trigger settings patch");
     let env_obj = patch.get("env").expect("patch should have env key");
     assert_eq!(env_obj["ANTHROPIC_MODEL"], "claude-sonnet-4-20250514");
     assert_eq!(env_obj["DEBUG"], "true");
@@ -115,10 +159,17 @@ fn empty_env_no_settings_patch() {
 fn env_only_for_claude_not_other_providers() {
     let mut env = std::collections::HashMap::new();
     env.insert("FOO".to_string(), "bar".to_string());
-    let r = ResolvedConfig { env, ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        env,
+        ..resolved(vec![])
+    };
     for provider in &["gemini", "codex", "cursor"] {
         let out = compile(&r, provider).unwrap();
-        assert!(out.claude_settings_patch.is_none(), "provider {} should not have claude_settings_patch", provider);
+        assert!(
+            out.claude_settings_patch.is_none(),
+            "provider {} should not have claude_settings_patch",
+            provider
+        );
     }
 }
 
@@ -127,12 +178,19 @@ fn env_only_for_claude_not_other_providers() {
 #[test]
 fn available_models_emitted_in_claude_settings_patch() {
     let r = ResolvedConfig {
-        available_models: vec!["claude-sonnet-4-20250514".into(), "claude-haiku-3-5-20241022".into()],
+        available_models: vec![
+            "claude-sonnet-4-20250514".into(),
+            "claude-haiku-3-5-20241022".into(),
+        ],
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("availableModels should trigger patch");
-    let models = patch.get("availableModels").expect("patch should have availableModels");
+    let patch = out
+        .claude_settings_patch
+        .expect("availableModels should trigger patch");
+    let models = patch
+        .get("availableModels")
+        .expect("patch should have availableModels");
     let arr = models.as_array().unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0], "claude-sonnet-4-20250514");
@@ -162,28 +220,48 @@ fn agent_profiles_compiled_into_agent_files() {
         mcp: McpRefs::default(),
         plugins: PluginRefs::default(),
         permissions: ProfilePermissions::default(),
-        rules: ProfileRules { inline: Some("Review carefully.".to_string()) },
+        rules: ProfileRules {
+            inline: Some("Review carefully.".to_string()),
+        },
         provider_settings: Default::default(),
     };
 
-    let r = ResolvedConfig { agent_profiles: vec![profile], ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        agent_profiles: vec![profile],
+        ..resolved(vec![])
+    };
     let out = compile(&r, "claude").unwrap();
     assert!(out.agent_files.contains_key(".claude/agents/reviewer.md"));
     let content = &out.agent_files[".claude/agents/reviewer.md"];
-    assert!(content.contains("name: reviewer"), "name field must use profile id; got:\n{content}");
-    assert!(content.contains("Reviews code"), "description must appear; got:\n{content}");
-    assert!(content.contains("Review carefully."), "inline rules must appear; got:\n{content}");
+    assert!(
+        content.contains("name: reviewer"),
+        "name field must use profile id; got:\n{content}"
+    );
+    assert!(
+        content.contains("Reviews code"),
+        "description must appear; got:\n{content}"
+    );
+    assert!(
+        content.contains("Review carefully."),
+        "inline rules must appear; got:\n{content}"
+    );
 }
 
 #[test]
 fn claude_team_agents_passed_through_to_agent_files() {
     let r = ResolvedConfig {
-        claude_team_agents: vec![("lead.md".to_string(), "# Team Lead\nYou lead the team.".to_string())],
+        claude_team_agents: vec![(
+            "lead.md".to_string(),
+            "# Team Lead\nYou lead the team.".to_string(),
+        )],
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
     assert!(out.agent_files.contains_key(".claude/agents/lead.md"));
-    assert_eq!(out.agent_files[".claude/agents/lead.md"], "# Team Lead\nYou lead the team.");
+    assert_eq!(
+        out.agent_files[".claude/agents/lead.md"],
+        "# Team Lead\nYou lead the team."
+    );
 }
 
 #[test]
@@ -194,7 +272,10 @@ fn team_agents_only_for_claude() {
     };
     for provider in &["gemini", "codex", "cursor"] {
         let out = compile(&r, provider).unwrap();
-        assert!(!out.agent_files.contains_key(".claude/agents/lead.md"), "{provider} must not get claude team agents");
+        assert!(
+            !out.agent_files.contains_key(".claude/agents/lead.md"),
+            "{provider} must not get claude team agents"
+        );
     }
 }
 
@@ -218,7 +299,9 @@ fn claude_auto_updates_emitted_in_settings_patch() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("autoUpdates must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("autoUpdates must emit a patch");
     assert_eq!(patch["autoUpdates"], false);
 }
 
@@ -229,7 +312,9 @@ fn claude_include_co_authored_by_emitted() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("includeCoAuthoredBy must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("includeCoAuthoredBy must emit a patch");
     assert_eq!(patch["includeCoAuthoredBy"], true);
 }
 
@@ -261,10 +346,16 @@ fn claude_hooks_wrapped_in_hooks_array() {
     let stop_arr = patch["hooks"]["Stop"].as_array().unwrap();
     assert_eq!(stop_arr.len(), 1);
     let entry = &stop_arr[0];
-    assert!(entry.get("hooks").is_some(), "hook entry must have 'hooks' array");
+    assert!(
+        entry.get("hooks").is_some(),
+        "hook entry must have 'hooks' array"
+    );
     let inner = entry["hooks"].as_array().unwrap();
     assert_eq!(inner[0]["command"], "ship notify");
     assert_eq!(inner[0]["type"], "command");
     // Must NOT have "command" at the top level
-    assert!(entry.get("command").is_none(), "command must be nested inside hooks array");
+    assert!(
+        entry.get("command").is_none(),
+        "command must be nested inside hooks array"
+    );
 }

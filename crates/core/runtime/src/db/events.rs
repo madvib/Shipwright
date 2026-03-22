@@ -63,8 +63,7 @@ pub fn insert_event(
 
 // Column order: 0:id 1:actor 2:entity_type 3:entity_id 4:action 5:detail
 //               6:workspace_id 7:session_id 8:job_id 9:created_at
-const SELECT_COLS: &str =
-    "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
+const SELECT_COLS: &str = "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
 
 pub fn list_all_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
     let mut conn = open_db(ship_dir)?;
@@ -174,9 +173,11 @@ pub fn migrate_job_log_to_events(ship_dir: &Path) -> Result<usize> {
 
     // Read all job_log rows
     let rows = block_on(async {
-        sqlx::query("SELECT job_id, branch, message, actor, created_at FROM job_log ORDER BY id ASC")
-            .fetch_all(&mut conn)
-            .await
+        sqlx::query(
+            "SELECT job_id, branch, message, actor, created_at FROM job_log ORDER BY id ASC",
+        )
+        .fetch_all(&mut conn)
+        .await
     })?;
 
     let mut migrated = 0usize;
@@ -268,8 +269,7 @@ fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
     let timestamp = created_at
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
-            chrono::DateTime::parse_from_rfc3339(&created_at)
-                .map(|dt| dt.with_timezone(&Utc))
+            chrono::DateTime::parse_from_rfc3339(&created_at).map(|dt| dt.with_timezone(&Utc))
         })
         .unwrap_or_else(|_| Utc::now());
 

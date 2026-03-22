@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use runtime::project::{get_active_project_global, get_project_dir, set_active_project_global};
+use runtime::project::{get_project_name, list_registered_projects};
 use runtime::{
     get_config, read_log, read_recent_events,
     workspace::{
@@ -9,7 +10,6 @@ use runtime::{
         list_workspaces as runtime_list_workspaces,
     },
 };
-use runtime::project::{get_project_name, list_registered_projects};
 use tokio::sync::Mutex;
 
 /// Set the active project; returns (response_message, resolved_project_root).
@@ -35,7 +35,10 @@ pub async fn open_project(
                     Some(resolved),
                 );
             }
-            (format!("Opened project at {}", ship_dir.display()), Some(resolved))
+            (
+                format!("Opened project at {}", ship_dir.display()),
+                Some(resolved),
+            )
         }
         Err(e) => (format!("Error: {}", e), None),
     }
@@ -104,7 +107,10 @@ pub async fn get_project_info(project_dir: &Path) -> String {
         .find(|w| matches!(w.status, runtime::WorkspaceStatus::Active));
 
     if let Some(ws) = active_workspace {
-        out.push_str(&format!("- Workspace: {} [{:?}]", ws.branch, ws.workspace_type));
+        out.push_str(&format!(
+            "- Workspace: {} [{:?}]",
+            ws.branch, ws.workspace_type
+        ));
         if let Some(ref mode) = ws.active_agent {
             out.push_str(&format!(" mode={}", mode));
         }
@@ -174,7 +180,11 @@ pub async fn get_project_info(project_dir: &Path) -> String {
     {
         out.push_str("\n## Recent Events\n");
         for e in events {
-            let details = e.details.as_ref().map(|d| format!(" — {}", d)).unwrap_or_default();
+            let details = e
+                .details
+                .as_ref()
+                .map(|d| format!(" — {}", d))
+                .unwrap_or_default();
             out.push_str(&format!(
                 "- {} {} [{}] {:?}.{:?} {}{}\n",
                 e.id,

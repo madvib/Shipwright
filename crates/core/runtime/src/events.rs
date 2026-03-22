@@ -187,7 +187,15 @@ pub fn append_event(
     subject: impl Into<String>,
     details: Option<String>,
 ) -> Result<EventRecord> {
-    append_event_with_context(ship_dir, actor, entity, action, subject, details, &EventContext::default())
+    append_event_with_context(
+        ship_dir,
+        actor,
+        entity,
+        action,
+        subject,
+        details,
+        &EventContext::default(),
+    )
 }
 
 pub fn append_event_with_context(
@@ -200,7 +208,11 @@ pub fn append_event_with_context(
     ctx: &EventContext<'_>,
 ) -> Result<EventRecord> {
     let subject = subject.into();
-    let entity_id = if subject.is_empty() { None } else { Some(subject.as_str()) };
+    let entity_id = if subject.is_empty() {
+        None
+    } else {
+        Some(subject.as_str())
+    };
     crate::db::events::insert_event(
         ship_dir,
         actor,

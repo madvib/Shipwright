@@ -10,19 +10,32 @@ use std::collections::HashMap;
 
 fn full_agent() -> ResolvedConfig {
     let mut github = make_server("github");
-    github.env.insert("GITHUB_TOKEN".into(), "${GITHUB_TOKEN}".into());
+    github
+        .env
+        .insert("GITHUB_TOKEN".into(), "${GITHUB_TOKEN}".into());
     github.timeout_secs = Some(30);
 
     ResolvedConfig {
-        providers: vec!["claude".into(), "gemini".into(), "codex".into(), "cursor".into()],
+        providers: vec![
+            "claude".into(),
+            "gemini".into(),
+            "codex".into(),
+            "cursor".into(),
+        ],
         model: Some("claude-opus-4-6".into()),
         max_cost_per_session: Some(10.0),
         max_turns: Some(50),
         mcp_servers: vec![github, make_server("postgres")],
         skills: vec![make_skill("code-review"), make_skill("test-generator")],
         rules: vec![
-            make_rule("01-style.md", "# Code Style\n\n- Use explicit type annotations on public APIs."),
-            make_rule("02-safety.md", "# Safety\n\n- Never commit secrets or API keys."),
+            make_rule(
+                "01-style.md",
+                "# Code Style\n\n- Use explicit type annotations on public APIs.",
+            ),
+            make_rule(
+                "02-safety.md",
+                "# Safety\n\n- Never commit secrets or API keys.",
+            ),
         ],
         permissions: Permissions {
             tools: ToolPermissions {
@@ -44,7 +57,11 @@ fn full_agent() -> ResolvedConfig {
         },
         hooks: vec![
             make_hook(HookTrigger::Stop, "ship end-session --summary", None),
-            make_hook(HookTrigger::SubagentStop, "ship log 'subagent completed'", None),
+            make_hook(
+                HookTrigger::SubagentStop,
+                "ship log 'subagent completed'",
+                None,
+            ),
         ],
         ..resolved(vec![])
     }
@@ -59,18 +76,32 @@ fn empty_agent() -> ResolvedConfig {
 #[test]
 fn realistic_agent_context_contains_both_rules() {
     let out = compile(&full_agent(), "claude").unwrap();
-    let ctx = out.context_content.expect("rules must produce a context file");
-    assert!(ctx.contains("Use explicit type annotations"), "missing style rule");
+    let ctx = out
+        .context_content
+        .expect("rules must produce a context file");
+    assert!(
+        ctx.contains("Use explicit type annotations"),
+        "missing style rule"
+    );
     assert!(ctx.contains("Never commit secrets"), "missing safety rule");
 }
 
 #[test]
 fn realistic_agent_emits_both_skill_files() {
     let out = compile(&full_agent(), "claude").unwrap();
-    assert!(out.skill_files.contains_key(".claude/skills/code-review/SKILL.md"));
-    assert!(out.skill_files.contains_key(".claude/skills/test-generator/SKILL.md"));
+    assert!(
+        out.skill_files
+            .contains_key(".claude/skills/code-review/SKILL.md")
+    );
+    assert!(
+        out.skill_files
+            .contains_key(".claude/skills/test-generator/SKILL.md")
+    );
     let review = &out.skill_files[".claude/skills/code-review/SKILL.md"];
-    assert!(review.contains("code-review"), "skill content must include id");
+    assert!(
+        review.contains("code-review"),
+        "skill content must include id"
+    );
 }
 
 #[test]
@@ -104,7 +135,10 @@ fn realistic_agent_settings_has_deny_and_default_mode() {
 
 #[test]
 fn realistic_agent_settings_has_ask_and_limits() {
-    let patch = compile(&full_agent(), "claude").unwrap().claude_settings_patch.unwrap();
+    let patch = compile(&full_agent(), "claude")
+        .unwrap()
+        .claude_settings_patch
+        .unwrap();
     let ask = patch["permissions"]["ask"].as_array().unwrap();
     assert!(ask.iter().any(|v| v == "Bash(rm -rf*)"));
     assert_eq!(patch["maxCostPerSession"], 10.0);
@@ -139,7 +173,10 @@ fn realistic_agent_all_providers_have_context_with_rules() {
     let cursor = compile(&r, "cursor").unwrap();
     assert!(cursor.context_content.is_none());
     assert!(
-        cursor.rule_files.values().any(|c| c.contains("Use explicit type annotations")),
+        cursor
+            .rule_files
+            .values()
+            .any(|c| c.contains("Use explicit type annotations")),
         "cursor rule_files must contain style rule"
     );
 }
@@ -178,10 +215,30 @@ fn realistic_agent_all_providers_have_mcp_servers() {
 #[test]
 fn realistic_agent_provider_patches_are_exclusive() {
     let r = full_agent();
-    assert!(compile(&r, "claude").unwrap().claude_settings_patch.is_some());
-    assert!(compile(&r, "gemini").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "codex").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "cursor").unwrap().claude_settings_patch.is_none());
+    assert!(
+        compile(&r, "claude")
+            .unwrap()
+            .claude_settings_patch
+            .is_some()
+    );
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "cursor")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
     assert!(compile(&r, "codex").unwrap().codex_config_patch.is_some());
     assert!(compile(&r, "claude").unwrap().codex_config_patch.is_none());
     assert!(compile(&r, "gemini").unwrap().gemini_policy_patch.is_some());
@@ -212,8 +269,7 @@ fn permission_deny_only_no_allow_leak_claude() {
         .unwrap();
     let p = &patch["permissions"];
     assert!(
-        p.get("allow").is_none()
-            || p["allow"].as_array().map(|a| a.is_empty()).unwrap_or(true),
+        p.get("allow").is_none() || p["allow"].as_array().map(|a| a.is_empty()).unwrap_or(true),
         "deny-only must not leak allow in claude"
     );
     assert_eq!(p["deny"].as_array().unwrap().len(), 2);
@@ -246,7 +302,10 @@ fn permission_deny_only_no_allow_leak_gemini() {
         ..empty_agent()
     };
     let toml_str = compile(&r, "gemini").unwrap().gemini_policy_patch.unwrap();
-    assert!(!toml_str.contains(r#"decision = "allow""#), "deny-only must not leak allow in gemini");
+    assert!(
+        !toml_str.contains(r#"decision = "allow""#),
+        "deny-only must not leak allow in gemini"
+    );
     assert!(toml_str.contains(r#"decision = "deny""#));
 }
 
@@ -257,7 +316,10 @@ fn empty_agent_compiles_for_all_providers() {
     let r = empty_agent();
     for provider in &["claude", "gemini", "codex", "cursor"] {
         let out = compile(&r, provider).unwrap();
-        assert!(out.mcp_servers.as_object().unwrap().contains_key("ship"), "{provider}: ship always");
+        assert!(
+            out.mcp_servers.as_object().unwrap().contains_key("ship"),
+            "{provider}: ship always"
+        );
         assert!(out.skill_files.is_empty(), "{provider}: no skill files");
     }
 }
@@ -273,7 +335,10 @@ fn both_stop_hooks_emit_to_claude_settings() {
         ],
         ..empty_agent()
     };
-    let patch = compile(&r, "claude").unwrap().claude_settings_patch.unwrap();
+    let patch = compile(&r, "claude")
+        .unwrap()
+        .claude_settings_patch
+        .unwrap();
     let stop = patch["hooks"]["Stop"].as_array().unwrap();
     assert_eq!(stop.len(), 1);
     let stop_inner = stop[0]["hooks"].as_array().unwrap();
@@ -290,7 +355,10 @@ fn stop_hook_maps_to_gemini_session_end() {
         hooks: vec![make_hook(HookTrigger::Stop, "ship end-session", None)],
         ..empty_agent()
     };
-    let patch = compile(&r, "gemini").unwrap().gemini_settings_patch.unwrap();
+    let patch = compile(&r, "gemini")
+        .unwrap()
+        .gemini_settings_patch
+        .unwrap();
     assert!(patch["hooks"]["SessionEnd"].is_array());
 }
 
@@ -307,9 +375,18 @@ fn stop_hook_maps_to_cursor_session_end() {
 #[test]
 fn subagent_stop_dropped_for_non_claude_providers() {
     let r = ResolvedConfig {
-        hooks: vec![make_hook(HookTrigger::SubagentStop, "ship log subagent", None)],
+        hooks: vec![make_hook(
+            HookTrigger::SubagentStop,
+            "ship log subagent",
+            None,
+        )],
         ..empty_agent()
     };
-    assert!(compile(&r, "gemini").unwrap().gemini_settings_patch.is_none());
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .gemini_settings_patch
+            .is_none()
+    );
     assert!(compile(&r, "cursor").unwrap().cursor_hooks_patch.is_none());
 }

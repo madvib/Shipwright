@@ -17,17 +17,17 @@ use std::collections::HashMap;
 
 use serde_json::Value as Json;
 
-use crate::types::PluginsManifest;
 use crate::resolve::ResolvedConfig;
+use crate::types::PluginsManifest;
 
 // ─── Re-exports for lib.rs public surface ─────────────────────────────────────
 
+pub use claude::build_claude_settings_patch;
+pub use cursor::{CURSOR_PERMISSIVE_ALLOW, translate_to_cursor_permission};
 pub use provider::{
     AgentsDir, ContextFile, McpKey, ProviderDescriptor, ProviderFeatureFlags, SkillsDir,
     get_provider, list_providers,
 };
-pub use claude::build_claude_settings_patch;
-pub use cursor::{CURSOR_PERMISSIVE_ALLOW, translate_to_cursor_permission};
 
 // ─── Output ───────────────────────────────────────────────────────────────────
 

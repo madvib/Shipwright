@@ -15,19 +15,31 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
         );
     }
     if let Some(ref cap_id) = req.capability_id {
-        payload.insert("capability_id".to_string(), serde_json::Value::String(cap_id.clone()));
+        payload.insert(
+            "capability_id".to_string(),
+            serde_json::Value::String(cap_id.clone()),
+        );
     }
     if let Some(ref scope) = req.scope {
         payload.insert("scope".to_string(), serde_json::json!(scope));
     }
     if let Some(ref criteria) = req.acceptance_criteria {
-        payload.insert("acceptance_criteria".to_string(), serde_json::json!(criteria));
+        payload.insert(
+            "acceptance_criteria".to_string(),
+            serde_json::json!(criteria),
+        );
     }
     if let Some(ref hint) = req.preset_hint {
-        payload.insert("preset_hint".to_string(), serde_json::Value::String(hint.clone()));
+        payload.insert(
+            "preset_hint".to_string(),
+            serde_json::Value::String(hint.clone()),
+        );
     }
     if let Some(ref sym) = req.symlink_name {
-        payload.insert("symlink_name".to_string(), serde_json::Value::String(sym.clone()));
+        payload.insert(
+            "symlink_name".to_string(),
+            serde_json::Value::String(sym.clone()),
+        );
     }
     if let Some(ref fs) = req.file_scope {
         payload.insert("file_scope".to_string(), serde_json::json!(fs));
@@ -82,11 +94,7 @@ pub fn update_job(project_dir: &Path, req: UpdateJobRequest) -> String {
 }
 
 pub fn list_jobs(project_dir: &Path, req: ListJobsRequest) -> String {
-    match runtime::db::jobs::list_jobs(
-        project_dir,
-        req.branch.as_deref(),
-        req.status.as_deref(),
-    ) {
+    match runtime::db::jobs::list_jobs(project_dir, req.branch.as_deref(), req.status.as_deref()) {
         Ok(jobs) if jobs.is_empty() => "No jobs found.".to_string(),
         Ok(jobs) => {
             let mut out = String::from("Jobs:\n");

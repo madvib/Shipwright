@@ -20,7 +20,18 @@ pub fn create(
     if let Some(d) = description {
         payload["description"] = serde_json::Value::String(d.to_string());
     }
-    let job = jobs::create_job(&ship_dir, kind, branch, Some(payload), Some("human"), None, 0, None, vec![], vec![])?;
+    let job = jobs::create_job(
+        &ship_dir,
+        kind,
+        branch,
+        Some(payload),
+        Some("human"),
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )?;
     println!("{}\t[{}]\t{}", job.id, job.kind, title);
     Ok(())
 }
@@ -46,7 +57,9 @@ pub fn list(status: Option<&str>, branch: Option<&str>, milestone: Option<&str>)
     sorted.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
     for job in sorted {
-        let desc = job.payload.get("description")
+        let desc = job
+            .payload
+            .get("description")
             .and_then(|v| v.as_str())
             .or_else(|| job.payload.get("title").and_then(|v| v.as_str()))
             .unwrap_or("");
@@ -56,7 +69,10 @@ pub fn list(status: Option<&str>, branch: Option<&str>, milestone: Option<&str>)
             desc.to_string()
         };
         let date = job.created_at.get(..10).unwrap_or(&job.created_at);
-        println!("{}\t{}\t{}\t{}\t{}", job.id, job.status, job.kind, desc_trunc, date);
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            job.id, job.status, job.kind, desc_trunc, date
+        );
     }
     Ok(())
 }
@@ -71,7 +87,11 @@ pub fn update(id_prefix: &str, status: &str) -> Result<()> {
             jobs::update_job_status(&ship_dir, &matched[0].id, status)?;
             println!("✓ {} → {}", &matched[0].id[..8], status);
         }
-        _ => anyhow::bail!("Ambiguous prefix '{}' — {} matches", id_prefix, matched.len()),
+        _ => anyhow::bail!(
+            "Ambiguous prefix '{}' — {} matches",
+            id_prefix,
+            matched.len()
+        ),
     }
     Ok(())
 }
@@ -94,7 +114,19 @@ mod tests {
 
     fn mk_job(ship_dir: &Path, title: &str) -> jobs::Job {
         let payload = serde_json::json!({ "title": title, "description": "test job" });
-        jobs::create_job(ship_dir, "test", None, Some(payload), Some("test"), None, 0, None, vec![], vec![]).unwrap()
+        jobs::create_job(
+            ship_dir,
+            "test",
+            None,
+            Some(payload),
+            Some("test"),
+            None,
+            0,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap()
     }
 
     #[test]

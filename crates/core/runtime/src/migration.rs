@@ -1,9 +1,9 @@
 use crate::config::{LEGACY_CONFIG_FILE, PRIMARY_CONFIG_FILE};
-use crate::project::{
-    AppState, ProjectRegistry, adrs_dir, features_dir, notes_dir, project_ns,
-    releases_dir, specs_dir, vision_doc_path, vision_template_path,
-};
 use crate::db::types::DatabaseMigrationReport;
+use crate::project::{
+    AppState, ProjectRegistry, adrs_dir, features_dir, notes_dir, project_ns, releases_dir,
+    specs_dir, vision_doc_path, vision_template_path,
+};
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
@@ -199,7 +199,12 @@ fn migrate_flat_ship_layout(
     use crate::project::agents_ns;
     let agents = agents_ns(ship_dir);
 
-    for name in ["mcp.toml", "mcp.jsonc", "permissions.toml", "permissions.jsonc"] {
+    for name in [
+        "mcp.toml",
+        "mcp.jsonc",
+        "permissions.toml",
+        "permissions.jsonc",
+    ] {
         let old = agents.join(name);
         let new = ship_dir.join(name);
         if old.exists() && !new.exists() {
@@ -218,7 +223,6 @@ fn migrate_flat_ship_layout(
 
     Ok(())
 }
-
 
 fn migrate_template_layout(ship_dir: &Path, report: &mut ProjectFileMigrationReport) -> Result<()> {
     let legacy_templates = ship_dir.join("templates");
@@ -293,13 +297,11 @@ fn migrate_directory_tree(
 }
 
 fn has_archive_subdir(dir: &Path) -> bool {
-    fs::read_dir(dir)
-        .ok()
-        .is_some_and(|entries| {
-            entries
-                .flatten()
-                .any(|e| e.file_name() == "archive" && e.path().is_dir())
-        })
+    fs::read_dir(dir).ok().is_some_and(|entries| {
+        entries
+            .flatten()
+            .any(|e| e.file_name() == "archive" && e.path().is_dir())
+    })
 }
 
 fn move_dir(source: &Path, target: &Path) -> Result<()> {

@@ -11,8 +11,8 @@ use std::process::Command;
 
 use super::compile::{compile_workspace_context, resolve_session_providers};
 use super::crud::get_workspace;
-use super::lifecycle::{activate_workspace, set_workspace_active_agent};
 use super::helpers::*;
+use super::lifecycle::{activate_workspace, set_workspace_active_agent};
 use super::session::{
     annotate_session_stale_state, hydrate_workspace_session, persist_session_artifact,
 };
@@ -99,10 +99,7 @@ pub fn start_workspace_session(
 
     if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
         let mut existing = hydrate_workspace_session(active);
-        annotate_session_stale_state(
-            &mut existing,
-            &std::collections::HashMap::new(),
-        );
+        annotate_session_stale_state(&mut existing, &std::collections::HashMap::new());
         if let Err(error) = persist_session_artifact(ship_dir, &existing, "attach") {
             eprintln!("Failed to persist attached session artifact: {}", error);
         }
@@ -129,9 +126,7 @@ pub fn start_workspace_session(
         providers
             .first()
             .cloned()
-            .ok_or_else(|| {
-                anyhow!("No providers resolved for workspace '{}'", workspace.branch)
-            })?
+            .ok_or_else(|| anyhow!("No providers resolved for workspace '{}'", workspace.branch))?
     };
 
     compile_workspace_context(ship_dir, &mut workspace, agent_id.as_deref())?;
@@ -196,9 +191,7 @@ pub fn end_workspace_session(
         .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
 
     let mut active = get_active_workspace_session_db(ship_dir, &workspace.id)?
-        .ok_or_else(|| {
-            anyhow::anyhow!("No active workspace session for '{}'", workspace.branch)
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("No active workspace session for '{}'", workspace.branch))?;
 
     let now = Utc::now().to_rfc3339();
     active.status = WorkspaceSessionStatus::Ended.to_string();

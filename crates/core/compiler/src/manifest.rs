@@ -14,9 +14,11 @@ use serde::{Deserialize, Serialize};
 /// Check that a package name matches `^[a-z0-9._/@-]+$`.
 fn is_valid_package_name(name: &str) -> bool {
     !name.is_empty()
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'/' | b'@' | b'-'))
+        && name.bytes().all(|b| {
+            b.is_ascii_lowercase()
+                || b.is_ascii_digit()
+                || matches!(b, b'.' | b'_' | b'/' | b'@' | b'-')
+        })
 }
 
 // ── Module section ─────────────────────────────────────────────────────────────
@@ -127,8 +129,8 @@ pub struct ShipManifest {
 impl ShipManifest {
     /// Parse from a TOML string and validate required fields and semver.
     pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
-        let raw: RawShipManifest = toml::from_str(s)
-            .map_err(|e| anyhow::anyhow!("Failed to parse ship.toml: {e}"))?;
+        let raw: RawShipManifest =
+            toml::from_str(s).map_err(|e| anyhow::anyhow!("Failed to parse ship.toml: {e}"))?;
         Self::from_raw(raw)
     }
 
@@ -165,11 +167,15 @@ impl ShipManifest {
 
         // Validate SPDX license if provided.
         if let Some(ref lic) = raw_module.license
-            && !lic.is_empty() {
-                validate_spdx(lic).map_err(|e| {
-                    anyhow::anyhow!("[module].license '{}' is not a valid SPDX expression: {e}", lic)
-                })?;
-            }
+            && !lic.is_empty()
+        {
+            validate_spdx(lic).map_err(|e| {
+                anyhow::anyhow!(
+                    "[module].license '{}' is not a valid SPDX expression: {e}",
+                    lic
+                )
+            })?;
+        }
 
         // Validate dependency version strings.
         for (path, dep_val) in &raw.dependencies {
@@ -258,17 +264,55 @@ fn validate_spdx(expr: &str) -> Result<(), String> {
 fn is_known_spdx_id(id: &str) -> bool {
     matches!(
         id,
-        "0BSD" | "AAL" | "AFL-3.0" | "AGPL-3.0-only" | "AGPL-3.0-or-later"
-            | "Apache-2.0" | "Artistic-2.0" | "BlueOak-1.0.0"
-            | "BSD-2-Clause" | "BSD-3-Clause" | "BSL-1.0" | "CAL-1.0"
-            | "CAL-1.0-Combined-Work-Exception" | "CC-BY-4.0" | "CC-BY-SA-4.0"
-            | "CC0-1.0" | "CPAL-1.0" | "ECL-2.0" | "EFL-2.0" | "EUPL-1.2"
-            | "GPL-2.0-only" | "GPL-2.0-or-later" | "GPL-3.0-only" | "GPL-3.0-or-later"
-            | "ISC" | "LGPL-2.1-only" | "LGPL-2.1-or-later" | "LGPL-3.0-only"
-            | "LGPL-3.0-or-later" | "LiLiQ-P-1.1" | "LiLiQ-R-1.1" | "LiLiQ-Rplus-1.1"
-            | "MIT" | "MIT-0" | "MPL-2.0" | "MulanPSL-2.0" | "NCSA" | "OFL-1.1"
-            | "OSL-3.0" | "PostgreSQL" | "RPL-1.5" | "SimPL-2.0" | "UPL-1.0"
-            | "Unicode-DFS-2016" | "Unlicense" | "Vim" | "WTFPL" | "Zlib" | "ZPL-2.0"
+        "0BSD"
+            | "AAL"
+            | "AFL-3.0"
+            | "AGPL-3.0-only"
+            | "AGPL-3.0-or-later"
+            | "Apache-2.0"
+            | "Artistic-2.0"
+            | "BlueOak-1.0.0"
+            | "BSD-2-Clause"
+            | "BSD-3-Clause"
+            | "BSL-1.0"
+            | "CAL-1.0"
+            | "CAL-1.0-Combined-Work-Exception"
+            | "CC-BY-4.0"
+            | "CC-BY-SA-4.0"
+            | "CC0-1.0"
+            | "CPAL-1.0"
+            | "ECL-2.0"
+            | "EFL-2.0"
+            | "EUPL-1.2"
+            | "GPL-2.0-only"
+            | "GPL-2.0-or-later"
+            | "GPL-3.0-only"
+            | "GPL-3.0-or-later"
+            | "ISC"
+            | "LGPL-2.1-only"
+            | "LGPL-2.1-or-later"
+            | "LGPL-3.0-only"
+            | "LGPL-3.0-or-later"
+            | "LiLiQ-P-1.1"
+            | "LiLiQ-R-1.1"
+            | "LiLiQ-Rplus-1.1"
+            | "MIT"
+            | "MIT-0"
+            | "MPL-2.0"
+            | "MulanPSL-2.0"
+            | "NCSA"
+            | "OFL-1.1"
+            | "OSL-3.0"
+            | "PostgreSQL"
+            | "RPL-1.5"
+            | "SimPL-2.0"
+            | "UPL-1.0"
+            | "Unicode-DFS-2016"
+            | "Unlicense"
+            | "Vim"
+            | "WTFPL"
+            | "Zlib"
+            | "ZPL-2.0"
     )
 }
 

@@ -1,7 +1,7 @@
 //! Tests for the compile pipeline — agent/mode overrides and utility helpers.
 
-use super::*;
 use super::output::{ensure_session_gitignored, merge_json, merge_json_file};
+use super::*;
 use std::path::Path;
 use tempfile::TempDir;
 
@@ -285,11 +285,7 @@ fn ensure_session_gitignored_appends_to_existing() {
 fn merge_json_file_creates_if_missing() {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("settings.json");
-    merge_json_file(
-        &path,
-        &serde_json::json!({ "model": "claude-opus-4-6" }),
-    )
-    .unwrap();
+    merge_json_file(&path, &serde_json::json!({ "model": "claude-opus-4-6" })).unwrap();
     let v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(v["model"], "claude-opus-4-6");

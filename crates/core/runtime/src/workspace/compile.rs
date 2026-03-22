@@ -130,10 +130,7 @@ pub(crate) fn build_workspace_provider_matrix(
 
 // ---- Context root and missing configs --------------------------------------
 
-pub(crate) fn resolve_workspace_context_root(
-    ship_dir: &Path,
-    workspace: &Workspace,
-) -> PathBuf {
+pub(crate) fn resolve_workspace_context_root(ship_dir: &Path, workspace: &Workspace) -> PathBuf {
     if workspace.is_worktree
         && let Some(path) = workspace.worktree_path.as_deref()
     {

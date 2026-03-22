@@ -27,7 +27,9 @@ pub struct McpEntry {
     pub disabled: bool,
 }
 
-fn default_scope() -> String { "project".to_string() }
+fn default_scope() -> String {
+    "project".to_string()
+}
 
 /// On-disk format: `[mcp.servers.<key>]` tables keyed by server id.
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -56,7 +58,9 @@ pub struct McpFile {
 
 impl McpFile {
     pub fn load(path: &Path) -> Result<Self> {
-        if !path.exists() { return Ok(Self::default()); }
+        if !path.exists() {
+            return Ok(Self::default());
+        }
         let text = std::fs::read_to_string(path)?;
 
         if crate::paths::is_jsonc_ext(path) {
@@ -64,14 +68,23 @@ impl McpFile {
             if let Ok(raw) = compiler::jsonc::from_jsonc_str::<RawMcpFile>(&text)
                 && !raw.mcp.servers.is_empty()
             {
-                let servers = raw.mcp.servers.into_iter().map(|(key, mut entry)| {
-                    if entry.id.is_empty() { entry.id = key; }
-                    entry
-                }).collect();
+                let servers = raw
+                    .mcp
+                    .servers
+                    .into_iter()
+                    .map(|(key, mut entry)| {
+                        if entry.id.is_empty() {
+                            entry.id = key;
+                        }
+                        entry
+                    })
+                    .collect();
                 return Ok(Self { servers });
             }
             if let Ok(legacy) = compiler::jsonc::from_jsonc_str::<LegacyMcpFile>(&text) {
-                return Ok(Self { servers: legacy.servers });
+                return Ok(Self {
+                    servers: legacy.servers,
+                });
             }
             return Ok(Self::default());
         }
@@ -81,21 +94,32 @@ impl McpFile {
         if let Ok(raw) = toml::from_str::<RawMcpFile>(&text)
             && !raw.mcp.servers.is_empty()
         {
-            let servers = raw.mcp.servers.into_iter().map(|(key, mut entry)| {
-                if entry.id.is_empty() { entry.id = key; }
-                entry
-            }).collect();
+            let servers = raw
+                .mcp
+                .servers
+                .into_iter()
+                .map(|(key, mut entry)| {
+                    if entry.id.is_empty() {
+                        entry.id = key;
+                    }
+                    entry
+                })
+                .collect();
             return Ok(Self { servers });
         }
         // Fallback: flat array format { servers = [{...}] }
         if let Ok(legacy) = toml::from_str::<LegacyMcpFile>(&text) {
-            return Ok(Self { servers: legacy.servers });
+            return Ok(Self {
+                servers: legacy.servers,
+            });
         }
         Ok(Self::default())
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p)?;
+        }
 
         if crate::paths::is_jsonc_ext(path) {
             // Write as JSONC: { "mcp": { "servers": { "<id>": {...} } } }
@@ -134,10 +158,15 @@ pub fn add_http(id: &str, name: Option<String>, url: &str) -> Result<()> {
         anyhow::bail!("MCP server '{}' already registered. Remove it first.", id);
     }
     file.servers.push(McpEntry {
-        id: id.to_string(), name,
-        command: None, args: vec![], env: HashMap::new(),
+        id: id.to_string(),
+        name,
+        command: None,
+        args: vec![],
+        env: HashMap::new(),
         url: Some(url.to_string()),
-        scope: "project".into(), server_type: Some("http".into()), disabled: false,
+        scope: "project".into(),
+        server_type: Some("http".into()),
+        disabled: false,
     });
     file.save(&path)?;
     println!("✓ registered MCP server '{}'", id);
@@ -151,10 +180,15 @@ pub fn add_stdio(id: &str, name: Option<String>, command: &str, args: Vec<String
         anyhow::bail!("MCP server '{}' already registered. Remove it first.", id);
     }
     file.servers.push(McpEntry {
-        id: id.to_string(), name,
-        command: Some(command.to_string()), args,
-        env: HashMap::new(), url: None,
-        scope: "project".into(), server_type: Some("stdio".into()), disabled: false,
+        id: id.to_string(),
+        name,
+        command: Some(command.to_string()),
+        args,
+        env: HashMap::new(),
+        url: None,
+        scope: "project".into(),
+        server_type: Some("stdio".into()),
+        disabled: false,
     });
     file.save(&path)?;
     println!("✓ registered MCP server '{}'", id);
@@ -207,10 +241,15 @@ mod tests {
         let path = mcp_path(&tmp);
         let mut file = McpFile::load(&path).unwrap();
         file.servers.push(McpEntry {
-            id: "github".into(), name: None,
-            command: Some("npx".into()), args: vec!["-y".into(), "@mcp/github".into()],
-            env: HashMap::new(), url: None,
-            scope: "project".into(), server_type: Some("stdio".into()), disabled: false,
+            id: "github".into(),
+            name: None,
+            command: Some("npx".into()),
+            args: vec!["-y".into(), "@mcp/github".into()],
+            env: HashMap::new(),
+            url: None,
+            scope: "project".into(),
+            server_type: Some("stdio".into()),
+            disabled: false,
         });
         file.save(&path).unwrap();
 
@@ -225,14 +264,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = mcp_path(&tmp);
         let original = McpFile {
-            servers: vec![
-                McpEntry {
-                    id: "linear".into(), name: Some("Linear".into()),
-                    command: Some("npx".into()), args: vec!["-y".into(), "@mcp/linear".into()],
-                    env: HashMap::new(), url: None,
-                    scope: "project".into(), server_type: Some("stdio".into()), disabled: false,
-                },
-            ],
+            servers: vec![McpEntry {
+                id: "linear".into(),
+                name: Some("Linear".into()),
+                command: Some("npx".into()),
+                args: vec!["-y".into(), "@mcp/linear".into()],
+                env: HashMap::new(),
+                url: None,
+                scope: "project".into(),
+                server_type: Some("stdio".into()),
+                disabled: false,
+            }],
         };
         original.save(&path).unwrap();
         let back = McpFile::load(&path).unwrap();

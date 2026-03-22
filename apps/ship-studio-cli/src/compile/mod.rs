@@ -18,8 +18,7 @@ use crate::loader::load_library;
 
 use agent::{apply_agent_to_library, collect_all_skill_refs};
 use mcp_allowlist::{
-    ensure_ship_mcp_allowed_claude, ensure_ship_mcp_allowed_cursor,
-    ensure_ship_mcp_allowed_gemini,
+    ensure_ship_mcp_allowed_claude, ensure_ship_mcp_allowed_cursor, ensure_ship_mcp_allowed_gemini,
 };
 use output::{ensure_session_gitignored, print_dry_run};
 

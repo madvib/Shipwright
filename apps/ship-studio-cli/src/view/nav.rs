@@ -4,7 +4,9 @@ use super::{App, Screen, Tab, data};
 
 impl App {
     pub fn cycle_tab(&mut self) {
-        if self.screen != Screen::List { return; }
+        if self.screen != Screen::List {
+            return;
+        }
         self.tab = match self.tab {
             Tab::Targets => Tab::Jobs,
             Tab::Jobs => Tab::Events,
@@ -20,7 +22,9 @@ impl App {
     }
 
     pub fn reverse_cycle_tab(&mut self) {
-        if self.screen != Screen::List { return; }
+        if self.screen != Screen::List {
+            return;
+        }
         self.tab = match self.tab {
             Tab::Targets => Tab::Settings,
             Tab::Settings => Tab::Mcp,
@@ -177,9 +181,13 @@ impl App {
     pub fn back(&mut self) {
         self.screen = match self.screen {
             Screen::CapDetail => Screen::TargetDetail,
-            Screen::TargetDetail | Screen::NoteDetail | Screen::AdrDetail
-            | Screen::JobDetail | Screen::EventDetail
-            | Screen::AgentDetail | Screen::McpDetail => Screen::List,
+            Screen::TargetDetail
+            | Screen::NoteDetail
+            | Screen::AdrDetail
+            | Screen::JobDetail
+            | Screen::EventDetail
+            | Screen::AgentDetail
+            | Screen::McpDetail => Screen::List,
             Screen::List => Screen::List,
         };
         self.status.clear();

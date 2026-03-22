@@ -12,8 +12,8 @@
 //!             → expand to all leaf skills within
 
 use anyhow::{Context, Result};
-use compiler::{Skill, SkillSource};
 use compiler::lockfile::{LockPackage, ShipLock};
+use compiler::{Skill, SkillSource};
 use std::path::{Path, PathBuf};
 
 // ── Dep ref detection ─────────────────────────────────────────────────────────
@@ -77,10 +77,7 @@ pub fn parse_dep_ref(ref_str: &str) -> Option<(&str, &str)> {
 /// Returns an error if the package is absent — the caller should surface this
 /// as a cache-miss requiring `ship install`.
 pub fn hash_from_lock(lock: &ShipLock, package_path: &str) -> Result<String> {
-    let pkg: Option<&LockPackage> = lock
-        .packages
-        .iter()
-        .find(|p| p.path == package_path);
+    let pkg: Option<&LockPackage> = lock.packages.iter().find(|p| p.path == package_path);
 
     let pkg = pkg.ok_or_else(|| {
         anyhow::anyhow!(
@@ -147,9 +144,7 @@ pub fn resolve_dep_skill(ref_str: &str, lock: &ShipLock, cache_root: &Path) -> R
     }
 
     // Neither a skill nor a namespace — build a helpful error.
-    let parent = Path::new(within_path)
-        .parent()
-        .unwrap_or(Path::new(""));
+    let parent = Path::new(within_path).parent().unwrap_or(Path::new(""));
     let skills_dir = cache_skill_path(cache_root, &hex, &parent.to_string_lossy());
     let available = list_available_skills(&skills_dir);
     let available_str = if available.is_empty() {

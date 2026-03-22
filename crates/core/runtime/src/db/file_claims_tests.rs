@@ -13,9 +13,20 @@ fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
 }
 
 fn mkjob(ship_dir: &Path) -> String {
-    create_job(ship_dir, "build", None, None, None, None, 0, None, vec![], vec![])
-        .unwrap()
-        .id
+    create_job(
+        ship_dir,
+        "build",
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .unwrap()
+    .id
 }
 
 #[test]
@@ -63,12 +74,17 @@ fn test_conflict_detection() {
     claim_files(&sd, &job_a, None, &["src/lib.rs", "Cargo.toml"]).unwrap();
 
     // job_b tries to claim overlapping paths.
-    let err = claim_files(&sd, &job_b, None, &["src/lib.rs", "src/new.rs"])
-        .unwrap_err();
+    let err = claim_files(&sd, &job_b, None, &["src/lib.rs", "src/new.rs"]).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("file claim conflict"), "got: {msg}");
-    assert!(msg.contains("src/lib.rs"), "should mention conflicting path, got: {msg}");
-    assert!(msg.contains(&job_a), "should mention owning job, got: {msg}");
+    assert!(
+        msg.contains("src/lib.rs"),
+        "should mention conflicting path, got: {msg}"
+    );
+    assert!(
+        msg.contains(&job_a),
+        "should mention owning job, got: {msg}"
+    );
 
     // job_b should not have partially claimed anything.
     let b_claims = list_claims(&sd, Some(&job_b)).unwrap();

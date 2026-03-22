@@ -34,10 +34,7 @@ pub fn complete_workspace(project_dir: &Path, req: CompleteWorkspaceRequest) -> 
     let global_dir = runtime::project::get_global_dir().unwrap_or_else(|_| {
         std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".ship")
     });
-    let sessions_dir = global_dir
-        .join("sessions")
-        .join(&slug)
-        .join(workspace_id);
+    let sessions_dir = global_dir.join("sessions").join(&slug).join(workspace_id);
     if let Err(e) = std::fs::create_dir_all(&sessions_dir) {
         return format!("Error creating sessions dir: {}", e);
     }
@@ -182,7 +179,10 @@ pub fn list_stale_worktrees(project_dir: &Path, req: ListStaleWorktreesRequest) 
     }
 
     if stale.is_empty() {
-        return format!("No stale worktrees found (threshold: {} hours).", idle_hours);
+        return format!(
+            "No stale worktrees found (threshold: {} hours).",
+            idle_hours
+        );
     }
 
     let mut out = format!("Stale worktrees (idle > {} hours):\n", idle_hours);

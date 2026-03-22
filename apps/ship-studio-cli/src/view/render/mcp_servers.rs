@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph},
 };
 
+use super::{C_BG, C_FG, C_MUT, C_PRI, C_RED, C_SEL, panel};
 use crate::view::App;
-use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, C_RED, panel};
 
 pub fn draw_mcp(f: &mut Frame, app: &App, area: Rect) {
     if app.mcp_servers.is_empty() {
@@ -24,9 +24,7 @@ pub fn draw_mcp(f: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|s| {
             let transport = if s.url.is_some() { "http" } else { "stdio" };
-            let endpoint = s.url.as_deref()
-                .or(s.command.as_deref())
-                .unwrap_or("—");
+            let endpoint = s.url.as_deref().or(s.command.as_deref()).unwrap_or("—");
             let disabled_label = if s.disabled { " (disabled)" } else { "" };
             let name_color = if s.disabled { C_MUT } else { C_FG };
             let disabled_color = if s.disabled { C_RED } else { C_MUT };
@@ -34,7 +32,10 @@ pub fn draw_mcp(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled(format!(" {:<20}", s.id), Style::default().fg(name_color)),
                 Span::styled(format!("  {:<6}", transport), Style::default().fg(C_MUT)),
                 Span::styled(format!("  {endpoint}"), Style::default().fg(C_MUT)),
-                Span::styled(disabled_label.to_string(), Style::default().fg(disabled_color)),
+                Span::styled(
+                    disabled_label.to_string(),
+                    Style::default().fg(disabled_color),
+                ),
             ]);
             ListItem::new(line)
         })
@@ -52,7 +53,9 @@ pub fn draw_mcp(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn draw_mcp_detail(f: &mut Frame, app: &App, area: Rect) {
-    let Some(s) = app.mcp_servers.get(app.sel_mcp) else { return };
+    let Some(s) = app.mcp_servers.get(app.sel_mcp) else {
+        return;
+    };
     let transport = if s.url.is_some() { "http" } else { "stdio" };
     let name = s.name.as_deref().unwrap_or(&s.id);
     let mut lines = vec![

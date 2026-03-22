@@ -11,17 +11,46 @@ use anyhow::Result;
 use crossterm::{execute, terminal};
 use ratatui::{Terminal, backend::CrosstermBackend};
 use runtime::EventRecord;
-use runtime::db::{adrs::AdrRecord, jobs::Job, jobs::JobLogEntry, notes::Note, targets::{Capability, Target}};
+use runtime::db::{
+    adrs::AdrRecord,
+    jobs::Job,
+    jobs::JobLogEntry,
+    notes::Note,
+    targets::{Capability, Target},
+};
 use std::{io, path::PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab { Targets, Notes, Adrs, Jobs, Events, Agents, Skills, Mcp, Settings }
+pub enum Tab {
+    Targets,
+    Notes,
+    Adrs,
+    Jobs,
+    Events,
+    Agents,
+    Skills,
+    Mcp,
+    Settings,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Screen { List, TargetDetail, CapDetail, NoteDetail, AdrDetail, JobDetail, EventDetail, AgentDetail, McpDetail }
+pub enum Screen {
+    List,
+    TargetDetail,
+    CapDetail,
+    NoteDetail,
+    AdrDetail,
+    JobDetail,
+    EventDetail,
+    AgentDetail,
+    McpDetail,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputMode { Normal, TextInput(InputAction) }
+pub enum InputMode {
+    Normal,
+    TextInput(InputAction),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputAction {
@@ -34,7 +63,13 @@ pub enum InputAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JobFilter { All, Pending, Running, Complete, Failed }
+pub enum JobFilter {
+    All,
+    Pending,
+    Running,
+    Complete,
+    Failed,
+}
 
 impl JobFilter {
     pub fn label(self) -> &'static str {

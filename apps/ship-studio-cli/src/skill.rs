@@ -3,7 +3,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::paths::{skills_dir, global_skills_dir};
+use crate::paths::{global_skills_dir, skills_dir};
 
 // ── Source parsing ────────────────────────────────────────────────────────────
 
@@ -19,7 +19,9 @@ pub enum SkillSource {
 pub fn parse_source(source: &str) -> anyhow::Result<SkillSource> {
     // Full GitHub URL: https://github.com/owner/repo
     if source.starts_with("https://github.com/") {
-        let rest = source.trim_start_matches("https://github.com/").trim_end_matches('/');
+        let rest = source
+            .trim_start_matches("https://github.com/")
+            .trim_end_matches('/');
         let parts: Vec<&str> = rest.splitn(2, '/').collect();
         if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
             return Ok(SkillSource::GitHub {
@@ -27,7 +29,10 @@ pub fn parse_source(source: &str) -> anyhow::Result<SkillSource> {
                 repo: parts[1].to_string(),
             });
         }
-        anyhow::bail!("Invalid GitHub URL '{}'. Expected https://github.com/owner/repo", source);
+        anyhow::bail!(
+            "Invalid GitHub URL '{}'. Expected https://github.com/owner/repo",
+            source
+        );
     }
 
     // registry format: skill-id@registry-name
@@ -66,7 +71,11 @@ fn fetch_url(url: &str) -> anyhow::Result<String> {
         .args(["-fsSL", "--user-agent", "ship-cli/0.1", url])
         .output()?;
     if !output.status.success() {
-        anyhow::bail!("fetch failed for {}: {}", url, String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "fetch failed for {}: {}",
+            url,
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(String::from_utf8(output.stdout)?)
 }
@@ -97,7 +106,8 @@ fn fetch_github_file(owner: &str, repo: &str, path: &str) -> anyhow::Result<Opti
     };
     let v: serde_json::Value = serde_json::from_str(&raw)?;
     if v["type"].as_str() == Some("file") {
-        let encoded = v["content"].as_str()
+        let encoded = v["content"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("GitHub API: missing content field"))?;
         Ok(Some(decode_base64(encoded)?))
     } else {
@@ -105,7 +115,11 @@ fn fetch_github_file(owner: &str, repo: &str, path: &str) -> anyhow::Result<Opti
     }
 }
 
-fn list_github_dir(owner: &str, repo: &str, path: &str) -> anyhow::Result<Option<Vec<(String, String)>>> {
+fn list_github_dir(
+    owner: &str,
+    repo: &str,
+    path: &str,
+) -> anyhow::Result<Option<Vec<(String, String)>>> {
     let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}");
     let raw = match fetch_url(&url) {
         Ok(v) => v,
@@ -113,13 +127,23 @@ fn list_github_dir(owner: &str, repo: &str, path: &str) -> anyhow::Result<Option
     };
     let arr: serde_json::Value = serde_json::from_str(&raw)?;
     Ok(arr.as_array().map(|entries| {
-        entries.iter().filter_map(|e| {
-            Some((e["name"].as_str()?.to_string(), e["type"].as_str()?.to_string()))
-        }).collect()
+        entries
+            .iter()
+            .filter_map(|e| {
+                Some((
+                    e["name"].as_str()?.to_string(),
+                    e["type"].as_str()?.to_string(),
+                ))
+            })
+            .collect()
     }))
 }
 
-fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> anyhow::Result<Vec<(String, String)>> {
+fn resolve_github_skills(
+    owner: &str,
+    repo: &str,
+    skill_hint: Option<&str>,
+) -> anyhow::Result<Vec<(String, String)>> {
     if let Some(id) = skill_hint {
         for path in &[
             format!("skills/{id}/SKILL.md"),
@@ -135,15 +159,23 @@ fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> a
     }
 
     if let Some(entries) = list_github_dir(owner, repo, "skills")? {
-        let dirs: Vec<_> = entries.iter().filter(|(_, t)| t == "dir").map(|(n, _)| n.clone()).collect();
+        let dirs: Vec<_> = entries
+            .iter()
+            .filter(|(_, t)| t == "dir")
+            .map(|(n, _)| n.clone())
+            .collect();
         if !dirs.is_empty() {
             let mut result = Vec::new();
             for name in dirs {
-                if let Some(content) = fetch_github_file(owner, repo, &format!("skills/{name}/SKILL.md"))? {
+                if let Some(content) =
+                    fetch_github_file(owner, repo, &format!("skills/{name}/SKILL.md"))?
+                {
                     result.push((name, content));
                 }
             }
-            if !result.is_empty() { return Ok(result); }
+            if !result.is_empty() {
+                return Ok(result);
+            }
         }
     }
 
@@ -153,7 +185,9 @@ fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> a
 
     // Fallback: root-level dirs each containing SKILL.md (e.g. better-auth/skills layout)
     if let Some(entries) = list_github_dir(owner, repo, "")? {
-        let dirs: Vec<_> = entries.iter().filter(|(_, t)| t == "dir")
+        let dirs: Vec<_> = entries
+            .iter()
+            .filter(|(_, t)| t == "dir")
             .map(|(n, _)| n.clone())
             .filter(|n| !n.starts_with('.'))
             .collect();
@@ -166,14 +200,17 @@ fn resolve_github_skills(owner: &str, repo: &str, skill_hint: Option<&str>) -> a
                 } else if let Some(sub_entries) = list_github_dir(owner, repo, dir)? {
                     for (name, kind) in sub_entries {
                         if kind == "dir"
-                            && let Some(content) = fetch_github_file(owner, repo, &format!("{dir}/{name}/SKILL.md"))?
+                            && let Some(content) =
+                                fetch_github_file(owner, repo, &format!("{dir}/{name}/SKILL.md"))?
                         {
                             result.push((format!("{dir}-{name}"), content));
                         }
                     }
                 }
             }
-            if !result.is_empty() { return Ok(result); }
+            if !result.is_empty() {
+                return Ok(result);
+            }
         }
     }
 
@@ -187,7 +224,10 @@ pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
 
     match parsed {
         SkillSource::Registry { id, registry } => {
-            println!("Installing plugin: claude plugin install {}@{}", id, registry);
+            println!(
+                "Installing plugin: claude plugin install {}@{}",
+                id, registry
+            );
             let status = std::process::Command::new("claude")
                 .args(["plugin", "install", &format!("{}@{}", id, registry)])
                 .status()?;
@@ -196,9 +236,15 @@ pub fn add(source: &str, skill_id: Option<&str>, global: bool) -> Result<()> {
             }
         }
         SkillSource::GitHub { owner, repo } => {
-            eprintln!("warning: installing skills from external sources — review SKILL.md before use");
+            eprintln!(
+                "warning: installing skills from external sources — review SKILL.md before use"
+            );
             let skills = resolve_github_skills(&owner, &repo, skill_id)?;
-            let base = if global { global_skills_dir() } else { skills_dir() };
+            let base = if global {
+                global_skills_dir()
+            } else {
+                skills_dir()
+            };
             for (id, content) in skills {
                 let dir = base.join(&id);
                 std::fs::create_dir_all(&dir)?;
@@ -220,7 +266,9 @@ pub fn list() -> Result<()> {
         let skills = collect_skill_ids(&project_dir);
         if !skills.is_empty() {
             println!("Project skills (.ship/agents/skills/):");
-            for id in &skills { println!("  - {}", id); }
+            for id in &skills {
+                println!("  - {}", id);
+            }
             found = true;
         }
     }
@@ -230,7 +278,9 @@ pub fn list() -> Result<()> {
         let skills = collect_skill_ids(&global_dir);
         if !skills.is_empty() {
             println!("Global skills (~/.ship/skills/):");
-            for id in &skills { println!("  - {}", id); }
+            for id in &skills {
+                println!("  - {}", id);
+            }
             found = true;
         }
     }
@@ -244,7 +294,10 @@ pub fn list() -> Result<()> {
 
 pub fn create(id: &str, name: Option<&str>, description: Option<&str>) -> Result<()> {
     if !is_valid_id(id) {
-        anyhow::bail!("Invalid skill ID '{}'. Use lowercase letters, digits, and hyphens.", id);
+        anyhow::bail!(
+            "Invalid skill ID '{}'. Use lowercase letters, digits, and hyphens.",
+            id
+        );
     }
     let skill_dir = skills_dir().join(id);
     if skill_dir.exists() {
@@ -255,7 +308,7 @@ pub fn create(id: &str, name: Option<&str>, description: Option<&str>) -> Result
     let name = name.unwrap_or(id);
     let description = description.unwrap_or("Describe when this skill should activate.");
     let content = format!(
-"---
+        "---
 name: {name}
 description: {description}
 ---
@@ -263,7 +316,8 @@ description: {description}
 ## Instructions
 
 <!-- Add instructions for the agent here -->
-");
+"
+    );
     std::fs::write(skill_dir.join("SKILL.md"), content)?;
     println!("✓ created skill '{}' at {}", id, skill_dir.display());
     println!("  Edit: {}/SKILL.md", skill_dir.display());
@@ -271,7 +325,11 @@ description: {description}
 }
 
 pub fn remove(id: &str, global: bool) -> Result<()> {
-    let dir = if global { global_skills_dir().join(id) } else { skills_dir().join(id) };
+    let dir = if global {
+        global_skills_dir().join(id)
+    } else {
+        skills_dir().join(id)
+    };
     if !dir.exists() {
         anyhow::bail!("Skill '{}' not found at {}", id, dir.display());
     }
@@ -281,7 +339,9 @@ pub fn remove(id: &str, global: bool) -> Result<()> {
 }
 
 fn collect_skill_ids(dir: &Path) -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return vec![]; };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return vec![];
+    };
     let mut ids: Vec<String> = entries
         .flatten()
         .filter(|e| e.path().is_dir() && e.path().join("SKILL.md").exists())
@@ -292,7 +352,10 @@ fn collect_skill_ids(dir: &Path) -> Vec<String> {
 }
 
 fn is_valid_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 #[cfg(test)]
@@ -386,5 +449,4 @@ mod tests {
         assert!(parse_source("https://github.com/only-owner/").is_err());
         assert!(parse_source("").is_err());
     }
-
 }

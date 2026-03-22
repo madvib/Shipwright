@@ -39,7 +39,10 @@ pub(super) fn format_skill_file(skill: &Skill) -> String {
     }
 
     if !skill.allowed_tools.is_empty() {
-        fm.push_str(&format!("\nallowed-tools: {}", skill.allowed_tools.join(" ")));
+        fm.push_str(&format!(
+            "\nallowed-tools: {}",
+            skill.allowed_tools.join(" ")
+        ));
     }
 
     if !skill.metadata.is_empty() {
@@ -102,7 +105,10 @@ mod tests {
         let mut skill = base_skill();
         skill.compatibility = Some("claude >= 3".to_string());
         let out = format_skill_file(&skill);
-        assert!(out.contains("\ncompatibility: claude >= 3\n"), "got:\n{out}");
+        assert!(
+            out.contains("\ncompatibility: claude >= 3\n"),
+            "got:\n{out}"
+        );
     }
 
     #[test]
@@ -116,8 +122,12 @@ mod tests {
     #[test]
     fn format_skill_file_with_metadata_sorted() {
         let mut skill = base_skill();
-        skill.metadata.insert("version".to_string(), "1.0.0".to_string());
-        skill.metadata.insert("author".to_string(), "alice".to_string());
+        skill
+            .metadata
+            .insert("version".to_string(), "1.0.0".to_string());
+        skill
+            .metadata
+            .insert("author".to_string(), "alice".to_string());
         let out = format_skill_file(&skill);
         assert!(out.contains("\nmetadata:\n"), "got:\n{out}");
         // author comes before version alphabetically
@@ -131,6 +141,9 @@ mod tests {
         let mut skill = base_skill();
         skill.description = None;
         let out = format_skill_file(&skill);
-        assert!(out.contains("description: No description provided."), "got:\n{out}");
+        assert!(
+            out.contains("description: No description provided."),
+            "got:\n{out}"
+        );
     }
 }

@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::view::App;
 use super::{C_BG, C_FG, C_MUT, C_SEL, panel};
+use crate::view::App;
 
 pub fn draw_notes(f: &mut Frame, app: &App, area: Rect) {
     if app.notes.is_empty() {
@@ -24,8 +24,14 @@ pub fn draw_notes(f: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|n| {
             let date = n.created_at.get(..10).unwrap_or("").to_string();
-            let preview: String =
-                n.content.lines().next().unwrap_or("").chars().take(56).collect();
+            let preview: String = n
+                .content
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(56)
+                .collect();
             let line = Line::from(vec![
                 Span::styled(format!(" {:<36}", n.title), Style::default().fg(C_FG)),
                 Span::styled(format!("  {date}  "), Style::default().fg(C_MUT)),
@@ -47,7 +53,9 @@ pub fn draw_notes(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn draw_note_detail(f: &mut Frame, app: &App, area: Rect) {
-    let Some(n) = app.notes.get(app.sel_note) else { return };
+    let Some(n) = app.notes.get(app.sel_note) else {
+        return;
+    };
     let date = n.created_at.get(..10).unwrap_or("");
     let title = format!("{}  ·  {date}", n.title);
     f.render_widget(

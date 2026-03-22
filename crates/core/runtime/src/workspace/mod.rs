@@ -1,21 +1,21 @@
-pub(crate) mod types;
-pub(crate) mod types_session;
-pub(crate) mod helpers;
-mod context_hash;
 pub(crate) mod compile;
+mod context_hash;
 mod crud;
+pub(crate) mod helpers;
 mod lifecycle;
 mod session;
 mod session_lifecycle;
+pub(crate) mod types;
+pub(crate) mod types_session;
 
-#[cfg(test)]
-mod tests_types;
-#[cfg(test)]
-mod tests_crud;
 #[cfg(test)]
 mod tests_compile;
 #[cfg(test)]
+mod tests_crud;
+#[cfg(test)]
 mod tests_session;
+#[cfg(test)]
+mod tests_types;
 
 // Re-export all public types so `use runtime::workspace::*` continues to work.
 pub use types::{

@@ -42,10 +42,18 @@ fn extract_profile_id_empty_path_fails() {
 
 #[test]
 fn is_github_url_matches_owner_repo() {
-    assert!(convert_github::is_github_url("https://github.com/acme/my-repo"));
-    assert!(convert_github::is_github_url("https://github.com/acme/my-repo.git"));
-    assert!(convert_github::is_github_url("https://github.com/acme/my-repo/tree/main"));
-    assert!(convert_github::is_github_url("http://github.com/acme/my-repo"));
+    assert!(convert_github::is_github_url(
+        "https://github.com/acme/my-repo"
+    ));
+    assert!(convert_github::is_github_url(
+        "https://github.com/acme/my-repo.git"
+    ));
+    assert!(convert_github::is_github_url(
+        "https://github.com/acme/my-repo/tree/main"
+    ));
+    assert!(convert_github::is_github_url(
+        "http://github.com/acme/my-repo"
+    ));
 }
 
 #[test]
@@ -53,7 +61,9 @@ fn is_github_url_rejects_incomplete_paths() {
     assert!(!convert_github::is_github_url("https://github.com/acme"));
     assert!(!convert_github::is_github_url("https://github.com/"));
     assert!(!convert_github::is_github_url("https://getship.dev/p/test"));
-    assert!(!convert_github::is_github_url("https://gitlab.com/acme/repo"));
+    assert!(!convert_github::is_github_url(
+        "https://gitlab.com/acme/repo"
+    ));
 }
 
 // ── extract_github_slug ──────────────────────────────────────────────────────
@@ -78,9 +88,15 @@ fn extract_github_slug_strips_git_suffix() {
 
 #[test]
 fn sanitize_filename_replaces_spaces_and_slashes() {
-    assert_eq!(convert_github::sanitize_filename("hello world"), "hello-world");
+    assert_eq!(
+        convert_github::sanitize_filename("hello world"),
+        "hello-world"
+    );
     assert_eq!(convert_github::sanitize_filename("path/name"), "path-name");
-    assert_eq!(convert_github::sanitize_filename("valid-name_123"), "valid-name_123");
+    assert_eq!(
+        convert_github::sanitize_filename("valid-name_123"),
+        "valid-name_123"
+    );
 }
 
 // ── convert_from_github_with_base (mocked server) ───────────────────────────
@@ -90,7 +106,8 @@ fn run_in_tmp<F: FnOnce(&std::path::Path)>(f: F) {
     let orig = std::env::current_dir().unwrap();
     std::env::set_current_dir(tmp.path()).unwrap();
     f(tmp.path());
-    std::env::set_current_dir(orig).unwrap();
+    // Best-effort restore — may fail if another test changed cwd concurrently.
+    let _ = std::env::set_current_dir(orig);
 }
 
 #[test]
@@ -117,8 +134,14 @@ fn github_convert_writes_profiles_rules_and_mcp() {
         )
         .unwrap();
 
-        assert!(tmp.join(".ship/agents/rust-expert.toml").exists(), "agent written");
-        assert!(tmp.join(".ship/rules/no-panics.md").exists(), "rule written");
+        assert!(
+            tmp.join(".ship/agents/rust-expert.toml").exists(),
+            "agent written"
+        );
+        assert!(
+            tmp.join(".ship/rules/no-panics.md").exists(),
+            "rule written"
+        );
         let rule = std::fs::read_to_string(tmp.join(".ship/rules/no-panics.md")).unwrap();
         assert_eq!(rule, "Never use unwrap()");
         assert!(tmp.join(".ship/mcp.toml").exists(), "mcp written");
@@ -157,22 +180,30 @@ fn github_convert_skips_duplicate_mcp_servers() {
         .mock("POST", "/api/github/import")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{
+        .with_body(
+            r#"{
             "library": {
                 "mcp_servers": [{"id": "linear", "command": "npx", "args": []}]
             }
-        }"#)
+        }"#,
+        )
         .expect(2)
         .create();
 
     run_in_tmp(|tmp| {
         let base = server.url();
-        convert_github::convert_from_github_with_base("https://github.com/acme/repo", &base).unwrap();
+        convert_github::convert_from_github_with_base("https://github.com/acme/repo", &base)
+            .unwrap();
         // Second call should not duplicate the MCP entry
-        convert_github::convert_from_github_with_base("https://github.com/acme/repo", &base).unwrap();
+        convert_github::convert_from_github_with_base("https://github.com/acme/repo", &base)
+            .unwrap();
 
         let mcp_path = tmp.join(".ship/mcp.toml");
         let mcp = McpFile::load(&mcp_path).unwrap();
-        assert_eq!(mcp.servers.len(), 1, "duplicate MCP entry should be skipped");
+        assert_eq!(
+            mcp.servers.len(),
+            1,
+            "duplicate MCP entry should be skipped"
+        );
     });
 }

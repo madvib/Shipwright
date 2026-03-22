@@ -47,10 +47,10 @@ pub fn load_cap_progress(ship_dir: &Path, target_id: &str) -> (usize, usize) {
 
 // ── CRUD tab loaders ─────────────────────────────────────────────────────────
 
-use crate::mcp::McpEntry;
-use crate::paths::{list_agent_ids, skills_dir, global_skills_dir, mcp_path};
-use crate::profile::WorkspaceState;
 use crate::config::ShipConfig;
+use crate::mcp::McpEntry;
+use crate::paths::{global_skills_dir, list_agent_ids, mcp_path, skills_dir};
+use crate::profile::WorkspaceState;
 
 pub fn load_agents() -> Vec<(String, String)> {
     list_agent_ids(false, false)
@@ -78,29 +78,39 @@ pub fn load_skills() -> Vec<(String, String)> {
     let mut skills = Vec::new();
     let project_dir = skills_dir();
     if project_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(&project_dir) {
-            for e in entries.flatten() {
-                if e.path().is_dir() && e.path().join("SKILL.md").exists() {
-                    skills.push((e.file_name().to_string_lossy().to_string(), "local".to_string()));
-                }
+        && let Ok(entries) = std::fs::read_dir(&project_dir)
+    {
+        for e in entries.flatten() {
+            if e.path().is_dir() && e.path().join("SKILL.md").exists() {
+                skills.push((
+                    e.file_name().to_string_lossy().to_string(),
+                    "local".to_string(),
+                ));
             }
         }
+    }
     let global_dir = global_skills_dir();
     if global_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(&global_dir) {
-            for e in entries.flatten() {
-                if e.path().is_dir() && e.path().join("SKILL.md").exists() {
-                    skills.push((e.file_name().to_string_lossy().to_string(), "global".to_string()));
-                }
+        && let Ok(entries) = std::fs::read_dir(&global_dir)
+    {
+        for e in entries.flatten() {
+            if e.path().is_dir() && e.path().join("SKILL.md").exists() {
+                skills.push((
+                    e.file_name().to_string_lossy().to_string(),
+                    "global".to_string(),
+                ));
             }
         }
+    }
     skills.sort_by(|a, b| a.0.cmp(&b.0));
     skills
 }
 
 pub fn load_mcp_servers() -> Vec<McpEntry> {
     let path = mcp_path();
-    crate::mcp::McpFile::load(&path).map(|f| f.servers).unwrap_or_default()
+    crate::mcp::McpFile::load(&path)
+        .map(|f| f.servers)
+        .unwrap_or_default()
 }
 
 pub fn load_settings() -> Vec<(String, String)> {

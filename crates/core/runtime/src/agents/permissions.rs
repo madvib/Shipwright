@@ -178,7 +178,6 @@ impl Default for AgentLimits {
     }
 }
 
-
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 fn permissions_path(ship_dir: &std::path::Path) -> PathBuf {
@@ -208,7 +207,15 @@ pub fn get_permissions(ship_dir: PathBuf) -> Result<Permissions> {
 /// (top-level keys like `[ship-standard]`) rather than the flat permissions format
 /// (top-level keys like `[tools]`, `[commands]`, `[filesystem]`, `[network]`, `[agent]`).
 fn is_named_preset_format(content: &str) -> bool {
-    let flat_keys = ["tools", "commands", "filesystem", "network", "agent", "default_mode", "additional_directories"];
+    let flat_keys = [
+        "tools",
+        "commands",
+        "filesystem",
+        "network",
+        "agent",
+        "default_mode",
+        "additional_directories",
+    ];
     let Ok(value) = toml::from_str::<toml::Value>(content) else {
         return false;
     };
@@ -288,10 +295,22 @@ mod tests {
         let deny = default_tool_deny();
         // Bash, Write, Edit, MultiEdit must NOT be in the default deny list —
         // they are the core tools agents need to do their job.
-        assert!(!deny.contains(&"Bash".to_string()), "Bash must not be in default deny");
-        assert!(!deny.contains(&"Write".to_string()), "Write must not be in default deny");
-        assert!(!deny.contains(&"Edit".to_string()), "Edit must not be in default deny");
-        assert!(!deny.contains(&"MultiEdit".to_string()), "MultiEdit must not be in default deny");
+        assert!(
+            !deny.contains(&"Bash".to_string()),
+            "Bash must not be in default deny"
+        );
+        assert!(
+            !deny.contains(&"Write".to_string()),
+            "Write must not be in default deny"
+        );
+        assert!(
+            !deny.contains(&"Edit".to_string()),
+            "Edit must not be in default deny"
+        );
+        assert!(
+            !deny.contains(&"MultiEdit".to_string()),
+            "MultiEdit must not be in default deny"
+        );
     }
 
     #[test]
@@ -346,7 +365,10 @@ tools_deny = ["Bash(git push --force*)"]
         save_permissions(ship_dir, &Permissions::default()).unwrap();
 
         let after = std::fs::read_to_string(agents_dir.join("permissions.toml")).unwrap();
-        assert_eq!(after, original, "named-preset file must not be overwritten by save_permissions");
+        assert_eq!(
+            after, original,
+            "named-preset file must not be overwritten by save_permissions"
+        );
     }
 
     #[test]

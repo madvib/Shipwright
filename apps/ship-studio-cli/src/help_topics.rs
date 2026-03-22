@@ -208,7 +208,11 @@ mod tests {
     #[test]
     fn all_topics_resolve() {
         for (name, _) in TOPICS {
-            assert!(lookup(name).is_some(), "topic '{}' listed but not found", name);
+            assert!(
+                lookup(name).is_some(),
+                "topic '{}' listed but not found",
+                name
+            );
         }
     }
 

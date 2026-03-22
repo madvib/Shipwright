@@ -56,7 +56,10 @@ fn install_idempotent_second_run_does_not_rewrite_lock() {
     let mut manifest = RegistryManifest::default();
     manifest.dependencies.insert(
         "github.com/owner/idempkg".to_string(),
-        Dependency { version: commit.clone(), grant: vec![] },
+        Dependency {
+            version: commit.clone(),
+            grant: vec![],
+        },
     );
 
     let opts = InstallOptions::default();
@@ -64,10 +67,16 @@ fn install_idempotent_second_run_does_not_rewrite_lock() {
     // First run: cache hit + lock in sync = no rewrite.
     let r1 = resolve_and_fetch(&manifest, &lock_path, &cache, &opts)
         .expect("first install must succeed");
-    assert!(!r1.lockfile_written, "first run with matching lock+cache must be a no-op");
+    assert!(
+        !r1.lockfile_written,
+        "first run with matching lock+cache must be a no-op"
+    );
 
     let mtime_after_first = fs::metadata(&lock_path).unwrap().modified().unwrap();
-    assert_eq!(mtime_before, mtime_after_first, "lock mtime must not change on first run");
+    assert_eq!(
+        mtime_before, mtime_after_first,
+        "lock mtime must not change on first run"
+    );
 
     // Second run: same result.
     let r2 = resolve_and_fetch(&manifest, &lock_path, &cache, &opts)
@@ -75,7 +84,10 @@ fn install_idempotent_second_run_does_not_rewrite_lock() {
     assert!(!r2.lockfile_written, "second run must also be a no-op");
 
     let mtime_after_second = fs::metadata(&lock_path).unwrap().modified().unwrap();
-    assert_eq!(mtime_before, mtime_after_second, "lock mtime unchanged after second run");
+    assert_eq!(
+        mtime_before, mtime_after_second,
+        "lock mtime unchanged after second run"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -99,7 +111,10 @@ fn frozen_install_fails_when_lock_is_stale() {
     let mut manifest = RegistryManifest::default();
     manifest.dependencies.insert(
         "github.com/owner/pkg".to_string(),
-        Dependency { version: "main".to_string(), grant: vec![] },
+        Dependency {
+            version: "main".to_string(),
+            grant: vec![],
+        },
     );
 
     let opts = InstallOptions { frozen: true };
@@ -128,7 +143,11 @@ fn install_writes_lock_with_correct_package_entry() {
 
     // Pre-populate cache — install will find a cache hit and skip git fetch.
     let content_dir = tmp.path().join("pkg-content");
-    write(&content_dir, "skills/my-skill/SKILL.md", "# My Skill\nBe excellent.");
+    write(
+        &content_dir,
+        "skills/my-skill/SKILL.md",
+        "# My Skill\nBe excellent.",
+    );
 
     let cache = PackageCache::with_root(cache_tmp.path().to_path_buf());
     let commit = "d".repeat(40);
@@ -140,14 +159,20 @@ fn install_writes_lock_with_correct_package_entry() {
     let mut manifest = RegistryManifest::default();
     manifest.dependencies.insert(
         "github.com/owner/pkg".to_string(),
-        Dependency { version: commit.clone(), grant: vec![] },
+        Dependency {
+            version: commit.clone(),
+            grant: vec![],
+        },
     );
 
     let lock_path = tmp.path().join("ship.lock");
     let result = resolve_and_fetch(&manifest, &lock_path, &cache, &InstallOptions::default())
         .expect("install must succeed");
 
-    assert!(result.lockfile_written, "lock must be written on first install");
+    assert!(
+        result.lockfile_written,
+        "lock must be written on first install"
+    );
     assert!(lock_path.exists(), "ship.lock must exist after install");
 
     let lock = ShipLock::from_file(&lock_path).expect("lock must be parseable");
@@ -158,7 +183,11 @@ fn install_writes_lock_with_correct_package_entry() {
     assert_eq!(lp.path, "github.com/owner/pkg");
     assert_eq!(lp.commit, commit);
     assert_eq!(lp.hash, pkg.hash, "hash in lock must match cache entry");
-    assert!(lp.hash.starts_with("sha256:"), "hash must have sha256: prefix; got: {}", lp.hash);
+    assert!(
+        lp.hash.starts_with("sha256:"),
+        "hash must have sha256: prefix; got: {}",
+        lp.hash
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -176,14 +205,18 @@ fn workspace_state_active_profile_round_trip() {
     let tmp = TempDir::new().unwrap();
     // Use init_project so ship.toml gets a stable unique nanoid — avoids
     // the "tmp-test-test" slug collision that would occur with a hardcoded id.
-    let ship_dir = init_project(tmp.path().to_path_buf())
-        .expect("init_project must succeed");
+    let ship_dir = init_project(tmp.path().to_path_buf()).expect("init_project must succeed");
 
     db::ensure_db(&ship_dir).expect("ensure_db must succeed");
 
     // First write.
-    db::kv::set(&ship_dir, "workspace", "active_profile", &serde_json::json!("my-profile"))
-        .expect("kv set must succeed");
+    db::kv::set(
+        &ship_dir,
+        "workspace",
+        "active_profile",
+        &serde_json::json!("my-profile"),
+    )
+    .expect("kv set must succeed");
 
     let val = db::kv::get(&ship_dir, "workspace", "active_profile")
         .expect("kv get must succeed")
@@ -195,8 +228,13 @@ fn workspace_state_active_profile_round_trip() {
     );
 
     // Second write — same value, idempotent.
-    db::kv::set(&ship_dir, "workspace", "active_profile", &serde_json::json!("my-profile"))
-        .expect("second kv set must succeed");
+    db::kv::set(
+        &ship_dir,
+        "workspace",
+        "active_profile",
+        &serde_json::json!("my-profile"),
+    )
+    .expect("second kv set must succeed");
 
     let val2 = db::kv::get(&ship_dir, "workspace", "active_profile")
         .expect("kv get after second write must succeed")

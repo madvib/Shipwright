@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
     use crate::workspace::*;
+    use anyhow::Result;
     use tempfile::tempdir;
 
     #[test]
@@ -55,9 +55,7 @@ mod tests {
         assert_eq!(ended.summary.as_deref(), Some("Implemented parser + tests"));
         assert_eq!(ended.updated_workspace_ids, vec!["feat-parser".to_string()]);
         assert!(ended.session_record_id.is_some());
-        assert!(
-            get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none()
-        );
+        assert!(get_active_workspace_session(&ship_dir, "feature/session-flow")?.is_none());
 
         Ok(())
     }
@@ -124,13 +122,7 @@ mod tests {
             },
         )?;
 
-        start_workspace_session(
-            &ship_dir,
-            "feature/metrics-defaults",
-            None,
-            None,
-            None,
-        )?;
+        start_workspace_session(&ship_dir, "feature/metrics-defaults", None, None, None)?;
 
         let ended = end_workspace_session(
             &ship_dir,
@@ -180,8 +172,7 @@ mod tests {
         )?;
 
         assert_eq!(attached.id, first.id);
-        let sessions =
-            list_workspace_sessions(&ship_dir, Some("feature/session-dupe"), 10)?;
+        let sessions = list_workspace_sessions(&ship_dir, Some("feature/session-dupe"), 10)?;
         assert_eq!(sessions.len(), 1);
         Ok(())
     }
@@ -363,8 +354,7 @@ mod tests {
             .ok_or_else(|| anyhow::anyhow!("active session missing"))?;
         assert!(active.stale_context);
 
-        let sessions =
-            list_workspace_sessions(&ship_dir, Some("feature/stale-session"), 10)?;
+        let sessions = list_workspace_sessions(&ship_dir, Some("feature/stale-session"), 10)?;
         assert!(!sessions.is_empty());
         assert!(sessions[0].stale_context);
         Ok(())

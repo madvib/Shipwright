@@ -53,15 +53,26 @@ fn init_creates_ship_structure() {
 fn init_is_idempotent() {
     let tmp = TempDir::new().unwrap();
 
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship()
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
 
     let original = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
 
     // Second run must succeed without overwriting existing files.
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship()
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
 
     let after = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
-    assert_eq!(original, after, "init must not overwrite existing ship.jsonc");
+    assert_eq!(
+        original, after,
+        "init must not overwrite existing ship.jsonc"
+    );
 }
 
 #[test]
@@ -75,7 +86,10 @@ fn init_with_provider_sets_provider_in_toml() {
         .success();
 
     let content = fs::read_to_string(tmp.path().join(".ship/ship.jsonc")).unwrap();
-    assert!(content.contains("gemini"), "provider should appear in ship.jsonc");
+    assert!(
+        content.contains("gemini"),
+        "provider should appear in ship.jsonc"
+    );
 }
 
 // ── ship use ──────────────────────────────────────────────────────────────────
@@ -84,7 +98,11 @@ fn init_with_provider_sets_provider_in_toml() {
 fn use_activates_agent_writes_claude_md_and_state() {
     let tmp = TempDir::new().unwrap();
 
-    ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
+    ship_in(&tmp)
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
     write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
@@ -104,14 +122,21 @@ fn use_activates_agent_writes_claude_md_and_state() {
         .assert()
         .success()
         .stdout(predicate::str::contains("my-agent"));
-    assert!(tmp.path().join("CLAUDE.md").exists(), "CLAUDE.md must be written");
+    assert!(
+        tmp.path().join("CLAUDE.md").exists(),
+        "CLAUDE.md must be written"
+    );
 }
 
 #[test]
 fn use_same_agent_twice_is_idempotent() {
     let tmp = TempDir::new().unwrap();
 
-    ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
+    ship_in(&tmp)
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
     write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
     write(
         tmp.path(),
@@ -145,7 +170,11 @@ fn use_fails_without_ship_dir() {
 fn use_fails_for_unknown_agent() {
     let tmp = TempDir::new().unwrap();
 
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship()
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
 
     ship()
         .args(["use", "nonexistent", "--path", tmp.path().to_str().unwrap()])
@@ -162,7 +191,13 @@ fn compile_writes_claude_md() {
     write(tmp.path(), ".ship/rules/style.md", "Use explicit types.");
 
     ship()
-        .args(["compile", "--provider", "claude", "--path", tmp.path().to_str().unwrap()])
+        .args([
+            "compile",
+            "--provider",
+            "claude",
+            "--path",
+            tmp.path().to_str().unwrap(),
+        ])
         .assert()
         .success();
 
@@ -188,7 +223,10 @@ fn compile_dry_run_writes_nothing() {
         .success()
         .stdout(predicate::str::contains("[dry-run]"));
 
-    assert!(!tmp.path().join("CLAUDE.md").exists(), "dry-run must not write any files");
+    assert!(
+        !tmp.path().join("CLAUDE.md").exists(),
+        "dry-run must not write any files"
+    );
 }
 
 #[test]
@@ -270,7 +308,10 @@ fn compile_provider_gemini_writes_gemini_md() {
         .assert()
         .success();
 
-    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written for gemini compile");
+    assert!(
+        tmp.path().join("GEMINI.md").exists(),
+        "GEMINI.md must be written for gemini compile"
+    );
     let content = fs::read_to_string(tmp.path().join("GEMINI.md")).unwrap();
     assert!(content.contains("Use explicit types."));
 }
@@ -286,7 +327,10 @@ fn compile_provider_codex_writes_agents_md() {
         .assert()
         .success();
 
-    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written for codex compile");
+    assert!(
+        tmp.path().join("AGENTS.md").exists(),
+        "AGENTS.md must be written for codex compile"
+    );
     let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
     assert!(content.contains("Use explicit types."));
 }
@@ -303,9 +347,15 @@ fn compile_provider_codex_writes_codex_config_toml() {
         .success();
 
     let path = tmp.path().join(".codex/config.toml");
-    assert!(path.exists(), ".codex/config.toml must be written for codex compile");
+    assert!(
+        path.exists(),
+        ".codex/config.toml must be written for codex compile"
+    );
     let content = fs::read_to_string(&path).unwrap();
-    assert!(content.contains("mcp_servers"), "config.toml must contain mcp_servers");
+    assert!(
+        content.contains("mcp_servers"),
+        "config.toml must contain mcp_servers"
+    );
 }
 
 // ── ship status ───────────────────────────────────────────────────────────────
@@ -314,7 +364,11 @@ fn compile_provider_codex_writes_codex_config_toml() {
 fn status_shows_no_active_agent_before_use() {
     let tmp = TempDir::new().unwrap();
 
-    ship_in(&tmp).args(["init"]).current_dir(tmp.path()).assert().success();
+    ship_in(&tmp)
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
 
     ship_in(&tmp)
         .args(["status", "--path", tmp.path().to_str().unwrap()])
@@ -344,7 +398,10 @@ fn compile_is_idempotent() {
     ship().args(args).assert().success();
     let second = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
 
-    assert_eq!(first, second, "compile output must be identical on second run");
+    assert_eq!(
+        first, second,
+        "compile output must be identical on second run"
+    );
 }
 
 // ── ship install ──────────────────────────────────────────────────────────────
@@ -352,7 +409,11 @@ fn compile_is_idempotent() {
 #[test]
 fn install_no_manifest_exits_nonzero() {
     let tmp = TempDir::new().unwrap();
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship()
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
 
     // .ship/ship.jsonc from `ship init` is a project-config file (no "module"),
     // so install must fail with a clear error.
@@ -465,7 +526,11 @@ fn e2e_init_create_agent_use_compile_full_flow() {
     let p = tmp.path().to_str().unwrap();
 
     // 1. ship init
-    ship().args(["init"]).current_dir(tmp.path()).assert().success();
+    ship()
+        .args(["init"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
 
     // 2. Write a realistic agent JSONC with permissions preset, skills ref, hooks
     write(
@@ -657,7 +722,10 @@ fn e2e_cross_provider_same_config() {
         .args(["compile", "--provider", "claude", "--path", p])
         .assert()
         .success();
-    assert!(tmp.path().join("CLAUDE.md").exists(), "CLAUDE.md must be written");
+    assert!(
+        tmp.path().join("CLAUDE.md").exists(),
+        "CLAUDE.md must be written"
+    );
     assert!(
         fs::read_to_string(tmp.path().join("CLAUDE.md"))
             .unwrap()
@@ -675,9 +743,14 @@ fn e2e_cross_provider_same_config() {
         .assert()
         .success();
     let cursor_rule = tmp.path().join(".cursor/rules/architecture.mdc");
-    assert!(cursor_rule.exists(), ".cursor/rules/architecture.mdc must be written");
     assert!(
-        fs::read_to_string(&cursor_rule).unwrap().contains(rule_text),
+        cursor_rule.exists(),
+        ".cursor/rules/architecture.mdc must be written"
+    );
+    assert!(
+        fs::read_to_string(&cursor_rule)
+            .unwrap()
+            .contains(rule_text),
         "cursor rule file must contain rule content"
     );
 
@@ -686,7 +759,10 @@ fn e2e_cross_provider_same_config() {
         .args(["compile", "--provider", "gemini", "--path", p])
         .assert()
         .success();
-    assert!(tmp.path().join("GEMINI.md").exists(), "GEMINI.md must be written");
+    assert!(
+        tmp.path().join("GEMINI.md").exists(),
+        "GEMINI.md must be written"
+    );
     assert!(
         fs::read_to_string(tmp.path().join("GEMINI.md"))
             .unwrap()
@@ -703,7 +779,10 @@ fn e2e_cross_provider_same_config() {
         .args(["compile", "--provider", "codex", "--path", p])
         .assert()
         .success();
-    assert!(tmp.path().join("AGENTS.md").exists(), "AGENTS.md must be written");
+    assert!(
+        tmp.path().join("AGENTS.md").exists(),
+        "AGENTS.md must be written"
+    );
     assert!(
         fs::read_to_string(tmp.path().join("AGENTS.md"))
             .unwrap()
@@ -779,7 +858,9 @@ fn e2e_permission_preset_plus_agent_override() {
         "defaultMode must come from ship-autonomous preset"
     );
 
-    let deny = settings["permissions"]["deny"].as_array().expect("deny must be an array");
+    let deny = settings["permissions"]["deny"]
+        .as_array()
+        .expect("deny must be an array");
 
     // Assert preset deny entries are present
     assert!(
@@ -910,10 +991,7 @@ fn e2e_validate_then_compile_catches_bad_config() {
     );
 
     // Validate should fail
-    ship()
-        .args(["validate", "--path", p])
-        .assert()
-        .failure();
+    ship().args(["validate", "--path", p]).assert().failure();
 
     // Fix the config by adding the required fields
     write(

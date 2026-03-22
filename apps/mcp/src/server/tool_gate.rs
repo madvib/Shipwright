@@ -19,16 +19,37 @@ impl ShipServer {
 
     pub fn core_tools() -> &'static [&'static str] {
         &[
-            "open_project", "create_note", "update_note", "create_adr",
-            "activate_workspace", "create_workspace", "complete_workspace",
-            "list_stale_worktrees", "set_agent",
-            "list_workspaces", "start_session", "end_session", "log_progress",
-            "list_skills", "create_job", "update_job", "list_jobs", "append_job_log",
-            "claim_file", "get_file_owner",
-            "list_events", "provider_matrix",
-            "create_target", "update_target", "list_targets", "get_target",
-            "create_capability", "update_capability", "delete_capability",
-            "mark_capability_actual", "list_capabilities",
+            "open_project",
+            "create_note",
+            "update_note",
+            "create_adr",
+            "activate_workspace",
+            "create_workspace",
+            "complete_workspace",
+            "list_stale_worktrees",
+            "set_agent",
+            "list_workspaces",
+            "start_session",
+            "end_session",
+            "log_progress",
+            "list_skills",
+            "create_job",
+            "update_job",
+            "list_jobs",
+            "append_job_log",
+            "claim_file",
+            "get_file_owner",
+            "list_events",
+            "provider_matrix",
+            "create_target",
+            "update_target",
+            "list_targets",
+            "get_target",
+            "create_capability",
+            "update_capability",
+            "delete_capability",
+            "mark_capability_actual",
+            "list_capabilities",
         ]
     }
 
@@ -62,8 +83,8 @@ impl ShipServer {
                 return Ok(());
             }
         }
-        let active_agent = get_active_agent(Some(project_dir.to_path_buf()))
-            .map_err(|e| e.to_string())?;
+        let active_agent =
+            get_active_agent(Some(project_dir.to_path_buf())).map_err(|e| e.to_string())?;
         if let Some(ref mode) = active_agent {
             if Self::mode_allows_tool(tool_name, &mode.active_tools) {
                 return Ok(());

@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph},
 };
 
-use crate::view::{App, data};
 use super::{C_BG, C_FG, C_GREEN, C_MUT, C_PRI, C_SEL, panel, status_color, status_sym};
+use crate::view::{App, data};
 
 pub fn draw_targets(f: &mut Frame, app: &App, area: Rect) {
     if app.targets.is_empty() {
@@ -35,7 +35,10 @@ pub fn draw_targets(f: &mut Frame, app: &App, area: Rect) {
                 String::new()
             };
             let line = Line::from(vec![
-                Span::styled(format!(" {} ", status_sym(&t.status)), Style::default().fg(sc)),
+                Span::styled(
+                    format!(" {} ", status_sym(&t.status)),
+                    Style::default().fg(sc),
+                ),
                 Span::styled(format!("{:<32}", t.title), Style::default().fg(C_FG)),
                 Span::styled(format!(" {:<10}", t.kind), Style::default().fg(C_MUT)),
                 Span::styled(progress, Style::default().fg(C_GREEN)),
@@ -56,7 +59,9 @@ pub fn draw_targets(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn draw_target_detail(f: &mut Frame, app: &App, area: Rect) {
-    let Some(t) = app.targets.get(app.sel_target) else { return };
+    let Some(t) = app.targets.get(app.sel_target) else {
+        return;
+    };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(7), Constraint::Min(0)])
@@ -65,8 +70,14 @@ pub fn draw_target_detail(f: &mut Frame, app: &App, area: Rect) {
     let sc = status_color(&t.status);
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(format!(" {} ", status_sym(&t.status)), Style::default().fg(sc)),
-            Span::styled(t.title.clone(), Style::default().fg(C_FG).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!(" {} ", status_sym(&t.status)),
+                Style::default().fg(sc),
+            ),
+            Span::styled(
+                t.title.clone(),
+                Style::default().fg(C_FG).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(format!("  [{}]", t.kind), Style::default().fg(C_MUT)),
         ]),
         Line::from(vec![
@@ -82,9 +93,15 @@ pub fn draw_target_detail(f: &mut Frame, app: &App, area: Rect) {
     }
     if let Some(ref d) = t.description {
         lines.push(Line::from(Span::styled("", Style::default())));
-        lines.push(Line::from(Span::styled(format!("   {d}"), Style::default().fg(C_MUT))));
+        lines.push(Line::from(Span::styled(
+            format!("   {d}"),
+            Style::default().fg(C_MUT),
+        )));
     }
-    f.render_widget(Paragraph::new(lines).block(panel(t.title.clone())), chunks[0]);
+    f.render_widget(
+        Paragraph::new(lines).block(panel(t.title.clone())),
+        chunks[0],
+    );
 
     if app.caps.is_empty() {
         f.render_widget(
@@ -101,7 +118,10 @@ pub fn draw_target_detail(f: &mut Frame, app: &App, area: Rect) {
         .map(|c| {
             let sc = status_color(&c.status);
             let line = Line::from(vec![
-                Span::styled(format!(" {} ", status_sym(&c.status)), Style::default().fg(sc)),
+                Span::styled(
+                    format!(" {} ", status_sym(&c.status)),
+                    Style::default().fg(sc),
+                ),
                 Span::styled(format!("{:<48}", c.title), Style::default().fg(C_FG)),
                 Span::styled(c.status.clone(), Style::default().fg(sc)),
             ]);
@@ -127,8 +147,14 @@ pub fn draw_cap_detail(f: &mut Frame, app: &App, area: Rect) {
     let sc = status_color(&c.status);
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(format!(" {} ", status_sym(&c.status)), Style::default().fg(sc)),
-            Span::styled(c.title.clone(), Style::default().fg(C_FG).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!(" {} ", status_sym(&c.status)),
+                Style::default().fg(sc),
+            ),
+            Span::styled(
+                c.title.clone(),
+                Style::default().fg(C_FG).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(Span::styled("", Style::default())),
         Line::from(vec![
@@ -152,7 +178,10 @@ pub fn draw_cap_detail(f: &mut Frame, app: &App, area: Rect) {
             "   Evidence",
             Style::default().fg(C_PRI).add_modifier(Modifier::BOLD),
         )));
-        lines.push(Line::from(Span::styled(format!("   {e}"), Style::default().fg(C_FG))));
+        lines.push(Line::from(Span::styled(
+            format!("   {e}"),
+            Style::default().fg(C_FG),
+        )));
     }
     lines.push(Line::from(Span::styled("", Style::default())));
     lines.push(Line::from(vec![

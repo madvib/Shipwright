@@ -326,10 +326,8 @@ pub fn resolve(
     if let Some(m) = mode
         && !m.rules.is_empty()
     {
-        let allowed: HashSet<String> =
-            m.rules.iter().map(|id| normalize_rule_id(id)).collect();
-        resolved_rules
-            .retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
+        let allowed: HashSet<String> = m.rules.iter().map(|id| normalize_rule_id(id)).collect();
+        resolved_rules.retain(|rule| allowed.contains(&normalize_rule_id(&rule.file_name)));
     }
 
     ResolvedConfig {
@@ -518,7 +516,15 @@ mod tests {
             ..Default::default()
         };
         let skills = vec![make_skill("alpha"), make_skill("beta")];
-        let resolved = resolve(&config, &skills, &[], &Permissions::default(), &[], None, None);
+        let resolved = resolve(
+            &config,
+            &skills,
+            &[],
+            &Permissions::default(),
+            &[],
+            None,
+            None,
+        );
         assert_eq!(resolved.mcp_servers.len(), 1);
         assert_eq!(resolved.mcp_servers[0].id, "github");
         assert_eq!(resolved.skills.len(), 1);
@@ -658,7 +664,15 @@ mod tests {
                 description: None,
             },
         ];
-        let resolved = resolve(&config, &[], &rules, &Permissions::default(), &[], None, None);
+        let resolved = resolve(
+            &config,
+            &[],
+            &rules,
+            &Permissions::default(),
+            &[],
+            None,
+            None,
+        );
         assert_eq!(resolved.rules.len(), 1);
         assert_eq!(resolved.rules[0].file_name, "001-style.md");
     }
@@ -668,7 +682,11 @@ mod tests {
     #[test]
     fn feature_overrides_filter_servers() {
         let config = ProjectConfig {
-            mcp_servers: vec![make_server("github"), make_server("linear"), make_server("slack")],
+            mcp_servers: vec![
+                make_server("github"),
+                make_server("linear"),
+                make_server("slack"),
+            ],
             ..Default::default()
         };
         let feature = WorkspaceOverrides {
@@ -776,7 +794,15 @@ mod tests {
             ..Default::default()
         };
         let skills = vec![make_skill("x"), make_skill("y")];
-        let resolved = resolve(&config, &skills, &[], &Permissions::default(), &[], None, None);
+        let resolved = resolve(
+            &config,
+            &skills,
+            &[],
+            &Permissions::default(),
+            &[],
+            None,
+            None,
+        );
         assert_eq!(resolved.mcp_servers.len(), 2);
         assert_eq!(resolved.skills.len(), 2);
     }
@@ -813,8 +839,8 @@ mod tests {
 
     #[test]
     fn resolve_library_passes_through_all_fields() {
-        use crate::types::{AgentProfile, PluginEntry, PluginsManifest};
         use crate::types::agent_profile::*;
+        use crate::types::{AgentProfile, PluginEntry, PluginsManifest};
 
         let library = super::ProjectLibrary {
             plugins: PluginsManifest {
@@ -885,7 +911,15 @@ mod tests {
         };
         let skills = vec![make_skill("plan-skill"), make_skill("code-skill")];
 
-        let planning = resolve(&config, &skills, &[], &Permissions::default(), &[], None, None);
+        let planning = resolve(
+            &config,
+            &skills,
+            &[],
+            &Permissions::default(),
+            &[],
+            None,
+            None,
+        );
         assert_eq!(planning.active_agent.as_deref(), Some("planning"));
 
         let code = resolve(

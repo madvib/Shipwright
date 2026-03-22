@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
-    use crate::workspace::*;
     use crate::workspace::compile::resolve_workspace_agent_config;
+    use crate::workspace::*;
+    use anyhow::Result;
     use std::collections::HashMap;
     use tempfile::tempdir;
 
@@ -295,8 +295,7 @@ mod tests {
             },
         )?;
 
-        let matrix =
-            get_workspace_provider_matrix(&ship_dir, "feature/provider-invalid", None)?;
+        let matrix = get_workspace_provider_matrix(&ship_dir, "feature/provider-invalid", None)?;
         assert!(matrix.allowed_providers.is_empty());
         assert!(matrix.resolution_error.is_some());
         Ok(())
@@ -368,11 +367,7 @@ mod tests {
                 ..Default::default()
             },
         )?;
-        transition_workspace_status(
-            &ship_dir,
-            "feature/repair-idle",
-            WorkspaceStatus::Archived,
-        )?;
+        transition_workspace_status(&ship_dir, "feature/repair-idle", WorkspaceStatus::Archived)?;
 
         let report = repair_workspace(&ship_dir, "feature/repair-idle", false)?;
         assert!(report.needs_recompile);

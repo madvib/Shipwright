@@ -135,7 +135,10 @@ version = "0.1.0"
 "github.com/a/b" = ""
 "#;
     let err = ShipManifest::from_toml_str(toml_str).unwrap_err();
-    assert!(err.to_string().contains("empty version constraint"), "{err}");
+    assert!(
+        err.to_string().contains("empty version constraint"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -311,9 +314,13 @@ fn parse_jsonc_manifest() {
 fn from_file_dispatches_by_extension() {
     let dir = tempfile::tempdir().unwrap();
     let jsonc_path = dir.path().join("ship.jsonc");
-    std::fs::write(&jsonc_path, r#"{
+    std::fs::write(
+        &jsonc_path,
+        r#"{
   "module": { "name": "github.com/test/repo", "version": "0.1.0" }
-}"#).unwrap();
+}"#,
+    )
+    .unwrap();
     let m = ShipManifest::from_file(&jsonc_path).unwrap();
     assert_eq!(m.module.name, "github.com/test/repo");
 

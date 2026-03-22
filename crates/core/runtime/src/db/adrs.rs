@@ -74,8 +74,7 @@ pub fn update_adr(
     status: Option<&str>,
 ) -> Result<()> {
     let now = Utc::now().to_rfc3339();
-    let current = get_adr_impl(conn, id)?
-        .ok_or_else(|| anyhow::anyhow!("ADR {id} not found"))?;
+    let current = get_adr_impl(conn, id)?.ok_or_else(|| anyhow::anyhow!("ADR {id} not found"))?;
     let new_title = title.unwrap_or(&current.title);
     let new_context = context.unwrap_or(&current.context);
     let new_decision = decision.unwrap_or(&current.decision);
@@ -166,7 +165,14 @@ mod tests {
     #[test]
     fn test_create_adr() {
         let (_tmp, ship_dir) = setup();
-        let adr = create_adr(&ship_dir, "Use SQLite", "Need local storage", "Use SQLite for all local state", "proposed").unwrap();
+        let adr = create_adr(
+            &ship_dir,
+            "Use SQLite",
+            "Need local storage",
+            "Use SQLite for all local state",
+            "proposed",
+        )
+        .unwrap();
         assert_eq!(adr.title, "Use SQLite");
         assert_eq!(adr.status, "proposed");
         assert_eq!(adr.context, "Need local storage");
@@ -177,7 +183,14 @@ mod tests {
     #[test]
     fn test_get_adr() {
         let (_tmp, ship_dir) = setup();
-        let adr = create_adr(&ship_dir, "Use Rust", "Performance matters", "Use Rust", "accepted").unwrap();
+        let adr = create_adr(
+            &ship_dir,
+            "Use Rust",
+            "Performance matters",
+            "Use Rust",
+            "accepted",
+        )
+        .unwrap();
         let got = get_adr(&ship_dir, &adr.id).unwrap().unwrap();
         assert_eq!(got.id, adr.id);
         assert_eq!(got.title, "Use Rust");
@@ -205,9 +218,24 @@ mod tests {
     #[test]
     fn test_update_adr() {
         let (_tmp, ship_dir) = setup();
-        let adr = create_adr(&ship_dir, "Draft ADR", "initial context", "initial decision", "proposed").unwrap();
+        let adr = create_adr(
+            &ship_dir,
+            "Draft ADR",
+            "initial context",
+            "initial decision",
+            "proposed",
+        )
+        .unwrap();
         let mut conn = open_db(&ship_dir).unwrap();
-        update_adr(&mut conn, &adr.id, Some("Final ADR"), None, Some("final decision"), Some("accepted")).unwrap();
+        update_adr(
+            &mut conn,
+            &adr.id,
+            Some("Final ADR"),
+            None,
+            Some("final decision"),
+            Some("accepted"),
+        )
+        .unwrap();
         let got = get_adr(&ship_dir, &adr.id).unwrap().unwrap();
         assert_eq!(got.title, "Final ADR");
         assert_eq!(got.context, "initial context");

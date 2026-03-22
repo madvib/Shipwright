@@ -50,8 +50,7 @@ const W_COLS: &str =
      providers_json, skills_json, mcp_servers_json, plugins_json,
      compiled_at, compile_error, COALESCE(created_at, resolved_at, ''), COALESCE(updated_at, resolved_at, '')";
 
-const S_COLS: &str =
-    "id, workspace_id, workspace_branch, status, preset_id, primary_provider,
+const S_COLS: &str = "id, workspace_id, workspace_branch, status, preset_id, primary_provider,
      goal, summary, started_at, ended_at, created_at, updated_at";
 
 pub fn upsert_workspace(ship_dir: &Path, w: &Workspace) -> Result<()> {
@@ -82,10 +81,20 @@ pub fn upsert_workspace(ship_dir: &Path, w: &Workspace) -> Result<()> {
                compile_error    = excluded.compile_error,
                updated_at       = excluded.updated_at",
         )
-        .bind(&w.branch).bind(&w.id).bind(&w.worktree_path)
-        .bind(&w.workspace_type).bind(&w.status).bind(&w.active_preset)
-        .bind(&providers).bind(&skills).bind(&mcp).bind(&plugins)
-        .bind(&w.compiled_at).bind(&w.compile_error).bind(&w.created_at).bind(&now)
+        .bind(&w.branch)
+        .bind(&w.id)
+        .bind(&w.worktree_path)
+        .bind(&w.workspace_type)
+        .bind(&w.status)
+        .bind(&w.active_preset)
+        .bind(&providers)
+        .bind(&skills)
+        .bind(&mcp)
+        .bind(&plugins)
+        .bind(&w.compiled_at)
+        .bind(&w.compile_error)
+        .bind(&w.created_at)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -95,10 +104,13 @@ pub fn upsert_workspace(ship_dir: &Path, w: &Workspace) -> Result<()> {
 pub fn get_workspace(ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
     let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
-        sqlx::query(&format!("SELECT {W_COLS} FROM workspace WHERE id = ? OR branch = ?"))
-            .bind(id).bind(id)
-            .fetch_optional(&mut conn)
-            .await
+        sqlx::query(&format!(
+            "SELECT {W_COLS} FROM workspace WHERE id = ? OR branch = ?"
+        ))
+        .bind(id)
+        .bind(id)
+        .fetch_optional(&mut conn)
+        .await
     })?;
     Ok(row.map(|r| row_to_workspace(&r)))
 }
@@ -143,9 +155,14 @@ pub fn start_session(
                 started_at, created_at, updated_at)
              VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)",
         )
-        .bind(&id).bind(workspace_id).bind(branch)
-        .bind(preset_id).bind(goal)
-        .bind(&now).bind(&now).bind(&now)
+        .bind(&id)
+        .bind(workspace_id)
+        .bind(branch)
+        .bind(preset_id)
+        .bind(goal)
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -174,17 +191,17 @@ pub fn end_session(ship_dir: &Path, session_id: &str, summary: Option<&str>) -> 
              SET status = 'ended', ended_at = ?, summary = ?, updated_at = ?
              WHERE id = ?",
         )
-        .bind(&now).bind(summary).bind(&now).bind(session_id)
+        .bind(&now)
+        .bind(summary)
+        .bind(&now)
+        .bind(session_id)
         .execute(&mut conn)
         .await
     })?;
     Ok(())
 }
 
-pub fn get_active_session(
-    ship_dir: &Path,
-    workspace_id: &str,
-) -> Result<Option<WorkspaceSession>> {
+pub fn get_active_session(ship_dir: &Path, workspace_id: &str) -> Result<Option<WorkspaceSession>> {
     let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query(&format!(
@@ -299,9 +316,15 @@ mod tests {
     fn test_get_workspace_by_branch() {
         let (_tmp, ship_dir) = setup();
         upsert_workspace(&ship_dir, &sample("ws-003", "feat/branch")).unwrap();
-        let got = get_workspace_by_branch(&ship_dir, "feat/branch").unwrap().unwrap();
+        let got = get_workspace_by_branch(&ship_dir, "feat/branch")
+            .unwrap()
+            .unwrap();
         assert_eq!(got.id, "ws-003");
-        assert!(get_workspace_by_branch(&ship_dir, "nonexistent").unwrap().is_none());
+        assert!(
+            get_workspace_by_branch(&ship_dir, "nonexistent")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -316,7 +339,8 @@ mod tests {
     fn test_session_lifecycle() {
         let (_tmp, ship_dir) = setup();
         upsert_workspace(&ship_dir, &sample("ws-s1", "main")).unwrap();
-        let sess = start_session(&ship_dir, "ws-s1", "main", Some("cli-lane"), Some("build")).unwrap();
+        let sess =
+            start_session(&ship_dir, "ws-s1", "main", Some("cli-lane"), Some("build")).unwrap();
         assert_eq!(sess.status, "active");
         let active = get_active_session(&ship_dir, "ws-s1").unwrap().unwrap();
         assert_eq!(active.id, sess.id);
@@ -331,7 +355,10 @@ mod tests {
         w.worktree_path = Some("/tmp/worktrees/feat-worktree".to_string());
         upsert_workspace(&ship_dir, &w).unwrap();
         let got = get_workspace(&ship_dir, "ws-wt1").unwrap().unwrap();
-        assert_eq!(got.worktree_path, Some("/tmp/worktrees/feat-worktree".to_string()));
+        assert_eq!(
+            got.worktree_path,
+            Some("/tmp/worktrees/feat-worktree".to_string())
+        );
     }
 
     #[test]
@@ -365,7 +392,14 @@ mod tests {
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "ws-lc1");
 
-        let sess = start_session(&ship_dir, "ws-lc1", "feat/lifecycle", Some("cli-lane"), Some("lifecycle test")).unwrap();
+        let sess = start_session(
+            &ship_dir,
+            "ws-lc1",
+            "feat/lifecycle",
+            Some("cli-lane"),
+            Some("lifecycle test"),
+        )
+        .unwrap();
         assert_eq!(sess.workspace_id, "ws-lc1");
         assert_eq!(sess.goal, Some("lifecycle test".to_string()));
         assert!(sess.ended_at.is_none());

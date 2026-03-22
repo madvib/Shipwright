@@ -51,10 +51,13 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
     // Ship server always first.
     let mut ship_entry = toml::Table::new();
     ship_entry.insert("command".into(), toml::Value::String("ship".into()));
-    ship_entry.insert("args".into(), toml::Value::Array(vec![
-        toml::Value::String("mcp".into()),
-        toml::Value::String("serve".into()),
-    ]));
+    ship_entry.insert(
+        "args".into(),
+        toml::Value::Array(vec![
+            toml::Value::String("mcp".into()),
+            toml::Value::String("serve".into()),
+        ]),
+    );
     mcp.insert("ship".into(), toml::Value::Table(ship_entry));
 
     for s in servers {
@@ -69,7 +72,10 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
                     entry.insert(
                         "args".into(),
                         toml::Value::Array(
-                            s.args.iter().map(|a| toml::Value::String(a.clone())).collect(),
+                            s.args
+                                .iter()
+                                .map(|a| toml::Value::String(a.clone()))
+                                .collect(),
                         ),
                     );
                 }
@@ -95,7 +101,10 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
             entry.insert(
                 "enabled_tools".into(),
                 toml::Value::Array(
-                    s.codex_enabled_tools.iter().map(|t| toml::Value::String(t.clone())).collect(),
+                    s.codex_enabled_tools
+                        .iter()
+                        .map(|t| toml::Value::String(t.clone()))
+                        .collect(),
                 ),
             );
         }
@@ -103,7 +112,10 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
             entry.insert(
                 "disabled_tools".into(),
                 toml::Value::Array(
-                    s.codex_disabled_tools.iter().map(|t| toml::Value::String(t.clone())).collect(),
+                    s.codex_disabled_tools
+                        .iter()
+                        .map(|t| toml::Value::String(t.clone()))
+                        .collect(),
                 ),
             );
         }
@@ -135,19 +147,26 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
 
     // Reasoning effort.
     if let Some(e) = resolved.codex_reasoning_effort.as_deref() {
-        root.insert("model_reasoning_effort".into(), toml::Value::String(e.to_string()));
+        root.insert(
+            "model_reasoning_effort".into(),
+            toml::Value::String(e.to_string()),
+        );
     }
 
     // Shell environment policy.
     if let Some(p) = resolved.codex_shell_env_policy.as_deref() {
-        root.insert("shell_environment_policy".into(), toml::Value::String(p.to_string()));
+        root.insert(
+            "shell_environment_policy".into(),
+            toml::Value::String(p.to_string()),
+        );
     }
 
     // Notify (JSON value → TOML).
     if let Some(notify) = &resolved.codex_notify
-        && let Some(toml_val) = json_to_toml(notify) {
-            root.insert("notify".into(), toml_val);
-        }
+        && let Some(toml_val) = json_to_toml(notify)
+    {
+        root.insert("notify".into(), toml_val);
+    }
 
     // [agents] table.
     let has_agents = resolved.codex_max_threads.is_some()
@@ -162,7 +181,10 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
             agents.insert("max_depth".into(), toml::Value::Integer(v as i64));
         }
         if let Some(v) = resolved.codex_job_max_runtime_seconds {
-            agents.insert("job_max_runtime_seconds".into(), toml::Value::Integer(v as i64));
+            agents.insert(
+                "job_max_runtime_seconds".into(),
+                toml::Value::Integer(v as i64),
+            );
         }
         root.insert("agents".into(), toml::Value::Table(agents));
     }
@@ -172,13 +194,14 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
 
     // settings_extra: merge verbatim after typed fields.
     if let Some(extra) = &resolved.codex_settings_extra
-        && let Some(obj) = extra.as_object() {
-            for (k, v) in obj {
-                if let Some(toml_val) = json_to_toml(v) {
-                    root.insert(k.clone(), toml_val);
-                }
+        && let Some(obj) = extra.as_object()
+    {
+        for (k, v) in obj {
+            if let Some(toml_val) = json_to_toml(v) {
+                root.insert(k.clone(), toml_val);
             }
         }
+    }
 
     toml::to_string(&root).ok()
 }
@@ -192,7 +215,9 @@ fn json_to_toml(v: &serde_json::Value) -> Option<toml::Value> {
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Some(toml::Value::Integer(i))
-            } else { n.as_f64().map(toml::Value::Float) }
+            } else {
+                n.as_f64().map(toml::Value::Float)
+            }
         }
         serde_json::Value::String(s) => Some(toml::Value::String(s.clone())),
         serde_json::Value::Array(arr) => {
@@ -210,4 +235,3 @@ fn json_to_toml(v: &serde_json::Value) -> Option<toml::Value> {
         }
     }
 }
-

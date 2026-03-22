@@ -26,8 +26,8 @@ pub(super) const C_BG: Color = Color::Rgb(28, 30, 38);
 pub(super) const C_FG: Color = Color::Rgb(200, 196, 190);
 pub(super) const C_PRI: Color = Color::Rgb(200, 156, 74); // amber — primary
 pub(super) const C_MUT: Color = Color::Rgb(110, 100, 88); // muted foreground
-pub(super) const C_BOR: Color = Color::Rgb(55, 58, 72);   // border
-pub(super) const C_SEL: Color = Color::Rgb(44, 47, 60);   // selection bg
+pub(super) const C_BOR: Color = Color::Rgb(55, 58, 72); // border
+pub(super) const C_SEL: Color = Color::Rgb(44, 47, 60); // selection bg
 
 // Status palette — mirrors web tokens
 pub(super) const C_GREEN: Color = Color::Rgb(82, 168, 112);
@@ -80,25 +80,34 @@ fn header_tabs(app: &App) -> Tabs<'static> {
         Tab::Settings => 8,
     };
     Tabs::new(vec![
-        "  Targets  ", "  Jobs  ", "  Events  ", "  Notes  ", "  ADRs  ",
-        "  Agents  ", "  Skills  ", "  MCP  ", "  Settings  ",
+        "  Targets  ",
+        "  Jobs  ",
+        "  Events  ",
+        "  Notes  ",
+        "  ADRs  ",
+        "  Agents  ",
+        "  Skills  ",
+        "  MCP  ",
+        "  Settings  ",
     ])
-        .select(selected)
-        .highlight_style(
-            Style::default().fg(C_PRI).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-        )
-        .style(Style::default().fg(C_MUT).bg(C_BG))
-        .divider(Span::styled("│", Style::default().fg(C_BOR)))
-        .block(
-            Block::default()
-                .title(Span::styled(
-                    " ◆ ship  │",
-                    Style::default().fg(C_PRI).add_modifier(Modifier::BOLD),
-                ))
-                .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(C_BOR))
-                .style(Style::default().bg(C_BG)),
-        )
+    .select(selected)
+    .highlight_style(
+        Style::default()
+            .fg(C_PRI)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+    )
+    .style(Style::default().fg(C_MUT).bg(C_BG))
+    .divider(Span::styled("│", Style::default().fg(C_BOR)))
+    .block(
+        Block::default()
+            .title(Span::styled(
+                " ◆ ship  │",
+                Style::default().fg(C_PRI).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(C_BOR))
+            .style(Style::default().bg(C_BG)),
+    )
 }
 
 fn footer(app: &App) -> Paragraph<'static> {
@@ -123,12 +132,19 @@ fn footer(app: &App) -> Paragraph<'static> {
         (Tab::Targets, Screen::TargetDetail) => format!(
             "  ↑↓ jk · g/G top/end · ⏎ open · s cycle-status · ⌫ back · a auto({auto}) · q quit"
         ),
-        (Tab::Jobs, Screen::JobDetail) => format!(
-            "  ↑↓ jk scroll · g/G top/end · l launch · ⌫ back · a auto({auto}) · q quit"
-        ),
-        (Tab::Agents, Screen::List) => "  ↑↓ jk · ⏎ detail · a activate · c create · d delete · Tab switch · q quit".to_string(),
-        (Tab::Skills, Screen::List) => "  ↑↓ jk · a add · d remove · Tab switch · q quit".to_string(),
-        (Tab::Mcp, Screen::List) => "  ↑↓ jk · ⏎ detail · d remove · Tab switch · q quit".to_string(),
+        (Tab::Jobs, Screen::JobDetail) => {
+            format!("  ↑↓ jk scroll · g/G top/end · l launch · ⌫ back · a auto({auto}) · q quit")
+        }
+        (Tab::Agents, Screen::List) => {
+            "  ↑↓ jk · ⏎ detail · a activate · c create · d delete · Tab switch · q quit"
+                .to_string()
+        }
+        (Tab::Skills, Screen::List) => {
+            "  ↑↓ jk · a add · d remove · Tab switch · q quit".to_string()
+        }
+        (Tab::Mcp, Screen::List) => {
+            "  ↑↓ jk · ⏎ detail · d remove · Tab switch · q quit".to_string()
+        }
         (Tab::Settings, Screen::List) => "  ↑↓ jk · ⏎ edit value · Tab switch · q quit".to_string(),
         (_, Screen::List) => format!(
             "  ↑↓ jk · g/G top/end · ⏎ open · Tab/⇧Tab switch · r reload · a auto({auto}) · q quit"
@@ -150,7 +166,11 @@ fn footer(app: &App) -> Paragraph<'static> {
 fn outer(f: &Frame) -> [Rect; 3] {
     let c = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(f.area());
     [c[0], c[1], c[2]]
 }

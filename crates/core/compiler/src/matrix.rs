@@ -466,11 +466,7 @@ pub fn render_text(matrix: &Matrix) -> String {
         out.push_str(&format!("{}\n", "-".repeat(76)));
 
         for cap in &pm.capabilities {
-            let gap_display = if cap.gap.is_empty() {
-                "-"
-            } else {
-                cap.gap
-            };
+            let gap_display = if cap.gap.is_empty() { "-" } else { cap.gap };
             out.push_str(&format!(
                 "{:<25} {:<10} {}\n",
                 cap.label.chars().take(25).collect::<String>(),

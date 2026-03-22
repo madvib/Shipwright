@@ -31,7 +31,9 @@ pub(crate) fn ensure_json_array_entry(
     let mut current = settings.as_object_mut().context("root must be object")?;
     for &part in &pointer_parts[..pointer_parts.len() - 1] {
         let entry = current.entry(part).or_insert(serde_json::json!({}));
-        current = entry.as_object_mut().context("intermediate must be object")?;
+        current = entry
+            .as_object_mut()
+            .context("intermediate must be object")?;
     }
     let last = pointer_parts.last().context("empty path")?;
     let arr_val = current.entry(*last).or_insert(serde_json::json!([]));
@@ -48,8 +50,7 @@ fn update_json_settings(
 ) -> Result<()> {
     ensure_parent(path)?;
     let mut settings: serde_json::Value = if path.exists() {
-        serde_json::from_str(&std::fs::read_to_string(path)?)
-            .unwrap_or(serde_json::json!({}))
+        serde_json::from_str(&std::fs::read_to_string(path)?).unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
@@ -101,9 +102,7 @@ decision = "allow"
 }
 
 /// Cursor: write `Mcp(ship:*)` to project `.cursor/cli.json` permissions.allow.
-pub(crate) fn ensure_ship_mcp_allowed_cursor(
-    project_root: &std::path::Path,
-) -> Result<()> {
+pub(crate) fn ensure_ship_mcp_allowed_cursor(project_root: &std::path::Path) -> Result<()> {
     let path = project_root.join(".cursor").join("cli.json");
     update_json_settings(&path, |s| {
         // Ensure version field exists

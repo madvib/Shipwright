@@ -73,11 +73,9 @@ pub struct CapabilityPatch {
 
 // ─── Column lists ─────────────────────────────────────────────────────────────
 
-const T_COLS: &str =
-    "id, kind, title, description, status, goal, phase, due_date, body_markdown, file_scope_json, created_at, updated_at";
+const T_COLS: &str = "id, kind, title, description, status, goal, phase, due_date, body_markdown, file_scope_json, created_at, updated_at";
 
-const C_COLS: &str =
-    "id, target_id, title, status, evidence, milestone_id, phase, acceptance_criteria, \
+const C_COLS: &str = "id, target_id, title, status, evidence, milestone_id, phase, acceptance_criteria, \
      preset_hint, file_scope, assigned_to, priority, created_at, updated_at";
 
 // ─── Row mapping ──────────────────────────────────────────────────────────────
@@ -94,7 +92,10 @@ fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> Target {
         phase: row.get("phase"),
         due_date: row.get("due_date"),
         body_markdown: row.get("body_markdown"),
-        file_scope: scope.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        file_scope: scope
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default(),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -111,9 +112,15 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
         evidence: row.get("evidence"),
         milestone_id: row.get("milestone_id"),
         phase: row.get("phase"),
-        acceptance_criteria: ac.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        acceptance_criteria: ac
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default(),
         preset_hint: row.get("preset_hint"),
-        file_scope: scope.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        file_scope: scope
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default(),
         assigned_to: row.get("assigned_to"),
         priority: row.try_get("priority").unwrap_or(0),
         created_at: row.get("created_at"),
@@ -176,19 +183,26 @@ pub fn list_targets(ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> 
     let mut conn = open_db(ship_dir)?;
     let rows = block_on(async {
         if let Some(k) = kind {
-            sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE kind = ? ORDER BY created_at ASC"))
-                .bind(k).fetch_all(&mut conn).await
+            sqlx::query(&format!(
+                "SELECT {T_COLS} FROM target WHERE kind = ? ORDER BY created_at ASC"
+            ))
+            .bind(k)
+            .fetch_all(&mut conn)
+            .await
         } else {
-            sqlx::query(&format!("SELECT {T_COLS} FROM target ORDER BY kind ASC, created_at ASC"))
-                .fetch_all(&mut conn).await
+            sqlx::query(&format!(
+                "SELECT {T_COLS} FROM target ORDER BY kind ASC, created_at ASC"
+            ))
+            .fetch_all(&mut conn)
+            .await
         }
     })?;
     Ok(rows.iter().map(row_to_target).collect())
 }
 
 pub fn update_target(ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()> {
-    let current = get_target(ship_dir, id)?
-        .ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
+    let current =
+        get_target(ship_dir, id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
     let mut conn = open_db(ship_dir)?;
@@ -230,8 +244,12 @@ pub fn create_capability(
              (id, target_id, title, status, evidence, milestone_id, created_at, updated_at) \
              VALUES (?, ?, ?, 'aspirational', NULL, ?, ?, ?)",
         )
-        .bind(&id).bind(target_id).bind(title).bind(milestone_id)
-        .bind(&now).bind(&now)
+        .bind(&id)
+        .bind(target_id)
+        .bind(title)
+        .bind(milestone_id)
+        .bind(&now)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -268,7 +286,11 @@ pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> R
     let current = get_capability(ship_dir, id)?
         .ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
     let now = Utc::now().to_rfc3339();
-    let ac = serde_json::to_string(&patch.acceptance_criteria.unwrap_or(current.acceptance_criteria))?;
+    let ac = serde_json::to_string(
+        &patch
+            .acceptance_criteria
+            .unwrap_or(current.acceptance_criteria),
+    )?;
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
     let mut conn = open_db(ship_dir)?;
     block_on(async {
@@ -311,7 +333,9 @@ pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Resu
         sqlx::query(
             "UPDATE capability SET status = 'actual', evidence = ?, updated_at = ? WHERE id = ?",
         )
-        .bind(evidence).bind(&now).bind(id)
+        .bind(evidence)
+        .bind(&now)
+        .bind(id)
         .execute(&mut conn)
         .await
     })?;
@@ -358,14 +382,19 @@ pub fn list_capabilities_for_milestone(
                  WHERE milestone_id = ? AND status = ? \
                  ORDER BY priority ASC, target_id ASC, created_at ASC"
             ))
-            .bind(milestone_id).bind(s).fetch_all(&mut conn).await
+            .bind(milestone_id)
+            .bind(s)
+            .fetch_all(&mut conn)
+            .await
         } else {
             sqlx::query(&format!(
                 "SELECT {C_COLS} FROM capability \
                  WHERE milestone_id = ? \
                  ORDER BY priority ASC, status ASC, target_id ASC, created_at ASC"
             ))
-            .bind(milestone_id).fetch_all(&mut conn).await
+            .bind(milestone_id)
+            .fetch_all(&mut conn)
+            .await
         }
     })?;
     Ok(rows.iter().map(row_to_capability).collect())

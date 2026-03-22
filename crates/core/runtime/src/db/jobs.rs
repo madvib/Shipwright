@@ -121,10 +121,14 @@ pub fn create_job(
 /// Reads current state, merges the patch, writes back, and releases file
 /// claims when the job reaches a terminal status ("complete", "failed", "done").
 pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> {
-    let current = get_job(ship_dir, job_id)?
-        .ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+    let current =
+        get_job(ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let now = Utc::now().to_rfc3339();
-    let new_status = patch.status.as_deref().unwrap_or(&current.status).to_string();
+    let new_status = patch
+        .status
+        .as_deref()
+        .unwrap_or(&current.status)
+        .to_string();
     let new_assigned = patch.assigned_to.or(current.assigned_to);
     let new_priority = patch.priority.unwrap_or(current.priority);
     let new_blocked = patch.blocked_by.or(current.blocked_by);
@@ -139,9 +143,15 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
             "UPDATE job SET status=?, assigned_to=?, priority=?, blocked_by=?, \
              touched_files=?, file_scope=?, capability_id=?, updated_at=? WHERE id=?",
         )
-        .bind(&new_status).bind(&new_assigned).bind(new_priority)
-        .bind(&new_blocked).bind(&files_str).bind(&scope_str)
-        .bind(&new_cap).bind(&now).bind(job_id)
+        .bind(&new_status)
+        .bind(&new_assigned)
+        .bind(new_priority)
+        .bind(&new_blocked)
+        .bind(&files_str)
+        .bind(&scope_str)
+        .bind(&new_cap)
+        .bind(&now)
+        .bind(job_id)
         .execute(&mut conn)
         .await
     })?;
@@ -153,14 +163,21 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
 
 /// Append a single file path to the job's `touched_files` list (deduplicates).
 pub fn append_touched_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<()> {
-    let current = get_job(ship_dir, job_id)?
-        .ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+    let current =
+        get_job(ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let mut files = current.touched_files;
     let path_owned = path.to_string();
     if !files.contains(&path_owned) {
         files.push(path_owned);
     }
-    update_job(ship_dir, job_id, JobPatch { touched_files: Some(files), ..Default::default() })
+    update_job(
+        ship_dir,
+        job_id,
+        JobPatch {
+            touched_files: Some(files),
+            ..Default::default()
+        },
+    )
 }
 
 /// Atomically claim a pending job. Returns false if already claimed — prevents
@@ -172,9 +189,11 @@ pub fn claim_job(ship_dir: &Path, job_id: &str, claimed_by: &str) -> Result<bool
     let rows = block_on(async {
         sqlx::query(
             "UPDATE job SET status = 'running', claimed_by = ?, updated_at = ?
-             WHERE id = ? AND status = 'pending'"
+             WHERE id = ? AND status = 'pending'",
         )
-        .bind(claimed_by).bind(&now).bind(job_id)
+        .bind(claimed_by)
+        .bind(&now)
+        .bind(job_id)
         .execute(&mut conn)
         .await
     })?;
@@ -186,7 +205,9 @@ pub fn update_job_status(ship_dir: &Path, job_id: &str, status: &str) -> Result<
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query("UPDATE job SET status = ?, updated_at = ? WHERE id = ?")
-            .bind(status).bind(&now).bind(job_id)
+            .bind(status)
+            .bind(&now)
+            .bind(job_id)
             .execute(&mut conn)
             .await
     })?;
@@ -204,18 +225,15 @@ pub fn get_job(ship_dir: &Path, job_id: &str) -> Result<Option<Job>> {
     Ok(row.map(|r| row_to_job(&r)))
 }
 
-pub fn list_jobs(
-    ship_dir: &Path,
-    branch: Option<&str>,
-    status: Option<&str>,
-) -> Result<Vec<Job>> {
+pub fn list_jobs(ship_dir: &Path, branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>> {
     let mut conn = open_db(ship_dir)?;
     let rows = match (branch, status) {
         (Some(b), Some(s)) => block_on(async {
             sqlx::query(&format!(
                 "SELECT {J_COLS} FROM job WHERE branch = ? AND status = ? ORDER BY created_at DESC"
             ))
-            .bind(b).bind(s)
+            .bind(b)
+            .bind(s)
             .fetch_all(&mut conn)
             .await
         })?,
@@ -260,7 +278,11 @@ pub fn append_log(
             "INSERT INTO job_log (job_id, branch, message, actor, created_at)
              VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(job_id).bind(branch).bind(message).bind(actor).bind(&now)
+        .bind(job_id)
+        .bind(branch)
+        .bind(message)
+        .bind(actor)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -288,7 +310,8 @@ pub fn list_logs(
             sqlx::query(&format!(
                 "SELECT {L_COLS} FROM job_log WHERE branch = ? ORDER BY created_at DESC LIMIT ?"
             ))
-            .bind(b).bind(lim)
+            .bind(b)
+            .bind(lim)
             .fetch_all(&mut conn)
             .await
         })?,
@@ -296,7 +319,8 @@ pub fn list_logs(
             sqlx::query(&format!(
                 "SELECT {L_COLS} FROM job_log WHERE job_id = ? ORDER BY created_at DESC LIMIT ?"
             ))
-            .bind(j).bind(lim)
+            .bind(j)
+            .bind(lim)
             .fetch_all(&mut conn)
             .await
         })?,
@@ -365,14 +389,37 @@ mod tests {
     }
 
     fn mkjob(ship_dir: &std::path::Path, kind: &str, branch: Option<&str>) -> Job {
-        create_job(ship_dir, kind, branch, None, None, None, 0, None, vec![], vec![]).unwrap()
+        create_job(
+            ship_dir,
+            kind,
+            branch,
+            None,
+            None,
+            None,
+            0,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap()
     }
 
     #[test]
     fn test_create_and_get_job() {
         let (_tmp, ship_dir) = setup();
-        let job = create_job(&ship_dir, "compile", Some("feat/x"), None, Some("agent-1"),
-            None, 0, None, vec![], vec![]).unwrap();
+        let job = create_job(
+            &ship_dir,
+            "compile",
+            Some("feat/x"),
+            None,
+            Some("agent-1"),
+            None,
+            0,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap();
         assert_eq!(job.status, "pending");
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.kind, "compile");
@@ -383,9 +430,18 @@ mod tests {
     fn test_create_job_new_fields() {
         let (_tmp, ship_dir) = setup();
         let job = create_job(
-            &ship_dir, "build", Some("feat/fields"), None, None,
-            Some("agent-1"), 5, Some("blocker-id"), vec!["src/lib.rs".to_string()], vec![],
-        ).unwrap();
+            &ship_dir,
+            "build",
+            Some("feat/fields"),
+            None,
+            None,
+            Some("agent-1"),
+            5,
+            Some("blocker-id"),
+            vec!["src/lib.rs".to_string()],
+            vec![],
+        )
+        .unwrap();
         assert_eq!(job.assigned_to, Some("agent-1".to_string()));
         assert_eq!(job.priority, 5);
         assert_eq!(job.blocked_by, Some("blocker-id".to_string()));
@@ -420,7 +476,14 @@ mod tests {
     #[test]
     fn test_append_and_list_logs() {
         let (_tmp, ship_dir) = setup();
-        append_log(&ship_dir, "starting compile", None, Some("feat/x"), Some("agent-1")).unwrap();
+        append_log(
+            &ship_dir,
+            "starting compile",
+            None,
+            Some("feat/x"),
+            Some("agent-1"),
+        )
+        .unwrap();
         append_log(&ship_dir, "done", None, Some("feat/x"), Some("agent-1")).unwrap();
         append_log(&ship_dir, "unrelated", None, Some("main"), None).unwrap();
         let logs = list_logs(&ship_dir, Some("feat/x"), None, None).unwrap();
@@ -452,7 +515,7 @@ mod tests {
     fn test_list_jobs_branch_and_status_combined() {
         let (_tmp, ship_dir) = setup();
         let j1 = mkjob(&ship_dir, "compile", Some("feat/combo"));
-        let j2 = mkjob(&ship_dir, "sync",    Some("feat/combo"));
+        let j2 = mkjob(&ship_dir, "sync", Some("feat/combo"));
         let _j3 = mkjob(&ship_dir, "compile", Some("main"));
 
         // Advance j2 to running so we have a mix of statuses on the same branch.
@@ -482,15 +545,20 @@ mod tests {
     fn test_update_job_patches_fields() {
         let (_tmp, ship_dir) = setup();
         let job = mkjob(&ship_dir, "patch-test", None);
-        update_job(&ship_dir, &job.id, JobPatch {
-            status: Some("running".to_string()),
-            assigned_to: Some("agent-42".to_string()),
-            priority: Some(10),
-            blocked_by: None,
-            touched_files: Some(vec!["a.rs".to_string()]),
-            file_scope: None,
-            capability_id: None,
-        }).unwrap();
+        update_job(
+            &ship_dir,
+            &job.id,
+            JobPatch {
+                status: Some("running".to_string()),
+                assigned_to: Some("agent-42".to_string()),
+                priority: Some(10),
+                blocked_by: None,
+                touched_files: Some(vec!["a.rs".to_string()]),
+                file_scope: None,
+                capability_id: None,
+            },
+        )
+        .unwrap();
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.status, "running");
         assert_eq!(got.assigned_to, Some("agent-42".to_string()));
@@ -503,7 +571,14 @@ mod tests {
     fn test_append_log_null_job_id() {
         let (_tmp, ship_dir) = setup();
         // No job created — log is purely branch-scoped.
-        append_log(&ship_dir, "branch-only event", None, Some("feat/no-job"), Some("watcher")).unwrap();
+        append_log(
+            &ship_dir,
+            "branch-only event",
+            None,
+            Some("feat/no-job"),
+            Some("watcher"),
+        )
+        .unwrap();
         let logs = list_logs(&ship_dir, Some("feat/no-job"), None, None).unwrap();
         assert_eq!(logs.len(), 1);
         assert!(logs[0].job_id.is_none());
@@ -516,7 +591,14 @@ mod tests {
     fn test_list_logs_limit_respected() {
         let (_tmp, ship_dir) = setup();
         for i in 0..10_u32 {
-            append_log(&ship_dir, &format!("msg-{i}"), None, Some("feat/limit"), None).unwrap();
+            append_log(
+                &ship_dir,
+                &format!("msg-{i}"),
+                None,
+                Some("feat/limit"),
+                None,
+            )
+            .unwrap();
         }
         let all = list_logs(&ship_dir, Some("feat/limit"), None, None).unwrap();
         assert_eq!(all.len(), 10);
@@ -534,8 +616,18 @@ mod tests {
         let (_tmp, ship_dir) = setup();
         let scope = vec!["crates/core/".to_string(), "apps/mcp/".to_string()];
         let job = create_job(
-            &ship_dir, "build", None, None, None, None, 0, None, vec![], scope.clone(),
-        ).unwrap();
+            &ship_dir,
+            "build",
+            None,
+            None,
+            None,
+            None,
+            0,
+            None,
+            vec![],
+            scope.clone(),
+        )
+        .unwrap();
         assert_eq!(job.file_scope, scope);
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.file_scope, scope);
@@ -545,16 +637,22 @@ mod tests {
     fn test_capability_id_round_trip() {
         let (_tmp, ship_dir) = setup();
         // FK is enforced — create a real target + capability first.
-        let t = crate::db::targets::create_target(&ship_dir, "surface", "test", None, None, None).unwrap();
+        let t = crate::db::targets::create_target(&ship_dir, "surface", "test", None, None, None)
+            .unwrap();
         let c = crate::db::targets::create_capability(&ship_dir, &t.id, "test cap", None).unwrap();
 
         let job = mkjob(&ship_dir, "compile", None);
         assert!(job.capability_id.is_none());
 
-        update_job(&ship_dir, &job.id, JobPatch {
-            capability_id: Some(c.id.clone()),
-            ..Default::default()
-        }).unwrap();
+        update_job(
+            &ship_dir,
+            &job.id,
+            JobPatch {
+                capability_id: Some(c.id.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
         assert_eq!(got.capability_id, Some(c.id));
@@ -572,6 +670,9 @@ mod tests {
         append_touched_file(&ship_dir, &job.id, "src/lib.rs").unwrap();
 
         let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
-        assert_eq!(got.touched_files, vec!["src/lib.rs".to_string(), "src/main.rs".to_string()]);
+        assert_eq!(
+            got.touched_files,
+            vec!["src/lib.rs".to_string(), "src/main.rs".to_string()]
+        );
     }
 }

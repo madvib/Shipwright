@@ -973,7 +973,6 @@ mod tests {
                 },
                 agent: crate::permissions::AgentLimits {
                     require_confirmation: vec!["git push *".to_string()],
-                    ..Default::default()
                 },
                 ..Default::default()
             },
@@ -1185,7 +1184,6 @@ priority = 700
                 },
                 agent: crate::permissions::AgentLimits {
                     require_confirmation: vec!["git push *".to_string()],
-                    ..Default::default()
                 },
                 ..Default::default()
             },

@@ -70,12 +70,7 @@ pub fn get_branch_doc(ship_dir: &Path, branch: &str) -> Result<Option<(String, S
 }
 
 /// Legacy alias.
-pub fn set_branch_doc(
-    ship_dir: &Path,
-    branch: &str,
-    doc_type: &str,
-    doc_uuid: &str,
-) -> Result<()> {
+pub fn set_branch_doc(ship_dir: &Path, branch: &str, doc_type: &str, doc_uuid: &str) -> Result<()> {
     set_branch_link(ship_dir, branch, doc_type, doc_uuid)
 }
 

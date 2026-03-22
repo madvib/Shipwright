@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
     use crate::db::branch_context::get_branch_link;
     use crate::workspace::*;
+    use anyhow::Result;
     use tempfile::tempdir;
 
     #[test]

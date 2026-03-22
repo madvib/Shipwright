@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::view::{App, JobFilter};
 use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, panel, status_color, status_sym};
+use crate::view::{App, JobFilter};
 
 fn jobs_panel_title(app: &App) -> String {
     let count = app.jobs.len();
@@ -37,7 +37,10 @@ pub fn draw_jobs(f: &mut Frame, app: &App, area: Rect) {
             let branch = j.branch.as_deref().unwrap_or("—");
             let claimed = j.claimed_by.as_deref().unwrap_or("—");
             let line = Line::from(vec![
-                Span::styled(format!(" {} ", status_sym(&j.status)), Style::default().fg(sc)),
+                Span::styled(
+                    format!(" {} ", status_sym(&j.status)),
+                    Style::default().fg(sc),
+                ),
                 Span::styled(format!("{id_short:<10}"), Style::default().fg(C_MUT)),
                 Span::styled(format!("  {:<14}", j.kind), Style::default().fg(C_FG)),
                 Span::styled(format!("  {:<10}", j.status), Style::default().fg(sc)),
@@ -60,22 +63,38 @@ pub fn draw_jobs(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn draw_job_detail(f: &mut Frame, app: &App, area: Rect) {
-    let Some(j) = app.jobs.get(app.sel_job) else { return };
+    let Some(j) = app.jobs.get(app.sel_job) else {
+        return;
+    };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(10), Constraint::Min(0)])
         .split(area);
 
     let sc = status_color(&j.status);
-    let title = j.payload.get("title").and_then(|v| v.as_str()).unwrap_or("—");
-    let desc = j.payload.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let title = j
+        .payload
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("—");
+    let desc = j
+        .payload
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let branch = j.branch.as_deref().unwrap_or("—");
     let claimed = j.claimed_by.as_deref().unwrap_or("—");
 
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(format!(" {} ", status_sym(&j.status)), Style::default().fg(sc)),
-            Span::styled(title.to_string(), Style::default().fg(C_FG).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!(" {} ", status_sym(&j.status)),
+                Style::default().fg(sc),
+            ),
+            Span::styled(
+                title.to_string(),
+                Style::default().fg(C_FG).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(Span::styled("", Style::default())),
         Line::from(vec![
@@ -106,10 +125,16 @@ pub fn draw_job_detail(f: &mut Frame, app: &App, area: Rect) {
         ]));
     }
     if !desc.is_empty() {
-        lines.push(Line::from(Span::styled(format!("   {desc}"), Style::default().fg(C_MUT))));
+        lines.push(Line::from(Span::styled(
+            format!("   {desc}"),
+            Style::default().fg(C_MUT),
+        )));
     }
     let id_short = j.id.get(..12).unwrap_or(&j.id);
-    f.render_widget(Paragraph::new(lines).block(panel(format!("Job · {id_short}"))), chunks[0]);
+    f.render_widget(
+        Paragraph::new(lines).block(panel(format!("Job · {id_short}"))),
+        chunks[0],
+    );
 
     if app.logs.is_empty() {
         f.render_widget(

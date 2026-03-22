@@ -94,10 +94,7 @@ fn extract_allowed_tools(content: &str) -> Vec<String> {
             if value.is_empty() {
                 return vec![];
             }
-            return value
-                .split_whitespace()
-                .map(str::to_string)
-                .collect();
+            return value.split_whitespace().map(str::to_string).collect();
         }
     }
     vec![]
@@ -120,12 +117,8 @@ pub fn check_agent_permissions(
         return vec![];
     }
 
-    let agent_grants: std::collections::HashSet<&str> = agent
-        .permissions
-        .allow
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
+    let agent_grants: std::collections::HashSet<&str> =
+        agent.permissions.allow.iter().map(|s| s.as_str()).collect();
 
     let mut violations = Vec::new();
     for skill_ref in &agent.skills {

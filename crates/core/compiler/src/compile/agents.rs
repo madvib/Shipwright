@@ -259,4 +259,3 @@ fn yaml_list(items: &[String]) -> String {
 fn toml_quote(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
-

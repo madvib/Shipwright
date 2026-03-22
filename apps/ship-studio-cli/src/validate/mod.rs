@@ -4,9 +4,9 @@ use anyhow::Result;
 use serde::Serialize;
 use std::path::Path;
 
+use crate::agent_config::AgentConfig;
 use crate::loader::load_permission_preset;
 use crate::mcp::{McpEntry, McpFile};
-use crate::agent_config::AgentConfig;
 use crate::profile::find_agent_file;
 
 #[cfg(test)]
@@ -46,9 +46,7 @@ pub fn run_validate(agent_id: Option<&str>, json: bool, project_root: &Path) -> 
         validate_all(&agents_dir, project_root)
     };
 
-    let all_errors: Vec<&ValidationError> = reports.iter()
-        .flat_map(|r| r.errors.iter())
-        .collect();
+    let all_errors: Vec<&ValidationError> = reports.iter().flat_map(|r| r.errors.iter()).collect();
 
     if json {
         println!("{}", serde_json::to_string_pretty(&all_errors)?);
@@ -64,8 +62,12 @@ pub fn run_validate(agent_id: Option<&str>, json: bool, project_root: &Path) -> 
             println!("✓ agent {} — valid", report.agent_id);
         } else {
             any_errors = true;
-            println!("✗ agent {} — {} error{}", report.agent_id, report.errors.len(),
-                if report.errors.len() == 1 { "" } else { "s" });
+            println!(
+                "✗ agent {} — {} error{}",
+                report.agent_id,
+                report.errors.len(),
+                if report.errors.len() == 1 { "" } else { "s" }
+            );
             for e in &report.errors {
                 println!("  {} — {}", e.file, e.error);
             }
@@ -87,7 +89,8 @@ fn validate_all(agents_dir: &Path, _project_root: &Path) -> Vec<AgentReport> {
 
     // Primary: agents/*.{jsonc,toml} (flat)
     if let Ok(entries) = std::fs::read_dir(agents_dir) {
-        let mut paths: Vec<_> = entries.flatten()
+        let mut paths: Vec<_> = entries
+            .flatten()
             .filter(|e| crate::paths::is_config_ext(&e.path()) && e.path().is_file())
             // Exclude known non-agent config files
             .filter(|e| crate::paths::is_agent_config(&e.path()))
@@ -95,7 +98,11 @@ fn validate_all(agents_dir: &Path, _project_root: &Path) -> Vec<AgentReport> {
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
             let path = entry.path();
-            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             seen_ids.insert(id.clone());
             reports.push(validate_agent(&id, &path, agents_dir));
         }
@@ -106,15 +113,22 @@ fn validate_all(agents_dir: &Path, _project_root: &Path) -> Vec<AgentReport> {
     if profiles_dir.exists()
         && let Ok(entries) = std::fs::read_dir(&profiles_dir)
     {
-        let mut paths: Vec<_> = entries.flatten()
+        let mut paths: Vec<_> = entries
+            .flatten()
             .filter(|e| crate::paths::is_config_ext(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
             let path = entry.path();
-            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             // Skip if already found in agents/
-            if seen_ids.contains(&id) { continue; }
+            if seen_ids.contains(&id) {
+                continue;
+            }
             seen_ids.insert(id.clone());
             reports.push(validate_agent(&id, &path, agents_dir));
         }
@@ -125,15 +139,22 @@ fn validate_all(agents_dir: &Path, _project_root: &Path) -> Vec<AgentReport> {
     if presets_dir.exists()
         && let Ok(entries) = std::fs::read_dir(&presets_dir)
     {
-        let mut paths: Vec<_> = entries.flatten()
+        let mut paths: Vec<_> = entries
+            .flatten()
             .filter(|e| crate::paths::is_config_ext(&e.path()))
             .collect();
         paths.sort_by_key(|e| e.file_name());
         for entry in paths {
             let path = entry.path();
-            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             // Skip if already found in agents/ or agents/profiles/
-            if seen_ids.contains(&id) { continue; }
+            if seen_ids.contains(&id) {
+                continue;
+            }
             reports.push(validate_agent(&id, &path, agents_dir));
         }
     }
@@ -153,7 +174,10 @@ pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> A
                 file: agent_path.display().to_string(),
                 error: format!("config parse error: {}", e),
             });
-            return AgentReport { agent_id: agent_id.to_string(), errors };
+            return AgentReport {
+                agent_id: agent_id.to_string(),
+                errors,
+            };
         }
     };
 
@@ -173,7 +197,11 @@ pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> A
 
     // 3. MCP server refs exist in mcp config AND have required fields
     let mcp_jsonc = agents_dir.join("mcp.jsonc");
-    let mcp_path = if mcp_jsonc.exists() { mcp_jsonc } else { agents_dir.join("mcp.toml") };
+    let mcp_path = if mcp_jsonc.exists() {
+        mcp_jsonc
+    } else {
+        agents_dir.join("mcp.toml")
+    };
     let mcp_file = load_mcp_file(&mcp_path);
     for server_id in &agent.mcp.servers {
         match mcp_file.servers.iter().find(|s| &s.id == server_id) {
@@ -217,7 +245,11 @@ pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> A
             });
         } else {
             let perm_jsonc = agents_dir.join("permissions.jsonc");
-            let perm_path = if perm_jsonc.exists() { perm_jsonc } else { agents_dir.join("permissions.toml") };
+            let perm_path = if perm_jsonc.exists() {
+                perm_jsonc
+            } else {
+                agents_dir.join("permissions.toml")
+            };
             if perm_path.exists() && load_permission_preset(agents_dir, preset_name).is_none() {
                 errors.push(ValidationError {
                     agent: agent_id.to_string(),
@@ -228,17 +260,26 @@ pub fn validate_agent(agent_id: &str, agent_path: &Path, agents_dir: &Path) -> A
         }
     }
 
-    AgentReport { agent_id: agent_id.to_string(), errors }
+    AgentReport {
+        agent_id: agent_id.to_string(),
+        errors,
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn skill_ref_exists(skills_dir: &Path, skill_id: &str) -> bool {
-    if !skills_dir.exists() { return false; }
+    if !skills_dir.exists() {
+        return false;
+    }
     // Flat: skills/<id>.md
-    if skills_dir.join(format!("{}.md", skill_id)).exists() { return true; }
+    if skills_dir.join(format!("{}.md", skill_id)).exists() {
+        return true;
+    }
     // Dir: skills/<id>/SKILL.md
-    if skills_dir.join(skill_id).join("SKILL.md").exists() { return true; }
+    if skills_dir.join(skill_id).join("SKILL.md").exists() {
+        return true;
+    }
     false
 }
 

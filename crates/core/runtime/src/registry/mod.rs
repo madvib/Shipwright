@@ -23,6 +23,6 @@ pub use hash::{compute_file_hash, compute_tree_hash};
 pub use install::{InstallOptions, InstallResult, resolve_and_fetch};
 pub use resolver::{ResolvedVersion, resolve_version};
 pub use types::{
-    Dependency, LockedPackage, ShipLock, ShipManifest, SyncStatus,
-    parse_ship_lock, serialize_ship_lock,
+    Dependency, LockedPackage, ShipLock, ShipManifest, SyncStatus, parse_ship_lock,
+    serialize_ship_lock,
 };

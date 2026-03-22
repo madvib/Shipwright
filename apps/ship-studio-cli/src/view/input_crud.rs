@@ -73,8 +73,12 @@ pub fn handle_text_input(app: &mut App, code: KeyCode, action: InputAction) {
                 }
             }
         }
-        KeyCode::Backspace => { app.input_buf.pop(); }
-        KeyCode::Char(c) => { app.input_buf.push(c); }
+        KeyCode::Backspace => {
+            app.input_buf.pop();
+        }
+        KeyCode::Char(c) => {
+            app.input_buf.push(c);
+        }
         _ => {}
     }
 }
@@ -95,7 +99,9 @@ pub fn handle_enter(app: &mut App) {
 
 /// `a` — activate agent, add skill, or toggle auto-refresh.
 pub fn handle_activate_or_add(app: &mut App) {
-    if app.screen != Screen::List { return; }
+    if app.screen != Screen::List {
+        return;
+    }
     match app.tab {
         Tab::Agents => {
             if let Some((id, _)) = app.agents.get(app.sel_agent) {
@@ -122,7 +128,9 @@ pub fn handle_activate_or_add(app: &mut App) {
 
 /// `c` — start agent creation flow.
 pub fn handle_create(app: &mut App) {
-    if app.screen != Screen::List { return; }
+    if app.screen != Screen::List {
+        return;
+    }
     if app.tab == Tab::Agents {
         app.input_mode = InputMode::TextInput(InputAction::CreateAgent);
         app.input_prompt = "New agent name: ".into();
@@ -131,7 +139,9 @@ pub fn handle_create(app: &mut App) {
 
 /// `d` — start delete confirmation for agent, skill, or MCP server.
 pub fn handle_delete(app: &mut App) {
-    if app.screen != Screen::List { return; }
+    if app.screen != Screen::List {
+        return;
+    }
     match app.tab {
         Tab::Agents => {
             if let Some((id, _)) = app.agents.get(app.sel_agent) {

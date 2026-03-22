@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph},
 };
 
-use crate::view::App;
 use super::{C_BG, C_FG, C_MUT, C_PRI, C_SEL, panel, status_color};
+use crate::view::App;
 
 pub fn draw_events(f: &mut Frame, app: &App, area: Rect) {
     if app.events.is_empty() {
@@ -25,17 +25,28 @@ pub fn draw_events(f: &mut Frame, app: &App, area: Rect) {
             let action_color = status_color(action_str);
             let time = e.timestamp.format("%H:%M:%S").to_string();
             let detail = e.details.as_deref().unwrap_or("");
-            let detail_short = if detail.len() > 60 { &detail[..57] } else { detail };
+            let detail_short = if detail.len() > 60 {
+                &detail[..57]
+            } else {
+                detail
+            };
             let line = Line::from(vec![
                 Span::styled(format!(" {time} "), Style::default().fg(C_MUT)),
                 Span::styled(
                     format!("{:<12}", e.entity.as_str()),
                     Style::default().fg(C_PRI).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(format!("{:<10}", action_str), Style::default().fg(action_color)),
+                Span::styled(
+                    format!("{:<10}", action_str),
+                    Style::default().fg(action_color),
+                ),
                 Span::styled(format!("{:<12}", e.subject), Style::default().fg(C_FG)),
                 Span::styled(
-                    if detail_short.is_empty() { String::new() } else { format!(" {detail_short}") },
+                    if detail_short.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {detail_short}")
+                    },
                     Style::default().fg(C_MUT),
                 ),
             ]);
@@ -55,7 +66,9 @@ pub fn draw_events(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn draw_event_detail(f: &mut Frame, app: &App, area: Rect) {
-    let Some(e) = app.events.get(app.sel_event) else { return };
+    let Some(e) = app.events.get(app.sel_event) else {
+        return;
+    };
     let action_str = e.action.as_str();
     let sc = status_color(action_str);
     let ts = e.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();

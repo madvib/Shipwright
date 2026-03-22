@@ -9,7 +9,8 @@ use super::{block_on, open_db};
 
 fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessionDb {
     let updated_workspace_ids_json: String = row.get(10);
-    let updated_workspace_ids = serde_json::from_str(&updated_workspace_ids_json).unwrap_or_default();
+    let updated_workspace_ids =
+        serde_json::from_str(&updated_workspace_ids_json).unwrap_or_default();
     WorkspaceSessionDb {
         id: row.get(0),
         workspace_id: row.get(1),

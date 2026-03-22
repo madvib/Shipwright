@@ -5,8 +5,8 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::Terminal;
 use std::time::Duration;
 
-use super::{App, InputMode, Tab, Screen, actions, render};
 use super::input_crud;
+use super::{App, InputMode, Screen, Tab, actions, render};
 
 /// Main event loop — polls keyboard at 250ms intervals.
 pub fn run_loop<B: ratatui::backend::Backend + std::io::Write>(
@@ -153,7 +153,10 @@ fn handle_launch<B: ratatui::backend::Backend + std::io::Write>(
 
     // Suspend TUI
     crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(terminal.backend_mut(), crossterm::terminal::LeaveAlternateScreen)?;
+    crossterm::execute!(
+        terminal.backend_mut(),
+        crossterm::terminal::LeaveAlternateScreen
+    )?;
 
     let exe = std::env::current_exe().unwrap_or_else(|_| "ship".into());
     let result = std::process::Command::new(&exe)
@@ -162,7 +165,10 @@ fn handle_launch<B: ratatui::backend::Backend + std::io::Write>(
 
     // Resume TUI
     crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(terminal.backend_mut(), crossterm::terminal::EnterAlternateScreen)?;
+    crossterm::execute!(
+        terminal.backend_mut(),
+        crossterm::terminal::EnterAlternateScreen
+    )?;
     terminal.clear()?;
 
     app.status = match result {

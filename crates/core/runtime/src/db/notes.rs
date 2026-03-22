@@ -20,8 +20,7 @@ pub struct Note {
     pub updated_at: String,
 }
 
-const COLS: &str =
-    "id, title, content, tags_json, branch, synced_at, created_at, updated_at";
+const COLS: &str = "id, title, content, tags_json, branch, synced_at, created_at, updated_at";
 
 pub fn create_note(
     ship_dir: &Path,
@@ -39,8 +38,13 @@ pub fn create_note(
             "INSERT INTO note (id, title, content, tags_json, branch, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(&id).bind(title).bind(content).bind(&tags_json)
-        .bind(branch).bind(&now).bind(&now)
+        .bind(&id)
+        .bind(title)
+        .bind(content)
+        .bind(&tags_json)
+        .bind(branch)
+        .bind(&now)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -66,8 +70,8 @@ pub fn update_note(
     let mut conn = open_db(ship_dir)?;
     let now = Utc::now().to_rfc3339();
     // Fetch current, apply partial update.
-    let current = get_note_impl(&mut conn, id)?
-        .ok_or_else(|| anyhow::anyhow!("note {id} not found"))?;
+    let current =
+        get_note_impl(&mut conn, id)?.ok_or_else(|| anyhow::anyhow!("note {id} not found"))?;
     let new_title = title.unwrap_or(&current.title);
     let new_content = content.unwrap_or(&current.content);
     let new_tags = tags.unwrap_or(current.tags);
@@ -76,7 +80,11 @@ pub fn update_note(
         sqlx::query(
             "UPDATE note SET title = ?, content = ?, tags_json = ?, updated_at = ? WHERE id = ?",
         )
-        .bind(new_title).bind(new_content).bind(&tags_json).bind(&now).bind(id)
+        .bind(new_title)
+        .bind(new_content)
+        .bind(&tags_json)
+        .bind(&now)
+        .bind(id)
         .execute(&mut conn)
         .await
     })?;
@@ -110,11 +118,9 @@ pub fn list_notes(ship_dir: &Path, branch: Option<&str>) -> Result<Vec<Note>> {
             .await
         })?,
         None => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {COLS} FROM note ORDER BY updated_at DESC"
-            ))
-            .fetch_all(&mut conn)
-            .await
+            sqlx::query(&format!("SELECT {COLS} FROM note ORDER BY updated_at DESC"))
+                .fetch_all(&mut conn)
+                .await
         })?,
     };
     Ok(rows.iter().map(row_to_note).collect())
@@ -137,7 +143,8 @@ pub fn mark_synced(ship_dir: &Path, id: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query("UPDATE note SET synced_at = ? WHERE id = ?")
-            .bind(&now).bind(id)
+            .bind(&now)
+            .bind(id)
             .execute(&mut conn)
             .await
     })?;
@@ -174,7 +181,14 @@ mod tests {
     #[test]
     fn test_create_and_get_note() {
         let (_tmp, ship_dir) = setup();
-        let note = create_note(&ship_dir, "My Note", "hello world", vec!["tag1".to_string()], None).unwrap();
+        let note = create_note(
+            &ship_dir,
+            "My Note",
+            "hello world",
+            vec!["tag1".to_string()],
+            None,
+        )
+        .unwrap();
         let got = get_note(&ship_dir, &note.id).unwrap().unwrap();
         assert_eq!(got.title, "My Note");
         assert_eq!(got.tags, vec!["tag1".to_string()]);
@@ -263,18 +277,16 @@ mod tests {
         let (_tmp, ship_dir) = setup();
 
         create_note(&ship_dir, "Persistent note", "body", vec![], None).unwrap();
-        let adr = crate::db::adrs::create_adr(
-            &ship_dir,
-            "Transient ADR",
-            "ctx",
-            "dec",
-            "proposed",
-        )
-        .unwrap();
+        let adr = crate::db::adrs::create_adr(&ship_dir, "Transient ADR", "ctx", "dec", "proposed")
+            .unwrap();
 
         crate::db::adrs::delete_adr(&ship_dir, &adr.id).unwrap();
 
-        assert!(crate::db::adrs::get_adr(&ship_dir, &adr.id).unwrap().is_none());
+        assert!(
+            crate::db::adrs::get_adr(&ship_dir, &adr.id)
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(list_notes(&ship_dir, None).unwrap().len(), 1);
     }
 }

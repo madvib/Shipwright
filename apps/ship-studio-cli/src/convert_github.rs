@@ -94,7 +94,13 @@ pub fn github_api_base() -> String {
 /// Replace characters that are not safe in filenames.
 pub fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -152,9 +158,9 @@ pub fn convert_from_github_with_base(url: &str, base_url: &str) -> Result<()> {
         anyhow::bail!("Server error: {}", err);
     }
 
-    let library = result
-        .library
-        .ok_or_else(|| anyhow::anyhow!("Server returned no library data. Raw response:\n{}", raw))?;
+    let library = result.library.ok_or_else(|| {
+        anyhow::anyhow!("Server returned no library data. Raw response:\n{}", raw)
+    })?;
 
     let repo_slug = extract_github_slug(url).unwrap_or_else(|| url.to_string());
 
@@ -245,7 +251,9 @@ fn json_value_to_toml(
 
     if let Some(obj) = extra.as_object() {
         for (k, v) in obj {
-            if k == "name" { continue; }
+            if k == "name" {
+                continue;
+            }
             if let Ok(tv) = json_to_toml_value(v) {
                 map.insert(k.clone(), tv);
             }

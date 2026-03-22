@@ -2,10 +2,10 @@ use std::path::Path;
 
 use runtime::workspace::{
     EndWorkspaceSessionRequest as RuntimeEndWorkspaceSessionRequest,
+    end_workspace_session as runtime_end_workspace_session,
     get_active_workspace_session as runtime_get_active_workspace_session,
     record_workspace_session_progress as runtime_record_workspace_session_progress,
     start_workspace_session as runtime_start_workspace_session,
-    end_workspace_session as runtime_end_workspace_session,
 };
 
 use crate::requests::{EndSessionRequest, LogProgressRequest, StartSessionRequest};

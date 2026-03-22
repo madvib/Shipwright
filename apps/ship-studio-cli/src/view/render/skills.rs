@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph},
 };
 
-use crate::view::App;
 use super::{C_BG, C_FG, C_MUT, C_SEL, panel};
+use crate::view::App;
 
 pub fn draw_skills(f: &mut Frame, app: &App, area: Rect) {
     if app.skills.is_empty() {

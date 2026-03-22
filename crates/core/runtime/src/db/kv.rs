@@ -19,7 +19,10 @@ pub fn set(ship_dir: &Path, namespace: &str, key: &str, value: &serde_json::Valu
                value_json = excluded.value_json,
                updated_at = excluded.updated_at",
         )
-        .bind(namespace).bind(key).bind(&value_json).bind(&now)
+        .bind(namespace)
+        .bind(key)
+        .bind(&value_json)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -30,7 +33,8 @@ pub fn get(ship_dir: &Path, namespace: &str, key: &str) -> Result<Option<serde_j
     let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
         sqlx::query("SELECT value_json FROM kv_state WHERE namespace = ? AND key = ?")
-            .bind(namespace).bind(key)
+            .bind(namespace)
+            .bind(key)
             .fetch_optional(&mut conn)
             .await
     })?;
@@ -47,7 +51,8 @@ pub fn delete(ship_dir: &Path, namespace: &str, key: &str) -> Result<()> {
     let mut conn = open_db(ship_dir)?;
     block_on(async {
         sqlx::query("DELETE FROM kv_state WHERE namespace = ? AND key = ?")
-            .bind(namespace).bind(key)
+            .bind(namespace)
+            .bind(key)
             .execute(&mut conn)
             .await
     })?;
@@ -84,7 +89,9 @@ mod tests {
     fn test_set_and_get() {
         let (_tmp, ship_dir) = setup();
         set(&ship_dir, "agent", "active_workspace", &json!("ws-001")).unwrap();
-        let val = get(&ship_dir, "agent", "active_workspace").unwrap().unwrap();
+        let val = get(&ship_dir, "agent", "active_workspace")
+            .unwrap()
+            .unwrap();
         assert_eq!(val, json!("ws-001"));
     }
 

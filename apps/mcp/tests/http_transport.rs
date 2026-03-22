@@ -2,7 +2,9 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
-async fn start_test_server_with_token(token: Option<&str>) -> (u16, CancellationToken, Option<tempfile::TempDir>) {
+async fn start_test_server_with_token(
+    token: Option<&str>,
+) -> (u16, CancellationToken, Option<tempfile::TempDir>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
@@ -10,7 +12,9 @@ async fn start_test_server_with_token(token: Option<&str>) -> (u16, Cancellation
     let tmp_dir = {
         let dir = tempfile::TempDir::new().unwrap();
         // SAFETY: single-threaded test setup, no concurrent env access
-        unsafe { std::env::set_var("SHIP_GLOBAL_DIR", dir.path()); }
+        unsafe {
+            std::env::set_var("SHIP_GLOBAL_DIR", dir.path());
+        }
         Some(dir)
     };
 
@@ -48,7 +52,10 @@ async fn http_server_responds_to_initialize() {
 
     assert_eq!(resp.status(), 200);
     let text = resp.text().await.unwrap();
-    assert!(text.contains("\"result\""), "expected result in response, got: {text}");
+    assert!(
+        text.contains("\"result\""),
+        "expected result in response, got: {text}"
+    );
 
     ct.cancel();
 }

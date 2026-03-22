@@ -17,8 +17,7 @@ pub fn fetch_package_content(git_url: &str, commit: &str, dest: &Path) -> anyhow
     if try_git_archive(git_url, commit, dest).is_ok() {
         return Ok(());
     }
-    clone_and_copy(git_url, commit, dest)
-        .with_context(|| format!("fetching {git_url} @ {commit}"))
+    clone_and_copy(git_url, commit, dest).with_context(|| format!("fetching {git_url} @ {commit}"))
 }
 
 fn try_git_archive(git_url: &str, commit: &str, dest: &Path) -> anyhow::Result<()> {
@@ -45,7 +44,9 @@ fn try_git_archive(git_url: &str, commit: &str, dest: &Path) -> anyhow::Result<(
     let mut child = tar;
     {
         let stdin = child.stdin.as_mut().context("opening tar stdin")?;
-        stdin.write_all(&archive.stdout).context("writing to tar stdin")?;
+        stdin
+            .write_all(&archive.stdout)
+            .context("writing to tar stdin")?;
     }
 
     let status = child.wait().context("waiting for tar")?;
@@ -77,17 +78,19 @@ fn clone_and_copy(git_url: &str, commit: &str, dest: &Path) -> anyhow::Result<()
 
     // Fetch the exact commit (in case it isn't the tip of any branch).
     let _ = Command::new("git")
-        .args(["-C", clone_dir.to_str().unwrap_or("."), "fetch", "--depth=1", "origin", commit])
+        .args([
+            "-C",
+            clone_dir.to_str().unwrap_or("."),
+            "fetch",
+            "--depth=1",
+            "origin",
+            commit,
+        ])
         .status();
 
     // Checkout the exact commit.
     let checkout_status = Command::new("git")
-        .args([
-            "-C",
-            clone_dir.to_str().unwrap_or("."),
-            "checkout",
-            commit,
-        ])
+        .args(["-C", clone_dir.to_str().unwrap_or("."), "checkout", commit])
         .status()
         .context("running git checkout")?;
 
@@ -96,8 +99,7 @@ fn clone_and_copy(git_url: &str, commit: &str, dest: &Path) -> anyhow::Result<()
     }
 
     // Copy all files excluding .git/.
-    copy_dir_excluding_git(&clone_dir, dest)
-        .context("copying cloned content to cache dest")?;
+    copy_dir_excluding_git(&clone_dir, dest).context("copying cloned content to cache dest")?;
 
     Ok(())
 }
@@ -107,9 +109,7 @@ fn copy_dir_excluding_git(src: &Path, dst: &Path) -> anyhow::Result<()> {
     for entry in walkdir::WalkDir::new(src)
         .min_depth(1)
         .into_iter()
-        .filter_entry(|e| {
-            e.file_name() != ".git"
-        })
+        .filter_entry(|e| e.file_name() != ".git")
     {
         let entry = entry.context("walking clone dir")?;
         let rel = entry.path().strip_prefix(src).context("stripping prefix")?;

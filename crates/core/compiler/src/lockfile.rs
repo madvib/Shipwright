@@ -119,7 +119,6 @@ mod tests {
     use super::*;
     use crate::manifest::ShipManifest;
 
-
     fn sample_lock() -> ShipLock {
         ShipLock {
             version: 1,
@@ -170,7 +169,10 @@ mod tests {
         let commit_pos = block.find("commit =").unwrap();
         let hash_pos = block.find("hash =").unwrap();
         assert!(path_pos < ver_pos, "path before version in package block");
-        assert!(ver_pos < commit_pos, "version before commit in package block");
+        assert!(
+            ver_pos < commit_pos,
+            "version before commit in package block"
+        );
         assert!(commit_pos < hash_pos, "commit before hash in package block");
     }
 

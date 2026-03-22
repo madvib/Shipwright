@@ -18,9 +18,17 @@ fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
 fn insert_and_read_event() {
     let (_tmp, ship_dir) = setup();
     let record = insert_event(
-        &ship_dir, "ship", &EventEntity::Project, Some("my-project"),
-        &EventAction::Init, Some("initialized"), None, None, None,
-    ).unwrap();
+        &ship_dir,
+        "ship",
+        &EventEntity::Project,
+        Some("my-project"),
+        &EventAction::Init,
+        Some("initialized"),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(record.entity, EventEntity::Project);
     assert_eq!(record.subject, "my-project");
     assert_eq!(record.actor, "ship");
@@ -36,12 +44,42 @@ fn insert_and_read_event() {
 #[test]
 fn append_only_ordering() {
     let (_tmp, ship_dir) = setup();
-    insert_event(&ship_dir, "ship", &EventEntity::Workspace, Some("feat/a"),
-        &EventAction::Create, None, None, None, None).unwrap();
-    insert_event(&ship_dir, "agent", &EventEntity::Session, Some("sess-1"),
-        &EventAction::Start, None, None, None, None).unwrap();
-    insert_event(&ship_dir, "logic", &EventEntity::Config, Some("ship.toml"),
-        &EventAction::Update, None, None, None, None).unwrap();
+    insert_event(
+        &ship_dir,
+        "ship",
+        &EventEntity::Workspace,
+        Some("feat/a"),
+        &EventAction::Create,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    insert_event(
+        &ship_dir,
+        "agent",
+        &EventEntity::Session,
+        Some("sess-1"),
+        &EventAction::Start,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    insert_event(
+        &ship_dir,
+        "logic",
+        &EventEntity::Config,
+        Some("ship.toml"),
+        &EventAction::Update,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
 
     let all = list_all_events(&ship_dir).unwrap();
     assert_eq!(all.len(), 3);
@@ -53,8 +91,18 @@ fn append_only_ordering() {
 #[test]
 fn list_since_filters_by_time() {
     let (_tmp, ship_dir) = setup();
-    insert_event(&ship_dir, "ship", &EventEntity::Project, Some("p1"),
-        &EventAction::Log, None, None, None, None).unwrap();
+    insert_event(
+        &ship_dir,
+        "ship",
+        &EventEntity::Project,
+        Some("p1"),
+        &EventAction::Log,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
 
     let future = Utc::now() + chrono::Duration::hours(1);
     let filtered = list_events_since_time(&ship_dir, &future, None).unwrap();
@@ -69,10 +117,17 @@ fn list_since_filters_by_time() {
 fn insert_with_context_ids_and_query_back() {
     let (_tmp, ship_dir) = setup();
     let rec = insert_event(
-        &ship_dir, "agent", &EventEntity::Job, Some("job-1"),
-        &EventAction::Start, Some("started work"),
-        Some("ws-abc"), Some("sess-xyz"), Some("job-1"),
-    ).unwrap();
+        &ship_dir,
+        "agent",
+        &EventEntity::Job,
+        Some("job-1"),
+        &EventAction::Start,
+        Some("started work"),
+        Some("ws-abc"),
+        Some("sess-xyz"),
+        Some("job-1"),
+    )
+    .unwrap();
     assert_eq!(rec.workspace_id.as_deref(), Some("ws-abc"));
     assert_eq!(rec.session_id.as_deref(), Some("sess-xyz"));
     assert_eq!(rec.job_id.as_deref(), Some("job-1"));
@@ -99,9 +154,17 @@ fn insert_with_context_ids_and_query_back() {
 fn context_columns_round_trip_as_none() {
     let (_tmp, ship_dir) = setup();
     let rec = insert_event(
-        &ship_dir, "ship", &EventEntity::Project, Some("p"),
-        &EventAction::Init, None, None, None, None,
-    ).unwrap();
+        &ship_dir,
+        "ship",
+        &EventEntity::Project,
+        Some("p"),
+        &EventAction::Init,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert!(rec.workspace_id.is_none());
     assert!(rec.session_id.is_none());
     assert!(rec.job_id.is_none());
@@ -118,47 +181,95 @@ fn new_entity_types_serialize_correctly() {
 
     // Gate entity with Pass action
     let gate = insert_event(
-        &ship_dir, "reviewer", &EventEntity::Gate, Some("gate-1"),
-        &EventAction::Pass, Some("all checks green"), None, None, None,
-    ).unwrap();
+        &ship_dir,
+        "reviewer",
+        &EventEntity::Gate,
+        Some("gate-1"),
+        &EventAction::Pass,
+        Some("all checks green"),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(gate.entity, EventEntity::Gate);
     assert_eq!(gate.action, EventAction::Pass);
 
     // Capability entity with Complete action
     let cap = insert_event(
-        &ship_dir, "agent", &EventEntity::Capability, Some("cap-1"),
-        &EventAction::Complete, None, None, None, None,
-    ).unwrap();
+        &ship_dir,
+        "agent",
+        &EventEntity::Capability,
+        Some("cap-1"),
+        &EventAction::Complete,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(cap.entity, EventEntity::Capability);
     assert_eq!(cap.action, EventAction::Complete);
 
     // Target entity
     let tgt = insert_event(
-        &ship_dir, "ship", &EventEntity::Target, Some("v0.1"),
-        &EventAction::Create, None, None, None, None,
-    ).unwrap();
+        &ship_dir,
+        "ship",
+        &EventEntity::Target,
+        Some("v0.1"),
+        &EventAction::Create,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(tgt.entity, EventEntity::Target);
 
     // Job entity with Claim action
     let job = insert_event(
-        &ship_dir, "agent-1", &EventEntity::Job, Some("job-x"),
-        &EventAction::Claim, None, None, None, Some("job-x"),
-    ).unwrap();
+        &ship_dir,
+        "agent-1",
+        &EventEntity::Job,
+        Some("job-x"),
+        &EventAction::Claim,
+        None,
+        None,
+        None,
+        Some("job-x"),
+    )
+    .unwrap();
     assert_eq!(job.entity, EventEntity::Job);
     assert_eq!(job.action, EventAction::Claim);
 
     // Dispatch action
     let disp = insert_event(
-        &ship_dir, "ship", &EventEntity::Job, Some("job-y"),
-        &EventAction::Dispatch, None, None, None, Some("job-y"),
-    ).unwrap();
+        &ship_dir,
+        "ship",
+        &EventEntity::Job,
+        Some("job-y"),
+        &EventAction::Dispatch,
+        None,
+        None,
+        None,
+        Some("job-y"),
+    )
+    .unwrap();
     assert_eq!(disp.action, EventAction::Dispatch);
 
     // Fail action
     let fail = insert_event(
-        &ship_dir, "reviewer", &EventEntity::Gate, Some("gate-2"),
-        &EventAction::Fail, Some("test failures"), None, None, None,
-    ).unwrap();
+        &ship_dir,
+        "reviewer",
+        &EventEntity::Gate,
+        Some("gate-2"),
+        &EventAction::Fail,
+        Some("test failures"),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(fail.action, EventAction::Fail);
 
     // All round-trip through DB
@@ -176,14 +287,22 @@ fn migrate_job_log_to_events_works() {
 
     // Seed job_log entries directly
     crate::db::jobs::append_log(
-        &ship_dir, "compiling module A", Some("j1"), Some("feat/x"), Some("agent-1"),
-    ).unwrap();
+        &ship_dir,
+        "compiling module A",
+        Some("j1"),
+        Some("feat/x"),
+        Some("agent-1"),
+    )
+    .unwrap();
     crate::db::jobs::append_log(
-        &ship_dir, "tests passing", Some("j1"), Some("feat/x"), Some("agent-1"),
-    ).unwrap();
-    crate::db::jobs::append_log(
-        &ship_dir, "branch note", None, Some("main"), None,
-    ).unwrap();
+        &ship_dir,
+        "tests passing",
+        Some("j1"),
+        Some("feat/x"),
+        Some("agent-1"),
+    )
+    .unwrap();
+    crate::db::jobs::append_log(&ship_dir, "branch note", None, Some("main"), None).unwrap();
 
     // Migrate
     let migrated = migrate_job_log_to_events(&ship_dir).unwrap();
@@ -214,8 +333,18 @@ fn migrate_job_log_to_events_works() {
 fn record_gate_pass_creates_event_and_completes_job() {
     let (_tmp, ship_dir) = setup();
     let job = crate::db::jobs::create_job(
-        &ship_dir, "gate-test", None, None, None, None, 0, None, vec![], vec![],
-    ).unwrap();
+        &ship_dir,
+        "gate-test",
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     crate::db::jobs::update_job_status(&ship_dir, &job.id, "running").unwrap();
 
     let rec = record_gate_outcome(&ship_dir, &job.id, true, "all tests green").unwrap();
@@ -226,7 +355,9 @@ fn record_gate_pass_creates_event_and_completes_job() {
     assert_eq!(rec.job_id.as_deref(), Some(job.id.as_str()));
 
     // Job should now be "complete"
-    let updated = crate::db::jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+    let updated = crate::db::jobs::get_job(&ship_dir, &job.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(updated.status, "complete");
 }
 
@@ -234,8 +365,18 @@ fn record_gate_pass_creates_event_and_completes_job() {
 fn record_gate_fail_creates_event_leaves_job_running() {
     let (_tmp, ship_dir) = setup();
     let job = crate::db::jobs::create_job(
-        &ship_dir, "gate-test", None, None, None, None, 0, None, vec![], vec![],
-    ).unwrap();
+        &ship_dir,
+        "gate-test",
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     crate::db::jobs::update_job_status(&ship_dir, &job.id, "running").unwrap();
 
     let rec = record_gate_outcome(&ship_dir, &job.id, false, "3 tests failed").unwrap();
@@ -244,7 +385,9 @@ fn record_gate_fail_creates_event_leaves_job_running() {
     assert_eq!(rec.details.as_deref(), Some("3 tests failed"));
 
     // Job should still be "running"
-    let updated = crate::db::jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+    let updated = crate::db::jobs::get_job(&ship_dir, &job.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(updated.status, "running");
 }
 
@@ -252,11 +395,31 @@ fn record_gate_fail_creates_event_leaves_job_running() {
 fn list_gate_outcomes_filters_by_job() {
     let (_tmp, ship_dir) = setup();
     let job_a = crate::db::jobs::create_job(
-        &ship_dir, "gate-a", None, None, None, None, 0, None, vec![], vec![],
-    ).unwrap();
+        &ship_dir,
+        "gate-a",
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     let job_b = crate::db::jobs::create_job(
-        &ship_dir, "gate-b", None, None, None, None, 0, None, vec![], vec![],
-    ).unwrap();
+        &ship_dir,
+        "gate-b",
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     crate::db::jobs::update_job_status(&ship_dir, &job_a.id, "running").unwrap();
     crate::db::jobs::update_job_status(&ship_dir, &job_b.id, "running").unwrap();
 
@@ -267,9 +430,17 @@ fn list_gate_outcomes_filters_by_job() {
 
     // Also insert an unrelated event to prove filtering works
     insert_event(
-        &ship_dir, "ship", &EventEntity::Job, Some(&job_a.id),
-        &EventAction::Log, Some("noise"), None, None, Some(&job_a.id),
-    ).unwrap();
+        &ship_dir,
+        "ship",
+        &EventEntity::Job,
+        Some(&job_a.id),
+        &EventAction::Log,
+        Some("noise"),
+        None,
+        None,
+        Some(&job_a.id),
+    )
+    .unwrap();
 
     let outcomes_a = list_gate_outcomes(&ship_dir, &job_a.id).unwrap();
     assert_eq!(outcomes_a.len(), 2);

@@ -36,8 +36,12 @@ pub fn upsert_branch_config(ship_dir: &Path, cfg: &BranchConfig) -> Result<()> {
                compiled_at  = excluded.compiled_at,
                updated_at   = excluded.updated_at",
         )
-        .bind(&cfg.branch).bind(&cfg.preset_id).bind(&cfg.workspace_id)
-        .bind(&plugins).bind(&cfg.compiled_at).bind(&now)
+        .bind(&cfg.branch)
+        .bind(&cfg.preset_id)
+        .bind(&cfg.workspace_id)
+        .bind(&plugins)
+        .bind(&cfg.compiled_at)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -47,10 +51,12 @@ pub fn upsert_branch_config(ship_dir: &Path, cfg: &BranchConfig) -> Result<()> {
 pub fn get_branch_config(ship_dir: &Path, branch: &str) -> Result<Option<BranchConfig>> {
     let mut conn = open_db(ship_dir)?;
     let row = block_on(async {
-        sqlx::query(&format!("SELECT {COLS} FROM branch_config WHERE branch = ?"))
-            .bind(branch)
-            .fetch_optional(&mut conn)
-            .await
+        sqlx::query(&format!(
+            "SELECT {COLS} FROM branch_config WHERE branch = ?"
+        ))
+        .bind(branch)
+        .fetch_optional(&mut conn)
+        .await
     })?;
     Ok(row.map(|r| row_to_cfg(&r)))
 }
@@ -72,8 +78,7 @@ fn row_to_cfg(row: &sqlx::sqlite::SqliteRow) -> BranchConfig {
         branch: row.get(0),
         preset_id: row.get(1),
         workspace_id: row.get(2),
-        plugins: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(3))
-            .unwrap_or_default(),
+        plugins: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(3)).unwrap_or_default(),
         compiled_at: row.get(4),
         updated_at: row.get(5),
     }
@@ -109,7 +114,9 @@ mod tests {
     fn test_upsert_and_get_branch_config() {
         let (_tmp, ship_dir) = setup();
         upsert_branch_config(&ship_dir, &sample("feat/cli-init", "cli-lane")).unwrap();
-        let got = get_branch_config(&ship_dir, "feat/cli-init").unwrap().unwrap();
+        let got = get_branch_config(&ship_dir, "feat/cli-init")
+            .unwrap()
+            .unwrap();
         assert_eq!(got.preset_id, "cli-lane");
         assert_eq!(got.plugins.len(), 1);
     }
@@ -129,6 +136,10 @@ mod tests {
     #[test]
     fn test_get_branch_config_missing_returns_none() {
         let (_tmp, ship_dir) = setup();
-        assert!(get_branch_config(&ship_dir, "nonexistent").unwrap().is_none());
+        assert!(
+            get_branch_config(&ship_dir, "nonexistent")
+                .unwrap()
+                .is_none()
+        );
     }
 }

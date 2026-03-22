@@ -9,15 +9,30 @@ pub fn global_dir() -> PathBuf {
         .join(".ship")
 }
 
-pub fn global_modes_dir() -> PathBuf { global_dir().join("modes") }
-pub fn global_agents_dir() -> PathBuf { global_dir().join("agents") }
-pub fn global_skills_dir() -> PathBuf { global_dir().join("skills") }
-pub fn global_mcp_dir() -> PathBuf { global_dir().join("mcp") }
-pub fn global_cache_dir() -> PathBuf { global_dir().join("cache") }
+pub fn global_modes_dir() -> PathBuf {
+    global_dir().join("modes")
+}
+pub fn global_agents_dir() -> PathBuf {
+    global_dir().join("agents")
+}
+pub fn global_skills_dir() -> PathBuf {
+    global_dir().join("skills")
+}
+pub fn global_mcp_dir() -> PathBuf {
+    global_dir().join("mcp")
+}
+pub fn global_cache_dir() -> PathBuf {
+    global_dir().join("cache")
+}
 
 pub fn ensure_global_dirs() -> anyhow::Result<()> {
-    for dir in [global_dir(), global_modes_dir(), global_skills_dir(),
-                global_mcp_dir(), global_cache_dir()] {
+    for dir in [
+        global_dir(),
+        global_modes_dir(),
+        global_skills_dir(),
+        global_mcp_dir(),
+        global_cache_dir(),
+    ] {
         fs::create_dir_all(dir)?;
     }
     Ok(())
@@ -25,23 +40,41 @@ pub fn ensure_global_dirs() -> anyhow::Result<()> {
 
 // ── Project (.ship/) ──────────────────────────────────────────────────────────
 
-pub fn project_dir() -> PathBuf { PathBuf::from(".ship") }
-pub fn project_modes_dir() -> PathBuf { project_dir().join("modes") }
-pub fn agents_dir() -> PathBuf { project_dir().join("agents") }
-pub fn rules_dir() -> PathBuf { project_dir().join("rules") }
-pub fn skills_dir() -> PathBuf { project_dir().join("skills") }
-pub fn mcp_path() -> PathBuf { project_dir().join("mcp.jsonc") }
-pub fn project_ship_toml() -> PathBuf { project_dir().join("ship.toml") }
-pub fn project_ship_jsonc() -> PathBuf { project_dir().join("ship.jsonc") }
+pub fn project_dir() -> PathBuf {
+    PathBuf::from(".ship")
+}
+pub fn project_modes_dir() -> PathBuf {
+    project_dir().join("modes")
+}
+pub fn agents_dir() -> PathBuf {
+    project_dir().join("agents")
+}
+pub fn rules_dir() -> PathBuf {
+    project_dir().join("rules")
+}
+pub fn skills_dir() -> PathBuf {
+    project_dir().join("skills")
+}
+pub fn mcp_path() -> PathBuf {
+    project_dir().join("mcp.jsonc")
+}
+pub fn project_ship_toml() -> PathBuf {
+    project_dir().join("ship.toml")
+}
+pub fn project_ship_jsonc() -> PathBuf {
+    project_dir().join("ship.jsonc")
+}
 
 /// Returns true if the path has a .jsonc or .json extension.
 pub fn is_config_ext(path: &std::path::Path) -> bool {
-    path.extension().is_some_and(|x| x == "toml" || x == "jsonc" || x == "json")
+    path.extension()
+        .is_some_and(|x| x == "toml" || x == "jsonc" || x == "json")
 }
 
 /// Returns true if the path has a .jsonc or .json extension (not .toml).
 pub fn is_jsonc_ext(path: &std::path::Path) -> bool {
-    path.extension().is_some_and(|x| x == "jsonc" || x == "json")
+    path.extension()
+        .is_some_and(|x| x == "jsonc" || x == "json")
 }
 
 /// Returns true if the path is an agent config file (not mcp.* or permissions.*).
@@ -57,13 +90,17 @@ pub fn project_ship_dir_required() -> anyhow::Result<std::path::PathBuf> {
 }
 
 pub fn ensure_project_dirs() -> anyhow::Result<()> {
-    for dir in [project_dir(), project_modes_dir(), agents_dir(),
-                rules_dir(), skills_dir()] {
+    for dir in [
+        project_dir(),
+        project_modes_dir(),
+        agents_dir(),
+        rules_dir(),
+        skills_dir(),
+    ] {
         fs::create_dir_all(dir)?;
     }
     Ok(())
 }
-
 
 /// Return (agent_id, scope) pairs from project + global dirs.
 /// Scans both `.jsonc` and `.toml` files; `.jsonc` takes precedence.
@@ -96,18 +133,17 @@ pub fn list_agent_ids(local_only: bool, project_only: bool) -> Vec<(String, &'st
         }
     }
     // Global agents
-    if !project_only
-        && let Ok(entries) = fs::read_dir(global_modes_dir()) {
-            for e in entries.flatten() {
-                let path = e.path();
-                if is_config_ext(&path) {
-                    let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                    if !agents.iter().any(|(id, _)| id == &name) {
-                        agents.push((name, "global"));
-                    }
+    if !project_only && let Ok(entries) = fs::read_dir(global_modes_dir()) {
+        for e in entries.flatten() {
+            let path = e.path();
+            if is_config_ext(&path) {
+                let name = path.file_stem().unwrap().to_string_lossy().to_string();
+                if !agents.iter().any(|(id, _)| id == &name) {
+                    agents.push((name, "global"));
                 }
             }
         }
+    }
     agents
 }
 
