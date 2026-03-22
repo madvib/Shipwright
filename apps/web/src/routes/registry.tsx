@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import type { ElementType } from 'react'
 import { useState, useDeferredValue, useCallback } from 'react'
 import { Search, Download, Clock, Heart, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
@@ -10,9 +10,16 @@ import type { TypeFilter, CategoryTab } from '#/features/registry/registry-cards
 import type { ScopeFilter } from '#/features/registry/types'
 
 export const Route = createFileRoute('/registry')({
-  component: RegistryPage,
+  component: RegistryLayout,
   ssr: false,
 })
+
+function RegistryLayout() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isExactRegistry = pathname === '/registry' || pathname === '/registry/'
+  if (!isExactRegistry) return <Outlet />
+  return <RegistryPage />
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

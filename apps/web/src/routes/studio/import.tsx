@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Github, Search, ArrowLeft, Loader2, RefreshCw, Download } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
 import {
@@ -32,7 +33,11 @@ function ImportPage() {
         const data = (await res.json()) as { installations: Installation[] }
         setInstallations(data.installations ?? [])
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      toast.error('Failed to load installations', {
+        description: err instanceof Error ? err.message : 'Network request failed',
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -47,8 +52,11 @@ function ImportPage() {
         const data = (await res.json()) as GitHubRepo[]
         setRepos(data)
       }
-    } catch { /* ignore */ }
-    finally { setLoading(false); setFetched(true) }
+    } catch (err) {
+      toast.error('Failed to load repositories', {
+        description: err instanceof Error ? err.message : 'Network request failed',
+      })
+    } finally { setLoading(false); setFetched(true) }
   }
 
   const handleImportPr = async (repo: GitHubRepo) => {
@@ -67,8 +75,11 @@ function ImportPage() {
           ),
         )
       }
-    } catch { /* ignore */ }
-    finally { setImportingId(null) }
+    } catch (err) {
+      toast.error('Failed to create import PR', {
+        description: err instanceof Error ? err.message : 'Network request failed',
+      })
+    } finally { setImportingId(null) }
   }
 
   const navigate = useNavigate()
@@ -91,7 +102,12 @@ function ImportPage() {
       setSyncResult((prev) => ({ ...prev, [fullName]: 'success' }))
       // Navigate to studio to load the library
       void navigate({ to: '/studio' })
-    } catch { setSyncResult((prev) => ({ ...prev, [fullName]: 'error' })) }
+    } catch (err) {
+      setSyncResult((prev) => ({ ...prev, [fullName]: 'error' }))
+      toast.error('Failed to sync config', {
+        description: err instanceof Error ? err.message : 'Network request failed',
+      })
+    }
     finally { setSyncingRepo(null) }
   }
 

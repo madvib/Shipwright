@@ -8,7 +8,7 @@ import { VersionsTable } from '#/features/registry/VersionsTable'
 import { ClaimDialog } from '#/features/registry/ClaimDialog'
 import { PackageHeader } from '#/features/registry/PackageHeader'
 
-export const Route = createFileRoute('/registry/$path')({ component: PackageDetailPage })
+export const Route = createFileRoute('/registry/$path')({ component: PackageDetailPage, ssr: false })
 
 type DetailTab = 'skills' | 'versions'
 

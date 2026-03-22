@@ -18,7 +18,7 @@ export function LandingHero() {
         {/* Badge */}
         <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-3.5 py-1.5 text-[11px] font-medium text-primary">
           <Package className="size-3" />
-          v0.1.0 -- now in public beta
+          v0.1.0 — now in public beta
         </div>
 
         {/* Headline */}
@@ -31,7 +31,7 @@ export function LandingHero() {
         {/* Subhead */}
         <p className="mx-auto mb-8 max-w-lg text-lg leading-relaxed text-muted-foreground">
           The package manager for AI coding agents. Define skills, permissions,
-          and MCP servers once -- compile to Claude, Gemini, Codex, and Cursor.
+          and MCP servers once — compile to Claude, Gemini, Codex, and Cursor.
         </p>
 
         {/* CTAs */}

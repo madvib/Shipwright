@@ -82,6 +82,7 @@ export function McpSection({
                 )
               }
               active={expandedServer === server.name}
+              ariaExpanded={expandedServer === server.name}
               onRemove={() => onRemove(server.name)}
             />
           )
@@ -102,6 +103,7 @@ export function McpSection({
           onSetGroupPermission={(tools, perm) =>
             onSetGroupPermission(expandedServer, tools, perm)
           }
+          onClose={() => setExpandedServer(null)}
         />
       )}
     </SectionShell>

@@ -65,6 +65,7 @@ interface ChipProps {
   onRemove?: () => void
   onClick?: () => void
   active?: boolean
+  ariaExpanded?: boolean
 }
 
 export function Chip({
@@ -75,6 +76,7 @@ export function Chip({
   onRemove,
   onClick,
   active,
+  ariaExpanded,
 }: ChipProps) {
   return (
     <div
@@ -84,6 +86,7 @@ export function Chip({
           : 'border-border/60 bg-card/50 hover:border-border'
       } ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
+      {...(onClick ? { role: 'button', 'aria-expanded': ariaExpanded } : {})}
     >
       <div className="shrink-0">{icon}</div>
       <div className="flex-1 min-w-0">
@@ -94,6 +97,7 @@ export function Chip({
       {onRemove && (
         <button
           onClick={(e) => { e.stopPropagation(); onRemove() }}
+          aria-label="Remove"
           className="shrink-0 text-muted-foreground/30 hover:text-destructive transition-colors text-sm"
         >
           x

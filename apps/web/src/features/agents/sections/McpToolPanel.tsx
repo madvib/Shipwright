@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { Search } from 'lucide-react'
 import type { McpServerConfig } from '@ship/ui'
 import type { McpToolConfig, ToolPermission, ToolToggleState } from '../types'
-import { OrangeDot } from './SectionShell'
 
 // ── Three-state toggle ──────────────────────────────────────────────────────
 
@@ -29,9 +28,12 @@ function ToolToggle({
   const knobPos =
     permission === 'deny' ? 'left-[2px]' : 'left-[14px]'
 
+  const next = nextPermission(permission)
+
   return (
     <button
-      onClick={() => onChange(nextPermission(permission))}
+      onClick={() => onChange(next)}
+      aria-label={`Permission: ${permission}. Click to change to ${next}`}
       className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${bg}`}
     >
       <span
@@ -133,6 +135,7 @@ interface McpToolPanelProps {
   toolStates: ToolToggleState
   onSetPermission: (tool: string, perm: ToolPermission) => void
   onSetGroupPermission: (tools: string[], perm: ToolPermission) => void
+  onClose?: () => void
 }
 
 export function McpToolPanel({
@@ -142,6 +145,7 @@ export function McpToolPanel({
   toolStates,
   onSetPermission,
   onSetGroupPermission,
+  onClose,
 }: McpToolPanelProps) {
   const [query, setQuery] = useState('')
 
@@ -260,13 +264,24 @@ export function McpToolPanel({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <button className="rounded border border-border/40 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:border-primary hover:text-primary transition-colors">
+          <button
+            onClick={() => {
+              for (const t of tools) {
+                onSetPermission(t.name, 'allow')
+              }
+            }}
+            className="rounded border border-border/40 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:border-primary hover:text-primary transition-colors"
+          >
             Reset to defaults
           </button>
-          <button className="rounded border border-border/40 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center gap-1">
-            Save
-            <OrangeDot />
-          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="rounded border border-border/40 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:border-primary hover:text-primary transition-colors"
+            >
+              Done
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -131,7 +131,7 @@ function ToolScopeDemo() {
   return (
     <div className="w-full shrink-0 rounded-lg border border-border/60 bg-background/60 p-3 sm:w-72">
       <div className="mb-2 text-[9px] font-semibold text-muted-foreground/50">
-        github MCP -- web-lane agent
+        github MCP — web-lane agent
       </div>
       {TOOL_ROWS.map((row) => (
         <div

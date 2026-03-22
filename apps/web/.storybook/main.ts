@@ -23,11 +23,20 @@ const config: StorybookConfig = {
       '@ship/ui': fileURLToPath(new URL('../../../packages/ui/src/index.ts', import.meta.url)),
       '@ship/primitives': fileURLToPath(new URL('../../../packages/primitives/src/index.tsx', import.meta.url)),
     }
-    config.resolve.dedupe = ['react', 'react-dom']
+    config.resolve.dedupe = ['react', 'react-dom', '@codemirror/state', '@codemirror/view']
 
     // Exclude the WASM compiler from optimization to avoid build errors
     config.optimizeDeps ??= {}
     config.optimizeDeps.exclude = ['@ship/compiler']
+
+    // Allow pnpm store for fonts and hoisted deps
+    config.server ??= {}
+    config.server.fs ??= {}
+    config.server.fs.allow = [
+      ...(config.server.fs.allow ?? []),
+      fileURLToPath(new URL('../../../', import.meta.url)),
+      '/home/dev/.local/share/pnpm/store',
+    ]
 
     return config
   },

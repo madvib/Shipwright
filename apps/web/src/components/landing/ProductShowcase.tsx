@@ -188,7 +188,7 @@ function OutputPreview() {
           {'      '}
           <span className="text-amber-300">{'"Bash(git *)"'}</span>
         </div>
-        <div>{'    ],'},</div>
+        <div>{'    ],'}</div>
         <div>
           {'    '}
           <span className="text-sky-300">{'"deny"'}</span>
@@ -199,7 +199,7 @@ function OutputPreview() {
           <span className="text-amber-300">{'"Bash(rm -rf *)"'}</span>
         </div>
         <div>{'    ]'}</div>
-        <div>{'  },'},</div>
+        <div>{'  },'}</div>
         <div>
           {'  '}
           <span className="text-sky-300">{'"model"'}</span>

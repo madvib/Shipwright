@@ -84,7 +84,8 @@ export function RuleEditorDialog({ open, onOpenChange, rule, onSave, onDelete }:
           <div className="space-y-4 px-5 py-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Filename</label>
-              <input ref={inputRef} type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} placeholder="my-rule.md" className={inputCls} />
+              <input ref={inputRef} type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} placeholder="my-rule.md" aria-describedby="filename-hint" className={inputCls} />
+              <p id="filename-hint" className="text-[11px] text-muted-foreground/70">Filename must end with .md extension</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Content</label>

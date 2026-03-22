@@ -40,6 +40,7 @@ export function StudioDock({ previewOpen, onTogglePreview }: StudioDockProps) {
           return (
             <button
               key={item.to}
+              aria-label={item.label}
               onClick={() => void navigate({ to: item.to as string })}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}

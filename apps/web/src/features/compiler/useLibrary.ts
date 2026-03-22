@@ -12,7 +12,8 @@ function loadStored(): { library: ProjectLibrary; modeName: string; selectedProv
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
     if (!raw) return null
     return JSON.parse(raw) as { library: ProjectLibrary; modeName: string; selectedProviders: string[] }
-  } catch {
+  } catch (err) {
+    console.warn('[useLibrary] Failed to parse stored library from localStorage:', err)
     return null
   }
 }
@@ -32,7 +33,9 @@ export function useLibrary() {
       const value = JSON.stringify({ library, modeName, selectedProviders })
       window.localStorage.setItem(STORAGE_KEY, value)
       window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: value }))
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[useLibrary] Failed to persist library to localStorage:', err)
+    }
   }, [library, modeName, selectedProviders])
 
   // Auto-compile on change (debounced 600ms)

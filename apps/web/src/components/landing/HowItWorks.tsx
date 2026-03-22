@@ -11,7 +11,7 @@ const STEPS = [
     num: '2',
     title: 'Compile',
     description:
-      'One click generates config files for every provider you target. CLAUDE.md, .mcp.json, GEMINI.md -- all at once.',
+      'One click generates config files for every provider you target. CLAUDE.md, .mcp.json, GEMINI.md — all at once.',
   },
   {
     num: '3',
