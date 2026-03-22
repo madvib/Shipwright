@@ -11,7 +11,7 @@ const meta: Meta<typeof SkillsSection> = {
 export default meta
 type Story = StoryObj<typeof SkillsSection>
 
-const makeSkill = (id: string, name: string, source: string, version?: string): Skill => ({
+const makeSkill = (id: string, name: string, source: Skill['source'], version?: string): Skill => ({
   id,
   name,
   content: `# ${name}\n\nSkill content for ${name}.`,
@@ -56,7 +56,7 @@ export const FiveSkills: Story = {
 export const NoAddHandler: Story = {
   args: {
     skills: [
-      makeSkill('readonly-skill', 'readonly-skill', 'project'),
+      makeSkill('readonly-skill', 'readonly-skill', 'custom'),
     ],
     onRemove: fn(),
   },

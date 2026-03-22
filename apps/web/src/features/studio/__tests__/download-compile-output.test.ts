@@ -4,6 +4,7 @@ import type { CompileResult } from '#/features/compiler/types'
 import type { AgentProfile } from '#/features/agents/types'
 import { DEFAULT_SETTINGS } from '#/features/agents/types'
 import { DEFAULT_PERMISSIONS } from '@ship/ui'
+import type { ProjectLibrary } from '@ship/ui'
 
 function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
   return {
@@ -242,8 +243,12 @@ describe('buildShipManifest', () => {
   })
 
   it('uses library skills when no agent is provided', () => {
-    const library = {
+    const library: ProjectLibrary = {
       skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const }],
+      agent_profiles: [],
+      claude_team_agents: [],
+      env: {},
+      available_models: [],
     }
     const raw = buildShipManifest(library)
     const manifest = JSON.parse(raw)
@@ -253,8 +258,12 @@ describe('buildShipManifest', () => {
 
   it('prefers agent skills over library skills', () => {
     const agent = makeAgent({ skills: [{ id: 'agent-skill', name: 'agent-skill', content: '', source: 'custom' }] })
-    const library = {
+    const library: ProjectLibrary = {
       skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const }],
+      agent_profiles: [],
+      claude_team_agents: [],
+      env: {},
+      available_models: [],
     }
     const raw = buildShipManifest(library, agent)
     const manifest = JSON.parse(raw)
@@ -311,7 +320,7 @@ describe('collectShipSourceFiles', () => {
   })
 
   it('does not include agent config when no activeAgent', () => {
-    const files = collectShipSourceFiles({ skills: [] })
+    const files = collectShipSourceFiles({ skills: [], agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] })
     expect(files).toHaveLength(1)
     expect(files[0].path).toBe('.ship/ship.jsonc')
   })

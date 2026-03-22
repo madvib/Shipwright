@@ -102,7 +102,7 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
 
   const onConnect = useCallback(
     (connection: Connection) =>
-      setEdges((eds) =>
+      setEdges((eds: Edge[]) =>
         addEdge({ ...connection, type: 'channel', data: { channelType: 'dispatch' } }, eds),
       ),
     [setEdges],
@@ -112,7 +112,7 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
     (type: string, data: Record<string, unknown>) => {
       const id = `${type}-${Date.now()}`
       const item: Node = { id, type, position: { x: 400, y: 300 }, data }
-      setNodes((nds) => [...nds, item])
+      setNodes((nds: Node[]) => [...nds, item])
       setSelectedNodeId(id)
     },
     [setNodes],
@@ -120,15 +120,15 @@ export function WorkflowCanvas({ preset, presetName, onBack }: Props) {
 
   const updateNodeData = useCallback(
     (id: string, data: Record<string, unknown>) => {
-      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data } : n)))
+      setNodes((nds: Node[]) => nds.map((n: Node) => (n.id === id ? { ...n, data } : n)))
     },
     [setNodes],
   )
 
   const deleteNode = useCallback(
     (id: string) => {
-      setNodes((nds) => nds.filter((n) => n.id !== id))
-      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
+      setNodes((nds: Node[]) => nds.filter((n: Node) => n.id !== id))
+      setEdges((eds: Edge[]) => eds.filter((e: Edge) => e.source !== id && e.target !== id))
       setSelectedNodeId(null)
     },
     [setNodes, setEdges],

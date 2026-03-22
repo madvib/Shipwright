@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { AgentHeader } from './AgentHeader'
 import type { AgentProfile } from '../types'
-import { DEMO_AGENT, DEFAULT_SETTINGS } from '../types'
+import { DEMO_AGENT } from '../types'
 
 const meta: Meta<typeof AgentHeader> = {
   title: 'Agents/AgentHeader',
