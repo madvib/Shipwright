@@ -28,9 +28,9 @@ const FEATURES: FeatureCard[] = [
     icon: Code2,
     iconColor: 'text-blue-400',
     iconBg: 'bg-blue-500/10',
-    title: 'Write once, compile everywhere',
+    title: 'Full provider configuration',
     description:
-      'One .ship/ directory compiles to CLAUDE.md, GEMINI.md, AGENTS.md, .cursor/rules, and .mcp.json simultaneously. Switch providers without reconfiguring.',
+      'Near-complete support for Claude Code, Cursor, Gemini CLI, and Codex — settings, permissions, hooks, rules, and MCP servers. Not just context files — the full config surface.',
   },
   {
     icon: Zap,

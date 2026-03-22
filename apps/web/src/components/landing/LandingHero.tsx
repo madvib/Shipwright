@@ -30,8 +30,8 @@ export function LandingHero() {
 
         {/* Subhead */}
         <p className="mx-auto mb-8 max-w-lg text-lg leading-relaxed text-muted-foreground">
-          The package manager for AI coding agents. Define skills, permissions,
-          and MCP servers once — compile to Claude, Gemini, Codex, and Cursor.
+          Configure AI coding agents programmatically. Every agent gets exactly
+          the skills, permissions, and tools it needs — nothing more.
         </p>
 
         {/* CTAs */}

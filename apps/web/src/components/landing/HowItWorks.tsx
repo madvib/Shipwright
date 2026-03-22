@@ -15,11 +15,11 @@ const STEPS = [
   },
   {
     num: '3',
-    title: 'Use',
+    title: 'Activate',
     description: 'Run ',
-    cmd: 'ship use',
+    cmd: 'ship use <agent>',
     descriptionAfter:
-      ' in your project. Config files are emitted, agent is ready.',
+      ' to compile and emit config files on demand. Switch agents instantly.',
   },
 ]
 
@@ -56,7 +56,7 @@ export function HowItWorks() {
             </p>
             {step.num === '3' && (
               <div className="mt-2.5 rounded-md border border-border/60 bg-background/60 px-2.5 py-2 font-mono text-[10px] text-emerald-400">
-                $ ship use
+                $ ship use web-lane
               </div>
             )}
             {/* Arrow connector */}

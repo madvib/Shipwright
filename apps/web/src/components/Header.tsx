@@ -33,8 +33,9 @@ function ThemeToggle() {
   )
 }
 
-function NavDropdown({ label, items, isActive }: {
+function NavDropdown({ label, href, items, isActive }: {
   label: string
+  href: string
   items: { icon: typeof Users; label: string; href: string; desc?: string }[]
   isActive: boolean
 }) {
@@ -46,11 +47,15 @@ function NavDropdown({ label, items, isActive }: {
 
   return (
     <div className="relative" onMouseEnter={enter} onMouseLeave={leave}>
-      <span className={`cursor-default rounded-md px-3 py-1.5 text-sm transition select-none ${
-        isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-      }`}>
+      <Link
+        to={href as string}
+        onClick={() => setOpen(false)}
+        className={`rounded-md px-3 py-1.5 text-sm transition select-none no-underline ${
+          isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
         {label}
-      </span>
+      </Link>
       {open && (
         <div className="absolute left-0 top-full pt-1 z-50">
           <div className="w-56 rounded-xl border border-border/60 bg-card shadow-lg py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
@@ -183,8 +188,8 @@ export default function Header() {
         <div className="flex-1" />
 
         <div className="hidden sm:flex items-center gap-1">
-          <NavDropdown label="Studio" items={STUDIO_ITEMS} isActive={isStudio} />
-          <NavDropdown label="Registry" items={REGISTRY_ITEMS} isActive={isRegistry} />
+          <NavDropdown label="Studio" href="/studio" items={STUDIO_ITEMS} isActive={isStudio} />
+          <NavDropdown label="Registry" href="/registry" items={REGISTRY_ITEMS} isActive={isRegistry} />
         </div>
 
         <div className="flex items-center gap-2">

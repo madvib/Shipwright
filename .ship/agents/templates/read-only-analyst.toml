@@ -1,0 +1,25 @@
+# Template: Read-Only Analyst
+# Zero write permissions. Reads code, answers questions, generates reports.
+
+[agent]
+id = "template-read-only-analyst"
+name = "Read-Only Analyst"
+version = "0.1.0"
+description = "Reads and analyzes code without any write access — safe for exploration and auditing"
+providers = ["claude"]
+
+[skills]
+refs = []
+
+[mcp]
+servers = []
+
+[permissions]
+preset = "ship-readonly"
+
+[rules]
+inline = """
+You analyze code and answer questions. You have no write access.
+Be thorough in your analysis. Cite specific files and line numbers.
+If asked to make changes, explain what you would change and why, but do not attempt writes.
+"""

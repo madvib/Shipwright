@@ -1,0 +1,27 @@
+# Template: Frontend Developer
+# Scoped to UI work. Components, styling, accessibility.
+
+[agent]
+id = "template-frontend-dev"
+name = "Frontend Dev"
+version = "0.1.0"
+description = "UI components, styling, and accessibility — scoped to frontend files"
+providers = ["claude", "cursor"]
+
+[skills]
+refs = []
+
+[mcp]
+servers = []
+
+[permissions]
+preset = "ship-autonomous"
+tools_deny = ["Bash(rm -rf *)", "Bash(git push --force*)"]
+
+[rules]
+inline = """
+Your domain is frontend code — components, styling, and user interactions.
+Use the project's existing component library and design system.
+Always consider mobile viewports and keyboard navigation.
+Run tests before marking work done.
+"""

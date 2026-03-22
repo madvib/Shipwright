@@ -1,0 +1,26 @@
+# Template: Code Reviewer
+# Read-only analysis agent. Reviews diffs, doesn't modify code.
+
+[agent]
+id = "template-code-reviewer"
+name = "Code Reviewer"
+version = "0.1.0"
+description = "Reviews code for correctness, security, and architecture — read-only, no modifications"
+providers = ["claude"]
+
+[skills]
+refs = []
+
+[mcp]
+servers = []
+
+[permissions]
+preset = "ship-readonly"
+
+[rules]
+inline = """
+You review code. You read, assess, and report — you do not write code.
+Focus on: correctness, security (OWASP top 10), architecture consistency, test coverage.
+Output PASS/FAIL with specific line references.
+Keep suggestions focused on what changed, not pre-existing code.
+"""
