@@ -3,7 +3,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::Row;
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::events::{EventAction, EventEntity, EventRecord};
@@ -11,7 +10,6 @@ use crate::gen_nanoid;
 
 #[allow(clippy::too_many_arguments)]
 pub fn insert_event(
-    ship_dir: &Path,
     actor: &str,
     entity: &EventEntity,
     entity_id: Option<&str>,
@@ -21,7 +19,7 @@ pub fn insert_event(
     session_id: Option<&str>,
     job_id: Option<&str>,
 ) -> Result<EventRecord> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let id = gen_nanoid();
     let now = Utc::now().to_rfc3339();
     let entity_type = entity.as_str();
@@ -63,11 +61,10 @@ pub fn insert_event(
 
 // Column order: 0:id 1:actor 2:entity_type 3:entity_id 4:action 5:detail
 //               6:workspace_id 7:session_id 8:job_id 9:created_at
-const SELECT_COLS: &str =
-    "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
+const SELECT_COLS: &str = "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
 
-pub fn list_all_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_all_events() -> Result<Vec<EventRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {SELECT_COLS} FROM event_log ORDER BY created_at ASC, rowid ASC"
@@ -79,11 +76,10 @@ pub fn list_all_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
 }
 
 pub fn list_events_since_time(
-    ship_dir: &Path,
     since: &DateTime<Utc>,
     limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let since_str = since.to_rfc3339();
     let rows = match limit {
         Some(n) => block_on(async {
@@ -109,8 +105,8 @@ pub fn list_events_since_time(
     rows.iter().map(row_to_record).collect()
 }
 
-pub fn list_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_recent_events(limit: usize) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {SELECT_COLS} FROM event_log
@@ -125,8 +121,8 @@ pub fn list_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventReco
     Ok(records)
 }
 
-pub fn list_events_by_job(ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_events_by_job(job_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {SELECT_COLS} FROM event_log WHERE job_id = ? ORDER BY created_at ASC, rowid ASC"
@@ -138,8 +134,8 @@ pub fn list_events_by_job(ship_dir: &Path, job_id: &str) -> Result<Vec<EventReco
     rows.iter().map(row_to_record).collect()
 }
 
-pub fn list_events_by_session(ship_dir: &Path, session_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_events_by_session(session_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {SELECT_COLS} FROM event_log WHERE session_id = ? ORDER BY created_at ASC, rowid ASC"
@@ -151,8 +147,8 @@ pub fn list_events_by_session(ship_dir: &Path, session_id: &str) -> Result<Vec<E
     rows.iter().map(row_to_record).collect()
 }
 
-pub fn list_events_by_workspace(ship_dir: &Path, workspace_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_events_by_workspace(workspace_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {SELECT_COLS} FROM event_log WHERE workspace_id = ? ORDER BY created_at ASC, rowid ASC"
@@ -164,61 +160,12 @@ pub fn list_events_by_workspace(ship_dir: &Path, workspace_id: &str) -> Result<V
     rows.iter().map(row_to_record).collect()
 }
 
-/// Migrate existing job_log entries into event_log.
-///
-/// Each job_log row becomes an event with entity_type='job', action='log'.
-/// Already-migrated rows are skipped (idempotent via INSERT OR IGNORE on nanoid).
-/// Returns the number of rows migrated.
-pub fn migrate_job_log_to_events(ship_dir: &Path) -> Result<usize> {
-    let mut conn = open_db(ship_dir)?;
-
-    // Read all job_log rows
-    let rows = block_on(async {
-        sqlx::query("SELECT job_id, branch, message, actor, created_at FROM job_log ORDER BY id ASC")
-            .fetch_all(&mut conn)
-            .await
-    })?;
-
-    let mut migrated = 0usize;
-    for row in &rows {
-        let job_id: Option<String> = row.get(0);
-        let _branch: Option<String> = row.get(1);
-        let message: String = row.get(2);
-        let actor: Option<String> = row.get(3);
-        let created_at: String = row.get(4);
-
-        let id = crate::gen_nanoid();
-        let actor_str = actor.as_deref().unwrap_or("ship");
-        let entity_id = job_id.as_deref();
-
-        block_on(async {
-            sqlx::query(
-                "INSERT INTO event_log \
-                 (id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at) \
-                 VALUES (?, ?, 'job', ?, 'log', ?, NULL, NULL, ?, ?)",
-            )
-            .bind(&id)
-            .bind(actor_str)
-            .bind(entity_id)
-            .bind(&message)
-            .bind(job_id.as_deref())
-            .bind(&created_at)
-            .execute(&mut conn)
-            .await
-        })?;
-        migrated += 1;
-    }
-
-    Ok(migrated)
-}
-
 /// Record a gate pass/fail outcome as an event.
 ///
 /// Creates an event with entity=Gate, entity_id=job_id, action=Pass or Fail.
 /// If `passed`, also updates the job status to "complete".
 /// If failed, the job stays "running" so it can be retried.
 pub fn record_gate_outcome(
-    ship_dir: &Path,
     job_id: &str,
     passed: bool,
     evidence: &str,
@@ -229,7 +176,6 @@ pub fn record_gate_outcome(
         EventAction::Fail
     };
     let record = insert_event(
-        ship_dir,
         "ship",
         &EventEntity::Gate,
         Some(job_id),
@@ -240,14 +186,14 @@ pub fn record_gate_outcome(
         Some(job_id),
     )?;
     if passed {
-        crate::db::jobs::update_job_status(ship_dir, job_id, "complete")?;
+        crate::db::jobs::update_job_status(job_id, "complete")?;
     }
     Ok(record)
 }
 
 /// List gate outcomes (pass/fail events) for a specific job.
-pub fn list_gate_outcomes(ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_gate_outcomes(job_id: &str) -> Result<Vec<EventRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {SELECT_COLS} FROM event_log \
@@ -268,8 +214,7 @@ fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
     let timestamp = created_at
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
-            chrono::DateTime::parse_from_rfc3339(&created_at)
-                .map(|dt| dt.with_timezone(&Utc))
+            chrono::DateTime::parse_from_rfc3339(&created_at).map(|dt| dt.with_timezone(&Utc))
         })
         .unwrap_or_else(|_| Utc::now());
 

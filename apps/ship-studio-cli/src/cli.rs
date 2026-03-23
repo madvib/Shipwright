@@ -3,15 +3,29 @@ use std::path::PathBuf;
 
 pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 
-const AFTER_HELP: &str = "\x1b[1mGetting Started:\x1b[0m
-  ship init              Scaffold .ship/ in the current project
-  ship agent create id   Create an agent definition
+const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
+  ship init [--from url] Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
-  ship compile           Re-compile after editing agent config
+  ship status            Show active agent
+  ship compile           Re-compile after editing config
+  ship view              Browse state in the TUI
+
+\x1b[1mPackages:\x1b[0m
+  ship add <package>     Add a dependency
+  ship install           Resolve all dependencies
+  ship audit             Scan for hidden Unicode (security)
+  ship publish           Share your package on the registry
+
+\x1b[1mConfiguration:\x1b[0m
+  ship agents create <n> Create an agent definition
+  ship skills add <src>  Install a skill
+  ship mcp add-stdio ... Register an MCP server
+  ship config set k v    Set a user preference
+  ship convert <source>  Convert provider configs to .ship/
 
 \x1b[1mLearn More:\x1b[0m
-  ship help topics       List available help topics
-  ship help <topic>      Show detailed help for a topic
+  ship docs topics       List help topics
+  ship docs <topic>      Detailed help for a topic
   https://getship.dev/docs";
 
 #[derive(Parser, Debug)]
@@ -39,6 +53,9 @@ pub enum Commands {
         /// Overwrite existing .ship/ configuration
         #[arg(long)]
         force: bool,
+        /// Fetch a JSON config bundle from a URL and scaffold .ship/ from it
+        #[arg(long)]
+        from: Option<String>,
     },
 
     /// Authenticate with getship.dev
@@ -106,12 +123,14 @@ pub enum Commands {
 
     // ── Agent Configuration ──────────────────────────────────────────────────
     /// Manage agents (create, list, edit, delete, clone)
-    Agent {
+    #[command(name = "agents")]
+    Agents {
         #[command(subcommand)]
         action: AgentCommands,
     },
 
     /// Manage agent skills (add, list, remove, create)
+    #[command(name = "skills")]
     Skill {
         #[command(subcommand)]
         action: SkillCommands,
@@ -144,14 +163,28 @@ pub enum Commands {
         tag: Option<String>,
     },
 
-    /// Add a package dependency to .ship/ship.toml and install it
+    /// Add a package dependency or import config from a Studio share link
     Add {
         /// Package path with optional version: github.com/owner/repo[@version]
-        package: String,
+        #[arg(required_unless_present = "from")]
+        package: Option<String>,
+        /// Import agent config from a Studio share link (MCP or JSON)
+        #[arg(long, conflicts_with = "package")]
+        from: Option<String>,
     },
 
-    /// Import an agent from a getship.dev URL, local path, or provider config
-    Import {
+    /// Scan files for hidden Unicode characters (prompt injection vectors)
+    Audit {
+        /// Path to scan (defaults to .ship/ in current directory)
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Emit findings as JSON array
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Convert provider config files (CLAUDE.md, .cursor/) into .ship/ format
+    Convert {
         /// A getship.dev URL (e.g. https://getship.dev/p/<id>), local path, or provider config
         source: String,
     },
@@ -163,24 +196,13 @@ pub enum Commands {
         action: EventsCommands,
     },
 
-    /// Browse workflow state in a terminal UI (read-only)
+    /// Browse and manage project state in the terminal UI
     View,
 
-    /// Show detailed help for a topic (run `ship help topics` to list)
-    Help {
+    /// Show detailed help for a topic (run `ship docs topics` to list)
+    Docs {
         /// Topic name (e.g. agents, skills, mcp, compile, providers)
         topic: Option<String>,
-    },
-
-    // ── Hidden / Internal ────────────────────────────────────────────────────
-    #[command(hide = true)]
-    Surface {
-        /// Write output to docs/surface.md
-        #[arg(long)]
-        emit: bool,
-        /// Diff against committed docs/surface.md; exit 1 if drift detected
-        #[arg(long)]
-        check: bool,
     },
 
     #[command(hide = true)]

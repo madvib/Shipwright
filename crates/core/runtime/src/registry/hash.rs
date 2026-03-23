@@ -15,8 +15,7 @@ fn should_exclude(rel_path: &str) -> bool {
     }
     // Exclude OS / editor noise files.
     let filename = parts.last().unwrap_or(&"");
-    matches!(*filename, ".DS_Store" | "Thumbs.db")
-        || filename.ends_with(".swp")
+    matches!(*filename, ".DS_Store" | "Thumbs.db") || filename.ends_with(".swp")
 }
 
 /// Compute a deterministic SHA-256 content hash for the file tree at `root`.
@@ -85,8 +84,7 @@ pub fn compute_tree_hash(root: &Path) -> anyhow::Result<String> {
 /// Compute SHA-256 hash of a single file.
 /// Returns `"sha256:<lowercase-hex>"`.
 pub fn compute_file_hash(path: &Path) -> anyhow::Result<String> {
-    let content = std::fs::read(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let content = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     Ok(format!("sha256:{}", hex::encode_sha256(&content)))
 }
 
@@ -131,7 +129,10 @@ mod tests {
         fs::write(dir.path().join(".git").join("HEAD"), "ref: refs/heads/main")?;
         let hash_with_git = compute_tree_hash(dir.path())?;
 
-        assert_eq!(hash_without_git, hash_with_git, ".git/ must not affect hash");
+        assert_eq!(
+            hash_without_git, hash_with_git,
+            ".git/ must not affect hash"
+        );
         Ok(())
     }
 
@@ -160,7 +161,10 @@ mod tests {
         fs::write(dir.path().join(".DS_Store"), "binary garbage")?;
         let hash_with_ds = compute_tree_hash(dir.path())?;
 
-        assert_eq!(hash_without_ds, hash_with_ds, ".DS_Store must not affect hash");
+        assert_eq!(
+            hash_without_ds, hash_with_ds,
+            ".DS_Store must not affect hash"
+        );
         Ok(())
     }
 

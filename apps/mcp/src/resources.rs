@@ -46,7 +46,11 @@ pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResource
         tmpl("ship://specs/{id}", "Spec", "text/markdown"),
         tmpl("ship://adrs/{id}", "ADR", "text/markdown"),
         tmpl("ship://notes/{id}", "Note", "text/markdown"),
-        tmpl("ship://workspaces/{branch}", "Workspace", "application/json"),
+        tmpl(
+            "ship://workspaces/{branch}",
+            "Workspace",
+            "application/json",
+        ),
         tmpl(
             "ship://workspaces/{branch}/provider-matrix",
             "Workspace Provider Matrix",
@@ -57,8 +61,16 @@ pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResource
             "Workspace Active Session",
             "application/json",
         ),
-        tmpl("ship://sessions/{workspace}", "Workspace Sessions", "application/json"),
-        tmpl("ship://providers/{id}/models", "Provider Models", "application/json"),
+        tmpl(
+            "ship://sessions/{workspace}",
+            "Workspace Sessions",
+            "application/json",
+        ),
+        tmpl(
+            "ship://providers/{id}/models",
+            "Provider Models",
+            "application/json",
+        ),
         tmpl("ship://events/{limit}", "Recent Events", "text/plain"),
         tmpl("ship://skills/{id}", "Skill", "text/markdown"),
     ]
@@ -104,8 +116,7 @@ pub async fn resolve_resource_uri(
         return Some(project_info.await);
     }
     if uri == "ship://adrs" {
-        let ship_dir = dir.join(".ship");
-        return match runtime::db::adrs::list_adrs(&ship_dir) {
+        return match runtime::db::adrs::list_adrs() {
             Ok(adrs) if adrs.is_empty() => Some("No ADRs found.".to_string()),
             Ok(adrs) => {
                 let mut out = String::from("ADRs:\n");
@@ -118,8 +129,7 @@ pub async fn resolve_resource_uri(
         };
     }
     if let Some(id) = uri.strip_prefix("ship://adrs/") {
-        let ship_dir = dir.join(".ship");
-        return runtime::db::adrs::get_adr(&ship_dir, id)
+        return runtime::db::adrs::get_adr(id)
             .ok()
             .flatten()
             .map(|a| {
@@ -130,8 +140,7 @@ pub async fn resolve_resource_uri(
             });
     }
     if uri == "ship://notes" {
-        let ship_dir = dir.join(".ship");
-        return match runtime::db::notes::list_notes(&ship_dir, None) {
+        return match runtime::db::notes::list_notes(None) {
             Ok(notes) if notes.is_empty() => Some("No notes found.".to_string()),
             Ok(notes) => {
                 let mut out = String::from("Notes:\n");
@@ -144,8 +153,7 @@ pub async fn resolve_resource_uri(
         };
     }
     if let Some(id) = uri.strip_prefix("ship://notes/") {
-        let ship_dir = dir.join(".ship");
-        return runtime::db::notes::get_note(&ship_dir, id)
+        return runtime::db::notes::get_note(id)
             .ok()
             .flatten()
             .map(|n| format!("Title: {}\n\n{}", n.title, n.content));
@@ -166,9 +174,7 @@ pub async fn resolve_resource_uri(
     }
     if uri == "ship://log" {
         return match read_log(dir) {
-            Ok(content)
-                if content.trim().is_empty() || content.trim() == "# Project Log" =>
-            {
+            Ok(content) if content.trim().is_empty() || content.trim() == "# Project Log" => {
                 Some("No log entries yet.".to_string())
             }
             Ok(content) => Some(content),

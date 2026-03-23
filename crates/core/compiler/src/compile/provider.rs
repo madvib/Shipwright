@@ -10,6 +10,8 @@ pub enum McpKey {
     McpServers,
     /// `"mcp_servers"` — Codex/OpenAI
     McpServersUnderscored,
+    /// `"mcp"` — OpenCode
+    Mcp,
 }
 
 impl McpKey {
@@ -17,6 +19,7 @@ impl McpKey {
         match self {
             Self::McpServers => "mcpServers",
             Self::McpServersUnderscored => "mcp_servers",
+            Self::Mcp => "mcp",
         }
     }
 }
@@ -56,6 +59,8 @@ pub enum SkillsDir {
     Agents,
     /// `.cursor/skills/<id>/SKILL.md`
     Cursor,
+    /// `.opencode/skills/<id>/SKILL.md`
+    OpenCode,
     None,
 }
 
@@ -66,6 +71,7 @@ impl SkillsDir {
             Self::Gemini => Some(".agents/skills"),
             Self::Agents => Some(".agents/skills"),
             Self::Cursor => Some(".cursor/skills"),
+            Self::OpenCode => Some(".opencode/skills"),
             Self::None => None,
         }
     }
@@ -198,6 +204,24 @@ pub(super) static PROVIDERS: &[ProviderDescriptor] = &[
         http_url_field: "url",
         mcp_config_path: Some(".cursor/mcp.json"),
     },
+    ProviderDescriptor {
+        id: "opencode",
+        name: "OpenCode",
+        // Source: https://opencode.ai/docs/config/
+        // Config: opencode.json at project root. MCP servers nested under "mcp" key.
+        // MCP uses type: "local"/"remote", command as array, "environment" not "env".
+        mcp_key: McpKey::Mcp,
+        context_file: ContextFile::AgentsMd,
+        // Skills discovered from .opencode/skills/<name>/SKILL.md
+        skills_dir: SkillsDir::OpenCode,
+        // Agents defined inline in opencode.json "agent" object, not separate files.
+        agents_dir: AgentsDir::None,
+        emit_type_field: true, // OpenCode uses "type": "local"/"remote"
+        sse_url_field: "url",
+        http_url_field: "url",
+        // MCP is nested inside opencode.json — no separate file.
+        mcp_config_path: None,
+    },
 ];
 
 /// Feature support flags for a provider.
@@ -248,6 +272,12 @@ impl ProviderDescriptor {
                 supports_hooks: true,
                 supports_tool_permissions: true,
                 supports_memory: false,
+            },
+            "opencode" => ProviderFeatureFlags {
+                supports_mcp: true,
+                supports_hooks: false, // Not documented in OpenCode config reference
+                supports_tool_permissions: true,
+                supports_memory: true,
             },
             // Unknown providers: conservative defaults
             _ => ProviderFeatureFlags {

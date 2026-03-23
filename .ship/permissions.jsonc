@@ -1,0 +1,83 @@
+{
+  // Ship permission presets — strict → loose continuum.
+  "$schema": "../schemas/permissions.schema.json",
+  //
+  // Referenced via: "permissions": { "preset": "<name>" }
+  // Presets are templates, not security boundaries.
+
+  "ship-readonly": {
+    // Read-only analysis. Reviewer agents, gate agents, auditors, tutors.
+    "default_mode": "plan",
+    "tools_allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(ship *)",
+      "mcp__ship__*",
+      "mcp__*__read*",
+      "mcp__*__list*",
+      "mcp__*__search*",
+    ],
+    "tools_deny": [
+      "Write(*)",
+      "Edit(*)",
+      "Bash(rm*)",
+    ],
+  },
+
+  "ship-standard": {
+    // Interactive sessions. Human-paired work, commander, brainstorming.
+    "default_mode": "default",
+    "tools_allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(ship *)",
+      "mcp__ship__*",
+    ],
+    "tools_deny": [
+      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
+      "Write(**/migrations/**/*.sql)",
+      "Edit(**/migrations/**/*.sql)",
+    ],
+  },
+
+  "ship-autonomous": {
+    // Dispatched specialist agents in worktrees. Zero prompts.
+    // Deny list is a guardrail, not a security boundary. Real security = worktree isolation + gate review.
+    "default_mode": "dontAsk",
+    "tools_allow": [
+      "Read", "Write", "Edit", "Glob", "Grep",
+      "Bash(*)",
+      "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push*)",
+      "Bash(cargo publish*)",
+      "Bash(npm publish*)",
+      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
+      "Write(**/migrations/**/*.sql)",
+      "Edit(**/migrations/**/*.sql)",
+    ],
+  },
+
+  "ship-elevated": {
+    // Deploy and release agents. Unlocks git push and publish.
+    "default_mode": "dontAsk",
+    "tools_allow": [
+      "Read", "Write", "Edit", "Glob", "Grep",
+      "Bash(*)",
+      "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
+      "Write(**/migrations/**/*.sql)",
+      "Edit(**/migrations/**/*.sql)",
+    ],
+  },
+}

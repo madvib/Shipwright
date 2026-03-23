@@ -93,6 +93,7 @@ pub fn resolved(servers: Vec<McpServerConfig>) -> ResolvedConfig {
         codex_shell_env_policy: None,
         codex_notify: None,
         codex_settings_extra: None,
+        opencode_settings_extra: None,
         cursor_environment: None,
         cursor_settings_extra: None,
         claude_theme: None,

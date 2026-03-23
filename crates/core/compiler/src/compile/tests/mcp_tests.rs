@@ -10,7 +10,13 @@ use super::fixtures::*;
 fn ship_server_always_first() {
     let r = resolved(vec![make_server("github"), make_server("linear")]);
     let out = compile(&r, "claude").unwrap();
-    let keys: Vec<&str> = out.mcp_servers.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+    let keys: Vec<&str> = out
+        .mcp_servers
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
     assert_eq!(keys[0], "ship", "ship server must be first in MCP output");
 }
 
@@ -60,11 +66,17 @@ fn http_server_url_field_per_provider() {
     let r = resolved(vec![s]);
 
     let claude_out = compile(&r, "claude").unwrap();
-    assert!(claude_out.mcp_servers["remote"].get("url").is_some(), "Claude uses 'url'");
+    assert!(
+        claude_out.mcp_servers["remote"].get("url").is_some(),
+        "Claude uses 'url'"
+    );
     assert!(claude_out.mcp_servers["remote"].get("httpUrl").is_none());
 
     let gemini_out = compile(&r, "gemini").unwrap();
-    assert!(gemini_out.mcp_servers["remote"].get("httpUrl").is_some(), "Gemini uses 'httpUrl'");
+    assert!(
+        gemini_out.mcp_servers["remote"].get("httpUrl").is_some(),
+        "Gemini uses 'httpUrl'"
+    );
     assert!(gemini_out.mcp_servers["remote"].get("url").is_none());
 }
 
@@ -80,7 +92,10 @@ fn gemini_sse_uses_url_field_not_httpurl() {
 
     let r = resolved(vec![s]);
     let out = compile(&r, "gemini").unwrap();
-    assert!(out.mcp_servers["sse-server"].get("url").is_some(), "Gemini SSE must use 'url' field");
+    assert!(
+        out.mcp_servers["sse-server"].get("url").is_some(),
+        "Gemini SSE must use 'url' field"
+    );
     assert!(out.mcp_servers["sse-server"].get("httpUrl").is_none());
 }
 
@@ -115,13 +130,27 @@ fn provider_context_file_names() {
 fn rules_concatenated_into_context_file() {
     let r = ResolvedConfig {
         rules: vec![
-            Rule { file_name: "style.md".into(), content: "Use explicit types.".into(), always_apply: true, globs: vec![], description: None },
-            Rule { file_name: "workflow.md".into(), content: "Run tests before committing.".into(), always_apply: true, globs: vec![], description: None },
+            Rule {
+                file_name: "style.md".into(),
+                content: "Use explicit types.".into(),
+                always_apply: true,
+                globs: vec![],
+                description: None,
+            },
+            Rule {
+                file_name: "workflow.md".into(),
+                content: "Run tests before committing.".into(),
+                always_apply: true,
+                globs: vec![],
+                description: None,
+            },
         ],
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let content = out.context_content.expect("rules must produce a context file");
+    let content = out
+        .context_content
+        .expect("rules must produce a context file");
     assert!(content.contains("Use explicit types."));
     assert!(content.contains("Run tests before committing."));
 }
@@ -143,7 +172,10 @@ fn active_mode_appears_in_context_content() {
     };
     let out = compile(&r, "claude").unwrap();
     let content = out.context_content.expect("must have context");
-    assert!(content.contains("planning"), "context must include active mode notice");
+    assert!(
+        content.contains("planning"),
+        "context must include active mode notice"
+    );
 }
 
 #[test]
@@ -166,26 +198,59 @@ fn empty_skill_content_is_filtered() {
     stub.content = String::new();
     let mut real = make_skill("code-review");
     real.content = "## Instructions\nReview the diff carefully.".to_string();
-    let r = ResolvedConfig { skills: vec![stub, real], ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        skills: vec![stub, real],
+        ..resolved(vec![])
+    };
     let out = compile(&r, "claude").unwrap();
-    assert!(!out.skill_files.contains_key(".claude/skills/git-commit/SKILL.md"));
-    assert!(out.skill_files.contains_key(".claude/skills/code-review/SKILL.md"));
+    assert!(
+        !out.skill_files
+            .contains_key(".claude/skills/git-commit/SKILL.md")
+    );
+    assert!(
+        out.skill_files
+            .contains_key(".claude/skills/code-review/SKILL.md")
+    );
 }
 
 #[test]
 fn skill_files_provider_directories() {
-    let r = ResolvedConfig { skills: vec![make_skill("rust-expert")], ..resolved(vec![]) };
-    assert!(compile(&r, "claude").unwrap().skill_files.contains_key(".claude/skills/rust-expert/SKILL.md"));
-    assert!(compile(&r, "gemini").unwrap().skill_files.contains_key(".agents/skills/rust-expert/SKILL.md"));
-    assert!(compile(&r, "codex").unwrap().skill_files.contains_key(".agents/skills/rust-expert/SKILL.md"));
+    let r = ResolvedConfig {
+        skills: vec![make_skill("rust-expert")],
+        ..resolved(vec![])
+    };
+    assert!(
+        compile(&r, "claude")
+            .unwrap()
+            .skill_files
+            .contains_key(".claude/skills/rust-expert/SKILL.md")
+    );
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .skill_files
+            .contains_key(".agents/skills/rust-expert/SKILL.md")
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .skill_files
+            .contains_key(".agents/skills/rust-expert/SKILL.md")
+    );
 }
 
 #[test]
 fn skill_file_has_yaml_frontmatter_and_content() {
-    let r = ResolvedConfig { skills: vec![make_skill("my-skill")], ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        skills: vec![make_skill("my-skill")],
+        ..resolved(vec![])
+    };
     let out = compile(&r, "claude").unwrap();
     let content = &out.skill_files[".claude/skills/my-skill/SKILL.md"];
-    assert!(content.starts_with("---\n"), "skill file must start with YAML frontmatter");
+    assert!(
+        content.starts_with("---\n"),
+        "skill file must start with YAML frontmatter"
+    );
     assert!(content.contains("name: my-skill"));
     assert!(content.contains("# my-skill"));
 }

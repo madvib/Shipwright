@@ -1,0 +1,26 @@
+{
+  // Cloudflare agent
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "cloudflare",
+    "name": "Cloudflare",
+    "version": "0.1.0",
+    "description": "Cloudflare Workers, D1, R2, KV, Durable Objects, Pages, wrangler config",
+    "providers": ["claude"],
+  },
+  "skills": {
+    "refs": [],
+  },
+  "mcp": {
+    "servers": ["ship"],
+  },
+  "permissions": {
+    "preset": "ship-autonomous",
+    // Cloudflare infra changes are hard to reverse
+    "tools_ask": ["Bash(wrangler deploy*)", "Bash(wrangler d1 execute*)", "Bash(npx wrangler*)"],
+    "tools_deny": ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"],
+  },
+  "rules": {
+    "inline": "Your domain is Cloudflare infrastructure and bindings.\nDefault scope: apps/web/wrangler.jsonc, apps/web/src/db/, apps/web/worker*.\n\nThis project runs on Cloudflare Workers. Two D1 databases: ship-auth and ship-registry.\nKV is for ephemeral/cache data only — not source of truth.\nCloudflare infra mistakes are expensive to roll back — plan before making changes.\n\n## D1 Migrations\n\nTwo databases, two schemas, two drizzle configs:\n- ship-auth: src/db/auth-schema.ts -> drizzle-auth.config.ts -> migrations/auth/\n- ship-registry: src/db/registry-schema.ts -> drizzle-registry.config.ts -> migrations/registry/\n\nNEVER write migration SQL directly. Permissions deny Write/Edit to migrations/**/*.sql.\nEdit the schema file, then run pnpm db:generate:auth or pnpm db:generate:registry.\nCommit both the schema change and the generated SQL together.\nTest locally with wrangler d1 execute --local before proposing changes.",
+  },
+}

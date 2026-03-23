@@ -1,6 +1,6 @@
 use crate::compile::agents::{compile_agent_profiles, profile_targets_provider};
-use crate::types::agent_profile::*;
 use crate::types::AgentProfile;
+use crate::types::agent_profile::*;
 
 fn make_profile(id: &str, name: &str, providers: &[&str]) -> AgentProfile {
     AgentProfile {

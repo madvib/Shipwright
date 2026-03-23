@@ -14,7 +14,9 @@ fn open_browser(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd").args(["/c", "start", url]).spawn();
+    let _ = std::process::Command::new("cmd")
+        .args(["/c", "start", url])
+        .spawn();
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     eprintln!("Cannot open browser automatically. Visit: {}", url);
 }
@@ -71,7 +73,8 @@ fn exchange_code_for_token(code: &str, verifier: &str, port: u16) -> Result<Stri
         anyhow::bail!("Auth failed: {}", err);
     }
 
-    parsed.get("token")
+    parsed
+        .get("token")
         .and_then(|v| v.as_str())
         .map(String::from)
         .ok_or_else(|| anyhow::anyhow!("No token in auth response"))
@@ -197,10 +200,13 @@ fn fetch_me(token: &str) -> Result<String> {
         .read_to_string()
         .map_err(|e| anyhow::anyhow!("Failed to read response: {e}"))?;
 
-    let parsed: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|_| anyhow::anyhow!("Invalid response"))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).map_err(|_| anyhow::anyhow!("Invalid response"))?;
 
-    let name = parsed.get("name").and_then(|v| v.as_str()).unwrap_or("(unknown)");
+    let name = parsed
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unknown)");
     let email = parsed.get("email").and_then(|v| v.as_str());
 
     let mut out = name.to_string();
@@ -233,7 +239,8 @@ mod tests {
         // 48 random bytes → 64 base64url chars (no padding)
         assert_eq!(v.len(), 64);
         assert!(
-            v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            v.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "verifier contains invalid chars: {v}"
         );
     }
@@ -254,7 +261,10 @@ mod tests {
         let c = s256_challenge("abc");
         // Must be 43 chars (256-bit hash → 32 bytes → 43 base64url chars without padding)
         assert_eq!(c.len(), 43);
-        assert!(c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'));
+        assert!(
+            c.chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        );
     }
 
     #[test]

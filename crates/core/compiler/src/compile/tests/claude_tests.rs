@@ -1,13 +1,19 @@
 use crate::compile::compile;
 use crate::resolve::ResolvedConfig;
-use crate::types::{AgentLimits, HookConfig, HookTrigger, Permissions, ToolPermissions};
+use crate::types::{AgentLimits, HookTrigger, Permissions, ToolPermissions};
 
 use super::fixtures::*;
 
 fn assert_memory_only(patch: &Option<serde_json::Value>) {
-    let p = patch.as_ref().expect("patch must exist (autoMemoryEnabled)");
+    let p = patch
+        .as_ref()
+        .expect("patch must exist (autoMemoryEnabled)");
     assert_eq!(p["autoMemoryEnabled"], false);
-    assert_eq!(p.as_object().unwrap().len(), 1, "expected only autoMemoryEnabled");
+    assert_eq!(
+        p.as_object().unwrap().len(),
+        1,
+        "expected only autoMemoryEnabled"
+    );
 }
 
 // ── Safety: permissions must not silently block tools ─────────────────────────
@@ -35,7 +41,9 @@ fn deny_only_emits_patch_with_no_allow_field() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("deny-only must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("deny-only must emit a patch");
     let perms = &patch["permissions"];
 
     let deny = perms["deny"].as_array().unwrap();
@@ -63,7 +71,9 @@ fn guarded_preset_never_emits_allow_field() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("deny patterns must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("deny patterns must emit a patch");
     let perms = &patch["permissions"];
     assert!(
         perms.get("allow").is_none() || perms["allow"].as_array().is_some_and(|a| a.is_empty()),
@@ -77,7 +87,11 @@ fn guarded_preset_never_emits_allow_field() {
 fn allow_star_with_no_deny_emits_memory_only() {
     let r = ResolvedConfig {
         permissions: Permissions {
-            tools: ToolPermissions { allow: vec!["*".to_string()], deny: vec![], ..Default::default() },
+            tools: ToolPermissions {
+                allow: vec!["*".to_string()],
+                deny: vec![],
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..resolved(vec![])
@@ -100,7 +114,9 @@ fn explicit_allow_list_compiles_correctly() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("explicit allow must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("explicit allow must emit a patch");
     let allow = patch["permissions"]["allow"].as_array().unwrap();
     assert_eq!(allow.len(), 2);
     assert!(allow.iter().any(|v| v == "Read"));
@@ -120,8 +136,18 @@ fn settings_patch_only_for_claude() {
         },
         ..resolved(vec![])
     };
-    assert!(compile(&r, "gemini").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "codex").unwrap().claude_settings_patch.is_none());
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -129,7 +155,11 @@ fn settings_patch_only_for_claude() {
 #[test]
 fn hooks_compile_into_settings_patch() {
     let r = ResolvedConfig {
-        hooks: vec![make_hook(HookTrigger::PreToolUse, "ship hooks check", Some("Bash"))],
+        hooks: vec![make_hook(
+            HookTrigger::PreToolUse,
+            "ship hooks check",
+            Some("Bash"),
+        )],
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
@@ -194,13 +224,18 @@ fn hook_without_matcher_omits_matcher_field() {
 fn max_cost_per_session_emits_to_settings() {
     let r = ResolvedConfig {
         permissions: Permissions {
-            agent: AgentLimits { max_cost_per_session: Some(5.0), ..Default::default() },
+            agent: AgentLimits {
+                max_cost_per_session: Some(5.0),
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("cost limit must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("cost limit must emit a patch");
     assert_eq!(patch["maxCostPerSession"], 5.0);
 }
 
@@ -208,13 +243,18 @@ fn max_cost_per_session_emits_to_settings() {
 fn max_turns_emits_to_settings() {
     let r = ResolvedConfig {
         permissions: Permissions {
-            agent: AgentLimits { max_turns: Some(20), ..Default::default() },
+            agent: AgentLimits {
+                max_turns: Some(20),
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("turn limit must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("turn limit must emit a patch");
     assert_eq!(patch["maxTurns"], 20);
 }
 
@@ -223,11 +263,15 @@ fn max_turns_emits_to_settings() {
 #[test]
 fn claude_settings_extra_merged_into_patch() {
     let r = ResolvedConfig {
-        claude_settings_extra: Some(serde_json::json!({ "customFeature": true, "experimentalMode": "fast" })),
+        claude_settings_extra: Some(
+            serde_json::json!({ "customFeature": true, "experimentalMode": "fast" }),
+        ),
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("extra settings must trigger patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("extra settings must trigger patch");
     assert_eq!(patch["customFeature"], true);
     assert_eq!(patch["experimentalMode"], "fast");
 }
@@ -248,13 +292,18 @@ fn claude_settings_extra_null_no_patch() {
 fn ask_tier_compiles_to_permissions_ask() {
     let r = ResolvedConfig {
         permissions: Permissions {
-            tools: ToolPermissions { ask: vec!["mcp__*__delete*".to_string()], ..Default::default() },
+            tools: ToolPermissions {
+                ask: vec!["mcp__*__delete*".to_string()],
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("ask tier must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("ask tier must emit a patch");
     let ask = patch["permissions"]["ask"].as_array().unwrap();
     assert_eq!(ask.len(), 1);
     assert_eq!(ask[0], "mcp__*__delete*");
@@ -264,7 +313,11 @@ fn ask_tier_compiles_to_permissions_ask() {
 fn ask_tier_default_empty_memory_only() {
     let r = ResolvedConfig {
         permissions: Permissions {
-            tools: ToolPermissions { allow: vec!["*".to_string()], ask: vec![], deny: vec![] },
+            tools: ToolPermissions {
+                allow: vec!["*".to_string()],
+                ask: vec![],
+                deny: vec![],
+            },
             ..Default::default()
         },
         ..resolved(vec![])
@@ -287,22 +340,54 @@ fn ask_with_deny_both_emitted() {
         ..resolved(vec![])
     };
     let out = compile(&r, "claude").unwrap();
-    let patch = out.claude_settings_patch.expect("ask + deny must emit a patch");
+    let patch = out
+        .claude_settings_patch
+        .expect("ask + deny must emit a patch");
     let perms = &patch["permissions"];
-    assert!(perms["ask"].as_array().unwrap().iter().any(|v| v == "mcp__*__write*"));
-    assert!(perms["deny"].as_array().unwrap().iter().any(|v| v == "Bash(rm -rf *)"));
+    assert!(
+        perms["ask"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "mcp__*__write*")
+    );
+    assert!(
+        perms["deny"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "Bash(rm -rf *)")
+    );
 }
 
 #[test]
 fn ask_tier_not_emitted_for_other_providers() {
     let r = ResolvedConfig {
         permissions: Permissions {
-            tools: ToolPermissions { ask: vec!["mcp__*__delete*".to_string()], ..Default::default() },
+            tools: ToolPermissions {
+                ask: vec!["mcp__*__delete*".to_string()],
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..resolved(vec![])
     };
-    assert!(compile(&r, "gemini").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "codex").unwrap().claude_settings_patch.is_none());
-    assert!(compile(&r, "cursor").unwrap().claude_settings_patch.is_none());
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "cursor")
+            .unwrap()
+            .claude_settings_patch
+            .is_none()
+    );
 }

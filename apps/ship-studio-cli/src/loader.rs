@@ -2,22 +2,28 @@
 //! No compilation or resolution occurs here — pure filesystem loading.
 
 use anyhow::Result;
-use compiler::{AgentProfile, HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, ProjectLibrary, Rule, Skill, SkillSource};
+use compiler::{
+    AgentProfile, HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions,
+    ProjectLibrary, Rule, Skill, SkillSource,
+};
 use serde::Deserialize;
 use std::path::Path;
 
 // ── Top-level entry point ─────────────────────────────────────────────────────
 
-/// Load a [`ProjectLibrary`] from an `agents/` directory.
+/// Load a [`ProjectLibrary`] from a `.ship/` directory (flat layout).
+///
+/// Looks for mcp, permissions, hooks, rules, skills at the `.ship/` root,
+/// and agent profiles under `.ship/agents/profiles/`.
 /// Missing files and dirs are silently skipped — an empty library is valid.
-pub fn load_library(agents_dir: &Path) -> Result<ProjectLibrary> {
+pub fn load_library(ship_dir: &Path) -> Result<ProjectLibrary> {
     Ok(ProjectLibrary {
-        mcp_servers: load_mcp_servers(agents_dir)?,
-        permissions: load_permissions(agents_dir)?,
-        hooks: load_hooks(agents_dir)?,
-        rules: load_rules(agents_dir)?,
-        skills: load_skills(agents_dir)?,
-        agent_profiles: load_agent_profiles(agents_dir)?,
+        mcp_servers: load_mcp_servers(ship_dir)?,
+        permissions: load_permissions(ship_dir)?,
+        hooks: load_hooks(ship_dir)?,
+        rules: load_rules(ship_dir)?,
+        skills: load_skills(ship_dir)?,
+        agent_profiles: load_agent_profiles(ship_dir)?,
         ..Default::default()
     })
 }
@@ -27,35 +33,48 @@ pub fn load_library(agents_dir: &Path) -> Result<ProjectLibrary> {
 fn load_mcp_servers(agents_dir: &Path) -> Result<Vec<McpServerConfig>> {
     // Prefer mcp.jsonc over mcp.toml
     let jsonc_path = agents_dir.join("mcp.jsonc");
-    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("mcp.toml") };
+    let path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        agents_dir.join("mcp.toml")
+    };
     let file = crate::mcp::McpFile::load(&path)?;
-    Ok(file.servers.into_iter().map(|e| {
-        let server_type = match e.server_type.as_deref() {
-            Some("http") => McpServerType::Http,
-            Some("sse")  => McpServerType::Sse,
-            _ => if e.url.is_some() && e.command.is_none() { McpServerType::Http }
-                 else { McpServerType::Stdio },
-        };
-        McpServerConfig {
-            id: e.id.clone(),
-            name: e.name.unwrap_or_else(|| e.id.clone()),
-            command: e.command.unwrap_or_default(),
-            args: e.args,
-            env: e.env,
-            scope: e.scope,
-            server_type,
-            url: e.url,
-            disabled: e.disabled,
-            timeout_secs: None,
-            codex_enabled_tools: vec![],
-            codex_disabled_tools: vec![],
-            gemini_trust: None,
-            gemini_include_tools: vec![],
-            gemini_exclude_tools: vec![],
-            gemini_timeout_ms: None,
-            cursor_env_file: None,
-        }
-    }).collect())
+    Ok(file
+        .servers
+        .into_iter()
+        .map(|e| {
+            let server_type = match e.server_type.as_deref() {
+                Some("http") => McpServerType::Http,
+                Some("sse") => McpServerType::Sse,
+                _ => {
+                    if e.url.is_some() && e.command.is_none() {
+                        McpServerType::Http
+                    } else {
+                        McpServerType::Stdio
+                    }
+                }
+            };
+            McpServerConfig {
+                id: e.id.clone(),
+                name: e.name.unwrap_or_else(|| e.id.clone()),
+                command: e.command.unwrap_or_default(),
+                args: e.args,
+                env: e.env,
+                scope: e.scope,
+                server_type,
+                url: e.url,
+                disabled: e.disabled,
+                timeout_secs: None,
+                codex_enabled_tools: vec![],
+                codex_disabled_tools: vec![],
+                gemini_trust: None,
+                gemini_include_tools: vec![],
+                gemini_exclude_tools: vec![],
+                gemini_timeout_ms: None,
+                cursor_env_file: None,
+            }
+        })
+        .collect())
 }
 
 // ── Permissions ───────────────────────────────────────────────────────────────
@@ -74,12 +93,17 @@ pub struct PermissionPreset {
     pub tools_ask: Vec<String>,
 }
 
-
 fn load_permissions(agents_dir: &Path) -> Result<Permissions> {
     // Prefer permissions.jsonc over permissions.toml
     let jsonc_path = agents_dir.join("permissions.jsonc");
-    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("permissions.toml") };
-    if !path.exists() { return Ok(Permissions::default()); }
+    let path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        agents_dir.join("permissions.toml")
+    };
+    if !path.exists() {
+        return Ok(Permissions::default());
+    }
     let s = std::fs::read_to_string(&path)?;
     // Try flat Permissions first, fall back to default on parse error.
     // The named-preset sections are ignored here —
@@ -102,8 +126,14 @@ fn load_permissions(agents_dir: &Path) -> Result<Permissions> {
 pub fn load_permission_preset(agents_dir: &Path, preset_name: &str) -> Option<PermissionPreset> {
     // Prefer permissions.jsonc over permissions.toml
     let jsonc_path = agents_dir.join("permissions.jsonc");
-    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("permissions.toml") };
-    if !path.exists() { return None; }
+    let path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        agents_dir.join("permissions.toml")
+    };
+    if !path.exists() {
+        return None;
+    }
     let s = std::fs::read_to_string(&path).ok()?;
 
     let val: serde_json::Value = if crate::paths::is_jsonc_ext(&path) {
@@ -117,12 +147,18 @@ pub fn load_permission_preset(agents_dir: &Path, preset_name: &str) -> Option<Pe
     let section = val.get(preset_name)?.as_object()?;
 
     let get_str_list = |key: &str| -> Vec<String> {
-        section.get(key)
+        section
+            .get(key)
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default()
     };
-    let default_mode = section.get("default_mode")
+    let default_mode = section
+        .get("default_mode")
         .and_then(|v| v.as_str())
         .map(str::to_string);
 
@@ -154,33 +190,52 @@ struct HookEntry {
 fn load_hooks(agents_dir: &Path) -> Result<Vec<HookConfig>> {
     // Prefer hooks.jsonc over hooks.toml
     let jsonc_path = agents_dir.join("hooks.jsonc");
-    let path = if jsonc_path.exists() { jsonc_path } else { agents_dir.join("hooks.toml") };
-    if !path.exists() { return Ok(vec![]); }
+    let path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        agents_dir.join("hooks.toml")
+    };
+    if !path.exists() {
+        return Ok(vec![]);
+    }
     let s = std::fs::read_to_string(&path)?;
     let file: HooksFile = if crate::paths::is_jsonc_ext(&path) {
         compiler::jsonc::from_jsonc_str(&s)?
     } else {
         toml::from_str(&s)?
     };
-    Ok(file.hooks.into_iter().filter_map(|e| {
-        let trigger = match e.trigger.as_str() {
-            "pre_tool_use"  | "PreToolUse"  => HookTrigger::PreToolUse,
-            "post_tool_use" | "PostToolUse" => HookTrigger::PostToolUse,
-            "notification"  | "Notification"=> HookTrigger::Notification,
-            "stop"          | "Stop"        => HookTrigger::Stop,
-            "subagent_stop" | "SubagentStop"=> HookTrigger::SubagentStop,
-            "pre_compact"   | "PreCompact"  => HookTrigger::PreCompact,
-            _ => return None,
-        };
-        Some(HookConfig { id: e.id, trigger, command: e.command, matcher: e.matcher, cursor_event: None, gemini_event: None })
-    }).collect())
+    Ok(file
+        .hooks
+        .into_iter()
+        .filter_map(|e| {
+            let trigger = match e.trigger.as_str() {
+                "pre_tool_use" | "PreToolUse" => HookTrigger::PreToolUse,
+                "post_tool_use" | "PostToolUse" => HookTrigger::PostToolUse,
+                "notification" | "Notification" => HookTrigger::Notification,
+                "stop" | "Stop" => HookTrigger::Stop,
+                "subagent_stop" | "SubagentStop" => HookTrigger::SubagentStop,
+                "pre_compact" | "PreCompact" => HookTrigger::PreCompact,
+                _ => return None,
+            };
+            Some(HookConfig {
+                id: e.id,
+                trigger,
+                command: e.command,
+                matcher: e.matcher,
+                cursor_event: None,
+                gemini_event: None,
+            })
+        })
+        .collect())
 }
 
 // ── Rules ─────────────────────────────────────────────────────────────────────
 
 fn load_rules(agents_dir: &Path) -> Result<Vec<Rule>> {
     let rules_dir = agents_dir.join("rules");
-    if !rules_dir.exists() { return Ok(vec![]); }
+    if !rules_dir.exists() {
+        return Ok(vec![]);
+    }
     let mut rules = Vec::new();
     let mut entries: Vec<_> = std::fs::read_dir(&rules_dir)?
         .flatten()
@@ -215,18 +270,30 @@ fn parse_rule(file_name: &str, raw: &str) -> Rule {
                 globs.push(line.trim().trim_start_matches("- ").to_string());
             }
         }
-        return Rule { file_name: file_name.to_string(), content: body.trim().to_string(),
-                      always_apply, globs, description };
+        return Rule {
+            file_name: file_name.to_string(),
+            content: body.trim().to_string(),
+            always_apply,
+            globs,
+            description,
+        };
     }
-    Rule { file_name: file_name.to_string(), content: raw.trim().to_string(),
-           always_apply: true, globs: vec![], description: None }
+    Rule {
+        file_name: file_name.to_string(),
+        content: raw.trim().to_string(),
+        always_apply: true,
+        globs: vec![],
+        description: None,
+    }
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────────
 
 fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
     let skills_dir = agents_dir.join("skills");
-    if !skills_dir.exists() { return Ok(vec![]); }
+    if !skills_dir.exists() {
+        return Ok(vec![]);
+    }
     let mut skills = Vec::new();
     for entry in std::fs::read_dir(&skills_dir)?.flatten() {
         let path = entry.path();
@@ -240,7 +307,11 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
             }
         } else if path.extension().is_some_and(|x| x == "md") {
             // Flat format: <skill-id>.md
-            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let raw = std::fs::read_to_string(&path)?;
             skills.push(parse_skill(&id, &raw));
         }
@@ -292,7 +363,7 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
             } else if let Some(v) = line.strip_prefix("compatibility:") {
                 compatibility = Some(v.trim().to_string());
             } else if let Some(v) = line.strip_prefix("allowed-tools:") {
-                allowed_tools = v.trim().split_whitespace().map(str::to_string).collect();
+                allowed_tools = v.split_whitespace().map(str::to_string).collect();
             } else if line.trim_end() == "metadata:" {
                 in_metadata = true;
             } else if let Some(v) = line.strip_prefix("version:") {
@@ -332,9 +403,12 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
 
 // ── Agent profiles ────────────────────────────────────────────────────────────
 
-fn load_agent_profiles(agents_dir: &Path) -> Result<Vec<AgentProfile>> {
-    let profiles_dir = agents_dir.join("profiles");
-    if !profiles_dir.exists() { return Ok(vec![]); }
+fn load_agent_profiles(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
+    // Profiles live under agents/profiles/ in the .ship/ directory
+    let profiles_dir = ship_dir.join("agents").join("profiles");
+    if !profiles_dir.exists() {
+        return Ok(vec![]);
+    }
     let mut profiles = Vec::new();
     for entry in std::fs::read_dir(&profiles_dir)?.flatten() {
         let path = entry.path();
@@ -366,4 +440,3 @@ fn load_agent_profiles(agents_dir: &Path) -> Result<Vec<AgentProfile>> {
 #[cfg(test)]
 #[path = "loader_tests.rs"]
 mod tests;
-

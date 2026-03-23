@@ -8,8 +8,7 @@ use axum::{
     response::Response,
 };
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService,
-    session::local::LocalSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use std::path::Path;
 use tokio_util::sync::CancellationToken;
@@ -55,7 +54,10 @@ async fn bearer_auth(
             if a.len() != b.len() {
                 false
             } else {
-                a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+                a.iter()
+                    .zip(b.iter())
+                    .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+                    == 0
             }
         }
         None => false,

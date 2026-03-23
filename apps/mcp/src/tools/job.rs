@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::requests::{AppendJobLogRequest, CreateJobRequest, ListJobsRequest, UpdateJobRequest};
 
-pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
+pub fn create_job(_project_dir: &Path, req: CreateJobRequest) -> String {
     let mut payload = serde_json::Map::new();
     payload.insert(
         "description".to_string(),
@@ -15,26 +15,31 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
         );
     }
     if let Some(ref cap_id) = req.capability_id {
-        payload.insert("capability_id".to_string(), serde_json::Value::String(cap_id.clone()));
+        payload.insert(
+            "capability_id".to_string(),
+            serde_json::Value::String(cap_id.clone()),
+        );
     }
     if let Some(ref scope) = req.scope {
         payload.insert("scope".to_string(), serde_json::json!(scope));
     }
     if let Some(ref criteria) = req.acceptance_criteria {
-        payload.insert("acceptance_criteria".to_string(), serde_json::json!(criteria));
-    }
-    if let Some(ref hint) = req.preset_hint {
-        payload.insert("preset_hint".to_string(), serde_json::Value::String(hint.clone()));
+        payload.insert(
+            "acceptance_criteria".to_string(),
+            serde_json::json!(criteria),
+        );
     }
     if let Some(ref sym) = req.symlink_name {
-        payload.insert("symlink_name".to_string(), serde_json::Value::String(sym.clone()));
+        payload.insert(
+            "symlink_name".to_string(),
+            serde_json::Value::String(sym.clone()),
+        );
     }
     if let Some(ref fs) = req.file_scope {
         payload.insert("file_scope".to_string(), serde_json::json!(fs));
     }
     let capability_id = req.capability_id.clone();
     match runtime::db::jobs::create_job(
-        project_dir,
         &req.kind,
         req.branch.as_deref(),
         Some(serde_json::Value::Object(payload)),
@@ -48,7 +53,6 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
         Ok(job) => {
             if let Some(cap_id) = capability_id {
                 let _ = runtime::db::jobs::update_job(
-                    project_dir,
                     &job.id,
                     runtime::db::jobs::JobPatch {
                         capability_id: Some(cap_id),
@@ -62,7 +66,7 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
     }
 }
 
-pub fn update_job(project_dir: &Path, req: UpdateJobRequest) -> String {
+pub fn update_job(_project_dir: &Path, req: UpdateJobRequest) -> String {
     let patch = runtime::db::jobs::JobPatch {
         status: req.status.clone(),
         assigned_to: req.assigned_to,
@@ -72,7 +76,7 @@ pub fn update_job(project_dir: &Path, req: UpdateJobRequest) -> String {
         file_scope: None,
         capability_id: None,
     };
-    match runtime::db::jobs::update_job(project_dir, &req.id, patch) {
+    match runtime::db::jobs::update_job(&req.id, patch) {
         Ok(()) => {
             let status_msg = req.status.as_deref().unwrap_or("(unchanged)");
             format!("Job {} updated (status={})", req.id, status_msg)
@@ -81,12 +85,8 @@ pub fn update_job(project_dir: &Path, req: UpdateJobRequest) -> String {
     }
 }
 
-pub fn list_jobs(project_dir: &Path, req: ListJobsRequest) -> String {
-    match runtime::db::jobs::list_jobs(
-        project_dir,
-        req.branch.as_deref(),
-        req.status.as_deref(),
-    ) {
+pub fn list_jobs(_project_dir: &Path, req: ListJobsRequest) -> String {
+    match runtime::db::jobs::list_jobs(req.branch.as_deref(), req.status.as_deref()) {
         Ok(jobs) if jobs.is_empty() => "No jobs found.".to_string(),
         Ok(jobs) => {
             let mut out = String::from("Jobs:\n");
@@ -118,7 +118,7 @@ pub fn append_job_log(project_dir: &Path, req: AppendJobLogRequest) -> String {
     if let Some(path) = req.message.strip_prefix("touched: ") {
         let path = path.trim();
         if !path.is_empty()
-            && let Err(e) = runtime::db::jobs::append_touched_file(project_dir, &req.job_id, path)
+            && let Err(e) = runtime::db::jobs::append_touched_file(&req.job_id, path)
         {
             return format!("Error recording touched file: {}", e);
         }
@@ -128,23 +128,29 @@ pub fn append_job_log(project_dir: &Path, req: AppendJobLogRequest) -> String {
     } else {
         req.message.clone()
     };
-    match runtime::db::jobs::append_log(
-        project_dir,
-        &message,
-        Some(req.job_id.as_str()),
-        None,
-        None,
+    let ship_dir = project_dir.join(".ship");
+    match runtime::append_event_with_context(
+        &ship_dir,
+        "agent",
+        runtime::EventEntity::Job,
+        runtime::EventAction::Log,
+        &req.job_id,
+        Some(message),
+        &runtime::EventContext {
+            job_id: Some(&req.job_id),
+            ..Default::default()
+        },
     ) {
-        Ok(()) => format!("Log entry appended to job {}", req.job_id),
+        Ok(_) => format!("Log entry appended to job {}", req.job_id),
         Err(e) => format!("Error appending job log: {}", e),
     }
 }
 
-pub fn claim_file(project_dir: &Path, job_id: &str, path: &str) -> String {
-    match runtime::db::jobs::claim_file(project_dir, job_id, path) {
+pub fn claim_file(_project_dir: &Path, job_id: &str, path: &str) -> String {
+    match runtime::db::jobs::claim_file(job_id, path) {
         Ok(true) => format!("Claimed {} for job {}", path, job_id),
         Ok(false) => {
-            let owner = runtime::db::jobs::get_file_owner(project_dir, path)
+            let owner = runtime::db::jobs::get_file_owner(path)
                 .unwrap_or(None)
                 .unwrap_or_else(|| "unknown".to_string());
             format!("Conflict: {} is already owned by job {}", path, owner)
@@ -153,11 +159,11 @@ pub fn claim_file(project_dir: &Path, job_id: &str, path: &str) -> String {
     }
 }
 
-pub fn get_file_owner(project_dir: &Path, path: &str) -> String {
-    match runtime::db::jobs::get_file_owner(project_dir, path) {
+pub fn get_file_owner(_project_dir: &Path, path: &str) -> String {
+    match runtime::db::jobs::get_file_owner(path) {
         Ok(None) => format!("{}: unclaimed", path),
         Ok(Some(job_id)) => {
-            let detail = runtime::db::jobs::get_job(project_dir, &job_id)
+            let detail = runtime::db::jobs::get_job(&job_id)
                 .ok()
                 .flatten()
                 .map(|j| format!(" (kind={}, status={})", j.kind, j.status))

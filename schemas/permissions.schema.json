@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/madvib/ship/main/schemas/permissions.schema.json",
+  "title": "Ship Permission Presets",
+  "description": "Schema for .ship/permissions.jsonc — named permission presets referenced by agent configs via permissions.preset. Keys are preset names (e.g. ship-standard, ship-autonomous, or any custom name).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Currently '1'."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/PermissionPreset"
+  },
+  "$defs": {
+    "ToolPattern": {
+      "type": "string",
+      "description": "A tool permission pattern. Syntax: bare tool name (Read, Write, Edit, Glob, Grep, Bash, WebFetch), parameterized tool with glob argument (Bash(git *), Bash(rm -rf *), Bash(npm *)), MCP tool (mcp__<server>__<tool>, e.g. mcp__ship__create_job), or wildcard (mcp__*__delete*, Bash(*))."
+    },
+    "PermissionPreset": {
+      "type": "object",
+      "description": "A named permission preset defining tool access rules.",
+      "properties": {
+        "default_mode": {
+          "type": "string",
+          "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
+          "description": "Default permission mode. plan: read-only. default: ask for writes. acceptEdits: auto-approve file edits. dontAsk: fully autonomous. bypassPermissions: no restrictions."
+        },
+        "tools_allow": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ToolPattern" },
+          "description": "Tool patterns to allow without confirmation."
+        },
+        "tools_deny": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ToolPattern" },
+          "description": "Tool patterns to deny. Takes precedence over tools_allow."
+        },
+        "tools_ask": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ToolPattern" },
+          "description": "Tool patterns requiring user confirmation. Applied before tools_allow but after tools_deny."
+        },
+        "additional_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional directories the agent can access outside the project root. Compiled to Claude Code's additionalDirectories."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

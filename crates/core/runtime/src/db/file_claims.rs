@@ -7,7 +7,6 @@
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use sqlx::Row;
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 
@@ -26,7 +25,6 @@ pub struct FileClaim {
 /// fails with an error listing all conflicts. Re-claiming paths already owned
 /// by the same `job_id` is a no-op (idempotent).
 pub fn claim_files(
-    ship_dir: &Path,
     job_id: &str,
     workspace_id: Option<&str>,
     paths: &[&str],
@@ -35,7 +33,7 @@ pub fn claim_files(
         return Ok(());
     }
 
-    let conflicts = check_conflicts_for_job(ship_dir, job_id, paths)?;
+    let conflicts = check_conflicts_for_job(job_id, paths)?;
     if !conflicts.is_empty() {
         let detail: Vec<String> = conflicts
             .iter()
@@ -48,7 +46,7 @@ pub fn claim_files(
         ));
     }
 
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     for path in paths {
         block_on(async {
@@ -68,8 +66,8 @@ pub fn claim_files(
 }
 
 /// Release all file claims held by `job_id`. Returns the number of claims released.
-pub fn release_claims(ship_dir: &Path, job_id: &str) -> Result<usize> {
-    let mut conn = open_db(ship_dir)?;
+pub fn release_claims(job_id: &str) -> Result<usize> {
+    let mut conn = open_db()?;
     let result = block_on(async {
         sqlx::query("DELETE FROM file_claim WHERE job_id = ?")
             .bind(job_id)
@@ -81,11 +79,11 @@ pub fn release_claims(ship_dir: &Path, job_id: &str) -> Result<usize> {
 
 /// Check which paths from `paths` are already claimed by any job.
 /// Returns `(path, claiming_job_id)` pairs for every conflict.
-pub fn check_conflicts(ship_dir: &Path, paths: &[&str]) -> Result<Vec<(String, String)>> {
+pub fn check_conflicts(paths: &[&str]) -> Result<Vec<(String, String)>> {
     if paths.is_empty() {
         return Ok(vec![]);
     }
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let placeholders: Vec<&str> = paths.iter().map(|_| "?").collect();
     let sql = format!(
         "SELECT path, job_id FROM file_claim WHERE path IN ({})",
@@ -107,8 +105,8 @@ pub fn check_conflicts(ship_dir: &Path, paths: &[&str]) -> Result<Vec<(String, S
 }
 
 /// List file claims, optionally filtered by `job_id`.
-pub fn list_claims(ship_dir: &Path, job_id: Option<&str>) -> Result<Vec<FileClaim>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_claims(job_id: Option<&str>) -> Result<Vec<FileClaim>> {
+    let mut conn = open_db()?;
     let rows = match job_id {
         Some(jid) => block_on(async {
             sqlx::query(
@@ -136,14 +134,13 @@ pub fn list_claims(ship_dir: &Path, job_id: Option<&str>) -> Result<Vec<FileClai
 /// Like `check_conflicts`, but excludes paths owned by `job_id` itself
 /// (those are idempotent re-claims, not conflicts).
 fn check_conflicts_for_job(
-    ship_dir: &Path,
     job_id: &str,
     paths: &[&str],
 ) -> Result<Vec<(String, String)>> {
     if paths.is_empty() {
         return Ok(vec![]);
     }
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let placeholders: Vec<&str> = paths.iter().map(|_| "?").collect();
     let sql = format!(
         "SELECT path, job_id FROM file_claim WHERE path IN ({}) AND job_id != ?",

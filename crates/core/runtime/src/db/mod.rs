@@ -1,6 +1,6 @@
-//! Platform DB — single database, single schema, no migration versioning.
+//! Platform DB — single database, schema managed by sqlx migrations.
 //!
-//! One file: `~/.ship/platform.db`.  Schema = code.
+//! One file: `~/.ship/platform.db`.  Migrations in `migrations/`.
 
 pub mod adrs;
 pub mod agents;
@@ -36,19 +36,17 @@ pub fn db_path() -> Result<PathBuf> {
 }
 
 /// Open a connection, ensuring schema exists first.
-///
-/// On first call, migrates any `.ship/platform.db` from `ship_dir` to the
-/// global location so existing data is preserved.
-pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
-    migrate_local_db_to_global(ship_dir);
-    ensure_db(ship_dir)?;
+pub fn open_db() -> Result<SqliteConnection> {
+    ensure_db()?;
     let path = db_path()?;
     connect(&path)
 }
 
-/// Ensure the schema exists. Idempotent — every statement uses
-/// `CREATE TABLE IF NOT EXISTS`.
-pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
+/// Ensure the schema is up to date via sqlx migrations.
+///
+/// Idempotent — sqlx tracks applied migrations in `_sqlx_migrations`.
+/// Connection-level PRAGMAs are set on every call.
+pub fn ensure_db() -> Result<()> {
     let path = db_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -59,92 +57,14 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
         .create_if_missing(true);
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
-    // Migrations — idempotent, ignore errors (already applied or table absent).
-    let migrations: &[&str] = &[
-        "ALTER TABLE agent_mode RENAME TO agent_config",
-        // Session record gained optional metrics columns.
-        "ALTER TABLE workspace_session_record ADD COLUMN duration_secs INTEGER",
-        "ALTER TABLE workspace_session_record ADD COLUMN provider TEXT",
-        "ALTER TABLE workspace_session_record ADD COLUMN model TEXT",
-        "ALTER TABLE workspace_session_record ADD COLUMN agent_id TEXT",
-        "ALTER TABLE workspace_session_record ADD COLUMN files_changed INTEGER",
-        "ALTER TABLE workspace_session_record ADD COLUMN gate_result TEXT",
-    ];
-    for sql in migrations {
-        let _ = block_on(async { sqlx::query(sql).execute(&mut conn).await });
-    }
+    // Connection-level PRAGMAs — not persisted in schema.
+    block_on(async { sqlx::query("PRAGMA journal_mode = WAL").execute(&mut conn).await })?;
+    block_on(async { sqlx::query("PRAGMA foreign_keys = ON").execute(&mut conn).await })?;
 
-    // Old event_log (pre-v0.1.0) used incompatible columns (seq, timestamp, entity, subject).
-    // Detect by checking for the old `seq` column; if present, drop and let DDL recreate.
-    let has_old_schema = block_on(async {
-        sqlx::query("SELECT seq FROM event_log LIMIT 0")
-            .execute(&mut conn)
-            .await
-    })
-    .is_ok();
-    if has_old_schema {
-        let _ = block_on(async {
-            sqlx::query("DROP TABLE event_log")
-                .execute(&mut conn)
-                .await
-        });
-    }
+    // Run migrations. sqlx manages its own `_sqlx_migrations` table.
+    block_on_migrate(async { sqlx::migrate!("./migrations").run(&mut conn).await })?;
 
-    // Execute each statement individually — sqlx only runs one statement at a time.
-    // Strip SQL comments first since they may contain semicolons.
-    for part in schema::SCHEMA_PARTS {
-        let stripped: String = part.lines()
-            .filter(|l| !l.trim_start().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        for stmt in stripped.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-            block_on(async { sqlx::query(stmt).execute(&mut conn).await })
-                .with_context(|| format!("schema init failed on: {}", &stmt[..stmt.len().min(80)]))?;
-        }
-    }
     Ok(())
-}
-
-/// One-time migration: if `~/.ship/platform.db` is missing or empty but
-/// `.ship/platform.db` inside the project has data, copy it to the global
-/// location so existing data is preserved.
-fn migrate_local_db_to_global(ship_dir: &Path) {
-    let global_path = match db_path() {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let global_has_data = global_path
-        .metadata()
-        .map(|m| m.len() > 0)
-        .unwrap_or(false);
-    if global_has_data {
-        return;
-    }
-    let local_path = ship_dir.join("platform.db");
-    let local_has_data = local_path
-        .metadata()
-        .map(|m| m.len() > 0)
-        .unwrap_or(false);
-    if !local_has_data {
-        return;
-    }
-    if let Some(parent) = global_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match std::fs::copy(&local_path, &global_path) {
-        Ok(_) => {
-            eprintln!(
-                "migrated platform.db from {} → {}",
-                local_path.display(),
-                global_path.display()
-            );
-            let _ = std::fs::remove_file(&local_path);
-        }
-        Err(e) => eprintln!(
-            "warning: failed to migrate platform.db to {}: {e}",
-            global_path.display()
-        ),
-    }
 }
 
 fn connect(path: &Path) -> Result<SqliteConnection> {
@@ -182,6 +102,26 @@ where
         .map_err(|e| anyhow!("SQLite operation failed: {e}"))
 }
 
+/// Like `block_on` but for sqlx::migrate::MigrateError instead of sqlx::Error.
+fn block_on_migrate<F>(future: F) -> Result<()>
+where
+    F: std::future::Future<Output = std::result::Result<(), sqlx::migrate::MigrateError>>,
+{
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(|| {
+            handle
+                .block_on(future)
+                .map_err(|e| anyhow!("Migration failed: {e}"))
+        });
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .map_err(|e| anyhow!("Failed to create SQLite runtime: {e}"))?;
+    rt.block_on(future)
+        .map_err(|e| anyhow!("Migration failed: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,23 +131,23 @@ mod tests {
     #[test]
     fn test_ensure_db_creates_fresh() {
         let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        let _ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db().unwrap();
     }
 
     #[test]
     fn test_ensure_db_idempotent() {
         let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        let _ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db().unwrap();
+        ensure_db().unwrap();
     }
 
     #[test]
     fn test_open_db_returns_connection() {
         let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        let conn = open_db(&ship_dir);
+        let _ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        let conn = open_db();
         assert!(conn.is_ok());
     }
 }

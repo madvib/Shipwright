@@ -1,15 +1,15 @@
 pub mod agents;
 pub mod catalog;
-pub mod registry;
 pub mod config;
 pub mod db;
 pub mod events;
 pub mod fs_util;
 pub mod hooks;
 pub mod log;
-pub mod migration;
 pub mod plugin;
 pub mod project;
+pub mod registry;
+pub mod security;
 pub mod workspace;
 
 // Backward-compatible module aliases.
@@ -20,7 +20,10 @@ pub use agents::permissions;
 pub use agents::rule;
 pub use agents::skill;
 
-pub use agent_config::{ProviderSettings, WorkspaceAgentSettings, resolve_provider_settings, resolve_provider_settings_with_agent_override};
+pub use agent_config::{
+    ProviderSettings, WorkspaceAgentSettings, resolve_provider_settings,
+    resolve_provider_settings_with_agent_override,
+};
 pub use agent_export::{
     ModelInfo, ProviderInfo, autodetect_providers, detect_binary, detect_version, disable_provider,
     enable_provider, export_to, import_from_claude, list_models, list_providers, sync_active_agent,
@@ -31,23 +34,17 @@ pub use config::{
     McpServerType, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_agent,
     add_hook, add_mcp_server, add_status, ensure_registered_namespaces, generate_gitignore,
     get_active_agent, get_config, get_effective_config, get_git_config, get_project_statuses,
-    is_category_committed, list_hooks, list_mcp_servers, migrate_json_config_file, remove_agent,
+    is_category_committed, list_hooks, list_mcp_servers, remove_agent,
     remove_hook, remove_mcp_server, remove_status, save_config, set_active_agent,
     set_category_committed, set_git_config,
 };
 
 pub use events::{
-    EventAction, EventContext, EventEntity, EventRecord,
-    append_event, append_event_with_context,
-    list_events_since, list_gate_outcomes, read_events, read_recent_events,
-    record_gate_outcome,
+    EventAction, EventContext, EventEntity, EventRecord, append_event, append_event_with_context,
+    list_events_since, list_gate_outcomes, read_events, read_recent_events, record_gate_outcome,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
-pub use migration::{
-    GlobalStateMigrationReport, ProjectFileMigrationReport, ProjectStateMigrationReport,
-    migrate_global_state, migrate_project_state,
-};
 pub use permissions::{
     AgentLimits, CommandPermissions, FsPermissions, NetworkPermissions, NetworkPolicy, Permissions,
     ToolPermissions, get_permissions, permission_tool_ids_for_provider, save_permissions,
@@ -64,24 +61,22 @@ pub use skill::{
 };
 
 // ─── Re-exports from db (formerly state_db) ────────────────────────────────
-pub use db::types::{
-    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb,
-    DatabaseMigrationReport, WorkspaceSessionDb, WorkspaceSessionRecordDb, WorkspaceUpsert,
-};
 pub use db::agents::{
     delete_agent_config_db, get_agent_artifact_registry_by_external_id_db,
     get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_configs_db,
     set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_config_db,
 };
 pub use db::branch_context::{
-    clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link,
-    set_branch_doc, set_branch_link,
+    clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link, set_branch_doc,
+    set_branch_link,
 };
-pub use db::file_claims::{
-    FileClaim, claim_files, release_claims, check_conflicts, list_claims,
-};
+pub use db::file_claims::{FileClaim, check_conflicts, claim_files, list_claims, release_claims};
 pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
 pub use db::session::get_workspace_session_record_db;
+pub use db::types::{
+    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb, WorkspaceSessionDb,
+    WorkspaceSessionRecordDb, WorkspaceUpsert,
+};
 pub use db::workspace_state::upsert_workspace_db;
 
 pub use workspace::{
@@ -157,15 +152,15 @@ mod tests {
 
         set_category_committed(&project_dir, "agents", false)?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
-        assert!(gitignore.contains("agents/rules"));
-        assert!(gitignore.contains("agents/mcp.toml"));
-        assert!(gitignore.contains("agents/permissions.toml"));
+        assert!(gitignore.contains("\nrules\n") || gitignore.contains("\nrules"));
+        assert!(gitignore.contains("mcp.jsonc"));
+        assert!(gitignore.contains("permissions.jsonc"));
 
         set_category_committed(&project_dir, "agents", true)?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
-        assert!(!gitignore.contains("agents/rules"));
-        assert!(!gitignore.contains("agents/mcp.toml"));
-        assert!(!gitignore.contains("agents/permissions.toml"));
+        assert!(!gitignore.contains("\nrules\n") && !gitignore.contains("\nrules"));
+        assert!(!gitignore.contains("mcp.jsonc"));
+        assert!(!gitignore.contains("permissions.jsonc"));
         Ok(())
     }
 
@@ -199,7 +194,7 @@ mod tests {
         let project_dir = init_project(tmp.path().to_path_buf())?;
         let gitignore = fs::read_to_string(project_dir.join(".gitignore"))?;
         // Default config keeps project docs local unless explicitly included.
-        assert!(gitignore.contains("generated/"));
+        assert!(!gitignore.contains("generated/"));
         assert!(gitignore.contains(".tmp-global/"));
         assert!(gitignore.contains("project/releases"));
         assert!(gitignore.contains("project/features"));
@@ -207,11 +202,10 @@ mod tests {
         assert!(gitignore.contains("project/adrs"));
         assert!(gitignore.contains("project/notes"));
         assert!(gitignore.contains("vision.md"));
-        assert!(gitignore.contains("agents/skills"));
-        assert!(gitignore.contains("agents/README.md"));
-        assert!(!gitignore.contains("agents/rules"));
-        assert!(!gitignore.contains("agents/mcp.toml"));
-        assert!(!gitignore.contains("agents/permissions.toml"));
+        assert!(gitignore.contains("skills"));
+        assert!(!gitignore.contains("\nrules\n") && !gitignore.contains("\nrules"));
+        assert!(!gitignore.contains("mcp.jsonc"));
+        assert!(!gitignore.contains("permissions.jsonc"));
         // DB is at ~/.ship/platform.db — never inside project .ship/
         assert!(!gitignore.contains("platform.db"));
         assert!(!gitignore.contains("log.md"));
@@ -268,7 +262,6 @@ mod tests {
         assert!(ship_path.join("project/adrs").is_dir());
         assert!(ship_path.join("project/notes").is_dir());
         assert!(ship_path.join("vision.md").is_file());
-        assert!(ship_path.join("generated").is_dir());
         let project_skills_dir = crate::project::skills_dir(&ship_path);
         assert!(project_skills_dir.is_dir());
         // shared
@@ -281,7 +274,7 @@ mod tests {
             "new projects should not seed legacy planning/code/config modes by default"
         );
         assert!(!ship_path.join("events.ndjson").is_file());
-        assert!(ship_path.join("ship.toml").is_file());
+        assert!(ship_path.join("ship.jsonc").is_file());
         // default skill seeded
         assert!(project_skills_dir.join("task-policy/SKILL.md").is_file());
         let skill_content = fs::read_to_string(project_skills_dir.join("task-policy/SKILL.md"))?;
@@ -357,7 +350,14 @@ mod tests {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
         let before = chrono::Utc::now();
-        append_event(&ship_path, "ship", EventEntity::Workspace, EventAction::Create, "feat-1", None)?;
+        append_event(
+            &ship_path,
+            "ship",
+            EventEntity::Workspace,
+            EventAction::Create,
+            "feat-1",
+            None,
+        )?;
         let events = list_events_since(&ship_path, &before, None)?;
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].subject, "feat-1");
@@ -368,7 +368,14 @@ mod tests {
     fn test_event_append_and_read() -> anyhow::Result<()> {
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        append_event(&ship_path, "ship", EventEntity::Project, EventAction::Log, "export", None)?;
+        append_event(
+            &ship_path,
+            "ship",
+            EventEntity::Project,
+            EventAction::Log,
+            "export",
+            None,
+        )?;
         let events = read_events(&ship_path)?;
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].entity, EventEntity::Project);

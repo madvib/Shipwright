@@ -637,7 +637,7 @@ mod tests {
     fn claude_managed_state_written() {
         let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("gh")]);
         export_to(project_dir.clone(), "claude").unwrap();
-        let (ids, _mode) = crate::db::managed_state::get_managed_state_db(&project_dir, "claude").unwrap();
+        let (ids, _mode) = crate::db::managed_state::get_managed_state_db("claude").unwrap();
         assert!(
             ids.contains(&"gh".to_string()),
             "managed server not recorded in state"
@@ -973,7 +973,6 @@ mod tests {
                 },
                 agent: crate::permissions::AgentLimits {
                     require_confirmation: vec!["git push *".to_string()],
-                    ..Default::default()
                 },
                 ..Default::default()
             },
@@ -1053,45 +1052,6 @@ mod tests {
             before_tool["command"].as_str(),
             Some("ship hooks run --provider gemini")
         );
-    }
-
-    #[test]
-    fn export_writes_hook_runtime_artifacts() {
-        let (tmp, project_dir) = project_with_servers(vec![make_stdio_server("github")]);
-        let _hook_env_guard = lock_env_vars_for_test(&[
-            ("SHIP_MANAGED_HOOKS", Some("1")),
-            ("SHIP_HOOKS_BIN", Some("ship hooks run")),
-        ]);
-        save_permissions(
-            project_dir.clone(),
-            &Permissions {
-                filesystem: crate::permissions::FsPermissions {
-                    allow: vec!["src/auth/**".to_string()],
-                    deny: vec![],
-                },
-                commands: crate::permissions::CommandPermissions {
-                    allow: vec!["git status*".to_string()],
-                    deny: vec!["rm -rf *".to_string()],
-                },
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        export_to(project_dir, "gemini").unwrap();
-
-        let runtime_dir = tmp.path().join(".ship").join("generated").join("runtime");
-        let envelope_path = runtime_dir.join("envelope.json");
-        let context_path = runtime_dir.join("hook-context.md");
-        assert!(envelope_path.exists(), "expected hook envelope file");
-        assert!(context_path.exists(), "expected hook context file");
-
-        let envelope: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(envelope_path).unwrap()).unwrap();
-        let expected_root = tmp.path().to_string_lossy().to_string();
-        assert_eq!(envelope["workspace_root"].as_str(), Some(expected_root.as_str()));
-        assert!(envelope["auto_approve_patterns"].is_array());
-        assert!(envelope["always_block_patterns"].is_array());
     }
 
     #[test]
@@ -1224,7 +1184,6 @@ priority = 700
                 },
                 agent: crate::permissions::AgentLimits {
                     require_confirmation: vec!["git push *".to_string()],
-                    ..Default::default()
                 },
                 ..Default::default()
             },

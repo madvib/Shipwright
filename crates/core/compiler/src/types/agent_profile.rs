@@ -127,16 +127,12 @@ claude_model = "opus"
 temperature = 0.2
 "#;
 
-        let profile: AgentProfile =
-            toml::from_str(toml_str).expect("failed to parse full profile");
+        let profile: AgentProfile = toml::from_str(toml_str).expect("failed to parse full profile");
 
         // profile section
         assert_eq!(profile.profile.id, "code-reviewer");
         assert_eq!(profile.profile.name, "Code Reviewer");
-        assert_eq!(
-            profile.profile.version.as_deref(),
-            Some("1.2.0")
-        );
+        assert_eq!(profile.profile.version.as_deref(), Some("1.2.0"));
         assert_eq!(
             profile.profile.description.as_deref(),
             Some("Reviews pull requests for style, correctness, and test coverage.")
@@ -160,10 +156,7 @@ temperature = 0.2
         assert_eq!(profile.plugins.scope.as_deref(), Some("workspace"));
 
         // permissions
-        assert_eq!(
-            profile.permissions.preset.as_deref(),
-            Some("ship-standard")
-        );
+        assert_eq!(profile.permissions.preset.as_deref(), Some("ship-standard"));
         assert_eq!(
             profile.permissions.tools_allow,
             vec!["Read", "Grep", "Bash"]
@@ -176,11 +169,21 @@ temperature = 0.2
         );
 
         // rules
-        assert!(profile.rules.inline.as_ref().unwrap().contains("senior code reviewer"));
+        assert!(
+            profile
+                .rules
+                .inline
+                .as_ref()
+                .unwrap()
+                .contains("senior code reviewer")
+        );
 
         // provider_settings
         assert_eq!(
-            profile.provider_settings.get("claude_model").and_then(|v| v.as_str()),
+            profile
+                .provider_settings
+                .get("claude_model")
+                .and_then(|v| v.as_str()),
             Some("opus")
         );
 
@@ -191,7 +194,10 @@ temperature = 0.2
         assert_eq!(reparsed.profile.id, profile.profile.id);
         assert_eq!(reparsed.skills.refs, profile.skills.refs);
         assert_eq!(reparsed.mcp.servers, profile.mcp.servers);
-        assert_eq!(reparsed.permissions.tools_allow, profile.permissions.tools_allow);
+        assert_eq!(
+            reparsed.permissions.tools_allow,
+            profile.permissions.tools_allow
+        );
     }
 
     #[test]

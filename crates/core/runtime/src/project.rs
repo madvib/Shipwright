@@ -28,14 +28,14 @@ pub fn project_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("project")
 }
 
-/// `.ship/agents/` — rules, permissions, MCP config
+/// `.ship/agents/` — agent profile `.jsonc` files only.
+/// Rules, skills, permissions, MCP config, and teams live at the `.ship/` root.
 pub fn agents_ns(ship_dir: &Path) -> PathBuf {
     ship_dir.join("agents")
 }
 
-/// `.ship/generated/` — runtime-generated/transient artifacts
-pub fn generated_ns(ship_dir: &Path) -> PathBuf {
-    ship_dir.join("generated")
+pub fn teams_dir(ship_dir: &Path) -> PathBuf {
+    ship_dir.join("teams")
 }
 
 pub fn adrs_dir(ship_dir: &Path) -> PathBuf {
@@ -72,15 +72,15 @@ pub fn skills_dir(ship_dir: &Path) -> PathBuf {
 }
 
 pub fn rules_dir(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("rules")
+    ship_dir.join("rules")
 }
 
 pub fn mcp_config_path(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("mcp.toml")
+    ship_dir.join("mcp.jsonc")
 }
 
 pub fn permissions_config_path(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("permissions.toml")
+    ship_dir.join("permissions.jsonc")
 }
 
 /// `.ship/vision.md` — project north-star document
@@ -102,7 +102,7 @@ pub fn project_slug_from_ship_dir(ship_dir: &Path) -> String {
 
 fn project_namespace_slug(ship_dir: &Path) -> String {
     let project_root = project_root_from_ship_dir(ship_dir);
-    let mut identity = read_project_identity_from_toml(ship_dir).unwrap_or_default();
+    let mut identity = read_project_identity(ship_dir).unwrap_or_default();
 
     if identity.id.is_none()
         && let Ok(id) = ensure_project_id(ship_dir)
@@ -139,10 +139,23 @@ struct ProjectIdentity {
     name: Option<String>,
 }
 
-fn read_project_identity_from_toml(ship_dir: &Path) -> Option<ProjectIdentity> {
-    let path = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
+fn read_project_identity(ship_dir: &Path) -> Option<ProjectIdentity> {
+    let primary = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
+    let legacy = ship_dir.join(crate::config::LEGACY_CONFIG_FILE);
+    let (path, is_jsonc) = if primary.exists() {
+        (primary, true)
+    } else if legacy.exists() {
+        (legacy, false)
+    } else {
+        return None;
+    };
     let content = fs::read_to_string(path).ok()?;
-    let parsed: toml::Value = toml::from_str(&content).ok()?;
+    let parsed: serde_json::Value = if is_jsonc {
+        compiler::jsonc::from_jsonc_str(&content).ok()?
+    } else {
+        let tv: toml::Value = toml::from_str(&content).ok()?;
+        serde_json::to_value(&tv).ok()?
+    };
 
     let id = parsed
         .get("id")
@@ -278,9 +291,9 @@ fn legacy_path_slug_from_ship_dir(ship_dir: &Path) -> String {
     }
 }
 
-/// Ensure a project has a persistent `ship.toml:id` and return it.
+/// Ensure a project has a persistent id in ship.jsonc and return it.
 pub fn ensure_project_id(ship_dir: &Path) -> Result<String> {
-    if let Some(identity) = read_project_identity_from_toml(ship_dir)
+    if let Some(identity) = read_project_identity(ship_dir)
         && let Some(id) = identity.id
     {
         return Ok(id);
@@ -289,26 +302,30 @@ pub fn ensure_project_id(ship_dir: &Path) -> Result<String> {
     let path = ship_dir.join(crate::config::PRIMARY_CONFIG_FILE);
     let content = fs::read_to_string(&path).with_context(|| {
         format!(
-            "Project at {} has no readable ship.toml. Re-run `ship init` to initialize it.",
+            "Project at {} has no readable ship.jsonc. Re-run `ship init` to initialize it.",
             ship_dir.display()
         )
     })?;
 
-    let mut parsed: toml::Value = toml::from_str(&content).with_context(|| {
-        format!(
-            "Project at {} has an invalid ship.toml. Re-run `ship init` or fix the file.",
-            ship_dir.display()
-        )
-    })?;
+    let mut parsed: serde_json::Value =
+        compiler::jsonc::from_jsonc_str(&content).with_context(|| {
+            format!(
+                "Project at {} has an invalid ship.jsonc. Re-run `ship init` or fix the file.",
+                ship_dir.display()
+            )
+        })?;
 
-    let table = parsed
-        .as_table_mut()
-        .ok_or_else(|| anyhow!("ship.toml must contain a top-level table."))?;
+    let obj = parsed
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("ship.jsonc must contain a top-level object."))?;
 
     let generated_id = crate::gen_nanoid();
-    table.insert("id".to_string(), toml::Value::String(generated_id.clone()));
+    obj.insert(
+        "id".to_string(),
+        serde_json::Value::String(generated_id.clone()),
+    );
 
-    let updated = toml::to_string_pretty(&parsed)?;
+    let updated = serde_json::to_string_pretty(&parsed)?;
     crate::fs_util::write_atomic(&path, updated)?;
 
     Ok(generated_id)
@@ -321,14 +338,14 @@ pub fn user_skills_dir() -> PathBuf {
         .join("skills")
 }
 
-/// Project-scoped skills store: `.ship/agents/skills/`
+/// Project-scoped skills store: `.ship/skills/`
 pub fn project_skills_dir(ship_dir: &Path) -> PathBuf {
-    agents_ns(ship_dir).join("skills")
+    ship_dir.join("skills")
 }
 
-/// Legacy project-scoped skills store used by older builds: `.ship/skills/`
-pub fn legacy_repo_project_skills_dir(ship_dir: &Path) -> PathBuf {
-    ship_dir.join("skills")
+/// Legacy skills path from pre-flatten layout: `.ship/agents/skills/`
+pub fn legacy_agents_skills_dir(ship_dir: &Path) -> PathBuf {
+    agents_ns(ship_dir).join("skills")
 }
 
 /// Legacy project-scoped skills store used by pre-release builds:
@@ -702,10 +719,17 @@ fn is_likely_rust_test_binary(path: &Path) -> bool {
 
 #[cfg(unix)]
 extern "C" fn cleanup_test_global_dir_on_exit() {
-    if let Some(path) = TEST_GLOBAL_CLEANUP_PATH.get()
-        && let Some(run_root) = path.parent()
-    {
-        let _ = fs::remove_dir_all(run_root);
+    // Remove all per-thread test dirs for this PID.
+    let prefix = format!("{}{}-", TEST_GLOBAL_DIR_PREFIX, std::process::id());
+    if let Ok(entries) = fs::read_dir(std::env::temp_dir()) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str()
+                && name.starts_with(&prefix)
+                && entry.path().is_dir()
+            {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
     }
 }
 
@@ -907,6 +931,145 @@ pub fn get_project_name(ship_path: &Path) -> String {
         .to_string()
 }
 
+pub fn register_ship_namespace(
+    ship_path: &Path,
+    namespace: crate::config::NamespaceConfig,
+) -> Result<()> {
+    let mut config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
+    if let Some(existing) = config
+        .namespaces
+        .iter_mut()
+        .find(|entry| entry.id == namespace.id)
+    {
+        *existing = namespace;
+    } else {
+        config.namespaces.push(namespace);
+    }
+    crate::config::save_config(&config, Some(ship_path.to_path_buf()))?;
+    crate::config::ensure_registered_namespaces(ship_path, &config.namespaces)
+}
+
+fn write_if_missing(path: &Path, content: &str) -> Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, content)?;
+    Ok(())
+}
+
+/// Lightweight project bootstrap for runtime unit tests.
+/// The full production project scaffolding lives in `ship-module-project`.
+pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
+    let ship_path = base_dir.join(SHIP_DIR_NAME);
+    fs::create_dir_all(&ship_path)?;
+
+    for rel in [
+        "project/adrs",
+        "project/specs",
+        "project/features",
+        "project/releases",
+        "project/notes",
+        "skills",
+        "rules",
+    ] {
+        fs::create_dir_all(ship_path.join(rel))?;
+    }
+
+    write_if_missing(
+        &ship_path.join("project/features/TEMPLATE.md"),
+        "+++\nrelease_id = \"\"\n+++\n\n## Why\n\n## Delivery Todos\n",
+    )?;
+    write_if_missing(
+        &ship_path.join("project/releases/TEMPLATE.md"),
+        "+++\nversion = \"\"\n+++\n\n## Scope\n",
+    )?;
+    write_if_missing(
+        &ship_path.join("project/notes/TEMPLATE.md"),
+        "+++\ntitle = \"\"\n+++\n\n",
+    )?;
+    write_if_missing(
+        &vision_doc_path(&ship_path),
+        "# Vision\n\nDescribe what this project is trying to achieve.\n",
+    )?;
+
+    // Write ship.toml (with a stable project ID) BEFORE any DB access so that
+    // project_db_key can read the ID and derive a stable state directory path.
+    if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
+        let config = crate::config::ProjectConfig {
+            id: crate::gen_nanoid(),
+            ..Default::default()
+        };
+        crate::config::save_config(&config, Some(ship_path.clone()))?;
+    }
+
+    write_if_missing(
+        &skills_dir(&ship_path).join("task-policy").join("SKILL.md"),
+        r#"---
+name: task-policy
+description: Ship workflow policy and execution guardrails for daily delivery.
+metadata:
+  display_name: Ship Workflow Policy
+  source: builtin
+---
+
+# Ship Workflow Policy
+
+Use Ship as the system of record for workflow state changes.
+
+## Canonical Flow
+
+Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
+"#,
+    )?;
+
+    let config = crate::config::get_config(Some(ship_path.clone()))?;
+    crate::config::ensure_registered_namespaces(&ship_path, &config.namespaces)?;
+    crate::config::generate_gitignore(&ship_path, &config.git)?;
+
+    Ok(ship_path)
+}
+
+/// Result of [`init_project_with_registry`].
+#[derive(Debug)]
+pub struct InitWithRegistryResult {
+    pub ship_dir: PathBuf,
+    /// Number of default dependencies seeded into ship.jsonc.
+    pub deps_seeded: usize,
+    /// Whether registry install succeeded. `false` means offline fallback was used.
+    pub registry_installed: bool,
+}
+
+/// Full project init with registry-backed default dependencies.
+///
+/// 1. Scaffold `.ship/` directories and default files via [`init_project`].
+/// 2. Seed `@ship/*` default dependencies into `ship.jsonc`.
+/// 3. Attempt to install them via the registry.
+/// 4. If install fails (offline/unreachable), the bare scaffold skills from
+///    step 1 remain as fallback.
+///
+/// Idempotent: safe to call multiple times on the same directory.
+pub fn init_project_with_registry(base_dir: PathBuf) -> Result<InitWithRegistryResult> {
+    let ship_dir = init_project(base_dir)?;
+
+    // Seed default dependencies — idempotent, skips if deps already present.
+    let seed = crate::registry::init_deps::seed_default_dependencies(&ship_dir)?;
+    let deps_seeded = seed.added;
+
+    // Best-effort install. Failure is not an error — bare scaffold skills
+    // remain as the offline fallback.
+    let registry_installed = crate::registry::init_deps::try_install_init_deps(&ship_dir)
+        .unwrap_or_default();
+
+    Ok(InitWithRegistryResult {
+        ship_dir,
+        deps_seeded,
+        registry_installed,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1019,7 +1182,7 @@ mod tests {
         fs::create_dir_all(&ship)?;
         fs::write(
             ship.join(crate::config::PRIMARY_CONFIG_FILE),
-            "id = 'AbC123xy'\nname = 'Platform API'\n",
+            r#"{"id": "AbC123xy", "name": "Platform API"}"#,
         )?;
 
         let slug = project_slug_from_ship_dir(&ship);
@@ -1052,14 +1215,14 @@ mod tests {
         fs::create_dir_all(&ship)?;
         fs::write(
             ship.join(crate::config::PRIMARY_CONFIG_FILE),
-            "version = '1'\nname = 'legacy-project'\n",
+            r#"{"module": {"name": "legacy-project", "version": "1.0.0"}}"#,
         )?;
 
         let id = ensure_project_id(&ship)?;
         assert!(!id.trim().is_empty());
 
         let raw = fs::read_to_string(ship.join(crate::config::PRIMARY_CONFIG_FILE))?;
-        let parsed: toml::Value = toml::from_str(&raw)?;
+        let parsed: serde_json::Value = serde_json::from_str(&raw)?;
         let persisted_id = parsed
             .get("id")
             .and_then(|value| value.as_str())
@@ -1102,105 +1265,58 @@ mod tests {
         assert!(!normalize_app_state_paths(&mut state));
         Ok(())
     }
-}
 
-pub fn register_ship_namespace(
-    ship_path: &Path,
-    namespace: crate::config::NamespaceConfig,
-) -> Result<()> {
-    let mut config = crate::config::get_config(Some(ship_path.to_path_buf()))?;
-    if let Some(existing) = config
-        .namespaces
-        .iter_mut()
-        .find(|entry| entry.id == namespace.id)
-    {
-        *existing = namespace;
-    } else {
-        config.namespaces.push(namespace);
-    }
-    crate::config::save_config(&config, Some(ship_path.to_path_buf()))?;
-    crate::config::ensure_registered_namespaces(ship_path, &config.namespaces)
-}
+    #[test]
+    fn init_with_registry_seeds_deps_and_falls_back_offline() -> Result<()> {
+        let tmp = tempdir()?;
+        let result = init_project_with_registry(tmp.path().to_path_buf())?;
 
-fn write_if_missing(path: &Path, content: &str) -> Result<()> {
-    if path.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, content)?;
-    Ok(())
-}
+        // Bare scaffold should exist (fallback).
+        assert!(
+            skills_dir(&result.ship_dir)
+                .join("task-policy/SKILL.md")
+                .is_file(),
+            "task-policy skill must be present as offline fallback"
+        );
 
-/// Lightweight project bootstrap for runtime unit tests.
-/// The full production project scaffolding lives in `ship-module-project`.
-pub fn init_project(base_dir: PathBuf) -> Result<PathBuf> {
-    let ship_path = base_dir.join(SHIP_DIR_NAME);
-    fs::create_dir_all(&ship_path)?;
+        // Dependencies should be seeded in ship.jsonc.
+        let content = fs::read_to_string(
+            result.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
+        )?;
+        let doc: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)?;
+        assert!(
+            doc.get("dependencies").is_some(),
+            "ship.jsonc must contain dependencies after init_project_with_registry"
+        );
 
-    for rel in [
-        "project/adrs",
-        "project/specs",
-        "project/features",
-        "project/releases",
-        "project/notes",
-        "agents/skills",
-        "generated",
-    ] {
-        fs::create_dir_all(ship_path.join(rel))?;
+        // Registry install should have failed (no real registry in tests).
+        assert!(!result.registry_installed);
+        assert_eq!(
+            result.deps_seeded,
+            crate::registry::init_deps::DEFAULT_INIT_DEPS.len()
+        );
+        Ok(())
     }
 
-    write_if_missing(
-        &ship_path.join("project/features/TEMPLATE.md"),
-        "+++\nrelease_id = \"\"\n+++\n\n## Why\n\n## Delivery Todos\n",
-    )?;
-    write_if_missing(
-        &ship_path.join("project/releases/TEMPLATE.md"),
-        "+++\nversion = \"\"\n+++\n\n## Scope\n",
-    )?;
-    write_if_missing(
-        &ship_path.join("project/notes/TEMPLATE.md"),
-        "+++\ntitle = \"\"\n+++\n\n",
-    )?;
-    write_if_missing(
-        &vision_doc_path(&ship_path),
-        "# Vision\n\nDescribe what this project is trying to achieve.\n",
-    )?;
+    #[test]
+    fn init_with_registry_is_idempotent() -> Result<()> {
+        let tmp = tempdir()?;
 
-    // Write ship.toml (with a stable project ID) BEFORE any DB access so that
-    // project_db_key can read the ID and derive a stable state directory path.
-    if !ship_path.join(crate::config::PRIMARY_CONFIG_FILE).exists() {
-        let config = crate::config::ProjectConfig {
-            id: crate::gen_nanoid(),
-            ..Default::default()
-        };
-        crate::config::save_config(&config, Some(ship_path.clone()))?;
+        // First init.
+        let r1 = init_project_with_registry(tmp.path().to_path_buf())?;
+        assert!(r1.deps_seeded > 0);
+
+        // Second init -- deps already present, nothing added.
+        let r2 = init_project_with_registry(tmp.path().to_path_buf())?;
+        assert_eq!(r2.deps_seeded, 0, "second init must not re-add deps");
+        assert_eq!(r1.ship_dir, r2.ship_dir);
+
+        // ship.jsonc should still have dependencies from first init.
+        let content = fs::read_to_string(
+            r2.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
+        )?;
+        let doc: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)?;
+        assert!(doc.get("dependencies").is_some());
+        Ok(())
     }
-
-    write_if_missing(
-        &skills_dir(&ship_path).join("task-policy").join("SKILL.md"),
-        r#"---
-name: task-policy
-description: Ship workflow policy and execution guardrails for daily delivery.
-metadata:
-  display_name: Ship Workflow Policy
-  source: builtin
----
-
-# Ship Workflow Policy
-
-Use Ship as the system of record for workflow state changes.
-
-## Canonical Flow
-
-Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
-"#,
-    )?;
-
-    let config = crate::config::get_config(Some(ship_path.clone()))?;
-    crate::config::ensure_registered_namespaces(&ship_path, &config.namespaces)?;
-    crate::config::generate_gitignore(&ship_path, &config.git)?;
-
-    Ok(ship_path)
 }

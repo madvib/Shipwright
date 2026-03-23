@@ -19,30 +19,44 @@ fn empty_agents_dir_gives_default_library() {
 #[test]
 fn loads_stdio_mcp_server() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "mcp.toml", r#"
+    write(
+        tmp.path(),
+        "mcp.toml",
+        r#"
 [[servers]]
 id = "github"
 name = "GitHub"
 command = "npx"
 args = ["-y", "@mcp/github"]
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.mcp_servers.len(), 1);
     assert_eq!(lib.mcp_servers[0].id, "github");
     assert_eq!(lib.mcp_servers[0].command, "npx");
-    assert!(matches!(lib.mcp_servers[0].server_type, McpServerType::Stdio));
+    assert!(matches!(
+        lib.mcp_servers[0].server_type,
+        McpServerType::Stdio
+    ));
 }
 
 #[test]
 fn loads_http_mcp_server_by_url() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "mcp.toml", r#"
+    write(
+        tmp.path(),
+        "mcp.toml",
+        r#"
 [[servers]]
 id = "remote"
 url = "https://api.example.com/mcp"
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
-    assert!(matches!(lib.mcp_servers[0].server_type, McpServerType::Http));
+    assert!(matches!(
+        lib.mcp_servers[0].server_type,
+        McpServerType::Http
+    ));
 }
 
 #[test]
@@ -76,8 +90,11 @@ fn rule_without_frontmatter_uses_full_content() {
 #[test]
 fn loads_skill_from_skill_md() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "skills/my-skill/SKILL.md",
-        "---\nname: My Skill\ndescription: Does stuff\n---\n\nInstructions here.");
+    write(
+        tmp.path(),
+        "skills/my-skill/SKILL.md",
+        "---\nname: My Skill\ndescription: Does stuff\n---\n\nInstructions here.",
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.skills.len(), 1);
     assert_eq!(lib.skills[0].id, "my-skill");
@@ -89,8 +106,11 @@ fn loads_skill_from_skill_md() {
 #[test]
 fn loads_skill_from_flat_md() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "skills/ship-coordination.md",
-        "---\nname: Ship Coordination\ndescription: Coordination skill\n---\n\nContent here.");
+    write(
+        tmp.path(),
+        "skills/ship-coordination.md",
+        "---\nname: Ship Coordination\ndescription: Coordination skill\n---\n\nContent here.",
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.skills.len(), 1);
     assert_eq!(lib.skills[0].id, "ship-coordination");
@@ -100,10 +120,16 @@ fn loads_skill_from_flat_md() {
 #[test]
 fn loads_skills_mixed_formats() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "skills/flat-skill.md",
-        "---\nname: Flat\n---\n\nFlat content.");
-    write(tmp.path(), "skills/dir-skill/SKILL.md",
-        "---\nname: Dir\n---\n\nDir content.");
+    write(
+        tmp.path(),
+        "skills/flat-skill.md",
+        "---\nname: Flat\n---\n\nFlat content.",
+    );
+    write(
+        tmp.path(),
+        "skills/dir-skill/SKILL.md",
+        "---\nname: Dir\n---\n\nDir content.",
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.skills.len(), 2);
 }
@@ -111,24 +137,37 @@ fn loads_skills_mixed_formats() {
 #[test]
 fn loads_permissions() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "permissions.toml", r#"
+    write(
+        tmp.path(),
+        "permissions.toml",
+        r#"
 [tools]
 deny = ["Bash(rm -rf *)"]
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
-    assert!(lib.permissions.tools.deny.contains(&"Bash(rm -rf *)".to_string()));
+    assert!(
+        lib.permissions
+            .tools
+            .deny
+            .contains(&"Bash(rm -rf *)".to_string())
+    );
 }
 
 #[test]
 fn loads_hooks() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "hooks.toml", r#"
+    write(
+        tmp.path(),
+        "hooks.toml",
+        r#"
 [[hooks]]
 id = "check"
 trigger = "pre_tool_use"
 command = "ship hooks run"
 matcher = "Bash"
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.hooks.len(), 1);
     assert_eq!(lib.hooks[0].command, "ship hooks run");
@@ -138,20 +177,30 @@ matcher = "Bash"
 #[test]
 fn unknown_hook_trigger_skipped() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "hooks.toml", r#"
+    write(
+        tmp.path(),
+        "hooks.toml",
+        r#"
 [[hooks]]
 id = "bad"
 trigger = "unknown_event"
 command = "echo hi"
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
-    assert!(lib.hooks.is_empty(), "unknown trigger must be silently dropped");
+    assert!(
+        lib.hooks.is_empty(),
+        "unknown trigger must be silently dropped"
+    );
 }
 
 #[test]
 fn load_permission_preset_reads_named_section() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "permissions.toml", r#"
+    write(
+        tmp.path(),
+        "permissions.toml",
+        r#"
 [ship-standard]
 default_mode = "acceptEdits"
 tools_ask = ["Bash(rm -rf*)"]
@@ -159,17 +208,26 @@ tools_deny = ["Bash(git push --force*)"]
 
 [ship-elevated]
 default_mode = "dontAsk"
-"#);
+"#,
+    );
     let preset = load_permission_preset(tmp.path(), "ship-standard").unwrap();
     assert_eq!(preset.default_mode.as_deref(), Some("acceptEdits"));
     assert!(preset.tools_ask.contains(&"Bash(rm -rf*)".to_string()));
-    assert!(preset.tools_deny.contains(&"Bash(git push --force*)".to_string()));
+    assert!(
+        preset
+            .tools_deny
+            .contains(&"Bash(git push --force*)".to_string())
+    );
 }
 
 #[test]
 fn load_permission_preset_missing_section_returns_none() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "permissions.toml", "[ship-elevated]\ndefault_mode = \"dontAsk\"\n");
+    write(
+        tmp.path(),
+        "permissions.toml",
+        "[ship-elevated]\ndefault_mode = \"dontAsk\"\n",
+    );
     let result = load_permission_preset(tmp.path(), "nonexistent");
     assert!(result.is_none());
 }
@@ -184,7 +242,10 @@ fn load_permission_preset_missing_file_returns_none() {
 #[test]
 fn loads_agent_profiles_from_profiles_dir() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "profiles/web-lane.toml", r#"
+    write(
+        tmp.path(),
+        "agents/profiles/web-lane.toml",
+        r#"
 [profile]
 id = "web-lane"
 name = "Web Lane"
@@ -195,13 +256,18 @@ refs = ["tanstack-start"]
 
 [permissions]
 preset = "ship-standard"
-"#);
-    write(tmp.path(), "profiles/server-lane.toml", r#"
+"#,
+    );
+    write(
+        tmp.path(),
+        "agents/profiles/server-lane.toml",
+        r#"
 [profile]
 id = "server-lane"
 name = "Server Lane"
 providers = ["claude"]
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.agent_profiles.len(), 2);
     assert_eq!(lib.agent_profiles[0].profile.id, "server-lane");
@@ -219,12 +285,20 @@ fn agent_profiles_empty_when_dir_missing() {
 #[test]
 fn agent_profiles_skips_invalid_toml() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "profiles/good.toml", r#"
+    write(
+        tmp.path(),
+        "agents/profiles/good.toml",
+        r#"
 [profile]
 id = "good"
 name = "Good"
-"#);
-    write(tmp.path(), "profiles/bad.toml", "this is not valid toml { { {");
+"#,
+    );
+    write(
+        tmp.path(),
+        "agents/profiles/bad.toml",
+        "this is not valid toml { { {",
+    );
     let lib = load_library(tmp.path()).unwrap();
     assert_eq!(lib.agent_profiles.len(), 1);
     assert_eq!(lib.agent_profiles[0].profile.id, "good");
@@ -233,13 +307,23 @@ name = "Good"
 #[test]
 fn permissions_file_with_named_sections_falls_back_to_default() {
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "permissions.toml", r#"
+    write(
+        tmp.path(),
+        "permissions.toml",
+        r#"
 [ship-standard]
 default_mode = "acceptEdits"
-"#);
+"#,
+    );
     let lib = load_library(tmp.path()).unwrap();
-    assert!(lib.permissions.tools.allow.is_empty()
-        || !lib.permissions.tools.allow.contains(&"[ship-standard]".to_string()));
+    assert!(
+        lib.permissions.tools.allow.is_empty()
+            || !lib
+                .permissions
+                .tools
+                .allow
+                .contains(&"[ship-standard]".to_string())
+    );
     let preset = load_permission_preset(tmp.path(), "ship-standard").unwrap();
     assert_eq!(preset.default_mode.as_deref(), Some("acceptEdits"));
 }
@@ -265,16 +349,28 @@ fn skill_parses_allowed_tools_hyphenated_key() {
 fn skill_parses_metadata_block() {
     let raw = "---\nname: my-skill\ndescription: x\nmetadata:\n  team: infra\n  priority: high\n---\n\nContent.";
     let skill = parse_skill("my-skill", raw);
-    assert_eq!(skill.metadata.get("team").map(String::as_str), Some("infra"));
-    assert_eq!(skill.metadata.get("priority").map(String::as_str), Some("high"));
+    assert_eq!(
+        skill.metadata.get("team").map(String::as_str),
+        Some("infra")
+    );
+    assert_eq!(
+        skill.metadata.get("priority").map(String::as_str),
+        Some("high")
+    );
 }
 
 #[test]
 fn skill_folds_legacy_version_author_into_metadata() {
     let raw = "---\nname: my-skill\ndescription: x\nversion: 1.2.3\nauthor: alice\n---\n\nContent.";
     let skill = parse_skill("my-skill", raw);
-    assert_eq!(skill.metadata.get("version").map(String::as_str), Some("1.2.3"));
-    assert_eq!(skill.metadata.get("author").map(String::as_str), Some("alice"));
+    assert_eq!(
+        skill.metadata.get("version").map(String::as_str),
+        Some("1.2.3")
+    );
+    assert_eq!(
+        skill.metadata.get("author").map(String::as_str),
+        Some("alice")
+    );
 }
 
 #[test]

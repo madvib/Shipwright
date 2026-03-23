@@ -16,22 +16,32 @@ fn test_frozen_fails_on_added_dep() -> anyhow::Result<()> {
     let lock_path = lock_dir.path().join("ship.lock");
 
     // Write an empty lock.
-    let empty_lock = ShipLock { version: 1, package: vec![] };
+    let empty_lock = ShipLock {
+        version: 1,
+        package: vec![],
+    };
     write_lock_atomic(&lock_path, &empty_lock)?;
 
     // Manifest has a dep not in the lock.
     let manifest = ShipManifest {
-        dependencies: [
-            ("github.com/owner/pkg".into(), Dependency { version: "main".into(), grant: vec![] }),
-        ].into(),
-        ..Default::default()
+        dependencies: [(
+            "github.com/owner/pkg".into(),
+            Dependency {
+                version: "main".into(),
+                grant: vec![],
+            },
+        )]
+        .into(),
     };
 
     let opts = InstallOptions { frozen: true, offline: true };
     let result = resolve_and_fetch(&manifest, &lock_path, &cache, &opts);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("--frozen") || msg.contains("out of sync"), "got: {msg}");
+    assert!(
+        msg.contains("--frozen") || msg.contains("out of sync"),
+        "got: {msg}"
+    );
     Ok(())
 }
 
@@ -61,7 +71,12 @@ fn test_install_aborts_on_hash_mismatch() -> anyhow::Result<()> {
     // Store a real package in cache so `get()` returns a CachedPackage.
     let content = tempdir()?;
     std::fs::write(content.path().join("README.md"), "hello")?;
-    let _cached = cache.store("github.com/owner/pkg", "v1.0.0", &"a".repeat(40), content.path())?;
+    let _cached = cache.store(
+        "github.com/owner/pkg",
+        "v1.0.0",
+        &"a".repeat(40),
+        content.path(),
+    )?;
 
     // Write a lockfile with the WRONG hash — the real hash won't match.
     let lock = ShipLock {
@@ -78,10 +93,14 @@ fn test_install_aborts_on_hash_mismatch() -> anyhow::Result<()> {
     // The manifest matches the lock so no re-resolution happens — but the
     // hash check should fail.
     let manifest = ShipManifest {
-        dependencies: [
-            ("github.com/owner/pkg".into(), Dependency { version: "v1.0.0".into(), grant: vec![] }),
-        ].into(),
-        ..Default::default()
+        dependencies: [(
+            "github.com/owner/pkg".into(),
+            Dependency {
+                version: "v1.0.0".into(),
+                grant: vec![],
+            },
+        )]
+        .into(),
     };
 
     let opts = InstallOptions::default();
@@ -99,7 +118,10 @@ fn test_in_sync_lock_no_deps_no_write() -> anyhow::Result<()> {
     let lock_path = lock_dir.path().join("ship.lock");
 
     // Write an already-correct lock.
-    let lock = ShipLock { version: 1, package: vec![] };
+    let lock = ShipLock {
+        version: 1,
+        package: vec![],
+    };
     write_lock_atomic(&lock_path, &lock)?;
     let mtime_before = std::fs::metadata(&lock_path)?.modified()?;
 
@@ -132,14 +154,18 @@ fn test_discover_no_manifest() -> anyhow::Result<()> {
 #[test]
 fn test_discover_manifest_with_deps() -> anyhow::Result<()> {
     let tmp = tempdir()?;
-    write_file(tmp.path(), "ship.toml", r#"
+    write_file(
+        tmp.path(),
+        "ship.toml",
+        r#"
 [module]
 name = "github.com/a/b"
 version = "1.0.0"
 
 [dependencies]
 "github.com/c/d" = "^1.0.0"
-"#);
+"#,
+    );
 
     let deps = discover_transitive_deps(tmp.path(), "github.com/a/b", &[])?;
     assert_eq!(deps.len(), 1);
@@ -151,11 +177,15 @@ version = "1.0.0"
 #[test]
 fn test_discover_manifest_no_deps() -> anyhow::Result<()> {
     let tmp = tempdir()?;
-    write_file(tmp.path(), "ship.toml", r#"
+    write_file(
+        tmp.path(),
+        "ship.toml",
+        r#"
 [module]
 name = "github.com/a/b"
 version = "1.0.0"
-"#);
+"#,
+    );
 
     let deps = discover_transitive_deps(tmp.path(), "github.com/a/b", &[])?;
     assert!(deps.is_empty());
@@ -166,14 +196,18 @@ version = "1.0.0"
 fn test_discover_cycle_detection() -> anyhow::Result<()> {
     let tmp = tempdir()?;
     // B depends on A, and A is an ancestor.
-    write_file(tmp.path(), "ship.toml", r#"
+    write_file(
+        tmp.path(),
+        "ship.toml",
+        r#"
 [module]
 name = "github.com/b/pkg"
 version = "1.0.0"
 
 [dependencies]
 "github.com/a/pkg" = "^1.0.0"
-"#);
+"#,
+    );
 
     let ancestors = vec!["ship.toml".into(), "github.com/a/pkg".into()];
     let result = discover_transitive_deps(tmp.path(), "github.com/b/pkg", &ancestors);

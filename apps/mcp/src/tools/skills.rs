@@ -36,4 +36,3 @@ pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
     }
     out
 }
-

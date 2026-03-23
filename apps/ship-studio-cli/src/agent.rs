@@ -14,7 +14,10 @@ pub fn agent_log(message: &str) -> Result<()> {
     let log_path = paths::project_dir().join("agent.log");
     let entry = format!("[{}] {}\n", Utc::now().to_rfc3339(), message);
     use std::io::Write;
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&log_path)?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
     file.write_all(entry.as_bytes())?;
     Ok(())
 }
@@ -32,9 +35,19 @@ fn ship_dir() -> Result<std::path::PathBuf> {
 /// Create a job and print its ID. Not wired to CLI — called by MCP or internally.
 #[allow(dead_code)]
 pub fn create_job(kind: &str, branch: Option<&str>) -> Result<()> {
-    let dir = ship_dir()?;
-    let job = runtime::db::jobs::create_job(&dir, kind, branch, None, None, None, 0, None, vec![], vec![])
-        .with_context(|| format!("failed to create job (kind={kind})"))?;
+    let _dir = ship_dir()?;
+    let job = runtime::db::jobs::create_job(
+        kind,
+        branch,
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .with_context(|| format!("failed to create job (kind={kind})"))?;
     println!("{}", job.id);
     Ok(())
 }
@@ -42,8 +55,8 @@ pub fn create_job(kind: &str, branch: Option<&str>) -> Result<()> {
 /// Update a job's status. Not wired to CLI — called by MCP or internally.
 #[allow(dead_code)]
 pub fn update_job(id: &str, status: &str) -> Result<()> {
-    let dir = ship_dir()?;
-    runtime::db::jobs::update_job_status(&dir, id, status)
+    let _dir = ship_dir()?;
+    runtime::db::jobs::update_job_status(id, status)
         .with_context(|| format!("failed to update job {id} to status={status}"))?;
     println!("updated {id} -> {status}");
     Ok(())
@@ -52,9 +65,8 @@ pub fn update_job(id: &str, status: &str) -> Result<()> {
 /// List jobs, optionally filtered by branch and/or status. Not wired to CLI — called by MCP or internally.
 #[allow(dead_code)]
 pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<()> {
-    let dir = ship_dir()?;
-    let jobs = runtime::db::jobs::list_jobs(&dir, branch, status)
-        .context("failed to list jobs")?;
+    let _dir = ship_dir()?;
+    let jobs = runtime::db::jobs::list_jobs(branch, status).context("failed to list jobs")?;
     if jobs.is_empty() {
         println!("no jobs found");
     } else {

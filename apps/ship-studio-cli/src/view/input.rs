@@ -1,164 +1,339 @@
-//! Key handling and event loop for the TUI.
+//! Key event handling. Returns actions that the main loop applies.
 
-use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use ratatui::Terminal;
-use std::time::Duration;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::{App, Screen, Tab, actions, render};
+use super::data::ViewData;
+use super::modal::{ConfirmAction, FormState, Modal};
+use super::nav::{NavState, Panel};
 
-/// Main event loop — polls keyboard at 250ms intervals.
-pub fn run_loop<B: ratatui::backend::Backend + std::io::Write>(
-    terminal: &mut Terminal<B>,
-    app: &mut App,
-) -> Result<()> {
-    loop {
-        terminal.draw(|f| render::draw(f, app))?;
-        if event::poll(Duration::from_millis(250))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
-                    KeyCode::Char('r') => app.refresh(),
-                    KeyCode::Char('a') => {
-                        app.auto_refresh = !app.auto_refresh;
-                        app.status = if app.auto_refresh {
-                            "auto-refresh on".into()
-                        } else {
-                            "auto-refresh off".into()
-                        };
-                    }
-                    KeyCode::Tab => app.cycle_tab(),
-                    KeyCode::BackTab => app.reverse_cycle_tab(),
-                    KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                    KeyCode::Up | KeyCode::Char('k') => app.move_up(),
-                    KeyCode::Enter => app.enter(),
-                    KeyCode::Esc | KeyCode::Backspace => app.back(),
-                    KeyCode::Char('s') => handle_status_cycle(app),
-                    KeyCode::Char('f') => handle_filter(app),
-                    KeyCode::Char('g') => handle_jump_top(app),
-                    KeyCode::Char('G') => handle_jump_bottom(app),
-                    KeyCode::Char('l') => handle_launch(terminal, app)?,
-                    _ => {}
-                }
-            }
-        } else if app.auto_refresh {
-            app.refresh_counter += 1;
-            if app.refresh_counter >= 20 {
-                app.refresh_counter = 0;
-                app.refresh();
-                app.status = "auto".into();
-            }
-        }
-    }
-    Ok(())
+/// What the main loop should do after processing a key.
+pub enum Action {
+    None,
+    Quit,
+    Refresh,
+    OpenModal(Modal),
+    CloseModal,
+    SubmitForm,
+    ConfirmYes,
 }
 
-/// `s` — cycle status on Jobs list or TargetDetail capability list.
-fn handle_status_cycle(app: &mut App) {
-    match (app.tab, app.screen) {
-        (Tab::Jobs, Screen::List) => {
-            if let Some(j) = app.jobs.get(app.sel_job) {
-                let id = j.id.clone();
-                let current = j.status.clone();
-                app.status = actions::cycle_job_status(&app.ship_dir, &id, &current);
-                app.refresh();
-            }
+/// Handle key events when in a detail screen (full-page).
+pub fn handle_detail(key: KeyEvent, nav: &mut NavState) -> Action {
+    match key.code {
+        KeyCode::Esc | KeyCode::Backspace => {
+            nav.back_to_list();
+            Action::None
         }
-        (Tab::Targets, Screen::TargetDetail) => {
-            if let Some(c) = app.caps.get(app.sel_cap) {
-                let id = c.id.clone();
-                let current = c.status.clone();
-                app.status = actions::cycle_cap_status(&app.ship_dir, &id, &current);
-                app.refresh();
-            }
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+        KeyCode::Down | KeyCode::Char('j') => {
+            nav.scroll_detail_down();
+            Action::None
         }
+        KeyCode::Up | KeyCode::Char('k') => {
+            nav.scroll_detail_up();
+            Action::None
+        }
+        _ => Action::None,
+    }
+}
+
+/// Handle key events when no modal is open and we are on list screen.
+pub fn handle_main(key: KeyEvent, nav: &mut NavState, data: &ViewData) -> Action {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => return Action::Quit,
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Action::Quit;
+        }
+        KeyCode::Char('r') => return Action::Refresh,
+
+        // Section switching: number keys
+        KeyCode::Char('1') => nav.set_section(0),
+        KeyCode::Char('2') => nav.set_section(1),
+        KeyCode::Char('3') => nav.set_section(2),
+        KeyCode::Char('4') => nav.set_section(3),
+        KeyCode::Char('5') => nav.set_section(4),
+
+        // Section cycling
+        KeyCode::Char('H') | KeyCode::BackTab => nav.prev_section(),
+        KeyCode::Char('L') => nav.next_section(),
+
+        // Panel switching within section
+        KeyCode::Tab => nav.next_panel(),
+
+        // List navigation
+        KeyCode::Down | KeyCode::Char('j') => {
+            let len = list_len(nav, data);
+            nav.select_down(len);
+        }
+        KeyCode::Up | KeyCode::Char('k') => nav.select_up(),
+
+        // Status filter cycling (any panel with status)
+        KeyCode::Char('f') if nav.panel().has_status_filter() => {
+            let statuses = collect_statuses(nav, data);
+            nav.cycle_status_filter(&statuses);
+        }
+
+        // Enter = full-page detail for selected item
+        KeyCode::Enter => {
+            open_detail(nav, data);
+            return Action::None;
+        }
+
+        // CRUD shortcuts
+        KeyCode::Char('n') => return open_create_form(nav),
+        KeyCode::Char('e') => return open_edit_form(nav, data),
+        KeyCode::Char('d') => return open_delete_confirm(nav, data),
+
         _ => {}
     }
+    Action::None
 }
 
-/// `f` — cycle job filter (only on Jobs list).
-fn handle_filter(app: &mut App) {
-    if app.tab == Tab::Jobs && app.screen == Screen::List {
-        app.job_filter = app.job_filter.next();
-        app.jobs = app.load_filtered_jobs();
-        app.sel_job = 0;
-        app.status = format!("filter: {}", app.job_filter.label());
-    }
-}
-
-/// `g` — jump to top of current list or scroll position.
-fn handle_jump_top(app: &mut App) {
-    match (app.tab, app.screen) {
-        (_, Screen::List) => match app.tab {
-            Tab::Targets => app.sel_target = 0,
-            Tab::Jobs => app.sel_job = 0,
-            Tab::Events => app.sel_event = 0,
-            Tab::Notes => app.sel_note = 0,
-            Tab::Adrs => app.sel_adr = 0,
+/// Handle key events when a modal is open.
+pub fn handle_modal(key: KeyEvent, modal: &mut Modal) -> Action {
+    match modal {
+        Modal::Form(form) => match key.code {
+            KeyCode::Esc => Action::CloseModal,
+            KeyCode::Tab => {
+                form.next_field();
+                Action::None
+            }
+            KeyCode::BackTab => {
+                form.prev_field();
+                Action::None
+            }
+            KeyCode::Enter => Action::SubmitForm,
+            KeyCode::Backspace => {
+                form.backspace();
+                Action::None
+            }
+            KeyCode::Char(c) => {
+                form.type_char(c);
+                Action::None
+            }
+            _ => Action::None,
         },
-        (Tab::Targets, Screen::TargetDetail) => app.sel_cap = 0,
-        (Tab::Notes, Screen::NoteDetail) => app.note_scroll = 0,
-        (Tab::Jobs, Screen::JobDetail) => app.log_scroll = 0,
-        _ => {}
-    }
-}
-
-/// `G` — jump to bottom of current list or scroll position.
-fn handle_jump_bottom(app: &mut App) {
-    match (app.tab, app.screen) {
-        (_, Screen::List) => match app.tab {
-            Tab::Targets => app.sel_target = app.targets.len().saturating_sub(1),
-            Tab::Jobs => app.sel_job = app.jobs.len().saturating_sub(1),
-            Tab::Events => app.sel_event = app.events.len().saturating_sub(1),
-            Tab::Notes => app.sel_note = app.notes.len().saturating_sub(1),
-            Tab::Adrs => app.sel_adr = app.adrs.len().saturating_sub(1),
+        Modal::Confirm { .. } => match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => Action::ConfirmYes,
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => Action::CloseModal,
+            _ => Action::None,
         },
-        (Tab::Targets, Screen::TargetDetail) => {
-            app.sel_cap = app.caps.len().saturating_sub(1);
+    }
+}
+
+fn list_len(nav: &NavState, data: &ViewData) -> usize {
+    let filter = nav.status_filter.as_deref();
+    match nav.panel() {
+        Panel::Targets => count_filtered(data.targets.iter().map(|t| t.status.as_str()), filter),
+        Panel::Capabilities => {
+            count_filtered(data.capabilities.iter().map(|c| c.status.as_str()), filter)
         }
-        (Tab::Notes, Screen::NoteDetail) => app.note_scroll = u16::MAX,
-        (Tab::Jobs, Screen::JobDetail) => app.log_scroll = u16::MAX,
+        Panel::Jobs => count_filtered(data.all_jobs.iter().map(|j| j.status.as_str()), filter),
+        Panel::Notes => data.notes.len(),
+        Panel::Adrs => count_filtered(data.adrs.iter().map(|a| a.status.as_str()), filter),
+        Panel::EventLog => data.events.len(),
+        Panel::AgentProfiles => super::render_config::discover_agents().len(),
+        Panel::Skills => super::render_config::discover_all_skills().len(),
+        _ => 0,
+    }
+}
+
+fn count_filtered<'a>(statuses: impl Iterator<Item = &'a str>, filter: Option<&str>) -> usize {
+    match filter {
+        None => statuses.count(),
+        Some(f) => statuses.filter(|s| *s == f).count(),
+    }
+}
+
+fn collect_statuses<'a>(nav: &NavState, data: &'a ViewData) -> Vec<&'a str> {
+    match nav.panel() {
+        Panel::Targets => data.targets.iter().map(|t| t.status.as_str()).collect(),
+        Panel::Capabilities => data.capabilities.iter().map(|c| c.status.as_str()).collect(),
+        Panel::Jobs => data.all_jobs.iter().map(|j| j.status.as_str()).collect(),
+        Panel::Adrs => data.adrs.iter().map(|a| a.status.as_str()).collect(),
+        _ => vec![],
+    }
+}
+
+fn truncate_id(id: &str) -> &str {
+    &id[..8.min(id.len())]
+}
+
+/// Open a full-page detail view by setting nav.screen.
+fn open_detail(nav: &mut NavState, data: &ViewData) {
+    let filter = nav.status_filter.as_deref();
+    match nav.panel() {
+        Panel::Notes => {
+            if let Some(n) = data.notes.get(nav.list_selected) {
+                nav.enter_detail(n.title.clone(), n.content.clone());
+            }
+        }
+        Panel::Adrs => {
+            let adrs: Vec<&_> = data
+                .adrs
+                .iter()
+                .filter(|a| filter.is_none() || filter == Some(a.status.as_str()))
+                .collect();
+            if let Some(a) = adrs.get(nav.list_selected) {
+                let body = format!(
+                    "Status: {}\nDate: {}\n\n## Context\n{}\n\n## Decision\n{}",
+                    a.status, a.date, a.context, a.decision
+                );
+                nav.enter_detail(a.title.clone(), body);
+            }
+        }
+        Panel::Jobs => {
+            let jobs: Vec<&_> = data
+                .all_jobs
+                .iter()
+                .filter(|j| filter.is_none() || filter == Some(j.status.as_str()))
+                .collect();
+            if let Some(j) = jobs.get(nav.list_selected) {
+                let body = format!(
+                    "**Kind:** {}\n**Status:** {}\n**Branch:** {}\n**Created by:** {}\n**Claimed by:** {}\n**Created:** {}\n**Updated:** {}\n\n## Payload\n```json\n{}\n```",
+                    j.kind,
+                    j.status,
+                    j.branch.as_deref().unwrap_or("-"),
+                    j.created_by.as_deref().unwrap_or("-"),
+                    j.claimed_by.as_deref().unwrap_or("-"),
+                    j.created_at,
+                    j.updated_at,
+                    serde_json::to_string_pretty(&j.payload).unwrap_or_default(),
+                );
+                nav.enter_detail(format!("Job {}", j.id), body);
+            }
+        }
+        Panel::Targets => {
+            let targets: Vec<&_> = data
+                .targets
+                .iter()
+                .filter(|t| filter.is_none() || filter == Some(t.status.as_str()))
+                .collect();
+            if let Some(t) = targets.get(nav.list_selected) {
+                let body = format!(
+                    "**Kind:** {}\n**Status:** {}\n**Goal:** {}\n\n{}",
+                    t.kind,
+                    t.status,
+                    t.goal.as_deref().unwrap_or("-"),
+                    t.description.as_deref().unwrap_or(""),
+                );
+                nav.enter_detail(t.title.clone(), body);
+            }
+        }
+        Panel::Capabilities => {
+            let caps: Vec<&_> = data
+                .capabilities
+                .iter()
+                .filter(|c| filter.is_none() || filter == Some(c.status.as_str()))
+                .collect();
+            if let Some(c) = caps.get(nav.list_selected) {
+                let target_name = data
+                    .targets
+                    .iter()
+                    .find(|t| t.id == c.target_id)
+                    .map(|t| format!("{} ({})", t.title, truncate_id(&c.target_id)))
+                    .unwrap_or_else(|| c.target_id.clone());
+                let milestone = c
+                    .milestone_id
+                    .as_ref()
+                    .map(|mid| {
+                        data.targets
+                            .iter()
+                            .find(|t| t.id == *mid)
+                            .map(|t| format!("{} ({})", t.title, truncate_id(mid)))
+                            .unwrap_or_else(|| mid.clone())
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+                let body = format!(
+                    "**Target:** {target_name}\n**Status:** {}\n**Evidence:** {}\n**Milestone:** {milestone}",
+                    c.status,
+                    c.evidence.as_deref().unwrap_or("-"),
+                );
+                nav.enter_detail(c.title.clone(), body);
+            }
+        }
+        Panel::EventLog => {
+            if let Some(e) = data.events.get(nav.list_selected) {
+                let body = format!(
+                    "**ID:** {}\n**Timestamp:** {}\n**Actor:** {}\n**Entity:** {:?}\n**Action:** {:?}\n**Subject:** {}\n\n{}",
+                    e.id,
+                    e.timestamp,
+                    e.actor,
+                    e.entity,
+                    e.action,
+                    e.subject,
+                    e.details.as_deref().unwrap_or(""),
+                );
+                nav.enter_detail(format!("Event {}", &e.id[..8.min(e.id.len())]), body);
+            }
+        }
+        Panel::AgentProfiles => {
+            let agents = super::render_config::discover_agents();
+            if let Some(name) = agents.get(nav.list_selected) {
+                super::render_config::open_agent_detail(nav, name);
+            }
+        }
+        Panel::Skills => {
+            let skills = super::render_config::discover_all_skills();
+            if let Some(entry) = skills.get(nav.list_selected) {
+                super::render_config::open_skill_detail_by_entry(nav, entry);
+            }
+        }
         _ => {}
     }
 }
 
-/// `l` — launch session from JobDetail. Suspends TUI, runs `ship use <agent>`.
-fn handle_launch<B: ratatui::backend::Backend + std::io::Write>(
-    terminal: &mut Terminal<B>,
-    app: &mut App,
-) -> Result<()> {
-    if app.tab != Tab::Jobs || app.screen != Screen::JobDetail {
-        return Ok(());
+fn open_create_form(nav: &NavState) -> Action {
+    match nav.panel() {
+        Panel::Notes => Action::OpenModal(Modal::Form(FormState::new_note())),
+        Panel::Adrs => Action::OpenModal(Modal::Form(FormState::new_adr())),
+        _ => Action::None,
     }
-    let Some(j) = app.jobs.get(app.sel_job) else {
-        return Ok(());
-    };
-    let Some(ref agent) = j.claimed_by else {
-        app.status = "no agent claimed this job".into();
-        return Ok(());
-    };
-    let agent = agent.clone();
+}
 
-    // Suspend TUI
-    crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(terminal.backend_mut(), crossterm::terminal::LeaveAlternateScreen)?;
+fn open_edit_form(nav: &NavState, data: &ViewData) -> Action {
+    match nav.panel() {
+        Panel::ProjectSettings => Action::OpenModal(Modal::Form(FormState::edit_user_prefs(
+            &data.config.user_prefs,
+        ))),
+        Panel::Notes => {
+            if let Some(n) = data.notes.get(nav.list_selected) {
+                Action::OpenModal(Modal::Form(FormState::edit_note(
+                    &n.id, &n.title, &n.content,
+                )))
+            } else {
+                Action::None
+            }
+        }
+        _ => Action::None,
+    }
+}
 
-    let exe = std::env::current_exe().unwrap_or_else(|_| "ship".into());
-    let result = std::process::Command::new(&exe)
-        .args(["use", &agent])
-        .status();
-
-    // Resume TUI
-    crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(terminal.backend_mut(), crossterm::terminal::EnterAlternateScreen)?;
-    terminal.clear()?;
-
-    app.status = match result {
-        Ok(s) if s.success() => format!("session ended ({agent})"),
-        Ok(s) => format!("session exited: {s}"),
-        Err(e) => format!("launch error: {e}"),
-    };
-    app.refresh();
-    Ok(())
+fn open_delete_confirm(nav: &NavState, data: &ViewData) -> Action {
+    match nav.panel() {
+        Panel::Notes => {
+            if let Some(n) = data.notes.get(nav.list_selected) {
+                Action::OpenModal(Modal::Confirm {
+                    title: "Delete Note".to_string(),
+                    message: format!("Delete note '{}'?", n.title),
+                    on_confirm: ConfirmAction::DeleteNote(n.id.clone()),
+                })
+            } else {
+                Action::None
+            }
+        }
+        Panel::Adrs => {
+            if let Some(a) = data.adrs.get(nav.list_selected) {
+                Action::OpenModal(Modal::Confirm {
+                    title: "Delete ADR".to_string(),
+                    message: format!("Delete ADR '{}'?", a.title),
+                    on_confirm: ConfirmAction::DeleteAdr(a.id.clone()),
+                })
+            } else {
+                Action::None
+            }
+        }
+        _ => Action::None,
+    }
 }

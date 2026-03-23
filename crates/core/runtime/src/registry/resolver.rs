@@ -24,6 +24,80 @@ pub struct RemoteRefs {
     pub heads: HashMap<String, String>,
 }
 
+/// Resolve a scoped alias (e.g. `@owner/repo`) to a canonical package path.
+///
+/// Resolution order:
+/// 1. Static aliases file (raw.githubusercontent.com — always available, no API dep)
+/// 2. Registry API (`getship.dev/api/registry/resolve` — richer, supports dynamic aliases)
+///
+/// Canonical paths (e.g. `github.com/owner/repo`) pass through unchanged.
+pub fn resolve_alias(dep_path: &str) -> anyhow::Result<String> {
+    if !dep_path.starts_with('@') {
+        return Ok(dep_path.to_string());
+    }
+
+    // Try static aliases file first (no API dependency).
+    if let Some(resolved) = try_static_alias(dep_path) {
+        return Ok(resolved);
+    }
+
+    // Fall back to registry API.
+    try_registry_api_alias(dep_path)
+}
+
+/// Check the static aliases.json hosted on GitHub.
+fn try_static_alias(dep_path: &str) -> Option<String> {
+    let url = "https://raw.githubusercontent.com/madvib/ship/main/registry/aliases.json";
+    let resp = ureq::get(url)
+        .header("User-Agent", "ship-pkg/0.1")
+        .call()
+        .ok()?;
+    if resp.status() != 200 {
+        return None;
+    }
+    let body: serde_json::Value = resp.into_body().read_json().ok()?;
+    body["aliases"][dep_path].as_str().map(|s| s.to_string())
+}
+
+/// Resolve via the registry API.
+fn try_registry_api_alias(dep_path: &str) -> anyhow::Result<String> {
+    let base_url = std::env::var("SHIP_REGISTRY_URL")
+        .unwrap_or_else(|_| "https://getship.dev".to_string());
+    let encoded: String = dep_path
+        .bytes()
+        .flat_map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                vec![b as char]
+            }
+            _ => format!("%{b:02X}").chars().collect(),
+        })
+        .collect();
+    let url = format!("{base_url}/api/registry/resolve?name={encoded}");
+
+    let resp = ureq::get(&url)
+        .header("User-Agent", "ship-pkg/0.1")
+        .call()
+        .map_err(|e| anyhow::anyhow!("alias lookup failed for {dep_path}: {e}"))?;
+
+    if resp.status() != 200 {
+        anyhow::bail!(
+            "unknown alias {dep_path} — not found in static registry or API. \
+             Use a canonical path (github.com/owner/repo) or submit a PR to \
+             registry/aliases.json."
+        );
+    }
+
+    let body: serde_json::Value = resp
+        .into_body()
+        .read_json()
+        .map_err(|e| anyhow::anyhow!("failed to parse registry response for {dep_path}: {e}"))?;
+
+    body["path"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow::anyhow!("registry response missing 'path' for {dep_path}"))
+}
+
 /// Build an HTTPS clone URL from a package path.
 ///
 /// `github.com/owner/repo` → `https://github.com/owner/repo.git`
@@ -43,10 +117,7 @@ pub fn list_remote_refs(git_url: &str) -> anyhow::Result<RemoteRefs> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "git ls-remote failed for {git_url}: {}",
-            stderr.trim()
-        );
+        anyhow::bail!("git ls-remote failed for {git_url}: {}", stderr.trim());
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -137,10 +208,7 @@ pub fn resolve_version(
             candidates.sort_by(|a, b| b.0.cmp(&a.0));
             let (_, tag, sha) = candidates.remove(0);
 
-            Ok(ResolvedVersion {
-                tag,
-                commit: sha,
-            })
+            Ok(ResolvedVersion { tag, commit: sha })
         }
     }
 }
@@ -201,5 +269,11 @@ mod tests {
         assert!(refs.heads.contains_key("main"));
         // Peeled ref must be excluded.
         assert!(!refs.tags.contains_key("v1.0.0^{}"));
+    }
+
+    #[test]
+    fn resolve_alias_passthrough_canonical() {
+        let result = resolve_alias("github.com/owner/repo").unwrap();
+        assert_eq!(result, "github.com/owner/repo");
     }
 }

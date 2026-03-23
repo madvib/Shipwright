@@ -378,10 +378,10 @@ mod tests {
                 timeout_secs: None,
             },
         );
-        let mcp_toml = toml::to_string(&crate::config::McpConfig {
+        let mcp_json = serde_json::to_string_pretty(&crate::config::McpConfig {
             mcp: crate::config::McpSection { servers },
         })?;
-        std::fs::write(crate::project::mcp_config_path(&ship_dir), mcp_toml)?;
+        std::fs::write(crate::project::mcp_config_path(&ship_dir), mcp_json)?;
 
         let resolved = resolve_provider_settings(&ship_dir, None)?;
         let github = resolved
@@ -624,7 +624,8 @@ mod tests {
             vec!["rt-plan-skill"]
         );
 
-        let overridden = resolve_provider_settings_with_agent_override(&ship_dir, None, Some("code"))?;
+        let overridden =
+            resolve_provider_settings_with_agent_override(&ship_dir, None, Some("code"))?;
         assert_eq!(overridden.active_agent.as_deref(), Some("code"));
         assert_eq!(
             overridden

@@ -1,34 +1,38 @@
 mod add;
+mod add_from;
 mod agent;
+mod agent_config;
+mod audit;
 mod auth;
 mod cli;
 mod commands;
 mod compile;
 mod config;
+mod convert;
 mod dep_skills;
 mod diff;
 mod events_cmd;
 mod help_topics;
-mod import;
 mod init;
+mod init_from_url;
 mod install;
 mod job;
 mod loader;
 mod logging;
 mod mcp;
 mod mcp_serve;
-mod agent_config;
 mod paths;
 mod profile;
 mod publish;
 mod skill;
-mod surface;
-mod toml_to_jsonc;
 mod validate;
 mod view;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, ConfigCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
+use cli::{
+    AgentCommands, Cli, Commands, ConfigCommands, EventsCommands, JobCommands, McpCommands,
+    SkillCommands,
+};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -42,21 +46,33 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
     match command {
         None => run_status(None),
         Some(cmd) => match cmd {
-            Commands::Init { global, provider, force: _ } => init::run(global, provider),
+            Commands::Init {
+                global,
+                provider,
+                force: _,
+                from,
+            } => init::run(global, provider, from),
             Commands::Config { action } => dispatch_config(action),
-            Commands::Login  => auth::run_login(),
+            Commands::Login => auth::run_login(),
             Commands::Logout => auth::run_logout(),
             Commands::Whoami => auth::run_whoami(),
-            Commands::Use { agent_id, path, compile: _ } => run_use(Some(&agent_id), path),
+            Commands::Use {
+                agent_id,
+                path,
+                compile: _,
+            } => run_use(Some(&agent_id), path),
             Commands::Status { path } => run_status(path),
-            Commands::Agent { action } => dispatch_agent(action),
-            Commands::Compile { provider, dry_run, watch, path } => {
-                run_compile_cmd(provider.as_deref(), dry_run, watch, path)
-            }
+            Commands::Agents { action } => dispatch_agent(action),
+            Commands::Compile {
+                provider,
+                dry_run,
+                watch,
+                path,
+            } => run_compile_cmd(provider.as_deref(), dry_run, watch, path),
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
-            Commands::Import { source } => import::run_import(&source),
-            Commands::Help { topic } => help_topics::run(topic.as_deref()),
+            Commands::Convert { source } => convert::run_convert(&source),
+            Commands::Docs { topic } => help_topics::run(topic.as_deref()),
             Commands::Job { action } => dispatch_job(action),
             Commands::Adrs => run_adrs(),
             Commands::Notes => run_notes(),
@@ -69,23 +85,26 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 install::run_install(&root, frozen, offline)
             }
-            Commands::Add { package } => {
-                let root = std::env::current_dir()?;
-                add::run_add(&root, &package)
-            }
+            Commands::Add { package, from } => match (package, from) {
+                (_, Some(url)) => add_from::run_add_from(&url),
+                (Some(pkg), None) => {
+                    let root = std::env::current_dir()?;
+                    add::run_add(&root, &pkg)
+                }
+                (None, None) => anyhow::bail!("provide a package name or --from <url>"),
+            },
+            Commands::Audit { path, json } => audit::run_audit(path, json),
             Commands::Validate { agent, json, path } => {
-                let root = path.as_deref()
-                    .map(std::fs::canonicalize).transpose()?
+                let root = path
+                    .as_deref()
+                    .map(std::fs::canonicalize)
+                    .transpose()?
                     .unwrap_or_else(|| std::env::current_dir().unwrap());
                 validate::run_validate(agent.as_deref(), json, &root)
             }
-            Commands::Surface { emit, check } => surface::run(emit, check),
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Events { action } => dispatch_events(action),
-            Commands::View => {
-                let ship_dir = paths::project_ship_dir_required()?;
-                view::run_view(ship_dir)
-            }
+            Commands::View => view::run_view(),
         },
     }
 }
@@ -114,7 +133,10 @@ fn dispatch_config(action: ConfigCommands) -> Result<()> {
             let cfg = config::ShipConfig::load();
             let entries = cfg.list();
             if entries.is_empty() {
-                println!("No config set. File: {}", config::ShipConfig::path().display());
+                println!(
+                    "No config set. File: {}",
+                    config::ShipConfig::path().display()
+                );
             } else {
                 for (k, v) in &entries {
                     println!("{} = {}", k, v);
@@ -135,7 +157,11 @@ fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let ship_dir = match path {
         Some(p) => {
             let sd = std::fs::canonicalize(&p)?.join(".ship");
-            anyhow::ensure!(sd.exists(), ".ship/ not found in {}. Run: ship init", p.display());
+            anyhow::ensure!(
+                sd.exists(),
+                ".ship/ not found in {}. Run: ship init",
+                p.display()
+            );
             sd
         }
         None => paths::project_ship_dir_required()?,
@@ -147,7 +173,8 @@ fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
 // ── Status ────────────────────────────────────────────────────────────────────
 
 fn run_status(path: Option<PathBuf>) -> Result<()> {
-    let target = path.as_deref()
+    let target = path
+        .as_deref()
         .map(std::fs::canonicalize)
         .transpose()?
         .unwrap_or_else(|| std::env::current_dir().unwrap());
@@ -157,7 +184,9 @@ fn run_status(path: Option<PathBuf>) -> Result<()> {
     match state.active_agent {
         Some(ref p) => {
             println!("active agent: {}", p);
-            if let Some(ref at) = state.compiled_at { println!("compiled: {}", at); }
+            if let Some(ref at) = state.compiled_at {
+                println!("compiled: {}", at);
+            }
             if !state.plugins_installed.is_empty() {
                 println!("plugins: {}", state.plugins_installed.join(", "));
             }
@@ -178,7 +207,7 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
             let agents = paths::list_agent_ids(local, project);
             if agents.is_empty() {
                 println!("No agents found.");
-                println!("Create one with: ship agent create <name>");
+                println!("Create one with: ship agents create <name>");
             } else {
                 for (id, scope) in &agents {
                     println!("  {} [{}]", id, scope);
@@ -186,19 +215,24 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
             }
         }
         AgentCommands::Create { name, global } => {
-            let dir = if global { paths::global_modes_dir() } else { paths::agents_dir() };
+            let dir = if global {
+                paths::global_agents_dir()
+            } else {
+                paths::agents_dir()
+            };
             std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{}.toml", name));
+            let path = dir.join(format!("{}.jsonc", name));
             if path.exists() {
                 anyhow::bail!("Agent '{}' already exists at {}", name, path.display());
             }
-            std::fs::write(&path, agent_config::AgentConfig::scaffold(&name))?;
+            std::fs::write(&path, agent_config::AgentConfig::scaffold_jsonc(&name))?;
             println!("created agent '{}' at {}", name, path.display());
         }
         AgentCommands::Edit { name, editor } => {
             let path = profile::find_agent_file(&name, &std::env::current_dir()?)
                 .ok_or_else(|| anyhow::anyhow!("Agent '{}' not found", name))?;
-            let editor = editor.or_else(|| std::env::var("EDITOR").ok())
+            let editor = editor
+                .or_else(|| std::env::var("EDITOR").ok())
                 .unwrap_or_else(|| "vi".to_string());
             std::process::Command::new(&editor).arg(&path).status()?;
         }
@@ -212,13 +246,19 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
             let cwd = std::env::current_dir()?;
             let src_path = profile::find_agent_file(&source, &cwd)
                 .ok_or_else(|| anyhow::anyhow!("Source agent '{}' not found", source))?;
-            let dst_path = src_path.parent().unwrap().join(format!("{}.toml", target));
+            let dst_path = src_path.parent().unwrap().join(format!("{}.jsonc", target));
             if dst_path.exists() {
                 anyhow::bail!("Target agent '{}' already exists", target);
             }
             let content = std::fs::read_to_string(&src_path)?
-                .replace(&format!("id = \"{}\"", source), &format!("id = \"{}\"", target))
-                .replace(&format!("name = \"{}\"", source), &format!("name = \"{}\"", target));
+                .replace(
+                    &format!("\"id\": \"{}\"", source),
+                    &format!("\"id\": \"{}\"", target),
+                )
+                .replace(
+                    &format!("\"name\": \"{}\"", source),
+                    &format!("\"name\": \"{}\"", target),
+                );
             std::fs::write(&dst_path, content)?;
             println!("cloned '{}' -> '{}'", source, target);
         }
@@ -230,10 +270,15 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
 // ── Compile ───────────────────────────────────────────────────────────────────
 
 fn run_compile_cmd(
-    provider: Option<&str>, dry_run: bool, watch: bool, path: Option<PathBuf>,
+    provider: Option<&str>,
+    dry_run: bool,
+    watch: bool,
+    path: Option<PathBuf>,
 ) -> Result<()> {
-    let project_root = path.as_deref()
-        .map(std::fs::canonicalize).transpose()?
+    let project_root = path
+        .as_deref()
+        .map(std::fs::canonicalize)
+        .transpose()?
         .unwrap_or_else(|| std::env::current_dir().unwrap());
 
     if !project_root.join(".ship").exists() {
@@ -248,7 +293,9 @@ fn run_compile_cmd(
         active_agent: state.active_agent.as_deref(),
     })?;
 
-    if watch { println!("--watch not yet implemented. Run compile manually after changes."); }
+    if watch {
+        println!("--watch not yet implemented. Run compile manually after changes.");
+    }
     Ok(())
 }
 
@@ -256,12 +303,24 @@ fn run_compile_cmd(
 
 fn dispatch_job(action: JobCommands) -> Result<()> {
     match action {
-        JobCommands::Create { kind, title, milestone, description, branch } => {
-            job::create(&kind, &title, milestone.as_deref(), description.as_deref(), branch.as_deref())
-        }
-        JobCommands::List { status, branch, milestone } => {
-            job::list(status.as_deref(), branch.as_deref(), milestone.as_deref())
-        }
+        JobCommands::Create {
+            kind,
+            title,
+            milestone,
+            description,
+            branch,
+        } => job::create(
+            &kind,
+            &title,
+            milestone.as_deref(),
+            description.as_deref(),
+            branch.as_deref(),
+        ),
+        JobCommands::List {
+            status,
+            branch,
+            milestone,
+        } => job::list(status.as_deref(), branch.as_deref(), milestone.as_deref()),
         JobCommands::Update { id, status } => job::update(&id, &status),
         JobCommands::Done { id } => job::update(&id, "complete"),
     }
@@ -270,11 +329,17 @@ fn dispatch_job(action: JobCommands) -> Result<()> {
 fn dispatch_skill(action: SkillCommands) -> Result<()> {
     match action {
         SkillCommands::List => skill::list(),
-        SkillCommands::Create { id, name, description } => {
-            skill::create(&id, name.as_deref(), description.as_deref())
-        }
+        SkillCommands::Create {
+            id,
+            name,
+            description,
+        } => skill::create(&id, name.as_deref(), description.as_deref()),
         SkillCommands::Remove { id, global } => skill::remove(&id, global),
-        SkillCommands::Add { source, skill, global } => skill::add(&source, skill.as_deref(), global),
+        SkillCommands::Add {
+            source,
+            skill,
+            global,
+        } => skill::add(&source, skill.as_deref(), global),
     }
 }
 
@@ -283,12 +348,17 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
         McpCommands::Serve { http, port } => mcp_serve::run(http, port),
         McpCommands::List => mcp::list(),
         McpCommands::Add { id, name, url, .. } => {
-            let url = url.ok_or_else(|| anyhow::anyhow!("--url is required for HTTP/SSE servers"))?;
+            let url =
+                url.ok_or_else(|| anyhow::anyhow!("--url is required for HTTP/SSE servers"))?;
             mcp::add_http(&id, name, &url)
         }
-        McpCommands::AddStdio { id, command, args, name, .. } => {
-            mcp::add_stdio(&id, name, &command, args)
-        }
+        McpCommands::AddStdio {
+            id,
+            command,
+            args,
+            name,
+            ..
+        } => mcp::add_stdio(&id, name, &command, args),
         McpCommands::Remove { id } => mcp::remove(&id),
     }
 }
@@ -296,8 +366,8 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
 // ── Hidden / legacy ──────────────────────────────────────────────────────────
 
 fn run_adrs() -> Result<()> {
-    let ship_dir = paths::project_ship_dir_required()?;
-    let adrs = runtime::db::adrs::list_adrs(&ship_dir)?;
+    let _ship_dir = paths::project_ship_dir_required()?;
+    let adrs = runtime::db::adrs::list_adrs()?;
     if adrs.is_empty() {
         println!("No ADRs found.");
     } else {
@@ -309,8 +379,8 @@ fn run_adrs() -> Result<()> {
 }
 
 fn run_notes() -> Result<()> {
-    let ship_dir = paths::project_ship_dir_required()?;
-    let notes = runtime::db::notes::list_notes(&ship_dir, None)?;
+    let _ship_dir = paths::project_ship_dir_required()?;
+    let notes = runtime::db::notes::list_notes(None)?;
     if notes.is_empty() {
         println!("No notes found.");
     } else {
@@ -329,8 +399,13 @@ fn run_migrate() -> Result<()> {
 fn dispatch_events(action: EventsCommands) -> Result<()> {
     let ship_dir = paths::project_ship_dir_required()?;
     match action {
-        EventsCommands::List { since, actor, entity, action, limit, json } => {
-            events_cmd::run_events(&ship_dir, since, actor, entity, action, limit, json)
-        }
+        EventsCommands::List {
+            since,
+            actor,
+            entity,
+            action,
+            limit,
+            json,
+        } => events_cmd::run_events(&ship_dir, since, actor, entity, action, limit, json),
     }
 }

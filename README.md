@@ -1,178 +1,183 @@
 # Ship
 
-Compiler and package manager for AI agent configuration.
+**Don't just build. Ship.**
 
-Ship compiles a single `.ship/` source directory into provider-native config files for Claude Code, Gemini CLI, OpenAI Codex, and Cursor. One command — `ship use <agent>` — writes context files, installs skills, configures MCP servers, and manages plugins.
+Ship is a toolchain for AI coding agents. Define your agents once, compile to every provider, and share configurations as packages. One `.ship/` directory replaces your CLAUDE.md, .cursorrules, GEMINI.md, and AGENTS.md — all generated, all in sync, from a single source of truth.
 
-## Provider output matrix
+## Why Ship Exists
 
-| Provider | Context file | MCP config | Skills | Plugins |
-|---|---|---|---|---|
-| Claude Code | `CLAUDE.md` | `.mcp.json` | `.claude/skills/` | `claude plugin install` |
-| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` | `.agents/skills/` | — |
-| OpenAI Codex | `AGENTS.md` | `.codex/config.toml` | `.agents/skills/` | — |
-| Cursor | — | `.cursor/mcp.json` | `.cursor/rules/` | — |
+I built Ship because configuring AI agents should not require expertise. The people getting the most out of Claude Code, Cursor, and Codex are the ones who've spent hours tuning their setups — writing custom instructions, wiring MCP servers, dialing in permissions. That knowledge is trapped in individual dotfiles and blog posts.
 
-`.ship/` is the source of truth. Provider files are generated artifacts — gitignored, never hand-edited.
+Ship makes that configuration portable, composable, and shareable. Anyone can use a well-configured agent. Anyone can publish one.
 
-## Quick start
+We built a package manager because the existing options for sharing agent configuration are not good enough. Skills live in gists and Discord threads. There's no lockfile, no versioning, no integrity verification. Ship fixes that with a real dependency resolver, content-addressed hashing, and a git-native registry.
+
+## Get Started
+
+The fastest way to start is [Ship Studio](https://getship.dev). Configure your agents visually — pick providers, add skills from the registry, set permissions, wire up MCP servers — then bring the config to your project:
 
 ```bash
-ship init                  # scaffold .ship/ in the current project
-ship use default           # activate the default agent → writes provider files
-ship status                # show active agent and compile state
+curl -fsSL https://getship.dev/install.sh | sh
+cd your-project
+ship init --from https://getship.dev/config/abc123
+ship use my-agent
 ```
 
-`ship init` creates `.ship/ship.toml` and a `.gitignore`. `ship use` finds the agent profile in `.ship/agents/`, compiles it, writes all provider config files, and installs any declared plugins.
+Done. Your project has provider-native config files compiled from `.ship/`.
 
-See [Getting Started](docs/getting-started.md) for the full walkthrough.
+### Connect via GitHub
 
-## Agent profiles
+Connect your GitHub account in Studio and Ship opens a PR on your repo with `.ship/` fully configured — agents, skills, permissions, MCP servers, ready to go. Merge the PR, run `ship use`, and your agents are live. We'll also ask if you want to publish your agents to the registry so others can use them.
 
-An agent profile is a TOML file in `.ship/agents/` that declares everything an agent needs:
+### CLI-First Path
 
-```toml
-[agent]
-id = "rust-expert"
-name = "Rust Expert"
-version = "0.1.0"
-providers = ["claude", "gemini"]
+Ship works entirely from the terminal:
 
-[skills]
-refs = ["ship-coordination"]
-
-[mcp]
-servers = ["ship"]
-
-[plugins]
-install = [
-  "superpowers@claude-plugins-official",
-  "rust-analyzer-lsp@claude-plugins-official",
-]
-scope = "project"
-
-[permissions]
-preset = "ship-autonomous"
-tools_deny = ["Bash(git push --force*)"]
-
-[rules]
-inline = """
-Your domain is Rust backend code.
-Run cargo test before marking work done.
-"""
+```bash
+curl -fsSL https://getship.dev/install.sh | sh
+cd your-project
+ship init
+ship agent create my-agent
+ship use my-agent
 ```
 
-`ship use rust-expert` resolves skills, configures MCP servers, applies permissions, compiles to every declared provider, and installs plugins.
+This scaffolds `.ship/`, creates an agent profile, and compiles to every declared provider. See the [Getting Started guide](docs/getting-started.md) for the full walkthrough.
 
-## How compilation works
+## Compiler
 
-```
-.ship/                           Compiled output
-├── ship.toml          ──┐
-├── agents/            ──┤       CLAUDE.md
-│   ├── default.toml     │       GEMINI.md
-│   ├── rust-expert.toml ├──→    AGENTS.md
-│   ├── permissions.toml │       .mcp.json
-│   ├── mcp.toml         │       .claude/skills/
-│   └── skills/        ──┘       .cursor/rules/
-└── ship.lock
-```
-
-The compiler reads agent profiles, resolves skill references and MCP servers, merges permission presets, and emits provider-native files. The compiler is built as WASM — the same compilation logic runs in the CLI (native), the MCP server, and Ship Studio (browser).
-
-## Permission presets
-
-Presets control what tools an agent can use. Four tiers, strict to loose:
-
-| Preset | Use case | Default mode |
-|---|---|---|
-| `ship-readonly` | Reviewers, auditors, tutors | `plan` |
-| `ship-standard` | Interactive sessions, paired work | `default` |
-| `ship-autonomous` | Specialist agents in worktrees | `dontAsk` |
-| `ship-elevated` | Deploy and release agents | `dontAsk` |
-
-Define custom presets in `.ship/agents/permissions.toml`. Override per-agent with `tools_allow` / `tools_deny` in the profile.
-
-## Registry
-
-Ship uses a git-native package model. Dependencies point to GitHub repos:
-
-```toml
-# .ship/ship.toml
-[module]
-name = "github.com/owner/repo"
-version = "0.1.0"
-
-[dependencies]
-"github.com/garrytan/gstack" = "main"
-
-[exports]
-skills = ["agents/skills/configure-agent"]
-agents = ["agents/profiles/default.toml"]
-```
-
-`ship install` resolves dependencies, writes `ship.lock`, and caches packages locally. `ship add github.com/owner/repo` adds a dependency and installs it.
-
-## Project layout
+One `.ship/` directory compiles to native configs for every provider:
 
 ```
-.ship/
-├── ship.toml                 # project manifest: module identity, deps, exports
-├── ship.lock                 # pinned dependency versions
-└── agents/
-    ├── *.toml                # agent profiles
-    ├── permissions.toml      # permission presets
-    ├── mcp.toml              # MCP server declarations
-    ├── rules/                # shared rule files
-    ├── skills/               # installed skills (SKILL.md per directory)
-    └── teams/                # team coordination config
+.ship/agents/my-agent.jsonc    →    CLAUDE.md + .mcp.json
+                                     .cursor/rules + .cursor/mcp.json
+                                     GEMINI.md
+                                     AGENTS.md
 ```
 
-## Architecture
+You commit `.ship/`. Everything else is a build artifact — gitignored, regenerated by `ship use`.
 
-```
-apps/
-  ship-studio-cli/   CLI binary (ship init, ship use, ship compile, ...)
-  mcp/               MCP stdio server (workspace, session, job, skill tools)
-  web/               Ship Studio (TanStack Start + Cloudflare Workers)
-crates/core/
-  compiler/          WASM compiler: ProjectLibrary → ResolvedConfig → CompileOutput
-  runtime/           State management: workspaces, sessions, events, agents (SQLite)
-  cli-framework/     Shared CLI scaffolding
-  mcp-framework/     Shared MCP scaffolding
-packages/
-  compiler/          @ship/compiler — WASM output consumed by Studio
-  primitives/        @ship/primitives — shared UI components
+| Provider | Context | MCP Config | Permissions |
+|----------|---------|------------|-------------|
+| Claude | CLAUDE.md | .mcp.json | settings.json |
+| Cursor | .cursor/rules | .cursor/mcp.json | — |
+| Gemini | GEMINI.md | .gemini/settings.json | — |
+| Codex | AGENTS.md | .codex/config.toml | codex.toml |
+
+```bash
+ship compile                      # all declared providers
+ship compile --provider claude    # just one
 ```
 
-The compiler is a pure function: project files in, provider config out. The runtime manages persistent state in `~/.ship/platform.db` (SQLite). CLI and MCP are thin transport layers — domain logic lives in the runtime crate.
+## Package Manager
+
+Full dependency resolution with lockfile pinning, content-addressed integrity, and a git-native registry. Packages are GitHub repos.
+
+```bash
+ship add github.com/acme/agent-toolkit     # add + install
+ship install                                # resolve all deps
+ship install --frozen                       # CI — fail if lockfile changes
+ship publish                                # publish your own
+```
+
+Every dependency is pinned in `ship.lock` with the exact commit and a SHA-256 tree hash. No floating versions.
+
+Any `.ship/` directory with a `module` section is publishable:
+
+```jsonc
+{
+  "module": {
+    "name": "github.com/you/your-skills",
+    "version": "0.1.0"
+  },
+  "exports": {
+    "skills": ["skills/code-review", "skills/tdd"],
+    "agents": ["agents/fullstack.jsonc"]
+  }
+}
+```
+
+| Package format | Example | Use case |
+|----------------|---------|----------|
+| Canonical | `github.com/owner/repo` | Direct GitHub reference |
+| Scoped | `@owner/package` | Short alias |
+| Unofficial | `@unofficial/package` | Community-seeded, claimable by owner |
+
+## Agent Profiles
+
+Everything an agent needs in one JSONC file:
+
+```jsonc
+// .ship/agents/backend.jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/madvib/ship/main/schemas/agent.schema.json",
+  "agent": {
+    "id": "backend",
+    "name": "Backend Engineer",
+    "providers": ["claude", "gemini"]
+  },
+  "skills": {
+    "refs": ["tdd", "code-review"]
+  },
+  "mcp": {
+    "servers": ["github"]
+  },
+  "permissions": {
+    "preset": "ship-autonomous",
+    "tools_deny": ["Bash(git push --force*)"]
+  }
+}
+```
+
+Four permission presets from locked-down to fully autonomous:
+
+| Preset | Mode | For |
+|--------|------|-----|
+| `ship-readonly` | plan | Reviewers, auditors |
+| `ship-standard` | default | Interactive pairing |
+| `ship-autonomous` | dontAsk | Dispatched agents |
+| `ship-elevated` | dontAsk | CI and release automation |
+
+## Project Status
+
+Ship is young and moving fast. Version 0.1.0 is the first stable release — the compiler, package manager, CLI, and Studio are ready for real use. The foundation works. We use it every day to build Ship itself.
+
+That said: breaking changes are expected. The launch surface is roughly a third of the code we've written. There is a lot more coming.
+
+### What's Next
+
+Ship gets really interesting when agents coordinate. The runtime already has workspaces, sessions, job queues, and file ownership — infrastructure for multi-agent workflows where a commander plans work, dispatches specialists into isolated branches, and gates their output. This is shipping in 0.2.
+
+See the [roadmap](#roadmap) for details.
+
+## Roadmap
+
+**0.1 — Distribution** (current)
+The compiler, package manager, CLI, Studio, and GitHub integration. Ship is installable, discoverable, and usable in any project.
+
+**0.2 — Platform**
+Multi-agent workflows, the commander pattern, workflow packages on the registry, and hosted cloud services. Ship becomes infrastructure, not just a package manager.
+
+**0.3 — Depth**
+Private registries, package signing, security auditing, enterprise features. The things that justify trust at scale.
+
+## Install
+
+```bash
+# Recommended
+curl -fsSL https://getship.dev/install.sh | sh
+
+# From source
+cargo install --path apps/ship-studio-cli
+
+# Homebrew (coming soon)
+brew install ship
+```
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) — install, init, create an agent, compile, verify
-- [CLI Reference](docs/cli.md) — every command with flags and examples
-- [Schema Reference](docs/schema.md) — ship.toml, agent profiles, permissions, database entities
-- [Architecture](docs/architecture.md) — compiler pipeline, runtime model, repo layout
-
-## Status
-
-v0.1.0 — used to build itself. 312 runtime tests, 6 CLI tests, 3 MCP tests passing.
-
-**Working:**
-- WASM compiler: `.ship/` → CLAUDE.md, GEMINI.md, AGENTS.md, .mcp.json, skills, plugins
-- `ship init`, `ship use`, `ship compile`, `ship status`, `ship validate`
-- Agent management: `ship agent list/create/edit/delete/clone`
-- Skill management: `ship skill add/list/remove/create`
-- MCP server with 24 core tools (workspace, session, job, skill, event coordination)
-- Permission presets with 4-tier continuum
-- Event log, session tracking, file ownership claims
-- TUI dashboard (`ship view`)
-
-**Not yet implemented:**
-- Post-checkout hook for automatic agent switching (run `ship use` manually after branch switch)
-- `ship compile --watch`
-- Ship Studio import UI and auth
-
-## License
-
-MIT
+- [Getting Started](docs/getting-started.md) — zero to working agent in 10 minutes
+- [CLI Reference](docs/cli.md) — every command with examples
+- [Schema Reference](docs/schema.md) — config file field reference
+- [Skills Guide](docs/skills.md) — authoring and publishing skills
+- [Registry](docs/registry.md) — package naming, versioning, integrity
+- [Architecture](docs/architecture.md) — compiler pipeline and internals

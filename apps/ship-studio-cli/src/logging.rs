@@ -16,8 +16,8 @@ pub fn init() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let file_appender = tracing_appender::rolling::never(&logs_dir, "ship.log");
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
 
-    let stderr_filter = EnvFilter::try_from_env("SHIP_LOG")
-        .unwrap_or_else(|_| EnvFilter::new("warn"));
+    let stderr_filter =
+        EnvFilter::try_from_env("SHIP_LOG").unwrap_or_else(|_| EnvFilter::new("warn"));
     let file_filter = EnvFilter::new("info");
 
     let stderr_layer = tracing_subscriber::fmt::layer()

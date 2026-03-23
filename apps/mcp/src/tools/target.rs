@@ -6,10 +6,8 @@ use crate::requests::{
     UpdateCapabilityRequest, UpdateTargetRequest,
 };
 
-pub fn create_target(project_dir: &Path, req: CreateTargetRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
+pub fn create_target(_project_dir: &Path, req: CreateTargetRequest) -> String {
     let t = match runtime::db::targets::create_target(
-        &ship_dir,
         &req.kind,
         &req.title,
         req.description.as_deref(),
@@ -32,15 +30,20 @@ pub fn create_target(project_dir: &Path, req: CreateTargetRequest) -> String {
             file_scope: req.file_scope,
             ..Default::default()
         };
-        if let Err(e) = runtime::db::targets::update_target(&ship_dir, &t.id, patch) {
-            return format!("Created target {} but failed to apply extra fields: {}", t.id, e);
+        if let Err(e) = runtime::db::targets::update_target(&t.id, patch) {
+            return format!(
+                "Created target {} but failed to apply extra fields: {}",
+                t.id, e
+            );
         }
     }
-    format!("Created target: {} (id: {}, kind: {})", t.title, t.id, t.kind)
+    format!(
+        "Created target: {} (id: {}, kind: {})",
+        t.title, t.id, t.kind
+    )
 }
 
-pub fn update_target(project_dir: &Path, req: UpdateTargetRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
+pub fn update_target(_project_dir: &Path, req: UpdateTargetRequest) -> String {
     let patch = runtime::db::targets::TargetPatch {
         title: req.title,
         description: req.description,
@@ -51,15 +54,14 @@ pub fn update_target(project_dir: &Path, req: UpdateTargetRequest) -> String {
         body_markdown: req.body_markdown,
         file_scope: req.file_scope,
     };
-    match runtime::db::targets::update_target(&ship_dir, &req.id, patch) {
+    match runtime::db::targets::update_target(&req.id, patch) {
         Ok(()) => format!("Updated target {}.", req.id),
         Err(e) => format!("Error updating target: {}", e),
     }
 }
 
-pub fn list_targets(project_dir: &Path, req: ListTargetsRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
-    match runtime::db::targets::list_targets(&ship_dir, req.kind.as_deref()) {
+pub fn list_targets(_project_dir: &Path, req: ListTargetsRequest) -> String {
+    match runtime::db::targets::list_targets(req.kind.as_deref()) {
         Ok(ts) if ts.is_empty() => "No targets found.".to_string(),
         Ok(ts) => {
             let mut out = String::from("Targets:\n");
@@ -81,20 +83,19 @@ pub fn list_targets(project_dir: &Path, req: ListTargetsRequest) -> String {
     }
 }
 
-pub fn get_target(project_dir: &Path, req: GetTargetRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
-    let target = match runtime::db::targets::get_target(&ship_dir, &req.id) {
+pub fn get_target(_project_dir: &Path, req: GetTargetRequest) -> String {
+    let target = match runtime::db::targets::get_target(&req.id) {
         Ok(Some(t)) => t,
         Ok(None) => return format!("Target '{}' not found.", req.id),
         Err(e) => return format!("Error: {}", e),
     };
     let caps = if target.kind == "milestone" {
-        match runtime::db::targets::list_capabilities_for_milestone(&ship_dir, &req.id, None) {
+        match runtime::db::targets::list_capabilities_for_milestone(&req.id, None) {
             Ok(c) => c,
             Err(e) => return format!("Error loading capabilities: {}", e),
         }
     } else {
-        match runtime::db::targets::list_capabilities(&ship_dir, Some(&req.id), None, None) {
+        match runtime::db::targets::list_capabilities(Some(&req.id), None, None) {
             Ok(c) => c,
             Err(e) => return format!("Error loading capabilities: {}", e),
         }
@@ -156,7 +157,11 @@ pub fn get_target(project_dir: &Path, req: GetTargetRequest) -> String {
     if !aspirational.is_empty() {
         out.push_str("\n## Planned\n");
         for c in &aspirational {
-            let phase_tag = c.phase.as_deref().map(|p| format!(" [{}]", p)).unwrap_or_default();
+            let phase_tag = c
+                .phase
+                .as_deref()
+                .map(|p| format!(" [{}]", p))
+                .unwrap_or_default();
             out.push_str(&format!("- [ ] {}{} (id: {})\n", c.title, phase_tag, c.id));
         }
     }
@@ -166,10 +171,8 @@ pub fn get_target(project_dir: &Path, req: GetTargetRequest) -> String {
     out
 }
 
-pub fn create_capability(project_dir: &Path, req: CreateCapabilityRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
+pub fn create_capability(_project_dir: &Path, req: CreateCapabilityRequest) -> String {
     let c = match runtime::db::targets::create_capability(
-        &ship_dir,
         &req.target_id,
         &req.title,
         req.milestone_id.as_deref(),
@@ -179,7 +182,6 @@ pub fn create_capability(project_dir: &Path, req: CreateCapabilityRequest) -> St
     };
     let needs_update = req.phase.is_some()
         || req.acceptance_criteria.is_some()
-        || req.preset_hint.is_some()
         || req.file_scope.is_some()
         || req.assigned_to.is_some()
         || req.priority.is_some();
@@ -187,61 +189,57 @@ pub fn create_capability(project_dir: &Path, req: CreateCapabilityRequest) -> St
         let patch = runtime::db::targets::CapabilityPatch {
             phase: req.phase,
             acceptance_criteria: req.acceptance_criteria,
-            preset_hint: req.preset_hint,
             file_scope: req.file_scope,
             assigned_to: req.assigned_to,
             priority: req.priority,
             ..Default::default()
         };
-        if let Err(e) = runtime::db::targets::update_capability(&ship_dir, &c.id, patch) {
-            return format!("Created capability {} but failed to apply extra fields: {}", c.id, e);
+        if let Err(e) = runtime::db::targets::update_capability(&c.id, patch) {
+            return format!(
+                "Created capability {} but failed to apply extra fields: {}",
+                c.id, e
+            );
         }
     }
     format!("Created capability: {} (id: {})", c.title, c.id)
 }
 
-pub fn update_capability(project_dir: &Path, req: UpdateCapabilityRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
+pub fn update_capability(_project_dir: &Path, req: UpdateCapabilityRequest) -> String {
     let patch = runtime::db::targets::CapabilityPatch {
         title: req.title,
         status: req.status,
         phase: req.phase,
         acceptance_criteria: req.acceptance_criteria,
-        preset_hint: req.preset_hint,
         file_scope: req.file_scope,
         assigned_to: req.assigned_to,
         priority: req.priority,
     };
-    match runtime::db::targets::update_capability(&ship_dir, &req.id, patch) {
+    match runtime::db::targets::update_capability(&req.id, patch) {
         Ok(()) => format!("Updated capability {}.", req.id),
         Err(e) => format!("Error updating capability: {}", e),
     }
 }
 
-pub fn delete_capability(project_dir: &Path, req: DeleteCapabilityRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
-    match runtime::db::targets::delete_capability(&ship_dir, &req.id) {
+pub fn delete_capability(_project_dir: &Path, req: DeleteCapabilityRequest) -> String {
+    match runtime::db::targets::delete_capability(&req.id) {
         Ok(true) => format!("Deleted capability {}.", req.id),
         Ok(false) => format!("Capability '{}' not found.", req.id),
         Err(e) => format!("Error deleting capability: {}", e),
     }
 }
 
-pub fn mark_capability_actual(project_dir: &Path, req: MarkCapabilityActualRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
-    match runtime::db::targets::mark_capability_actual(&ship_dir, &req.id, &req.evidence) {
+pub fn mark_capability_actual(_project_dir: &Path, req: MarkCapabilityActualRequest) -> String {
+    match runtime::db::targets::mark_capability_actual(&req.id, &req.evidence) {
         Ok(()) => format!("Capability {} marked actual.", req.id),
         Err(e) => format!("Error: {}", e),
     }
 }
 
-pub fn list_capabilities(project_dir: &Path, req: ListCapabilitiesRequest) -> String {
-    let ship_dir = project_dir.join(".ship");
+pub fn list_capabilities(_project_dir: &Path, req: ListCapabilitiesRequest) -> String {
     let result = if let Some(ref mid) = req.milestone_id {
-        runtime::db::targets::list_capabilities_for_milestone(&ship_dir, mid, req.status.as_deref())
+        runtime::db::targets::list_capabilities_for_milestone(mid, req.status.as_deref())
     } else {
         runtime::db::targets::list_capabilities(
-            &ship_dir,
             req.target_id.as_deref(),
             req.status.as_deref(),
             req.phase.as_deref(),
@@ -268,7 +266,10 @@ pub fn list_capabilities(project_dir: &Path, req: ListCapabilitiesRequest) -> St
                     out.push_str(&format!("  assigned: {}\n", a));
                 }
                 if !c.acceptance_criteria.is_empty() {
-                    out.push_str(&format!("  criteria: {}\n", c.acceptance_criteria.join(" | ")));
+                    out.push_str(&format!(
+                        "  criteria: {}\n",
+                        c.acceptance_criteria.join(" | ")
+                    ));
                 }
                 if let Some(ref e) = c.evidence {
                     out.push_str(&format!("  evidence: {}\n", e));

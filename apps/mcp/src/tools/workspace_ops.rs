@@ -12,28 +12,14 @@ pub fn complete_workspace(project_dir: &Path, req: CompleteWorkspaceRequest) -> 
     let workspace_id = req.workspace_id.trim();
     let worktree_path = configured_worktree_dir(project_root).join(workspace_id);
 
-    let toml_path = worktree_path.join("workspace.toml");
-    let (ws_name, ws_kind, ws_preset) = if toml_path.exists() {
-        match std::fs::read_to_string(&toml_path) {
+    let config_path = worktree_path.join("workspace.jsonc");
+    let (ws_name, ws_kind, ws_preset) = if config_path.exists() {
+        match std::fs::read_to_string(&config_path) {
             Ok(content) => {
-                let name = content
-                    .lines()
-                    .find(|l| l.starts_with("name = "))
-                    .and_then(|l| l.split('=').nth(1))
-                    .map(|v| v.trim().trim_matches('"').to_string())
-                    .unwrap_or_else(|| workspace_id.to_string());
-                let kind = content
-                    .lines()
-                    .find(|l| l.starts_with("kind = "))
-                    .and_then(|l| l.split('=').nth(1))
-                    .map(|v| v.trim().trim_matches('"').to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                let preset = content
-                    .lines()
-                    .find(|l| l.starts_with("preset_id = "))
-                    .and_then(|l| l.split('=').nth(1))
-                    .map(|v| v.trim().trim_matches('"').to_string());
-                (name, kind, preset)
+                match serde_json::from_str::<super::workspace::WorkspaceConfig>(&content) {
+                    Ok(cfg) => (cfg.name, cfg.kind, cfg.preset_id),
+                    Err(_) => (workspace_id.to_string(), "unknown".to_string(), None),
+                }
             }
             Err(_) => (workspace_id.to_string(), "unknown".to_string(), None),
         }
@@ -48,10 +34,7 @@ pub fn complete_workspace(project_dir: &Path, req: CompleteWorkspaceRequest) -> 
     let global_dir = runtime::project::get_global_dir().unwrap_or_else(|_| {
         std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".ship")
     });
-    let sessions_dir = global_dir
-        .join("sessions")
-        .join(&slug)
-        .join(workspace_id);
+    let sessions_dir = global_dir.join("sessions").join(&slug).join(workspace_id);
     if let Err(e) = std::fs::create_dir_all(&sessions_dir) {
         return format!("Error creating sessions dir: {}", e);
     }
@@ -196,7 +179,10 @@ pub fn list_stale_worktrees(project_dir: &Path, req: ListStaleWorktreesRequest) 
     }
 
     if stale.is_empty() {
-        return format!("No stale worktrees found (threshold: {} hours).", idle_hours);
+        return format!(
+            "No stale worktrees found (threshold: {} hours).",
+            idle_hours
+        );
     }
 
     let mut out = format!("Stale worktrees (idle > {} hours):\n", idle_hours);

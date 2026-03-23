@@ -315,9 +315,8 @@ impl AgentDef {
             Some(serde_json::Value::Array(arr)) => {
                 let mut decls = Vec::new();
                 for item in arr {
-                    let decl: McpDecl = serde_json::from_value(item).map_err(|e| {
-                        anyhow::anyhow!("Failed to parse mcp entry: {e}")
-                    })?;
+                    let decl: McpDecl = serde_json::from_value(item)
+                        .map_err(|e| anyhow::anyhow!("Failed to parse mcp entry: {e}"))?;
                     decls.push(decl);
                 }
                 Ok(decls)
@@ -482,8 +481,7 @@ Your domain is the Ship compiler.
     #[test]
     fn parse_agents_dir() {
         // Verify real agent files parse without error
-        let profiles_dir =
-            std::path::Path::new("/workspaces/ship/.ship/agents");
+        let profiles_dir = std::path::Path::new("/workspaces/ship/.ship/agents");
         if profiles_dir.exists() {
             for entry in std::fs::read_dir(profiles_dir).unwrap() {
                 let path = entry.unwrap().path();
@@ -523,10 +521,7 @@ description = "no explicit name"
     #[test]
     fn no_agent_or_profile_section_is_error() {
         let err = AgentDef::from_toml_str("[other]\nfoo = 1\n").unwrap_err();
-        assert!(
-            err.to_string().contains("[agent] or [profile]"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("[agent] or [profile]"), "{err}");
     }
 
     #[test]
@@ -653,10 +648,14 @@ model = "claude-opus-4-5"
     fn from_file_dispatches_jsonc() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jsonc");
-        std::fs::write(&path, r#"{
+        std::fs::write(
+            &path,
+            r#"{
   "agent": { "name": "test-jsonc" },
   "permissions": { "allow": ["Read"] },
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
         let a = AgentDef::from_file(&path).unwrap();
         assert_eq!(a.name, "test-jsonc");
         assert_eq!(a.permissions.allow, vec!["Read"]);

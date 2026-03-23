@@ -224,7 +224,12 @@ static EMBEDDED: &[StaticEntry] = &[
         source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/git"),
         install_command: Some("npx -y @modelcontextprotocol/server-git"),
         command: Some("npx"),
-        args: &["-y", "@modelcontextprotocol/server-git", "--repository", "{path}"],
+        args: &[
+            "-y",
+            "@modelcontextprotocol/server-git",
+            "--repository",
+            "{path}",
+        ],
         env_vars: &[],
     },
     StaticEntry {
@@ -262,7 +267,12 @@ static EMBEDDED: &[StaticEntry] = &[
         source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"),
         install_command: Some("npx -y @modelcontextprotocol/server-sqlite"),
         command: Some("npx"),
-        args: &["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "{db_path}"],
+        args: &[
+            "-y",
+            "@modelcontextprotocol/server-sqlite",
+            "--db-path",
+            "{db_path}",
+        ],
         env_vars: &[],
     },
     StaticEntry {
@@ -329,9 +339,7 @@ static EMBEDDED: &[StaticEntry] = &[
         official: true,
         author: Some("Anthropic"),
         license: Some("MIT"),
-        source_url: Some(
-            "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
-        ),
+        source_url: Some("https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer"),
         install_command: Some("npx -y @modelcontextprotocol/server-puppeteer"),
         command: Some("npx"),
         args: &["-y", "@modelcontextprotocol/server-puppeteer"],
@@ -581,9 +589,21 @@ mod tests {
     fn all_entries_have_required_metadata() {
         for entry in list_catalog() {
             assert!(!entry.id.is_empty(), "entry must have an id");
-            assert!(!entry.name.is_empty(), "entry {} must have a name", entry.id);
-            assert!(!entry.description.is_empty(), "entry {} must have a description", entry.id);
-            assert!(!entry.icon.is_empty(), "entry {} must have an icon", entry.id);
+            assert!(
+                !entry.name.is_empty(),
+                "entry {} must have a name",
+                entry.id
+            );
+            assert!(
+                !entry.description.is_empty(),
+                "entry {} must have a description",
+                entry.id
+            );
+            assert!(
+                !entry.icon.is_empty(),
+                "entry {} must have an icon",
+                entry.id
+            );
         }
     }
 
@@ -602,11 +622,13 @@ mod tests {
             if entry.official {
                 assert!(
                     entry.author.is_some(),
-                    "official entry {} must have an author", entry.id,
+                    "official entry {} must have an author",
+                    entry.id,
                 );
                 assert!(
                     entry.license.is_some(),
-                    "official entry {} must have a license", entry.id,
+                    "official entry {} must have a license",
+                    entry.id,
                 );
             }
         }
@@ -617,11 +639,13 @@ mod tests {
         for entry in list_catalog_by_kind(CatalogKind::McpServer) {
             assert!(
                 entry.install_command.is_some(),
-                "MCP server {} must have an install_command", entry.id,
+                "MCP server {} must have an install_command",
+                entry.id,
             );
             assert!(
                 entry.command.is_some(),
-                "MCP server {} must have a command", entry.id,
+                "MCP server {} must have a command",
+                entry.id,
             );
         }
     }
@@ -647,12 +671,18 @@ mod tests {
     #[test]
     fn search_by_tag() {
         let results = search_catalog("postgres");
-        assert!(!results.is_empty(), "search for 'postgres' should find entries");
+        assert!(
+            !results.is_empty(),
+            "search for 'postgres' should find entries"
+        );
     }
 
     #[test]
     fn search_by_category_name() {
         let results = search_catalog("database");
-        assert!(!results.is_empty(), "search for 'database' should find entries");
+        assert!(
+            !results.is_empty(),
+            "search for 'database' should find entries"
+        );
     }
 }

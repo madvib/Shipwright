@@ -9,8 +9,8 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-pub const PRIMARY_CONFIG_FILE: &str = "ship.toml";
-pub const LEGACY_CONFIG_FILE: &str = "config.toml";
+pub const PRIMARY_CONFIG_FILE: &str = "ship.jsonc";
+pub const LEGACY_CONFIG_FILE: &str = "ship.toml";
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ impl Default for GitConfig {
         Self {
             ignore: Vec::new(),
             commit: vec![
-                "ship.toml".to_string(),
+                "ship.jsonc".to_string(),
                 "mcp".to_string(),
                 "permissions".to_string(),
                 "rules".to_string(),
@@ -125,7 +125,7 @@ pub struct HookConfig {
 }
 
 /// Mode-scoped tool permission overrides.
-/// These overlay canonical `.ship/agents/permissions.toml` `tools.allow/deny`
+/// These overlay canonical `.ship/permissions.jsonc` `tools.allow/deny`
 /// when a mode is active.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Type)]
 pub struct PermissionConfig {
@@ -184,11 +184,6 @@ fn default_namespaces() -> Vec<NamespaceConfig> {
             id: "agents".to_string(),
             path: "agents".to_string(),
             owner: "agents".to_string(),
-        },
-        NamespaceConfig {
-            id: "generated".to_string(),
-            path: "generated".to_string(),
-            owner: "runtime".to_string(),
         },
     ]
 }
@@ -399,19 +394,18 @@ pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
         None => get_global_dir()?,
     };
 
-    // Prefer ship.toml, then legacy config.toml.
+    // Prefer ship.jsonc, then legacy ship.toml.
     let primary_path = config_dir.join(PRIMARY_CONFIG_FILE);
     let legacy_path = config_dir.join(LEGACY_CONFIG_FILE);
     let json_path = config_dir.join("config.json");
 
     let mut config = None;
-    for path in [&primary_path, &legacy_path] {
-        if !path.exists() {
-            continue;
-        }
-        let content = fs::read_to_string(path)?;
+    if primary_path.exists() {
+        let content = fs::read_to_string(&primary_path)?;
+        config = Some(compiler::jsonc::from_jsonc_str(&content)?);
+    } else if legacy_path.exists() {
+        let content = fs::read_to_string(&legacy_path)?;
         config = Some(toml::from_str(&content)?);
-        break;
     }
 
     let mut config = if let Some(config) = config {
@@ -512,7 +506,7 @@ pub fn get_mcp_config(ship_dir: &Path) -> Result<Vec<McpServerConfig>> {
     }
 
     let content = fs::read_to_string(&path)?;
-    let raw: McpConfig = toml::from_str(&content)?;
+    let raw: McpConfig = compiler::jsonc::from_jsonc_str(&content)?;
 
     let mut servers = Vec::new();
     for (id, mut server) in raw.mcp.servers {
@@ -540,7 +534,7 @@ fn save_mcp_config(ship_dir: &Path, servers: &[McpServerConfig]) -> Result<()> {
     let raw = McpConfig {
         mcp: McpSection { servers: by_id },
     };
-    write_atomic(&path, toml::to_string_pretty(&raw)?)?;
+    write_atomic(&path, serde_json::to_string_pretty(&raw)?)?;
     Ok(())
 }
 
@@ -572,7 +566,6 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
             .join("SKILL.md");
         let digest = stable_hash(&skill.content);
         crate::db::agents::upsert_agent_artifact_registry_db(
-            ship_dir,
             ARTIFACT_KIND_SKILL,
             &skill.id,
             &skill.name,
@@ -585,7 +578,6 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
         let external_id = normalize_rule_external_id(&rule.file_name);
         let digest = stable_hash(&rule.content);
         crate::db::agents::upsert_agent_artifact_registry_db(
-            ship_dir,
             ARTIFACT_KIND_RULE,
             &external_id,
             &rule.file_name,
@@ -597,7 +589,6 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
     for server in get_mcp_config(ship_dir)? {
         let digest = stable_hash(&toml::to_string(&server)?);
         crate::db::agents::upsert_agent_artifact_registry_db(
-            ship_dir,
             ARTIFACT_KIND_MCP,
             &server.id,
             &server.name,
@@ -610,7 +601,7 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
 }
 
 fn resolve_refs_to_external_ids(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     refs: &[String],
 ) -> Result<Vec<String>> {
@@ -618,7 +609,7 @@ fn resolve_refs_to_external_ids(
     let mut seen = HashSet::new();
     for reference in refs {
         if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_uuid_db(ship_dir, kind, reference)?
+            crate::db::agents::get_agent_artifact_registry_by_uuid_db(kind, reference)?
         {
             let external_id = if kind == ARTIFACT_KIND_RULE {
                 normalize_rule_external_id(&entry.external_id)
@@ -636,9 +627,8 @@ fn resolve_refs_to_external_ids(
         } else {
             reference.clone()
         };
-        if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_external_id_db(ship_dir, kind, &lookup)?
-            && seen.insert(entry.external_id.clone())
+        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup,
+        )? && seen.insert(entry.external_id.clone())
         {
             resolved.push(entry.external_id);
         }
@@ -647,7 +637,7 @@ fn resolve_refs_to_external_ids(
 }
 
 fn resolve_external_ids_to_refs(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     external_ids: &[String],
 ) -> Result<Vec<String>> {
@@ -659,9 +649,8 @@ fn resolve_external_ids_to_refs(
         } else {
             id.clone()
         };
-        if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_external_id_db(ship_dir, kind, &lookup)?
-            && seen.insert(entry.uuid.clone())
+        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup,
+        )? && seen.insert(entry.uuid.clone())
         {
             refs.push(entry.uuid);
         }
@@ -672,7 +661,7 @@ fn resolve_external_ids_to_refs(
 fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let mode_rows = crate::db::agents::list_agent_configs_db(ship_dir)?;
+    let mode_rows = crate::db::agents::list_agent_configs_db()?;
     let mut modes = Vec::new();
     for row in mode_rows {
         let active_tools: Vec<String> =
@@ -708,7 +697,7 @@ fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
 fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let existing_ids: HashSet<String> = crate::db::agents::list_agent_configs_db(ship_dir)?
+    let existing_ids: HashSet<String> = crate::db::agents::list_agent_configs_db()?
         .into_iter()
         .map(|row| row.id)
         .collect();
@@ -741,12 +730,12 @@ fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
             permissions_json: serde_json::to_string(&mode.permissions)?,
             target_agents_json: serde_json::to_string(&mode.target_agents)?,
         };
-        crate::db::agents::upsert_agent_config_db(ship_dir, &db_mode)?;
+        crate::db::agents::upsert_agent_config_db(&db_mode)?;
     }
 
     for id in existing_ids {
         if !next_ids.contains(&id) {
-            crate::db::agents::delete_agent_config_db(ship_dir, &id)?;
+            crate::db::agents::delete_agent_config_db(&id)?;
         }
     }
 
@@ -798,7 +787,7 @@ fn normalize_git_config(mut git: GitConfig) -> GitConfig {
 
 #[allow(clippy::type_complexity)]
 fn get_runtime_settings(
-    ship_dir: &Path,
+    _ship_dir: &Path,
 ) -> Result<
     Option<(
         Vec<String>,
@@ -810,7 +799,7 @@ fn get_runtime_settings(
         Option<Vec<NamespaceConfig>>,
     )>,
 > {
-    let Some(raw) = crate::db::agents::get_agent_runtime_settings_db(ship_dir)? else {
+    let Some(raw) = crate::db::agents::get_agent_runtime_settings_db()? else {
         return Ok(None);
     };
 
@@ -850,14 +839,13 @@ fn get_runtime_settings(
     )))
 }
 
-fn save_runtime_settings(ship_dir: &Path, config: &ProjectConfig) -> Result<()> {
+fn save_runtime_settings(_ship_dir: &Path, config: &ProjectConfig) -> Result<()> {
     let hooks_json = serde_json::to_string(&config.hooks)?;
     let statuses_json = serde_json::to_string(&config.statuses)?;
     let ai_json = config.ai.as_ref().map(serde_json::to_string).transpose()?;
     let git_json = serde_json::to_string(&normalize_git_config(config.git.clone()))?;
     let namespaces_json = serde_json::to_string(&config.namespaces)?;
     crate::db::agents::set_agent_runtime_settings_db(
-        ship_dir,
         &config.providers,
         config.active_agent.as_deref(),
         &hooks_json,
@@ -931,8 +919,8 @@ fn project_core_file(config: &ProjectConfig) -> ProjectCoreFile {
 
 fn write_project_core_config(path: &Path, config: &ProjectConfig) -> Result<()> {
     let core = project_core_file(config);
-    let toml_str = toml::to_string_pretty(&core)?;
-    write_atomic(path, toml_str)?;
+    let json_str = serde_json::to_string_pretty(&core)?;
+    write_atomic(path, json_str)?;
     Ok(())
 }
 
@@ -963,7 +951,7 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
             id: String,
         }
         if let Ok(content) = fs::read_to_string(&path) {
-            let parsed: MinConfig = toml::from_str(&content).unwrap_or_default();
+            let parsed: MinConfig = compiler::jsonc::from_jsonc_str(&content).unwrap_or_default();
             if !parsed.id.trim().is_empty() {
                 effective.id = parsed.id;
             }
@@ -973,8 +961,8 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
         effective.id = crate::gen_nanoid();
     }
 
-    // Bootstrap ship.toml with project identity before any SQLite-backed writes.
-    // save_runtime_settings/open_project_db resolve the DB key from ship.toml:id.
+    // Bootstrap ship.jsonc with project identity before any SQLite-backed writes.
+    // save_runtime_settings/open_project_db resolve the DB key from ship.jsonc:id.
     if !path.exists() {
         write_project_core_config(&path, &effective)?;
     }
@@ -985,7 +973,7 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
     save_mcp_config(&config_dir, &effective.mcp_servers)?;
     save_modes_config(&config_dir, &effective.modes)?;
 
-    // Keep ship.toml focused on stable project identity only.
+    // Keep ship.jsonc focused on stable project identity only.
     write_project_core_config(&path, &effective)?;
     Ok(())
 }
@@ -1188,15 +1176,13 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         ("adrs", "project/adrs"),
         ("notes", "project/notes"),
         ("vision", "vision.md"),
-        ("mcp", "agents/mcp.toml"),
-        ("permissions", "agents/permissions.toml"),
-        ("rules", "agents/rules"),
-        ("skills", "agents/skills"),
-        ("agent-docs", "agents/README.md"),
-        ("agent-strategy", "agents/skill-library-strategy.md"),
+        ("mcp", "mcp.jsonc"),
+        ("permissions", "permissions.jsonc"),
+        ("rules", "rules"),
+        ("skills", "skills"),
         ("ship-readme", "README.md"),
         ("project-readme", "project/README.md"),
-        ("ship.toml", "ship.toml"),
+        ("ship.jsonc", "ship.jsonc"),
         ("templates", "**/TEMPLATE.md"),
     ];
     let mut lines = vec![
@@ -1207,10 +1193,6 @@ pub fn generate_gitignore(ship_dir: &Path, git: &GitConfig) -> Result<()> {
         if !git.commit.contains(&key.to_string()) {
             lines.push(path.to_string());
         }
-    }
-    // Runtime-managed local artifacts are always ignored.
-    if !lines.iter().any(|line| line == "generated/") {
-        lines.push("generated/".to_string());
     }
     if !lines.iter().any(|line| line == ".tmp-global/") {
         lines.push(".tmp-global/".to_string());
@@ -1227,7 +1209,7 @@ pub fn ensure_registered_namespaces(
     const RESERVED_TOP_LEVEL: &[&str] = &[
         "project",
         "agents",
-        "generated",
+        "ship.jsonc",
         "ship.toml",
         "config.toml",
         "log.md",
@@ -1439,20 +1421,6 @@ pub fn remove_hook(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
 pub fn list_hooks(project_dir: Option<PathBuf>) -> Result<Vec<HookConfig>> {
     let config = get_config(project_dir)?;
     Ok(config.hooks)
-}
-
-/// Migrate `config.json` → `ship.toml` in-place (no-op if already migrated).
-pub fn migrate_json_config_file(project_dir: &Path) -> Result<bool> {
-    let json_path = project_dir.join("config.json");
-    let primary_path = project_dir.join(PRIMARY_CONFIG_FILE);
-    let legacy_path = project_dir.join(LEGACY_CONFIG_FILE);
-    if !json_path.exists() || primary_path.exists() || legacy_path.exists() {
-        return Ok(false);
-    }
-    let config = migrate_json_config(&json_path)?;
-    save_config(&config, Some(project_dir.to_path_buf()))?;
-    fs::remove_file(json_path)?;
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -1738,42 +1706,42 @@ mod tests {
 
         save_config(&config, Some(ship_dir.clone()))?;
 
-        let ship_toml = fs::read_to_string(ship_dir.join("ship.toml"))?;
+        let ship_config = fs::read_to_string(ship_dir.join(PRIMARY_CONFIG_FILE))?;
         assert!(
-            !ship_toml.contains("[[modes]]"),
-            "ship.toml must not persist mode definitions"
+            !ship_config.contains("modes"),
+            "ship.jsonc must not persist mode definitions"
         );
         assert!(
-            !ship_toml.contains("[[mcp_servers]]"),
-            "ship.toml must not persist MCP servers"
+            !ship_config.contains("mcp_servers"),
+            "ship.jsonc must not persist MCP servers"
         );
         assert!(
-            !ship_toml.contains("[agent]"),
-            "ship.toml must not persist agent block"
+            !ship_config.contains("\"agent\""),
+            "ship.jsonc must not persist agent block"
         );
         assert!(
-            !ship_toml.contains("providers ="),
-            "ship.toml must not persist providers"
+            !ship_config.contains("\"providers\""),
+            "ship.jsonc must not persist providers"
         );
         assert!(
-            !ship_toml.contains("active_agent ="),
-            "ship.toml must not persist active_agent"
+            !ship_config.contains("active_agent"),
+            "ship.jsonc must not persist active_agent"
         );
         assert!(
-            !ship_toml.contains("[[statuses]]"),
-            "ship.toml must not persist statuses"
+            !ship_config.contains("statuses"),
+            "ship.jsonc must not persist statuses"
         );
         assert!(
-            !ship_toml.contains("[git]"),
-            "ship.toml must not persist git policy"
+            !ship_config.contains("\"git\""),
+            "ship.jsonc must not persist git policy"
         );
         assert!(
-            !ship_toml.contains("[ai]"),
-            "ship.toml must not persist ai block"
+            !ship_config.contains("\"ai\""),
+            "ship.jsonc must not persist ai block"
         );
         assert!(
-            !ship_toml.contains("[[namespaces]]"),
-            "ship.toml must not persist namespace claims"
+            !ship_config.contains("namespaces"),
+            "ship.jsonc must not persist namespace claims"
         );
 
         assert!(
@@ -1781,7 +1749,7 @@ mod tests {
             "legacy agents/config.toml should not be written"
         );
 
-        let runtime_settings = crate::db::agents::get_agent_runtime_settings_db(&ship_dir)?
+        let runtime_settings = crate::db::agents::get_agent_runtime_settings_db()?
             .expect("expected runtime settings row");
         assert_eq!(
             runtime_settings.providers,
@@ -1796,15 +1764,15 @@ mod tests {
                 .as_deref()
                 .is_some_and(|raw| raw.contains("\"codex\""))
         );
-        assert!(runtime_settings.git_json.contains("\"ship.toml\""));
+        assert!(runtime_settings.git_json.contains("\"ship.jsonc\""));
         assert!(runtime_settings.namespaces_json.contains("\"project\""));
 
-        let mode_rows = crate::db::agents::list_agent_configs_db(&ship_dir)?;
+        let mode_rows = crate::db::agents::list_agent_configs_db()?;
         assert_eq!(mode_rows.len(), 1);
         assert_eq!(mode_rows[0].id, "planning");
 
-        let mcp_cfg = fs::read_to_string(ship_dir.join("agents").join("mcp.toml"))?;
-        assert!(mcp_cfg.contains("[mcp.servers.github]"));
+        let mcp_cfg = fs::read_to_string(ship_dir.join("mcp.jsonc"))?;
+        assert!(mcp_cfg.contains("\"github\""));
         Ok(())
     }
 

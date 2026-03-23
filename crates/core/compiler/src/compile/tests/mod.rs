@@ -10,4 +10,7 @@ mod cursor_tests;
 mod gemini_policy_tests;
 mod gemini_tests;
 mod mcp_tests;
+mod format_edge_tests;
+mod opencode_tests;
 mod provider_tests;
+mod realistic_tests;

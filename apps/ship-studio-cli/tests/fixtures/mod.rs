@@ -15,6 +15,7 @@ use compiler::lockfile::{LockPackage, ShipLock};
 /// `skills/<skill_name>/SKILL.md` containing `skill_content`.
 ///
 /// Returns the path to the bare repo. Use as `file://<path>` for git ops.
+#[allow(dead_code)]
 pub fn make_local_dep_repo(base: &Path, skill_name: &str, skill_content: &str) -> PathBuf {
     let work_name = format!("_work-{}", skill_name);
     let work_dir = base.join(&work_name);
@@ -33,13 +34,17 @@ pub fn make_local_dep_repo(base: &Path, skill_name: &str, skill_content: &str) -
 
     let bare_name = format!("repo-{}.git", skill_name);
     let bare = base.join(&bare_name);
-    git_cmd(base, &["clone", "--bare", work_dir.to_str().unwrap(), &bare_name])
-        .expect("git clone --bare");
+    git_cmd(
+        base,
+        &["clone", "--bare", work_dir.to_str().unwrap(), &bare_name],
+    )
+    .expect("git clone --bare");
 
     bare
 }
 
 /// Get the HEAD commit SHA from a git repo (bare or regular).
+#[allow(dead_code)]
 pub fn git_head_commit(repo: &Path) -> String {
     let out = Command::new("git")
         .args(["-C", repo.to_str().unwrap(), "rev-parse", "HEAD"])
@@ -52,6 +57,7 @@ pub fn git_head_commit(repo: &Path) -> String {
 /// Clone a bare repo and return the path to the checked-out working tree
 /// with the `.git/` directory removed. Suitable for passing to
 /// `PackageCache::store()`.
+#[allow(dead_code)]
 pub fn extract_repo_content(bare_repo: &Path, base: &Path, tag: &str) -> PathBuf {
     let dest_name = format!("_extracted-{}", tag);
     let dest = base.join(&dest_name);

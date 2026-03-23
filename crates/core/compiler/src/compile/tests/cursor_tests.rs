@@ -1,7 +1,7 @@
-use crate::compile::{compile, get_provider, translate_to_cursor_permission};
 use crate::compile::provider::ContextFile;
+use crate::compile::{compile, get_provider, translate_to_cursor_permission};
 use crate::resolve::ResolvedConfig;
-use crate::types::{HookConfig, HookTrigger, Permissions, ToolPermissions};
+use crate::types::{HookTrigger, Permissions, ToolPermissions};
 
 use super::fixtures::*;
 
@@ -12,7 +12,10 @@ fn cursor_provider_exists() {
     let desc = get_provider("cursor").expect("cursor provider must be registered");
     assert_eq!(desc.name, "Cursor");
     assert_eq!(desc.mcp_key.as_str(), "mcpServers");
-    assert!(!desc.emit_type_field, "Cursor does not emit type field for stdio");
+    assert!(
+        !desc.emit_type_field,
+        "Cursor does not emit type field for stdio"
+    );
     assert_eq!(desc.http_url_field, "url");
     assert_eq!(desc.mcp_config_path, Some(".cursor/mcp.json"));
 }
@@ -23,8 +26,20 @@ fn cursor_mcp_matches_claude_format() {
     let claude = compile(&r, "claude").unwrap();
     let cursor = compile(&r, "cursor").unwrap();
 
-    let claude_keys: Vec<&str> = claude.mcp_servers.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-    let cursor_keys: Vec<&str> = cursor.mcp_servers.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+    let claude_keys: Vec<&str> = claude
+        .mcp_servers
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
+    let cursor_keys: Vec<&str> = cursor
+        .mcp_servers
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
     assert_eq!(claude_keys[0], "ship");
     assert_eq!(cursor_keys[0], "ship");
 
@@ -34,9 +49,15 @@ fn cursor_mcp_matches_claude_format() {
 
 #[test]
 fn cursor_skill_files_in_rules_dir() {
-    let r = ResolvedConfig { skills: vec![make_skill("refactor")], ..resolved(vec![]) };
+    let r = ResolvedConfig {
+        skills: vec![make_skill("refactor")],
+        ..resolved(vec![])
+    };
     let out = compile(&r, "cursor").unwrap();
-    assert!(out.skill_files.contains_key(".cursor/skills/refactor/SKILL.md"));
+    assert!(
+        out.skill_files
+            .contains_key(".cursor/skills/refactor/SKILL.md")
+    );
 }
 
 #[test]
@@ -71,7 +92,15 @@ fn cursor_is_valid_provider_in_normalize() {
         providers: vec!["cursor".to_string()],
         ..Default::default()
     };
-    let resolved = resolve(&ProjectConfig::default(), &[], &[], &Permissions::default(), &[], Some(&feature), None);
+    let resolved = resolve(
+        &ProjectConfig::default(),
+        &[],
+        &[],
+        &Permissions::default(),
+        &[],
+        Some(&feature),
+        None,
+    );
     assert_eq!(resolved.providers, vec!["cursor"]);
 }
 
@@ -87,13 +116,25 @@ fn cursor_mcp_config_path_in_output() {
 #[test]
 fn cursor_pre_tool_emits_both_mcp_and_shell_events() {
     let r = ResolvedConfig {
-        hooks: vec![make_hook(HookTrigger::PreToolUse, "ship check", Some("Bash"))],
+        hooks: vec![make_hook(
+            HookTrigger::PreToolUse,
+            "ship check",
+            Some("Bash"),
+        )],
         ..resolved(vec![])
     };
     let out = compile(&r, "cursor").unwrap();
-    let patch = out.cursor_hooks_patch.expect("cursor must emit hooks patch");
-    assert!(patch["beforeMCPExecution"].is_array(),   "PreToolUse → beforeMCPExecution");
-    assert!(patch["beforeShellExecution"].is_array(), "PreToolUse → beforeShellExecution");
+    let patch = out
+        .cursor_hooks_patch
+        .expect("cursor must emit hooks patch");
+    assert!(
+        patch["beforeMCPExecution"].is_array(),
+        "PreToolUse → beforeMCPExecution"
+    );
+    assert!(
+        patch["beforeShellExecution"].is_array(),
+        "PreToolUse → beforeShellExecution"
+    );
 }
 
 #[test]
@@ -125,7 +166,7 @@ fn cursor_unmapped_triggers_produce_no_patch() {
         hooks: vec![
             make_hook(HookTrigger::Notification, "cmd", None),
             make_hook(HookTrigger::SubagentStop, "cmd", None),
-            make_hook(HookTrigger::PreCompact,   "cmd", None),
+            make_hook(HookTrigger::PreCompact, "cmd", None),
         ],
         ..resolved(vec![])
     };
@@ -180,8 +221,13 @@ fn cursor_raw_event_bypasses_trigger_mapping() {
         ..resolved(vec![])
     };
     let out = compile(&r, "cursor").unwrap();
-    let patch = out.cursor_hooks_patch.expect("raw cursor_event must produce a patch");
-    assert!(patch["customEvent"].is_array(), "raw event must appear under customEvent key");
+    let patch = out
+        .cursor_hooks_patch
+        .expect("raw cursor_event must produce a patch");
+    assert!(
+        patch["customEvent"].is_array(),
+        "raw event must appear under customEvent key"
+    );
     assert_eq!(patch["customEvent"][0]["command"], "ship log");
 }
 
@@ -193,7 +239,9 @@ fn cursor_environment_json_populated() {
         ..resolved(vec![])
     };
     let out = compile(&r, "cursor").unwrap();
-    let env_json = out.cursor_environment_json.expect("cursor_environment must be emitted");
+    let env_json = out
+        .cursor_environment_json
+        .expect("cursor_environment must be emitted");
     assert_eq!(env_json["NODE_ENV"], "production");
 }
 
@@ -220,7 +268,9 @@ fn cursor_settings_extra_merged_into_cli_json() {
         ..resolved(vec![])
     };
     let out = compile(&r, "cursor").unwrap();
-    let cli_json = out.cursor_cli_permissions.expect("cursor_settings_extra must trigger cli.json");
+    let cli_json = out
+        .cursor_cli_permissions
+        .expect("cursor_settings_extra must trigger cli.json");
     assert_eq!(cli_json["customSetting"], true);
 }
 

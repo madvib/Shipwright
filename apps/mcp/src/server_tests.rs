@@ -1,7 +1,10 @@
 use super::*;
-use runtime::{AgentProfile, add_agent};
-use runtime::workspace::{CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest, ShipWorkspaceKind, create_workspace as runtime_create_workspace};
 use runtime::project::init_project;
+use runtime::workspace::{
+    CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest, ShipWorkspaceKind,
+    create_workspace as runtime_create_workspace,
+};
+use runtime::{AgentProfile, add_agent};
 use tempfile::tempdir;
 
 #[test]
@@ -47,21 +50,25 @@ async fn mcp_workspace_control_plane_round_trip() {
     let server = ShipServer::new();
     *server.active_project.lock().await = Some(project_dir.clone());
 
-    runtime_create_workspace(&project_dir, RuntimeCreateWorkspaceRequest {
-        branch: "feature/mode-control-plane".to_string(),
-        workspace_type: Some(ShipWorkspaceKind::Feature),
-        status: None,
-        environment_id: None,
-        feature_id: None,
-        target_id: None,
-        active_agent: None,
-        providers: None,
-        mcp_servers: None,
-        skills: None,
-        is_worktree: Some(false),
-        worktree_path: None,
-        context_hash: None,
-    }).expect("create workspace for test");
+    runtime_create_workspace(
+        &project_dir,
+        RuntimeCreateWorkspaceRequest {
+            branch: "feature/mode-control-plane".to_string(),
+            workspace_type: Some(ShipWorkspaceKind::Feature),
+            status: None,
+            environment_id: None,
+            feature_id: None,
+            target_id: None,
+            active_agent: None,
+            providers: None,
+            mcp_servers: None,
+            skills: None,
+            is_worktree: Some(false),
+            worktree_path: None,
+            context_hash: None,
+        },
+    )
+    .expect("create workspace for test");
 
     let fetched = server
         .resolve_resource_uri("ship://workspaces/feature/mode-control-plane", &project_dir)
@@ -89,12 +96,18 @@ async fn mcp_workspace_control_plane_round_trip() {
 
 #[test]
 fn strips_ship_prefix() {
-    assert_eq!(ShipServer::normalize_mode_tool_id("ship_create_note"), "create_note");
+    assert_eq!(
+        ShipServer::normalize_mode_tool_id("ship_create_note"),
+        "create_note"
+    );
 }
 
 #[test]
 fn strips_tool_suffix() {
-    assert_eq!(ShipServer::normalize_mode_tool_id("list_notes_tool"), "list_notes");
+    assert_eq!(
+        ShipServer::normalize_mode_tool_id("list_notes_tool"),
+        "list_notes"
+    );
 }
 
 #[test]
@@ -107,17 +120,26 @@ fn strips_both_prefix_and_suffix() {
 
 #[test]
 fn lowercases_and_replaces_hyphens() {
-    assert_eq!(ShipServer::normalize_mode_tool_id("Ship-Create-Note"), "create_note");
+    assert_eq!(
+        ShipServer::normalize_mode_tool_id("Ship-Create-Note"),
+        "create_note"
+    );
 }
 
 #[test]
 fn already_normalized_unchanged() {
-    assert_eq!(ShipServer::normalize_mode_tool_id("create_note"), "create_note");
+    assert_eq!(
+        ShipServer::normalize_mode_tool_id("create_note"),
+        "create_note"
+    );
 }
 
 #[test]
 fn trims_whitespace() {
-    assert_eq!(ShipServer::normalize_mode_tool_id("  ship_foo_tool  "), "foo");
+    assert_eq!(
+        ShipServer::normalize_mode_tool_id("  ship_foo_tool  "),
+        "foo"
+    );
 }
 
 // ── is_core_tool ────────────────────────────────────────────────────
@@ -152,7 +174,10 @@ fn core_tools_are_recognized() {
         "list_capabilities",
     ];
     for tool in core_tools {
-        assert!(ShipServer::is_core_tool(tool), "{tool} should be a core tool");
+        assert!(
+            ShipServer::is_core_tool(tool),
+            "{tool} should be a core tool"
+        );
     }
 }
 
@@ -193,7 +218,10 @@ fn tool_not_in_active_tools_blocked() {
 fn normalization_applied_to_both_sides() {
     let active = vec!["ship_create_spec_tool".to_string()];
     assert!(ShipServer::mode_allows_tool("create_spec", &active));
-    assert!(ShipServer::mode_allows_tool("ship_create_spec_tool", &active));
+    assert!(ShipServer::mode_allows_tool(
+        "ship_create_spec_tool",
+        &active
+    ));
 }
 
 // ── update_target handler ──────────────────────────────────────────
@@ -215,9 +243,20 @@ fn update_target_patches_fields() {
         file_scope: None,
     };
     let created = crate::tools::target::create_target(&project_dir, create_req);
-    assert!(created.starts_with("Created target:"), "unexpected: {}", created);
+    assert!(
+        created.starts_with("Created target:"),
+        "unexpected: {}",
+        created
+    );
 
-    let id = created.split("id: ").nth(1).unwrap().split(',').next().unwrap().to_string();
+    let id = created
+        .split("id: ")
+        .nth(1)
+        .unwrap()
+        .split(',')
+        .next()
+        .unwrap()
+        .to_string();
 
     let update_req = crate::requests::UpdateTargetRequest {
         id: id.clone(),
@@ -231,15 +270,35 @@ fn update_target_patches_fields() {
         file_scope: None,
     };
     let updated = crate::tools::target::update_target(&project_dir, update_req);
-    assert!(updated.contains("Updated target"), "unexpected: {}", updated);
+    assert!(
+        updated.contains("Updated target"),
+        "unexpected: {}",
+        updated
+    );
 
     let get_req = crate::requests::GetTargetRequest { id };
     let detail = crate::tools::target::get_target(&project_dir, get_req);
-    assert!(detail.contains("Updated Title"), "title not updated: {}", detail);
-    assert!(detail.contains("Updated desc"), "description not updated: {}", detail);
-    assert!(detail.contains("Updated goal"), "goal not updated: {}", detail);
+    assert!(
+        detail.contains("Updated Title"),
+        "title not updated: {}",
+        detail
+    );
+    assert!(
+        detail.contains("Updated desc"),
+        "description not updated: {}",
+        detail
+    );
+    assert!(
+        detail.contains("Updated goal"),
+        "goal not updated: {}",
+        detail
+    );
     assert!(detail.contains("planned"), "status not updated: {}", detail);
-    assert!(detail.contains("# Updated body"), "body_markdown not updated: {}", detail);
+    assert!(
+        detail.contains("# Updated body"),
+        "body_markdown not updated: {}",
+        detail
+    );
 }
 
 #[test]
@@ -259,5 +318,9 @@ fn update_target_nonexistent_returns_error() {
         file_scope: None,
     };
     let result = crate::tools::target::update_target(&project_dir, update_req);
-    assert!(result.contains("Error"), "expected error for nonexistent target: {}", result);
+    assert!(
+        result.contains("Error"),
+        "expected error for nonexistent target: {}",
+        result
+    );
 }

@@ -18,12 +18,11 @@ fn parse_since(raw: &str) -> Result<DateTime<Utc>> {
     }
 
     // Fall back to ISO 8601 parse
-    s.parse::<DateTime<Utc>>()
-        .or_else(|_| {
-            chrono::DateTime::parse_from_rfc3339(s)
-                .map(|dt| dt.with_timezone(&Utc))
-                .map_err(|e| anyhow!("Could not parse '{}' as a time: {}", s, e))
-        })
+    s.parse::<DateTime<Utc>>().or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .map(|dt| dt.with_timezone(&Utc))
+            .map_err(|e| anyhow!("Could not parse '{}' as a time: {}", s, e))
+    })
 }
 
 /// Truncate a string to at most `max_chars` characters for table display.
@@ -50,12 +49,9 @@ pub fn run_events(
     limit: u32,
     json: bool,
 ) -> Result<()> {
-    let since_cutoff = since
-        .as_deref()
-        .map(parse_since)
-        .transpose()?;
+    let since_cutoff = since.as_deref().map(parse_since).transpose()?;
 
-    let mut events = runtime::events::read_events(&ship_dir)?;
+    let mut events = runtime::events::read_events(ship_dir)?;
 
     // Apply filters
     if let Some(cutoff) = since_cutoff {
@@ -91,8 +87,8 @@ pub fn run_events(
 
     // Table header
     println!(
-        "{:<10} {:<20} {:<16} {:<24} {}",
-        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION", "SUBJECT"
+        "{:<10} {:<20} {:<16} {:<24} SUBJECT",
+        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION"
     );
     println!("{}", "-".repeat(90));
 

@@ -213,16 +213,28 @@ fn resolve_dep_skill_expands_namespace_to_leaf_skills() {
     );
 
     let lock = make_lock("github.com/better-auth/skills", &format!("sha256:{hex}"));
-    let skills =
-        resolve_dep_skill("github.com/better-auth/skills/better-auth", &lock, tmp.path())
-            .unwrap();
+    let skills = resolve_dep_skill(
+        "github.com/better-auth/skills/better-auth",
+        &lock,
+        tmp.path(),
+    )
+    .unwrap();
 
     assert_eq!(skills.len(), 3, "should expand to 3 leaf skills");
     // Sorted by sub-name
-    assert_eq!(skills[0].id, "github.com/better-auth/skills/better-auth/best-practices");
+    assert_eq!(
+        skills[0].id,
+        "github.com/better-auth/skills/better-auth/best-practices"
+    );
     assert_eq!(skills[0].name, "Best Practices");
-    assert_eq!(skills[1].id, "github.com/better-auth/skills/better-auth/create-auth");
-    assert_eq!(skills[2].id, "github.com/better-auth/skills/better-auth/emailAndPassword");
+    assert_eq!(
+        skills[1].id,
+        "github.com/better-auth/skills/better-auth/create-auth"
+    );
+    assert_eq!(
+        skills[2].id,
+        "github.com/better-auth/skills/better-auth/emailAndPassword"
+    );
 }
 
 #[test]
@@ -242,23 +254,34 @@ fn resolve_dep_skill_missing_namespace_lists_available() {
     );
 
     let lock = make_lock("github.com/better-auth/skills", &format!("sha256:{hex}"));
-    let err =
-        resolve_dep_skill("github.com/better-auth/skills/missing-ns", &lock, tmp.path())
-            .unwrap_err();
+    let err = resolve_dep_skill(
+        "github.com/better-auth/skills/missing-ns",
+        &lock,
+        tmp.path(),
+    )
+    .unwrap_err();
 
     let msg = err.to_string();
     assert!(msg.contains("not found"), "got: {msg}");
-    assert!(msg.contains("better-auth"), "should list sibling dirs, got: {msg}");
-    assert!(msg.contains("security"), "should list sibling dirs, got: {msg}");
+    assert!(
+        msg.contains("better-auth"),
+        "should list sibling dirs, got: {msg}"
+    );
+    assert!(
+        msg.contains("security"),
+        "should list sibling dirs, got: {msg}"
+    );
 }
 
 #[test]
 fn resolve_dep_skill_cache_miss_errors_with_install_hint() {
     let tmp = TempDir::new().unwrap();
-    let lock = ShipLock { version: 1, packages: vec![] };
+    let lock = ShipLock {
+        version: 1,
+        packages: vec![],
+    };
 
-    let err =
-        resolve_dep_skill("github.com/owner/pkg/skills/name", &lock, tmp.path()).unwrap_err();
+    let err = resolve_dep_skill("github.com/owner/pkg/skills/name", &lock, tmp.path()).unwrap_err();
 
     let msg = err.to_string();
     assert!(msg.contains("not in cache"), "got: {msg}");
@@ -315,7 +338,10 @@ fn resolve_dep_skills_deduplicates_against_local() {
 
     let refs = vec!["github.com/owner/pkg/skills/my-skill".to_string()];
     let result = resolve_dep_skills(&refs, &[existing], &lock_path, Some(tmp.path())).unwrap();
-    assert!(result.is_empty(), "already-present skill must not be duplicated");
+    assert!(
+        result.is_empty(),
+        "already-present skill must not be duplicated"
+    );
 }
 
 #[test]
@@ -370,13 +396,22 @@ fn parse_dep_skill_parses_allowed_tools() {
 fn parse_dep_skill_parses_metadata_block() {
     let raw = "---\nname: Cool\ndescription: x\nmetadata:\n  team: platform\n---\n\nContent.";
     let skill = parse_dep_skill("github.com/owner/pkg/skills/cool", raw);
-    assert_eq!(skill.metadata.get("team").map(String::as_str), Some("platform"));
+    assert_eq!(
+        skill.metadata.get("team").map(String::as_str),
+        Some("platform")
+    );
 }
 
 #[test]
 fn parse_dep_skill_folds_legacy_version_author_into_metadata() {
     let raw = "---\nname: Cool\ndescription: x\nversion: 2.0\nauthor: bob\n---\n\nContent.";
     let skill = parse_dep_skill("github.com/owner/pkg/skills/cool", raw);
-    assert_eq!(skill.metadata.get("version").map(String::as_str), Some("2.0"));
-    assert_eq!(skill.metadata.get("author").map(String::as_str), Some("bob"));
+    assert_eq!(
+        skill.metadata.get("version").map(String::as_str),
+        Some("2.0")
+    );
+    assert_eq!(
+        skill.metadata.get("author").map(String::as_str),
+        Some("bob")
+    );
 }

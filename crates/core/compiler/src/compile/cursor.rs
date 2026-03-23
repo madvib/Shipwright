@@ -13,9 +13,9 @@ use crate::types::{HookConfig, HookTrigger, McpServerConfig, McpServerType, Perm
 /// we emit both so hooks fire regardless of tool type.
 fn cursor_triggers(t: &HookTrigger) -> &'static [&'static str] {
     match t {
-        HookTrigger::PreToolUse  => &["beforeMCPExecution", "beforeShellExecution"],
+        HookTrigger::PreToolUse => &["beforeMCPExecution", "beforeShellExecution"],
         HookTrigger::PostToolUse => &["afterMCPExecution", "afterShellExecution"],
-        HookTrigger::Stop        => &["sessionEnd"],
+        HookTrigger::Stop => &["sessionEnd"],
         // No Cursor equivalents
         HookTrigger::Notification | HookTrigger::SubagentStop | HookTrigger::PreCompact => &[],
     }
@@ -90,18 +90,30 @@ pub fn translate_to_cursor_permission(pattern: &str) -> Option<String> {
     }
 
     // Phase 3: Read(glob) and Write(glob)/Edit(glob) pass-through.
-    if let Some(inner) = pattern.strip_prefix("Read(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("Read(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         return Some(format!("Read({inner})"));
     }
-    if let Some(inner) = pattern.strip_prefix("Write(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("Write(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         return Some(format!("Write({inner})"));
     }
-    if let Some(inner) = pattern.strip_prefix("Edit(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("Edit(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         return Some(format!("Write({inner})"));
     }
 
     // Bash(cmd) → Shell(cmd)
-    if let Some(inner) = pattern.strip_prefix("Bash(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("Bash(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         return Some(format!("Shell({inner})"));
     }
     if pattern == "Bash" {
@@ -142,7 +154,9 @@ pub(super) fn build_cursor_cli_permissions(permissions: &Permissions) -> Option<
         || permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
 
     let allow_patterns: Vec<String> = if non_default_allow {
-        permissions.tools.allow
+        permissions
+            .tools
+            .allow
             .iter()
             .filter_map(|p| translate_to_cursor_permission(p))
             .collect()
@@ -150,7 +164,9 @@ pub(super) fn build_cursor_cli_permissions(permissions: &Permissions) -> Option<
         vec![]
     };
 
-    let deny_patterns: Vec<String> = permissions.tools.deny
+    let deny_patterns: Vec<String> = permissions
+        .tools
+        .deny
         .iter()
         .filter_map(|p| translate_to_cursor_permission(p))
         .collect();
@@ -183,7 +199,10 @@ pub(super) fn build_cursor_environment(resolved: &ResolvedConfig) -> Option<Json
 /// Build the full `.cursor/cli.json` by merging permissions and cursor_settings_extra.
 pub(super) fn build_cursor_cli_json(resolved: &ResolvedConfig) -> Option<Json> {
     let permissions_json = build_cursor_cli_permissions(&resolved.permissions);
-    let has_extra = resolved.cursor_settings_extra.as_ref().is_some_and(|v| !v.is_null());
+    let has_extra = resolved
+        .cursor_settings_extra
+        .as_ref()
+        .is_some_and(|v| !v.is_null());
 
     if permissions_json.is_none() && !has_extra {
         return None;
@@ -192,11 +211,11 @@ pub(super) fn build_cursor_cli_json(resolved: &ResolvedConfig) -> Option<Json> {
     let mut out = permissions_json.unwrap_or_else(|| serde_json::json!({ "version": 1 }));
 
     // Merge cursor_settings_extra verbatim.
-    if let Some(extra) = &resolved.cursor_settings_extra {
-        if let Some(obj) = extra.as_object() {
-            for (k, v) in obj {
-                out[k] = v.clone();
-            }
+    if let Some(extra) = &resolved.cursor_settings_extra
+        && let Some(obj) = extra.as_object()
+    {
+        for (k, v) in obj {
+            out[k] = v.clone();
         }
     }
 
@@ -213,10 +232,10 @@ pub(super) fn build_cursor_server_entry(
     let mut entry = super::mcp::server_entry(desc, s);
 
     // envFile for stdio servers.
-    if matches!(s.server_type, McpServerType::Stdio) {
-        if let Some(env_file) = &s.cursor_env_file {
-            entry["envFile"] = Json::String(env_file.clone());
-        }
+    if matches!(s.server_type, McpServerType::Stdio)
+        && let Some(env_file) = &s.cursor_env_file
+    {
+        entry["envFile"] = Json::String(env_file.clone());
     }
 
     entry
@@ -230,7 +249,10 @@ pub(super) fn build_cursor_mcp_servers(
     let mut map = serde_json::Map::new();
 
     // Ship server always first.
-    map.insert("ship".to_string(), super::mcp::ship_server_entry(desc.emit_type_field));
+    map.insert(
+        "ship".to_string(),
+        super::mcp::ship_server_entry(desc.emit_type_field),
+    );
 
     for s in servers {
         if s.disabled {

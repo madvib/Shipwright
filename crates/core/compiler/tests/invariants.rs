@@ -158,7 +158,7 @@ fn cursor_output_contains_rule_files() {
         !output.rule_files.is_empty(),
         "cursor must emit rule_files when rules are present"
     );
-    for (path, _) in &output.rule_files {
+    for path in output.rule_files.keys() {
         assert!(
             path.starts_with(".cursor/rules/"),
             "cursor rule path must be under .cursor/rules/; got {path}"

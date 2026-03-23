@@ -1,27 +1,30 @@
 pub mod agent_parser;
 pub mod compile;
+pub mod decompile;
 pub mod jsonc;
 pub mod lockfile;
 pub mod manifest;
-pub mod matrix;
 pub mod permissions;
 pub mod resolve;
+pub mod schemas;
 pub mod types;
 
 // ─── Top-level re-exports ─────────────────────────────────────────────────────
 
 pub use compile::{
-    AgentsDir, CompileOutput, ContextFile, McpKey, ProviderDescriptor, ProviderFeatureFlags, SkillsDir,
-    agents::compile_agent_profiles,
-    build_claude_settings_patch, compile, get_provider, list_providers,
-    CURSOR_PERMISSIVE_ALLOW, translate_to_cursor_permission,
+    AgentsDir, CURSOR_PERMISSIVE_ALLOW, CompileOutput, ContextFile, McpKey, ProviderDescriptor,
+    ProviderFeatureFlags, SkillsDir, agents::compile_agent_profiles, build_claude_settings_patch,
+    compile, get_provider, list_providers, translate_to_cursor_permission,
 };
-pub use matrix::{Matrix, ProviderMatrix, Capability, Coverage, build_matrix, render_text, render_diffable, render_summary};
-pub use resolve::{WorkspaceOverrides, ProjectLibrary, ResolvedConfig, resolve, resolve_library};
+pub use decompile::{
+    DetectedProviders, decompile_all, decompile_claude, decompile_codex, decompile_cursor,
+    decompile_gemini, decompile_opencode, detect_providers,
+};
+pub use schemas::{PROVIDER_MANAGED_KEYS, PROVIDER_SCHEMAS, managed_keys, schema_url};
+pub use resolve::{ProjectLibrary, ResolvedConfig, WorkspaceOverrides, resolve, resolve_library};
 pub use types::{
     AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogCategory, CatalogEntry,
-    CatalogKind,
-    CommandPermissions, FsPermissions, GitConfig, HookConfig, HookTrigger, McpRefs,
+    CatalogKind, CommandPermissions, FsPermissions, GitConfig, HookConfig, HookTrigger, McpRefs,
     McpServerConfig, McpServerType, ModeConfig, NamespaceConfig, NetworkPermissions, NetworkPolicy,
     PermissionConfig, Permissions, PluginEntry, PluginRefs, PluginsManifest, ProfileMeta,
     ProfilePermissions, ProfileRules, ProjectConfig, Rule, Skill, SkillRefs, SkillSource,
@@ -31,13 +34,17 @@ pub use types::{
 /// Generate a nanoid using Ship's 56-character alphabet (no ambiguous chars).
 pub fn gen_nanoid() -> String {
     let alphabet: [char; 56] = [
-        '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J',
-        'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
-        'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r', 's', 't', 'u',
-        'v', 'w', 'x', 'y', 'z',
+        '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+        'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
+        'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
+        'y', 'z',
     ];
     nanoid::format(nanoid::rngs::default, &alphabet, 8)
 }
+
+#[cfg(test)]
+#[path = "schema_drift_tests.rs"]
+mod schema_drift_tests;
 
 // ─── WASM bindings ────────────────────────────────────────────────────────────
 
@@ -78,6 +85,8 @@ mod wasm {
         cursor_cli_permissions: Option<serde_json::Value>,
         /// Cursor-only: `.cursor/environment.json` content.
         cursor_environment_json: Option<serde_json::Value>,
+        /// OpenCode-only: full `opencode.json` content (model + MCP + extras).
+        opencode_config_patch: Option<serde_json::Value>,
         /// Provider-native agent files: path → content.
         /// e.g. `.claude/agents/reviewer.md`, `.gemini/agents/reviewer.md`.
         agent_files: std::collections::HashMap<String, String>,
@@ -123,6 +132,7 @@ mod wasm {
             cursor_hooks_patch: output.cursor_hooks_patch,
             cursor_cli_permissions: output.cursor_cli_permissions,
             cursor_environment_json: output.cursor_environment_json,
+            opencode_config_patch: output.opencode_config_patch,
             agent_files: output.agent_files,
             plugins_manifest: output.plugins_manifest,
         };
@@ -161,6 +171,7 @@ mod wasm {
                     cursor_hooks_patch: output.cursor_hooks_patch,
                     cursor_cli_permissions: output.cursor_cli_permissions,
                     cursor_environment_json: output.cursor_environment_json,
+                    opencode_config_patch: output.opencode_config_patch,
                     agent_files: output.agent_files,
                     plugins_manifest: output.plugins_manifest,
                 };

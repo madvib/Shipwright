@@ -1,7 +1,5 @@
 //! Shared types for the platform database layer.
 
-use std::path::PathBuf;
-
 pub type WorkspaceDbRow = (
     String,
     String,
@@ -138,10 +136,4 @@ pub struct AgentConfigDb {
     pub hooks_json: String,
     pub permissions_json: String,
     pub target_agents_json: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DatabaseMigrationReport {
-    pub db_path: PathBuf,
-    pub created: bool,
 }

@@ -5,7 +5,6 @@
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::{QueryBuilder, Row};
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
@@ -39,7 +38,6 @@ pub struct Capability {
     pub milestone_id: Option<String>,
     pub phase: Option<String>,
     pub acceptance_criteria: Vec<String>,
-    pub preset_hint: Option<String>,
     pub file_scope: Vec<String>,
     pub assigned_to: Option<String>,
     pub priority: i32,
@@ -65,7 +63,6 @@ pub struct CapabilityPatch {
     pub status: Option<String>,
     pub phase: Option<String>,
     pub acceptance_criteria: Option<Vec<String>>,
-    pub preset_hint: Option<String>,
     pub file_scope: Option<Vec<String>>,
     pub assigned_to: Option<String>,
     pub priority: Option<i32>,
@@ -73,12 +70,10 @@ pub struct CapabilityPatch {
 
 // ─── Column lists ─────────────────────────────────────────────────────────────
 
-const T_COLS: &str =
-    "id, kind, title, description, status, goal, phase, due_date, body_markdown, file_scope_json, created_at, updated_at";
+const T_COLS: &str = "id, kind, title, description, status, goal, phase, due_date, body_markdown, file_scope_json, created_at, updated_at";
 
-const C_COLS: &str =
-    "id, target_id, title, status, evidence, milestone_id, phase, acceptance_criteria, \
-     preset_hint, file_scope, assigned_to, priority, created_at, updated_at";
+const C_COLS: &str = "id, target_id, title, status, evidence, milestone_id, phase, acceptance_criteria, \
+     file_scope, assigned_to, priority, created_at, updated_at";
 
 // ─── Row mapping ──────────────────────────────────────────────────────────────
 
@@ -94,7 +89,10 @@ fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> Target {
         phase: row.get("phase"),
         due_date: row.get("due_date"),
         body_markdown: row.get("body_markdown"),
-        file_scope: scope.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        file_scope: scope
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default(),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -111,9 +109,14 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
         evidence: row.get("evidence"),
         milestone_id: row.get("milestone_id"),
         phase: row.get("phase"),
-        acceptance_criteria: ac.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
-        preset_hint: row.get("preset_hint"),
-        file_scope: scope.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        acceptance_criteria: ac
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default(),
+        file_scope: scope
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default(),
         assigned_to: row.get("assigned_to"),
         priority: row.try_get("priority").unwrap_or(0),
         created_at: row.get("created_at"),
@@ -124,14 +127,13 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
 // ─── Target operations ────────────────────────────────────────────────────────
 
 pub fn create_target(
-    ship_dir: &Path,
     kind: &str,
     title: &str,
     description: Option<&str>,
     goal: Option<&str>,
     status: Option<&str>,
 ) -> Result<Target> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     let status = status.unwrap_or("active");
@@ -161,8 +163,8 @@ pub fn create_target(
     })
 }
 
-pub fn get_target(ship_dir: &Path, id: &str) -> Result<Option<Target>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_target(id: &str) -> Result<Option<Target>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE id = ?"))
             .bind(id)
@@ -172,26 +174,33 @@ pub fn get_target(ship_dir: &Path, id: &str) -> Result<Option<Target>> {
     Ok(row.as_ref().map(row_to_target))
 }
 
-pub fn list_targets(ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_targets(kind: Option<&str>) -> Result<Vec<Target>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         if let Some(k) = kind {
-            sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE kind = ? ORDER BY created_at ASC"))
-                .bind(k).fetch_all(&mut conn).await
+            sqlx::query(&format!(
+                "SELECT {T_COLS} FROM target WHERE kind = ? ORDER BY created_at ASC"
+            ))
+            .bind(k)
+            .fetch_all(&mut conn)
+            .await
         } else {
-            sqlx::query(&format!("SELECT {T_COLS} FROM target ORDER BY kind ASC, created_at ASC"))
-                .fetch_all(&mut conn).await
+            sqlx::query(&format!(
+                "SELECT {T_COLS} FROM target ORDER BY kind ASC, created_at ASC"
+            ))
+            .fetch_all(&mut conn)
+            .await
         }
     })?;
     Ok(rows.iter().map(row_to_target).collect())
 }
 
-pub fn update_target(ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()> {
-    let current = get_target(ship_dir, id)?
-        .ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
+pub fn update_target(id: &str, patch: TargetPatch) -> Result<()> {
+    let current =
+        get_target(id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
             "UPDATE target SET title=?, description=?, goal=?, status=?, phase=?, \
@@ -216,12 +225,11 @@ pub fn update_target(ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()
 // ─── Capability operations ────────────────────────────────────────────────────
 
 pub fn create_capability(
-    ship_dir: &Path,
     target_id: &str,
     title: &str,
     milestone_id: Option<&str>,
 ) -> Result<Capability> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     block_on(async {
@@ -230,8 +238,12 @@ pub fn create_capability(
              (id, target_id, title, status, evidence, milestone_id, created_at, updated_at) \
              VALUES (?, ?, ?, 'aspirational', NULL, ?, ?, ?)",
         )
-        .bind(&id).bind(target_id).bind(title).bind(milestone_id)
-        .bind(&now).bind(&now)
+        .bind(&id)
+        .bind(target_id)
+        .bind(title)
+        .bind(milestone_id)
+        .bind(&now)
+        .bind(&now)
         .execute(&mut conn)
         .await
     })?;
@@ -244,7 +256,6 @@ pub fn create_capability(
         milestone_id: milestone_id.map(str::to_string),
         phase: None,
         acceptance_criteria: vec![],
-        preset_hint: None,
         file_scope: vec![],
         assigned_to: None,
         priority: 0,
@@ -253,8 +264,8 @@ pub fn create_capability(
     })
 }
 
-pub fn get_capability(ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_capability(id: &str) -> Result<Option<Capability>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE id = ?"))
             .bind(id)
@@ -264,23 +275,26 @@ pub fn get_capability(ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
     Ok(row.as_ref().map(row_to_capability))
 }
 
-pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> Result<()> {
-    let current = get_capability(ship_dir, id)?
+pub fn update_capability(id: &str, patch: CapabilityPatch) -> Result<()> {
+    let current = get_capability(id)?
         .ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
     let now = Utc::now().to_rfc3339();
-    let ac = serde_json::to_string(&patch.acceptance_criteria.unwrap_or(current.acceptance_criteria))?;
+    let ac = serde_json::to_string(
+        &patch
+            .acceptance_criteria
+            .unwrap_or(current.acceptance_criteria),
+    )?;
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
             "UPDATE capability SET title=?, status=?, phase=?, acceptance_criteria=?, \
-             preset_hint=?, file_scope=?, assigned_to=?, priority=?, updated_at=? WHERE id=?",
+             file_scope=?, assigned_to=?, priority=?, updated_at=? WHERE id=?",
         )
         .bind(patch.title.unwrap_or(current.title))
         .bind(patch.status.unwrap_or(current.status))
         .bind(patch.phase.or(current.phase))
         .bind(&ac)
-        .bind(patch.preset_hint.or(current.preset_hint))
         .bind(&scope)
         .bind(patch.assigned_to.or(current.assigned_to))
         .bind(patch.priority.unwrap_or(current.priority))
@@ -292,8 +306,8 @@ pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> R
     Ok(())
 }
 
-pub fn delete_capability(ship_dir: &Path, id: &str) -> Result<bool> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete_capability(id: &str) -> Result<bool> {
+    let mut conn = open_db()?;
     let rows_affected = block_on(async {
         sqlx::query("DELETE FROM capability WHERE id = ?")
             .bind(id)
@@ -304,14 +318,16 @@ pub fn delete_capability(ship_dir: &Path, id: &str) -> Result<bool> {
     Ok(rows_affected > 0)
 }
 
-pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn mark_capability_actual(id: &str, evidence: &str) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
             "UPDATE capability SET status = 'actual', evidence = ?, updated_at = ? WHERE id = ?",
         )
-        .bind(evidence).bind(&now).bind(id)
+        .bind(evidence)
+        .bind(&now)
+        .bind(id)
         .execute(&mut conn)
         .await
     })?;
@@ -319,12 +335,11 @@ pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Resu
 }
 
 pub fn list_capabilities(
-    ship_dir: &Path,
     target_id: Option<&str>,
     status: Option<&str>,
     phase: Option<&str>,
 ) -> Result<Vec<Capability>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let mut qb: QueryBuilder<sqlx::Sqlite> =
         QueryBuilder::new(format!("SELECT {C_COLS} FROM capability"));
     let mut sep = " WHERE ";
@@ -346,11 +361,10 @@ pub fn list_capabilities(
 
 /// List capabilities linked to a milestone. Used by get_target on milestone targets.
 pub fn list_capabilities_for_milestone(
-    ship_dir: &Path,
     milestone_id: &str,
     status: Option<&str>,
 ) -> Result<Vec<Capability>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let rows = block_on(async {
         if let Some(s) = status {
             sqlx::query(&format!(
@@ -358,14 +372,19 @@ pub fn list_capabilities_for_milestone(
                  WHERE milestone_id = ? AND status = ? \
                  ORDER BY priority ASC, target_id ASC, created_at ASC"
             ))
-            .bind(milestone_id).bind(s).fetch_all(&mut conn).await
+            .bind(milestone_id)
+            .bind(s)
+            .fetch_all(&mut conn)
+            .await
         } else {
             sqlx::query(&format!(
                 "SELECT {C_COLS} FROM capability \
                  WHERE milestone_id = ? \
                  ORDER BY priority ASC, status ASC, target_id ASC, created_at ASC"
             ))
-            .bind(milestone_id).fetch_all(&mut conn).await
+            .bind(milestone_id)
+            .fetch_all(&mut conn)
+            .await
         }
     })?;
     Ok(rows.iter().map(row_to_capability).collect())

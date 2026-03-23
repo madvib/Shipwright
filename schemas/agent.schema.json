@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/madvib/ship/main/schemas/agent.schema.json",
   "title": "Ship Agent Configuration",
-  "description": "Schema for .ship/agents/<id>.jsonc — an agent definition that controls rules, skills, permissions, MCP servers, and provider targets.",
+  "description": "Schema for .ship/agents/<id>.jsonc — an agent definition that controls identity, skills, MCP servers, plugins, permissions, hooks, rules, and provider settings.",
   "type": "object",
   "required": ["agent"],
   "properties": {
@@ -9,10 +10,15 @@
       "type": "string",
       "description": "JSON Schema reference for editor autocompletion."
     },
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Currently '1'. Used for forward-compatible migrations."
+    },
     "agent": {
       "type": "object",
-      "description": "Agent identity and composition.",
-      "required": ["name"],
+      "description": "Agent identity and metadata.",
+      "required": ["name", "id"],
       "properties": {
         "name": {
           "type": "string",
@@ -20,7 +26,7 @@
         },
         "id": {
           "type": "string",
-          "description": "Machine identifier (defaults to filename stem).",
+          "description": "Machine identifier. Must match the filename stem (e.g. rust-compiler.jsonc has id rust-compiler).",
           "pattern": "^[a-z0-9-]+$"
         },
         "version": {
@@ -30,76 +36,77 @@
         },
         "description": {
           "type": "string",
-          "description": "What this agent does."
+          "description": "What this agent does — shown in `ship agents` and editor UI."
         },
         "providers": {
           "type": "array",
-          "items": { "type": "string", "enum": ["claude", "cursor", "codex", "gemini"] },
-          "description": "Provider targets (overrides project-level)."
-        },
-        "rules": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Rule file paths (relative to .ship/agents/)."
-        },
-        "skills": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Skill directory paths (relative to .ship/agents/)."
+          "items": {
+            "type": "string",
+            "enum": ["claude", "cursor", "codex", "gemini", "opencode"]
+          },
+          "description": "Provider targets for this agent. Overrides the project-level providers list."
         }
-      }
+      },
+      "additionalProperties": false
+    },
+    "model": {
+      "type": "string",
+      "description": "Model override for this agent. Compiled to the provider's model field (e.g. model in .claude/settings.json, model.name in .gemini/settings.json, model in .codex/config.toml)."
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables injected into the provider's config.",
+      "additionalProperties": { "type": "string" }
+    },
+    "available_models": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Restrict the model picker to these model IDs."
+    },
+    "agent_limits": {
+      "type": "object",
+      "description": "Resource limits for the agent session.",
+      "properties": {
+        "max_cost_per_session": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cost in USD per session."
+        },
+        "max_turns": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum conversation turns per session."
+        }
+      },
+      "additionalProperties": false
     },
     "skills": {
       "type": "object",
-      "description": "Skill activation (CLI agent format).",
+      "description": "Skill activation for this agent.",
       "properties": {
         "refs": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Skill IDs to activate (empty = all)."
+          "description": "Skill IDs to activate. Supports local IDs (e.g. tdd) and namespaced IDs (e.g. github.com/owner/repo/skill-name)."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "mcp": {
-      "oneOf": [
-        {
-          "type": "object",
-          "description": "MCP server activation (CLI agent format).",
-          "properties": {
-            "servers": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "MCP server IDs to activate (empty = all)."
-            }
-          }
-        },
-        {
+      "type": "object",
+      "description": "MCP server activation for this agent.",
+      "properties": {
+        "servers": {
           "type": "array",
-          "description": "Inline MCP server declarations (compiler agent format).",
-          "items": {
-            "type": "object",
-            "required": ["id", "command"],
-            "properties": {
-              "id": { "type": "string", "description": "Unique server ID." },
-              "command": { "type": "string", "description": "Command to run." },
-              "args": {
-                "type": "array",
-                "items": { "type": "string" },
-                "description": "Command arguments."
-              },
-              "env": {
-                "type": "object",
-                "additionalProperties": { "type": "string" },
-                "description": "Environment variables. Values may use ${VAR} syntax."
-              }
-            }
-          }
+          "items": { "type": "string" },
+          "description": "MCP server IDs to activate from .ship/mcp.jsonc."
         }
-      ]
+      },
+      "additionalProperties": false
     },
     "plugins": {
       "type": "object",
-      "description": "Plugin installation intent.",
+      "description": "Plugin installation intent. The compiler emits a manifest; the CLI executes the installs.",
       "properties": {
         "install": {
           "type": "array",
@@ -110,84 +117,132 @@
           "type": "string",
           "enum": ["project", "user"],
           "default": "project",
-          "description": "Installation scope."
+          "description": "Installation scope. project installs locally, user installs globally."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "permissions": {
       "type": "object",
-      "description": "Permission overrides.",
+      "description": "Permission overrides. Merged on top of the named preset from permissions.jsonc.",
       "properties": {
         "preset": {
           "type": "string",
-          "enum": ["ship-readonly", "ship-standard", "ship-autonomous", "ship-elevated"],
-          "description": "Named permission preset from permissions.jsonc."
+          "description": "Named permission preset — must match a key in .ship/permissions.jsonc. Defines the base permission tier."
         },
-        "allow": {
+        "tools_allow": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Tool permission grants (compiler agent format)."
+          "items": { "$ref": "#/$defs/ToolPattern" },
+          "description": "Tool patterns to allow. Merged on top of the preset's allow list."
         },
         "tools_deny": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Tool patterns to deny."
+          "items": { "$ref": "#/$defs/ToolPattern" },
+          "description": "Tool patterns to deny. Merged on top of the preset's deny list."
         },
         "tools_ask": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Tool patterns requiring confirmation."
+          "items": { "$ref": "#/$defs/ToolPattern" },
+          "description": "Tool patterns requiring user confirmation. Merged on top of the preset's ask list."
         },
         "default_mode": {
           "type": "string",
           "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
-          "description": "Default permission mode."
+          "description": "Default permission mode for the agent session."
+        },
+        "additional_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional directories the agent can access outside the project root. Compiled to Claude Code's additionalDirectories."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "rules": {
       "type": "object",
-      "description": "Inline rules.",
+      "description": "Inline rules appended to the context file after .ship/rules/*.md files.",
       "properties": {
         "inline": {
           "type": "string",
-          "description": "Inline always-on rules appended after agents/rules/*.md."
-        }
-      }
-    },
-    "hooks": {
-      "type": "object",
-      "description": "Hook commands.",
-      "properties": {
-        "stop": {
-          "type": "string",
-          "description": "Command to run when the agent session ends."
-        },
-        "subagent_stop": {
-          "type": "string",
-          "description": "Command to run when a sub-agent session ends."
-        }
-      }
-    },
-    "providers": {
-      "type": "object",
-      "description": "Provider targets and per-provider overrides.",
-      "properties": {
-        "targets": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Provider IDs to compile for."
+          "description": "Inline always-on rules. Use \\n for line breaks."
         }
       },
-      "additionalProperties": {
-        "type": "object",
-        "description": "Per-provider override table (e.g. model, context_window)."
-      }
+      "additionalProperties": false
     },
     "provider_settings": {
       "type": "object",
-      "description": "Provider-specific settings merged verbatim into the provider's config file.",
-      "additionalProperties": true
+      "description": "Per-agent provider-specific overrides. Merged on top of project-level provider_defaults from ship.jsonc (agent wins on conflict, deep merge). Keys are provider names. Values validated against upstream provider schemas, with Ship-managed keys excluded (use Ship's own fields for model, permissions, env, hooks, etc.).",
+      "properties": {
+        "claude": {
+          "allOf": [
+            { "$ref": "https://www.schemastore.org/claude-code-settings.json" },
+            {
+              "properties": {
+                "permissions": false,
+                "hooks": false,
+                "model": false,
+                "env": false,
+                "availableModels": false,
+                "maxCostPerSession": false,
+                "maxTurns": false,
+                "autoMemoryEnabled": false
+              }
+            }
+          ],
+          "description": "Claude Code settings pass-through. Ship-managed keys (permissions, hooks, model, env, availableModels, maxCostPerSession, maxTurns, autoMemoryEnabled) must be set via Ship's own fields."
+        },
+        "codex": {
+          "allOf": [
+            { "$ref": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json" },
+            {
+              "properties": {
+                "model": false,
+                "mcp_servers": false
+              }
+            }
+          ],
+          "description": "Codex CLI config pass-through. Ship-managed keys (model, mcp_servers) must be set via Ship's own fields."
+        },
+        "gemini": {
+          "allOf": [
+            { "$ref": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json" },
+            {
+              "properties": {
+                "model": false,
+                "hooks": false,
+                "mcpServers": false
+              }
+            }
+          ],
+          "description": "Gemini CLI settings pass-through. Ship-managed keys (model, hooks, mcpServers) must be set via Ship's own fields."
+        },
+        "cursor": {
+          "type": "object",
+          "description": "Cursor settings. No upstream schema published.",
+          "additionalProperties": true
+        },
+        "opencode": {
+          "allOf": [
+            { "$ref": "https://opencode.ai/config.json" },
+            {
+              "properties": {
+                "model": false,
+                "mcp": false,
+                "permission": false
+              }
+            }
+          ],
+          "description": "OpenCode config pass-through. Ship-managed keys (model, mcp, permission) must be set via Ship's own fields."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ToolPattern": {
+      "type": "string",
+      "description": "A tool permission pattern. Syntax: bare tool name (Read, Write, Edit, Glob, Grep), parameterized tool (Bash(git *), Bash(rm -rf *)), MCP tool (mcp__<server>__<tool>, e.g. mcp__ship__create_job), or glob (mcp__*__delete*, Bash(*))."
     }
   }
 }

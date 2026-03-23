@@ -6,8 +6,8 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-use crate::compile::{CompileOptions, run_compile};
 use crate::agent_config::AgentConfig;
+use crate::compile::{CompileOptions, run_compile};
 
 const NS: &str = "workspace";
 const KEY_ACTIVE_AGENT: &str = "active_agent";
@@ -27,25 +27,25 @@ pub struct WorkspaceState {
 
 impl WorkspaceState {
     /// Load from platform.db.
-    pub fn load(ship_dir: &Path) -> Self {
+    pub fn load(_ship_dir: &Path) -> Self {
         let mut state = WorkspaceState::default();
-        if let Err(e) = runtime::db::ensure_db(ship_dir) {
+        if let Err(e) = runtime::db::ensure_db() {
             eprintln!("warning: could not open platform.db: {}", e);
             return state;
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_ACTIVE_AGENT) {
+        if let Ok(Some(v)) = runtime::db::kv::get(NS, KEY_ACTIVE_AGENT) {
             state.active_agent = v.as_str().map(str::to_string);
         }
         // Compat: also check the old key name for projects that haven't re-activated yet
-        if state.active_agent.is_none() {
-            if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, "active_profile") {
-                state.active_agent = v.as_str().map(str::to_string);
-            }
+        if state.active_agent.is_none()
+            && let Ok(Some(v)) = runtime::db::kv::get(NS, "active_profile")
+        {
+            state.active_agent = v.as_str().map(str::to_string);
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_COMPILED_AT) {
+        if let Ok(Some(v)) = runtime::db::kv::get(NS, KEY_COMPILED_AT) {
             state.compiled_at = v.as_str().map(str::to_string);
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_PLUGINS_INSTALLED)
+        if let Ok(Some(v)) = runtime::db::kv::get(NS, KEY_PLUGINS_INSTALLED)
             && let Some(arr) = v.as_array()
         {
             state.plugins_installed = arr
@@ -57,16 +57,18 @@ impl WorkspaceState {
     }
 
     /// Persist workspace state to platform.db.
-    pub fn save(&self, ship_dir: &Path) -> Result<()> {
-        runtime::db::ensure_db(ship_dir).context("failed to open platform.db")?;
+    pub fn save(&self, _ship_dir: &Path) -> Result<()> {
+        runtime::db::ensure_db().context("failed to open platform.db")?;
         if let Some(ref p) = self.active_agent {
-            runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_AGENT, &serde_json::json!(p))?;
+            runtime::db::kv::set(NS, KEY_ACTIVE_AGENT, &serde_json::json!(p))?;
         }
         if let Some(ref t) = self.compiled_at {
-            runtime::db::kv::set(ship_dir, NS, KEY_COMPILED_AT, &serde_json::json!(t))?;
+            runtime::db::kv::set(NS, KEY_COMPILED_AT, &serde_json::json!(t))?;
         }
         runtime::db::kv::set(
-            ship_dir, NS, KEY_PLUGINS_INSTALLED, &serde_json::json!(self.plugins_installed),
+            NS,
+            KEY_PLUGINS_INSTALLED,
+            &serde_json::json!(self.plugins_installed),
         )?;
         Ok(())
     }
@@ -93,7 +95,10 @@ pub fn activate_agent(agent_id: Option<&str>, project_root: &Path) -> Result<()>
     let agent = AgentConfig::load(&agent_path)?;
 
     run_compile(CompileOptions {
-        project_root, provider: None, dry_run: false, active_agent: Some(&id),
+        project_root,
+        provider: None,
+        dry_run: false,
+        active_agent: Some(&id),
     })?;
 
     let now_plugins: Vec<String> = agent.plugins.install.clone();
@@ -112,18 +117,23 @@ fn run_plugin_lifecycle(now: &[String], prev: &[String], scope: &str) {
     for plugin in now {
         if !prev.contains(plugin) {
             let status = std::process::Command::new("claude")
-                .args(["plugin", "install", plugin, "--scope", scope]).status();
+                .args(["plugin", "install", plugin, "--scope", scope])
+                .status();
             match status {
                 Ok(s) if s.success() => println!("  + plugin {}", plugin),
                 Ok(_) => eprintln!("  warning: plugin install failed for {}", plugin),
-                Err(_) => eprintln!("  warning: claude CLI not found — skipping plugin install for {}", plugin),
+                Err(_) => eprintln!(
+                    "  warning: claude CLI not found — skipping plugin install for {}",
+                    plugin
+                ),
             }
         }
     }
     for plugin in prev {
         if !now.contains(plugin) {
             let status = std::process::Command::new("claude")
-                .args(["plugin", "uninstall", plugin]).status();
+                .args(["plugin", "uninstall", plugin])
+                .status();
             match status {
                 Ok(s) if s.success() => println!("  - plugin {}", plugin),
                 _ => eprintln!("  warning: plugin uninstall failed for {}", plugin),
@@ -142,27 +152,47 @@ pub fn find_agent_file(agent_id: &str, project_root: &Path) -> Option<PathBuf> {
     // Helper: check jsonc then toml in a directory
     let check_dir = |dir: PathBuf| -> Option<PathBuf> {
         let j = dir.join(&jsonc_file);
-        if j.exists() { return Some(j); }
+        if j.exists() {
+            return Some(j);
+        }
         let t = dir.join(&toml_file);
-        if t.exists() { return Some(t); }
+        if t.exists() {
+            return Some(t);
+        }
         None
     };
 
     // Primary: .ship/agents/<id>.{jsonc,toml}
-    if let Some(p) = check_dir(ship.join("agents")) { return Some(p); }
+    if let Some(p) = check_dir(ship.join("agents")) {
+        return Some(p);
+    }
     // Compat: .ship/agents/profiles/<id>.{jsonc,toml}
-    if let Some(p) = check_dir(ship.join("agents").join("profiles")) { return Some(p); }
+    if let Some(p) = check_dir(ship.join("agents").join("profiles")) {
+        return Some(p);
+    }
     // Compat: .ship/agents/presets/<id>.{jsonc,toml}
-    if let Some(p) = check_dir(ship.join("agents").join("presets")) { return Some(p); }
+    if let Some(p) = check_dir(ship.join("agents").join("presets")) {
+        return Some(p);
+    }
     // Legacy: .ship/modes/<id>.{jsonc,toml}
-    if let Some(p) = check_dir(ship.join("modes")) { return Some(p); }
+    if let Some(p) = check_dir(ship.join("modes")) {
+        return Some(p);
+    }
     // Global dirs
     let home = dirs::home_dir()?;
     let global_ship = home.join(".ship");
-    if let Some(p) = check_dir(global_ship.join("agents")) { return Some(p); }
-    if let Some(p) = check_dir(global_ship.join("agents").join("profiles")) { return Some(p); }
-    if let Some(p) = check_dir(global_ship.join("agents").join("presets")) { return Some(p); }
-    if let Some(p) = check_dir(global_ship.join("modes")) { return Some(p); }
+    if let Some(p) = check_dir(global_ship.join("agents")) {
+        return Some(p);
+    }
+    if let Some(p) = check_dir(global_ship.join("agents").join("profiles")) {
+        return Some(p);
+    }
+    if let Some(p) = check_dir(global_ship.join("agents").join("presets")) {
+        return Some(p);
+    }
+    if let Some(p) = check_dir(global_ship.join("modes")) {
+        return Some(p);
+    }
     None
 }
 
@@ -182,7 +212,11 @@ mod tests {
     fn setup_ship_dir(tmp: &TempDir) -> PathBuf {
         let ship_dir = tmp.path().join(".ship");
         std::fs::create_dir_all(&ship_dir).unwrap();
-        std::fs::write(ship_dir.join("ship.toml"), "id = \"test-proj-id\"\nname = \"test\"\n").unwrap();
+        std::fs::write(
+            ship_dir.join("ship.toml"),
+            "id = \"test-proj-id\"\nname = \"test\"\n",
+        )
+        .unwrap();
         ship_dir
     }
 
@@ -190,10 +224,11 @@ mod tests {
     fn workspace_state_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let ship_dir = setup_ship_dir(&tmp);
-        let mut state = WorkspaceState::default();
-        state.active_agent = Some("cli-lane".to_string());
-        state.compiled_at = Some("2026-01-01T00:00:00Z".to_string());
-        state.plugins_installed = vec!["superpowers@official".to_string()];
+        let state = WorkspaceState {
+            active_agent: Some("cli-lane".to_string()),
+            compiled_at: Some("2026-01-01T00:00:00Z".to_string()),
+            plugins_installed: vec!["superpowers@official".to_string()],
+        };
         state.save(&ship_dir).unwrap();
         let loaded = WorkspaceState::load(&ship_dir);
         assert_eq!(loaded.active_agent.as_deref(), Some("cli-lane"));
@@ -215,16 +250,29 @@ mod tests {
     #[test]
     fn find_agent_file_finds_new_location() {
         let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/agents/test.toml", "[agent]\nname=\"Test\"\nid=\"test\"\n");
+        write_file(
+            tmp.path(),
+            ".ship/agents/test.toml",
+            "[agent]\nname=\"Test\"\nid=\"test\"\n",
+        );
         let found = find_agent_file("test", tmp.path());
         assert!(found.is_some());
-        assert!(found.unwrap().to_string_lossy().contains("agents/test.toml"));
+        assert!(
+            found
+                .unwrap()
+                .to_string_lossy()
+                .contains("agents/test.toml")
+        );
     }
 
     #[test]
     fn find_agent_file_compat_profiles_location() {
         let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/agents/profiles/test.toml", "[agent]\nname=\"Test\"\nid=\"test\"\n");
+        write_file(
+            tmp.path(),
+            ".ship/agents/profiles/test.toml",
+            "[agent]\nname=\"Test\"\nid=\"test\"\n",
+        );
         let found = find_agent_file("test", tmp.path());
         assert!(found.is_some());
         assert!(found.unwrap().to_string_lossy().contains("agents/profiles"));
@@ -239,8 +287,16 @@ mod tests {
     #[test]
     fn find_agent_file_prefers_jsonc() {
         let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/agents/test.toml", "[agent]\nname=\"Test\"\n");
-        write_file(tmp.path(), ".ship/agents/test.jsonc", r#"{ "agent": { "name": "Test" } }"#);
+        write_file(
+            tmp.path(),
+            ".ship/agents/test.toml",
+            "[agent]\nname=\"Test\"\n",
+        );
+        write_file(
+            tmp.path(),
+            ".ship/agents/test.jsonc",
+            r#"{ "agent": { "name": "Test" } }"#,
+        );
         let found = find_agent_file("test", tmp.path());
         assert!(found.is_some());
         assert!(found.unwrap().to_string_lossy().ends_with(".jsonc"));
@@ -249,7 +305,11 @@ mod tests {
     #[test]
     fn find_agent_file_finds_jsonc_only() {
         let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), ".ship/agents/test.jsonc", r#"{ "agent": { "name": "Test" } }"#);
+        write_file(
+            tmp.path(),
+            ".ship/agents/test.jsonc",
+            r#"{ "agent": { "name": "Test" } }"#,
+        );
         let found = find_agent_file("test", tmp.path());
         assert!(found.is_some());
         assert!(found.unwrap().to_string_lossy().ends_with(".jsonc"));

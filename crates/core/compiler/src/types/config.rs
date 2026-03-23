@@ -32,7 +32,7 @@ impl Default for GitConfig {
             ignore: Vec::new(),
             commit: vec![
                 "agents".to_string(),
-                "ship.toml".to_string(),
+                "ship.jsonc".to_string(),
                 "templates".to_string(),
                 "vision".to_string(),
             ],

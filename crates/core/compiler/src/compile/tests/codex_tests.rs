@@ -9,9 +9,14 @@ use super::fixtures::*;
 fn codex_produces_toml_patch_not_json() {
     let r = resolved(vec![make_server("github")]);
     let out = compile(&r, "codex").unwrap();
-    let toml_str = out.codex_config_patch.expect("codex must emit a TOML config patch");
+    let toml_str = out
+        .codex_config_patch
+        .expect("codex must emit a TOML config patch");
     let parsed: toml::Table = toml::from_str(&toml_str).expect("must be valid TOML");
-    assert!(parsed.contains_key("mcp_servers"), "must have mcp_servers table");
+    assert!(
+        parsed.contains_key("mcp_servers"),
+        "must have mcp_servers table"
+    );
 }
 
 #[test]
@@ -22,7 +27,10 @@ fn codex_toml_ship_server_first() {
     let parsed: toml::Table = toml::from_str(&toml_str).unwrap();
     let mcp = parsed["mcp_servers"].as_table().unwrap();
     let keys: Vec<&str> = mcp.keys().map(|k| k.as_str()).collect();
-    assert_eq!(keys[0], "ship", "ship server must be first in Codex TOML output");
+    assert_eq!(
+        keys[0], "ship",
+        "ship server must be first in Codex TOML output"
+    );
 }
 
 #[test]
@@ -59,7 +67,12 @@ fn codex_toml_timeout_uses_startup_timeout_sec() {
     let out = compile(&r, "codex").unwrap();
     let toml_str = out.codex_config_patch.unwrap();
     let parsed: toml::Table = toml::from_str(&toml_str).unwrap();
-    assert_eq!(parsed["mcp_servers"]["slow"]["startup_timeout_sec"].as_integer().unwrap(), 30);
+    assert_eq!(
+        parsed["mcp_servers"]["slow"]["startup_timeout_sec"]
+            .as_integer()
+            .unwrap(),
+        30
+    );
 }
 
 #[test]
@@ -78,8 +91,15 @@ fn codex_model_emitted_in_config_patch() {
         ..resolved(vec![])
     };
     let out = compile(&r, "codex").unwrap();
-    let patch = out.codex_config_patch.as_ref().expect("model should trigger codex patch");
-    assert!(patch.contains("model = \"o3\""), "codex TOML should contain model field: {}", patch);
+    let patch = out
+        .codex_config_patch
+        .as_ref()
+        .expect("model should trigger codex patch");
+    assert!(
+        patch.contains("model = \"o3\""),
+        "codex TOML should contain model field: {}",
+        patch
+    );
 }
 
 // ── Codex sandbox mode (Phase 1B) ────────────────────────────────────────────
@@ -92,9 +112,20 @@ fn codex_sandbox_key_is_sandbox_mode() {
         ..resolved(vec![])
     };
     let out = compile(&r, "codex").unwrap();
-    let patch = out.codex_config_patch.as_ref().expect("sandbox should trigger codex patch");
-    assert!(!patch.contains("sandbox ="), "old key 'sandbox' must NOT be emitted: {}", patch);
-    assert!(patch.contains("sandbox_mode"), "new key 'sandbox_mode' must be emitted: {}", patch);
+    let patch = out
+        .codex_config_patch
+        .as_ref()
+        .expect("sandbox should trigger codex patch");
+    assert!(
+        !patch.contains("sandbox ="),
+        "old key 'sandbox' must NOT be emitted: {}",
+        patch
+    );
+    assert!(
+        patch.contains("sandbox_mode"),
+        "new key 'sandbox_mode' must be emitted: {}",
+        patch
+    );
 }
 
 #[test]
@@ -114,7 +145,9 @@ fn codex_sandbox_values_translated_correctly() {
         assert!(
             patch.contains(&format!("sandbox_mode = \"{expected}\"")),
             "input '{}' should produce sandbox_mode = '{}': {}",
-            input, expected, patch
+            input,
+            expected,
+            patch
         );
     }
 }
@@ -123,9 +156,20 @@ fn codex_sandbox_values_translated_correctly() {
 fn codex_sandbox_none_omitted() {
     let r = resolved(vec![]);
     let out = compile(&r, "codex").unwrap();
-    let patch = out.codex_config_patch.as_ref().expect("ship MCP always triggers patch");
-    assert!(!patch.contains("sandbox_mode"), "codex TOML should not contain sandbox_mode when None: {}", patch);
-    assert!(!patch.contains("sandbox ="), "codex TOML should not contain sandbox when None: {}", patch);
+    let patch = out
+        .codex_config_patch
+        .as_ref()
+        .expect("ship MCP always triggers patch");
+    assert!(
+        !patch.contains("sandbox_mode"),
+        "codex TOML should not contain sandbox_mode when None: {}",
+        patch
+    );
+    assert!(
+        !patch.contains("sandbox ="),
+        "codex TOML should not contain sandbox when None: {}",
+        patch
+    );
 }
 
 #[test]
@@ -136,7 +180,10 @@ fn codex_sandbox_not_emitted_for_other_providers() {
     };
     for provider in &["claude", "gemini", "cursor"] {
         let out = compile(&r, provider).unwrap();
-        assert!(out.codex_config_patch.is_none(), "{provider} must not get codex config patch");
+        assert!(
+            out.codex_config_patch.is_none(),
+            "{provider} must not get codex config patch"
+        );
     }
 }
 
@@ -152,8 +199,15 @@ fn library_model_flows_to_codex_config() {
     };
     let resolved = resolve_library(&library, None, None);
     let out = compile(&resolved, "codex").unwrap();
-    let patch = out.codex_config_patch.as_ref().expect("model must trigger codex patch");
-    assert!(patch.contains("model = \"o4-mini\""), "model must be in codex config: {}", patch);
+    let patch = out
+        .codex_config_patch
+        .as_ref()
+        .expect("model must trigger codex patch");
+    assert!(
+        patch.contains("model = \"o4-mini\""),
+        "model must be in codex config: {}",
+        patch
+    );
 }
 
 #[test]
@@ -169,11 +223,16 @@ fn codex_approval_policy_translated() {
             ..resolved(vec![])
         };
         let out = compile(&r, "codex").unwrap();
-        let patch = out.codex_config_patch.as_ref().expect("approval policy must trigger patch");
+        let patch = out
+            .codex_config_patch
+            .as_ref()
+            .expect("approval policy must trigger patch");
         assert!(
             patch.contains(&format!("approval_policy = \"{expected}\"")),
             "input '{}' should produce approval_policy = '{}': {}",
-            input, expected, patch
+            input,
+            expected,
+            patch
         );
     }
 }
@@ -186,7 +245,11 @@ fn codex_reasoning_effort_emitted() {
     };
     let out = compile(&r, "codex").unwrap();
     let patch = out.codex_config_patch.as_ref().unwrap();
-    assert!(patch.contains("model_reasoning_effort = \"high\""), "{}", patch);
+    assert!(
+        patch.contains("model_reasoning_effort = \"high\""),
+        "{}",
+        patch
+    );
 }
 
 #[test]
@@ -214,7 +277,11 @@ fn codex_shell_environment_policy_emitted() {
     };
     let out = compile(&r, "codex").unwrap();
     let patch = out.codex_config_patch.as_ref().unwrap();
-    assert!(patch.contains("shell_environment_policy = \"inherit\""), "{}", patch);
+    assert!(
+        patch.contains("shell_environment_policy = \"inherit\""),
+        "{}",
+        patch
+    );
 }
 
 #[test]

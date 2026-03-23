@@ -1,0 +1,24 @@
+{
+  // Rust Compiler agent
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "rust-compiler",
+    "name": "Rust Compiler",
+    "version": "0.1.0",
+    "description": "Ship compiler crate — WASM build, compiler logic, provider output generation",
+    "providers": ["claude"],
+  },
+  "skills": {
+    "refs": [],
+  },
+  "mcp": {
+    "servers": ["ship"],
+  },
+  "permissions": {
+    "preset": "ship-autonomous",
+    "tools_deny": ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"],
+  },
+  "rules": {
+    "inline": "Your domain is the Ship compiler — pure transformation logic, no side effects.\nDefault scope: crates/core/compiler/, packages/compiler/.\n\nThe compiler is a WASM module. It must remain pure — no filesystem access, no subprocess calls.\nAll input comes via function arguments. All output via return values.\nCompileOutput is the contract — if you add fields, update the WASM JS bindings too.\nAfter changes: `cargo test -p compiler` must pass, then rebuild WASM:\n  wasm-pack build crates/core/compiler --target web --out-dir ../../../packages/compiler --features wasm\nNever touch runtime or CLI code — create a job for rust-runtime if you need platform changes.",
+  },
+}

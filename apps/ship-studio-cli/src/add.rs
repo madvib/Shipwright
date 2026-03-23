@@ -32,7 +32,11 @@ pub fn run_add(project_root: &Path, package_spec: &str) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     // Prefer ship.jsonc over ship.toml
     let jsonc_path = ship_dir.join("ship.jsonc");
-    let manifest_path = if jsonc_path.exists() { jsonc_path } else { ship_dir.join("ship.toml") };
+    let manifest_path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        ship_dir.join("ship.toml")
+    };
 
     if !manifest_path.exists() {
         anyhow::bail!(
@@ -46,18 +50,14 @@ pub fn run_add(project_root: &Path, package_spec: &str) -> Result<()> {
     let is_jsonc = crate::paths::is_jsonc_ext(&manifest_path);
 
     // Read and parse current manifest to check for duplicates.
-    let raw_content = std::fs::read_to_string(&manifest_path)
-        .context("reading ship manifest")?;
-    let manifest = ShipManifest::from_file(&manifest_path).with_context(|| {
-        "Failed to parse ship manifest. Ensure it has a module section with name and version."
-    })?;
+    let raw_content = std::fs::read_to_string(&manifest_path).context("reading ship manifest")?;
+    let manifest = ShipManifest::from_file(&manifest_path).with_context(
+        || "Failed to parse ship manifest. Ensure it has a module section with name and version.",
+    )?;
 
     // Check duplicate.
     if manifest.dependencies.contains_key(&pkg_path) {
-        anyhow::bail!(
-            "{} is already in dependencies",
-            pkg_path
-        );
+        anyhow::bail!("{} is already in dependencies", pkg_path);
     }
 
     // Backup before modifying.
@@ -105,7 +105,7 @@ fn parse_package_spec(spec: &str) -> (String, String) {
 /// TOML string, preserving all existing content.
 ///
 /// If no [dependencies] section exists, appends one.
-fn append_dependency(raw: &str, path: &str, version: &str) -> String {
+pub(crate) fn append_dependency(raw: &str, path: &str, version: &str) -> String {
     let dep_line = format!("\"{}\" = \"{}\"\n", path, version);
 
     // Check if [dependencies] section exists.
@@ -153,7 +153,11 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     // Prefer ship.jsonc over ship.toml
     let jsonc_path = ship_dir.join("ship.jsonc");
-    let manifest_path = if jsonc_path.exists() { jsonc_path } else { ship_dir.join("ship.toml") };
+    let manifest_path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        ship_dir.join("ship.toml")
+    };
     let lock_path = ship_dir.join("ship.lock");
 
     // Re-parse updated manifest.
@@ -174,7 +178,10 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     }
 
     let cache = PackageCache::new().context("initializing package cache")?;
-    let opts = InstallOptions { frozen: false, offline: false };
+    let opts = InstallOptions {
+        frozen: false,
+        offline: false,
+    };
 
     let result = resolve_and_fetch(&registry_manifest, &lock_path, &cache, &opts)
         .with_context(|| format!("resolving {pkg_path}"))?;
@@ -204,7 +211,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
 ///
 /// If a `"dependencies"` key exists, inserts before its closing `}`.
 /// Otherwise, inserts a `"dependencies"` section before the final `}`.
-fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
+pub(crate) fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
     let dep_entry = format!("    \"{}\": \"{}\"", path, version);
 
     if let Some(deps_pos) = raw.find("\"dependencies\"") {
@@ -231,11 +238,16 @@ fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
             if let Some(close) = close_pos {
                 let before_close = &raw[..close];
                 let trimmed = before_close.trim_end();
-                let needs_comma = trimmed.ends_with('"')
-                    || trimmed.ends_with('}')
-                    || trimmed.ends_with(']');
+                let needs_comma =
+                    trimmed.ends_with('"') || trimmed.ends_with('}') || trimmed.ends_with(']');
                 let comma = if needs_comma { "," } else { "" };
-                return format!("{}{}\n{}\n{}", before_close, comma, dep_entry, &raw[close..]);
+                return format!(
+                    "{}{}\n{}\n{}",
+                    before_close,
+                    comma,
+                    dep_entry,
+                    &raw[close..]
+                );
             }
         }
     }
@@ -244,11 +256,13 @@ fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
     if let Some(last_brace) = raw.rfind('}') {
         let before = &raw[..last_brace];
         let trimmed = before.trim_end();
-        let needs_comma = trimmed.ends_with('"')
-            || trimmed.ends_with('}')
-            || trimmed.ends_with(']');
+        let needs_comma =
+            trimmed.ends_with('"') || trimmed.ends_with('}') || trimmed.ends_with(']');
         let comma = if needs_comma { "," } else { "" };
-        return format!("{}{}\n  \"dependencies\": {{\n{}\n  }}\n}}", before, comma, dep_entry);
+        return format!(
+            "{}{}\n  \"dependencies\": {{\n{}\n  }}\n}}",
+            before, comma, dep_entry
+        );
     }
 
     raw.to_string()
@@ -294,7 +308,10 @@ mod tests {
     fn append_dependency_creates_section() {
         let raw = "[module]\nname = \"x\"\nversion = \"1.0.0\"\n";
         let out = append_dependency(raw, "github.com/a/b", "main");
-        assert!(out.contains("[dependencies]"), "must create [dependencies] section");
+        assert!(
+            out.contains("[dependencies]"),
+            "must create [dependencies] section"
+        );
         assert!(out.contains("\"github.com/a/b\" = \"main\""));
     }
 
@@ -302,17 +319,29 @@ mod tests {
     fn append_dependency_adds_to_existing_section() {
         let raw = "[module]\nname = \"x\"\nversion = \"1.0.0\"\n\n[dependencies]\n\"github.com/a/b\" = \"main\"\n";
         let out = append_dependency(raw, "github.com/c/d", "^1.0.0");
-        assert!(out.contains("\"github.com/a/b\" = \"main\""), "existing dep must remain");
-        assert!(out.contains("\"github.com/c/d\" = \"^1.0.0\""), "new dep must be added");
+        assert!(
+            out.contains("\"github.com/a/b\" = \"main\""),
+            "existing dep must remain"
+        );
+        assert!(
+            out.contains("\"github.com/c/d\" = \"^1.0.0\""),
+            "new dep must be added"
+        );
     }
 
     #[test]
     fn append_dependency_section_not_last() {
         let raw = "[module]\nname = \"x\"\nversion = \"1.0.0\"\n\n[dependencies]\n\"github.com/a/b\" = \"main\"\n\n[exports]\nskills = []\n";
         let out = append_dependency(raw, "github.com/c/d", "main");
-        assert!(out.contains("\"github.com/c/d\" = \"main\""), "new dep must be added");
+        assert!(
+            out.contains("\"github.com/c/d\" = \"main\""),
+            "new dep must be added"
+        );
         // exports section should still be present after
-        assert!(out.contains("[exports]"), "exports section must be preserved");
+        assert!(
+            out.contains("[exports]"),
+            "exports section must be preserved"
+        );
         let dep_pos = out.find("\"github.com/c/d\"").unwrap();
         let exp_pos = out.find("[exports]").unwrap();
         assert!(dep_pos < exp_pos, "new dep must appear before [exports]");
@@ -323,7 +352,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join(".ship")).unwrap();
         let err = run_add(tmp.path(), "github.com/owner/repo").unwrap_err();
-        assert!(err.to_string().contains("No .ship/ship.jsonc or .ship/ship.toml"), "got: {err}");
+        assert!(
+            err.to_string()
+                .contains("No .ship/ship.jsonc or .ship/ship.toml"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -342,7 +375,10 @@ mod tests {
         );
         // ship.toml must be unchanged
         let after = std::fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
-        assert_eq!(original, after, "ship.toml must be unchanged on duplicate error");
+        assert_eq!(
+            original, after,
+            "ship.toml must be unchanged on duplicate error"
+        );
     }
 
     #[test]
@@ -361,6 +397,9 @@ mod tests {
             "got: {err}"
         );
         let after = std::fs::read_to_string(tmp.path().join(".ship/ship.toml")).unwrap();
-        assert_eq!(original, after, "ship.toml must be unchanged on parse error");
+        assert_eq!(
+            original, after,
+            "ship.toml must be unchanged on parse error"
+        );
     }
 }

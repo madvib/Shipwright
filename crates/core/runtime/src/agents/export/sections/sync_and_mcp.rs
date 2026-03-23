@@ -202,14 +202,12 @@ fn export_to_inner(
     // Provider-native hooks + permissions.
     match target {
         "claude" => {
-            write_hook_runtime_artifacts(project_root, &payload)?;
             let provider_hooks = hooks_for_provider("claude", &payload.hooks);
             if !provider_hooks.is_empty() || has_claude_permission_overrides(&payload.permissions) {
                 export_claude_settings(project_root, &provider_hooks, &payload.permissions)?;
             }
         }
         "gemini" => {
-            write_hook_runtime_artifacts(project_root, &payload)?;
             let provider_hooks = hooks_for_provider("gemini", &payload.hooks);
             export_gemini_settings(project_root, &provider_hooks)?;
             export_gemini_workspace_policy(project_root, &payload.permissions)?;
@@ -344,7 +342,7 @@ pub fn import_from_claude(project_dir: PathBuf) -> Result<usize> {
 pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<usize> {
     let desc = require_provider(provider_id)?;
     let (managed, _) =
-        crate::db::managed_state::get_managed_state_db(&project_dir, provider_id).unwrap_or_default();
+        crate::db::managed_state::get_managed_state_db(provider_id).unwrap_or_default();
 
     let mut config = get_config(Some(project_dir.clone()))?;
     let mut added = 0usize;

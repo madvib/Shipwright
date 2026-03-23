@@ -11,11 +11,11 @@ use super::provider::ProviderDescriptor;
 /// Source: https://geminicli.com/docs/hooks
 fn gemini_trigger(t: &HookTrigger) -> Option<&'static str> {
     match t {
-        HookTrigger::PreToolUse  => Some("BeforeTool"),
+        HookTrigger::PreToolUse => Some("BeforeTool"),
         HookTrigger::PostToolUse => Some("AfterTool"),
         HookTrigger::Notification => Some("Notification"),
-        HookTrigger::Stop        => Some("SessionEnd"),
-        HookTrigger::PreCompact  => Some("PreCompress"),
+        HookTrigger::Stop => Some("SessionEnd"),
+        HookTrigger::PreCompact => Some("PreCompress"),
         // No Gemini equivalent
         HookTrigger::SubagentStop => None,
     }
@@ -76,10 +76,19 @@ pub(super) fn build_gemini_settings_patch(resolved: &ResolvedConfig) -> Option<J
     let has_disable_yolo = resolved.gemini_disable_yolo_mode.is_some();
     let has_disable_always_allow = resolved.gemini_disable_always_allow.is_some();
     let has_tools_sandbox = resolved.gemini_tools_sandbox.is_some();
-    let has_extra = resolved.gemini_settings_extra.as_ref().is_some_and(|v| !v.is_null());
+    let has_extra = resolved
+        .gemini_settings_extra
+        .as_ref()
+        .is_some_and(|v| !v.is_null());
 
-    if !has_hooks && !has_model_name && !has_approval_mode && !has_max_session_turns
-        && !has_disable_yolo && !has_disable_always_allow && !has_tools_sandbox && !has_extra
+    if !has_hooks
+        && !has_model_name
+        && !has_approval_mode
+        && !has_max_session_turns
+        && !has_disable_yolo
+        && !has_disable_always_allow
+        && !has_tools_sandbox
+        && !has_extra
     {
         return None;
     }
@@ -96,7 +105,8 @@ pub(super) fn build_gemini_settings_patch(resolved: &ResolvedConfig) -> Option<J
     if has_general {
         let mut general = serde_json::json!({});
         if let Some(mode) = resolved.gemini_default_approval_mode.as_deref() {
-            general["defaultApprovalMode"] = Json::String(translate_approval_mode(mode).to_string());
+            general["defaultApprovalMode"] =
+                Json::String(translate_approval_mode(mode).to_string());
         }
         if let Some(turns) = resolved.gemini_max_session_turns {
             general["maxSessionTurns"] = serde_json::json!(turns);
@@ -132,11 +142,11 @@ pub(super) fn build_gemini_settings_patch(resolved: &ResolvedConfig) -> Option<J
     }
 
     // settings_extra — merged verbatim last
-    if let Some(extra) = &resolved.gemini_settings_extra {
-        if let Some(obj) = extra.as_object() {
-            for (k, v) in obj {
-                patch[k] = v.clone();
-            }
+    if let Some(extra) = &resolved.gemini_settings_extra
+        && let Some(obj) = extra.as_object()
+    {
+        for (k, v) in obj {
+            patch[k] = v.clone();
         }
     }
 
@@ -175,7 +185,10 @@ pub(super) fn build_gemini_mcp_servers(
     let mut map = serde_json::Map::new();
 
     // Ship server always first.
-    map.insert("ship".to_string(), super::mcp::ship_server_entry(desc.emit_type_field));
+    map.insert(
+        "ship".to_string(),
+        super::mcp::ship_server_entry(desc.emit_type_field),
+    );
 
     for s in servers {
         if s.disabled {
@@ -199,7 +212,10 @@ fn translate_to_gemini_policy(pattern: &str) -> Option<(&'static str, Option<Str
         return None; // wildcard = no restriction, skip
     }
     // Bash(cmd) → shell tool, cmd as pattern (glob → anchored regex prefix)
-    if let Some(inner) = pattern.strip_prefix("Bash(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("Bash(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let re = glob_to_regex_prefix(inner);
         return Some(("shell", Some(re)));
     }
@@ -220,15 +236,24 @@ fn translate_to_gemini_policy(pattern: &str) -> Option<(&'static str, Option<Str
     if pattern == "Read" || pattern == "Glob" || pattern == "LS" {
         return Some(("file_read", None));
     }
-    if let Some(inner) = pattern.strip_prefix("Read(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("Read(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         return Some(("file_read", Some(glob_to_regex(inner))));
     }
     // Write/Edit/MultiEdit → file_write
     if matches!(pattern, "Write" | "Edit" | "MultiEdit") {
         return Some(("file_write", None));
     }
-    if let Some(inner) = pattern.strip_prefix("Write(").and_then(|s| s.strip_suffix(')'))
-        .or_else(|| pattern.strip_prefix("Edit(").and_then(|s| s.strip_suffix(')')))
+    if let Some(inner) = pattern
+        .strip_prefix("Write(")
+        .and_then(|s| s.strip_suffix(')'))
+        .or_else(|| {
+            pattern
+                .strip_prefix("Edit(")
+                .and_then(|s| s.strip_suffix(')'))
+        })
     {
         return Some(("file_write", Some(glob_to_regex(inner))));
     }
@@ -236,7 +261,10 @@ fn translate_to_gemini_policy(pattern: &str) -> Option<(&'static str, Option<Str
     if pattern == "WebFetch" {
         return Some(("web_fetch", None));
     }
-    if let Some(inner) = pattern.strip_prefix("WebFetch(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = pattern
+        .strip_prefix("WebFetch(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         return Some(("web_fetch", Some(glob_to_regex(inner))));
     }
     None

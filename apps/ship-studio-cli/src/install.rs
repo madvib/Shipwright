@@ -33,7 +33,11 @@ pub fn run_install(project_root: &Path, frozen: bool, offline: bool) -> Result<(
     let ship_dir = project_root.join(".ship");
     // Prefer ship.jsonc over ship.toml
     let jsonc_path = ship_dir.join("ship.jsonc");
-    let manifest_path = if jsonc_path.exists() { jsonc_path } else { ship_dir.join("ship.toml") };
+    let manifest_path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        ship_dir.join("ship.toml")
+    };
 
     if !manifest_path.exists() {
         anyhow::bail!(
@@ -43,11 +47,10 @@ pub fn run_install(project_root: &Path, frozen: bool, offline: bool) -> Result<(
     }
 
     // Parse as registry manifest (requires module section).
-    let compiler_manifest = ShipManifest::from_file(&manifest_path)
-        .with_context(|| {
-            "Failed to parse ship manifest. Ensure it has a module section with \
+    let compiler_manifest = ShipManifest::from_file(&manifest_path).with_context(|| {
+        "Failed to parse ship manifest. Ensure it has a module section with \
              name, version, and optionally dependencies."
-        })?;
+    })?;
 
     // Convert compiler manifest to registry stub types used by resolve_and_fetch.
     let registry_manifest = compiler_to_registry_manifest(&compiler_manifest);
@@ -75,9 +78,19 @@ pub fn run_install(project_root: &Path, frozen: bool, offline: bool) -> Result<(
     let n = result.packages.len();
 
     if result.lockfile_written {
-        println!("installed {} package{}, compiled for {}", n, if n == 1 { "" } else { "s" }, providers);
+        println!(
+            "installed {} package{}, compiled for {}",
+            n,
+            if n == 1 { "" } else { "s" },
+            providers
+        );
     } else {
-        println!("already up to date ({} package{}), compiled for {}", n, if n == 1 { "" } else { "s" }, providers);
+        println!(
+            "already up to date ({} package{}), compiled for {}",
+            n,
+            if n == 1 { "" } else { "s" },
+            providers
+        );
     }
 
     Ok(())
@@ -105,7 +118,11 @@ fn compiler_to_registry_manifest(m: &ShipManifest) -> RegistryManifest {
 /// Detect configured providers from the project's manifest (best-effort).
 fn detect_providers_from_project(project_root: &Path) -> String {
     let jsonc_path = project_root.join(".ship").join("ship.jsonc");
-    let path = if jsonc_path.exists() { jsonc_path } else { project_root.join(".ship").join("ship.toml") };
+    let path = if jsonc_path.exists() {
+        jsonc_path
+    } else {
+        project_root.join(".ship").join("ship.toml")
+    };
     if let Ok(content) = std::fs::read_to_string(&path)
         && let Ok(val) = toml::from_str::<toml::Value>(&content)
     {
@@ -115,10 +132,7 @@ fn detect_providers_from_project(project_root: &Path) -> String {
             .and_then(|d| d.get("providers"))
             .and_then(|p| p.as_array())
         {
-            let ids: Vec<&str> = providers
-                .iter()
-                .filter_map(|v| v.as_str())
-                .collect();
+            let ids: Vec<&str> = providers.iter().filter_map(|v| v.as_str()).collect();
             if !ids.is_empty() {
                 return ids.join(", ");
             }
@@ -129,10 +143,7 @@ fn detect_providers_from_project(project_root: &Path) -> String {
             .and_then(|d| d.get("providers"))
             .and_then(|p| p.as_array())
         {
-            let ids: Vec<&str> = providers
-                .iter()
-                .filter_map(|v| v.as_str())
-                .collect();
+            let ids: Vec<&str> = providers.iter().filter_map(|v| v.as_str()).collect();
             if !ids.is_empty() {
                 return ids.join(", ");
             }
@@ -160,7 +171,8 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join(".ship")).unwrap();
         let err = run_install(tmp.path(), false, false).unwrap_err();
         assert!(
-            err.to_string().contains("No .ship/ship.jsonc or .ship/ship.toml"),
+            err.to_string()
+                .contains("No .ship/ship.jsonc or .ship/ship.toml"),
             "got: {err}"
         );
     }

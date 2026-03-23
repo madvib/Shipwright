@@ -65,6 +65,11 @@ function collectProviderFiles(provider: string, result: CompileResult): Array<{ 
     files.push({ path: '.cursor/environment.json', content: JSON.stringify(result.cursor_environment_json, null, 2) })
   }
 
+  // OpenCode config patch
+  if (result.opencode_config_patch) {
+    files.push({ path: 'opencode.json', content: JSON.stringify(result.opencode_config_patch, null, 2) })
+  }
+
   // Rule files
   for (const [path, content] of Object.entries(result.rule_files ?? {})) {
     if (content != null) files.push({ path, content })
