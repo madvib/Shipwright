@@ -121,7 +121,7 @@ export function AnimatedShowcase() {
             </div>
 
             {/* Config sections */}
-            <div className={`space-y-3.5 transition-opacity duration-300 ${phase === 'compiling' ? 'opacity-30' : ''}`}>
+            <div className={`space-y-3.5 transition-opacity duration-300 min-h-[220px] ${phase === 'compiling' ? 'opacity-30' : ''}`}>
               {/* Skills */}
               <div>
                 <div className="mb-1 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/40">Skills</div>
@@ -208,7 +208,7 @@ export function AnimatedShowcase() {
             </div>
 
             {/* Code output */}
-            <div className={`flex-1 rounded-lg border border-border/40 bg-background/60 p-3 font-mono text-[9px] leading-relaxed transition-opacity duration-300 ${
+            <div className={`flex-1 rounded-lg border border-border/40 bg-background/60 p-3 font-mono text-[9px] leading-relaxed min-h-[180px] transition-opacity duration-300 ${
               phase === 'compiling' ? 'opacity-20' : ''
             }`}>
               <CodeOutput agent={agent} provider={provider} />
