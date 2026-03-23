@@ -23,7 +23,7 @@ export function LandingHero() {
 
         {/* Headline */}
         <h1 className="mb-4 font-display text-5xl font-extrabold leading-[1.08] tracking-[-0.03em] sm:text-7xl">
-          {"Don't just build."}
+          {"Don't vibe."}
           <br />
           <span className="text-primary">Ship.</span>
         </h1>
