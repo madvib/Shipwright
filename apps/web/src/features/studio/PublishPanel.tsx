@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Github, Terminal, Upload, ChevronRight, X, Copy, CheckCheck, Download, Loader2 } from 'lucide-react'
+import { Github, Terminal, Upload, ChevronRight, X, Copy, CheckCheck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { authClient } from '#/lib/auth-client'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
@@ -7,7 +7,6 @@ import { PROVIDER_SHORT } from '#/features/compiler/components/ModeHeader'
 import { PublishDialog } from '#/features/studio/PublishDialog'
 import { PushToGitHubDialog } from '#/features/studio/PushToGitHubDialog'
 import { CliUsagePopover } from '#/features/studio/CliUsagePopover'
-import { downloadCompileOutput } from '#/features/studio/download-compile-output'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import type { CompileState } from '#/features/compiler/useCompiler'
 import type { CompileResult } from '#/features/compiler/types'
@@ -61,9 +60,6 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
           <DistributeSection
             hasContent={hasContent}
             isCompiled={compileState.status === 'ok'}
-            compileState={compileState}
-            selectedProviders={selectedProviders}
-            library={library}
             onPublish={() => setPublishOpen(true)}
             onPush={() => setPushOpen(true)}
           />
@@ -201,27 +197,37 @@ function SignInCTA() {
   )
 }
 
-function DistributeSection({ hasContent, isCompiled, compileState, selectedProviders, library, onPublish, onPush }: {
-  hasContent: boolean; isCompiled: boolean; compileState: CompileState; selectedProviders: string[]; library: any; onPublish: () => void; onPush: () => void
+function DistributeSection({ hasContent, isCompiled, onPublish, onPush }: {
+  hasContent: boolean; isCompiled: boolean; onPublish: () => void; onPush: () => void
 }) {
   const [cliOpen, setCliOpen] = useState(false)
   const { agents, activeId } = useAgentStore()
   const activeAgent = activeId ? agents.find((a) => a.profile.id === activeId) : undefined
 
-  const handleDownload = () => {
-    if (compileState.status !== 'ok') return
-    downloadCompileOutput(compileState.output, selectedProviders, library, activeAgent)
-      .then(() => toast.success('Config files downloaded'))
-      .catch((err: unknown) => toast.error('Download failed', {
-        description: err instanceof Error ? err.message : 'Unknown error',
-      }))
-  }
+
+  const agentId = activeAgent?.profile.id
+  const importCmd = agentId ? `ship import --from ${window.location.origin}/studio/agents/${agentId}` : 'ship import --from <url>'
 
   return (
     <div className="p-3 space-y-1.5">
+      {/* CLI import command */}
+      <div className="rounded-lg border border-border/40 bg-background/60 px-3 py-2">
+        <div className="text-[10px] font-medium text-muted-foreground/60 mb-1">Import via CLI</div>
+        <div className="flex items-center gap-1.5">
+          <code className="flex-1 text-[10px] font-mono text-emerald-400 truncate">{importCmd}</code>
+          <button
+            onClick={() => {
+              void navigator.clipboard.writeText(importCmd)
+              toast.success('Copied to clipboard')
+            }}
+            className="shrink-0 rounded p-1 text-muted-foreground/40 hover:text-foreground transition"
+          >
+            <Copy className="size-3" />
+          </button>
+        </div>
+      </div>
       <DistAction icon={<Github className="size-3.5" />} label="Push to repo" desc="Create a PR with .ship/ config" disabled={!isCompiled} onClick={onPush} />
       <DistAction icon={<Upload className="size-3.5" />} label="Publish to registry" desc="Share with the community" disabled={!hasContent} onClick={onPublish} />
-      <DistAction icon={<Download className="size-3.5" />} label="Download files" desc="Export compiled configs" disabled={!isCompiled} onClick={handleDownload} />
       <DistAction icon={<Terminal className="size-3.5" />} label="Use with CLI" desc="ship use <agent>" disabled={false} onClick={() => setCliOpen(true)} />
       <CliUsagePopover open={cliOpen} onOpenChange={setCliOpen} agentName={activeAgent?.profile.name} />
     </div>

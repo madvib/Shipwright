@@ -62,18 +62,20 @@ function subscribe(cb: () => void): () => void {
   return () => window.removeEventListener('storage', handler)
 }
 
-function generateId(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || `agent-${Date.now()}`
 }
 
 export function makeAgent(partial?: Partial<ResolvedAgentProfile>): ResolvedAgentProfile {
   const pp = partial?.profile
+  const name = pp?.name ?? 'New Agent'
   return {
     profile: {
-      id: pp?.id || generateId(),
-      name: pp?.name ?? 'New Agent',
+      id: pp?.id || slugify(name),
+      name,
       description: pp?.description ?? '',
       providers: pp?.providers ?? ['claude'],
       version: pp?.version ?? '0.1.0',
