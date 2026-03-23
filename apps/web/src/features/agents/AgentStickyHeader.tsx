@@ -73,12 +73,11 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
                   <button
                     key={key}
                     onClick={() => handleIconSelect(key)}
-                    className={`rounded-lg p-1 transition hover:bg-muted ${
-                      iconKey === key ? 'ring-2 ring-primary bg-primary/10' : ''
+                    className={`rounded-[10px] transition hover:brightness-110 ${
+                      iconKey === key ? 'outline outline-2 outline-offset-1 outline-primary' : ''
                     }`}
-                    title={key}
                   >
-                    <TechIcon stack={key} size={36} />
+                    <TechIcon stack={key} size={38} />
                   </button>
                 ))}
               </div>
