@@ -26,7 +26,7 @@ export function agentToLibrary(
     id: modeId,
     name: agent.name,
     description: agent.description || undefined,
-    target_agents: agent.providers,
+    target_agents: ['claude', 'gemini', 'codex', 'cursor'],
     mcp_servers: agent.mcpServers.map((s) => s.name),
     skills: agent.skills.map((s) => s.id),
     rules: agent.rules.map((r) => r.file_name),

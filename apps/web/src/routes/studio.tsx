@@ -54,17 +54,7 @@ function StudioSyncShell() {
     return null
   }, [matches])
 
-  // Default panel open when viewing an agent detail page
-  const [panelOpen, setPanelOpen] = useState(() => !!activeAgentId)
-  const prevAgentIdRef = useRef(activeAgentId)
-
-  // Auto-open panel when navigating to an agent detail page
-  useEffect(() => {
-    if (activeAgentId && !prevAgentIdRef.current) {
-      setPanelOpen(true)
-    }
-    prevAgentIdRef.current = activeAgentId
-  }, [activeAgentId])
+  const [panelOpen, setPanelOpen] = useState(true)
 
   const { getAgent, syncStatus: agentSyncStatus } = useAgentStore()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
