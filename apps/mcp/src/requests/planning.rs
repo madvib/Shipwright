@@ -77,8 +77,6 @@ pub struct CreateCapabilityRequest {
     pub phase: Option<String>,
     /// Acceptance criteria — checklist items that define "done"
     pub acceptance_criteria: Option<Vec<String>>,
-    /// Agent preset to activate when working this capability (e.g. "rust-runtime")
-    pub preset_hint: Option<String>,
     /// File/directory paths this capability is scoped to
     pub file_scope: Option<Vec<String>>,
     /// Agent or workspace id currently assigned to this capability
@@ -99,8 +97,6 @@ pub struct UpdateCapabilityRequest {
     pub phase: Option<String>,
     /// Replace acceptance criteria checklist
     pub acceptance_criteria: Option<Vec<String>>,
-    /// New preset hint
-    pub preset_hint: Option<String>,
     /// Replace file scope
     pub file_scope: Option<Vec<String>>,
     /// Assign to agent or workspace id

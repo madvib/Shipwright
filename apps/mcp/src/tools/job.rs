@@ -29,12 +29,6 @@ pub fn create_job(project_dir: &Path, req: CreateJobRequest) -> String {
             serde_json::json!(criteria),
         );
     }
-    if let Some(ref hint) = req.preset_hint {
-        payload.insert(
-            "preset_hint".to_string(),
-            serde_json::Value::String(hint.clone()),
-        );
-    }
     if let Some(ref sym) = req.symlink_name {
         payload.insert(
             "symlink_name".to_string(),
@@ -136,14 +130,20 @@ pub fn append_job_log(project_dir: &Path, req: AppendJobLogRequest) -> String {
     } else {
         req.message.clone()
     };
-    match runtime::db::jobs::append_log(
-        project_dir,
-        &message,
-        Some(req.job_id.as_str()),
-        None,
-        None,
+    let ship_dir = project_dir.join(".ship");
+    match runtime::append_event_with_context(
+        &ship_dir,
+        "agent",
+        runtime::EventEntity::Job,
+        runtime::EventAction::Log,
+        &req.job_id,
+        Some(message),
+        &runtime::EventContext {
+            job_id: Some(&req.job_id),
+            ..Default::default()
+        },
     ) {
-        Ok(()) => format!("Log entry appended to job {}", req.job_id),
+        Ok(_) => format!("Log entry appended to job {}", req.job_id),
         Err(e) => format!("Error appending job log: {}", e),
     }
 }

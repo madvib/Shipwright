@@ -189,7 +189,6 @@ pub fn create_capability(project_dir: &Path, req: CreateCapabilityRequest) -> St
     };
     let needs_update = req.phase.is_some()
         || req.acceptance_criteria.is_some()
-        || req.preset_hint.is_some()
         || req.file_scope.is_some()
         || req.assigned_to.is_some()
         || req.priority.is_some();
@@ -197,7 +196,6 @@ pub fn create_capability(project_dir: &Path, req: CreateCapabilityRequest) -> St
         let patch = runtime::db::targets::CapabilityPatch {
             phase: req.phase,
             acceptance_criteria: req.acceptance_criteria,
-            preset_hint: req.preset_hint,
             file_scope: req.file_scope,
             assigned_to: req.assigned_to,
             priority: req.priority,
@@ -220,7 +218,6 @@ pub fn update_capability(project_dir: &Path, req: UpdateCapabilityRequest) -> St
         status: req.status,
         phase: req.phase,
         acceptance_criteria: req.acceptance_criteria,
-        preset_hint: req.preset_hint,
         file_scope: req.file_scope,
         assigned_to: req.assigned_to,
         priority: req.priority,

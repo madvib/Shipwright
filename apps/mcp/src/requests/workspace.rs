@@ -109,8 +109,6 @@ pub struct CreateJobRequest {
     pub file_scope: Option<Vec<String>>,
     /// Acceptance criteria checklist items
     pub acceptance_criteria: Option<Vec<String>>,
-    /// Profile name to compile / activate in the worktree
-    pub preset_hint: Option<String>,
     /// Human-readable worktree label (used as symlink name)
     pub symlink_name: Option<String>,
 }

@@ -280,7 +280,7 @@ impl ShipServer {
     }
 
     #[tool(
-        description = "Add a capability to a target. Accepts phase, acceptance_criteria, preset_hint, file_scope, assigned_to, priority."
+        description = "Add a capability to a target. Accepts phase, acceptance_criteria, file_scope, assigned_to, priority."
     )]
     async fn create_capability(
         &self,
