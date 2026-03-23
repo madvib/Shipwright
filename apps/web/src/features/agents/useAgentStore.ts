@@ -27,11 +27,10 @@ function loadState(): StoreState {
       : null
     if (!raw) return emptyState()
     const parsed = JSON.parse(raw) as StoreState
-    // Validate shape: if agents don't have profile.id, data is stale -- drop it
-    if (parsed.agents?.length > 0 && !parsed.agents[0].profile?.id) {
-      return emptyState()
-    }
-    return parsed
+    if (!Array.isArray(parsed.agents)) return emptyState()
+    // Drop any agents missing the profile.id shape (stale format)
+    const valid = parsed.agents.filter((a) => a?.profile?.id)
+    return { agents: valid, activeId: parsed.activeId ?? valid[0]?.profile?.id ?? null }
   } catch {
     return emptyState()
   }
