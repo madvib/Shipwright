@@ -3,7 +3,6 @@ import { Plus, ArrowRight } from 'lucide-react'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import { getAgentIcon } from '#/features/agents/agent-icons'
 import { TechIcon, TECH_STACKS } from '#/features/studio/TechIcon'
-import { AGENT_TEMPLATES, templateToAgent } from '#/features/agents/agent-templates'
 import { AgentListSkeleton } from '#/features/studio/StudioSkeleton'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 
@@ -17,9 +16,8 @@ function AgentsListPage() {
   const { agents, createAgent } = useAgentStore()
   const navigate = useNavigate()
 
-  const handleNewFromTemplate = () => {
-    const template = AGENT_TEMPLATES[0]
-    const id = createAgent(templateToAgent(template, template.name))
+  const handleNewAgent = () => {
+    const id = createAgent()
     void navigate({ to: '/studio/agents/$id', params: { id } })
   }
 
@@ -34,7 +32,7 @@ function AgentsListPage() {
             </p>
           </div>
           <button
-            onClick={handleNewFromTemplate}
+            onClick={handleNewAgent}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
           >
             <Plus className="size-3.5" />
@@ -49,7 +47,7 @@ function AgentsListPage() {
               Create your first agent to get started.
             </p>
             <button
-              onClick={handleNewFromTemplate}
+              onClick={handleNewAgent}
               className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
             >
               <Plus className="size-3.5" />
