@@ -36,9 +36,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     if (!name.trim()) return
     // Validate via schema before creating
     const draft = makeAgent({
-      name: name.trim(),
-      description: description.trim(),
-      providers: selectedProviders,
+      profile: { id: '', name: name.trim(), description: description.trim(), providers: selectedProviders },
     })
     const result = validateAgentProfile(draft)
     if (!result.valid) {
@@ -47,9 +45,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     }
     setValidationErrors([])
     const id = createAgent({
-      name: name.trim(),
-      description: description.trim(),
-      providers: selectedProviders,
+      profile: { id: '', name: name.trim(), description: description.trim(), providers: selectedProviders },
     })
     onOpenChange(false)
     setName('')

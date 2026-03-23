@@ -4,7 +4,7 @@
 // agent-aware output instead of raw library output.
 
 import type { ProjectLibrary, ModeConfig, HookConfig as RustHookConfig } from '@ship/ui'
-import type { AgentProfile } from './types'
+import type { ResolvedAgentProfile } from './types'
 
 /**
  * Merge an agent profile into a base library for compilation.
@@ -16,16 +16,16 @@ import type { AgentProfile } from './types'
  * Returns a new library object -- never mutates the input.
  */
 export function agentToLibrary(
-  agent: AgentProfile,
+  agent: ResolvedAgentProfile,
   baseLibrary: ProjectLibrary,
 ): ProjectLibrary {
-  const modeId = `agent-${agent.id}`
+  const modeId = `agent-${agent.profile.id}`
 
   // Build a mode that references the agent's assets by ID/name
   const mode: ModeConfig = {
     id: modeId,
-    name: agent.name,
-    description: agent.description || undefined,
+    name: agent.profile.name,
+    description: agent.profile.description || undefined,
     target_agents: ['claude', 'gemini', 'codex', 'cursor'],
     mcp_servers: agent.mcpServers.map((s) => s.name),
     skills: agent.skills.map((s) => s.id),
@@ -71,18 +71,18 @@ export function agentToLibrary(
   // Build the Rust-format AgentProfile for agent_profiles
   const rustProfile = {
     profile: {
-      id: agent.id,
-      name: agent.name,
-      version: agent.version || undefined,
-      description: agent.description || undefined,
-      providers: agent.providers,
+      id: agent.profile.id,
+      name: agent.profile.name,
+      version: agent.profile.version || undefined,
+      description: agent.profile.description || undefined,
+      providers: agent.profile.providers,
     },
     skills: { refs: agent.skills.map((s) => s.id) },
     mcp: { servers: agent.mcpServers.map((s) => s.name) },
     permissions: {
-      preset: agent.permissionPreset || undefined,
-      tools_allow: agent.permissions.tools?.allow,
-      tools_deny: agent.permissions.tools?.deny,
+      preset: agent.permissions?.preset || undefined,
+      tools_allow: agent.permissions?.tools_allow,
+      tools_deny: agent.permissions?.tools_deny,
     },
     rules: agent.rules.length > 0
       ? { inline: agent.rules.map((r) => r.content).join('\n\n') || undefined }
@@ -91,18 +91,7 @@ export function agentToLibrary(
 
   // Add to agent_profiles (deduplicated by profile.id)
   const baseProfiles = baseLibrary.agent_profiles ?? []
-  const filteredProfiles = baseProfiles.filter((p) => p.profile.id !== agent.id)
-
-  // Merge max_turns into permissions.agent
-  const mergedPermissions = agent.maxTurns
-    ? {
-        ...agent.permissions,
-        agent: { ...agent.permissions.agent, max_turns: agent.maxTurns },
-      }
-    : agent.permissions
-
-  // Map provider settings to top-level library fields
-  const providerFields = mapProviderSettings(agent.providerSettings ?? {})
+  const filteredProfiles = baseProfiles.filter((p) => p.profile.id !== agent.profile.id)
 
   return {
     ...baseLibrary,
@@ -111,55 +100,7 @@ export function agentToLibrary(
     mcp_servers: mergedServers,
     skills: mergedSkills,
     rules: mergedRules,
-    permissions: mergedPermissions,
     hooks: mergedHooks,
     agent_profiles: [...filteredProfiles, rustProfile],
-    ...providerFields,
   }
-}
-
-// ── Provider settings mapping ────────────────────────────────────────────────
-// Maps the UI's nested providerSettings into the flat top-level fields
-// that the compiler expects on ProjectLibrary.
-
-const PROVIDER_FIELD_MAP: Record<string, Record<string, string>> = {
-  claude: {
-    theme: 'claude_theme',
-    auto_updates: 'claude_auto_updates',
-    include_co_authored_by: 'claude_include_co_authored_by',
-  },
-  gemini: {
-    default_approval_mode: 'gemini_default_approval_mode',
-    max_session_turns: 'gemini_max_session_turns',
-    disable_yolo_mode: 'gemini_disable_yolo_mode',
-    disable_always_allow: 'gemini_disable_always_allow',
-    tools_sandbox: 'gemini_tools_sandbox',
-  },
-  codex: {
-    approval_policy: 'codex_approval_policy',
-    sandbox: 'codex_sandbox',
-    reasoning_effort: 'codex_reasoning_effort',
-    max_threads: 'codex_max_threads',
-    notify: 'codex_notify',
-  },
-  cursor: {
-    environment: 'cursor_environment',
-  },
-}
-
-function mapProviderSettings(
-  settings: Record<string, Record<string, unknown>>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const [provider, values] of Object.entries(settings)) {
-    const fieldMap = PROVIDER_FIELD_MAP[provider]
-    if (!fieldMap) continue
-    for (const [key, value] of Object.entries(values)) {
-      const libraryKey = fieldMap[key]
-      if (libraryKey && value !== undefined) {
-        result[libraryKey] = value
-      }
-    }
-  }
-  return result
 }

@@ -4,10 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { toast } from 'sonner'
 import { useAuth } from '#/lib/components/protected-route'
 import { fetchAgents, createAgentApi, updateAgentApi, deleteAgentApi } from './agent-api'
-import type { AgentProfile } from './types'
-import { DEFAULT_SETTINGS } from './types'
-import { DEFAULT_PERMISSIONS } from '@ship/ui'
-import { hasMigrated, migrateFromV1, finalizeMigration } from './migrate-storage'
+import type { ResolvedAgentProfile } from './types'
 
 const STORAGE_KEY = 'ship-agents-v2'
 const DEBOUNCE_MS = 2000
@@ -17,7 +14,7 @@ export interface AgentSyncStatus {
   lastSyncedAt?: number
 }
 
-interface StoreState { agents: AgentProfile[]; activeId: string | null }
+interface StoreState { agents: ResolvedAgentProfile[]; activeId: string | null }
 
 function emptyState(): StoreState {
   return { agents: [], activeId: null }
@@ -28,20 +25,13 @@ function loadState(): StoreState {
     const raw = typeof window !== 'undefined'
       ? window.localStorage.getItem(STORAGE_KEY)
       : null
-    if (raw) return JSON.parse(raw) as StoreState
-
-    // No V2 data — attempt one-time migration from V1 keys
-    if (!hasMigrated()) {
-      const migrated = migrateFromV1()
-      if (migrated.agents.length > 0) {
-        const state: StoreState = { agents: migrated.agents, activeId: migrated.activeId }
-        saveState(state)
-        finalizeMigration()
-        return state
-      }
-      finalizeMigration()
+    if (!raw) return emptyState()
+    const parsed = JSON.parse(raw) as StoreState
+    // Validate shape: if agents don't have profile.id, data is stale -- drop it
+    if (parsed.agents?.length > 0 && !parsed.agents[0].profile?.id) {
+      return emptyState()
     }
-    return emptyState()
+    return parsed
   } catch {
     return emptyState()
   }
@@ -79,38 +69,35 @@ function generateId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-export function makeAgent(partial?: Partial<AgentProfile>): AgentProfile {
+export function makeAgent(partial?: Partial<ResolvedAgentProfile>): ResolvedAgentProfile {
+  const pp = partial?.profile
   return {
-    id: partial?.id ?? generateId(),
-    name: partial?.name ?? 'New Agent',
-    description: partial?.description ?? '',
-    providers: partial?.providers ?? ['claude'],
-    version: partial?.version ?? '0.1.0',
+    profile: {
+      id: pp?.id || generateId(),
+      name: pp?.name ?? 'New Agent',
+      description: pp?.description ?? '',
+      providers: pp?.providers ?? ['claude'],
+      version: pp?.version ?? '0.1.0',
+    },
     skills: partial?.skills ?? [],
     mcpServers: partial?.mcpServers ?? [],
-    subagents: partial?.subagents ?? [],
-    permissions: partial?.permissions ?? { ...DEFAULT_PERMISSIONS },
-    permissionPreset: partial?.permissionPreset ?? 'ship-standard',
-    settings: partial?.settings ?? { ...DEFAULT_SETTINGS },
+    permissions: partial?.permissions ?? { preset: 'ship-standard' },
     hooks: partial?.hooks ?? [],
     rules: partial?.rules ?? [],
-    mcpToolStates: partial?.mcpToolStates ?? {},
-    maxTurns: partial?.maxTurns,
-    providerSettings: partial?.providerSettings,
   }
 }
 
 function mergeAgents(
-  local: AgentProfile[],
-  server: AgentProfile[],
-): AgentProfile[] {
-  const merged = new Map<string, AgentProfile>()
+  local: ResolvedAgentProfile[],
+  server: ResolvedAgentProfile[],
+): ResolvedAgentProfile[] {
+  const merged = new Map<string, ResolvedAgentProfile>()
 
   // Server wins for ID conflicts
-  for (const a of server) merged.set(a.id, a)
+  for (const a of server) merged.set(a.profile.id, a)
   // Local-only entries are preserved
   for (const a of local) {
-    if (!merged.has(a.id)) merged.set(a.id, a)
+    if (!merged.has(a.profile.id)) merged.set(a.profile.id, a)
   }
 
   return Array.from(merged.values())
@@ -141,37 +128,37 @@ export function useAgentStore() {
     setState((prev) => ({ ...prev, activeId: id }))
   }, [setState])
 
-  const getAgent = useCallback((id: string): AgentProfile | undefined => {
-    return state.agents.find((a) => a.id === id)
+  const getAgent = useCallback((id: string): ResolvedAgentProfile | undefined => {
+    return state.agents.find((a) => a.profile.id === id)
   }, [state.agents])
 
   const createAgent = useCallback(
-    (partial?: Partial<AgentProfile>): string => {
+    (partial?: Partial<ResolvedAgentProfile>): string => {
       const agent = makeAgent(partial)
       setState((prev) => ({
         agents: [...prev.agents, agent],
-        activeId: agent.id,
+        activeId: agent.profile.id,
       }))
-      return agent.id
+      return agent.profile.id
     },
     [setState],
   )
 
   const updateAgent = useCallback(
-    (id: string, patch: Partial<AgentProfile>) => {
+    (id: string, patch: Partial<ResolvedAgentProfile>) => {
       setState((prev) => {
-        const exists = prev.agents.some((a) => a.id === id)
+        const exists = prev.agents.some((a) => a.profile.id === id)
         if (exists) {
           return {
             ...prev,
             agents: prev.agents.map((a) =>
-              a.id === id ? { ...a, ...patch } : a,
+              a.profile.id === id ? { ...a, ...patch } : a,
             ),
           }
         }
         // Upsert: create agent with the patch if it doesn't exist
-        const agent = makeAgent({ id, ...patch })
-        return { agents: [...prev.agents, agent], activeId: prev.activeId ?? agent.id }
+        const agent = makeAgent({ profile: { id, name: id }, ...patch })
+        return { agents: [...prev.agents, agent], activeId: prev.activeId ?? agent.profile.id }
       })
     },
     [setState],
@@ -180,9 +167,9 @@ export function useAgentStore() {
   const deleteAgent = useCallback(
     (id: string) => {
       setState((prev) => {
-        const agents = prev.agents.filter((a) => a.id !== id)
+        const agents = prev.agents.filter((a) => a.profile.id !== id)
         const activeId = prev.activeId === id
-          ? (agents[0]?.id ?? null)
+          ? (agents[0]?.profile.id ?? null)
           : prev.activeId
         return { agents, activeId }
       })
@@ -207,12 +194,12 @@ export function useAgentStore() {
         const local = loadState()
         const merged = mergeAgents(local.agents, serverAgents)
 
-        saveState({ agents: merged, activeId: local.activeId ?? merged[0]?.id ?? null })
+        saveState({ agents: merged, activeId: local.activeId ?? merged[0]?.profile.id ?? null })
         lastSyncedRef.current = JSON.stringify(merged)
 
         // Push local-only agents to server
-        const serverIds = new Set(serverAgents.map((a) => a.id))
-        const localOnly = merged.filter((a) => !serverIds.has(a.id))
+        const serverIds = new Set(serverAgents.map((a) => a.profile.id))
+        const localOnly = merged.filter((a) => !serverIds.has(a.profile.id))
         await Promise.all(localOnly.map((a) => createAgentApi(a)))
 
         setSyncStatus({ status: 'synced', lastSyncedAt: Date.now() })
@@ -273,17 +260,17 @@ export function useAgentStore() {
   }
 }
 
-async function syncToServer(agents: AgentProfile[]): Promise<void> {
+async function syncToServer(agents: ResolvedAgentProfile[]): Promise<void> {
   const serverAgents = await fetchAgents()
-  const serverMap = new Map(serverAgents.map((a) => [a.id, a]))
-  const localMap = new Map(agents.map((a) => [a.id, a]))
+  const serverMap = new Map(serverAgents.map((a) => [a.profile.id, a]))
+  const localMap = new Map(agents.map((a) => [a.profile.id, a]))
 
   const ops: Promise<void>[] = []
 
   // Create or update local agents on server
   for (const agent of agents) {
-    if (serverMap.has(agent.id)) {
-      ops.push(updateAgentApi(agent.id, agent))
+    if (serverMap.has(agent.profile.id)) {
+      ops.push(updateAgentApi(agent.profile.id, agent))
     } else {
       ops.push(createAgentApi(agent))
     }
@@ -291,8 +278,8 @@ async function syncToServer(agents: AgentProfile[]): Promise<void> {
 
   // Delete server agents not present locally
   for (const sa of serverAgents) {
-    if (!localMap.has(sa.id)) {
-      ops.push(deleteAgentApi(sa.id))
+    if (!localMap.has(sa.profile.id)) {
+      ops.push(deleteAgentApi(sa.profile.id))
     }
   }
 

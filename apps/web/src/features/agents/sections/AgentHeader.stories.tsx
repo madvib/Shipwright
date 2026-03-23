@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { AgentHeader } from './AgentHeader'
-import type { AgentProfile } from '../types'
-import { DEMO_AGENT } from '../types'
+import type { ResolvedAgentProfile } from '../types'
 
 const meta: Meta<typeof AgentHeader> = {
   title: 'Agents/AgentHeader',
@@ -11,7 +10,25 @@ const meta: Meta<typeof AgentHeader> = {
 export default meta
 type Story = StoryObj<typeof AgentHeader>
 
-const baseProfile: AgentProfile = { ...DEMO_AGENT }
+const baseProfile: ResolvedAgentProfile = {
+  profile: {
+    id: 'web-lane',
+    name: 'web-lane',
+    description: 'Web lane specialist for apps/web/. Active context for web feature work.',
+    providers: ['claude', 'gemini'],
+    version: 'v0.1.0',
+  },
+  skills: [
+    { id: 'ship-coordination', name: 'ship-coordination', content: '', source: 'custom' },
+    { id: 'code-review', name: 'code-review', content: '', source: 'community' },
+  ],
+  mcpServers: [
+    { name: 'ship', command: 'ship', args: ['mcp', 'serve'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
+  ],
+  permissions: { preset: 'ship-guarded' },
+  hooks: [],
+  rules: [],
+}
 
 /** Full-featured header with edit button and multiple providers. */
 export const Default: Story = {
@@ -33,13 +50,15 @@ export const ClaudeOnly: Story = {
   args: {
     profile: {
       ...baseProfile,
-      name: 'backend-rust',
-      description: 'Rust runtime specialist. Handles crates/, runtime, and CLI transport layers.',
-      providers: ['claude'],
-      version: 'v0.3.1',
+      profile: {
+        ...baseProfile.profile,
+        name: 'backend-rust',
+        description: 'Rust runtime specialist. Handles crates/, runtime, and CLI transport layers.',
+        providers: ['claude'],
+        version: 'v0.3.1',
+      },
       skills: [baseProfile.skills[0]],
       mcpServers: [baseProfile.mcpServers[0]],
-      subagents: [],
     },
     onEdit: () => {},
   },
@@ -50,10 +69,13 @@ export const AllProviders: Story = {
   args: {
     profile: {
       ...baseProfile,
-      name: 'full-stack',
-      description: 'Cross-provider agent targeting every supported coding assistant.',
-      providers: ['claude', 'gemini', 'codex', 'cursor'],
-      version: 'v1.0.0',
+      profile: {
+        ...baseProfile.profile,
+        name: 'full-stack',
+        description: 'Cross-provider agent targeting every supported coding assistant.',
+        providers: ['claude', 'gemini', 'codex', 'cursor'],
+        version: 'v1.0.0',
+      },
     },
     onEdit: () => {},
   },
@@ -64,13 +86,15 @@ export const NoDescription: Story = {
   args: {
     profile: {
       ...baseProfile,
-      name: 'minimal-agent',
-      description: '',
-      providers: ['gemini'],
-      version: 'v0.0.1',
+      profile: {
+        ...baseProfile.profile,
+        name: 'minimal-agent',
+        description: '',
+        version: 'v0.0.1',
+        providers: ['gemini'],
+      },
       skills: [],
       mcpServers: [],
-      subagents: [],
     },
   },
 }
@@ -80,10 +104,13 @@ export const LongContent: Story = {
   args: {
     profile: {
       ...baseProfile,
-      name: 'extremely-long-agent-name-that-should-handle-overflow-gracefully',
-      description:
-        'This agent has a very detailed description that explains every aspect of its purpose, including edge cases, boundary conditions, integration points, and fallback strategies for when things go wrong in production environments.',
-      providers: ['claude', 'gemini', 'codex'],
+      profile: {
+        ...baseProfile.profile,
+        name: 'extremely-long-agent-name-that-should-handle-overflow-gracefully',
+        description:
+          'This agent has a very detailed description that explains every aspect of its purpose, including edge cases, boundary conditions, integration points, and fallback strategies for when things go wrong in production environments.',
+        providers: ['claude', 'gemini', 'codex'],
+      },
     },
     onEdit: () => {},
   },

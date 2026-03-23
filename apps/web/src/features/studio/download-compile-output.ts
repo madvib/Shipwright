@@ -1,5 +1,5 @@
 import type { CompileResult, ProjectLibrary } from '#/features/compiler/types'
-import type { AgentProfile } from '#/features/agents/types'
+import type { ResolvedAgentProfile } from '#/features/agents/types'
 
 /** File entry for ZIP assembly */
 interface ZipEntry {
@@ -194,11 +194,11 @@ function crc32(data: Uint8Array): number {
 }
 
 /** Build a .ship/ship.jsonc manifest from library and agent data. */
-function buildShipManifest(library?: ProjectLibrary, agent?: AgentProfile): string {
-  const name = agent?.name ?? 'my-project'
-  const description = agent?.description ?? ''
+function buildShipManifest(library?: ProjectLibrary, agent?: ResolvedAgentProfile): string {
+  const name = agent?.profile.name ?? 'my-project'
+  const description = agent?.profile.description ?? ''
   const skillRefs = (agent?.skills ?? library?.skills ?? []).map((s) => s.id)
-  const agentExports = agent ? [`agents/${agent.id}.jsonc`] : []
+  const agentExports = agent ? [`agents/${agent.profile.id}.jsonc`] : []
 
   const manifest: Record<string, unknown> = {
     $schema: 'https://getship.dev/schemas/ship.schema.json',
@@ -208,17 +208,17 @@ function buildShipManifest(library?: ProjectLibrary, agent?: AgentProfile): stri
   return JSON.stringify(manifest, null, 2)
 }
 
-/** Build a .ship/agents/<id>.jsonc agent config from an AgentProfile. */
-function buildAgentConfig(agent: AgentProfile): string {
+/** Build a .ship/agents/<id>.jsonc agent config from a ResolvedAgentProfile. */
+function buildAgentConfig(agent: ResolvedAgentProfile): string {
   const mcpServerNames = agent.mcpServers.map((s) => s.name)
   const skillRefs = agent.skills.map((s) => s.id)
 
   const config: Record<string, unknown> = {
     $schema: 'https://getship.dev/schemas/agent.schema.json',
     agent: {
-      id: agent.id,
-      name: agent.name,
-      providers: agent.providers,
+      id: agent.profile.id,
+      name: agent.profile.name,
+      providers: agent.profile.providers,
     },
     skills: { refs: skillRefs },
     mcp: { servers: mcpServerNames },
@@ -230,13 +230,13 @@ function buildAgentConfig(agent: AgentProfile): string {
 /** Collect .ship/ source files for inclusion in the ZIP. */
 function collectShipSourceFiles(
   library?: ProjectLibrary,
-  activeAgent?: AgentProfile,
+  activeAgent?: ResolvedAgentProfile,
 ): Array<{ path: string; content: string }> {
   const files: Array<{ path: string; content: string }> = []
   files.push({ path: '.ship/ship.jsonc', content: buildShipManifest(library, activeAgent) })
   if (activeAgent) {
     files.push({
-      path: `.ship/agents/${activeAgent.id}.jsonc`,
+      path: `.ship/agents/${activeAgent.profile.id}.jsonc`,
       content: buildAgentConfig(activeAgent),
     })
   }
@@ -254,7 +254,7 @@ export async function downloadCompileOutput(
   output: Record<string, CompileResult>,
   selectedProviders: string[],
   library?: ProjectLibrary,
-  activeAgent?: AgentProfile,
+  activeAgent?: ResolvedAgentProfile,
 ): Promise<void> {
   const encoder = new TextEncoder()
   const entries: ZipEntry[] = []

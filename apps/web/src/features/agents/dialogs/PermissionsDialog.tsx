@@ -1,18 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Lock, Wrench, FileText, Terminal, Globe, Shield, X } from 'lucide-react'
-import type { Permissions, NetworkPolicy } from '@ship/ui'
+import { Lock, Wrench, X } from 'lucide-react'
+import type { ProfilePermissions } from '@ship/ui'
 
 interface PermissionsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  permissions: Permissions
-  onSave: (permissions: Permissions) => void
+  permissions: ProfilePermissions
+  onSave: (permissions: ProfilePermissions) => void
 }
 
-const NETWORK_POLICIES: NetworkPolicy[] = ['none', 'localhost', 'allow-list', 'unrestricted']
-
 export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: PermissionsDialogProps) {
-  const [local, setLocal] = useState<Permissions>({})
+  const [local, setLocal] = useState<ProfilePermissions>({})
 
   useEffect(() => {
     if (open) setLocal(structuredClone(permissions))
@@ -30,38 +28,6 @@ export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: P
   }, [open, handleEscape])
 
   if (!open) return null
-
-  const updateList = (
-    dimension: 'tools' | 'filesystem' | 'commands',
-    kind: 'allow' | 'deny',
-    list: string[],
-  ) => {
-    setLocal((prev) => ({
-      ...prev,
-      [dimension]: { ...prev[dimension], [kind]: list },
-    }))
-  }
-
-  const updateNetworkHosts = (hosts: string[]) => {
-    setLocal((prev) => ({
-      ...prev,
-      network: { ...prev.network, allow_hosts: hosts },
-    }))
-  }
-
-  const updateNetworkPolicy = (policy: NetworkPolicy) => {
-    setLocal((prev) => ({
-      ...prev,
-      network: { ...prev.network, policy },
-    }))
-  }
-
-  const updateConfirmation = (list: string[]) => {
-    setLocal((prev) => ({
-      ...prev,
-      agent: { ...prev.agent, require_confirmation: list },
-    }))
-  }
 
   return (
     <>
@@ -91,40 +57,23 @@ export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: P
           {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
             <DimensionSection icon={<Wrench className="size-3.5" />} label="Tools">
-              <TagInput label="Allow" variant="allow" values={local.tools?.allow ?? []} onChange={(v) => updateList('tools', 'allow', v)} />
-              <TagInput label="Deny" variant="deny" values={local.tools?.deny ?? []} onChange={(v) => updateList('tools', 'deny', v)} />
-            </DimensionSection>
-
-            <DimensionSection icon={<FileText className="size-3.5" />} label="Filesystem">
-              <TagInput label="Allow paths" variant="allow" values={local.filesystem?.allow ?? []} onChange={(v) => updateList('filesystem', 'allow', v)} />
-              <TagInput label="Deny paths" variant="deny" values={local.filesystem?.deny ?? []} onChange={(v) => updateList('filesystem', 'deny', v)} />
-            </DimensionSection>
-
-            <DimensionSection icon={<Terminal className="size-3.5" />} label="Commands">
-              <TagInput label="Allow" variant="allow" values={local.commands?.allow ?? []} onChange={(v) => updateList('commands', 'allow', v)} />
-              <TagInput label="Deny" variant="deny" values={local.commands?.deny ?? []} onChange={(v) => updateList('commands', 'deny', v)} />
-            </DimensionSection>
-
-            <DimensionSection icon={<Globe className="size-3.5" />} label="Network">
-              <div className="space-y-1.5">
-                <span className="text-[11px] text-muted-foreground">Policy</span>
-                <select
-                  value={local.network?.policy ?? 'none'}
-                  onChange={(e) => updateNetworkPolicy(e.target.value as NetworkPolicy)}
-                  className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary"
-                >
-                  {NETWORK_POLICIES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <TagInput label="Allowed hosts" variant="allow" values={local.network?.allow_hosts ?? []} onChange={updateNetworkHosts} />
-            </DimensionSection>
-
-            <DimensionSection icon={<Shield className="size-3.5" />} label="Agent Limits">
               <TagInput
-                label="Require confirmation"
+                label="Allow"
+                variant="allow"
+                values={local.tools_allow ?? []}
+                onChange={(v) => setLocal((prev) => ({ ...prev, tools_allow: v }))}
+              />
+              <TagInput
+                label="Ask"
                 variant="neutral"
-                values={local.agent?.require_confirmation ?? []}
-                onChange={updateConfirmation}
+                values={local.tools_ask ?? []}
+                onChange={(v) => setLocal((prev) => ({ ...prev, tools_ask: v }))}
+              />
+              <TagInput
+                label="Deny"
+                variant="deny"
+                values={local.tools_deny ?? []}
+                onChange={(v) => setLocal((prev) => ({ ...prev, tools_deny: v }))}
               />
             </DimensionSection>
           </div>

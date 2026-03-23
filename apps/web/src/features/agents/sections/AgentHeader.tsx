@@ -1,16 +1,15 @@
 import { Pencil } from 'lucide-react'
-import type { AgentProfile } from '../types'
+import type { ResolvedAgentProfile } from '../types'
 
 interface AgentHeaderProps {
-  profile: AgentProfile
+  profile: ResolvedAgentProfile
   onEdit?: () => void
 }
 
 export function AgentHeader({ profile, onEdit }: AgentHeaderProps) {
-  const initial = profile.name.charAt(0).toUpperCase()
+  const initial = profile.profile.name.charAt(0).toUpperCase()
   const skillCount = profile.skills.length
   const mcpCount = profile.mcpServers.length
-  const subagentCount = profile.subagents.length
 
   return (
     <>
@@ -24,7 +23,7 @@ export function AgentHeader({ profile, onEdit }: AgentHeaderProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="font-display text-xl font-bold text-foreground">
-              {profile.name}
+              {profile.profile.name}
             </h1>
             {onEdit && (
               <button onClick={onEdit} className="rounded-md p-1 text-muted-foreground/40 hover:text-primary transition-colors">
@@ -33,10 +32,10 @@ export function AgentHeader({ profile, onEdit }: AgentHeaderProps) {
             )}
           </div>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
-            {profile.description || 'No description'}
+            {profile.profile.description || 'No description'}
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {profile.providers.map((p) => (
+            {(profile.profile.providers ?? []).map((p) => (
               <span
                 key={p}
                 className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary"
@@ -45,10 +44,10 @@ export function AgentHeader({ profile, onEdit }: AgentHeaderProps) {
               </span>
             ))}
             <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {profile.version}
+              {profile.profile.version}
             </span>
             <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {skillCount} skills / {mcpCount} MCP / {subagentCount} subagents
+              {skillCount} skills / {mcpCount} MCP
             </span>
           </div>
         </div>

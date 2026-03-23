@@ -1,9 +1,26 @@
-// ── Agent profile types ──────────────────────────────────────────────────────
-// Local types for the agent detail page. These extend @ship/ui types
-// with agent-specific metadata not yet in the shared package.
+// UI-only types for the agent editor.
+// Compiler types come from @ship/ui — import them directly where needed.
 
-import type { McpServerConfig, Skill, Rule, Permissions } from '@ship/ui'
+import type {
+  AgentProfile,
+  Skill,
+  McpServerConfig,
+  Rule,
+  HookConfig,
+} from '@ship/ui'
 
+// The compiled AgentProfile stores refs (skill IDs, server names).
+// The UI needs resolved objects for rendering. This type replaces the
+// ref fields with their resolved counterparts — everything else is inherited.
+export type ResolvedAgentProfile =
+  Omit<AgentProfile, 'skills' | 'mcp' | 'rules'> & {
+    skills: Skill[]
+    mcpServers: McpServerConfig[]
+    rules: Rule[]
+    hooks: HookConfig[]
+  }
+
+// UI-only types — not in the compiler schema.
 export type ToolPermission = 'allow' | 'ask' | 'deny'
 
 export interface ToolToggleState {
@@ -16,118 +33,7 @@ export interface McpToolConfig {
   group: 'read' | 'write' | 'admin'
 }
 
-export interface HookConfig {
-  trigger: string
-  command: string
-  providers: string[]
-  matcher?: string
-}
-
-export interface AgentSettings {
-  model: string
-  defaultMode: string
-  extendedThinking: boolean
-  autoMemory: boolean
-}
-
-export interface AgentProfile {
-  id: string
-  name: string
-  description: string
-  providers: string[]
-  version: string
-  skills: Skill[]
-  mcpServers: McpServerConfig[]
-  subagents: SubagentRef[]
-  permissions: Permissions
-  permissionPreset: string
-  settings: AgentSettings
-  hooks: HookConfig[]
-  rules: Rule[]
-  mcpToolStates: Record<string, ToolToggleState>
-  maxTurns?: number
-  providerSettings?: Record<string, Record<string, unknown>>
-}
-
-export interface SubagentRef {
-  id: string
-  name: string
-  description: string
-}
-
-// ── Default data ─────────────────────────────────────────────────────────────
-
-export const DEFAULT_SETTINGS: AgentSettings = {
-  model: 'claude-sonnet-4-6',
-  defaultMode: 'default',
-  extendedThinking: true,
-  autoMemory: false,
-}
-
-export const DEMO_AGENT: AgentProfile = {
-  id: 'web-lane',
-  name: 'web-lane',
-  description: 'Web lane specialist for apps/web/. Active context for web feature work.',
-  providers: ['claude', 'gemini'],
-  version: 'v0.1.0',
-  skills: [
-    { id: 'ship-coordination', name: 'ship-coordination', content: '', source: 'custom' },
-    { id: 'code-review', name: 'code-review', content: '', source: 'community' },
-    { id: 'debug-expert', name: 'debug-expert', content: '', source: 'community' },
-    { id: 'frontend-design', name: 'frontend-design', content: '', source: 'custom' },
-    { id: 'vercel-react', name: 'vercel-react', content: '', source: 'community' },
-  ],
-  mcpServers: [
-    { name: 'ship', command: 'ship', args: ['mcp', 'serve'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
-    { name: 'github', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
-    { name: 'filesystem', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
-  ],
-  subagents: [
-    { id: 'react-designer', name: 'react-designer', description: 'UI components, shadcn, Tailwind' },
-    { id: 'react-architect', name: 'react-architect', description: 'Data flow, TanStack, state' },
-  ],
-  permissions: {
-    tools: { allow: ['Read', 'Grep', 'Glob', 'Bash(git *)'], deny: ['Bash(rm -rf *)'] },
-    filesystem: { allow: ['apps/web/**'], deny: ['.env', 'credentials.*'] },
-    commands: { allow: ['git status', 'pnpm *'], deny: ['git push --force'] },
-    network: { policy: 'allow-list', allow_hosts: ['localhost', 'api.github.com'] },
-    agent: { require_confirmation: [] },
-  },
-  permissionPreset: 'ship-guarded',
-  settings: { ...DEFAULT_SETTINGS },
-  hooks: [
-    { trigger: 'PreToolUse', command: './scripts/check-no-compat-surface.sh', providers: ['claude', 'gemini'] },
-    { trigger: 'Stop', command: 'ship mcp sync-permissions', providers: ['claude'] },
-    { trigger: 'Notification', command: "notify-send 'Agent' '$MESSAGE'", providers: ['claude'] },
-  ],
-  rules: [
-    { file_name: '010-no-compat.md', content: 'No backward compatibility without consumers. Make hard breaks...' },
-    { file_name: '020-test-policy.md', content: 'Add or update tests for every bug fix and behavior change...' },
-  ],
-  mcpToolStates: {
-    github: {
-      get_file_contents: 'allow',
-      search_code: 'allow',
-      search_repositories: 'allow',
-      list_issues: 'allow',
-      get_issue: 'allow',
-      get_pull_request: 'allow',
-      list_pull_requests: 'allow',
-      get_pull_request_diff: 'allow',
-      create_issue: 'ask',
-      create_pull_request: 'deny',
-      merge_pull_request: 'deny',
-      push_files: 'deny',
-      create_or_update_file: 'deny',
-      create_repository: 'deny',
-      fork_repository: 'deny',
-      create_branch: 'deny',
-      update_issue: 'deny',
-      add_issue_comment: 'deny',
-    },
-  },
-}
-
+// Demo data for MCP tool panels (tech debt — should come from runtime tool discovery)
 export const GITHUB_TOOLS: McpToolConfig[] = [
   { name: 'get_file_contents', description: 'Read file content from a repository', group: 'read' },
   { name: 'search_code', description: 'Search for code across repositories', group: 'read' },
@@ -149,7 +55,6 @@ export const GITHUB_TOOLS: McpToolConfig[] = [
   { name: 'add_issue_comment', description: 'Add a comment to an issue', group: 'admin' },
 ]
 
-// Tool configs for demo servers
 export const MCP_TOOL_REGISTRY: Record<string, McpToolConfig[]> = {
   github: GITHUB_TOOLS,
   ship: [

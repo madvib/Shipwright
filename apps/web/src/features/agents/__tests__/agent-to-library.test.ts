@@ -1,19 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { agentToLibrary } from '../agent-to-library'
-import type { AgentProfile } from '../types'
-import { DEFAULT_SETTINGS } from '../types'
+import type { ResolvedAgentProfile } from '../types'
 import { DEFAULT_LIBRARY } from '@ship/ui'
 import type { ProjectLibrary } from '@ship/ui'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-function makeTestAgent(overrides?: Partial<AgentProfile>): AgentProfile {
+function makeTestAgent(overrides?: Partial<ResolvedAgentProfile>): ResolvedAgentProfile {
   return {
-    id: 'test-agent',
-    name: 'Test Agent',
-    description: 'A test agent',
-    providers: ['claude', 'gemini'],
-    version: '0.1.0',
+    profile: {
+      id: 'test-agent',
+      name: 'Test Agent',
+      description: 'A test agent',
+      providers: ['claude', 'gemini'],
+      version: '0.1.0',
+    },
     skills: [
       { id: 'skill-a', name: 'skill-a', content: 'Skill A content', source: 'custom' },
       { id: 'skill-b', name: 'skill-b', content: 'Skill B content', source: 'community' },
@@ -21,23 +22,17 @@ function makeTestAgent(overrides?: Partial<AgentProfile>): AgentProfile {
     mcpServers: [
       { name: 'github', command: 'npx', args: ['-y', '@mcp/github'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
     ],
-    subagents: [],
     permissions: {
-      tools: { allow: ['Read', 'Glob'], deny: ['Bash(rm -rf *)'] },
-      filesystem: { allow: ['src/**'], deny: ['.env'] },
-      commands: { allow: ['git status'], deny: [] },
-      network: { policy: 'none', allow_hosts: [] },
-      agent: { require_confirmation: [] },
+      preset: 'ship-guarded',
+      tools_allow: ['Read', 'Glob'],
+      tools_deny: ['Bash(rm -rf *)'],
     },
-    permissionPreset: 'ship-guarded',
-    settings: { ...DEFAULT_SETTINGS },
     hooks: [
-      { trigger: 'PreToolUse', command: './check.sh', providers: ['claude'] },
+      { id: 'hook-1', trigger: 'PreToolUse', command: './check.sh' },
     ],
     rules: [
       { file_name: 'no-compat.md', content: 'No backward compat' },
     ],
-    mcpToolStates: {},
     ...overrides,
   }
 }
@@ -86,7 +81,7 @@ describe('agentToLibrary', () => {
     const mode = result.modes?.find((m) => m.id === 'agent-test-agent')
     expect(mode).toBeDefined()
     expect(mode!.name).toBe('Test Agent')
-    expect(mode!.target_agents).toEqual(['claude', 'gemini'])
+    expect(mode!.target_agents).toEqual(['claude', 'gemini', 'codex', 'cursor'])
     expect(mode!.skills).toEqual(['skill-a', 'skill-b'])
     expect(mode!.mcp_servers).toEqual(['github'])
     expect(mode!.rules).toEqual(['no-compat.md'])
@@ -133,13 +128,6 @@ describe('agentToLibrary', () => {
     expect(ruleNames).toContain('base-rule.md')
     expect(ruleNames).toContain('no-compat.md')
     expect(ruleNames).toHaveLength(2)
-  })
-
-  it('replaces base permissions with agent permissions', () => {
-    const agent = makeTestAgent()
-    const result = agentToLibrary(agent, makeBaseLibrary())
-
-    expect(result.permissions).toEqual(agent.permissions)
   })
 
   it('converts and appends agent hooks', () => {

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from '@storybook/test'
 import { PermissionsDialog } from './PermissionsDialog'
-import type { Permissions } from '@ship/ui'
+import type { ProfilePermissions } from '@ship/ui'
 
 const meta: Meta<typeof PermissionsDialog> = {
   title: 'Agents/Dialogs/PermissionsDialog',
@@ -11,29 +11,13 @@ const meta: Meta<typeof PermissionsDialog> = {
 export default meta
 type Story = StoryObj<typeof PermissionsDialog>
 
-const fullPermissions: Permissions = {
-  tools: {
-    allow: ['Read', 'Grep', 'Glob', 'Bash(git *)'],
-    deny: ['Bash(rm -rf *)'],
-  },
-  filesystem: {
-    allow: ['apps/web/**', 'packages/primitives/**'],
-    deny: ['.env', 'credentials.*', 'secrets/'],
-  },
-  commands: {
-    allow: ['git status', 'pnpm *', 'npm test'],
-    deny: ['git push --force', 'rm -rf /'],
-  },
-  network: {
-    policy: 'allow-list',
-    allow_hosts: ['localhost', 'api.github.com', 'registry.npmjs.org'],
-  },
-  agent: {
-    require_confirmation: ['deploy', 'publish'],
-  },
+const fullPermissions: ProfilePermissions = {
+  preset: 'ship-guarded',
+  tools_allow: ['Read', 'Grep', 'Glob', 'Bash(git *)'],
+  tools_deny: ['Bash(rm -rf *)'],
 }
 
-/** Fully populated permissions across all dimensions. */
+/** Fully populated permissions. */
 export const FullPermissions: Story = {
   args: {
     open: true,
@@ -53,26 +37,14 @@ export const EmptyPermissions: Story = {
   },
 }
 
-/** Permissions with only tools and filesystem configured. */
+/** Permissions with only tools_allow configured. */
 export const PartialPermissions: Story = {
   args: {
     open: true,
     onOpenChange: fn(),
     permissions: {
-      tools: { allow: ['Read', 'Grep'], deny: [] },
-      filesystem: { allow: ['src/**'], deny: ['.env'] },
-    },
-    onSave: fn(),
-  },
-}
-
-/** Network set to unrestricted with no host allowlist. */
-export const UnrestrictedNetwork: Story = {
-  args: {
-    open: true,
-    onOpenChange: fn(),
-    permissions: {
-      network: { policy: 'unrestricted', allow_hosts: [] },
+      tools_allow: ['Read', 'Grep'],
+      tools_deny: [],
     },
     onSave: fn(),
   },

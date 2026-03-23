@@ -1,31 +1,31 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Pencil, X } from 'lucide-react'
-import type { AgentProfile } from '../types'
+import type { ResolvedAgentProfile } from '../types'
 import { getFieldEnum } from '#/features/agents/schema-hints'
 import { validateAgentProfile } from '#/features/agents/schema-validation'
 
 interface EditAgentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  profile: AgentProfile
-  onSave: (patch: { name: string; description: string; providers: string[] }) => void
+  profile: ResolvedAgentProfile
+  onSave: (patch: Partial<ResolvedAgentProfile>) => void
 }
 
 const inputCls = 'flex w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none transition'
 
 export function EditAgentDialog({ open, onOpenChange, profile, onSave }: EditAgentDialogProps) {
-  const [name, setName] = useState(profile.name)
-  const [description, setDescription] = useState(profile.description)
-  const [selectedProviders, setSelectedProviders] = useState<string[]>(profile.providers)
+  const [name, setName] = useState(profile.profile.name)
+  const [description, setDescription] = useState(profile.profile.description ?? '')
+  const [selectedProviders, setSelectedProviders] = useState<string[]>(profile.profile.providers ?? [])
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const nameRef = useRef<HTMLInputElement>(null)
   const schemaProviders = useMemo(() => getFieldEnum('agent.providers'), [])
 
   useEffect(() => {
     if (!open) return
-    setName(profile.name)
-    setDescription(profile.description)
-    setSelectedProviders([...profile.providers])
+    setName(profile.profile.name)
+    setDescription(profile.profile.description ?? '')
+    setSelectedProviders([...(profile.profile.providers ?? [])])
     requestAnimationFrame(() => nameRef.current?.focus())
   }, [open, profile])
 
@@ -48,11 +48,14 @@ export function EditAgentDialog({ open, onOpenChange, profile, onSave }: EditAge
   const handleSave = () => {
     if (!canSave) return
     // Validate providers against schema
-    const draft: AgentProfile = {
+    const draft: ResolvedAgentProfile = {
       ...profile,
-      name: name.trim(),
-      description: description.trim(),
-      providers: selectedProviders,
+      profile: {
+        ...profile.profile,
+        name: name.trim(),
+        description: description.trim(),
+        providers: selectedProviders,
+      },
     }
     const result = validateAgentProfile(draft)
     if (!result.valid) {
@@ -60,7 +63,7 @@ export function EditAgentDialog({ open, onOpenChange, profile, onSave }: EditAge
       return
     }
     setValidationErrors([])
-    onSave({ name: name.trim(), description: description.trim(), providers: selectedProviders })
+    onSave({ profile: { ...profile.profile, name: name.trim(), description: description.trim(), providers: selectedProviders } })
     close()
   }
 

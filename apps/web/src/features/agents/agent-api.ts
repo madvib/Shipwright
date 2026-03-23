@@ -3,20 +3,20 @@
 // These functions are kept as stubs to avoid breaking callers.
 // Agent data lives exclusively in localStorage via useAgentStore.
 
-import type { AgentProfile } from './types'
+import type { ResolvedAgentProfile } from './types'
 
-export async function fetchAgents(): Promise<AgentProfile[]> {
+export async function fetchAgents(): Promise<ResolvedAgentProfile[]> {
   // No server storage -- return empty to let localStorage be authoritative
   return []
 }
 
-export async function createAgentApi(_agent: AgentProfile): Promise<void> {
+export async function createAgentApi(_agent: ResolvedAgentProfile): Promise<void> {
   // No-op: server profiles table removed
 }
 
 export async function updateAgentApi(
   _id: string,
-  _agent: AgentProfile,
+  _agent: ResolvedAgentProfile,
 ): Promise<void> {
   // No-op: server profiles table removed
 }

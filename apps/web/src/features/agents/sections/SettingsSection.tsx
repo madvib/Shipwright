@@ -1,10 +1,18 @@
 import { Settings, ChevronDown } from 'lucide-react'
-import type { AgentSettings } from '../types'
 import { SectionShell, OrangeDot } from './SectionShell'
 
+// Placeholder settings shape -- this component is unused but kept for
+// potential future use. The old AgentSettings type was removed.
+interface AgentSettingsView {
+  model: string
+  defaultMode: string
+  extendedThinking: boolean
+  autoMemory: boolean
+}
+
 interface SettingsSectionProps {
-  settings: AgentSettings
-  onUpdate: (patch: Partial<AgentSettings>) => void
+  settings: AgentSettingsView
+  onUpdate: (patch: Partial<AgentSettingsView>) => void
 }
 
 export function SettingsSection({ settings, onUpdate }: SettingsSectionProps) {

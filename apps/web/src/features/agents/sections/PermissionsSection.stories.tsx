@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from '@storybook/test'
 import { PermissionsSection } from './PermissionsSection'
-import type { Permissions } from '@ship/ui'
+import type { ProfilePermissions } from '@ship/ui'
 
 const meta: Meta<typeof PermissionsSection> = {
   title: 'Agents/PermissionsSection',
@@ -11,20 +11,15 @@ const meta: Meta<typeof PermissionsSection> = {
 export default meta
 type Story = StoryObj<typeof PermissionsSection>
 
-const fullPermissions: Permissions = {
-  tools: { allow: ['Read', 'Grep', 'Glob', 'Bash(git *)'], deny: ['Bash(rm -rf *)'] },
-  filesystem: { allow: ['apps/web/**', 'packages/**'], deny: ['.env', 'credentials.*'] },
-  commands: { allow: ['git status', 'pnpm *', 'vitest'], deny: ['git push --force'] },
-  network: { policy: 'allow-list', allow_hosts: ['localhost', 'api.github.com', 'registry.npmjs.org'] },
-  agent: { require_confirmation: [] },
+const fullPermissions: ProfilePermissions = {
+  preset: 'ship-guarded',
+  tools_allow: ['Read', 'Grep', 'Glob', 'Bash(git *)'],
+  tools_deny: ['Bash(rm -rf *)'],
 }
 
-const emptyPermissions: Permissions = {
-  tools: { allow: [], deny: [] },
-  filesystem: { allow: [], deny: [] },
-  commands: { allow: [], deny: [] },
-  network: { policy: 'allow-list', allow_hosts: [] },
-  agent: { require_confirmation: [] },
+const emptyPermissions: ProfilePermissions = {
+  tools_allow: [],
+  tools_deny: [],
 }
 
 /** Ship-guarded preset with realistic allow/deny rules. */
@@ -32,9 +27,7 @@ export const ShipGuarded: Story = {
   args: {
     permissions: fullPermissions,
     activePreset: 'ship-guarded',
-    maxTurns: 25,
     onPresetChange: fn(),
-    onMaxTurnsChange: fn(),
     onEdit: fn(),
   },
 }
@@ -45,7 +38,6 @@ export const LockedDown: Story = {
     permissions: emptyPermissions,
     activePreset: 'locked-down',
     onPresetChange: fn(),
-    onMaxTurnsChange: fn(),
     onEdit: fn(),
   },
 }
@@ -54,27 +46,20 @@ export const LockedDown: Story = {
 export const Open: Story = {
   args: {
     permissions: {
-      tools: { allow: ['*'], deny: [] },
-      filesystem: { allow: ['**'], deny: [] },
-      commands: { allow: ['*'], deny: [] },
-      network: { policy: 'allow-list', allow_hosts: ['*'] },
-      agent: { require_confirmation: [] },
+      tools_allow: ['*'],
+      tools_deny: [],
     },
     activePreset: 'open',
-    maxTurns: undefined,
     onPresetChange: fn(),
-    onMaxTurnsChange: fn(),
   },
 }
 
-/** Custom preset with specific max turns value. */
-export const CustomWithMaxTurns: Story = {
+/** Custom preset. */
+export const CustomPreset: Story = {
   args: {
     permissions: fullPermissions,
     activePreset: 'custom',
-    maxTurns: 10,
     onPresetChange: fn(),
-    onMaxTurnsChange: fn(),
     onEdit: fn(),
   },
 }

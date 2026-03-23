@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from '@storybook/test'
 import { HooksSection } from './HooksSection'
-import type { HookConfig } from '../types'
+import type { HookConfig } from '@ship/ui'
 
 const meta: Meta<typeof HooksSection> = {
   title: 'Agents/HooksSection',
@@ -12,9 +12,9 @@ export default meta
 type Story = StoryObj<typeof HooksSection>
 
 const demoHooks: HookConfig[] = [
-  { trigger: 'PreToolUse', command: './scripts/check-no-compat-surface.sh', providers: ['claude', 'gemini'] },
-  { trigger: 'Stop', command: 'ship mcp sync-permissions', providers: ['claude'] },
-  { trigger: 'Notification', command: "notify-send 'Agent' '$MESSAGE'", providers: ['claude'] },
+  { id: 'hook-1', trigger: 'PreToolUse', command: './scripts/check-no-compat-surface.sh' },
+  { id: 'hook-2', trigger: 'Stop', command: 'ship mcp sync-permissions' },
+  { id: 'hook-3', trigger: 'Notification', command: "notify-send 'Agent' '$MESSAGE'" },
 ]
 
 /** Empty state -- no hooks configured, only the add button. */
@@ -60,9 +60,9 @@ export const LongCommand: Story = {
   args: {
     hooks: [
       {
+        id: 'hook-4',
         trigger: 'PreToolUse',
         command: './scripts/validate-all-the-things.sh --strict --no-cache --format=json --output=/tmp/validation-results.log 2>&1',
-        providers: ['claude', 'gemini', 'codex', 'cursor'],
       },
     ],
     onAdd: fn(),

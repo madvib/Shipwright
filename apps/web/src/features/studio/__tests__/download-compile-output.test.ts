@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { collectProviderFiles, collectShipSourceFiles, buildShipManifest, buildAgentConfig, buildZip, crc32 } from '../download-compile-output'
 import type { CompileResult } from '#/features/compiler/types'
-import type { AgentProfile } from '#/features/agents/types'
-import { DEFAULT_SETTINGS } from '#/features/agents/types'
-import { DEFAULT_PERMISSIONS } from '@ship/ui'
+import type { ResolvedAgentProfile } from '#/features/agents/types'
 import type { ProjectLibrary } from '@ship/ui'
 
 function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
@@ -192,13 +190,15 @@ describe('buildZip', () => {
   })
 })
 
-function makeAgent(overrides: Partial<AgentProfile> = {}): AgentProfile {
+function makeAgent(overrides: Partial<ResolvedAgentProfile> = {}): ResolvedAgentProfile {
   return {
-    id: 'test-agent',
-    name: 'Test Agent',
-    description: 'A test agent for unit tests',
-    providers: ['claude', 'gemini'],
-    version: '0.1.0',
+    profile: {
+      id: 'test-agent',
+      name: 'Test Agent',
+      description: 'A test agent for unit tests',
+      providers: ['claude', 'gemini'],
+      version: '0.1.0',
+    },
     skills: [
       { id: 'skill-a', name: 'skill-a', content: '', source: 'custom' },
       { id: 'skill-b', name: 'skill-b', content: '', source: 'community' },
@@ -207,13 +207,9 @@ function makeAgent(overrides: Partial<AgentProfile> = {}): AgentProfile {
       { name: 'github', command: 'npx', args: [], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
       { name: 'filesystem', command: 'npx', args: [], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
     ],
-    subagents: [],
-    permissions: { ...DEFAULT_PERMISSIONS },
-    permissionPreset: 'ship-guarded',
-    settings: { ...DEFAULT_SETTINGS },
+    permissions: { preset: 'ship-guarded' },
     hooks: [],
     rules: [],
-    mcpToolStates: {},
     ...overrides,
   }
 }
@@ -284,7 +280,7 @@ describe('buildAgentConfig', () => {
     expect(config.agent.providers).toEqual(['claude', 'gemini'])
     expect(config.skills.refs).toEqual(['skill-a', 'skill-b'])
     expect(config.mcp.servers).toEqual(['github', 'filesystem'])
-    expect(config.permissions).toEqual(DEFAULT_PERMISSIONS)
+    expect(config.permissions).toEqual({ preset: 'ship-guarded' })
   })
 
   it('handles agent with no skills or mcp servers', () => {

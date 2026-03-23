@@ -1,5 +1,5 @@
 import { Link2 } from 'lucide-react'
-import type { HookConfig } from '../types'
+import type { HookConfig } from '@ship/ui'
 import { SectionShell } from './SectionShell'
 
 interface HooksSectionProps {
@@ -31,20 +31,11 @@ export function HooksSection({ hooks, onAdd, onEdit, onRemove }: HooksSectionPro
             <span className="flex-1 truncate font-mono text-[11px] text-muted-foreground/60">
               {hook.command}
             </span>
-            <div className="flex gap-1 shrink-0">
-              {hook.providers.map((p) => (
-                <span
-                  key={p}
-                  className={`size-1.5 rounded-full ${
-                    p === 'claude'
-                      ? 'bg-primary'
-                      : p === 'gemini'
-                        ? 'bg-blue-400'
-                        : 'bg-muted-foreground/40'
-                  }`}
-                />
-              ))}
-            </div>
+            {hook.matcher && (
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground/50">
+                {hook.matcher}
+              </span>
+            )}
             {onRemove && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove(i) }}

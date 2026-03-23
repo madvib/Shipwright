@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from '@storybook/test'
 import { EditAgentDialog } from './EditAgentDialog'
-import { DEMO_AGENT } from '../types'
+import type { ResolvedAgentProfile } from '../types'
 
 const meta: Meta<typeof EditAgentDialog> = {
   title: 'Agents/Dialogs/EditAgentDialog',
@@ -11,12 +11,27 @@ const meta: Meta<typeof EditAgentDialog> = {
 export default meta
 type Story = StoryObj<typeof EditAgentDialog>
 
+const demoProfile: ResolvedAgentProfile = {
+  profile: {
+    id: 'web-lane',
+    name: 'web-lane',
+    description: 'Web lane specialist for apps/web/.',
+    providers: ['claude', 'gemini'],
+    version: 'v0.1.0',
+  },
+  skills: [],
+  mcpServers: [],
+  permissions: { preset: 'ship-guarded' },
+  hooks: [],
+  rules: [],
+}
+
 /** Editing the demo agent profile with typical values. */
 export const Default: Story = {
   args: {
     open: true,
     onOpenChange: fn(),
-    profile: DEMO_AGENT,
+    profile: demoProfile,
     onSave: fn(),
   },
 }
@@ -27,11 +42,8 @@ export const MinimalAgent: Story = {
     open: true,
     onOpenChange: fn(),
     profile: {
-      ...DEMO_AGENT,
-      name: 'qa-runner',
-      description: '',
-      providers: ['codex'],
-      version: 'v0.0.1',
+      ...demoProfile,
+      profile: { ...demoProfile.profile, name: 'qa-runner', description: '', providers: ['codex'], version: 'v0.0.1' },
     },
     onSave: fn(),
   },
@@ -43,10 +55,8 @@ export const AllProviders: Story = {
     open: true,
     onOpenChange: fn(),
     profile: {
-      ...DEMO_AGENT,
-      name: 'full-stack',
-      description: 'Cross-provider agent targeting every supported coding assistant.',
-      providers: ['claude', 'gemini', 'codex', 'cursor'],
+      ...demoProfile,
+      profile: { ...demoProfile.profile, name: 'full-stack', description: 'Cross-provider agent.', providers: ['claude', 'gemini', 'codex', 'cursor'] },
     },
     onSave: fn(),
   },
@@ -58,11 +68,13 @@ export const LongContent: Story = {
     open: true,
     onOpenChange: fn(),
     profile: {
-      ...DEMO_AGENT,
-      name: 'extremely-long-agent-name-that-should-wrap-or-truncate',
-      description:
-        'This agent handles complex cross-cutting concerns including code review, refactoring, documentation, testing, deployment, monitoring, and incident response across the entire monorepo with specialized knowledge of every subsystem.',
-      providers: ['claude', 'gemini'],
+      ...demoProfile,
+      profile: {
+        ...demoProfile.profile,
+        name: 'extremely-long-agent-name-that-should-wrap-or-truncate',
+        description: 'This agent handles complex cross-cutting concerns including code review, refactoring, and more.',
+        providers: ['claude', 'gemini'],
+      },
     },
     onSave: fn(),
   },

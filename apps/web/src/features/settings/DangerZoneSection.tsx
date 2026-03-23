@@ -31,7 +31,7 @@ export function DangerZoneSection() {
     setDeletingAgents(true)
     try {
       for (const agent of agents) {
-        deleteAgent(agent.id)
+        deleteAgent(agent.profile.id)
       }
       window.localStorage.removeItem(AGENT_STORAGE_KEY)
       toast.success('All agents deleted')

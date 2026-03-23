@@ -1,9 +1,7 @@
 // Agent templates derived from .ship/agents/templates/*.toml
 // These are static TypeScript objects since TOML can't be read at browser runtime yet.
 
-import type { AgentProfile } from './types'
-import { DEFAULT_SETTINGS } from './types'
-import { DEFAULT_PERMISSIONS } from '@ship/ui'
+import type { ResolvedAgentProfile } from './types'
 
 export interface AgentTemplate {
   id: string
@@ -96,14 +94,10 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
 export function templateToAgent(
   template: AgentTemplate,
   name: string,
-): Partial<AgentProfile> {
+): Partial<ResolvedAgentProfile> {
   return {
-    name,
-    description: template.description,
-    providers: [...template.providers],
-    permissionPreset: template.permissionPreset,
-    permissions: { ...DEFAULT_PERMISSIONS },
-    settings: { ...DEFAULT_SETTINGS },
+    profile: { id: '', name, description: template.description, providers: [...template.providers] },
+    permissions: { preset: template.permissionPreset },
     rules: [
       {
         file_name: '001-role.md',

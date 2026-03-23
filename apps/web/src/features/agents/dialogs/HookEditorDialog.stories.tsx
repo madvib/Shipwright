@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from '@storybook/test'
 import { HookEditorDialog } from './HookEditorDialog'
-import type { HookConfig } from '../types'
+import type { HookConfig } from '@ship/ui'
 
 const meta: Meta<typeof HookEditorDialog> = {
   title: 'Agents/Dialogs/HookEditorDialog',
@@ -12,9 +12,9 @@ export default meta
 type Story = StoryObj<typeof HookEditorDialog>
 
 const demoHook: HookConfig = {
+  id: 'hook-1',
   trigger: 'PreToolUse',
   command: './scripts/check-no-compat-surface.sh',
-  providers: ['claude', 'gemini'],
   matcher: 'Edit|Write',
 }
 
@@ -45,24 +45,24 @@ export const EditWithoutMatcher: Story = {
     open: true,
     onOpenChange: fn(),
     hook: {
+      id: 'hook-2',
       trigger: 'Stop',
       command: 'ship mcp sync-permissions',
-      providers: ['claude'],
     },
     onSave: fn(),
     onDelete: fn(),
   },
 }
 
-/** Editing a hook with all providers selected. */
+/** Editing a hook with a long command. */
 export const AllProviders: Story = {
   args: {
     open: true,
     onOpenChange: fn(),
     hook: {
+      id: 'hook-3',
       trigger: 'Notification',
       command: "notify-send 'Agent' '$MESSAGE'",
-      providers: ['claude', 'gemini', 'codex', 'cursor'],
       matcher: '',
     },
     onSave: fn(),

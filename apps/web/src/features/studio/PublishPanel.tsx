@@ -211,7 +211,7 @@ function DistributeSection({ hasContent, isCompiled, compileState, selectedProvi
 }) {
   const [cliOpen, setCliOpen] = useState(false)
   const { agents, activeId } = useAgentStore()
-  const activeAgent = activeId ? agents.find((a) => a.id === activeId) : undefined
+  const activeAgent = activeId ? agents.find((a) => a.profile.id === activeId) : undefined
 
   const handleDownload = () => {
     if (compileState.status !== 'ok') return
@@ -228,7 +228,7 @@ function DistributeSection({ hasContent, isCompiled, compileState, selectedProvi
       <DistAction icon={<Upload className="size-3.5" />} label="Publish to registry" desc="Share with the community" disabled={!hasContent} onClick={onPublish} />
       <DistAction icon={<Download className="size-3.5" />} label="Download files" desc="Export compiled configs" disabled={!isCompiled} onClick={handleDownload} />
       <DistAction icon={<Terminal className="size-3.5" />} label="Use with CLI" desc="ship use <agent>" disabled={false} onClick={() => setCliOpen(true)} />
-      <CliUsagePopover open={cliOpen} onOpenChange={setCliOpen} agentName={activeAgent?.name} />
+      <CliUsagePopover open={cliOpen} onOpenChange={setCliOpen} agentName={activeAgent?.profile.name} />
     </div>
   )
 }

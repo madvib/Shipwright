@@ -3,31 +3,26 @@ import {
   validateAgentProfile,
   getPermissionPresets,
   getProviderIds,
-  getDefaultModes,
   getPluginScopes,
 } from '../schema-validation'
-import type { AgentProfile } from '../types'
-import { DEFAULT_SETTINGS } from '../types'
-import { DEFAULT_PERMISSIONS } from '@ship/ui'
+import type { ResolvedAgentProfile } from '../types'
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-function makeValidProfile(overrides?: Partial<AgentProfile>): AgentProfile {
+function makeValidProfile(overrides?: Partial<ResolvedAgentProfile>): ResolvedAgentProfile {
   return {
-    id: 'test-agent',
-    name: 'Test Agent',
-    description: 'A test agent',
-    providers: ['claude'],
-    version: '0.1.0',
+    profile: {
+      id: 'test-agent',
+      name: 'Test Agent',
+      description: 'A test agent',
+      providers: ['claude'],
+      version: '0.1.0',
+    },
     skills: [],
     mcpServers: [],
-    subagents: [],
-    permissions: DEFAULT_PERMISSIONS,
-    permissionPreset: 'ship-standard',
-    settings: { ...DEFAULT_SETTINGS },
+    permissions: { preset: 'ship-standard' },
     hooks: [],
     rules: [],
-    mcpToolStates: {},
     ...overrides,
   }
 }
@@ -42,20 +37,26 @@ describe('validateAgentProfile', () => {
   })
 
   it('fails when name is empty', () => {
-    const result = validateAgentProfile(makeValidProfile({ name: '' }))
+    const result = validateAgentProfile(makeValidProfile({
+      profile: { id: 'test-agent', name: '', providers: ['claude'] },
+    }))
     expect(result.valid).toBe(false)
     expect(result.errors.some((e) => e.path === 'agent.name')).toBe(true)
   })
 
   it('fails when name is whitespace only', () => {
-    const result = validateAgentProfile(makeValidProfile({ name: '   ' }))
+    const result = validateAgentProfile(makeValidProfile({
+      profile: { id: 'test-agent', name: '   ', providers: ['claude'] },
+    }))
     expect(result.valid).toBe(false)
     expect(result.errors.some((e) => e.path === 'agent.name')).toBe(true)
   })
 
   it('fails for invalid provider', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ providers: ['claude', 'invalid-provider'] }),
+      makeValidProfile({
+        profile: { id: 'test-agent', name: 'Test', providers: ['claude', 'invalid-provider'] },
+      }),
     )
     expect(result.valid).toBe(false)
     const providerError = result.errors.find((e) => e.path === 'agent.providers')
@@ -65,14 +66,16 @@ describe('validateAgentProfile', () => {
 
   it('passes for all valid providers', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ providers: ['claude', 'cursor', 'codex', 'gemini'] }),
+      makeValidProfile({
+        profile: { id: 'test-agent', name: 'Test', providers: ['claude', 'cursor', 'codex', 'gemini'] },
+      }),
     )
     expect(result.valid).toBe(true)
   })
 
   it('fails for invalid permission preset', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ permissionPreset: 'nonexistent-preset' }),
+      makeValidProfile({ permissions: { preset: 'nonexistent-preset' } }),
     )
     expect(result.valid).toBe(false)
     const presetError = result.errors.find((e) => e.path === 'permissions.preset')
@@ -82,21 +85,23 @@ describe('validateAgentProfile', () => {
 
   it('passes for "custom" permission preset (special case)', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ permissionPreset: 'custom' }),
+      makeValidProfile({ permissions: { preset: 'custom' } }),
     )
     expect(result.valid).toBe(true)
   })
 
   it('passes for valid permission presets', () => {
     for (const preset of ['ship-readonly', 'ship-standard', 'ship-autonomous', 'ship-elevated']) {
-      const result = validateAgentProfile(makeValidProfile({ permissionPreset: preset }))
+      const result = validateAgentProfile(makeValidProfile({ permissions: { preset } }))
       expect(result.valid).toBe(true)
     }
   })
 
   it('fails for invalid id pattern', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ id: 'UPPERCASE_ID' }),
+      makeValidProfile({
+        profile: { id: 'UPPERCASE_ID', name: 'Test', providers: ['claude'] },
+      }),
     )
     expect(result.valid).toBe(false)
     expect(result.errors.some((e) => e.path === 'agent.id')).toBe(true)
@@ -104,27 +109,18 @@ describe('validateAgentProfile', () => {
 
   it('passes for valid id pattern', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ id: 'valid-agent-123' }),
-    )
-    expect(result.valid).toBe(true)
-  })
-
-  it('fails for invalid default mode', () => {
-    const result = validateAgentProfile(
       makeValidProfile({
-        settings: { ...DEFAULT_SETTINGS, defaultMode: 'invalid-mode' },
+        profile: { id: 'valid-agent-123', name: 'Test', providers: ['claude'] },
       }),
     )
-    expect(result.valid).toBe(false)
-    expect(result.errors.some((e) => e.path === 'permissions.default_mode')).toBe(true)
+    expect(result.valid).toBe(true)
   })
 
   it('collects multiple errors at once', () => {
     const result = validateAgentProfile(
       makeValidProfile({
-        name: '',
-        providers: ['bad-provider'],
-        permissionPreset: 'bad-preset',
+        profile: { id: 'test', name: '', providers: ['bad-provider'] },
+        permissions: { preset: 'bad-preset' },
       }),
     )
     expect(result.valid).toBe(false)
@@ -151,13 +147,6 @@ describe('schema enum extractors', () => {
     expect(presets).toContain('ship-autonomous')
     expect(presets).toContain('ship-elevated')
     expect(presets).toHaveLength(4)
-  })
-
-  it('getDefaultModes returns schema-defined modes', () => {
-    const modes = getDefaultModes()
-    expect(modes).toContain('default')
-    expect(modes).toContain('plan')
-    expect(modes).toContain('bypassPermissions')
   })
 
   it('getPluginScopes returns schema-defined scopes', () => {

@@ -3,7 +3,7 @@
 // No external validation library — focused validator for our own schema.
 
 import agentSchema from '../../../../../schemas/agent.schema.json'
-import type { AgentProfile } from './types'
+import type { ResolvedAgentProfile } from './types'
 
 export interface FieldError {
   path: string
@@ -79,16 +79,17 @@ const PLUGIN_SCOPE_ENUM = getEnumFromNode(
 
 // ── Validate ────────────────────────────────────────────────────────────────
 
-export function validateAgentProfile(profile: AgentProfile): ValidationResult {
+export function validateAgentProfile(profile: ResolvedAgentProfile): ValidationResult {
   const errors: FieldError[] = []
+  const meta = profile.profile
 
   // Required: name (maps to agent.name in schema)
-  if (!profile.name || typeof profile.name !== 'string' || !profile.name.trim()) {
+  if (!meta.name || typeof meta.name !== 'string' || !meta.name.trim()) {
     errors.push({ path: 'agent.name', message: 'Name is required.' })
   }
 
   // ID pattern: ^[a-z0-9-]+$
-  if (profile.id && !/^[a-z0-9-]+$/.test(profile.id)) {
+  if (meta.id && !/^[a-z0-9-]+$/.test(meta.id)) {
     errors.push({
       path: 'agent.id',
       message: 'ID must contain only lowercase letters, digits, and hyphens.',
@@ -96,8 +97,8 @@ export function validateAgentProfile(profile: AgentProfile): ValidationResult {
   }
 
   // Providers: each must be in enum
-  if (Array.isArray(profile.providers)) {
-    for (const p of profile.providers) {
+  if (Array.isArray(meta.providers)) {
+    for (const p of meta.providers) {
       if (PROVIDER_ENUM.length > 0 && !PROVIDER_ENUM.includes(p)) {
         errors.push({
           path: 'agent.providers',
@@ -108,27 +109,16 @@ export function validateAgentProfile(profile: AgentProfile): ValidationResult {
   }
 
   // Permission preset: must be in enum (if set and non-empty)
+  const permPreset = profile.permissions?.preset
   if (
-    profile.permissionPreset &&
-    profile.permissionPreset !== 'custom' &&
+    permPreset &&
+    permPreset !== 'custom' &&
     PERMISSION_PRESET_ENUM.length > 0 &&
-    !PERMISSION_PRESET_ENUM.includes(profile.permissionPreset)
+    !PERMISSION_PRESET_ENUM.includes(permPreset)
   ) {
     errors.push({
       path: 'permissions.preset',
-      message: `Invalid permission preset "${profile.permissionPreset}". Must be one of: ${PERMISSION_PRESET_ENUM.join(', ')}`,
-    })
-  }
-
-  // Settings.defaultMode: must be in enum (if set)
-  if (
-    profile.settings?.defaultMode &&
-    DEFAULT_MODE_ENUM.length > 0 &&
-    !DEFAULT_MODE_ENUM.includes(profile.settings.defaultMode)
-  ) {
-    errors.push({
-      path: 'permissions.default_mode',
-      message: `Invalid default mode "${profile.settings.defaultMode}". Must be one of: ${DEFAULT_MODE_ENUM.join(', ')}`,
+      message: `Invalid permission preset "${permPreset}". Must be one of: ${PERMISSION_PRESET_ENUM.join(', ')}`,
     })
   }
 

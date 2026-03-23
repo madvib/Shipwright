@@ -5,18 +5,16 @@ import { AgentActivityBar, SECTION_DEFS } from '#/features/agents/AgentActivityB
 import { AgentStickyHeader } from '#/features/agents/AgentStickyHeader'
 import { SkillsSection } from '#/features/agents/sections/SkillsSection'
 import { McpSection } from '#/features/agents/sections/McpSection'
-import { SubagentsSection } from '#/features/agents/sections/SubagentsSection'
 import { PermissionsSection } from '#/features/agents/sections/PermissionsSection'
 import { ProviderSettingsSection } from '#/features/agents/sections/ProviderSettingsSection'
 import { RulesSection } from '#/features/agents/sections/RulesSection'
 import { AddSkillDialog } from '#/features/agents/dialogs/AddSkillDialog'
 import { AddMcpDialog } from '#/features/agents/dialogs/AddMcpDialog'
-import { AddSubagentDialog } from '#/features/agents/dialogs/AddSubagentDialog'
 import { EditAgentDialog } from '#/features/agents/dialogs/EditAgentDialog'
 import { PermissionsDialog } from '#/features/agents/dialogs/PermissionsDialog'
 import { RuleEditorDialog } from '#/features/agents/dialogs/RuleEditorDialog'
-import type { AgentProfile, ToolPermission } from '#/features/agents/types'
-import type { Skill, Rule, Permissions } from '@ship/ui'
+import type { ResolvedAgentProfile, ToolPermission, ToolToggleState } from '#/features/agents/types'
+import type { Skill, Rule, ProfilePermissions } from '@ship/ui'
 
 import { AgentDetailSkeleton } from '#/features/studio/StudioSkeleton'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
@@ -31,12 +29,12 @@ export const Route = createFileRoute('/studio/agents/$id')({
 function AgentDetailPage() {
   const { id } = Route.useParams()
   const { getAgent, updateAgent } = useAgentStore()
-  const profile = getAgent(id) ?? makeAgent({ id, name: id })
+  const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
 
   // ── Convenience mutators (same API as old useAgentDetail) ─────────────
 
   const update = useCallback(
-    (patch: Partial<AgentProfile>) => updateAgent(id, patch),
+    (patch: Partial<ResolvedAgentProfile>) => updateAgent(id, patch),
     [id, updateAgent],
   )
 
@@ -58,38 +56,33 @@ function AgentDetailPage() {
     [update, profile.mcpServers],
   )
 
-  const removeSubagent = useCallback(
-    (subId: string) => update({ subagents: profile.subagents.filter((s) => s.id !== subId) }),
-    [update, profile.subagents],
+  const setPermissionPreset = useCallback(
+    (preset: string) => update({ permissions: { ...profile.permissions, preset } }),
+    [update, profile.permissions],
   )
 
-  const setPermissionPreset = useCallback(
-    (preset: string) => update({ permissionPreset: preset }),
-    [update],
-  )
+  // MCP tool states managed in local component state (not persisted on profile)
+  const [mcpToolStates, setMcpToolStates] = useState<Record<string, ToolToggleState>>({})
 
   const setToolPermission = useCallback(
     (serverName: string, toolName: string, permission: ToolPermission) => {
-      const serverTools = profile.mcpToolStates[serverName] ?? {}
-      update({
-        mcpToolStates: {
-          ...profile.mcpToolStates,
-          [serverName]: { ...serverTools, [toolName]: permission },
-        },
+      setMcpToolStates((prev) => {
+        const serverTools = prev[serverName] ?? {}
+        return { ...prev, [serverName]: { ...serverTools, [toolName]: permission } }
       })
     },
-    [update, profile.mcpToolStates],
+    [],
   )
 
   const setGroupPermission = useCallback(
     (serverName: string, toolNames: string[], permission: ToolPermission) => {
-      const serverTools = { ...(profile.mcpToolStates[serverName] ?? {}) }
-      for (const name of toolNames) serverTools[name] = permission
-      update({
-        mcpToolStates: { ...profile.mcpToolStates, [serverName]: serverTools },
+      setMcpToolStates((prev) => {
+        const serverTools = { ...(prev[serverName] ?? {}) }
+        for (const name of toolNames) serverTools[name] = permission
+        return { ...prev, [serverName]: serverTools }
       })
     },
-    [update, profile.mcpToolStates],
+    [],
   )
 
   const addRule = useCallback(
@@ -107,26 +100,17 @@ function AgentDetailPage() {
   )
 
   const updatePermissions = useCallback(
-    (permissions: Permissions) => update({ permissions, permissionPreset: 'custom' }),
+    (permissions: ProfilePermissions) => update({ permissions: { ...permissions, preset: 'custom' } }),
     [update],
   )
 
-  const setMaxTurns = useCallback(
-    (maxTurns: number | undefined) => update({ maxTurns }),
-    [update],
-  )
-
-  const setProviderSettings = useCallback(
-    (providerSettings: Record<string, Record<string, unknown>>) =>
-      update({ providerSettings }),
-    [update],
-  )
+  // ── Provider settings managed in local state (not on profile) ────────
+  const [providerSettings, setProviderSettings] = useState<Record<string, Record<string, unknown>>>({})
 
   // ── Dialog state ──────────────────────────────────────────────────────
 
   const [skillOpen, setSkillOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
-  const [subagentOpen, setSubagentOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [permsOpen, setPermsOpen] = useState(false)
   const [ruleOpen, setRuleOpen] = useState(false)
@@ -186,12 +170,10 @@ function AgentDetailPage() {
   const counts = useMemo(() => ({
     skills: profile.skills.length,
     mcp: profile.mcpServers.length,
-    subagents: profile.subagents.length,
     rules: profile.rules.length,
   }), [
     profile.skills.length,
     profile.mcpServers.length,
-    profile.subagents.length,
     profile.rules.length,
   ])
 
@@ -224,7 +206,7 @@ function AgentDetailPage() {
             <div id="section-mcp">
               <McpSection
                 servers={profile.mcpServers}
-                toolStates={profile.mcpToolStates}
+                toolStates={mcpToolStates}
                 onRemove={removeServer}
                 onSetToolPermission={setToolPermission}
                 onSetGroupPermission={setGroupPermission}
@@ -232,29 +214,19 @@ function AgentDetailPage() {
               />
             </div>
 
-            <div id="section-subagents">
-              <SubagentsSection
-                subagents={profile.subagents}
-                onRemove={removeSubagent}
-                onAdd={() => setSubagentOpen(true)}
-              />
-            </div>
-
             <div id="section-permissions">
               <PermissionsSection
-                permissions={profile.permissions}
-                activePreset={profile.permissionPreset}
-                maxTurns={profile.maxTurns}
+                permissions={profile.permissions ?? {}}
+                activePreset={profile.permissions?.preset ?? 'ship-standard'}
                 onPresetChange={setPermissionPreset}
-                onMaxTurnsChange={setMaxTurns}
                 onEdit={() => setPermsOpen(true)}
               />
             </div>
 
             <div id="section-providers">
               <ProviderSettingsSection
-                providers={profile.providers}
-                providerSettings={profile.providerSettings ?? {}}
+                providers={profile.profile.providers ?? []}
+                providerSettings={providerSettings}
                 onChange={setProviderSettings}
               />
             </div>
@@ -288,14 +260,6 @@ function AgentDetailPage() {
         onAdd={(server) => update({ mcpServers: [...profile.mcpServers, server] })}
       />
 
-      <AddSubagentDialog
-        open={subagentOpen}
-        onOpenChange={setSubagentOpen}
-        currentAgentId={id}
-        existingIds={profile.subagents.map((s) => s.id)}
-        onAdd={(ref) => update({ subagents: [...profile.subagents, ref] })}
-      />
-
       <EditAgentDialog
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -306,7 +270,7 @@ function AgentDetailPage() {
       <PermissionsDialog
         open={permsOpen}
         onOpenChange={setPermsOpen}
-        permissions={profile.permissions}
+        permissions={profile.permissions ?? {}}
         onSave={updatePermissions}
       />
 

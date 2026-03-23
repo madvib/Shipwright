@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link2, X, Trash2 } from 'lucide-react'
-import type { HookConfig } from '../types'
-import { PROVIDERS } from '#/features/compiler/types'
+import type { HookConfig, HookTrigger } from '@ship/ui'
 
-const TRIGGERS = [
+const TRIGGERS: HookTrigger[] = [
   'PreToolUse', 'PostToolUse', 'Stop', 'Notification', 'SubagentStop', 'PreCompact',
-] as const
+]
 
 interface HookEditorDialogProps {
   open: boolean
@@ -16,9 +15,8 @@ interface HookEditorDialogProps {
 }
 
 export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }: HookEditorDialogProps) {
-  const [trigger, setTrigger] = useState('')
+  const [trigger, setTrigger] = useState<string>('')
   const [command, setCommand] = useState('')
-  const [providers, setProviders] = useState<string[]>([])
   const [matcher, setMatcher] = useState('')
 
   const isEditing = hook !== null
@@ -27,7 +25,6 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
     if (open) {
       setTrigger(hook?.trigger ?? '')
       setCommand(hook?.command ?? '')
-      setProviders(hook?.providers ?? [])
       setMatcher(hook?.matcher ?? '')
     }
   }, [open, hook])
@@ -43,16 +40,17 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
 
   if (!open) return null
 
-  const valid = trigger !== '' && command.trim() !== '' && providers.length > 0
-
-  const toggleProvider = (id: string) => {
-    setProviders((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id])
-  }
+  const valid = trigger !== '' && command.trim() !== ''
 
   const handleSave = () => {
     if (!valid) return
     const trimmedMatcher = matcher.trim()
-    onSave({ trigger, command: command.trim(), providers, ...(trimmedMatcher ? { matcher: trimmedMatcher } : {}) })
+    onSave({
+      id: hook?.id ?? '',
+      trigger: trigger as HookTrigger,
+      command: command.trim(),
+      ...(trimmedMatcher ? { matcher: trimmedMatcher } : {}),
+    })
     close()
   }
 
@@ -110,22 +108,6 @@ export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }:
                 className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary transition placeholder:text-muted-foreground/50"
               />
               <p className="text-[11px] text-muted-foreground/70">Only trigger this hook when the tool name matches this regex</p>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Providers</label>
-              <div className="flex flex-wrap gap-2">
-                {PROVIDERS.map((p) => (
-                  <label key={p.id} className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={providers.includes(p.id)}
-                      onChange={() => toggleProvider(p.id)}
-                      className="size-3.5 rounded border-border/60 accent-primary"
-                    />
-                    <span className="text-xs text-foreground">{p.name}</span>
-                  </label>
-                ))}
-              </div>
             </div>
           </div>
           <div className="flex items-center justify-between border-t border-border/60 px-5 py-3.5">

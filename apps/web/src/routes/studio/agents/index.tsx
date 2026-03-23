@@ -56,21 +56,21 @@ function AgentsListPage() {
           <div className="space-y-2">
             {agents.map((a) => (
               <Link
-                key={a.id}
+                key={a.profile.id}
                 to="/studio/agents/$id"
-                params={{ id: a.id }}
+                params={{ id: a.profile.id }}
                 className="group flex items-center gap-4 rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
               >
                 <div
                   className="flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
                   style={{ background: 'linear-gradient(135deg, oklch(0.67 0.16 58), oklch(0.5 0.16 30))' }}
                 >
-                  {a.name.charAt(0).toUpperCase()}
+                  {a.profile.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-sm font-semibold text-foreground">{a.name}</span>
-                    {a.providers.map((pid) => (
+                    <span className="text-sm font-semibold text-foreground">{a.profile.name}</span>
+                    {(a.profile.providers ?? []).map((pid: string) => (
                       <span key={pid} className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">{pid}</span>
                     ))}
                   </div>
