@@ -2,6 +2,25 @@
 // https://cdn.simpleicons.org/{slug}/{hex-color}
 
 import { useState } from 'react'
+import {
+  Network, ScanEye, Palette, Server, Rocket, Shield,
+  FlaskConical, BookOpen, Database, Smartphone, Layers, Star,
+} from 'lucide-react'
+
+const LUCIDE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  'network': Network,
+  'scan-eye': ScanEye,
+  'palette': Palette,
+  'server': Server,
+  'rocket': Rocket,
+  'shield': Shield,
+  'flask-conical': FlaskConical,
+  'book-open': BookOpen,
+  'database': Database,
+  'smartphone': Smartphone,
+  'layers': Layers,
+  'star': Star,
+}
 
 export const TECH_STACKS = {
   // ── Languages ──────────────────────────────────────────────────────────
@@ -60,19 +79,19 @@ export const TECH_STACKS = {
   pytorch:    { slug: 'pytorch',        fg: '#fff',    bg: '#ee4c2c', border: '#ee4c2c66' },
   tensorflow: { slug: 'tensorflow',     fg: '#fff',    bg: '#ff6f00', border: '#ff6f0066' },
 
-  // ── Generic roles — use null slug, rendered with initials ───────────────
-  orchestrator: { slug: null, fg: '#c084fc', bg: '#7c3aed22', border: '#7c3aed44' },
-  reviewer:     { slug: null, fg: '#60a5fa', bg: '#3b82f622', border: '#3b82f644' },
-  frontend:     { slug: null, fg: '#34d399', bg: '#10b98122', border: '#10b98144' },
-  backend:      { slug: null, fg: '#fbbf24', bg: '#f59e0b22', border: '#f59e0b44' },
-  devops:       { slug: null, fg: '#f87171', bg: '#ef444422', border: '#ef444444' },
-  security:     { slug: null, fg: '#a78bfa', bg: '#8b5cf622', border: '#8b5cf644' },
-  testing:      { slug: null, fg: '#fb923c', bg: '#f9731622', border: '#f9731644' },
-  docs:         { slug: null, fg: '#94a3b8', bg: '#64748b22', border: '#64748b44' },
-  data:         { slug: null, fg: '#2dd4bf', bg: '#14b8a622', border: '#14b8a644' },
-  mobile:       { slug: null, fg: '#f472b6', bg: '#ec489922', border: '#ec489944' },
-  fullstack:    { slug: null, fg: '#e2e8f0', bg: '#47556922', border: '#47556944' },
-  custom:       { slug: null, fg: '#fbbf24', bg: '#f59e0b22', border: '#f59e0b44' },
+  // ── Generic roles — use lucide icon name as slug, rendered by component ──
+  orchestrator: { slug: null, fg: '#c084fc', bg: '#7c3aed22', border: '#7c3aed44', lucide: 'network' },
+  reviewer:     { slug: null, fg: '#60a5fa', bg: '#3b82f622', border: '#3b82f644', lucide: 'scan-eye' },
+  frontend:     { slug: null, fg: '#34d399', bg: '#10b98122', border: '#10b98144', lucide: 'palette' },
+  backend:      { slug: null, fg: '#fbbf24', bg: '#f59e0b22', border: '#f59e0b44', lucide: 'server' },
+  devops:       { slug: null, fg: '#f87171', bg: '#ef444422', border: '#ef444444', lucide: 'rocket' },
+  security:     { slug: null, fg: '#a78bfa', bg: '#8b5cf622', border: '#8b5cf644', lucide: 'shield' },
+  testing:      { slug: null, fg: '#fb923c', bg: '#f9731622', border: '#f9731644', lucide: 'flask-conical' },
+  docs:         { slug: null, fg: '#94a3b8', bg: '#64748b22', border: '#64748b44', lucide: 'book-open' },
+  data:         { slug: null, fg: '#2dd4bf', bg: '#14b8a622', border: '#14b8a644', lucide: 'database' },
+  mobile:       { slug: null, fg: '#f472b6', bg: '#ec489922', border: '#ec489944', lucide: 'smartphone' },
+  fullstack:    { slug: null, fg: '#e2e8f0', bg: '#47556922', border: '#47556944', lucide: 'layers' },
+  custom:       { slug: null, fg: '#fbbf24', bg: '#f59e0b22', border: '#f59e0b44', lucide: 'star' },
 } as const
 
 export type TechStack = keyof typeof TECH_STACKS
@@ -80,13 +99,13 @@ export type TechStack = keyof typeof TECH_STACKS
 export const TECH_STACK_LIST = Object.entries(TECH_STACKS).map(([id, v]) => ({ id: id as TechStack, ...v }))
 
 export const ICON_CATEGORIES = [
+  { id: 'roles', label: 'Roles', keys: ['orchestrator','reviewer','frontend','backend','devops','security','testing','docs','data','mobile','fullstack','custom'] },
   { id: 'languages', label: 'Languages', keys: ['typescript','javascript','python','rust','go','java','swift','kotlin','ruby','php','elixir'] },
   { id: 'frameworks', label: 'Frameworks', keys: ['react','nextjs','vue','svelte','angular','astro','tailwind','django','rails','flask','fastapi'] },
   { id: 'infra', label: 'Infra', keys: ['docker','kubernetes','terraform','gcp','cloudflare','vercel','nginx'] },
   { id: 'data', label: 'Data', keys: ['postgres','mysql','mongodb','redis','sqlite','graphql'] },
   { id: 'tools', label: 'Tools', keys: ['git','github','node','bun','deno','linux'] },
   { id: 'ai', label: 'AI', keys: ['anthropic','pytorch','tensorflow'] },
-  { id: 'roles', label: 'Roles', keys: ['orchestrator','reviewer','frontend','backend','devops','security','testing','docs','data','mobile','fullstack'] },
 ] as const
 
 interface TechIconProps {
@@ -124,6 +143,11 @@ export function TechIcon({ stack, size = 36, className = '', style }: TechIconPr
           style={{ display: 'block' }}
           onError={() => setImgFailed(true)}
         />
+      ) : 'lucide' in tech && tech.lucide && LUCIDE_ICONS[tech.lucide] ? (
+        (() => {
+          const Icon = LUCIDE_ICONS[tech.lucide]
+          return <Icon style={{ width: iconSize, height: iconSize, color: tech.fg }} />
+        })()
       ) : (
         <span
           style={{
