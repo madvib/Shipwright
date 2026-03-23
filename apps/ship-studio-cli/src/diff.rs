@@ -62,9 +62,9 @@ pub fn run(milestone_id_hint: Option<&str>) -> Result<()> {
     run_with_dir(&ship_dir, milestone_id_hint)
 }
 
-pub fn run_with_dir(ship_dir: &Path, milestone_id_hint: Option<&str>) -> Result<()> {
+pub fn run_with_dir(_ship_dir: &Path, milestone_id_hint: Option<&str>) -> Result<()> {
     // Resolve milestone target.
-    let all_targets = targets::list_targets(ship_dir, None)?;
+    let all_targets = targets::list_targets(None)?;
     let milestone = match milestone_id_hint {
         Some(id) => all_targets
             .iter()
@@ -86,7 +86,7 @@ pub fn run_with_dir(ship_dir: &Path, milestone_id_hint: Option<&str>) -> Result<
     };
 
     // Load capabilities for this milestone.
-    let caps = targets::list_capabilities_for_milestone(ship_dir, &milestone.id, None)?;
+    let caps = targets::list_capabilities_for_milestone(&milestone.id, None)?;
     if caps.is_empty() {
         println!(
             "No capabilities linked to milestone '{}' ({}).",
@@ -96,7 +96,7 @@ pub fn run_with_dir(ship_dir: &Path, milestone_id_hint: Option<&str>) -> Result<
     }
 
     // Load running jobs so we can link in-progress capabilities.
-    let running_jobs = jobs::list_jobs(ship_dir, None, Some("running"))?;
+    let running_jobs = jobs::list_jobs(None, Some("running"))?;
     // Build map: capability_id → job
     let mut cap_to_job: HashMap<String, &jobs::Job> = HashMap::new();
     for job in &running_jobs {
@@ -223,7 +223,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_diff_empty_capabilities() {
         let (_tmp, ship_dir) = setup();
-        targets::create_target(&ship_dir, "milestone", "v0.1.0", None, None, None).unwrap();
+        targets::create_target("milestone", "v0.1.0", None, None, None).unwrap();
         let result = run_with_dir(&ship_dir, Some("v0.1.0"));
         assert!(result.is_ok());
     }
@@ -247,24 +247,23 @@ mod tests {
     fn test_diff_groups_capabilities_correctly() {
         let (_tmp, ship_dir) = setup();
         let ms =
-            targets::create_target(&ship_dir, "milestone", "v0.1.0", None, None, None).unwrap();
+            targets::create_target("milestone", "v0.1.0", None, None, None).unwrap();
         let surface =
-            targets::create_target(&ship_dir, "surface", "compiler", None, None, None).unwrap();
+            targets::create_target("surface", "compiler", None, None, None).unwrap();
 
         let c_actual =
-            targets::create_capability(&ship_dir, &surface.id, "Profile compile", Some(&ms.id))
+            targets::create_capability(&surface.id, "Profile compile", Some(&ms.id))
                 .unwrap();
-        targets::mark_capability_actual(&ship_dir, &c_actual.id, "test: compile_ok").unwrap();
+        targets::mark_capability_actual(&c_actual.id, "test: compile_ok").unwrap();
 
         let c_inprog =
-            targets::create_capability(&ship_dir, &surface.id, "Gemini output", Some(&ms.id))
+            targets::create_capability(&surface.id, "Gemini output", Some(&ms.id))
                 .unwrap();
         let payload = serde_json::json!({
             "description": "compile gemini provider",
             "capability_id": c_inprog.id
         });
         jobs::create_job(
-            &ship_dir,
             "feature",
             None,
             Some(payload),
@@ -277,11 +276,11 @@ mod tests {
         )
         .unwrap();
         // claim it to move to running
-        let all = jobs::list_jobs(&ship_dir, None, Some("pending")).unwrap();
-        jobs::claim_job(&ship_dir, &all[0].id, "test").unwrap();
+        let all = jobs::list_jobs(None, Some("pending")).unwrap();
+        jobs::claim_job(&all[0].id, "test").unwrap();
 
         let _c_todo =
-            targets::create_capability(&ship_dir, &surface.id, "Codex output", Some(&ms.id))
+            targets::create_capability(&surface.id, "Codex output", Some(&ms.id))
                 .unwrap();
 
         // Should not panic; we just verify it runs successfully with all three buckets present

@@ -12,7 +12,7 @@ pub fn create(
     description: Option<&str>,
     branch: Option<&str>,
 ) -> Result<()> {
-    let ship_dir = project_ship_dir_required()?;
+    let _ship_dir = project_ship_dir_required()?;
     let mut payload = serde_json::json!({ "title": title });
     if let Some(m) = milestone {
         payload["milestone"] = serde_json::Value::String(m.to_string());
@@ -21,7 +21,6 @@ pub fn create(
         payload["description"] = serde_json::Value::String(d.to_string());
     }
     let job = jobs::create_job(
-        &ship_dir,
         kind,
         branch,
         Some(payload),
@@ -37,8 +36,8 @@ pub fn create(
 }
 
 pub fn list(status: Option<&str>, branch: Option<&str>, milestone: Option<&str>) -> Result<()> {
-    let ship_dir = project_ship_dir_required()?;
-    let all = jobs::list_jobs(&ship_dir, branch, status)?;
+    let _ship_dir = project_ship_dir_required()?;
+    let all = jobs::list_jobs(branch, status)?;
 
     let filtered: Vec<_> = if let Some(m) = milestone {
         all.iter()
@@ -78,13 +77,13 @@ pub fn list(status: Option<&str>, branch: Option<&str>, milestone: Option<&str>)
 }
 
 pub fn update(id_prefix: &str, status: &str) -> Result<()> {
-    let ship_dir = project_ship_dir_required()?;
-    let all = jobs::list_jobs(&ship_dir, None, None)?;
+    let _ship_dir = project_ship_dir_required()?;
+    let all = jobs::list_jobs(None, None)?;
     let matched: Vec<_> = all.iter().filter(|j| j.id.starts_with(id_prefix)).collect();
     match matched.len() {
         0 => anyhow::bail!("No job matching '{}'", id_prefix),
         1 => {
-            jobs::update_job_status(&ship_dir, &matched[0].id, status)?;
+            jobs::update_job_status(&matched[0].id, status)?;
             println!("✓ {} → {}", &matched[0].id[..8], status);
         }
         _ => anyhow::bail!(
@@ -108,14 +107,13 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 
-    fn mk_job(ship_dir: &Path, title: &str) -> jobs::Job {
+    fn mk_job(_ship_dir: &Path, title: &str) -> jobs::Job {
         let payload = serde_json::json!({ "title": title, "description": "test job" });
         jobs::create_job(
-            ship_dir,
             "test",
             None,
             Some(payload),
@@ -133,8 +131,8 @@ mod tests {
     fn update_job_status_complete() {
         let (_tmp, ship_dir) = setup();
         let job = mk_job(&ship_dir, "a job");
-        jobs::update_job_status(&ship_dir, &job.id, "complete").unwrap();
-        let j = jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+        jobs::update_job_status(&job.id, "complete").unwrap();
+        let j = jobs::get_job(&job.id).unwrap().unwrap();
         assert_eq!(j.status, "complete");
     }
 
@@ -142,9 +140,9 @@ mod tests {
     fn update_job_status_pending_reset() {
         let (_tmp, ship_dir) = setup();
         let job = mk_job(&ship_dir, "failed job");
-        jobs::update_job_status(&ship_dir, &job.id, "failed").unwrap();
-        jobs::update_job_status(&ship_dir, &job.id, "pending").unwrap();
-        let j = jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+        jobs::update_job_status(&job.id, "failed").unwrap();
+        jobs::update_job_status(&job.id, "pending").unwrap();
+        let j = jobs::get_job(&job.id).unwrap().unwrap();
         assert_eq!(j.status, "pending");
     }
 
@@ -152,11 +150,11 @@ mod tests {
     fn claim_job_is_atomic() {
         let (_tmp, ship_dir) = setup();
         let job = mk_job(&ship_dir, "race");
-        let first = jobs::claim_job(&ship_dir, &job.id, "a").unwrap();
-        let second = jobs::claim_job(&ship_dir, &job.id, "b").unwrap();
+        let first = jobs::claim_job(&job.id, "a").unwrap();
+        let second = jobs::claim_job(&job.id, "b").unwrap();
         assert!(first);
         assert!(!second);
-        let j = jobs::get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let j = jobs::get_job(&job.id).unwrap().unwrap();
         assert_eq!(j.claimed_by, Some("a".to_string()));
     }
 }

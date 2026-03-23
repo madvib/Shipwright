@@ -27,25 +27,25 @@ pub struct WorkspaceState {
 
 impl WorkspaceState {
     /// Load from platform.db.
-    pub fn load(ship_dir: &Path) -> Self {
+    pub fn load(_ship_dir: &Path) -> Self {
         let mut state = WorkspaceState::default();
-        if let Err(e) = runtime::db::ensure_db(ship_dir) {
+        if let Err(e) = runtime::db::ensure_db() {
             eprintln!("warning: could not open platform.db: {}", e);
             return state;
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_ACTIVE_AGENT) {
+        if let Ok(Some(v)) = runtime::db::kv::get(NS, KEY_ACTIVE_AGENT) {
             state.active_agent = v.as_str().map(str::to_string);
         }
         // Compat: also check the old key name for projects that haven't re-activated yet
         if state.active_agent.is_none()
-            && let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, "active_profile")
+            && let Ok(Some(v)) = runtime::db::kv::get(NS, "active_profile")
         {
             state.active_agent = v.as_str().map(str::to_string);
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_COMPILED_AT) {
+        if let Ok(Some(v)) = runtime::db::kv::get(NS, KEY_COMPILED_AT) {
             state.compiled_at = v.as_str().map(str::to_string);
         }
-        if let Ok(Some(v)) = runtime::db::kv::get(ship_dir, NS, KEY_PLUGINS_INSTALLED)
+        if let Ok(Some(v)) = runtime::db::kv::get(NS, KEY_PLUGINS_INSTALLED)
             && let Some(arr) = v.as_array()
         {
             state.plugins_installed = arr
@@ -57,16 +57,15 @@ impl WorkspaceState {
     }
 
     /// Persist workspace state to platform.db.
-    pub fn save(&self, ship_dir: &Path) -> Result<()> {
-        runtime::db::ensure_db(ship_dir).context("failed to open platform.db")?;
+    pub fn save(&self, _ship_dir: &Path) -> Result<()> {
+        runtime::db::ensure_db().context("failed to open platform.db")?;
         if let Some(ref p) = self.active_agent {
-            runtime::db::kv::set(ship_dir, NS, KEY_ACTIVE_AGENT, &serde_json::json!(p))?;
+            runtime::db::kv::set(NS, KEY_ACTIVE_AGENT, &serde_json::json!(p))?;
         }
         if let Some(ref t) = self.compiled_at {
-            runtime::db::kv::set(ship_dir, NS, KEY_COMPILED_AT, &serde_json::json!(t))?;
+            runtime::db::kv::set(NS, KEY_COMPILED_AT, &serde_json::json!(t))?;
         }
         runtime::db::kv::set(
-            ship_dir,
             NS,
             KEY_PLUGINS_INSTALLED,
             &serde_json::json!(self.plugins_installed),

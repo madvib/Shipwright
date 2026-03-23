@@ -117,7 +117,10 @@ fn frozen_install_fails_when_lock_is_stale() {
         },
     );
 
-    let opts = InstallOptions { frozen: true, offline: false };
+    let opts = InstallOptions {
+        frozen: true,
+        offline: false,
+    };
     let err = resolve_and_fetch(&manifest, &lock_path, &cache, &opts).unwrap_err();
     let chain = format!("{:#}", err);
     assert!(
@@ -207,18 +210,17 @@ fn workspace_state_active_profile_round_trip() {
     // the "tmp-test-test" slug collision that would occur with a hardcoded id.
     let ship_dir = init_project(tmp.path().to_path_buf()).expect("init_project must succeed");
 
-    db::ensure_db(&ship_dir).expect("ensure_db must succeed");
+    db::ensure_db().expect("ensure_db must succeed");
 
     // First write.
     db::kv::set(
-        &ship_dir,
         "workspace",
         "active_profile",
         &serde_json::json!("my-profile"),
     )
     .expect("kv set must succeed");
 
-    let val = db::kv::get(&ship_dir, "workspace", "active_profile")
+    let val = db::kv::get("workspace", "active_profile")
         .expect("kv get must succeed")
         .expect("value must be present");
     assert_eq!(
@@ -229,14 +231,13 @@ fn workspace_state_active_profile_round_trip() {
 
     // Second write — same value, idempotent.
     db::kv::set(
-        &ship_dir,
         "workspace",
         "active_profile",
         &serde_json::json!("my-profile"),
     )
     .expect("second kv set must succeed");
 
-    let val2 = db::kv::get(&ship_dir, "workspace", "active_profile")
+    let val2 = db::kv::get("workspace", "active_profile")
         .expect("kv get after second write must succeed")
         .expect("value must still be present");
     assert_eq!(

@@ -25,14 +25,13 @@ pub fn parse_note_scope(raw: Option<&str>) -> anyhow::Result<NoteScope> {
 }
 
 pub fn create_note(
-    project_dir: &Path,
+    _project_dir: &Path,
     title: &str,
     content: Option<String>,
     branch: Option<&str>,
 ) -> String {
-    let ship_dir = project_dir.join(".ship");
     let content = content.unwrap_or_default();
-    match runtime::db::notes::create_note(&ship_dir, title, &content, vec![], branch) {
+    match runtime::db::notes::create_note(title, &content, vec![], branch) {
         Ok(note) => format!("Created note: {} (id: {})", note.title, note.id),
         Err(e) => format!("Error creating note: {}", e),
     }
@@ -44,11 +43,10 @@ pub fn update_note(
     id: &str,
     content: &str,
 ) -> String {
-    let Some(dir) = project_dir else {
+    let Some(_dir) = project_dir else {
         return "Error: project directory required for note update".to_string();
     };
-    let ship_dir = dir.join(".ship");
-    match runtime::db::notes::update_note(&ship_dir, id, None, Some(content), None) {
+    match runtime::db::notes::update_note(id, None, Some(content), None) {
         Ok(()) => format!("Updated note: {}", id),
         Err(e) => format!("Error updating note: {}", e),
     }

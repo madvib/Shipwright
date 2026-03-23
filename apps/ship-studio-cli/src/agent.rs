@@ -35,9 +35,8 @@ fn ship_dir() -> Result<std::path::PathBuf> {
 /// Create a job and print its ID. Not wired to CLI — called by MCP or internally.
 #[allow(dead_code)]
 pub fn create_job(kind: &str, branch: Option<&str>) -> Result<()> {
-    let dir = ship_dir()?;
+    let _dir = ship_dir()?;
     let job = runtime::db::jobs::create_job(
-        &dir,
         kind,
         branch,
         None,
@@ -56,8 +55,8 @@ pub fn create_job(kind: &str, branch: Option<&str>) -> Result<()> {
 /// Update a job's status. Not wired to CLI — called by MCP or internally.
 #[allow(dead_code)]
 pub fn update_job(id: &str, status: &str) -> Result<()> {
-    let dir = ship_dir()?;
-    runtime::db::jobs::update_job_status(&dir, id, status)
+    let _dir = ship_dir()?;
+    runtime::db::jobs::update_job_status(id, status)
         .with_context(|| format!("failed to update job {id} to status={status}"))?;
     println!("updated {id} -> {status}");
     Ok(())
@@ -66,8 +65,8 @@ pub fn update_job(id: &str, status: &str) -> Result<()> {
 /// List jobs, optionally filtered by branch and/or status. Not wired to CLI — called by MCP or internally.
 #[allow(dead_code)]
 pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<()> {
-    let dir = ship_dir()?;
-    let jobs = runtime::db::jobs::list_jobs(&dir, branch, status).context("failed to list jobs")?;
+    let _dir = ship_dir()?;
+    let jobs = runtime::db::jobs::list_jobs(branch, status).context("failed to list jobs")?;
     if jobs.is_empty() {
         println!("no jobs found");
     } else {

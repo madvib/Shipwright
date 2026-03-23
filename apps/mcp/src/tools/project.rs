@@ -95,8 +95,7 @@ pub async fn get_project_info(project_dir: &Path) -> String {
     let name = get_project_name(project_dir);
     let config = get_config(Some(project_dir.to_path_buf())).unwrap_or_default();
 
-    let ship_dir = project_dir.join(".ship");
-    let adrs = runtime::db::adrs::list_adrs(&ship_dir).unwrap_or_default();
+    let adrs = runtime::db::adrs::list_adrs().unwrap_or_default();
 
     let mut out = format!("# Project: {}\n\n", name);
     out.push_str("## Current Context\n");

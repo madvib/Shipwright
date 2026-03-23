@@ -1,4 +1,5 @@
 mod add;
+mod add_from;
 mod agent;
 mod agent_config;
 mod audit;
@@ -84,10 +85,14 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 install::run_install(&root, frozen, offline)
             }
-            Commands::Add { package } => {
-                let root = std::env::current_dir()?;
-                add::run_add(&root, &package)
-            }
+            Commands::Add { package, from } => match (package, from) {
+                (_, Some(url)) => add_from::run_add_from(&url),
+                (Some(pkg), None) => {
+                    let root = std::env::current_dir()?;
+                    add::run_add(&root, &pkg)
+                }
+                (None, None) => anyhow::bail!("provide a package name or --from <url>"),
+            },
             Commands::Audit { path, json } => audit::run_audit(path, json),
             Commands::Validate { agent, json, path } => {
                 let root = path
@@ -361,8 +366,8 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
 // ── Hidden / legacy ──────────────────────────────────────────────────────────
 
 fn run_adrs() -> Result<()> {
-    let ship_dir = paths::project_ship_dir_required()?;
-    let adrs = runtime::db::adrs::list_adrs(&ship_dir)?;
+    let _ship_dir = paths::project_ship_dir_required()?;
+    let adrs = runtime::db::adrs::list_adrs()?;
     if adrs.is_empty() {
         println!("No ADRs found.");
     } else {
@@ -374,8 +379,8 @@ fn run_adrs() -> Result<()> {
 }
 
 fn run_notes() -> Result<()> {
-    let ship_dir = paths::project_ship_dir_required()?;
-    let notes = runtime::db::notes::list_notes(&ship_dir, None)?;
+    let _ship_dir = paths::project_ship_dir_required()?;
+    let notes = runtime::db::notes::list_notes(None)?;
     if notes.is_empty() {
         println!("No notes found.");
     } else {

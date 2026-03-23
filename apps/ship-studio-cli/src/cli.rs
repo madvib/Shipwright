@@ -163,10 +163,14 @@ pub enum Commands {
         tag: Option<String>,
     },
 
-    /// Add a package dependency to .ship/ship.toml and install it
+    /// Add a package dependency or import config from a Studio share link
     Add {
         /// Package path with optional version: github.com/owner/repo[@version]
-        package: String,
+        #[arg(required_unless_present = "from")]
+        package: Option<String>,
+        /// Import agent config from a Studio share link (MCP or JSON)
+        #[arg(long, conflicts_with = "package")]
+        from: Option<String>,
     },
 
     /// Scan files for hidden Unicode characters (prompt injection vectors)

@@ -105,7 +105,7 @@ fn parse_package_spec(spec: &str) -> (String, String) {
 /// TOML string, preserving all existing content.
 ///
 /// If no [dependencies] section exists, appends one.
-fn append_dependency(raw: &str, path: &str, version: &str) -> String {
+pub(crate) fn append_dependency(raw: &str, path: &str, version: &str) -> String {
     let dep_line = format!("\"{}\" = \"{}\"\n", path, version);
 
     // Check if [dependencies] section exists.
@@ -178,7 +178,10 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     }
 
     let cache = PackageCache::new().context("initializing package cache")?;
-    let opts = InstallOptions { frozen: false, offline: false };
+    let opts = InstallOptions {
+        frozen: false,
+        offline: false,
+    };
 
     let result = resolve_and_fetch(&registry_manifest, &lock_path, &cache, &opts)
         .with_context(|| format!("resolving {pkg_path}"))?;
@@ -208,7 +211,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
 ///
 /// If a `"dependencies"` key exists, inserts before its closing `}`.
 /// Otherwise, inserts a `"dependencies"` section before the final `}`.
-fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
+pub(crate) fn append_dependency_jsonc(raw: &str, path: &str, version: &str) -> String {
     let dep_entry = format!("    \"{}\": \"{}\"", path, version);
 
     if let Some(deps_pos) = raw.find("\"dependencies\"") {

@@ -150,6 +150,6 @@ fn resolve_ship_dir() -> Result<std::path::PathBuf> {
     if !ship_dir.exists() {
         anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
     }
-    runtime::db::ensure_db(&ship_dir)?;
+    runtime::db::ensure_db()?;
     Ok(ship_dir)
 }

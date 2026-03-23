@@ -58,30 +58,30 @@ pub fn load_all(ship_dir: &Path) -> ViewData {
     }
 }
 
-fn load_targets(ship_dir: &Path) -> Vec<Target> {
-    runtime::db::targets::list_targets(ship_dir, None).unwrap_or_default()
+fn load_targets(_ship_dir: &Path) -> Vec<Target> {
+    runtime::db::targets::list_targets(None).unwrap_or_default()
 }
 
-fn load_capabilities(ship_dir: &Path) -> Vec<Capability> {
-    runtime::db::targets::list_capabilities(ship_dir, None, None, None).unwrap_or_default()
+fn load_capabilities(_ship_dir: &Path) -> Vec<Capability> {
+    runtime::db::targets::list_capabilities(None, None, None).unwrap_or_default()
 }
 
-fn load_all_jobs(ship_dir: &Path) -> Vec<Job> {
-    let mut jobs = runtime::db::jobs::list_jobs(ship_dir, None, None).unwrap_or_default();
+fn load_all_jobs(_ship_dir: &Path) -> Vec<Job> {
+    let mut jobs = runtime::db::jobs::list_jobs(None, None).unwrap_or_default();
     jobs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     jobs
 }
 
-fn load_notes(ship_dir: &Path) -> Vec<Note> {
-    runtime::db::notes::list_notes(ship_dir, None).unwrap_or_default()
+fn load_notes(_ship_dir: &Path) -> Vec<Note> {
+    runtime::db::notes::list_notes(None).unwrap_or_default()
 }
 
-fn load_adrs(ship_dir: &Path) -> Vec<AdrRecord> {
-    runtime::db::adrs::list_adrs(ship_dir).unwrap_or_default()
+fn load_adrs(_ship_dir: &Path) -> Vec<AdrRecord> {
+    runtime::db::adrs::list_adrs().unwrap_or_default()
 }
 
-fn load_events(ship_dir: &Path) -> Vec<EventRecord> {
-    runtime::db::events::list_all_events(ship_dir).unwrap_or_default()
+fn load_events(_ship_dir: &Path) -> Vec<EventRecord> {
+    runtime::db::events::list_all_events().unwrap_or_default()
 }
 
 fn load_config(ship_dir: &Path) -> ConfigSnapshot {
@@ -129,38 +129,38 @@ fn load_config(ship_dir: &Path) -> ConfigSnapshot {
 
 // -- Mutations ----------------------------------------------------------
 
-pub fn create_note(ship_dir: &Path, title: &str, content: &str) -> Result<Note> {
-    runtime::db::notes::create_note(ship_dir, title, content, vec![], None)
+pub fn create_note(_ship_dir: &Path, title: &str, content: &str) -> Result<Note> {
+    runtime::db::notes::create_note(title, content, vec![], None)
 }
 
 pub fn update_note(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     id: &str,
     title: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
-    runtime::db::notes::update_note(ship_dir, id, title, content, None)
+    runtime::db::notes::update_note(id, title, content, None)
 }
 
-pub fn delete_note(ship_dir: &Path, id: &str) -> Result<()> {
-    runtime::db::notes::delete_note(ship_dir, id)
+pub fn delete_note(_ship_dir: &Path, id: &str) -> Result<()> {
+    runtime::db::notes::delete_note(id)
 }
 
 pub fn create_adr(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     title: &str,
     context: &str,
     decision: &str,
 ) -> Result<AdrRecord> {
-    runtime::db::adrs::create_adr(ship_dir, title, context, decision, "proposed")
+    runtime::db::adrs::create_adr(title, context, decision, "proposed")
 }
 
-pub fn delete_adr(ship_dir: &Path, id: &str) -> Result<()> {
-    runtime::db::adrs::delete_adr(ship_dir, id)
+pub fn delete_adr(_ship_dir: &Path, id: &str) -> Result<()> {
+    runtime::db::adrs::delete_adr(id)
 }
 
-pub fn update_job_status(ship_dir: &Path, job_id: &str, status: &str) -> Result<()> {
-    runtime::db::jobs::update_job_status(ship_dir, job_id, status)
+pub fn update_job_status(_ship_dir: &Path, job_id: &str, status: &str) -> Result<()> {
+    runtime::db::jobs::update_job_status(job_id, status)
 }
 
 pub fn save_user_prefs(values: &[(String, String)]) -> Result<()> {
@@ -184,7 +184,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 
@@ -204,7 +204,6 @@ mod tests {
     fn all_jobs_includes_done() {
         let (_tmp, ship_dir) = setup();
         let _j1 = runtime::db::jobs::create_job(
-            &ship_dir,
             "build",
             None,
             None,
@@ -217,7 +216,6 @@ mod tests {
         )
         .unwrap();
         let j2 = runtime::db::jobs::create_job(
-            &ship_dir,
             "test",
             None,
             None,
@@ -229,7 +227,7 @@ mod tests {
             vec![],
         )
         .unwrap();
-        runtime::db::jobs::update_job_status(&ship_dir, &j2.id, "done").unwrap();
+        runtime::db::jobs::update_job_status(&j2.id, "done").unwrap();
 
         let all = load_all_jobs(&ship_dir);
         assert_eq!(all.len(), 2);
