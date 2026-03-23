@@ -6,7 +6,6 @@ import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import { PROVIDER_SHORT } from '#/features/compiler/components/ModeHeader'
 import { PublishDialog } from '#/features/studio/PublishDialog'
 import { PushToGitHubDialog } from '#/features/studio/PushToGitHubDialog'
-import { CliUsagePopover } from '#/features/studio/CliUsagePopover'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import type { CompileState } from '#/features/compiler/useCompiler'
 import type { CompileResult } from '#/features/compiler/types'
@@ -52,7 +51,10 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
         hasContent={hasContent}
       />
 
-      {/* Distribution section */}
+      {/* CLI actions — always visible */}
+      <CliSection />
+
+      {/* Auth-gated distribution */}
       <div className="border-t border-border/40 shrink-0">
         {!auth.isAuthenticated ? (
           <SignInCTA />
@@ -197,19 +199,14 @@ function SignInCTA() {
   )
 }
 
-function DistributeSection({ hasContent, isCompiled, onPublish, onPush }: {
-  hasContent: boolean; isCompiled: boolean; onPublish: () => void; onPush: () => void
-}) {
-  const [cliOpen, setCliOpen] = useState(false)
+function CliSection() {
   const { agents, activeId } = useAgentStore()
   const activeAgent = activeId ? agents.find((a) => a.profile.id === activeId) : undefined
-
-
   const agentId = activeAgent?.profile.id
   const importCmd = agentId ? `ship import --from ${window.location.origin}/studio/agents/${agentId}` : 'ship import --from <url>'
 
   return (
-    <div className="p-3 space-y-1.5">
+    <div className="border-t border-border/40 p-3 space-y-2">
       {/* CLI import command */}
       <div className="rounded-lg border border-border/40 bg-background/60 px-3 py-2">
         <div className="text-[10px] font-medium text-muted-foreground/60 mb-1">Import via CLI</div>
@@ -226,10 +223,31 @@ function DistributeSection({ hasContent, isCompiled, onPublish, onPush }: {
           </button>
         </div>
       </div>
+      {/* CLI download */}
+      <a
+        href="https://github.com/madvib/Ship#installation"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2 text-left transition hover:border-primary/30 hover:bg-primary/5 no-underline"
+      >
+        <Terminal className="size-3.5 text-muted-foreground" />
+        <div className="flex-1 min-w-0">
+          <span className="text-[11px] font-medium text-foreground">Get the CLI</span>
+          <p className="text-[9px] text-muted-foreground/60">Install Ship to use agents locally</p>
+        </div>
+        <ChevronRight className="size-3 text-muted-foreground/20" />
+      </a>
+    </div>
+  )
+}
+
+function DistributeSection({ hasContent, isCompiled, onPublish, onPush }: {
+  hasContent: boolean; isCompiled: boolean; onPublish: () => void; onPush: () => void
+}) {
+  return (
+    <div className="p-3 space-y-1.5">
       <DistAction icon={<Github className="size-3.5" />} label="Push to repo" desc="Create a PR with .ship/ config" disabled={!isCompiled} onClick={onPush} />
       <DistAction icon={<Upload className="size-3.5" />} label="Publish to registry" desc="Share with the community" disabled={!hasContent} onClick={onPublish} />
-      <DistAction icon={<Terminal className="size-3.5" />} label="Use with CLI" desc="ship use <agent>" disabled={false} onClick={() => setCliOpen(true)} />
-      <CliUsagePopover open={cliOpen} onOpenChange={setCliOpen} agentName={activeAgent?.profile.name} />
     </div>
   )
 }
