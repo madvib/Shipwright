@@ -49,7 +49,6 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
       {/* Output preview section */}
       <OutputSection
         compileState={compileState}
-        selectedProviders={selectedProviders}
         onCompile={onCompile}
         hasContent={hasContent}
       />
@@ -83,18 +82,14 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
 }
 
 /** Live compiler output with provider tabs + file tabs */
-function OutputSection({ compileState, selectedProviders, hasContent }: {
-  compileState: CompileState; selectedProviders: string[]; onCompile?: () => void; hasContent: boolean
+const ALL_PREVIEW_PROVIDERS = ['claude', 'gemini', 'codex', 'cursor']
+
+function OutputSection({ compileState, hasContent }: {
+  compileState: CompileState; onCompile?: () => void; hasContent: boolean
 }) {
-  const [activeProvider, setActiveProvider] = useState(selectedProviders[0] ?? 'claude')
+  const [activeProvider, setActiveProvider] = useState('claude')
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!selectedProviders.includes(activeProvider) && selectedProviders.length > 0) {
-      setActiveProvider(selectedProviders[0])
-    }
-  }, [selectedProviders, activeProvider])
 
   const output = compileState.status === 'ok' ? compileState.output : null
   const current = output?.[activeProvider] ?? null
@@ -120,9 +115,9 @@ function OutputSection({ compileState, selectedProviders, hasContent }: {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Provider tabs */}
-      {selectedProviders.length > 0 && (
+      {ALL_PREVIEW_PROVIDERS.length > 0 && (
         <div className="flex items-center gap-0.5 border-b border-border/40 px-2 py-1.5 shrink-0 overflow-x-auto [scrollbar-width:none]">
-          {selectedProviders.map((p) => (
+          {ALL_PREVIEW_PROVIDERS.map((p) => (
             <button
               key={p}
               onClick={() => setActiveProvider(p)}
