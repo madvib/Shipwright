@@ -30,8 +30,8 @@ export function LandingHero() {
 
         {/* Subhead */}
         <p className="mx-auto mb-8 max-w-lg text-lg leading-relaxed text-muted-foreground">
-          Share and switch between advanced agent configurations.
-          Scoped roles, granular permissions, instant compilation.
+          Composable, distributable agent configurations. Install skills,
+          scope permissions, swap setups in one command.
         </p>
 
         {/* CTAs */}
