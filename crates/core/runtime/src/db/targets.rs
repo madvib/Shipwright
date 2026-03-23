@@ -5,7 +5,6 @@
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::{QueryBuilder, Row};
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
@@ -128,7 +127,6 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
 // ─── Target operations ────────────────────────────────────────────────────────
 
 pub fn create_target(
-    _ship_dir: &Path,
     kind: &str,
     title: &str,
     description: Option<&str>,
@@ -165,7 +163,7 @@ pub fn create_target(
     })
 }
 
-pub fn get_target(_ship_dir: &Path, id: &str) -> Result<Option<Target>> {
+pub fn get_target(id: &str) -> Result<Option<Target>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE id = ?"))
@@ -176,7 +174,7 @@ pub fn get_target(_ship_dir: &Path, id: &str) -> Result<Option<Target>> {
     Ok(row.as_ref().map(row_to_target))
 }
 
-pub fn list_targets(_ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> {
+pub fn list_targets(kind: Option<&str>) -> Result<Vec<Target>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         if let Some(k) = kind {
@@ -197,9 +195,9 @@ pub fn list_targets(_ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>>
     Ok(rows.iter().map(row_to_target).collect())
 }
 
-pub fn update_target(_ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()> {
+pub fn update_target(id: &str, patch: TargetPatch) -> Result<()> {
     let current =
-        get_target(_ship_dir, id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
+        get_target(id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
     let mut conn = open_db()?;
@@ -227,7 +225,6 @@ pub fn update_target(_ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<(
 // ─── Capability operations ────────────────────────────────────────────────────
 
 pub fn create_capability(
-    _ship_dir: &Path,
     target_id: &str,
     title: &str,
     milestone_id: Option<&str>,
@@ -267,7 +264,7 @@ pub fn create_capability(
     })
 }
 
-pub fn get_capability(_ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
+pub fn get_capability(id: &str) -> Result<Option<Capability>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE id = ?"))
@@ -278,8 +275,8 @@ pub fn get_capability(_ship_dir: &Path, id: &str) -> Result<Option<Capability>> 
     Ok(row.as_ref().map(row_to_capability))
 }
 
-pub fn update_capability(_ship_dir: &Path, id: &str, patch: CapabilityPatch) -> Result<()> {
-    let current = get_capability(_ship_dir, id)?
+pub fn update_capability(id: &str, patch: CapabilityPatch) -> Result<()> {
+    let current = get_capability(id)?
         .ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let ac = serde_json::to_string(
@@ -309,7 +306,7 @@ pub fn update_capability(_ship_dir: &Path, id: &str, patch: CapabilityPatch) -> 
     Ok(())
 }
 
-pub fn delete_capability(_ship_dir: &Path, id: &str) -> Result<bool> {
+pub fn delete_capability(id: &str) -> Result<bool> {
     let mut conn = open_db()?;
     let rows_affected = block_on(async {
         sqlx::query("DELETE FROM capability WHERE id = ?")
@@ -321,7 +318,7 @@ pub fn delete_capability(_ship_dir: &Path, id: &str) -> Result<bool> {
     Ok(rows_affected > 0)
 }
 
-pub fn mark_capability_actual(_ship_dir: &Path, id: &str, evidence: &str) -> Result<()> {
+pub fn mark_capability_actual(id: &str, evidence: &str) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
@@ -338,7 +335,6 @@ pub fn mark_capability_actual(_ship_dir: &Path, id: &str, evidence: &str) -> Res
 }
 
 pub fn list_capabilities(
-    _ship_dir: &Path,
     target_id: Option<&str>,
     status: Option<&str>,
     phase: Option<&str>,
@@ -365,7 +361,6 @@ pub fn list_capabilities(
 
 /// List capabilities linked to a milestone. Used by get_target on milestone targets.
 pub fn list_capabilities_for_milestone(
-    _ship_dir: &Path,
     milestone_id: &str,
     status: Option<&str>,
 ) -> Result<Vec<Capability>> {

@@ -97,7 +97,7 @@ pub fn start_workspace_session(
         workspace = set_workspace_active_agent(ship_dir, branch, Some(agent_id))?;
     }
 
-    if let Some(active) = get_active_workspace_session_db(ship_dir, &workspace.id)? {
+    if let Some(active) = get_active_workspace_session_db(&workspace.id)? {
         let mut existing = hydrate_workspace_session(active);
         annotate_session_stale_state(&mut existing, &std::collections::HashMap::new());
         if let Err(error) = persist_session_artifact(ship_dir, &existing, "attach") {
@@ -150,8 +150,8 @@ pub fn start_workspace_session(
         created_at: now.to_rfc3339(),
         updated_at: now.to_rfc3339(),
     };
-    insert_workspace_session_db(ship_dir, &session)?;
-    let created = get_workspace_session_db(ship_dir, &session.id)?
+    insert_workspace_session_db(&session)?;
+    let created = get_workspace_session_db(&session.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
     let started = hydrate_workspace_session(created);
 
@@ -190,7 +190,7 @@ pub fn end_workspace_session(
     let workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
 
-    let mut active = get_active_workspace_session_db(ship_dir, &workspace.id)?
+    let mut active = get_active_workspace_session_db(&workspace.id)?
         .ok_or_else(|| anyhow::anyhow!("No active workspace session for '{}'", workspace.branch))?;
 
     let now = Utc::now().to_rfc3339();
@@ -200,9 +200,9 @@ pub fn end_workspace_session(
     active.updated_workspace_ids = request.updated_workspace_ids;
     active.updated_at = now;
 
-    update_workspace_session_db(ship_dir, &active)?;
+    update_workspace_session_db(&active)?;
 
-    let ended = get_workspace_session_db(ship_dir, &active.id)?
+    let ended = get_workspace_session_db(&active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;
     let ended = hydrate_workspace_session(ended);
 
@@ -244,7 +244,7 @@ pub fn end_workspace_session(
         gate_result: request.gate_result,
         created_at: Utc::now().to_rfc3339(),
     };
-    insert_workspace_session_record_db(ship_dir, &record)?;
+    insert_workspace_session_record_db(&record)?;
 
     let mut ended = ended;
     ended.session_record_id = Some(record.id);

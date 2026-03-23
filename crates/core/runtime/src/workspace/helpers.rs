@@ -114,11 +114,11 @@ pub(crate) fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
 // ---- Branch links ----------------------------------------------------------
 
 pub(crate) fn hydrate_from_branch_links(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     branch: &str,
     workspace: &mut Workspace,
 ) -> Result<()> {
-    if let Some((link_type, link_id)) = get_branch_link(ship_dir, branch)? {
+    if let Some((link_type, link_id)) = get_branch_link(branch)? {
         match link_type.as_str() {
             "feature" => {
                 workspace.feature_id = Some(link_id);
@@ -143,13 +143,13 @@ pub(crate) fn hydrate_from_feature_links(
 }
 
 pub(crate) fn persist_branch_link_from_workspace(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     workspace: &Workspace,
 ) -> Result<()> {
     if let Some(feature_id) = workspace.feature_id.as_deref() {
-        return set_branch_link(ship_dir, &workspace.branch, "feature", feature_id);
+        return set_branch_link(&workspace.branch, "feature", feature_id);
     }
-    clear_branch_link(ship_dir, &workspace.branch)
+    clear_branch_link(&workspace.branch)
 }
 
 // ---- Lifecycle validation --------------------------------------------------

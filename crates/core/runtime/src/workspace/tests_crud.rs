@@ -10,7 +10,6 @@ mod tests {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
         crate::db::branch_context::set_branch_link(
-            &ship_dir,
             "feature/auth-redesign",
             "feature",
             "feat-auth",
@@ -34,7 +33,6 @@ mod tests {
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
         crate::db::branch_context::set_branch_link(
-            &ship_dir,
             "feature/mixed",
             "feature",
             "feat-mixed",
@@ -51,7 +49,7 @@ mod tests {
 
         assert_eq!(workspace.feature_id.as_deref(), Some("feat-mixed"));
         assert_eq!(workspace.target_id.as_deref(), Some("target-direct"));
-        let stored_link = get_branch_link(&ship_dir, "feature/mixed")?;
+        let stored_link = get_branch_link("feature/mixed")?;
         assert_eq!(
             stored_link,
             Some(("feature".to_string(), "feat-mixed".to_string()))
@@ -75,7 +73,7 @@ mod tests {
         )?;
 
         assert_eq!(workspace.target_id.as_deref(), Some("target-only"));
-        assert!(get_branch_link(&ship_dir, "service/target-context")?.is_none());
+        assert!(get_branch_link("service/target-context")?.is_none());
         Ok(())
     }
 
@@ -127,7 +125,7 @@ mod tests {
         assert_eq!(workspace.status, WorkspaceStatus::Active);
         assert!(workspace.feature_id.is_none());
         assert!(workspace.target_id.is_none());
-        assert!(get_branch_link(&ship_dir, "main")?.is_none());
+        assert!(get_branch_link("main")?.is_none());
         Ok(())
     }
 
@@ -148,7 +146,6 @@ mod tests {
 
         let now = chrono::Utc::now().to_rfc3339();
         crate::db::session::insert_workspace_session_db(
-            &ship_dir,
             &crate::db::types::WorkspaceSessionDb {
                 id: "session-delete-me".to_string(),
                 workspace_id: workspace.id.clone(),
@@ -173,7 +170,7 @@ mod tests {
         delete_workspace(&ship_dir, "feature/delete-me")?;
 
         assert!(get_workspace(&ship_dir, "feature/delete-me")?.is_none());
-        assert!(get_branch_link(&ship_dir, "feature/delete-me")?.is_none());
+        assert!(get_branch_link("feature/delete-me")?.is_none());
         assert!(list_workspace_sessions(&ship_dir, None, 10)?.is_empty());
         Ok(())
     }

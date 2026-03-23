@@ -342,7 +342,7 @@ pub fn import_from_claude(project_dir: PathBuf) -> Result<usize> {
 pub fn import_from_provider(provider_id: &str, project_dir: PathBuf) -> Result<usize> {
     let desc = require_provider(provider_id)?;
     let (managed, _) =
-        crate::db::managed_state::get_managed_state_db(&project_dir, provider_id).unwrap_or_default();
+        crate::db::managed_state::get_managed_state_db(provider_id).unwrap_or_default();
 
     let mut config = get_config(Some(project_dir.clone()))?;
     let mut added = 0usize;

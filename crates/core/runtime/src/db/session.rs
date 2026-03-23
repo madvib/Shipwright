@@ -2,7 +2,6 @@
 
 use anyhow::{Context, Result};
 use sqlx::Row;
-use std::path::Path;
 
 use super::types::{WorkspaceSessionDb, WorkspaceSessionRecordDb};
 use super::{block_on, open_db};
@@ -32,7 +31,6 @@ fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessio
 }
 
 pub fn get_workspace_session_db(
-    _ship_dir: &Path,
     session_id: &str,
 ) -> Result<Option<WorkspaceSessionDb>> {
     let mut conn = open_db()?;
@@ -50,7 +48,6 @@ pub fn get_workspace_session_db(
 }
 
 pub fn get_active_workspace_session_db(
-    _ship_dir: &Path,
     workspace_id: &str,
 ) -> Result<Option<WorkspaceSessionDb>> {
     let mut conn = open_db()?;
@@ -70,7 +67,6 @@ pub fn get_active_workspace_session_db(
 }
 
 pub fn list_workspace_sessions_db(
-    _ship_dir: &Path,
     workspace_id: Option<&str>,
     limit: usize,
 ) -> Result<Vec<WorkspaceSessionDb>> {
@@ -107,7 +103,7 @@ pub fn list_workspace_sessions_db(
     Ok(rows.iter().map(parse_workspace_session_row).collect())
 }
 
-pub fn insert_workspace_session_db(_ship_dir: &Path, session: &WorkspaceSessionDb) -> Result<()> {
+pub fn insert_workspace_session_db(session: &WorkspaceSessionDb) -> Result<()> {
     let mut conn = open_db()?;
     let updated_workspace_ids_json = serde_json::to_string(&session.updated_workspace_ids)
         .with_context(|| "Failed to serialize workspace session updated_workspace_ids")?;
@@ -139,7 +135,7 @@ pub fn insert_workspace_session_db(_ship_dir: &Path, session: &WorkspaceSessionD
     Ok(())
 }
 
-pub fn update_workspace_session_db(_ship_dir: &Path, session: &WorkspaceSessionDb) -> Result<()> {
+pub fn update_workspace_session_db(session: &WorkspaceSessionDb) -> Result<()> {
     let mut conn = open_db()?;
     let updated_workspace_ids_json = serde_json::to_string(&session.updated_workspace_ids)
         .with_context(|| "Failed to serialize workspace session updated_workspace_ids")?;
@@ -186,7 +182,6 @@ pub fn update_workspace_session_db(_ship_dir: &Path, session: &WorkspaceSessionD
 }
 
 pub fn insert_workspace_session_record_db(
-    _ship_dir: &Path,
     record: &WorkspaceSessionRecordDb,
 ) -> Result<()> {
     let mut conn = open_db()?;
@@ -233,7 +228,6 @@ pub fn insert_workspace_session_record_db(
 }
 
 pub fn get_workspace_session_record_db(
-    _ship_dir: &Path,
     session_id: &str,
 ) -> Result<Option<WorkspaceSessionRecordDb>> {
     let mut conn = open_db()?;

@@ -5,13 +5,12 @@
 
 use anyhow::{Context, Result};
 use sqlx::Row;
-use std::path::Path;
 
 use super::types::{WorkspaceDbListRow, WorkspaceDbRow, WorkspaceUpsert};
 use super::{block_on, open_db};
 
 /// Retrieve the workspace record for the given branch, or None if none exists.
-pub fn get_workspace_db(_ship_dir: &Path, branch: &str) -> Result<Option<WorkspaceDbRow>> {
+pub fn get_workspace_db(branch: &str) -> Result<Option<WorkspaceDbRow>> {
     let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query(
@@ -69,7 +68,7 @@ pub fn get_workspace_db(_ship_dir: &Path, branch: &str) -> Result<Option<Workspa
     }
 }
 
-pub fn list_workspaces_db(_ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
+pub fn list_workspaces_db() -> Result<Vec<WorkspaceDbListRow>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(
@@ -138,7 +137,7 @@ pub fn list_workspaces_db(_ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
 }
 
 /// Upsert the workspace record for the given branch.
-pub fn upsert_workspace_db(_ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Result<()> {
+pub fn upsert_workspace_db(record: WorkspaceUpsert<'_>) -> Result<()> {
     let mut conn = open_db()?;
     let providers_json = serde_json::to_string(record.providers)
         .with_context(|| "Failed to serialize workspace providers")?;
@@ -196,7 +195,7 @@ pub fn upsert_workspace_db(_ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Res
 }
 
 /// Delete workspace state for a branch, including any session history.
-pub fn delete_workspace_db(_ship_dir: &Path, branch: &str) -> Result<bool> {
+pub fn delete_workspace_db(branch: &str) -> Result<bool> {
     let mut conn = open_db()?;
     let workspace_id = block_on(async {
         sqlx::query_scalar::<_, String>(
@@ -231,7 +230,6 @@ pub fn delete_workspace_db(_ship_dir: &Path, branch: &str) -> Result<bool> {
 
 /// Mark any currently active workspace as idle except `active_branch`.
 pub fn demote_other_active_workspaces_db(
-    _ship_dir: &Path,
     active_branch: &str,
     resolved_at: &str,
 ) -> Result<()> {

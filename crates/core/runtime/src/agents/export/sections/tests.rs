@@ -637,7 +637,7 @@ mod tests {
     fn claude_managed_state_written() {
         let (_tmp, project_dir) = project_with_servers(vec![make_stdio_server("gh")]);
         export_to(project_dir.clone(), "claude").unwrap();
-        let (ids, _mode) = crate::db::managed_state::get_managed_state_db(&project_dir, "claude").unwrap();
+        let (ids, _mode) = crate::db::managed_state::get_managed_state_db("claude").unwrap();
         assert!(
             ids.contains(&"gh".to_string()),
             "managed server not recorded in state"

@@ -17,8 +17,8 @@ use super::types_session::*;
 
 // ---- Get / list / delete ---------------------------------------------------
 
-pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>> {
-    let row = get_workspace_db(ship_dir, branch)?;
+pub fn get_workspace(_ship_dir: &Path, branch: &str) -> Result<Option<Workspace>> {
+    let row = get_workspace_db(branch)?;
     let Some((
         id,
         workspace_type,
@@ -71,8 +71,8 @@ pub fn get_workspace(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>>
     }))
 }
 
-pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
-    let rows = list_workspaces_db(ship_dir)?;
+pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
+    let rows = list_workspaces_db()?;
     let mut workspaces = Vec::with_capacity(rows.len());
     for (
         branch,
@@ -126,14 +126,14 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
     Ok(workspaces)
 }
 
-pub fn delete_workspace(ship_dir: &Path, branch: &str) -> Result<()> {
+pub fn delete_workspace(_ship_dir: &Path, branch: &str) -> Result<()> {
     let branch = ensure_branch_key(branch)?;
-    clear_branch_link(ship_dir, branch)?;
-    let _ = delete_workspace_db(ship_dir, branch)?;
+    clear_branch_link(branch)?;
+    let _ = delete_workspace_db(branch)?;
     Ok(())
 }
 
-pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
+pub fn upsert_workspace(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
     let workspace_id = if workspace.id.trim().is_empty() {
         workspace_id_from_branch(&workspace.branch)
     } else {
@@ -150,7 +150,6 @@ pub fn upsert_workspace(ship_dir: &Path, workspace: &Workspace) -> Result<()> {
     let compiled_at = workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339());
 
     upsert_workspace_db(
-        ship_dir,
         WorkspaceUpsert {
             branch: &workspace.branch,
             workspace_id: &workspace_id,

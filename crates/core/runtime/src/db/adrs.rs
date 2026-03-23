@@ -3,7 +3,6 @@
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::Row;
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
@@ -26,7 +25,6 @@ const COLS: &str =
     "id, title, status, date, context, decision, tags_json, supersedes_id, created_at, updated_at";
 
 pub fn create_adr(
-    _ship_dir: &Path,
     title: &str,
     context: &str,
     decision: &str,
@@ -95,7 +93,7 @@ pub fn update_adr(
     Ok(())
 }
 
-pub fn get_adr(_ship_dir: &Path, id: &str) -> Result<Option<AdrRecord>> {
+pub fn get_adr(id: &str) -> Result<Option<AdrRecord>> {
     let mut conn = open_db()?;
     get_adr_impl(&mut conn, id)
 }
@@ -110,7 +108,7 @@ fn get_adr_impl(conn: &mut sqlx::SqliteConnection, id: &str) -> Result<Option<Ad
     Ok(row.map(|r| row_to_adr(&r)))
 }
 
-pub fn list_adrs(_ship_dir: &Path) -> Result<Vec<AdrRecord>> {
+pub fn list_adrs() -> Result<Vec<AdrRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -122,7 +120,7 @@ pub fn list_adrs(_ship_dir: &Path) -> Result<Vec<AdrRecord>> {
     Ok(rows.iter().map(row_to_adr).collect())
 }
 
-pub fn delete_adr(_ship_dir: &Path, id: &str) -> Result<()> {
+pub fn delete_adr(id: &str) -> Result<()> {
     let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM adr WHERE id = ?")
@@ -164,9 +162,8 @@ mod tests {
 
     #[test]
     fn test_create_adr() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let adr = create_adr(
-            &ship_dir,
             "Use SQLite",
             "Need local storage",
             "Use SQLite for all local state",
@@ -182,16 +179,15 @@ mod tests {
 
     #[test]
     fn test_get_adr() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let adr = create_adr(
-            &ship_dir,
             "Use Rust",
             "Performance matters",
             "Use Rust",
             "accepted",
         )
         .unwrap();
-        let got = get_adr(&ship_dir, &adr.id).unwrap().unwrap();
+        let got = get_adr(&adr.id).unwrap().unwrap();
         assert_eq!(got.id, adr.id);
         assert_eq!(got.title, "Use Rust");
         assert_eq!(got.status, "accepted");
@@ -199,27 +195,26 @@ mod tests {
 
     #[test]
     fn test_list_adrs() {
-        let (_tmp, ship_dir) = setup();
-        create_adr(&ship_dir, "ADR One", "ctx1", "dec1", "proposed").unwrap();
-        create_adr(&ship_dir, "ADR Two", "ctx2", "dec2", "accepted").unwrap();
-        create_adr(&ship_dir, "ADR Three", "ctx3", "dec3", "rejected").unwrap();
-        let adrs = list_adrs(&ship_dir).unwrap();
+        let (_tmp, _ship_dir) = setup();
+        create_adr("ADR One", "ctx1", "dec1", "proposed").unwrap();
+        create_adr("ADR Two", "ctx2", "dec2", "accepted").unwrap();
+        create_adr("ADR Three", "ctx3", "dec3", "rejected").unwrap();
+        let adrs = list_adrs().unwrap();
         assert_eq!(adrs.len(), 3);
     }
 
     #[test]
     fn test_delete_adr() {
-        let (_tmp, ship_dir) = setup();
-        let adr = create_adr(&ship_dir, "Temporary ADR", "", "", "proposed").unwrap();
-        delete_adr(&ship_dir, &adr.id).unwrap();
-        assert!(get_adr(&ship_dir, &adr.id).unwrap().is_none());
+        let (_tmp, _ship_dir) = setup();
+        let adr = create_adr("Temporary ADR", "", "", "proposed").unwrap();
+        delete_adr(&adr.id).unwrap();
+        assert!(get_adr(&adr.id).unwrap().is_none());
     }
 
     #[test]
     fn test_update_adr() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let adr = create_adr(
-            &ship_dir,
             "Draft ADR",
             "initial context",
             "initial decision",
@@ -236,7 +231,7 @@ mod tests {
             Some("accepted"),
         )
         .unwrap();
-        let got = get_adr(&ship_dir, &adr.id).unwrap().unwrap();
+        let got = get_adr(&adr.id).unwrap().unwrap();
         assert_eq!(got.title, "Final ADR");
         assert_eq!(got.context, "initial context");
         assert_eq!(got.decision, "final decision");

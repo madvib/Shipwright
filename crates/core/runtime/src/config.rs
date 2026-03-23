@@ -566,7 +566,6 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
             .join("SKILL.md");
         let digest = stable_hash(&skill.content);
         crate::db::agents::upsert_agent_artifact_registry_db(
-            ship_dir,
             ARTIFACT_KIND_SKILL,
             &skill.id,
             &skill.name,
@@ -579,7 +578,6 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
         let external_id = normalize_rule_external_id(&rule.file_name);
         let digest = stable_hash(&rule.content);
         crate::db::agents::upsert_agent_artifact_registry_db(
-            ship_dir,
             ARTIFACT_KIND_RULE,
             &external_id,
             &rule.file_name,
@@ -591,7 +589,6 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
     for server in get_mcp_config(ship_dir)? {
         let digest = stable_hash(&toml::to_string(&server)?);
         crate::db::agents::upsert_agent_artifact_registry_db(
-            ship_dir,
             ARTIFACT_KIND_MCP,
             &server.id,
             &server.name,
@@ -604,7 +601,7 @@ fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
 }
 
 fn resolve_refs_to_external_ids(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     refs: &[String],
 ) -> Result<Vec<String>> {
@@ -612,7 +609,7 @@ fn resolve_refs_to_external_ids(
     let mut seen = HashSet::new();
     for reference in refs {
         if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_uuid_db(ship_dir, kind, reference)?
+            crate::db::agents::get_agent_artifact_registry_by_uuid_db(kind, reference)?
         {
             let external_id = if kind == ARTIFACT_KIND_RULE {
                 normalize_rule_external_id(&entry.external_id)
@@ -630,8 +627,7 @@ fn resolve_refs_to_external_ids(
         } else {
             reference.clone()
         };
-        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(
-            ship_dir, kind, &lookup,
+        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup,
         )? && seen.insert(entry.external_id.clone())
         {
             resolved.push(entry.external_id);
@@ -641,7 +637,7 @@ fn resolve_refs_to_external_ids(
 }
 
 fn resolve_external_ids_to_refs(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     external_ids: &[String],
 ) -> Result<Vec<String>> {
@@ -653,8 +649,7 @@ fn resolve_external_ids_to_refs(
         } else {
             id.clone()
         };
-        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(
-            ship_dir, kind, &lookup,
+        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup,
         )? && seen.insert(entry.uuid.clone())
         {
             refs.push(entry.uuid);
@@ -666,7 +661,7 @@ fn resolve_external_ids_to_refs(
 fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let mode_rows = crate::db::agents::list_agent_configs_db(ship_dir)?;
+    let mode_rows = crate::db::agents::list_agent_configs_db()?;
     let mut modes = Vec::new();
     for row in mode_rows {
         let active_tools: Vec<String> =
@@ -702,7 +697,7 @@ fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
 fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let existing_ids: HashSet<String> = crate::db::agents::list_agent_configs_db(ship_dir)?
+    let existing_ids: HashSet<String> = crate::db::agents::list_agent_configs_db()?
         .into_iter()
         .map(|row| row.id)
         .collect();
@@ -735,12 +730,12 @@ fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
             permissions_json: serde_json::to_string(&mode.permissions)?,
             target_agents_json: serde_json::to_string(&mode.target_agents)?,
         };
-        crate::db::agents::upsert_agent_config_db(ship_dir, &db_mode)?;
+        crate::db::agents::upsert_agent_config_db(&db_mode)?;
     }
 
     for id in existing_ids {
         if !next_ids.contains(&id) {
-            crate::db::agents::delete_agent_config_db(ship_dir, &id)?;
+            crate::db::agents::delete_agent_config_db(&id)?;
         }
     }
 
@@ -792,7 +787,7 @@ fn normalize_git_config(mut git: GitConfig) -> GitConfig {
 
 #[allow(clippy::type_complexity)]
 fn get_runtime_settings(
-    ship_dir: &Path,
+    _ship_dir: &Path,
 ) -> Result<
     Option<(
         Vec<String>,
@@ -804,7 +799,7 @@ fn get_runtime_settings(
         Option<Vec<NamespaceConfig>>,
     )>,
 > {
-    let Some(raw) = crate::db::agents::get_agent_runtime_settings_db(ship_dir)? else {
+    let Some(raw) = crate::db::agents::get_agent_runtime_settings_db()? else {
         return Ok(None);
     };
 
@@ -844,14 +839,13 @@ fn get_runtime_settings(
     )))
 }
 
-fn save_runtime_settings(ship_dir: &Path, config: &ProjectConfig) -> Result<()> {
+fn save_runtime_settings(_ship_dir: &Path, config: &ProjectConfig) -> Result<()> {
     let hooks_json = serde_json::to_string(&config.hooks)?;
     let statuses_json = serde_json::to_string(&config.statuses)?;
     let ai_json = config.ai.as_ref().map(serde_json::to_string).transpose()?;
     let git_json = serde_json::to_string(&normalize_git_config(config.git.clone()))?;
     let namespaces_json = serde_json::to_string(&config.namespaces)?;
     crate::db::agents::set_agent_runtime_settings_db(
-        ship_dir,
         &config.providers,
         config.active_agent.as_deref(),
         &hooks_json,
@@ -1755,7 +1749,7 @@ mod tests {
             "legacy agents/config.toml should not be written"
         );
 
-        let runtime_settings = crate::db::agents::get_agent_runtime_settings_db(&ship_dir)?
+        let runtime_settings = crate::db::agents::get_agent_runtime_settings_db()?
             .expect("expected runtime settings row");
         assert_eq!(
             runtime_settings.providers,
@@ -1773,7 +1767,7 @@ mod tests {
         assert!(runtime_settings.git_json.contains("\"ship.jsonc\""));
         assert!(runtime_settings.namespaces_json.contains("\"project\""));
 
-        let mode_rows = crate::db::agents::list_agent_configs_db(&ship_dir)?;
+        let mode_rows = crate::db::agents::list_agent_configs_db()?;
         assert_eq!(mode_rows.len(), 1);
         assert_eq!(mode_rows[0].id, "planning");
 

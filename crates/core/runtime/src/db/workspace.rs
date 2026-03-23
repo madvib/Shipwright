@@ -6,7 +6,6 @@
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::Row;
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
@@ -53,7 +52,7 @@ const W_COLS: &str =
 const S_COLS: &str = "id, workspace_id, workspace_branch, status, preset_id, primary_provider,
      goal, summary, started_at, ended_at, created_at, updated_at";
 
-pub fn upsert_workspace(_ship_dir: &Path, w: &Workspace) -> Result<()> {
+pub fn upsert_workspace(w: &Workspace) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let providers = serde_json::to_string(&w.providers)?;
@@ -101,7 +100,7 @@ pub fn upsert_workspace(_ship_dir: &Path, w: &Workspace) -> Result<()> {
     Ok(())
 }
 
-pub fn get_workspace(_ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
+pub fn get_workspace(id: &str) -> Result<Option<Workspace>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!(
@@ -115,7 +114,7 @@ pub fn get_workspace(_ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
     Ok(row.map(|r| row_to_workspace(&r)))
 }
 
-pub fn get_workspace_by_branch(_ship_dir: &Path, branch: &str) -> Result<Option<Workspace>> {
+pub fn get_workspace_by_branch(branch: &str) -> Result<Option<Workspace>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {W_COLS} FROM workspace WHERE branch = ?"))
@@ -126,7 +125,7 @@ pub fn get_workspace_by_branch(_ship_dir: &Path, branch: &str) -> Result<Option<
     Ok(row.map(|r| row_to_workspace(&r)))
 }
 
-pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
+pub fn list_workspaces() -> Result<Vec<Workspace>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -139,7 +138,6 @@ pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
 }
 
 pub fn start_session(
-    _ship_dir: &Path,
     workspace_id: &str,
     branch: &str,
     preset_id: Option<&str>,
@@ -182,7 +180,7 @@ pub fn start_session(
     })
 }
 
-pub fn end_session(_ship_dir: &Path, session_id: &str, summary: Option<&str>) -> Result<()> {
+pub fn end_session(session_id: &str, summary: Option<&str>) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
@@ -201,7 +199,7 @@ pub fn end_session(_ship_dir: &Path, session_id: &str, summary: Option<&str>) ->
     Ok(())
 }
 
-pub fn get_active_session(_ship_dir: &Path, workspace_id: &str) -> Result<Option<WorkspaceSession>> {
+pub fn get_active_session(workspace_id: &str) -> Result<Option<WorkspaceSession>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!(
@@ -292,10 +290,10 @@ mod tests {
 
     #[test]
     fn test_upsert_and_get_workspace() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let w = sample("ws-001", "feat/test");
-        upsert_workspace(&ship_dir, &w).unwrap();
-        let got = get_workspace(&ship_dir, "ws-001").unwrap().unwrap();
+        upsert_workspace(&w).unwrap();
+        let got = get_workspace("ws-001").unwrap().unwrap();
         assert_eq!(got.branch, "feat/test");
         assert_eq!(got.workspace_type, "declarative");
         assert_eq!(got.active_preset, Some("default".to_string()));
@@ -303,25 +301,25 @@ mod tests {
 
     #[test]
     fn test_upsert_workspace_updates_on_conflict() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let mut w = sample("ws-002", "main");
-        upsert_workspace(&ship_dir, &w).unwrap();
+        upsert_workspace(&w).unwrap();
         w.active_preset = Some("orchestrator".to_string());
-        upsert_workspace(&ship_dir, &w).unwrap();
-        let got = get_workspace(&ship_dir, "ws-002").unwrap().unwrap();
+        upsert_workspace(&w).unwrap();
+        let got = get_workspace("ws-002").unwrap().unwrap();
         assert_eq!(got.active_preset, Some("orchestrator".to_string()));
     }
 
     #[test]
     fn test_get_workspace_by_branch() {
-        let (_tmp, ship_dir) = setup();
-        upsert_workspace(&ship_dir, &sample("ws-003", "feat/branch")).unwrap();
-        let got = get_workspace_by_branch(&ship_dir, "feat/branch")
+        let (_tmp, _ship_dir) = setup();
+        upsert_workspace(&sample("ws-003", "feat/branch")).unwrap();
+        let got = get_workspace_by_branch("feat/branch")
             .unwrap()
             .unwrap();
         assert_eq!(got.id, "ws-003");
         assert!(
-            get_workspace_by_branch(&ship_dir, "nonexistent")
+            get_workspace_by_branch("nonexistent")
                 .unwrap()
                 .is_none()
         );
@@ -329,32 +327,32 @@ mod tests {
 
     #[test]
     fn test_list_workspaces() {
-        let (_tmp, ship_dir) = setup();
-        upsert_workspace(&ship_dir, &sample("ws-a", "branch-a")).unwrap();
-        upsert_workspace(&ship_dir, &sample("ws-b", "branch-b")).unwrap();
-        assert_eq!(list_workspaces(&ship_dir).unwrap().len(), 2);
+        let (_tmp, _ship_dir) = setup();
+        upsert_workspace(&sample("ws-a", "branch-a")).unwrap();
+        upsert_workspace(&sample("ws-b", "branch-b")).unwrap();
+        assert_eq!(list_workspaces().unwrap().len(), 2);
     }
 
     #[test]
     fn test_session_lifecycle() {
-        let (_tmp, ship_dir) = setup();
-        upsert_workspace(&ship_dir, &sample("ws-s1", "main")).unwrap();
+        let (_tmp, _ship_dir) = setup();
+        upsert_workspace(&sample("ws-s1", "main")).unwrap();
         let sess =
-            start_session(&ship_dir, "ws-s1", "main", Some("cli-lane"), Some("build")).unwrap();
+            start_session("ws-s1", "main", Some("cli-lane"), Some("build")).unwrap();
         assert_eq!(sess.status, "active");
-        let active = get_active_session(&ship_dir, "ws-s1").unwrap().unwrap();
+        let active = get_active_session("ws-s1").unwrap().unwrap();
         assert_eq!(active.id, sess.id);
-        end_session(&ship_dir, &sess.id, Some("done")).unwrap();
-        assert!(get_active_session(&ship_dir, "ws-s1").unwrap().is_none());
+        end_session(&sess.id, Some("done")).unwrap();
+        assert!(get_active_session("ws-s1").unwrap().is_none());
     }
 
     #[test]
     fn test_workspace_with_worktree_path() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let mut w = sample("ws-wt1", "feat/worktree");
         w.worktree_path = Some("/tmp/worktrees/feat-worktree".to_string());
-        upsert_workspace(&ship_dir, &w).unwrap();
-        let got = get_workspace(&ship_dir, "ws-wt1").unwrap().unwrap();
+        upsert_workspace(&w).unwrap();
+        let got = get_workspace("ws-wt1").unwrap().unwrap();
         assert_eq!(
             got.worktree_path,
             Some("/tmp/worktrees/feat-worktree".to_string())
@@ -363,18 +361,18 @@ mod tests {
 
     #[test]
     fn test_list_workspaces_status_and_kind_visible() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let mut w_active = sample("ws-filter-a", "branch-active");
         w_active.status = "active".to_string();
         w_active.workspace_type = "declarative".to_string();
-        upsert_workspace(&ship_dir, &w_active).unwrap();
+        upsert_workspace(&w_active).unwrap();
 
         let mut w_completed = sample("ws-filter-b", "branch-completed");
         w_completed.status = "completed".to_string();
         w_completed.workspace_type = "imperative".to_string();
-        upsert_workspace(&ship_dir, &w_completed).unwrap();
+        upsert_workspace(&w_completed).unwrap();
 
-        let all = list_workspaces(&ship_dir).unwrap();
+        let all = list_workspaces().unwrap();
         assert_eq!(all.len(), 2);
 
         let active_ones: Vec<_> = all.iter().filter(|w| w.status == "active").collect();
@@ -384,16 +382,15 @@ mod tests {
 
     #[test]
     fn test_workspace_full_lifecycle() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let w = sample("ws-lc1", "feat/lifecycle");
-        upsert_workspace(&ship_dir, &w).unwrap();
+        upsert_workspace(&w).unwrap();
 
-        let all = list_workspaces(&ship_dir).unwrap();
+        let all = list_workspaces().unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "ws-lc1");
 
         let sess = start_session(
-            &ship_dir,
             "ws-lc1",
             "feat/lifecycle",
             Some("cli-lane"),
@@ -404,24 +401,24 @@ mod tests {
         assert_eq!(sess.goal, Some("lifecycle test".to_string()));
         assert!(sess.ended_at.is_none());
 
-        let active = get_active_session(&ship_dir, "ws-lc1").unwrap().unwrap();
+        let active = get_active_session("ws-lc1").unwrap().unwrap();
         assert_eq!(active.id, sess.id);
         assert_eq!(active.preset_id, Some("cli-lane".to_string()));
 
-        end_session(&ship_dir, &sess.id, Some("all done")).unwrap();
-        assert!(get_active_session(&ship_dir, "ws-lc1").unwrap().is_none());
+        end_session(&sess.id, Some("all done")).unwrap();
+        assert!(get_active_session("ws-lc1").unwrap().is_none());
 
         let mut w_done = w.clone();
         w_done.status = "completed".to_string();
-        upsert_workspace(&ship_dir, &w_done).unwrap();
-        let got = get_workspace(&ship_dir, "ws-lc1").unwrap().unwrap();
+        upsert_workspace(&w_done).unwrap();
+        let got = get_workspace("ws-lc1").unwrap().unwrap();
         assert_eq!(got.status, "completed");
     }
 
     #[test]
     fn test_get_workspace_missing_returns_none() {
-        let (_tmp, ship_dir) = setup();
-        let got = get_workspace(&ship_dir, "no-such-id").unwrap();
+        let (_tmp, _ship_dir) = setup();
+        let got = get_workspace("no-such-id").unwrap();
         assert!(got.is_none());
     }
 }

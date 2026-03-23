@@ -7,7 +7,6 @@ pub use file_ownership::{claim_file, get_file_owner};
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::Row;
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
@@ -51,7 +50,6 @@ const J_COLS: &str = concat!(
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_job(
-    _ship_dir: &Path,
     kind: &str,
     branch: Option<&str>,
     payload: Option<serde_json::Value>,
@@ -104,9 +102,9 @@ pub fn create_job(
 /// Patch one or more mutable job fields atomically.
 /// Reads current state, merges the patch, writes back, and releases file
 /// claims when the job reaches a terminal status ("complete", "failed", "done").
-pub fn update_job(_ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> {
+pub fn update_job(job_id: &str, patch: JobPatch) -> Result<()> {
     let current =
-        get_job(_ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+        get_job(job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let new_status = patch
         .status
@@ -140,22 +138,21 @@ pub fn update_job(_ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()>
         .await
     })?;
     if matches!(new_status.as_str(), "complete" | "failed" | "done") {
-        file_ownership::release_job_files(_ship_dir, job_id)?;
+        file_ownership::release_job_files(job_id)?;
     }
     Ok(())
 }
 
 /// Append a single file path to the job's `touched_files` list (deduplicates).
-pub fn append_touched_file(_ship_dir: &Path, job_id: &str, path: &str) -> Result<()> {
+pub fn append_touched_file(job_id: &str, path: &str) -> Result<()> {
     let current =
-        get_job(_ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+        get_job(job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let mut files = current.touched_files;
     let path_owned = path.to_string();
     if !files.contains(&path_owned) {
         files.push(path_owned);
     }
     update_job(
-        _ship_dir,
         job_id,
         JobPatch {
             touched_files: Some(files),
@@ -167,7 +164,7 @@ pub fn append_touched_file(_ship_dir: &Path, job_id: &str, path: &str) -> Result
 /// Atomically claim a pending job. Returns false if already claimed — prevents
 /// double-claiming when multiple commanders share the same queue (e.g. Claude + Codex,
 /// or two machines syncing the same platform.db).
-pub fn claim_job(_ship_dir: &Path, job_id: &str, claimed_by: &str) -> Result<bool> {
+pub fn claim_job(job_id: &str, claimed_by: &str) -> Result<bool> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let rows = block_on(async {
@@ -184,7 +181,7 @@ pub fn claim_job(_ship_dir: &Path, job_id: &str, claimed_by: &str) -> Result<boo
     Ok(rows.rows_affected() == 1)
 }
 
-pub fn update_job_status(_ship_dir: &Path, job_id: &str, status: &str) -> Result<()> {
+pub fn update_job_status(job_id: &str, status: &str) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
@@ -198,7 +195,7 @@ pub fn update_job_status(_ship_dir: &Path, job_id: &str, status: &str) -> Result
     Ok(())
 }
 
-pub fn get_job(_ship_dir: &Path, job_id: &str) -> Result<Option<Job>> {
+pub fn get_job(job_id: &str) -> Result<Option<Job>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {J_COLS} FROM job WHERE id = ?"))
@@ -209,7 +206,7 @@ pub fn get_job(_ship_dir: &Path, job_id: &str) -> Result<Option<Job>> {
     Ok(row.map(|r| row_to_job(&r)))
 }
 
-pub fn list_jobs(_ship_dir: &Path, branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>> {
+pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>> {
     let mut conn = open_db()?;
     let rows = match (branch, status) {
         (Some(b), Some(s)) => block_on(async {
@@ -289,9 +286,8 @@ mod tests {
         (tmp, ship_dir)
     }
 
-    fn mkjob(ship_dir: &std::path::Path, kind: &str, branch: Option<&str>) -> Job {
+    fn mkjob(kind: &str, branch: Option<&str>) -> Job {
         create_job(
-            ship_dir,
             kind,
             branch,
             None,
@@ -307,9 +303,8 @@ mod tests {
 
     #[test]
     fn test_create_and_get_job() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let job = create_job(
-            &ship_dir,
             "compile",
             Some("feat/x"),
             None,
@@ -322,16 +317,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(job.status, "pending");
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(got.kind, "compile");
         assert_eq!(got.branch, Some("feat/x".to_string()));
     }
 
     #[test]
     fn test_create_job_new_fields() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let job = create_job(
-            &ship_dir,
             "build",
             Some("feat/fields"),
             None,
@@ -347,30 +341,30 @@ mod tests {
         assert_eq!(job.priority, 5);
         assert_eq!(job.blocked_by, Some("blocker-id".to_string()));
         assert_eq!(job.touched_files, vec!["src/lib.rs".to_string()]);
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(got.priority, 5);
         assert_eq!(got.touched_files, vec!["src/lib.rs".to_string()]);
     }
 
     #[test]
     fn test_update_job_status() {
-        let (_tmp, ship_dir) = setup();
-        let job = mkjob(&ship_dir, "sync", None);
-        update_job_status(&ship_dir, &job.id, "running").unwrap();
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let (_tmp, _ship_dir) = setup();
+        let job = mkjob("sync", None);
+        update_job_status(&job.id, "running").unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(got.status, "running");
     }
 
     #[test]
     fn test_list_jobs_filtered() {
-        let (_tmp, ship_dir) = setup();
-        mkjob(&ship_dir, "compile", Some("main"));
-        mkjob(&ship_dir, "sync", Some("feat/a"));
-        let all = list_jobs(&ship_dir, None, None).unwrap();
+        let (_tmp, _ship_dir) = setup();
+        mkjob("compile", Some("main"));
+        mkjob("sync", Some("feat/a"));
+        let all = list_jobs(None, None).unwrap();
         assert_eq!(all.len(), 2);
-        let main_jobs = list_jobs(&ship_dir, Some("main"), None).unwrap();
+        let main_jobs = list_jobs(Some("main"), None).unwrap();
         assert_eq!(main_jobs.len(), 1);
-        let pending = list_jobs(&ship_dir, None, Some("pending")).unwrap();
+        let pending = list_jobs(None, Some("pending")).unwrap();
         assert_eq!(pending.len(), 2);
     }
 
@@ -379,56 +373,55 @@ mod tests {
     /// Two-step status transition: pending → running → done.
     #[test]
     fn test_job_status_transitions_pending_running_done() {
-        let (_tmp, ship_dir) = setup();
-        let job = mkjob(&ship_dir, "build", Some("feat/transitions"));
+        let (_tmp, _ship_dir) = setup();
+        let job = mkjob("build", Some("feat/transitions"));
         assert_eq!(job.status, "pending");
 
-        update_job_status(&ship_dir, &job.id, "running").unwrap();
-        let running = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        update_job_status(&job.id, "running").unwrap();
+        let running = get_job(&job.id).unwrap().unwrap();
         assert_eq!(running.status, "running");
 
-        update_job_status(&ship_dir, &job.id, "done").unwrap();
-        let done = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        update_job_status(&job.id, "done").unwrap();
+        let done = get_job(&job.id).unwrap().unwrap();
         assert_eq!(done.status, "done");
     }
 
     /// list_jobs with both branch AND status filter combined returns only exact matches.
     #[test]
     fn test_list_jobs_branch_and_status_combined() {
-        let (_tmp, ship_dir) = setup();
-        let j1 = mkjob(&ship_dir, "compile", Some("feat/combo"));
-        let j2 = mkjob(&ship_dir, "sync", Some("feat/combo"));
-        let _j3 = mkjob(&ship_dir, "compile", Some("main"));
+        let (_tmp, _ship_dir) = setup();
+        let j1 = mkjob("compile", Some("feat/combo"));
+        let j2 = mkjob("sync", Some("feat/combo"));
+        let _j3 = mkjob("compile", Some("main"));
 
         // Advance j2 to running so we have a mix of statuses on the same branch.
-        update_job_status(&ship_dir, &j2.id, "running").unwrap();
+        update_job_status(&j2.id, "running").unwrap();
 
         // Branch=feat/combo + status=pending → only j1
-        let pending_combo = list_jobs(&ship_dir, Some("feat/combo"), Some("pending")).unwrap();
+        let pending_combo = list_jobs(Some("feat/combo"), Some("pending")).unwrap();
         assert_eq!(pending_combo.len(), 1);
         assert_eq!(pending_combo[0].id, j1.id);
 
         // Branch=feat/combo + status=running → only j2
-        let running_combo = list_jobs(&ship_dir, Some("feat/combo"), Some("running")).unwrap();
+        let running_combo = list_jobs(Some("feat/combo"), Some("running")).unwrap();
         assert_eq!(running_combo.len(), 1);
         assert_eq!(running_combo[0].id, j2.id);
 
         // Branch=main + status=pending → only j3
-        let main_pending = list_jobs(&ship_dir, Some("main"), Some("pending")).unwrap();
+        let main_pending = list_jobs(Some("main"), Some("pending")).unwrap();
         assert_eq!(main_pending.len(), 1);
 
         // Branch=feat/combo + status=done → nothing
-        let done_combo = list_jobs(&ship_dir, Some("feat/combo"), Some("done")).unwrap();
+        let done_combo = list_jobs(Some("feat/combo"), Some("done")).unwrap();
         assert!(done_combo.is_empty());
     }
 
     /// update_job patches multiple fields in a single call.
     #[test]
     fn test_update_job_patches_fields() {
-        let (_tmp, ship_dir) = setup();
-        let job = mkjob(&ship_dir, "patch-test", None);
+        let (_tmp, _ship_dir) = setup();
+        let job = mkjob("patch-test", None);
         update_job(
-            &ship_dir,
             &job.id,
             JobPatch {
                 status: Some("running".to_string()),
@@ -441,7 +434,7 @@ mod tests {
             },
         )
         .unwrap();
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(got.status, "running");
         assert_eq!(got.assigned_to, Some("agent-42".to_string()));
         assert_eq!(got.priority, 10);
@@ -450,10 +443,9 @@ mod tests {
 
     #[test]
     fn test_create_job_with_file_scope() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         let scope = vec!["crates/core/".to_string(), "apps/mcp/".to_string()];
         let job = create_job(
-            &ship_dir,
             "build",
             None,
             None,
@@ -466,23 +458,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(job.file_scope, scope);
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(got.file_scope, scope);
     }
 
     #[test]
     fn test_capability_id_round_trip() {
-        let (_tmp, ship_dir) = setup();
+        let (_tmp, _ship_dir) = setup();
         // FK is enforced — create a real target + capability first.
-        let t = crate::db::targets::create_target(&ship_dir, "surface", "test", None, None, None)
+        let t = crate::db::targets::create_target("surface", "test", None, None, None)
             .unwrap();
-        let c = crate::db::targets::create_capability(&ship_dir, &t.id, "test cap", None).unwrap();
+        let c = crate::db::targets::create_capability(&t.id, "test cap", None).unwrap();
 
-        let job = mkjob(&ship_dir, "compile", None);
+        let job = mkjob("compile", None);
         assert!(job.capability_id.is_none());
 
         update_job(
-            &ship_dir,
             &job.id,
             JobPatch {
                 capability_id: Some(c.id.clone()),
@@ -491,22 +482,22 @@ mod tests {
         )
         .unwrap();
 
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(got.capability_id, Some(c.id));
     }
 
     #[test]
     fn test_append_touched_file_deduplicates() {
-        let (_tmp, ship_dir) = setup();
-        let job = mkjob(&ship_dir, "touch-test", None);
+        let (_tmp, _ship_dir) = setup();
+        let job = mkjob("touch-test", None);
         assert!(job.touched_files.is_empty());
 
-        append_touched_file(&ship_dir, &job.id, "src/lib.rs").unwrap();
-        append_touched_file(&ship_dir, &job.id, "src/main.rs").unwrap();
+        append_touched_file(&job.id, "src/lib.rs").unwrap();
+        append_touched_file(&job.id, "src/main.rs").unwrap();
         // Duplicate — should not add again.
-        append_touched_file(&ship_dir, &job.id, "src/lib.rs").unwrap();
+        append_touched_file(&job.id, "src/lib.rs").unwrap();
 
-        let got = get_job(&ship_dir, &job.id).unwrap().unwrap();
+        let got = get_job(&job.id).unwrap().unwrap();
         assert_eq!(
             got.touched_files,
             vec!["src/lib.rs".to_string(), "src/main.rs".to_string()]

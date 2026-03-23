@@ -3,13 +3,11 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use sqlx::Row;
-use std::path::Path;
 
 use super::{block_on, open_db};
 
 /// Returns `(server_ids, last_mode)` for the given provider, or empty defaults.
 pub fn get_managed_state_db(
-    _ship_dir: &Path,
     provider: &str,
 ) -> Result<(Vec<String>, Option<String>)> {
     let mut conn = open_db()?;
@@ -31,7 +29,6 @@ pub fn get_managed_state_db(
 
 /// Persist the managed server ids and last mode for the given provider.
 pub fn set_managed_state_db(
-    _ship_dir: &Path,
     provider: &str,
     ids: &[String],
     last_mode: Option<&str>,

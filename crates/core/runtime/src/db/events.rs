@@ -3,7 +3,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::Row;
-use std::path::Path;
 
 use crate::db::{block_on, open_db};
 use crate::events::{EventAction, EventEntity, EventRecord};
@@ -11,7 +10,6 @@ use crate::gen_nanoid;
 
 #[allow(clippy::too_many_arguments)]
 pub fn insert_event(
-    _ship_dir: &Path,
     actor: &str,
     entity: &EventEntity,
     entity_id: Option<&str>,
@@ -65,7 +63,7 @@ pub fn insert_event(
 //               6:workspace_id 7:session_id 8:job_id 9:created_at
 const SELECT_COLS: &str = "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
 
-pub fn list_all_events(_ship_dir: &Path) -> Result<Vec<EventRecord>> {
+pub fn list_all_events() -> Result<Vec<EventRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -78,7 +76,6 @@ pub fn list_all_events(_ship_dir: &Path) -> Result<Vec<EventRecord>> {
 }
 
 pub fn list_events_since_time(
-    _ship_dir: &Path,
     since: &DateTime<Utc>,
     limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
@@ -108,7 +105,7 @@ pub fn list_events_since_time(
     rows.iter().map(row_to_record).collect()
 }
 
-pub fn list_recent_events(_ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
+pub fn list_recent_events(limit: usize) -> Result<Vec<EventRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -124,7 +121,7 @@ pub fn list_recent_events(_ship_dir: &Path, limit: usize) -> Result<Vec<EventRec
     Ok(records)
 }
 
-pub fn list_events_by_job(_ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
+pub fn list_events_by_job(job_id: &str) -> Result<Vec<EventRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -137,7 +134,7 @@ pub fn list_events_by_job(_ship_dir: &Path, job_id: &str) -> Result<Vec<EventRec
     rows.iter().map(row_to_record).collect()
 }
 
-pub fn list_events_by_session(_ship_dir: &Path, session_id: &str) -> Result<Vec<EventRecord>> {
+pub fn list_events_by_session(session_id: &str) -> Result<Vec<EventRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -150,7 +147,7 @@ pub fn list_events_by_session(_ship_dir: &Path, session_id: &str) -> Result<Vec<
     rows.iter().map(row_to_record).collect()
 }
 
-pub fn list_events_by_workspace(_ship_dir: &Path, workspace_id: &str) -> Result<Vec<EventRecord>> {
+pub fn list_events_by_workspace(workspace_id: &str) -> Result<Vec<EventRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
@@ -169,7 +166,6 @@ pub fn list_events_by_workspace(_ship_dir: &Path, workspace_id: &str) -> Result<
 /// If `passed`, also updates the job status to "complete".
 /// If failed, the job stays "running" so it can be retried.
 pub fn record_gate_outcome(
-    _ship_dir: &Path,
     job_id: &str,
     passed: bool,
     evidence: &str,
@@ -180,7 +176,6 @@ pub fn record_gate_outcome(
         EventAction::Fail
     };
     let record = insert_event(
-        _ship_dir,
         "ship",
         &EventEntity::Gate,
         Some(job_id),
@@ -191,13 +186,13 @@ pub fn record_gate_outcome(
         Some(job_id),
     )?;
     if passed {
-        crate::db::jobs::update_job_status(_ship_dir, job_id, "complete")?;
+        crate::db::jobs::update_job_status(job_id, "complete")?;
     }
     Ok(record)
 }
 
 /// List gate outcomes (pass/fail events) for a specific job.
-pub fn list_gate_outcomes(_ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
+pub fn list_gate_outcomes(job_id: &str) -> Result<Vec<EventRecord>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(

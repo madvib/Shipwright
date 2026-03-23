@@ -73,11 +73,11 @@ pub(super) fn annotate_session_stale_state(
 }
 
 pub(super) fn annotate_session_record(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     session: &mut WorkspaceSession,
 ) -> Result<()> {
     session.session_record_id =
-        get_workspace_session_record_db(ship_dir, &session.id)?.map(|record| record.id);
+        get_workspace_session_record_db(&session.id)?.map(|record| record.id);
     Ok(())
 }
 
@@ -160,7 +160,7 @@ pub fn get_active_workspace_session(
     let mut generation_by_branch = HashMap::new();
     generation_by_branch.insert(workspace.branch.clone(), workspace.config_generation);
     Ok(
-        get_active_workspace_session_db(ship_dir, &workspace.id)?.map(|row| {
+        get_active_workspace_session_db(&workspace.id)?.map(|row| {
             let mut session = hydrate_workspace_session(row);
             annotate_session_stale_state(&mut session, &generation_by_branch);
             let _ = annotate_session_record(ship_dir, &mut session);
@@ -192,7 +192,7 @@ pub fn list_workspace_sessions(
         None
     };
 
-    let rows = list_workspace_sessions_db(ship_dir, workspace_id.as_deref(), limit)?;
+    let rows = list_workspace_sessions_db(workspace_id.as_deref(), limit)?;
     let mut sessions: Vec<WorkspaceSession> =
         rows.into_iter().map(hydrate_workspace_session).collect();
     for session in &mut sessions {
@@ -203,7 +203,7 @@ pub fn list_workspace_sessions(
 }
 
 pub fn get_workspace_session_record(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     session_id: &str,
 ) -> Result<Option<WorkspaceSessionRecord>> {
     let session_id = session_id.trim();
@@ -211,7 +211,7 @@ pub fn get_workspace_session_record(
         return Err(anyhow!("Session ID cannot be empty"));
     }
     Ok(
-        get_workspace_session_record_db(ship_dir, session_id)?
+        get_workspace_session_record_db(session_id)?
             .map(hydrate_workspace_session_record),
     )
 }
@@ -220,7 +220,7 @@ pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &s
     let branch = ensure_branch_key(branch)?;
     let workspace = get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
-    let active = get_active_workspace_session_db(ship_dir, &workspace.id)?
+    let active = get_active_workspace_session_db(&workspace.id)?
         .ok_or_else(|| anyhow::anyhow!("No active workspace session for '{}'", workspace.branch))?;
 
     let normalized_note = note.trim();

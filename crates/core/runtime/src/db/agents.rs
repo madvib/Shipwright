@@ -3,12 +3,11 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use sqlx::Row;
-use std::path::Path;
 
 use super::types::{AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb};
 use super::{block_on, open_db};
 
-pub fn get_agent_runtime_settings_db(_ship_dir: &Path) -> Result<Option<AgentRuntimeSettingsDb>> {
+pub fn get_agent_runtime_settings_db() -> Result<Option<AgentRuntimeSettingsDb>> {
     let mut conn = match open_db() {
         Ok(c) => c,
         Err(e) if e.to_string().contains("no id field") => return Ok(None),
@@ -50,7 +49,6 @@ pub fn get_agent_runtime_settings_db(_ship_dir: &Path) -> Result<Option<AgentRun
 
 #[allow(clippy::too_many_arguments)]
 pub fn set_agent_runtime_settings_db(
-    _ship_dir: &Path,
     providers: &[String],
     active_agent: Option<&str>,
     hooks_json: &str,
@@ -93,7 +91,6 @@ pub fn set_agent_runtime_settings_db(
 }
 
 pub fn upsert_agent_artifact_registry_db(
-    _ship_dir: &Path,
     kind: &str,
     external_id: &str,
     name: &str,
@@ -142,7 +139,6 @@ pub fn upsert_agent_artifact_registry_db(
 }
 
 pub fn get_agent_artifact_registry_by_uuid_db(
-    _ship_dir: &Path,
     kind: &str,
     uuid: &str,
 ) -> Result<Option<AgentArtifactRegistryDb>> {
@@ -174,7 +170,6 @@ pub fn get_agent_artifact_registry_by_uuid_db(
 }
 
 pub fn get_agent_artifact_registry_by_external_id_db(
-    _ship_dir: &Path,
     kind: &str,
     external_id: &str,
 ) -> Result<Option<AgentArtifactRegistryDb>> {
@@ -205,7 +200,7 @@ pub fn get_agent_artifact_registry_by_external_id_db(
     }))
 }
 
-pub fn list_agent_configs_db(_ship_dir: &Path) -> Result<Vec<AgentConfigDb>> {
+pub fn list_agent_configs_db() -> Result<Vec<AgentConfigDb>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(
@@ -236,7 +231,7 @@ pub fn list_agent_configs_db(_ship_dir: &Path) -> Result<Vec<AgentConfigDb>> {
     Ok(modes)
 }
 
-pub fn upsert_agent_config_db(_ship_dir: &Path, mode: &AgentConfigDb) -> Result<()> {
+pub fn upsert_agent_config_db(mode: &AgentConfigDb) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
@@ -275,7 +270,7 @@ pub fn upsert_agent_config_db(_ship_dir: &Path, mode: &AgentConfigDb) -> Result<
     Ok(())
 }
 
-pub fn delete_agent_config_db(_ship_dir: &Path, id: &str) -> Result<()> {
+pub fn delete_agent_config_db(id: &str) -> Result<()> {
     let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM agent_config WHERE id = ?")

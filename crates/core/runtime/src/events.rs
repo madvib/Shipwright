@@ -180,7 +180,7 @@ pub struct EventContext<'a> {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 pub fn append_event(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     actor: &str,
     entity: EventEntity,
     action: EventAction,
@@ -188,7 +188,7 @@ pub fn append_event(
     details: Option<String>,
 ) -> Result<EventRecord> {
     append_event_with_context(
-        ship_dir,
+        _ship_dir,
         actor,
         entity,
         action,
@@ -199,7 +199,7 @@ pub fn append_event(
 }
 
 pub fn append_event_with_context(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     actor: &str,
     entity: EventEntity,
     action: EventAction,
@@ -214,7 +214,6 @@ pub fn append_event_with_context(
         Some(subject.as_str())
     };
     crate::db::events::insert_event(
-        ship_dir,
         actor,
         &entity,
         entity_id,
@@ -226,20 +225,20 @@ pub fn append_event_with_context(
     )
 }
 
-pub fn read_events(ship_dir: &Path) -> Result<Vec<EventRecord>> {
-    crate::db::events::list_all_events(ship_dir)
+pub fn read_events(_ship_dir: &Path) -> Result<Vec<EventRecord>> {
+    crate::db::events::list_all_events()
 }
 
 pub fn list_events_since(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     since: &DateTime<Utc>,
     limit: Option<usize>,
 ) -> Result<Vec<EventRecord>> {
-    crate::db::events::list_events_since_time(ship_dir, since, limit)
+    crate::db::events::list_events_since_time(since, limit)
 }
 
-pub fn read_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
-    crate::db::events::list_recent_events(ship_dir, limit)
+pub fn read_recent_events(_ship_dir: &Path, limit: usize) -> Result<Vec<EventRecord>> {
+    crate::db::events::list_recent_events(limit)
 }
 
 /// Record a gate pass/fail outcome as a structured event.
@@ -249,15 +248,15 @@ pub fn read_recent_events(ship_dir: &Path, limit: usize) -> Result<Vec<EventReco
 /// - On pass, job status is set to "complete"
 /// - On fail, job status stays "running" (retryable)
 pub fn record_gate_outcome(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     job_id: &str,
     passed: bool,
     evidence: &str,
 ) -> Result<EventRecord> {
-    crate::db::events::record_gate_outcome(ship_dir, job_id, passed, evidence)
+    crate::db::events::record_gate_outcome(job_id, passed, evidence)
 }
 
 /// List all gate outcomes (pass/fail events) for a given job.
-pub fn list_gate_outcomes(ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
-    crate::db::events::list_gate_outcomes(ship_dir, job_id)
+pub fn list_gate_outcomes(_ship_dir: &Path, job_id: &str) -> Result<Vec<EventRecord>> {
+    crate::db::events::list_gate_outcomes(job_id)
 }
