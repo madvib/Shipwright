@@ -9,7 +9,7 @@ export const TECH_STACKS = {
   rust:       { slug: 'rust',           fg: '#ce422b', bg: '#1a0a08', border: '#ce422b33' },
   go:         { slug: 'go',             fg: '#00acd7', bg: '#00acd722', border: '#00acd733' },
   java:       { slug: 'openjdk',        fg: '#fff',    bg: '#ed8b00', border: '#ed8b0066' },
-  csharp:     { slug: 'csharp',         fg: '#fff',    bg: '#512bd4', border: '#512bd466' },
+  csharp:     { slug: 'dotnet',          fg: '#fff',    bg: '#512bd4', border: '#512bd466' },
   swift:      { slug: 'swift',          fg: '#fff',    bg: '#f05138', border: '#f0513866' },
   kotlin:     { slug: 'kotlin',         fg: '#fff',    bg: '#7f52ff', border: '#7f52ff66' },
   ruby:       { slug: 'ruby',           fg: '#fff',    bg: '#cc342d', border: '#cc342d66' },
@@ -33,9 +33,9 @@ export const TECH_STACKS = {
   docker:     { slug: 'docker',         fg: '#fff',    bg: '#2496ed', border: '#2496ed66' },
   kubernetes: { slug: 'kubernetes',     fg: '#fff',    bg: '#326ce5', border: '#326ce566' },
   terraform:  { slug: 'terraform',      fg: '#fff',    bg: '#844fba', border: '#844fba66' },
-  aws:        { slug: 'amazonaws',      fg: '#fff',    bg: '#232f3e', border: '#ff990066' },
+  aws:        { slug: 'amazonwebservices', fg: '#fff', bg: '#232f3e', border: '#ff990066' },
   gcp:        { slug: 'googlecloud',    fg: '#fff',    bg: '#4285f4', border: '#4285f466' },
-  azure:      { slug: 'microsoftazure', fg: '#fff',    bg: '#0078d4', border: '#0078d466' },
+  azure:      { slug: 'microsoftazure', fg: '#fff',    bg: '#0089d6', border: '#0089d666' },
   cloudflare: { slug: 'cloudflare',     fg: '#fff',    bg: '#f6821f', border: '#f6821f66' },
   vercel:     { slug: 'vercel',         fg: '#fff',    bg: '#000',    border: '#ffffff22' },
   nginx:      { slug: 'nginx',          fg: '#fff',    bg: '#009639', border: '#00963966' },
@@ -54,24 +54,27 @@ export const TECH_STACKS = {
   node:       { slug: 'nodedotjs',      fg: '#fff',    bg: '#339933', border: '#33993366' },
   bun:        { slug: 'bun',            fg: '#fff',    bg: '#000',    border: '#fbf0df44' },
   deno:       { slug: 'deno',           fg: '#fff',    bg: '#000',    border: '#ffffff22' },
-  linux:      { slug: 'linux',          fg: '#fff',    bg: '#fcc624', border: '#fcc62466' },
-  vim:        { slug: 'vim',            fg: '#fff',    bg: '#019733', border: '#01973366' },
+  linux:      { slug: 'linux',          fg: '#000',    bg: '#e5e5e5', border: '#00000022' },
 
   // ── AI / ML ────────────────────────────────────────────────────────────
-  openai:     { slug: 'openai',         fg: '#fff',    bg: '#412991', border: '#41299166' },
+  openai:     { slug: 'openai',         fg: '#fff',    bg: '#000',    border: '#ffffff22' },
   anthropic:  { slug: 'anthropic',      fg: '#fff',    bg: '#191919', border: '#d4a27444' },
-  huggingface:{ slug: 'huggingface',    fg: '#000',    bg: '#ffd21e', border: '#ffd21e66' },
   pytorch:    { slug: 'pytorch',        fg: '#fff',    bg: '#ee4c2c', border: '#ee4c2c66' },
+  tensorflow: { slug: 'tensorflow',     fg: '#fff',    bg: '#ff6f00', border: '#ff6f0066' },
 
-  // ── Generic roles (no brand icon — uses initials) ──────────────────────
-  code:       { slug: 'codecov',        fg: '#fff',    bg: '#f01f7a', border: '#f01f7a66' },
-  security:   { slug: 'letsencrypt',    fg: '#fff',    bg: '#003a70', border: '#003a7066' },
-  test:       { slug: 'testinglibrary', fg: '#fff',    bg: '#e33332', border: '#e3333266' },
-  docs:       { slug: 'readthedocs',    fg: '#fff',    bg: '#8ca1af', border: '#8ca1af66' },
-  api:        { slug: 'swagger',        fg: '#fff',    bg: '#85ea2d', border: '#85ea2d66' },
-  deploy:     { slug: 'githubactions',  fg: '#fff',    bg: '#2088ff', border: '#2088ff66' },
-  monitor:    { slug: 'grafana',        fg: '#fff',    bg: '#f46800', border: '#f4680066' },
-  custom:     { slug: null,             fg: '#000',    bg: '#f59e0b', border: '#f59e0b66' },
+  // ── Generic roles — use null slug, rendered with initials ───────────────
+  orchestrator: { slug: null, fg: '#c084fc', bg: '#7c3aed22', border: '#7c3aed44' },
+  reviewer:     { slug: null, fg: '#60a5fa', bg: '#3b82f622', border: '#3b82f644' },
+  frontend:     { slug: null, fg: '#34d399', bg: '#10b98122', border: '#10b98144' },
+  backend:      { slug: null, fg: '#fbbf24', bg: '#f59e0b22', border: '#f59e0b44' },
+  devops:       { slug: null, fg: '#f87171', bg: '#ef444422', border: '#ef444444' },
+  security:     { slug: null, fg: '#a78bfa', bg: '#8b5cf622', border: '#8b5cf644' },
+  testing:      { slug: null, fg: '#fb923c', bg: '#f9731622', border: '#f9731644' },
+  docs:         { slug: null, fg: '#94a3b8', bg: '#64748b22', border: '#64748b44' },
+  data:         { slug: null, fg: '#2dd4bf', bg: '#14b8a622', border: '#14b8a644' },
+  mobile:       { slug: null, fg: '#f472b6', bg: '#ec489922', border: '#ec489944' },
+  fullstack:    { slug: null, fg: '#e2e8f0', bg: '#47556922', border: '#47556944' },
+  custom:       { slug: null, fg: '#fbbf24', bg: '#f59e0b22', border: '#f59e0b44' },
 } as const
 
 export type TechStack = keyof typeof TECH_STACKS
@@ -83,9 +86,9 @@ export const ICON_CATEGORIES = [
   { id: 'frameworks', label: 'Frameworks', keys: ['react','nextjs','vue','svelte','angular','astro','tailwind','django','rails','flask','fastapi'] },
   { id: 'infra', label: 'Infra', keys: ['docker','kubernetes','terraform','aws','gcp','azure','cloudflare','vercel','nginx'] },
   { id: 'data', label: 'Data', keys: ['postgres','mysql','mongodb','redis','sqlite','graphql'] },
-  { id: 'tools', label: 'Tools', keys: ['git','github','node','bun','deno','linux','vim'] },
-  { id: 'ai', label: 'AI', keys: ['openai','anthropic','huggingface','pytorch'] },
-  { id: 'roles', label: 'Roles', keys: ['code','security','test','docs','api','deploy','monitor'] },
+  { id: 'tools', label: 'Tools', keys: ['git','github','node','bun','deno','linux'] },
+  { id: 'ai', label: 'AI', keys: ['openai','anthropic','pytorch','tensorflow'] },
+  { id: 'roles', label: 'Roles', keys: ['orchestrator','reviewer','frontend','backend','devops','security','testing','docs','data','mobile','fullstack'] },
 ] as const
 
 interface TechIconProps {
