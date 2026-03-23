@@ -11,7 +11,7 @@ ARG USER_GID=1000
 # System deps
 RUN apt-get update && apt-get install -y \
     curl git sudo ca-certificates unzip xz-utils zsh \
-    build-essential \
+    build-essential gh \
     tmux fzf ripgrep fd-find bat btop jq file xdg-utils \
     locales \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
@@ -39,6 +39,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable \
 RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir $HOME/.local/bin \
     && $HOME/.local/bin/fnm install --lts
 RUN curl -fsSL https://get.pnpm.io/install.sh | SHELL=bash sh -
+RUN $HOME/.local/share/pnpm/pnpm config set store-dir /home/dev/.local/share/pnpm/store
 
 # just
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \

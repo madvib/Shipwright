@@ -30,10 +30,13 @@ VOLUMES=(
   -v "$HOME/.ship:/home/dev/.ship:Z"
   -v "$HOME/.claude:/home/dev/.claude:Z"
   -v "$HOME/.claude.json:/home/dev/.claude.json:Z"
+  -v "$HOME/.config/gh:/home/dev/.config/gh:Z"
+  -v "$HOME/.gitconfig:/home/dev/.gitconfig:ro,Z"
 )
 
 # Optional host mounts — add only if they exist
-[[ -d "$HOME/dev/worktrees" ]] && VOLUMES+=(-v "$HOME/dev/worktrees:/workspaces/worktrees:Z")
+[[ -d "$HOME/dev/worktrees" ]]       && VOLUMES+=(-v "$HOME/dev/worktrees:/workspaces/worktrees:Z")
+[[ -d "$HOME/dev/ship-internal" ]]   && VOLUMES+=(-v "$HOME/dev/ship-internal:/workspaces/ship-internal:Z")
 
 # Personal dotfiles — mount your configs into the container's XDG dirs.
 # Set SHIP_DOTFILES to your dotfiles path, or leave unset to skip.
@@ -53,6 +56,7 @@ PORTS=(
   -p 3000:3000   # Ship Studio (Vite dev)
   -p 3001:3001   # Ship Studio (alt)
   -p 3002:3002   # Vite HMR websocket
+  -p 6006:6006   # Storybook
   -p 7701:7701   # Ship MCP server (HTTP mode)
 )
 

@@ -2,6 +2,8 @@ packages:
   - "apps/web"
   - "packages/*"
 
+enableGlobalVirtualStore: true
+
 ignoredBuiltDependencies:
   - esbuild
   - lightningcss
