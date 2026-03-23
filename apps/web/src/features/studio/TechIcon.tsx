@@ -11,7 +11,6 @@ export const TECH_STACKS = {
   rust:       { slug: 'rust',           fg: '#ce422b', bg: '#1a0a08', border: '#ce422b33' },
   go:         { slug: 'go',             fg: '#00acd7', bg: '#00acd722', border: '#00acd733' },
   java:       { slug: 'openjdk',        fg: '#fff',    bg: '#ed8b00', border: '#ed8b0066' },
-  csharp:     { slug: 'csharp',          fg: '#fff',    bg: '#512bd4', border: '#512bd466' },
   swift:      { slug: 'swift',          fg: '#fff',    bg: '#f05138', border: '#f0513866' },
   kotlin:     { slug: 'kotlin',         fg: '#fff',    bg: '#7f52ff', border: '#7f52ff66' },
   ruby:       { slug: 'ruby',           fg: '#fff',    bg: '#cc342d', border: '#cc342d66' },
@@ -35,9 +34,7 @@ export const TECH_STACKS = {
   docker:     { slug: 'docker',         fg: '#fff',    bg: '#2496ed', border: '#2496ed66' },
   kubernetes: { slug: 'kubernetes',     fg: '#fff',    bg: '#326ce5', border: '#326ce566' },
   terraform:  { slug: 'terraform',      fg: '#fff',    bg: '#844fba', border: '#844fba66' },
-  aws:        { slug: 'amazonwebservices', fg: '#fff', bg: '#232f3e', border: '#ff990066' },
   gcp:        { slug: 'googlecloud',    fg: '#fff',    bg: '#4285f4', border: '#4285f466' },
-  azure:      { slug: 'microsoftazure', fg: '#fff',    bg: '#0089d6', border: '#0089d666' },
   cloudflare: { slug: 'cloudflare',     fg: '#fff',    bg: '#f6821f', border: '#f6821f66' },
   vercel:     { slug: 'vercel',         fg: '#fff',    bg: '#000',    border: '#ffffff22' },
   nginx:      { slug: 'nginx',          fg: '#fff',    bg: '#009639', border: '#00963966' },
@@ -59,7 +56,6 @@ export const TECH_STACKS = {
   linux:      { slug: 'linux',          fg: '#000',    bg: '#e5e5e5', border: '#00000022' },
 
   // ── AI / ML ────────────────────────────────────────────────────────────
-  openai:     { slug: null,             fg: '#10a37f', bg: '#10a37f22', border: '#10a37f44' },
   anthropic:  { slug: 'anthropic',      fg: '#fff',    bg: '#191919', border: '#d4a27444' },
   pytorch:    { slug: 'pytorch',        fg: '#fff',    bg: '#ee4c2c', border: '#ee4c2c66' },
   tensorflow: { slug: 'tensorflow',     fg: '#fff',    bg: '#ff6f00', border: '#ff6f0066' },
@@ -84,12 +80,12 @@ export type TechStack = keyof typeof TECH_STACKS
 export const TECH_STACK_LIST = Object.entries(TECH_STACKS).map(([id, v]) => ({ id: id as TechStack, ...v }))
 
 export const ICON_CATEGORIES = [
-  { id: 'languages', label: 'Languages', keys: ['typescript','javascript','python','rust','go','java','csharp','swift','kotlin','ruby','php','elixir'] },
+  { id: 'languages', label: 'Languages', keys: ['typescript','javascript','python','rust','go','java','swift','kotlin','ruby','php','elixir'] },
   { id: 'frameworks', label: 'Frameworks', keys: ['react','nextjs','vue','svelte','angular','astro','tailwind','django','rails','flask','fastapi'] },
-  { id: 'infra', label: 'Infra', keys: ['docker','kubernetes','terraform','aws','gcp','azure','cloudflare','vercel','nginx'] },
+  { id: 'infra', label: 'Infra', keys: ['docker','kubernetes','terraform','gcp','cloudflare','vercel','nginx'] },
   { id: 'data', label: 'Data', keys: ['postgres','mysql','mongodb','redis','sqlite','graphql'] },
   { id: 'tools', label: 'Tools', keys: ['git','github','node','bun','deno','linux'] },
-  { id: 'ai', label: 'AI', keys: ['openai','anthropic','pytorch','tensorflow'] },
+  { id: 'ai', label: 'AI', keys: ['anthropic','pytorch','tensorflow'] },
   { id: 'roles', label: 'Roles', keys: ['orchestrator','reviewer','frontend','backend','devops','security','testing','docs','data','mobile','fullstack'] },
 ] as const
 
