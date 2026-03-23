@@ -1,6 +1,8 @@
 // Tech icon tiles using Simple Icons CDN for real brand SVGs.
 // https://cdn.simpleicons.org/{slug}/{hex-color}
 
+import { useState } from 'react'
+
 export const TECH_STACKS = {
   // ── Languages ──────────────────────────────────────────────────────────
   typescript: { slug: 'typescript',     fg: '#fff',    bg: '#3178c6', border: '#3178c666' },
@@ -9,7 +11,7 @@ export const TECH_STACKS = {
   rust:       { slug: 'rust',           fg: '#ce422b', bg: '#1a0a08', border: '#ce422b33' },
   go:         { slug: 'go',             fg: '#00acd7', bg: '#00acd722', border: '#00acd733' },
   java:       { slug: 'openjdk',        fg: '#fff',    bg: '#ed8b00', border: '#ed8b0066' },
-  csharp:     { slug: 'dotnet',          fg: '#fff',    bg: '#512bd4', border: '#512bd466' },
+  csharp:     { slug: 'csharp',          fg: '#fff',    bg: '#512bd4', border: '#512bd466' },
   swift:      { slug: 'swift',          fg: '#fff',    bg: '#f05138', border: '#f0513866' },
   kotlin:     { slug: 'kotlin',         fg: '#fff',    bg: '#7f52ff', border: '#7f52ff66' },
   ruby:       { slug: 'ruby',           fg: '#fff',    bg: '#cc342d', border: '#cc342d66' },
@@ -57,7 +59,7 @@ export const TECH_STACKS = {
   linux:      { slug: 'linux',          fg: '#000',    bg: '#e5e5e5', border: '#00000022' },
 
   // ── AI / ML ────────────────────────────────────────────────────────────
-  openai:     { slug: 'openai',         fg: '#fff',    bg: '#000',    border: '#ffffff22' },
+  openai:     { slug: null,             fg: '#10a37f', bg: '#10a37f22', border: '#10a37f44' },
   anthropic:  { slug: 'anthropic',      fg: '#fff',    bg: '#191919', border: '#d4a27444' },
   pytorch:    { slug: 'pytorch',        fg: '#fff',    bg: '#ee4c2c', border: '#ee4c2c66' },
   tensorflow: { slug: 'tensorflow',     fg: '#fff',    bg: '#ff6f00', border: '#ff6f0066' },
@@ -99,9 +101,11 @@ interface TechIconProps {
 }
 
 export function TechIcon({ stack, size = 36, className = '', style }: TechIconProps) {
+  const [imgFailed, setImgFailed] = useState(false)
   const tech = TECH_STACKS[stack as TechStack] ?? TECH_STACKS.custom
   const iconSize = Math.round(size * 0.55)
   const fg = tech.fg.replace('#', '')
+  const showImg = tech.slug && !imgFailed
 
   return (
     <div
@@ -115,13 +119,14 @@ export function TechIcon({ stack, size = 36, className = '', style }: TechIconPr
         ...style,
       }}
     >
-      {tech.slug ? (
+      {showImg ? (
         <img
           src={`https://cdn.simpleicons.org/${tech.slug}/${fg}`}
-          alt={stack}
+          alt=""
           width={iconSize}
           height={iconSize}
           style={{ display: 'block' }}
+          onError={() => setImgFailed(true)}
         />
       ) : (
         <span
