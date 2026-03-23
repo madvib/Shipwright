@@ -11,6 +11,8 @@ use serde_json::Value as Json;
 use crate::types::{McpServerConfig, McpServerType, Rule};
 use crate::ProjectLibrary;
 
+use super::json_string_array;
+
 /// Known top-level keys in `opencode.json` that map to structured Ship fields.
 const KNOWN_CONFIG_KEYS: &[&str] = &["mcp", "mcpServers", "model", "permission", "$schema"];
 
@@ -24,20 +26,19 @@ pub fn decompile_opencode(project_root: &Path) -> ProjectLibrary {
 
     // ── opencode.json ────────────────────────────────────────────────────────
     let config_path = project_root.join("opencode.json");
-    if let Ok(content) = std::fs::read_to_string(&config_path) {
-        if let Ok(json) = serde_json::from_str::<Json>(&content) {
-            parse_opencode_config(&mut library, &json);
-        }
+    if let Ok(content) = std::fs::read_to_string(&config_path)
+        && let Ok(json) = serde_json::from_str::<Json>(&content)
+    {
+        parse_opencode_config(&mut library, &json);
     }
 
     // ── .opencode/config.json (alternate location) ───────────────────────────
     let alt_config = project_root.join(".opencode").join("config.json");
-    if library.mcp_servers.is_empty() {
-        if let Ok(content) = std::fs::read_to_string(&alt_config) {
-            if let Ok(json) = serde_json::from_str::<Json>(&content) {
-                parse_opencode_config(&mut library, &json);
-            }
-        }
+    if library.mcp_servers.is_empty()
+        && let Ok(content) = std::fs::read_to_string(&alt_config)
+        && let Ok(json) = serde_json::from_str::<Json>(&content)
+    {
+        parse_opencode_config(&mut library, &json);
     }
 
     // ── AGENTS.md ────────────────────────────────────────────────────────────
@@ -186,14 +187,4 @@ fn parse_opencode_mcp_server(id: &str, entry: &Json) -> Option<McpServerConfig> 
         gemini_timeout_ms: None,
         cursor_env_file: None,
     })
-}
-
-fn json_string_array(val: Option<&Json>) -> Vec<String> {
-    val.and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
 }

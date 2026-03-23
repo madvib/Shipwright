@@ -7,6 +7,8 @@ use crate::profile;
 
 #[path = "convert_github.rs"]
 pub(crate) mod convert_github;
+#[path = "convert_mcp.rs"]
+mod convert_mcp;
 
 /// Run the convert command for the given source string.
 pub fn run_convert(source: &str) -> Result<()> {
@@ -99,20 +101,148 @@ fn convert_from_url(url: &str) -> Result<()> {
 
 /// Convert from a local file or directory path (provider config detection).
 fn convert_from_path(source: &str) -> Result<()> {
-    let path = Path::new(source);
-    if path.is_dir() {
-        println!(
-            "[convert] Local directory conversion from {} — not yet implemented.",
-            source
-        );
-        println!("  This will detect existing provider configs (CLAUDE.md, .cursor/, etc.)");
-        println!("  and convert them into .ship/agents/.");
-    } else {
-        println!(
-            "[convert] Local file conversion from {} — not yet implemented.",
+    let path = Path::new(source).canonicalize().context("Invalid path")?;
+
+    if !path.is_dir() {
+        anyhow::bail!(
+            "Expected a directory, got: {}\nUsage: ship convert .",
             source
         );
     }
+
+    let detected = compiler::detect_providers(&path);
+    if !detected.any() {
+        anyhow::bail!(
+            "No provider configs found in {}\n\
+             Looking for: CLAUDE.md, .claude/, .mcp.json, .codex/, .gemini/, .cursor/",
+            source
+        );
+    }
+
+    let providers = detected.as_list();
+    println!(
+        "Detected providers: {}",
+        providers.join(", ")
+    );
+
+    let library = compiler::decompile_all(&path);
+
+    // ── Ensure .ship/ exists ─────────────────────────────────────────────────
+    let ship_dir = path.join(".ship");
+    std::fs::create_dir_all(&ship_dir)?;
+
+    let mut files_written = 0;
+
+    // ── ship.jsonc — manifest with providers and provider_defaults ────────────
+    let ship_jsonc = ship_dir.join("ship.jsonc");
+    if !ship_jsonc.exists() {
+        let mut project = serde_json::json!({
+            "providers": providers.iter().map(|p| serde_json::Value::String(p.to_string())).collect::<Vec<_>>()
+        });
+        if !library.provider_defaults.is_empty() {
+            let defaults: serde_json::Map<String, serde_json::Value> = library
+                .provider_defaults
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            project["provider_defaults"] = serde_json::Value::Object(defaults);
+        }
+        let manifest = serde_json::json!({
+            "$schema": "../schemas/ship.schema.json",
+            "project": project
+        });
+        let content = serde_json::to_string_pretty(&manifest)?;
+        std::fs::write(&ship_jsonc, &content)?;
+        println!("  wrote .ship/ship.jsonc");
+        files_written += 1;
+    }
+
+    // ── mcp.jsonc — MCP server definitions ───────────────────────────────────
+    if !library.mcp_servers.is_empty() {
+        let mcp_jsonc = ship_dir.join("mcp.jsonc");
+        let servers = convert_mcp::serialize_mcp_servers(&library.mcp_servers);
+        let mcp_obj = serde_json::json!({
+            "$schema": "../schemas/mcp.schema.json",
+            "mcp": { "servers": servers }
+        });
+        std::fs::write(&mcp_jsonc, serde_json::to_string_pretty(&mcp_obj)?)?;
+        println!("  wrote .ship/mcp.jsonc ({} servers)", library.mcp_servers.len());
+        files_written += 1;
+    }
+
+    // ── permissions.jsonc — permission presets ────────────────────────────────
+    let p = &library.permissions;
+    let has_perms = !p.tools.allow.is_empty()
+        || !p.tools.deny.is_empty()
+        || !p.tools.ask.is_empty()
+        || p.default_mode.is_some()
+        || !p.additional_directories.is_empty()
+        || p.agent.max_cost_per_session.is_some()
+        || p.agent.max_turns.is_some();
+
+    if has_perms {
+        let perm_jsonc = ship_dir.join("permissions.jsonc");
+        let mut preset = serde_json::json!({});
+        if let Some(mode) = &p.default_mode {
+            preset["default_mode"] = serde_json::json!(mode);
+        }
+        // Only emit non-default allow list
+        let non_default_allow = !(p.tools.allow.is_empty()
+            || (p.tools.allow.len() == 1 && p.tools.allow[0] == "*"));
+        if non_default_allow {
+            preset["tools_allow"] = serde_json::json!(p.tools.allow);
+        }
+        if !p.tools.deny.is_empty() {
+            preset["tools_deny"] = serde_json::json!(p.tools.deny);
+        }
+        if !p.tools.ask.is_empty() {
+            preset["tools_ask"] = serde_json::json!(p.tools.ask);
+        }
+        if !p.additional_directories.is_empty() {
+            preset["additional_directories"] = serde_json::json!(p.additional_directories);
+        }
+        let perms_obj = serde_json::json!({
+            "$schema": "../schemas/permissions.schema.json",
+            "imported": preset
+        });
+        std::fs::write(&perm_jsonc, serde_json::to_string_pretty(&perms_obj)?)?;
+        println!("  wrote .ship/permissions.jsonc");
+        files_written += 1;
+    }
+
+    // ── rules/*.md — rule files ──────────────────────────────────────────────
+    if !library.rules.is_empty() {
+        let rules_dir = ship_dir.join("rules");
+        std::fs::create_dir_all(&rules_dir)?;
+        for rule in &library.rules {
+            let file_name = if rule.file_name.ends_with(".md") {
+                rule.file_name.clone()
+            } else {
+                format!("{}.md", rule.file_name)
+            };
+            std::fs::write(rules_dir.join(&file_name), &rule.content)?;
+        }
+        println!("  wrote .ship/rules/ ({} files)", library.rules.len());
+        files_written += 1;
+    }
+
+    // ── .gitignore in .ship/ ─────────────────────────────────────────────────
+    let gitignore = ship_dir.join(".gitignore");
+    if !gitignore.exists() {
+        std::fs::write(
+            &gitignore,
+            "secrets/\n",
+        )?;
+    }
+
+    if files_written == 0 {
+        println!("  Nothing to write — providers detected but configs are empty.");
+    } else {
+        println!("\nConverted {} provider(s) into .ship/", providers.len());
+        println!("  Run: ship use <agent-id>   to activate an agent");
+        println!("  Run: ship compile          to compile back to provider configs");
+    }
+
     Ok(())
 }
 

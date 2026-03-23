@@ -1,7 +1,6 @@
 //! `ship init` — scaffold .ship/ in a project or configure ~/.ship/ globally.
 
-use anyhow::{Context, Result};
-use serde::Deserialize;
+use anyhow::Result;
 
 use crate::paths;
 
@@ -9,138 +8,21 @@ pub fn run(global: bool, provider: Option<String>, from: Option<String>) -> Resu
     if global {
         run_global()
     } else if let Some(url) = from {
-        run_from_url(&url)
+        crate::init_from_url::run_from_url(&url)
     } else {
         run_project(provider)
     }
 }
 
-// ── --from URL scaffolding ───────────────────────────────────────────────────
-
-/// JSON config bundle shape expected from `--from <url>`.
-#[derive(Debug, Deserialize)]
-struct ConfigBundle {
-    #[serde(default)]
-    agents: Vec<BundleAgent>,
-    #[serde(default)]
-    skills: Vec<BundleSkill>,
-    #[serde(default)]
-    permissions: Option<BundlePermissions>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BundleAgent {
-    name: String,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    model: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BundleSkill {
-    id: String,
-    #[serde(default)]
-    content: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BundlePermissions {
-    #[serde(default)]
-    preset: Option<String>,
-}
-
-/// Fetch a JSON config bundle from a URL and scaffold .ship/ from it.
-fn run_from_url(url: &str) -> Result<()> {
-    // Fetch the URL
-    let body: String = ureq::get(url)
-        .call()
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Could not reach {}. Check the URL and your network connection.\nDetails: {}",
-                url,
-                e
-            )
-        })?
-        .body_mut()
-        .read_to_string()
-        .context("Failed to read response body")?;
-
-    let bundle: ConfigBundle = serde_json::from_str(&body).map_err(|e| {
-        anyhow::anyhow!(
-            "Invalid JSON from {}.\nExpected a config bundle with agents/skills/permissions.\nParse error: {}",
-            url,
-            e
-        )
-    })?;
-
-    // Ensure .ship/ directory structure exists
-    paths::ensure_project_dirs()?;
-
-    let mut n_agents = 0usize;
-    let mut n_skills = 0usize;
-
-    // Write agents
-    for agent in &bundle.agents {
-        let safe_name = sanitize_filename(&agent.name);
-        let dest = paths::agents_dir().join(format!("{}.toml", safe_name));
-        let model = agent.model.as_deref().unwrap_or("sonnet");
-        let description = agent.description.as_deref().unwrap_or("");
-        let mut toml_content = format!(
-            "[agent]\nname = {name}\nid = {id}\nversion = \"0.1.0\"\n\
-             description = {desc}\nproviders = [\"claude\"]\n",
-            name = quote_toml(&agent.name),
-            id = quote_toml(&safe_name),
-            desc = quote_toml(description),
-        );
-        toml_content.push_str(&format!("\n# model hint: {}\n", model));
-        std::fs::write(&dest, &toml_content)
-            .with_context(|| format!("Failed to write agent {}", dest.display()))?;
-        n_agents += 1;
-    }
-
-    // Write skills
-    for skill in &bundle.skills {
-        let safe_id = sanitize_filename(&skill.id);
-        let dest = paths::skills_dir().join(format!("{}.md", safe_id));
-        let content = skill.content.as_deref().unwrap_or("");
-        std::fs::write(&dest, content)
-            .with_context(|| format!("Failed to write skill {}", dest.display()))?;
-        n_skills += 1;
-    }
-
-    // Write permissions
-    if let Some(ref perms) = bundle.permissions
-        && let Some(ref preset) = perms.preset
-    {
-        let dest = paths::project_dir().join("permissions.toml");
-        let content = format!("[permissions]\npreset = {}\n", quote_toml(preset));
-        std::fs::write(&dest, &content)
-            .with_context(|| format!("Failed to write {}", dest.display()))?;
-    }
-
-    let preset_msg = bundle
-        .permissions
-        .as_ref()
-        .and_then(|p| p.preset.as_deref())
-        .map(|p| format!(", preset: {}", p))
-        .unwrap_or_default();
-    println!(
-        "initialized .ship/ from {}: {} agents, {} skills{}",
-        url, n_agents, n_skills, preset_msg
-    );
-    println!("\nNext steps:");
-    println!("  ship use <agent-id>     activate an agent");
-    Ok(())
-}
+// ── Helpers shared with init_from_url ────────────────────────────────────────
 
 /// Quote a string for TOML output.
-fn quote_toml(s: &str) -> String {
+pub(crate) fn quote_toml(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 /// Replace characters that are not safe in filenames.
-fn sanitize_filename(name: &str) -> String {
+pub(crate) fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '_' {
@@ -178,50 +60,185 @@ fn run_global() -> Result<()> {
 }
 
 fn run_project(provider: Option<String>) -> Result<()> {
+    let project_root = std::env::current_dir()?;
+
+    // ── Auto-detect existing provider configs when no --provider flag ─────────
+    let is_fresh = !paths::project_ship_jsonc().exists() && !paths::project_ship_toml().exists();
+    let detected = if is_fresh && provider.is_none() {
+        let d = compiler::detect_providers(&project_root);
+        if d.any() {
+            Some(d)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     paths::ensure_project_dirs()?;
     let ship_jsonc = paths::project_ship_jsonc();
-    // Scaffold .ship/ship.jsonc when no config exists (prefer JSONC over TOML)
-    if !ship_jsonc.exists() && !paths::project_ship_toml().exists() {
+
+    if let Some(ref detected) = detected {
+        // Import detected provider configs into .ship/
+        let providers = detected.as_list();
+        println!(
+            "Detected existing configs: {}",
+            providers.join(", ")
+        );
+
+        let library = compiler::decompile_all(&project_root);
+
+        // Write ship.jsonc with detected providers and provider_defaults
+        if !ship_jsonc.exists() {
+            let mut project = serde_json::json!({
+                "providers": providers.iter()
+                    .map(|p| serde_json::Value::String(p.to_string()))
+                    .collect::<Vec<_>>()
+            });
+            if !library.provider_defaults.is_empty() {
+                let defaults: serde_json::Map<String, serde_json::Value> = library
+                    .provider_defaults
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                project["provider_defaults"] = serde_json::Value::Object(defaults);
+            }
+            let manifest = serde_json::json!({
+                "$schema": "../schemas/ship.schema.json",
+                "project": project
+            });
+            std::fs::write(&ship_jsonc, serde_json::to_string_pretty(&manifest)?)?;
+        }
+
+        // Write MCP servers
+        if !library.mcp_servers.is_empty() {
+            let mcp_jsonc = paths::mcp_path();
+            if !mcp_jsonc.exists() {
+                let mut servers = serde_json::Map::new();
+                for s in &library.mcp_servers {
+                    let mut entry = serde_json::json!({});
+                    if !s.command.is_empty() {
+                        entry["command"] = serde_json::json!(s.command);
+                    }
+                    if !s.args.is_empty() {
+                        entry["args"] = serde_json::json!(s.args);
+                    }
+                    if !s.env.is_empty() {
+                        entry["env"] = serde_json::json!(s.env);
+                    }
+                    if let Some(url) = &s.url {
+                        entry["url"] = serde_json::json!(url);
+                    }
+                    servers.insert(s.id.clone(), entry);
+                }
+                let mcp_obj = serde_json::json!({
+                    "$schema": "../schemas/mcp.schema.json",
+                    "mcp": { "servers": servers }
+                });
+                std::fs::write(&mcp_jsonc, serde_json::to_string_pretty(&mcp_obj)?)?;
+                println!("  imported {} MCP servers", library.mcp_servers.len());
+            }
+        }
+
+        // Write rules
+        if !library.rules.is_empty() {
+            let rules_dir = paths::rules_dir();
+            std::fs::create_dir_all(&rules_dir)?;
+            for rule in &library.rules {
+                let file_name = if rule.file_name.ends_with(".md") {
+                    rule.file_name.clone()
+                } else {
+                    format!("{}.md", rule.file_name)
+                };
+                let rule_path = rules_dir.join(&file_name);
+                if !rule_path.exists() {
+                    std::fs::write(&rule_path, &rule.content)?;
+                }
+            }
+            println!("  imported {} rules", library.rules.len());
+        }
+    } else if !ship_jsonc.exists() && !paths::project_ship_toml().exists() {
+        // No detection — scaffold default
         let prov = provider.as_deref().unwrap_or("claude");
         std::fs::write(
             &ship_jsonc,
             format!(
-                "{{\n  \"$schema\": \"../schemas/ship.schema.json\",\n  \"project\": {{\n    \"providers\": [\"{prov}\"],\n  }},\n}}"
+                "{{\n  \"$schema\": \"../schemas/ship.schema.json\",\n  \
+                 \"project\": {{\n    \"providers\": [\"{prov}\"],\n  }},\n}}"
             ),
         )?;
     }
+
     let pdir = paths::project_dir();
     if !pdir.join(".gitignore").exists() {
         std::fs::write(
             pdir.join(".gitignore"),
-            "# Ship compiled artifacts\n/secrets/\nCLAUDE.md\nGEMINI.md\nAGENTS.md\n.mcp.json\n.codex/\n.gemini/\n.cursor/\n",
+            "# Ship compiled artifacts\n/secrets/\nCLAUDE.md\nGEMINI.md\n\
+             AGENTS.md\n.mcp.json\n.codex/\n.gemini/\n.cursor/\n",
         )?;
     }
     if !pdir.join("README.md").exists() {
         std::fs::write(
             pdir.join("README.md"),
-            "# Ship Configuration\n\nManaged by [Ship](https://getship.dev). Run `ship use <agent-id>` to activate.\n",
+            "# Ship Configuration\n\nManaged by [Ship](https://getship.dev). \
+             Run `ship use <agent-id>` to activate.\n",
         )?;
     }
+
+    // Seed default @ship/* dependencies and attempt registry install.
+    let (deps_seeded, registry_ok) = seed_and_install_deps(&pdir);
+
+    let effective_providers = if let Some(ref d) = detected {
+        d.as_list().join(", ")
+    } else {
+        provider.as_deref().unwrap_or("claude").to_string()
+    };
+
     println!("initialized .ship/ in current directory");
-    println!("  providers: {}", provider.as_deref().unwrap_or("claude"));
+    println!("  providers: {}", effective_providers);
+    if detected.is_some() {
+        println!("  imported existing provider configs into .ship/");
+    }
+    if deps_seeded > 0 {
+        if registry_ok {
+            println!(
+                "  dependencies: {} packages installed from registry",
+                deps_seeded,
+            );
+        } else {
+            println!(
+                "  dependencies: {} declared (install with `ship install` when online)",
+                deps_seeded,
+            );
+        }
+    }
     println!("\nNext steps:");
     println!("  ship use <agent-id>     activate an agent");
     println!("  ship compile            re-compile current agent");
     Ok(())
 }
 
+/// Seed default deps and attempt install. Never fails -- returns counts for display.
+fn seed_and_install_deps(ship_dir: &std::path::Path) -> (usize, bool) {
+    use runtime::registry::init_deps;
+
+    let seeded = match init_deps::seed_default_dependencies(ship_dir) {
+        Ok(r) => r.added,
+        Err(_) => 0,
+    };
+
+    if seeded == 0 {
+        return (0, false);
+    }
+
+    let installed = init_deps::try_install_init_deps(ship_dir).unwrap_or_default();
+
+    (seeded, installed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn run_in_tmp<F: FnOnce(&std::path::Path)>(f: F) {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let orig = std::env::current_dir().unwrap();
-        std::env::set_current_dir(tmp.path()).unwrap();
-        f(tmp.path());
-        std::env::set_current_dir(orig).unwrap();
-    }
 
     #[test]
     fn init_from_flag_parsed() {
@@ -253,73 +270,5 @@ mod tests {
         assert_eq!(sanitize_filename("path/name"), "path-name");
         assert_eq!(quote_toml("simple"), "\"simple\"");
         assert_eq!(quote_toml("a\"b"), "\"a\\\"b\"");
-    }
-
-    #[test]
-    fn config_bundle_parses() {
-        let full: ConfigBundle = serde_json::from_str(
-            r#"{
-            "agents": [{"name": "default", "model": "sonnet"}],
-            "skills": [{"id": "tdd", "content": "..."}],
-            "permissions": {"preset": "elevated"}
-        }"#,
-        )
-        .unwrap();
-        assert_eq!(full.agents.len(), 1);
-        assert_eq!(
-            full.permissions.unwrap().preset.as_deref(),
-            Some("elevated")
-        );
-
-        let empty: ConfigBundle = serde_json::from_str("{}").unwrap();
-        assert!(empty.agents.is_empty());
-    }
-
-    #[test]
-    fn run_from_url_scaffolds_files() {
-        let mut server = mockito::Server::new();
-        let _m = server
-            .mock("GET", "/c.json")
-            .with_status(200)
-            .with_body(
-                r#"{
-                "agents": [{"name": "default", "description": "Main", "model": "sonnet"}],
-                "skills": [{"id": "tdd", "content": "Write tests first"}],
-                "permissions": {"preset": "elevated"}
-            }"#,
-            )
-            .create();
-
-        run_in_tmp(|tmp| {
-            run_from_url(&format!("{}/c.json", server.url())).unwrap();
-            assert!(tmp.join(".ship/agents/default.toml").exists());
-            let agent = std::fs::read_to_string(tmp.join(".ship/agents/default.toml")).unwrap();
-            assert!(agent.contains("name = \"default\""));
-            assert!(tmp.join(".ship/skills/tdd.md").exists());
-            let perms = std::fs::read_to_string(tmp.join(".ship/permissions.toml")).unwrap();
-            assert!(perms.contains("preset = \"elevated\""));
-        });
-    }
-
-    #[test]
-    fn run_from_url_errors_on_bad_json() {
-        let mut server = mockito::Server::new();
-        let _m = server
-            .mock("GET", "/bad")
-            .with_status(200)
-            .with_body("not json")
-            .create();
-        run_in_tmp(|_| {
-            let err = run_from_url(&format!("{}/bad", server.url())).unwrap_err();
-            assert!(err.to_string().contains("Invalid JSON"), "got: {err}");
-        });
-    }
-
-    #[test]
-    fn run_from_url_errors_on_unreachable() {
-        run_in_tmp(|_| {
-            let err = run_from_url("http://127.0.0.1:1/x").unwrap_err();
-            assert!(err.to_string().contains("Could not reach"), "got: {err}");
-        });
     }
 }

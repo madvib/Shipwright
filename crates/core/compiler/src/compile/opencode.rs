@@ -102,7 +102,7 @@ fn build_opencode_permissions(permissions: &Permissions) -> Option<Json> {
     }
     // allow (skip default wildcard)
     let non_default_allow = !(permissions.tools.allow.is_empty()
-        || permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*");
+        || (permissions.tools.allow.len() == 1 && permissions.tools.allow[0] == "*"));
     if non_default_allow {
         for p in &permissions.tools.allow {
             if let Some((key, glob)) = translate_to_opencode_permission(p) {

@@ -94,9 +94,18 @@ pub(crate) fn apply_agent_to_library(
         }
     }
 
-    // Provider-specific settings pass-through
-    if let Some(claude_extra) = profile.provider_settings.get("claude") {
-        library.claude_settings_extra = Some(claude_extra.clone());
+    // Provider-specific settings pass-through (all providers)
+    if let Some(v) = profile.provider_settings.get("claude") {
+        library.claude_settings_extra = Some(v.clone());
+    }
+    if let Some(v) = profile.provider_settings.get("gemini") {
+        library.gemini_settings_extra = Some(v.clone());
+    }
+    if let Some(v) = profile.provider_settings.get("codex") {
+        library.codex_settings_extra = Some(v.clone());
+    }
+    if let Some(v) = profile.provider_settings.get("cursor") {
+        library.cursor_settings_extra = Some(v.clone());
     }
 
     // Team agents from .ship/agents/teams/<provider>/*.md
