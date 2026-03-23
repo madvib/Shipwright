@@ -188,7 +188,7 @@ export default function Header() {
         <div className="flex-1" />
 
         <div className="hidden sm:flex items-center gap-1">
-          <NavDropdown label="Studio" href="/studio" items={STUDIO_ITEMS} isActive={isStudio} />
+          <NavDropdown label="Studio" href="/studio/agents" items={STUDIO_ITEMS} isActive={isStudio} />
           <NavDropdown label="Registry" href="/registry" items={REGISTRY_ITEMS} isActive={isRegistry} />
         </div>
 
