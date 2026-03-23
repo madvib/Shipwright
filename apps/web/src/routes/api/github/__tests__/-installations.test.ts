@@ -7,7 +7,7 @@ vi.mock('#/lib/session-auth', () => ({
 }))
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(),
+  getRegistryDb: vi.fn(),
 }))
 
 import { Route } from '../installations'
@@ -38,7 +38,7 @@ function makeRequest(): Request {
 
 beforeEach(() => {
   vi.restoreAllMocks()
-  vi.mocked(d1Lib.getD1).mockReturnValue(makeMockD1() as unknown as D1Database)
+  vi.mocked(d1Lib.getRegistryDb).mockReturnValue(makeMockD1() as unknown as D1Database)
   vi.mocked(sessionAuth.requireSession).mockResolvedValue({ sub: 'user-1', org: 'user-1' })
 })
 
@@ -53,7 +53,7 @@ describe('GET /api/github/installations', () => {
 
   it('returns installations when authenticated', async () => {
     const mockD1 = makeMockD1()
-    vi.mocked(d1Lib.getD1).mockReturnValue(mockD1 as unknown as D1Database)
+    vi.mocked(d1Lib.getRegistryDb).mockReturnValue(mockD1 as unknown as D1Database)
 
     const res = await GET({ request: makeRequest() } as Parameters<typeof GET>[0])
     expect(res.status).toBe(200)
@@ -62,7 +62,7 @@ describe('GET /api/github/installations', () => {
   })
 
   it('returns 503 when database is unavailable', async () => {
-    vi.mocked(d1Lib.getD1).mockReturnValue(null)
+    vi.mocked(d1Lib.getRegistryDb).mockReturnValue(null)
     const res = await GET({ request: makeRequest() } as Parameters<typeof GET>[0])
     expect(res.status).toBe(503)
   })

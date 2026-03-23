@@ -9,7 +9,7 @@ const mockPrepare = vi.fn(() => ({ bind: mockBind }))
 const mockD1 = { prepare: mockPrepare }
 
 vi.mock('#/lib/d1', () => ({
-  getD1: vi.fn(() => mockD1),
+  getAuthDb: vi.fn(() => mockD1),
   nanoid: vi.fn(() => 'test-id'),
 }))
 

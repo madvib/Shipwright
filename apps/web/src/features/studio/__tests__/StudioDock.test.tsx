@@ -17,39 +17,40 @@ afterEach(() => {
 })
 
 describe('StudioDock', () => {
-  it('renders 3 nav items + output toggle', () => {
+  it('renders 4 nav items + output toggle', () => {
     render(<StudioDock />)
     expect(screen.getByRole('navigation')).toBeTruthy()
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(4) // Agents, Skills, Settings, Output
+    expect(buttons).toHaveLength(5) // Home, Agents, Skills, Settings, Output
   })
 
   it('Agents is active on /studio/agents', () => {
     mockPathname = '/studio/agents'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons[0]?.className).toContain('bg-primary')
+    // Agents is index 1 (after Home)
+    expect(buttons[1]?.className).toContain('bg-primary')
   })
 
   it('Skills is active on /studio/skills', () => {
     mockPathname = '/studio/skills'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons[1]?.className).toContain('bg-primary')
+    expect(buttons[2]?.className).toContain('bg-primary')
   })
 
   it('Settings is active on /studio/settings', () => {
     mockPathname = '/studio/settings'
     render(<StudioDock />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons[2]?.className).toContain('bg-primary')
+    expect(buttons[3]?.className).toContain('bg-primary')
   })
 
   it('output toggle calls onTogglePreview', () => {
     const onToggle = vi.fn()
     render(<StudioDock onTogglePreview={onToggle} />)
     const buttons = screen.getAllByRole('button')
-    buttons[3]?.click()
+    buttons[4]?.click()
     expect(onToggle).toHaveBeenCalledOnce()
   })
 

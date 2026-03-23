@@ -3,7 +3,7 @@
 // then redirects to the CLI's local callback server.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getD1, nanoid } from '#/lib/d1'
+import { getAuthDb, nanoid } from '#/lib/d1'
 
 type GitHubUser = {
   id: number
