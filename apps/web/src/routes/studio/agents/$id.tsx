@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useAgentStore, makeAgent } from '#/features/agents/useAgentStore'
-import { AgentHeader } from '#/features/agents/sections/AgentHeader'
+import { AgentActivityBar, SECTION_DEFS } from '#/features/agents/AgentActivityBar'
+import { AgentStickyHeader } from '#/features/agents/AgentStickyHeader'
 import { SkillsSection } from '#/features/agents/sections/SkillsSection'
 import { McpSection } from '#/features/agents/sections/McpSection'
 import { SubagentsSection } from '#/features/agents/sections/SubagentsSection'
@@ -155,58 +156,163 @@ function AgentDetailPage() {
   const [ruleOpen, setRuleOpen] = useState(false)
   const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: Rule } | null>(null)
 
+  // ── Scrollspy ─────────────────────────────────────────────────────────
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [activeSection, setActiveSection] = useState<string>(SECTION_DEFS[0].id)
+  const isScrollingRef = useRef(false)
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+
+    const sectionIds = SECTION_DEFS.map((s) => `section-${s.id}`)
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrollingRef.current) return
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const sectionId = entry.target.id.replace('section-', '')
+            setActiveSection(sectionId)
+            break
+          }
+        }
+      },
+      { root: container, rootMargin: '-10% 0px -80% 0px', threshold: 0 },
+    )
+
+    for (const id of sectionIds) {
+      const el = container.querySelector(`#${id}`)
+      if (el) observer.observe(el)
+    }
+
+    return () => observer.disconnect()
+  }, [])
+
+  const handleSectionClick = useCallback((sectionId: string) => {
+    const container = scrollRef.current
+    if (!container) return
+    const el = container.querySelector(`#section-${sectionId}`)
+    if (!el) return
+
+    isScrollingRef.current = true
+    setActiveSection(sectionId)
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    // Re-enable scrollspy after animation completes
+    setTimeout(() => {
+      isScrollingRef.current = false
+    }, 600)
+  }, [])
+
+  // ── Section counts for activity bar badges ────────────────────────────
+
+  const counts = useMemo(() => ({
+    skills: profile.skills.length,
+    mcp: profile.mcpServers.length,
+    subagents: profile.subagents.length,
+    hooks: profile.hooks.length,
+    rules: profile.rules.length,
+  }), [
+    profile.skills.length,
+    profile.mcpServers.length,
+    profile.subagents.length,
+    profile.hooks.length,
+    profile.rules.length,
+  ])
+
   return (
-    <main className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[800px]">
-        <AgentHeader profile={profile} onEdit={() => setEditOpen(true)} />
-
-        <SkillsSection skills={profile.skills} onRemove={removeSkill} onAdd={() => setSkillOpen(true)} />
-
-        <McpSection
-          servers={profile.mcpServers}
-          toolStates={profile.mcpToolStates}
-          onRemove={removeServer}
-          onSetToolPermission={setToolPermission}
-          onSetGroupPermission={setGroupPermission}
-          onAdd={() => setMcpOpen(true)}
+    <>
+      <div className="flex h-full min-h-0 overflow-hidden">
+        {/* Activity bar — hidden on mobile */}
+        <AgentActivityBar
+          activeSection={activeSection}
+          onSectionClick={handleSectionClick}
+          counts={counts}
         />
 
-        <SubagentsSection subagents={profile.subagents} onRemove={removeSubagent} onAdd={() => setSubagentOpen(true)} />
+        {/* Content area */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <AgentStickyHeader
+            profile={profile}
+            onEdit={() => setEditOpen(true)}
+          />
 
-        <PermissionsSection
-          permissions={profile.permissions}
-          activePreset={profile.permissionPreset}
-          maxTurns={profile.maxTurns}
-          onPresetChange={setPermissionPreset}
-          onMaxTurnsChange={setMaxTurns}
-          onEdit={() => setPermsOpen(true)}
-        />
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+            <div id="section-skills">
+              <SkillsSection
+                skills={profile.skills}
+                onRemove={removeSkill}
+                onAdd={() => setSkillOpen(true)}
+              />
+            </div>
 
-        <ProviderSettingsSection
-          providers={profile.providers}
-          providerSettings={profile.providerSettings ?? {}}
-          onChange={setProviderSettings}
-        />
+            <div id="section-mcp">
+              <McpSection
+                servers={profile.mcpServers}
+                toolStates={profile.mcpToolStates}
+                onRemove={removeServer}
+                onSetToolPermission={setToolPermission}
+                onSetGroupPermission={setGroupPermission}
+                onAdd={() => setMcpOpen(true)}
+              />
+            </div>
 
-        <SettingsSection settings={profile.settings} onUpdate={updateSettings} />
+            <div id="section-subagents">
+              <SubagentsSection
+                subagents={profile.subagents}
+                onRemove={removeSubagent}
+                onAdd={() => setSubagentOpen(true)}
+              />
+            </div>
 
-        <HooksSection
-          hooks={profile.hooks}
-          onAdd={() => { setHookEdit(null); setHookOpen(true) }}
-          onEdit={(i) => { setHookEdit({ index: i, hook: profile.hooks[i] }); setHookOpen(true) }}
-          onRemove={removeHook}
-        />
+            <div id="section-permissions">
+              <PermissionsSection
+                permissions={profile.permissions}
+                activePreset={profile.permissionPreset}
+                maxTurns={profile.maxTurns}
+                onPresetChange={setPermissionPreset}
+                onMaxTurnsChange={setMaxTurns}
+                onEdit={() => setPermsOpen(true)}
+              />
+            </div>
 
-        <RulesSection
-          rules={profile.rules}
-          onAdd={() => { setRuleEdit(null); setRuleOpen(true) }}
-          onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }}
-          onRemove={removeRule}
-        />
+            <div id="section-providers">
+              <ProviderSettingsSection
+                providers={profile.providers}
+                providerSettings={profile.providerSettings ?? {}}
+                onChange={setProviderSettings}
+              />
+            </div>
 
-        <div className="h-24" />
+            <div id="section-settings">
+              <SettingsSection settings={profile.settings} onUpdate={updateSettings} />
+            </div>
+
+            <div id="section-hooks">
+              <HooksSection
+                hooks={profile.hooks}
+                onAdd={() => { setHookEdit(null); setHookOpen(true) }}
+                onEdit={(i) => { setHookEdit({ index: i, hook: profile.hooks[i] }); setHookOpen(true) }}
+                onRemove={removeHook}
+              />
+            </div>
+
+            <div id="section-rules">
+              <RulesSection
+                rules={profile.rules}
+                onAdd={() => { setRuleEdit(null); setRuleOpen(true) }}
+                onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }}
+                onRemove={removeRule}
+              />
+            </div>
+
+            <div className="h-24" />
+          </div>
+        </div>
       </div>
 
+      {/* Dialogs — outside layout flow */}
       <AddSkillDialog
         open={skillOpen}
         onOpenChange={setSkillOpen}
@@ -264,6 +370,6 @@ function AgentDetailPage() {
         }}
         onDelete={ruleEdit ? () => removeRule(ruleEdit.index) : undefined}
       />
-    </main>
+    </>
   )
 }

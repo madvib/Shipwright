@@ -40,7 +40,6 @@ function StudioSyncShell() {
   const { library, selectedProviders } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const auth = useAuth()
-  const [panelOpen, setPanelOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Detect active agent from route matches (/studio/agents/$id)
@@ -54,6 +53,18 @@ function StudioSyncShell() {
     }
     return null
   }, [matches])
+
+  // Default panel open when viewing an agent detail page
+  const [panelOpen, setPanelOpen] = useState(() => !!activeAgentId)
+  const prevAgentIdRef = useRef(activeAgentId)
+
+  // Auto-open panel when navigating to an agent detail page
+  useEffect(() => {
+    if (activeAgentId && !prevAgentIdRef.current) {
+      setPanelOpen(true)
+    }
+    prevAgentIdRef.current = activeAgentId
+  }, [activeAgentId])
 
   const { getAgent, syncStatus: agentSyncStatus } = useAgentStore()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined

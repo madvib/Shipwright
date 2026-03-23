@@ -9,6 +9,7 @@ export function OrangeDot() {
 // ── Section wrapper ─────────────────────────────────────────────────────────
 
 interface SectionShellProps {
+  id?: string
   icon: React.ReactNode
   title: string
   count?: string
@@ -19,6 +20,7 @@ interface SectionShellProps {
 }
 
 export function SectionShell({
+  id,
   icon,
   title,
   count,
@@ -28,7 +30,7 @@ export function SectionShell({
   children,
 }: SectionShellProps) {
   return (
-    <div className="border-b border-border/40 py-5 px-5">
+    <div id={id} className="border-b border-border/40 py-5 px-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-[13px] font-semibold text-muted-foreground">
           <span className="text-muted-foreground/60">{icon}</span>
