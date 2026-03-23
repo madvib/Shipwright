@@ -1,255 +1,155 @@
-//! `ship view` — interactive terminal UI for browsing and managing Ship workflow state.
+//! Ship TUI dashboard -- `ship view`.
+//!
+//! Section-based navigation with full-page detail views and modal forms.
+//! Built on ratatui + crossterm.
 
-pub mod actions;
 mod data;
 mod input;
-mod input_crud;
+mod modal;
 mod nav;
 mod render;
+mod render_config;
+mod render_docs;
+mod render_events;
+mod render_settings;
+mod render_workflow;
+mod theme;
+
+use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::{execute, terminal};
-use ratatui::{Terminal, backend::CrosstermBackend};
-use runtime::EventRecord;
-use runtime::db::{
-    adrs::AdrRecord,
-    jobs::Job,
-    jobs::JobLogEntry,
-    notes::Note,
-    targets::{Capability, Target},
-};
-use std::{io, path::PathBuf};
+use crossterm::event::{self, Event, KeyEventKind};
+use ratatui::DefaultTerminal;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab {
-    Targets,
-    Notes,
-    Adrs,
-    Jobs,
-    Events,
-    Agents,
-    Skills,
-    Mcp,
-    Settings,
-}
+use input::Action;
+use modal::{ConfirmAction, FormAction, Modal};
+use nav::NavState;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Screen {
-    List,
-    TargetDetail,
-    CapDetail,
-    NoteDetail,
-    AdrDetail,
-    JobDetail,
-    EventDetail,
-    AgentDetail,
-    McpDetail,
-}
+/// Entry point called from `ship view`.
+pub fn run_view() -> Result<()> {
+    let ship_dir = resolve_ship_dir()?;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputMode {
-    Normal,
-    TextInput(InputAction),
-}
+    let mut terminal = ratatui::init();
+    let result = run_loop(&mut terminal, &ship_dir);
+    ratatui::restore();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputAction {
-    CreateAgent,
-    AddSkill,
-    EditSetting,
-    ConfirmDeleteAgent,
-    ConfirmDeleteSkill,
-    ConfirmDeleteMcp,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JobFilter {
-    All,
-    Pending,
-    Running,
-    Complete,
-    Failed,
-}
-
-impl JobFilter {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::All => "all",
-            Self::Pending => "pending",
-            Self::Running => "running",
-            Self::Complete => "complete",
-            Self::Failed => "failed",
-        }
-    }
-
-    pub fn next(self) -> Self {
-        match self {
-            Self::All => Self::Pending,
-            Self::Pending => Self::Running,
-            Self::Running => Self::Complete,
-            Self::Complete => Self::Failed,
-            Self::Failed => Self::All,
-        }
-    }
-}
-
-pub struct App {
-    pub tab: Tab,
-    pub screen: Screen,
-    pub targets: Vec<Target>,
-    pub sel_target: usize,
-    pub caps: Vec<Capability>,
-    pub sel_cap: usize,
-    pub notes: Vec<Note>,
-    pub sel_note: usize,
-    pub note_scroll: u16,
-    pub adrs: Vec<AdrRecord>,
-    pub sel_adr: usize,
-    pub jobs: Vec<Job>,
-    pub sel_job: usize,
-    pub logs: Vec<JobLogEntry>,
-    pub events: Vec<EventRecord>,
-    pub sel_event: usize,
-    pub log_scroll: u16,
-    // Agents tab
-    pub agents: Vec<(String, String)>,
-    pub sel_agent: usize,
-    pub active_agent: Option<String>,
-    pub compiled_at: Option<String>,
-    pub agent_detail_text: String,
-    // Skills tab
-    pub skills: Vec<(String, String)>,
-    pub sel_skill: usize,
-    // MCP tab
-    pub mcp_servers: Vec<crate::mcp::McpEntry>,
-    pub sel_mcp: usize,
-    // Settings tab
-    pub settings: Vec<(String, String)>,
-    pub sel_setting: usize,
-    // Input mode
-    pub input_mode: InputMode,
-    pub input_buf: String,
-    pub input_prompt: String,
-    // General
-    pub auto_refresh: bool,
-    pub refresh_counter: u8,
-    pub ship_dir: PathBuf,
-    pub status: String,
-    pub job_filter: JobFilter,
-}
-
-impl App {
-    pub fn new(ship_dir: PathBuf) -> Self {
-        let targets = data::load_targets(&ship_dir);
-        let notes = data::load_notes(&ship_dir);
-        let adrs = data::load_adrs(&ship_dir);
-        let jobs = data::load_jobs_filtered(&ship_dir, None);
-        let events = data::load_events(&ship_dir, 50);
-        let agents = data::load_agents();
-        let (active_agent, compiled_at) = data::load_workspace_state(&ship_dir);
-        let skills = data::load_skills();
-        let mcp_servers = data::load_mcp_servers();
-        let settings = data::load_settings();
-        Self {
-            tab: Tab::Targets,
-            screen: Screen::List,
-            targets,
-            sel_target: 0,
-            caps: Vec::new(),
-            sel_cap: 0,
-            notes,
-            sel_note: 0,
-            note_scroll: 0,
-            adrs,
-            sel_adr: 0,
-            jobs,
-            sel_job: 0,
-            logs: Vec::new(),
-            events,
-            sel_event: 0,
-            log_scroll: 0,
-            agents,
-            sel_agent: 0,
-            active_agent,
-            compiled_at,
-            agent_detail_text: String::new(),
-            skills,
-            sel_skill: 0,
-            mcp_servers,
-            sel_mcp: 0,
-            settings,
-            sel_setting: 0,
-            input_mode: InputMode::Normal,
-            input_buf: String::new(),
-            input_prompt: String::new(),
-            auto_refresh: true,
-            refresh_counter: 0,
-            ship_dir,
-            status: String::new(),
-            job_filter: JobFilter::All,
-        }
-    }
-
-    pub fn refresh(&mut self) {
-        self.targets = data::load_targets(&self.ship_dir);
-        self.notes = data::load_notes(&self.ship_dir);
-        self.adrs = data::load_adrs(&self.ship_dir);
-        self.jobs = self.load_filtered_jobs();
-        self.events = data::load_events(&self.ship_dir, 50);
-        self.agents = data::load_agents();
-        let (active_agent, compiled_at) = data::load_workspace_state(&self.ship_dir);
-        self.active_agent = active_agent;
-        self.compiled_at = compiled_at;
-        self.skills = data::load_skills();
-        self.mcp_servers = data::load_mcp_servers();
-        self.settings = data::load_settings();
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::TargetDetail) | (Tab::Targets, Screen::CapDetail) => {
-                if let Some(t) = self.targets.get(self.sel_target) {
-                    let id = t.id.clone();
-                    self.caps = data::load_caps(&self.ship_dir, &id);
-                }
-            }
-            (Tab::Jobs, Screen::JobDetail) => {
-                if let Some(j) = self.jobs.get(self.sel_job) {
-                    let id = j.id.clone();
-                    self.logs = data::load_logs(&self.ship_dir, &id);
-                }
-            }
-            _ => {}
-        }
-        self.sel_target = self.sel_target.min(self.targets.len().saturating_sub(1));
-        self.sel_note = self.sel_note.min(self.notes.len().saturating_sub(1));
-        self.sel_adr = self.sel_adr.min(self.adrs.len().saturating_sub(1));
-        self.sel_job = self.sel_job.min(self.jobs.len().saturating_sub(1));
-        self.sel_event = self.sel_event.min(self.events.len().saturating_sub(1));
-        self.sel_agent = self.sel_agent.min(self.agents.len().saturating_sub(1));
-        self.sel_skill = self.sel_skill.min(self.skills.len().saturating_sub(1));
-        self.sel_mcp = self.sel_mcp.min(self.mcp_servers.len().saturating_sub(1));
-        self.sel_setting = self.sel_setting.min(self.settings.len().saturating_sub(1));
-        self.status = "refreshed".into();
-    }
-
-    pub fn load_filtered_jobs(&self) -> Vec<Job> {
-        let filter = match self.job_filter {
-            JobFilter::All => None,
-            f => Some(f.label()),
-        };
-        data::load_jobs_filtered(&self.ship_dir, filter)
-    }
-}
-
-pub fn run_view(ship_dir: PathBuf) -> Result<()> {
-    let mut app = App::new(ship_dir);
-    terminal::enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, terminal::EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let result = input::run_loop(&mut terminal, &mut app);
-
-    terminal::disable_raw_mode()?;
-    execute!(terminal.backend_mut(), terminal::LeaveAlternateScreen)?;
     result
+}
+
+fn run_loop(terminal: &mut DefaultTerminal, ship_dir: &std::path::Path) -> Result<()> {
+    let mut nav = NavState::default();
+    let mut view_data = data::load_all(ship_dir);
+    let mut modal: Option<Modal> = None;
+
+    loop {
+        terminal.draw(|frame| render::draw(frame, &nav, &view_data, &modal))?;
+
+        if !event::poll(Duration::from_millis(200))? {
+            continue;
+        }
+        let Event::Key(key) = event::read()? else {
+            continue;
+        };
+        if key.kind != KeyEventKind::Press {
+            continue;
+        }
+
+        let action = if let Some(ref mut m) = modal {
+            input::handle_modal(key, m)
+        } else if nav.is_detail() {
+            input::handle_detail(key, &mut nav)
+        } else {
+            input::handle_main(key, &mut nav, &view_data)
+        };
+
+        match action {
+            Action::None => {}
+            Action::Quit => break,
+            Action::Refresh => {
+                view_data = data::load_all(ship_dir);
+            }
+            Action::OpenModal(m) => {
+                modal = Some(m);
+            }
+            Action::CloseModal => {
+                modal = None;
+            }
+            Action::SubmitForm => {
+                if let Some(Modal::Form(ref form)) = modal {
+                    execute_form(ship_dir, form);
+                    modal = None;
+                    view_data = data::load_all(ship_dir);
+                }
+            }
+            Action::ConfirmYes => {
+                if let Some(Modal::Confirm { ref on_confirm, .. }) = modal {
+                    execute_confirm(ship_dir, on_confirm);
+                    modal = None;
+                    nav.reset_list();
+                    view_data = data::load_all(ship_dir);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn execute_form(ship_dir: &std::path::Path, form: &modal::FormState) {
+    match &form.on_submit {
+        FormAction::CreateNote => {
+            let title = form.fields.first().map(|f| f.value.as_str()).unwrap_or("");
+            let content = form.fields.get(1).map(|f| f.value.as_str()).unwrap_or("");
+            let _ = data::create_note(ship_dir, title, content);
+        }
+        FormAction::EditNote(id) => {
+            let title = form.fields.first().map(|f| f.value.as_str());
+            let content = form.fields.get(1).map(|f| f.value.as_str());
+            let _ = data::update_note(ship_dir, id, title, content);
+        }
+        FormAction::CreateAdr => {
+            let title = form.fields.first().map(|f| f.value.as_str()).unwrap_or("");
+            let context = form.fields.get(1).map(|f| f.value.as_str()).unwrap_or("");
+            let decision = form.fields.get(2).map(|f| f.value.as_str()).unwrap_or("");
+            let _ = data::create_adr(ship_dir, title, context, decision);
+        }
+        FormAction::EditUserPrefs => {
+            let pairs: Vec<(String, String)> = data::USER_PREF_KEYS
+                .iter()
+                .enumerate()
+                .map(|(i, (key, _))| {
+                    let val = form
+                        .fields
+                        .get(i)
+                        .map(|f| f.value.clone())
+                        .unwrap_or_default();
+                    (key.to_string(), val)
+                })
+                .collect();
+            let _ = data::save_user_prefs(&pairs);
+        }
+    }
+}
+
+fn execute_confirm(ship_dir: &std::path::Path, action: &ConfirmAction) {
+    match action {
+        ConfirmAction::DeleteNote(id) => {
+            let _ = data::delete_note(ship_dir, id);
+        }
+        ConfirmAction::DeleteAdr(id) => {
+            let _ = data::delete_adr(ship_dir, id);
+        }
+        ConfirmAction::UpdateJobStatus { job_id, new_status } => {
+            let _ = data::update_job_status(ship_dir, job_id, new_status);
+        }
+    }
+}
+
+fn resolve_ship_dir() -> Result<std::path::PathBuf> {
+    let cwd = std::env::current_dir()?;
+    let ship_dir = cwd.join(".ship");
+    if !ship_dir.exists() {
+        anyhow::bail!(".ship/ not found in {}. Run: ship init", cwd.display());
+    }
+    runtime::db::ensure_db(&ship_dir)?;
+    Ok(ship_dir)
 }

@@ -1,195 +1,346 @@
-//! App navigation — tab cycling, list movement, enter/back.
+//! Navigation model: sections with panels inside each section.
 
-use super::{App, Screen, Tab, data};
+/// Whether we are on the list view or a full-page detail view.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Screen {
+    #[default]
+    List,
+    /// Full-page detail: title + body text, with scroll offset.
+    Detail {
+        title: String,
+        body: String,
+        scroll: usize,
+    },
+}
 
-impl App {
-    pub fn cycle_tab(&mut self) {
-        if self.screen != Screen::List {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    Workflow,
+    Docs,
+    Agents,
+    Events,
+    Settings,
+}
+
+impl Section {
+    pub const ALL: [Section; 5] = [
+        Section::Workflow,
+        Section::Docs,
+        Section::Agents,
+        Section::Events,
+        Section::Settings,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Section::Workflow => "Workflow",
+            Section::Docs => "Docs",
+            Section::Agents => "Agents",
+            Section::Events => "Events",
+            Section::Settings => "Settings",
+        }
+    }
+
+    pub fn key_hint(self) -> &'static str {
+        match self {
+            Section::Workflow => "1",
+            Section::Docs => "2",
+            Section::Agents => "3",
+            Section::Events => "4",
+            Section::Settings => "5",
+        }
+    }
+
+    pub fn panels(self) -> &'static [Panel] {
+        match self {
+            Section::Workflow => &[Panel::Targets, Panel::Capabilities, Panel::Jobs],
+            Section::Docs => &[Panel::Notes, Panel::Adrs],
+            Section::Agents => &[Panel::AgentProfiles, Panel::Skills, Panel::McpServers],
+            Section::Events => &[Panel::EventLog],
+            Section::Settings => &[Panel::ProjectSettings],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Panel {
+    Targets,
+    Capabilities,
+    Jobs,
+    Notes,
+    Adrs,
+    AgentProfiles,
+    Skills,
+    McpServers,
+    EventLog,
+    ProjectSettings,
+}
+
+impl Panel {
+    pub fn label(self) -> &'static str {
+        match self {
+            Panel::Targets => "Targets",
+            Panel::Capabilities => "Capabilities",
+            Panel::Jobs => "Jobs",
+            Panel::Notes => "Notes",
+            Panel::Adrs => "ADRs",
+            Panel::AgentProfiles => "Profiles",
+            Panel::Skills => "Skills",
+            Panel::McpServers => "MCP Servers",
+            Panel::EventLog => "Event Log",
+            Panel::ProjectSettings => "Project",
+        }
+    }
+
+    /// Whether this panel supports status filtering.
+    pub fn has_status_filter(self) -> bool {
+        matches!(
+            self,
+            Panel::Targets | Panel::Capabilities | Panel::Jobs | Panel::Adrs
+        )
+    }
+}
+
+/// Navigation state -- which section, panel, and screen are active.
+#[derive(Debug, Default)]
+pub struct NavState {
+    pub section_idx: usize,
+    pub panel_idx: usize,
+    pub list_offset: usize,
+    pub list_selected: usize,
+    /// Status filter: None = show all, Some(status) = filter to that status.
+    pub status_filter: Option<String>,
+    pub screen: Screen,
+}
+
+/// Known statuses to cycle through per panel.
+const FILTER_CYCLE: &[&str] = &[
+    "pending",
+    "running",
+    "in_progress",
+    "active",
+    "done",
+    "complete",
+    "actual",
+    "aspirational",
+    "proposed",
+    "accepted",
+    "failed",
+    "blocked",
+];
+
+impl NavState {
+    pub fn section(&self) -> Section {
+        Section::ALL[self.section_idx]
+    }
+
+    pub fn panel(&self) -> Panel {
+        let panels = self.section().panels();
+        panels[self.panel_idx.min(panels.len().saturating_sub(1))]
+    }
+
+    pub fn set_section(&mut self, idx: usize) {
+        if idx < Section::ALL.len() {
+            self.section_idx = idx;
+            self.panel_idx = 0;
+            self.reset_list();
+            self.screen = Screen::List;
+        }
+    }
+
+    pub fn next_section(&mut self) {
+        self.set_section((self.section_idx + 1) % Section::ALL.len());
+    }
+
+    pub fn prev_section(&mut self) {
+        self.set_section((self.section_idx + Section::ALL.len() - 1) % Section::ALL.len());
+    }
+
+    pub fn next_panel(&mut self) {
+        let panels = self.section().panels();
+        self.panel_idx = (self.panel_idx + 1) % panels.len();
+        self.reset_list();
+        self.screen = Screen::List;
+    }
+
+    #[allow(dead_code)]
+    pub fn prev_panel(&mut self) {
+        let panels = self.section().panels();
+        self.panel_idx = (self.panel_idx + panels.len() - 1) % panels.len();
+        self.reset_list();
+        self.screen = Screen::List;
+    }
+
+    pub fn select_down(&mut self, list_len: usize) {
+        if list_len > 0 && self.list_selected < list_len.saturating_sub(1) {
+            self.list_selected += 1;
+        }
+    }
+
+    pub fn select_up(&mut self) {
+        self.list_selected = self.list_selected.saturating_sub(1);
+    }
+
+    pub fn reset_list(&mut self) {
+        self.list_offset = 0;
+        self.list_selected = 0;
+        self.status_filter = None;
+    }
+
+    /// Cycle the status filter: None → first matching → next → … → None.
+    pub fn cycle_status_filter(&mut self, active_statuses: &[&str]) {
+        let relevant: Vec<&str> = FILTER_CYCLE
+            .iter()
+            .copied()
+            .filter(|s| active_statuses.contains(s))
+            .collect();
+        if relevant.is_empty() {
+            self.status_filter = None;
             return;
         }
-        self.tab = match self.tab {
-            Tab::Targets => Tab::Jobs,
-            Tab::Jobs => Tab::Events,
-            Tab::Events => Tab::Notes,
-            Tab::Notes => Tab::Adrs,
-            Tab::Adrs => Tab::Agents,
-            Tab::Agents => Tab::Skills,
-            Tab::Skills => Tab::Mcp,
-            Tab::Mcp => Tab::Settings,
-            Tab::Settings => Tab::Targets,
+        let next = match &self.status_filter {
+            None => Some(relevant[0].to_string()),
+            Some(current) => {
+                let idx = relevant.iter().position(|s| s == current);
+                match idx {
+                    Some(i) if i + 1 < relevant.len() => {
+                        Some(relevant[i + 1].to_string())
+                    }
+                    _ => None,
+                }
+            }
         };
-        self.status.clear();
+        self.status_filter = next;
+        self.list_selected = 0;
     }
 
-    pub fn reverse_cycle_tab(&mut self) {
-        if self.screen != Screen::List {
-            return;
-        }
-        self.tab = match self.tab {
-            Tab::Targets => Tab::Settings,
-            Tab::Settings => Tab::Mcp,
-            Tab::Mcp => Tab::Skills,
-            Tab::Skills => Tab::Agents,
-            Tab::Agents => Tab::Adrs,
-            Tab::Adrs => Tab::Notes,
-            Tab::Notes => Tab::Events,
-            Tab::Events => Tab::Jobs,
-            Tab::Jobs => Tab::Targets,
+    pub fn enter_detail(&mut self, title: String, body: String) {
+        self.screen = Screen::Detail {
+            title,
+            body,
+            scroll: 0,
         };
-        self.status.clear();
     }
 
-    pub fn move_down(&mut self) {
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::List) => {
-                if !self.targets.is_empty() {
-                    self.sel_target = (self.sel_target + 1).min(self.targets.len() - 1);
-                }
-            }
-            (Tab::Targets, Screen::TargetDetail) => {
-                if !self.caps.is_empty() {
-                    self.sel_cap = (self.sel_cap + 1).min(self.caps.len() - 1);
-                }
-            }
-            (Tab::Notes, Screen::List) => {
-                if !self.notes.is_empty() {
-                    self.sel_note = (self.sel_note + 1).min(self.notes.len() - 1);
-                }
-            }
-            (Tab::Notes, Screen::NoteDetail) => {
-                self.note_scroll = self.note_scroll.saturating_add(3);
-            }
-            (Tab::Adrs, Screen::List) => {
-                if !self.adrs.is_empty() {
-                    self.sel_adr = (self.sel_adr + 1).min(self.adrs.len() - 1);
-                }
-            }
-            (Tab::Jobs, Screen::List) => {
-                if !self.jobs.is_empty() {
-                    self.sel_job = (self.sel_job + 1).min(self.jobs.len() - 1);
-                }
-            }
-            (Tab::Jobs, Screen::JobDetail) => {
-                self.log_scroll = self.log_scroll.saturating_add(3);
-            }
-            (Tab::Events, Screen::List) => {
-                if !self.events.is_empty() {
-                    self.sel_event = (self.sel_event + 1).min(self.events.len() - 1);
-                }
-            }
-            (Tab::Agents, Screen::List) => {
-                if !self.agents.is_empty() {
-                    self.sel_agent = (self.sel_agent + 1).min(self.agents.len() - 1);
-                }
-            }
-            (Tab::Skills, Screen::List) => {
-                if !self.skills.is_empty() {
-                    self.sel_skill = (self.sel_skill + 1).min(self.skills.len() - 1);
-                }
-            }
-            (Tab::Mcp, Screen::List) => {
-                if !self.mcp_servers.is_empty() {
-                    self.sel_mcp = (self.sel_mcp + 1).min(self.mcp_servers.len() - 1);
-                }
-            }
-            (Tab::Settings, Screen::List) => {
-                if !self.settings.is_empty() {
-                    self.sel_setting = (self.sel_setting + 1).min(self.settings.len() - 1);
-                }
-            }
-            _ => {}
+    pub fn back_to_list(&mut self) {
+        self.screen = Screen::List;
+    }
+
+    pub fn is_detail(&self) -> bool {
+        matches!(self.screen, Screen::Detail { .. })
+    }
+
+    pub fn scroll_detail_down(&mut self) {
+        if let Screen::Detail { ref mut scroll, .. } = self.screen {
+            *scroll += 1;
         }
     }
 
-    pub fn move_up(&mut self) {
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::List) => self.sel_target = self.sel_target.saturating_sub(1),
-            (Tab::Targets, Screen::TargetDetail) => self.sel_cap = self.sel_cap.saturating_sub(1),
-            (Tab::Notes, Screen::List) => self.sel_note = self.sel_note.saturating_sub(1),
-            (Tab::Notes, Screen::NoteDetail) => {
-                self.note_scroll = self.note_scroll.saturating_sub(3);
-            }
-            (Tab::Adrs, Screen::List) => self.sel_adr = self.sel_adr.saturating_sub(1),
-            (Tab::Jobs, Screen::List) => self.sel_job = self.sel_job.saturating_sub(1),
-            (Tab::Jobs, Screen::JobDetail) => {
-                self.log_scroll = self.log_scroll.saturating_sub(3);
-            }
-            (Tab::Events, Screen::List) => self.sel_event = self.sel_event.saturating_sub(1),
-            (Tab::Agents, Screen::List) => self.sel_agent = self.sel_agent.saturating_sub(1),
-            (Tab::Skills, Screen::List) => self.sel_skill = self.sel_skill.saturating_sub(1),
-            (Tab::Mcp, Screen::List) => self.sel_mcp = self.sel_mcp.saturating_sub(1),
-            (Tab::Settings, Screen::List) => self.sel_setting = self.sel_setting.saturating_sub(1),
-            _ => {}
+    pub fn scroll_detail_up(&mut self) {
+        if let Screen::Detail { ref mut scroll, .. } = self.screen {
+            *scroll = scroll.saturating_sub(1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_nav_starts_at_workflow() {
+        let nav = NavState::default();
+        assert_eq!(nav.section(), Section::Workflow);
+        assert_eq!(nav.panel(), Panel::Targets);
+        assert!(!nav.is_detail());
+    }
+
+    #[test]
+    fn section_cycling_wraps() {
+        let mut nav = NavState::default();
+        for _ in 0..5 {
+            nav.next_section();
+        }
+        assert_eq!(nav.section(), Section::Workflow);
+        nav.prev_section();
+        assert_eq!(nav.section(), Section::Settings);
+    }
+
+    #[test]
+    fn panel_cycling_wraps() {
+        let mut nav = NavState::default();
+        assert_eq!(nav.panel(), Panel::Targets);
+        nav.next_panel();
+        assert_eq!(nav.panel(), Panel::Capabilities);
+        nav.next_panel();
+        assert_eq!(nav.panel(), Panel::Jobs);
+        nav.next_panel();
+        assert_eq!(nav.panel(), Panel::Targets);
+    }
+
+    #[test]
+    fn set_section_resets_panel_and_list() {
+        let mut nav = NavState::default();
+        nav.next_panel();
+        nav.list_selected = 5;
+        nav.set_section(1);
+        assert_eq!(nav.panel(), Panel::Notes);
+        assert_eq!(nav.list_selected, 0);
+    }
+
+    #[test]
+    fn status_filter_cycles() {
+        let mut nav = NavState::default();
+        let statuses = vec!["pending", "running", "done"];
+        assert!(nav.status_filter.is_none());
+        nav.cycle_status_filter(&statuses);
+        assert_eq!(nav.status_filter.as_deref(), Some("pending"));
+        nav.cycle_status_filter(&statuses);
+        assert_eq!(nav.status_filter.as_deref(), Some("running"));
+        nav.cycle_status_filter(&statuses);
+        assert_eq!(nav.status_filter.as_deref(), Some("done"));
+        nav.cycle_status_filter(&statuses);
+        assert!(nav.status_filter.is_none());
+    }
+
+    #[test]
+    fn detail_enter_and_back() {
+        let mut nav = NavState::default();
+        nav.enter_detail("Title".to_string(), "Body".to_string());
+        assert!(nav.is_detail());
+        nav.back_to_list();
+        assert!(!nav.is_detail());
+    }
+
+    #[test]
+    fn detail_scrolling() {
+        let mut nav = NavState::default();
+        nav.enter_detail("T".to_string(), "B\nB\nB".to_string());
+        nav.scroll_detail_down();
+        nav.scroll_detail_down();
+        if let Screen::Detail { scroll, .. } = &nav.screen {
+            assert_eq!(*scroll, 2);
+        }
+        nav.scroll_detail_up();
+        if let Screen::Detail { scroll, .. } = &nav.screen {
+            assert_eq!(*scroll, 1);
         }
     }
 
-    pub fn enter(&mut self) {
-        match (self.tab, self.screen) {
-            (Tab::Targets, Screen::List) => {
-                if let Some(t) = self.targets.get(self.sel_target) {
-                    let id = t.id.clone();
-                    self.caps = data::load_caps(&self.ship_dir, &id);
-                    self.sel_cap = 0;
-                    self.screen = Screen::TargetDetail;
-                }
-            }
-            (Tab::Targets, Screen::TargetDetail) => {
-                if !self.caps.is_empty() {
-                    self.screen = Screen::CapDetail;
-                }
-            }
-            (Tab::Notes, Screen::List) => {
-                if !self.notes.is_empty() {
-                    self.note_scroll = 0;
-                    self.screen = Screen::NoteDetail;
-                }
-            }
-            (Tab::Adrs, Screen::List) => {
-                if !self.adrs.is_empty() {
-                    self.screen = Screen::AdrDetail;
-                }
-            }
-            (Tab::Jobs, Screen::List) => {
-                if let Some(j) = self.jobs.get(self.sel_job) {
-                    let id = j.id.clone();
-                    self.logs = data::load_logs(&self.ship_dir, &id);
-                    self.log_scroll = 0;
-                    self.screen = Screen::JobDetail;
-                }
-            }
-            (Tab::Events, Screen::List) => {
-                if !self.events.is_empty() {
-                    self.screen = Screen::EventDetail;
-                }
-            }
-            (Tab::Agents, Screen::List) => {
-                if let Some((id, _)) = self.agents.get(self.sel_agent) {
-                    self.agent_detail_text = data::load_agent_detail(id);
-                    self.screen = Screen::AgentDetail;
-                }
-            }
-            (Tab::Mcp, Screen::List) => {
-                if !self.mcp_servers.is_empty() {
-                    self.screen = Screen::McpDetail;
-                }
-            }
-            _ => {}
-        }
-        self.status.clear();
+    #[test]
+    fn set_section_exits_detail() {
+        let mut nav = NavState::default();
+        nav.enter_detail("T".to_string(), "B".to_string());
+        nav.set_section(2);
+        assert!(!nav.is_detail());
+        assert_eq!(nav.section(), Section::Agents);
     }
 
-    pub fn back(&mut self) {
-        self.screen = match self.screen {
-            Screen::CapDetail => Screen::TargetDetail,
-            Screen::TargetDetail
-            | Screen::NoteDetail
-            | Screen::AdrDetail
-            | Screen::JobDetail
-            | Screen::EventDetail
-            | Screen::AgentDetail
-            | Screen::McpDetail => Screen::List,
-            Screen::List => Screen::List,
-        };
-        self.status.clear();
+    #[test]
+    fn next_panel_exits_detail() {
+        let mut nav = NavState::default();
+        nav.enter_detail("T".to_string(), "B".to_string());
+        nav.next_panel();
+        assert!(!nav.is_detail());
     }
 }
