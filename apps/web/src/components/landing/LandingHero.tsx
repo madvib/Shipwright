@@ -23,15 +23,15 @@ export function LandingHero() {
 
         {/* Headline */}
         <h1 className="mb-4 font-display text-5xl font-extrabold leading-[1.08] tracking-[-0.03em] sm:text-7xl">
-          One config.
+          {"Don't just build."}
           <br />
-          <span className="text-primary">Every agent.</span>
+          <span className="text-primary">Ship.</span>
         </h1>
 
         {/* Subhead */}
         <p className="mx-auto mb-8 max-w-lg text-lg leading-relaxed text-muted-foreground">
-          Configure AI coding agents programmatically. Every agent gets exactly
-          the skills, permissions, and tools it needs — nothing more.
+          Share and switch between advanced agent configurations.
+          Scoped roles, granular permissions, instant compilation.
         </p>
 
         {/* CTAs */}

@@ -90,7 +90,7 @@ export function makeAgent(partial?: Partial<AgentProfile>): AgentProfile {
     mcpServers: partial?.mcpServers ?? [],
     subagents: partial?.subagents ?? [],
     permissions: partial?.permissions ?? { ...DEFAULT_PERMISSIONS },
-    permissionPreset: partial?.permissionPreset ?? 'ship-guarded',
+    permissionPreset: partial?.permissionPreset ?? 'ship-standard',
     settings: partial?.settings ?? { ...DEFAULT_SETTINGS },
     hooks: partial?.hooks ?? [],
     rules: partial?.rules ?? [],
