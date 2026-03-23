@@ -47,7 +47,7 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
             <div className="absolute top-full left-0 mt-1.5 z-50 rounded-xl border border-border/60 bg-popover shadow-lg p-2 animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="grid grid-cols-6 gap-1 w-[180px]">
+              <div className="grid grid-cols-8 gap-1 w-[240px] max-h-[280px] overflow-y-auto">
                 {TECH_STACK_LIST.filter(t => t.slug !== null).map((tech) => (
                   <button
                     key={tech.id}
