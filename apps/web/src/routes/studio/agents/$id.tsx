@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useAgentStore, makeAgent } from '#/features/agents/useAgentStore'
 import { AgentActivityBar, SECTION_DEFS } from '#/features/agents/AgentActivityBar'
@@ -28,8 +28,15 @@ export const Route = createFileRoute('/studio/agents/$id')({
 
 function AgentDetailPage() {
   const { id } = Route.useParams()
-  const { getAgent, updateAgent } = useAgentStore()
+  const navigate = useNavigate()
+  const { getAgent, updateAgent, deleteAgent } = useAgentStore()
   const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
+
+  const handleDelete = useCallback(() => {
+    if (!confirm(`Delete "${profile.profile.name}"?`)) return
+    deleteAgent(id)
+    void navigate({ to: '/studio/agents', replace: true })
+  }, [id, profile.profile.name, deleteAgent, navigate])
 
   // ── Convenience mutators (same API as old useAgentDetail) ─────────────
 
@@ -192,6 +199,7 @@ function AgentDetailPage() {
           <AgentStickyHeader
             profile={profile}
             onEdit={() => setEditOpen(true)}
+            onDelete={handleDelete}
           />
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto">

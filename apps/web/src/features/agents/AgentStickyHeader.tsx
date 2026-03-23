@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Pencil } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import type { ResolvedAgentProfile } from './types'
 import { getAgentIcon, setAgentIcon } from './agent-icons'
 import { TechIcon, ICON_CATEGORIES, TECH_STACKS } from '#/features/studio/TechIcon'
@@ -7,9 +7,10 @@ import { TechIcon, ICON_CATEGORIES, TECH_STACKS } from '#/features/studio/TechIc
 interface AgentStickyHeaderProps {
   profile: ResolvedAgentProfile
   onEdit: () => void
+  onDelete?: () => void
 }
 
-export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
+export function AgentStickyHeader({ profile, onEdit, onDelete }: AgentStickyHeaderProps) {
   const initial = profile.profile.name.charAt(0).toUpperCase()
   const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id))
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -110,6 +111,16 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
       </span>
 
       <div className="flex-1" />
+
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="rounded-md p-1.5 text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition"
+          title="Delete agent"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      )}
     </div>
   )
 }

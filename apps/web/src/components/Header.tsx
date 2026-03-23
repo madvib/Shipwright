@@ -1,7 +1,8 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Sun, Moon, LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { authClient } from '#/lib/auth-client'
+import { useAgentStore } from '#/features/agents/useAgentStore'
 
 type ThemeMode = 'light' | 'dark'
 
@@ -151,9 +152,18 @@ export default function Header() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const user = session?.user
 
-  const segments = pathname.split('/').filter(Boolean)
+  const rawSegments = pathname.split('/').filter(Boolean)
   const isStudio = pathname.startsWith('/studio')
   const isRegistry = pathname.startsWith('/registry')
+  const { getAgent } = useAgentStore()
+
+  // Resolve agent ID to name in breadcrumb
+  const segments = useMemo(() => rawSegments.map((seg, i) => {
+    if (i === 2 && rawSegments[0] === 'studio' && rawSegments[1] === 'agents') {
+      return getAgent(seg)?.profile.name ?? seg
+    }
+    return seg
+  }), [rawSegments, getAgent])
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
@@ -167,7 +177,7 @@ export default function Header() {
           <div className="flex items-center gap-1 text-sm text-muted-foreground min-w-0">
             <span className="text-border">/</span>
             {segments.map((seg, i) => {
-              const path = '/' + segments.slice(0, i + 1).join('/')
+              const path = '/' + rawSegments.slice(0, i + 1).join('/')
               const isLast = i === segments.length - 1
               return (
                 <span key={path} className="flex items-center gap-1 min-w-0">
