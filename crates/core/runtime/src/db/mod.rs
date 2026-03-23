@@ -1,6 +1,6 @@
-//! Platform DB — single database, single schema, no migration versioning.
+//! Platform DB — single database, schema managed by sqlx migrations.
 //!
-//! One file: `~/.ship/platform.db`.  Schema = code.
+//! One file: `~/.ship/platform.db`.  Migrations in `migrations/`.
 
 pub mod adrs;
 pub mod agents;
@@ -23,12 +23,9 @@ pub mod workspace_state;
 
 use anyhow::{Context, Result, anyhow};
 use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::{Connection, Row, SqliteConnection};
+use sqlx::{Connection, SqliteConnection};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-
-/// Bump when the schema changes to invalidate the fast-path.
-const SCHEMA_VERSION: i32 = 1;
 
 /// The one database path: `~/.ship/platform.db`.
 ///
@@ -45,9 +42,10 @@ pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
     connect(&path)
 }
 
-/// Ensure the schema exists. Idempotent — every statement uses
-/// `CREATE TABLE IF NOT EXISTS`. Uses `PRAGMA user_version` as a
-/// fast-path: if the version matches, skip all DDL.
+/// Ensure the schema is up to date via sqlx migrations.
+///
+/// Idempotent — sqlx tracks applied migrations in `_sqlx_migrations`.
+/// Connection-level PRAGMAs are set on every call.
 pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
     let path = db_path()?;
     if let Some(parent) = path.parent() {
@@ -59,39 +57,13 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
         .create_if_missing(true);
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
-    // Fast-path: schema already initialized.
-    let version: i32 = block_on(async {
-        sqlx::query("PRAGMA user_version")
-            .fetch_one(&mut conn)
-            .await
-    })
-    .map(|row| row.get::<i32, _>(0))
-    .unwrap_or(0);
-    if version == SCHEMA_VERSION {
-        return Ok(());
-    }
+    // Connection-level PRAGMAs — not persisted in schema.
+    block_on(async { sqlx::query("PRAGMA journal_mode = WAL").execute(&mut conn).await })?;
+    block_on(async { sqlx::query("PRAGMA foreign_keys = ON").execute(&mut conn).await })?;
 
-    // Execute each statement individually — sqlx only runs one statement at a time.
-    // Strip SQL comments first since they may contain semicolons.
-    for part in schema::SCHEMA_PARTS {
-        let stripped: String = part
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        for stmt in stripped.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-            block_on(async { sqlx::query(stmt).execute(&mut conn).await }).with_context(|| {
-                format!("schema init failed on: {}", &stmt[..stmt.len().min(80)])
-            })?;
-        }
-    }
+    // Run migrations. sqlx manages its own `_sqlx_migrations` table.
+    block_on_migrate(async { sqlx::migrate!("./migrations").run(&mut conn).await })?;
 
-    // Stamp so subsequent calls take the fast-path.
-    block_on(async {
-        sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-            .execute(&mut conn)
-            .await
-    })?;
     Ok(())
 }
 
@@ -128,6 +100,26 @@ where
         .map_err(|e| anyhow!("Failed to create SQLite runtime: {e}"))?;
     rt.block_on(future)
         .map_err(|e| anyhow!("SQLite operation failed: {e}"))
+}
+
+/// Like `block_on` but for sqlx::migrate::MigrateError instead of sqlx::Error.
+fn block_on_migrate<F>(future: F) -> Result<()>
+where
+    F: std::future::Future<Output = std::result::Result<(), sqlx::migrate::MigrateError>>,
+{
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(|| {
+            handle
+                .block_on(future)
+                .map_err(|e| anyhow!("Migration failed: {e}"))
+        });
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .map_err(|e| anyhow!("Failed to create SQLite runtime: {e}"))?;
+    rt.block_on(future)
+        .map_err(|e| anyhow!("Migration failed: {e}"))
 }
 
 #[cfg(test)]

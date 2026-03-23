@@ -3,6 +3,9 @@
 //! These tables power Ship's target/capability/job workflow. They are
 //! the canonical example but designed to be separable — teams may
 //! eventually customize or replace this layer.
+//!
+//! Canonical DDL is in `migrations/0001_initial.sql`. These constants
+//! are retained as code-level documentation.
 
 /// Target: a named goal. Two kinds:
 ///   - milestone: time-bounded (v0.1, v0.2), has due_date

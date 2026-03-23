@@ -3,6 +3,9 @@
 //! These tables exist in every Ship installation regardless of workflow.
 //! They power the compilation pipeline, session lifecycle, agent config,
 //! and audit trail.
+//!
+//! Canonical DDL is in `migrations/0001_initial.sql`. These constants
+//! are retained as code-level documentation.
 
 /// Key-value state: generic namespaced store for runtime flags, cache keys,
 /// and any transient data that does not warrant its own table.

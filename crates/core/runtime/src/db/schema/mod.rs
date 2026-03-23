@@ -1,4 +1,4 @@
-//! Unified schema — single DDL, no migration versioning. Schema = code.
+//! Schema reference — platform and workflow table definitions.
 //!
 //! Two layers, one database:
 //!
@@ -23,33 +23,11 @@
 //! - `file_claim` -- batch-atomic file claims with workspace tracking
 //! - `note` -- human-facing scratchpad
 //! - `adr` -- architecture decision records
+//!
+//! The canonical DDL lives in `migrations/0001_initial.sql`.
+//! These modules retain the constants as code-level documentation.
 
-mod platform;
-mod workflow;
-
-/// All DDL fragments in execution order. `ensure_db` iterates these,
-/// splitting each on `;` and running every statement.
-pub const SCHEMA_PARTS: &[&str] = &[
-    // Pragmas
-    "PRAGMA journal_mode = WAL;\nPRAGMA foreign_keys = ON;",
-    // Platform
-    platform::KV_STATE,
-    platform::WORKSPACE,
-    platform::WORKSPACE_SESSION,
-    platform::WORKSPACE_SESSION_RECORD,
-    platform::BRANCH_CONFIG,
-    platform::BRANCH_CONTEXT,
-    platform::EVENT_LOG,
-    platform::AGENT_RUNTIME_SETTINGS,
-    platform::AGENT_ARTIFACT_REGISTRY,
-    platform::AGENT_CONFIG,
-    platform::MANAGED_MCP_STATE,
-    // Workflow
-    workflow::TARGET,
-    workflow::CAPABILITY,
-    workflow::JOB,
-    workflow::JOB_FILE,
-    workflow::FILE_CLAIM,
-    workflow::NOTE,
-    workflow::ADR,
-];
+#[allow(dead_code)]
+pub mod platform;
+#[allow(dead_code)]
+pub mod workflow;
