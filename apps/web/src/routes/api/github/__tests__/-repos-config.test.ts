@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('#/lib/github-app', () => ({
-  getTokenFromCookie: vi.fn(),
+vi.mock('#/lib/github-token', () => ({
+  getGitHubToken: vi.fn(),
 }))
 
 vi.mock('#/lib/fetch-repo-files', () => ({
@@ -12,7 +12,7 @@ vi.mock('#/lib/github-import', () => ({
   extractLibrary: vi.fn(),
 }))
 
-import * as ghApp from '#/lib/github-app'
+import * as ghToken from '#/lib/github-token'
 import * as fetchFiles from '#/lib/fetch-repo-files'
 import * as ghImport from '#/lib/github-import'
 import { Route } from '../repos-config'
@@ -33,20 +33,20 @@ describe('GET /api/github/repos-config', () => {
     vi.restoreAllMocks()
   })
 
-  it('returns 401 when no token cookie is present', async () => {
-    vi.mocked(ghApp.getTokenFromCookie).mockReturnValue(null)
+  it('returns 401 when no GitHub token is available', async () => {
+    vi.mocked(ghToken.getGitHubToken).mockResolvedValue(null)
     const res = await GET({ request: makeRequest() } as Parameters<typeof GET>[0])
     expect(res.status).toBe(401)
   })
 
   it('returns 400 when owner or repo is missing', async () => {
-    vi.mocked(ghApp.getTokenFromCookie).mockReturnValue('test-token')
+    vi.mocked(ghToken.getGitHubToken).mockResolvedValue('test-token')
     const res = await GET({ request: makeRequest({ owner: 'foo' }) } as Parameters<typeof GET>[0])
     expect(res.status).toBe(400)
   })
 
   it('returns 404 when repo is not found', async () => {
-    vi.mocked(ghApp.getTokenFromCookie).mockReturnValue('test-token')
+    vi.mocked(ghToken.getGitHubToken).mockResolvedValue('test-token')
     vi.mocked(fetchFiles.fetchRepoFiles).mockResolvedValue('not_found')
     const res = await GET({
       request: makeRequest({ owner: 'foo', repo: 'bar' }),
@@ -55,7 +55,7 @@ describe('GET /api/github/repos-config', () => {
   })
 
   it('returns 422 when no config is found in repo', async () => {
-    vi.mocked(ghApp.getTokenFromCookie).mockReturnValue('test-token')
+    vi.mocked(ghToken.getGitHubToken).mockResolvedValue('test-token')
     vi.mocked(fetchFiles.fetchRepoFiles).mockResolvedValue({ 'README.md': '# hello' })
     vi.mocked(ghImport.extractLibrary).mockReturnValue(null)
     const res = await GET({
@@ -65,7 +65,7 @@ describe('GET /api/github/repos-config', () => {
   })
 
   it('returns library when config is found', async () => {
-    vi.mocked(ghApp.getTokenFromCookie).mockReturnValue('test-token')
+    vi.mocked(ghToken.getGitHubToken).mockResolvedValue('test-token')
     vi.mocked(fetchFiles.fetchRepoFiles).mockResolvedValue({ 'CLAUDE.md': '# rules' })
     const mockLibrary = {
       modes: [],

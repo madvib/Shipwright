@@ -6,7 +6,8 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 import { requireSession } from '#/lib/session-auth'
-import { getTokenFromCookie, getUser } from '#/lib/github-app'
+import { getUser } from '#/lib/github-app'
+import { getGitHubToken } from '#/lib/github-token'
 import { getRegistryDb } from '#/lib/d1'
 import { createRegistryRepositories } from '#/db/registry-repositories'
 import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
@@ -72,8 +73,8 @@ export const Route = createFileRoute('/api/registry/claim')({
         const auth = await requireSession(request)
         if (auth instanceof Response) return auth
 
-        // Require GitHub token (OAuth cookie)
-        const ghToken = getTokenFromCookie(request)
+        // Require GitHub token (from Better Auth account)
+        const ghToken = await getGitHubToken(request)
         if (!ghToken) {
           return Response.json(
             { error: 'GitHub authentication required. Connect your GitHub account first.' },

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Github, Lock, Unlock, Loader2, ExternalLink, GitPullRequest, AlertCircle, ChevronRight } from 'lucide-react'
+import { authClient } from '#/lib/auth-client'
 import type { ProjectLibrary } from '#/features/compiler/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -34,28 +35,16 @@ interface GitHubPanelProps {
 }
 
 export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
-  const [state, setState] = useState<GhState>({ step: 'disconnected' })
+  const [state, setState] = useState<GhState>({ step: 'loading' })
   const [search, setSearch] = useState('')
 
-  // Check connection status on mount (and after OAuth redirect)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.has('gh_error')) {
-      setState({ step: 'error', message: params.get('gh_error')! })
-      cleanUrl()
-      return
-    }
-    if (params.has('gh_connected')) {
-      cleanUrl()
-    }
-    // Try fetching repos — if cookie exists, we're connected
-    void checkConnection()
-  }, [])
-
+  // Check connection by fetching repos on mount.
+  // GitHub connection is determined by whether the user has a linked
+  // GitHub account in Better Auth (token in the account table).
   const checkConnection = useCallback(async () => {
     setState({ step: 'loading' })
     try {
-      const res = await fetch('/api/github/repos')
+      const res = await fetch('/api/github/repos', { credentials: 'include' })
       if (res.status === 401) {
         setState({ step: 'disconnected' })
         return
@@ -68,12 +57,24 @@ export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
     }
   }, [])
 
+  // Check on first render
+  useState(() => { void checkConnection() })
+
+  const handleConnect = useCallback(() => {
+    authClient.signIn.social({
+      provider: 'github',
+      callbackURL: window.location.pathname,
+      scopes: ['repo', 'user:email'],
+    })
+  }, [])
+
   const handleImportAndPr = useCallback(async (repo: GhRepo) => {
     setState({ step: 'importing', repo })
     try {
       const res = await fetch('/api/github/create-pr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           owner: repo.owner,
           repo: repo.name,
@@ -92,6 +93,7 @@ export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
       const importRes = await fetch('/api/github/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ url: `https://github.com/${repo.full_name}` }),
       })
       if (importRes.ok) {
@@ -112,13 +114,13 @@ export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
         <p className="text-[11px] text-muted-foreground text-center">
           Connect GitHub to import from private repos and create config PRs.
         </p>
-        <a
-          href="/api/github/oauth"
+        <button
+          onClick={handleConnect}
           className="inline-flex items-center gap-2 rounded-lg bg-[#24292f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#32383f]"
         >
           <Github className="size-3.5" />
           Connect GitHub
-        </a>
+        </button>
       </div>
     )
   }
@@ -248,11 +250,4 @@ export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
       </div>
     </div>
   )
-}
-
-function cleanUrl() {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('gh_connected')
-  url.searchParams.delete('gh_error')
-  window.history.replaceState({}, '', url.pathname)
 }

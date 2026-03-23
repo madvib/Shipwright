@@ -1,5 +1,6 @@
 import { Github } from 'lucide-react'
 import { useState } from 'react'
+import { authClient } from '#/lib/auth-client'
 
 interface ConnectGitHubProps {
   /** Whether to show as a compact inline card (default) or a prominent prompt */
@@ -7,16 +8,19 @@ interface ConnectGitHubProps {
 }
 
 /**
- * Renders a prompt to connect GitHub.
- * Clicking "Connect GitHub" navigates to /api/github/oauth which redirects to GitHub.
+ * Renders a prompt to connect GitHub via Better Auth social sign-in.
+ * Uses authClient.signIn.social() instead of the old hand-rolled OAuth redirect.
  */
 export function ConnectGitHub({ variant = 'card' }: ConnectGitHubProps) {
   const [loading, setLoading] = useState(false)
 
   const handleConnect = () => {
     setLoading(true)
-    // The OAuth endpoint redirects; let the browser follow it
-    window.location.href = '/api/github/oauth'
+    authClient.signIn.social({
+      provider: 'github',
+      callbackURL: '/studio',
+      scopes: ['repo', 'user:email'],
+    })
   }
 
   if (variant === 'inline') {
@@ -32,7 +36,7 @@ export function ConnectGitHub({ variant = 'card' }: ConnectGitHubProps) {
           className="ml-3 inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-[11px] font-semibold text-background transition hover:opacity-80 disabled:opacity-50 shrink-0"
         >
           <Github className="size-3" />
-          {loading ? 'Connecting…' : 'Connect GitHub'}
+          {loading ? 'Connecting...' : 'Connect GitHub'}
         </button>
       </div>
     )
@@ -55,7 +59,7 @@ export function ConnectGitHub({ variant = 'card' }: ConnectGitHubProps) {
             className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-xs font-semibold text-background transition hover:opacity-80 disabled:opacity-50"
           >
             <Github className="size-3.5" />
-            {loading ? 'Connecting…' : 'Connect GitHub'}
+            {loading ? 'Connecting...' : 'Connect GitHub'}
           </button>
         </div>
       </div>

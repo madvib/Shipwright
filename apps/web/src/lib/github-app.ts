@@ -1,60 +1,10 @@
 /**
- * GitHub App OAuth utilities.
+ * GitHub API helpers for authenticated requests.
  *
- * Environment variables (set in .env.local):
- *   GITHUB_APP_CLIENT_ID  — GitHub App OAuth client ID
- *   GITHUB_APP_CLIENT_SECRET — GitHub App OAuth client secret
+ * Token retrieval is handled by getGitHubToken() in github-token.ts
+ * which reads from Better Auth's account table. This module only
+ * contains functions that call the GitHub API with a provided token.
  */
-
-// ── OAuth flow helpers ───────────────────────────────────────────────────────
-
-const GITHUB_OAUTH_AUTHORIZE = 'https://github.com/login/oauth/authorize'
-const GITHUB_OAUTH_TOKEN = 'https://github.com/login/oauth/access_token'
-
-/** Scopes needed: repo contents (read), pull requests (write), metadata (read). */
-const SCOPES = 'repo'
-
-export function buildAuthorizeUrl(clientId: string, redirectUri: string, state: string): string {
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    scope: SCOPES,
-    state,
-  })
-  return `${GITHUB_OAUTH_AUTHORIZE}?${params}`
-}
-
-export interface TokenResponse {
-  access_token: string
-  token_type: string
-  scope: string
-}
-
-export async function exchangeCodeForToken(
-  code: string,
-  clientId: string,
-  clientSecret: string,
-): Promise<TokenResponse> {
-  const res = await fetch(GITHUB_OAUTH_TOKEN, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-    }),
-  })
-
-  if (!res.ok) throw new Error(`GitHub token exchange failed: ${res.status}`)
-
-  const data = (await res.json()) as Record<string, unknown>
-  if (data.error) throw new Error(`GitHub OAuth error: ${data.error_description ?? data.error}`)
-
-  return data as unknown as TokenResponse
-}
 
 // ── Authenticated GitHub API helpers ─────────────────────────────────────────
 
@@ -97,41 +47,6 @@ export async function listRepos(token: string, page = 1): Promise<GitHubRepo[]> 
   })
   if (!res.ok) throw new Error(`GitHub API /user/repos failed: ${res.status}`)
   return (await res.json()) as GitHubRepo[]
-}
-
-// ── Cookie helpers ───────────────────────────────────────────────────────────
-
-const TOKEN_COOKIE = 'gh_token'
-const STATE_COOKIE = 'gh_oauth_state'
-
-export function setTokenCookie(token: string): string {
-  return `${TOKEN_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400`
-}
-
-export function setStateCookie(state: string): string {
-  return `${STATE_COOKIE}=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`
-}
-
-export function clearStateCookie(): string {
-  return `${STATE_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
-}
-
-export function clearTokenCookie(): string {
-  return `${TOKEN_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
-}
-
-export function getTokenFromCookie(request: Request): string | null {
-  return getCookieValue(request, TOKEN_COOKIE)
-}
-
-export function getStateFromCookie(request: Request): string | null {
-  return getCookieValue(request, STATE_COOKIE)
-}
-
-function getCookieValue(request: Request, name: string): string | null {
-  const header = request.headers.get('Cookie') ?? ''
-  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))
-  return match?.[1] ?? null
 }
 
 // ── PR creation ──────────────────────────────────────────────────────────────

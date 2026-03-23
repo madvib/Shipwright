@@ -31,6 +31,7 @@ async function makeAuth() {
       github: {
         clientId: getEnv('GITHUB_CLIENT_ID'),
         clientSecret: getEnv('GITHUB_CLIENT_SECRET'),
+        scope: ['repo', 'user:email'],
       },
     },
     plugins: [tanstackStartCookies()],

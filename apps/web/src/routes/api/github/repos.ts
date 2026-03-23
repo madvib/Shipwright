@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { getTokenFromCookie, listRepos, getUser } from '#/lib/github-app'
+import { listRepos, getUser } from '#/lib/github-app'
+import { getGitHubToken } from '#/lib/github-token'
 
 export const Route = createFileRoute('/api/github/repos')({
   server: {
     handlers: {
-      /** List authenticated user's repos. Requires gh_token cookie. */
+      /** List authenticated user's repos. Requires GitHub account linked via Better Auth. */
       GET: async ({ request }) => {
-        const token = getTokenFromCookie(request)
+        const token = await getGitHubToken(request)
         if (!token) {
           return Response.json({ error: 'Not authenticated' }, { status: 401 })
         }

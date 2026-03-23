@@ -1,62 +1,57 @@
-import { describe, it, expect } from 'vitest'
-import {
-  buildAuthorizeUrl,
-  getTokenFromCookie,
-  getStateFromCookie,
-  setTokenCookie,
-  setStateCookie,
-  clearTokenCookie,
-} from '#/lib/github-app'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { getUser, listRepos } from '#/lib/github-app'
 
-describe('buildAuthorizeUrl', () => {
-  it('builds correct GitHub OAuth URL', () => {
-    const url = buildAuthorizeUrl('my-client-id', 'https://example.com/callback', 'state123')
-    expect(url).toContain('https://github.com/login/oauth/authorize')
-    expect(url).toContain('client_id=my-client-id')
-    expect(url).toContain('redirect_uri=https%3A%2F%2Fexample.com%2Fcallback')
-    expect(url).toContain('state=state123')
-    expect(url).toContain('scope=repo')
+beforeEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('getUser', () => {
+  it('returns user data on success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: 'testuser', avatar_url: 'https://example.com/avatar.png' }),
+    }))
+
+    const user = await getUser('test-token')
+    expect(user.login).toBe('testuser')
+    expect(user.avatar_url).toBe('https://example.com/avatar.png')
+  })
+
+  it('throws on non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+    await expect(getUser('bad-token')).rejects.toThrow('GitHub API /user failed: 401')
   })
 })
 
-describe('cookie helpers', () => {
-  it('getTokenFromCookie extracts token', () => {
-    const req = new Request('http://localhost', {
-      headers: { Cookie: 'gh_token=abc123; other=val' },
+describe('listRepos', () => {
+  it('returns repos on success', async () => {
+    const mockRepos = [
+      { full_name: 'user/repo1', name: 'repo1', owner: { login: 'user' }, private: false, default_branch: 'main', description: null },
+    ]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockRepos),
+    }))
+
+    const repos = await listRepos('test-token')
+    expect(repos).toHaveLength(1)
+    expect(repos[0].full_name).toBe('user/repo1')
+  })
+
+  it('passes page parameter', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
     })
-    expect(getTokenFromCookie(req)).toBe('abc123')
+    vi.stubGlobal('fetch', mockFetch)
+
+    await listRepos('test-token', 3)
+    const calledUrl = mockFetch.mock.calls[0][0] as string
+    expect(calledUrl).toContain('page=3')
   })
 
-  it('getTokenFromCookie returns null when missing', () => {
-    const req = new Request('http://localhost', {
-      headers: { Cookie: 'other=val' },
-    })
-    expect(getTokenFromCookie(req)).toBeNull()
-  })
-
-  it('getStateFromCookie extracts state', () => {
-    const req = new Request('http://localhost', {
-      headers: { Cookie: 'gh_oauth_state=xyz789' },
-    })
-    expect(getStateFromCookie(req)).toBe('xyz789')
-  })
-
-  it('setTokenCookie returns HttpOnly Secure cookie string', () => {
-    const cookie = setTokenCookie('mytoken')
-    expect(cookie).toContain('gh_token=mytoken')
-    expect(cookie).toContain('HttpOnly')
-    expect(cookie).toContain('Secure')
-    expect(cookie).toContain('SameSite=Lax')
-  })
-
-  it('setStateCookie returns short-lived cookie', () => {
-    const cookie = setStateCookie('state123')
-    expect(cookie).toContain('gh_oauth_state=state123')
-    expect(cookie).toContain('Max-Age=600')
-  })
-
-  it('clearTokenCookie sets Max-Age=0', () => {
-    const cookie = clearTokenCookie()
-    expect(cookie).toContain('Max-Age=0')
+  it('throws on non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    await expect(listRepos('bad-token')).rejects.toThrow('GitHub API /user/repos failed: 403')
   })
 })

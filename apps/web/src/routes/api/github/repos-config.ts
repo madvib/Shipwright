@@ -4,7 +4,7 @@
 // Uses the authenticated user's GitHub token from the cookie.
 
 import { createFileRoute } from '@tanstack/react-router'
-import { getTokenFromCookie } from '#/lib/github-app'
+import { getGitHubToken } from '#/lib/github-token'
 import { fetchRepoFiles } from '#/lib/fetch-repo-files'
 import { extractLibrary } from '#/lib/github-import'
 
@@ -12,7 +12,7 @@ export const Route = createFileRoute('/api/github/repos-config')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const token = getTokenFromCookie(request)
+        const token = await getGitHubToken(request)
         if (!token) {
           return Response.json({ error: 'Not authenticated' }, { status: 401 })
         }

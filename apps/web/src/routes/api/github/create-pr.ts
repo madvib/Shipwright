@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { getTokenFromCookie, createConfigPr } from '#/lib/github-app'
+import { createConfigPr } from '#/lib/github-app'
+import { getGitHubToken } from '#/lib/github-token'
 import { extractLibrary, type RepoFiles } from '#/lib/github-import'
 import { libraryToShipFiles } from '#/lib/ship-config'
 
@@ -63,7 +64,7 @@ export const Route = createFileRoute('/api/github/create-pr')({
     handlers: {
       /** Import config from repo and create a PR adding .ship/ directory. */
       POST: async ({ request }) => {
-        const token = getTokenFromCookie(request)
+        const token = await getGitHubToken(request)
         if (!token) {
           return Response.json({ error: 'Not authenticated' }, { status: 401 })
         }

@@ -6,8 +6,11 @@ vi.mock('#/lib/session-auth', () => ({
   requireSession: vi.fn(),
 }))
 
+vi.mock('#/lib/github-token', () => ({
+  getGitHubToken: vi.fn(),
+}))
+
 vi.mock('#/lib/github-app', () => ({
-  getTokenFromCookie: vi.fn(),
   getUser: vi.fn(),
 }))
 
@@ -27,6 +30,7 @@ vi.mock('#/lib/rate-limit', () => ({
 
 import { Route } from '../claim'
 import * as sessionAuth from '#/lib/session-auth'
+import * as ghToken from '#/lib/github-token'
 import * as githubApp from '#/lib/github-app'
 import * as registryRepositories from '#/db/registry-repositories'
 import * as d1Lib from '#/lib/d1'
@@ -71,12 +75,11 @@ function makeRepos(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function makeRequest(body: unknown, cookieToken = 'gh-token-abc'): Request {
+function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/registry/claim', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Cookie: `gh_token=${cookieToken}`,
     },
     body: JSON.stringify(body),
   })
@@ -85,7 +88,7 @@ function makeRequest(body: unknown, cookieToken = 'gh-token-abc'): Request {
 beforeEach(() => {
   vi.mocked(d1Lib.getRegistryDb).mockReturnValue({} as D1Database)
   vi.mocked(sessionAuth.requireSession).mockResolvedValue({ sub: 'user-1', org: 'user-1' })
-  vi.mocked(githubApp.getTokenFromCookie).mockReturnValue('gh-token-abc')
+  vi.mocked(ghToken.getGitHubToken).mockResolvedValue('gh-token-abc')
   vi.mocked(githubApp.getUser).mockResolvedValue({ login: 'testowner', avatar_url: '' })
 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -116,9 +119,9 @@ describe('POST /api/registry/claim', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 401 when no GitHub token cookie present', async () => {
-    vi.mocked(githubApp.getTokenFromCookie).mockReturnValue(null)
-    const req = makeRequest({ package_path: 'github.com/testowner/testrepo' }, '')
+  it('returns 401 when no GitHub token is available', async () => {
+    vi.mocked(ghToken.getGitHubToken).mockResolvedValue(null)
+    const req = makeRequest({ package_path: 'github.com/testowner/testrepo' })
     const res = await POST({ request: req } as Parameters<typeof POST>[0])
     expect(res.status).toBe(401)
     const body = await res.json() as Record<string, unknown>

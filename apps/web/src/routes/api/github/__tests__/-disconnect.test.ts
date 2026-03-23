@@ -6,10 +6,6 @@ vi.mock('#/lib/session-auth', () => ({
   requireSession: vi.fn(),
 }))
 
-vi.mock('#/lib/github-app', () => ({
-  clearTokenCookie: vi.fn().mockReturnValue('gh_token=; Max-Age=0; Path=/'),
-}))
-
 import { Route } from '../disconnect'
 import * as sessionAuth from '#/lib/session-auth'
 
@@ -36,11 +32,11 @@ describe('POST /api/github/disconnect', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns ok and clears cookie when authenticated', async () => {
+  it('returns ok with reauthenticate action when authenticated', async () => {
     const res = await POST({ request: makeRequest() } as Parameters<typeof POST>[0])
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(body.ok).toBe(true)
-    expect(res.headers.get('Set-Cookie')).toBeTruthy()
+    expect(body.action).toBe('reauthenticate')
   })
 })
