@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://getship.dev/schemas/mcp.schema.json",
+  "$id": "https://raw.githubusercontent.com/madvib/ship/main/schemas/mcp.schema.json",
   "title": "Ship MCP Server Definitions",
   "description": "Schema for .ship/mcp.jsonc — shared MCP server definitions referenced by agent configs via \"mcp\": { \"servers\": [\"<id>\", ...] }.",
   "type": "object",

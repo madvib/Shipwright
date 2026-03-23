@@ -13,6 +13,7 @@ pub mod cache;
 pub mod constraint;
 pub mod fetch;
 pub mod hash;
+pub mod init_deps;
 pub mod install;
 pub mod resolver;
 pub mod tracking;
@@ -21,8 +22,9 @@ pub mod types;
 pub use cache::{CachedPackage, PackageCache};
 pub use constraint::{VersionConstraint, parse_constraint};
 pub use hash::{compute_file_hash, compute_tree_hash};
+pub use init_deps::{DEFAULT_INIT_DEPS, SeedResult, seed_default_dependencies, try_install_init_deps};
 pub use install::{InstallOptions, InstallResult, resolve_and_fetch};
-pub use resolver::{ResolvedVersion, resolve_version};
+pub use resolver::{ResolvedVersion, resolve_alias, resolve_version};
 pub use types::{
     Dependency, LockedPackage, ShipLock, ShipManifest, SyncStatus, parse_ship_lock,
     serialize_ship_lock,

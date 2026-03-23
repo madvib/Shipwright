@@ -12,24 +12,25 @@ You are a Ship expert. Help the user troubleshoot issues and answer questions.
 ## Common Issues
 
 ### "ship use" fails or produces empty output
-1. Check `.ship/ship.toml` exists and has `[module]` section
+1. Check `.ship/ship.jsonc` exists
 2. Check the agent exists: `ship agent list`
 3. Check dependencies are installed: `ship install`
 4. If skill refs fail: the dependency may not be in `ship.lock` — run `ship install`
 
 ### "dependency not in cache"
-Run `ship install` to fetch and cache all declared dependencies from `ship.toml`.
+Run `ship install` to fetch and cache all declared dependencies from `ship.jsonc`.
 
 ### Provider config not updating
 Provider configs (CLAUDE.md, .cursor/rules, etc.) are regenerated every time you run `ship use`. They are gitignored. If they seem stale, rerun `ship use <agent>`.
 
 ### Permission denied errors in agent
 The agent's permission preset controls what the agent can do:
+- `ship-readonly` — read-only, no writes
 - `ship-standard` — file edits allowed, dangerous bash asks for confirmation
-- `ship-guarded` — all writes ask for confirmation
-- `ship-plan` — read-only, no writes
+- `ship-autonomous` — fully autonomous, no prompts
+- `ship-elevated` — autonomous plus git push and publish access
 
-Check the agent's `[permissions]` section.
+Check the agent's `"permissions"` section.
 
 ## Key Concepts
 

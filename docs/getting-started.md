@@ -1,39 +1,48 @@
 # Getting Started
 
-This guide walks you from zero to a working agent configuration in under 10 minutes. No external services required.
+This guide takes you from zero to a fully configured AI agent project in 10 minutes. No external services required.
 
 ## Prerequisites
 
 - Rust toolchain (`rustup` + stable)
 - Git
 
-## Install Ship
+## 1. Install Ship
+
+Clone the repository and install from source:
 
 ```bash
+git clone https://github.com/madvib/ship.git
+cd ship
 cargo install --path apps/ship-studio-cli
 ```
 
-Verify:
+Verify the installation:
 
 ```bash
 ship --version
 ```
 
-## Initialize a project
+## 2. Initialize your project
 
-In your project root:
+Navigate to your project root and run:
 
 ```bash
+cd /path/to/your-project
 ship init
 ```
 
-This creates:
+This scaffolds the `.ship/` directory:
 
 ```
 .ship/
-├── ship.toml       # project manifest
-├── .gitignore      # ignores compiled artifacts (CLAUDE.md, .mcp.json, etc.)
-└── README.md       # brief description for collaborators
+  ship.jsonc       # project manifest
+  agents/          # agent profiles
+  skills/          # skill definitions
+  rules/           # shared rule files
+  modes/           # legacy directory (ignored for new projects)
+  .gitignore       # ignores compiled artifacts
+  README.md        # brief description for collaborators
 ```
 
 The default provider is `claude`. To use a different default:
@@ -42,145 +51,506 @@ The default provider is `claude`. To use a different default:
 ship init --provider gemini
 ```
 
-## Create an agent profile
+The generated `ship.jsonc` looks like this:
 
-An agent profile defines what an agent sees and can do. Create one:
+```jsonc
+{
+  "$schema": "../schemas/ship.schema.json",
+  "project": {
+    "providers": ["claude"],
+  },
+}
+```
+
+## 3. See the default agent
+
+List available agent profiles:
 
 ```bash
-ship agent create my-agent
+ship agents list
 ```
 
-This scaffolds `.ship/agents/my-agent.toml`. Open it and fill in the sections:
+If you just ran `ship init`, the list will be empty. Create your first agent:
 
-```toml
-[agent]
-id = "my-agent"
-name = "My Agent"
-version = "0.1.0"
-description = "General-purpose assistant for this project"
-providers = ["claude"]
-
-[skills]
-refs = []
-
-[mcp]
-servers = []
-
-[plugins]
-install = []
-scope = "project"
-
-[permissions]
-preset = "ship-standard"
-
-[rules]
-inline = """
-You work on this project. Follow existing code conventions.
-"""
+```bash
+ship agents create my-agent
 ```
 
-**Key sections:**
+This writes `.ship/agents/my-agent.jsonc` with the following structure:
 
-| Section | Purpose |
-|---|---|
-| `[agent]` | Identity: id, name, providers to compile for |
-| `[skills]` | Skill references — markdown instruction sets the agent receives |
-| `[mcp]` | MCP servers exposed to the agent at runtime |
-| `[plugins]` | Claude Code plugins to install (Claude provider only) |
-| `[permissions]` | Permission preset + per-agent allow/deny overrides |
-| `[rules]` | Inline rules injected into the agent's context file |
+```jsonc
+{
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "my-agent",
+    "name": "My Agent",
+    "version": "0.1.0",
+    "description": "",
+    "providers": ["claude"],
+  },
+  "skills": {
+    "refs": [],
+  },
+  "mcp": {
+    "servers": [],
+  },
+  "permissions": {
+    "preset": "ship-standard",
+  },
+  "rules": {},
+}
+```
 
-## Activate the agent
+Run `ship agents list` again and you will see it:
+
+```
+$ ship agents list
+  my-agent    project
+```
+
+## 4. Activate the agent
 
 ```bash
 ship use my-agent
 ```
 
-This does several things:
+This does three things:
 
-1. Finds `.ship/agents/my-agent.toml`
-2. Resolves skill references and MCP server declarations
-3. Compiles to provider-native config files
-4. Installs any declared plugins
+1. Reads `.ship/agents/my-agent.jsonc`
+2. Resolves skill references, MCP servers, and permissions
+3. Compiles provider-native config files into your project root
 
-For the Claude provider, `ship use` writes:
+The compiled output depends on which providers the agent targets. All output files are gitignored -- they are build artifacts, not source.
 
+## 5. Verify the output
+
+Check which files were written. The output depends on the provider:
+
+| Provider | Context file | MCP config | Skills directory | Other |
+|----------|-------------|------------|-----------------|-------|
+| `claude` | `CLAUDE.md` | `.mcp.json` | `.claude/skills/` | |
+| `gemini` | `GEMINI.md` | `.gemini/settings.json` | `.gemini/skills/` | `.gemini/` workspace policy |
+| `codex` | `AGENTS.md` | `.codex/config.toml` | `.agents/skills/` | |
+
+Confirm the files exist:
+
+```bash
+# For the claude provider (default)
+ls CLAUDE.md .mcp.json
 ```
-CLAUDE.md              # context file with rules, skill content, permissions
-.mcp.json              # MCP server configuration
-.claude/skills/        # skill files in Claude's native format
-```
 
-These files are gitignored — they're generated artifacts, not source.
-
-## Verify the output
-
-Check what was compiled:
+To see the active agent and compilation status:
 
 ```bash
 ship status
 ```
 
-This shows the active agent and when it was last compiled.
-
-To preview what the compiler would write without writing files:
+To preview what the compiler would write without touching any files:
 
 ```bash
 ship compile --dry-run
 ```
 
-To recompile after editing the agent profile:
+To target a single provider:
+
+```bash
+ship compile --provider gemini
+```
+
+## 6. Customize
+
+Now that the basic flow works, customize your agent for real work.
+
+### Edit the agent profile
+
+Open it in your editor:
+
+```bash
+ship agents edit my-agent
+```
+
+Or edit `.ship/agents/my-agent.jsonc` directly. Here is a fully configured example:
+
+```jsonc
+{
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "my-agent",
+    "name": "My Agent",
+    "version": "0.1.0",
+    "description": "Full-stack development agent for this project",
+    // Target multiple providers at once
+    "providers": ["claude", "gemini", "codex"],
+  },
+  "skills": {
+    // Reference skills by ID (from .ship/skills/<id>/)
+    "refs": ["tdd", "code-review"],
+  },
+  "mcp": {
+    // Reference servers defined in .ship/mcp.jsonc
+    "servers": ["ship"],
+  },
+  "plugins": {
+    // Claude Code plugins (claude provider only)
+    "install": [
+      "rust-analyzer-lsp@claude-plugins-official",
+    ],
+    "scope": "project",
+  },
+  "permissions": {
+    // Permission preset (see "Permissions" section below)
+    "preset": "ship-autonomous",
+    // Per-agent deny list layered on top of the preset
+    "tools_deny": ["Bash(rm -rf *)", "Bash(git reset --hard*)"],
+  },
+  "rules": {
+    // Inline rules injected into the agent's compiled context
+    "inline": "You work on this project. Follow existing conventions.\nFocus on apps/ and packages/ directories.",
+  },
+}
+```
+
+After editing, recompile:
 
 ```bash
 ship compile
 ```
 
-## Add a skill
+### Add skills
 
-Skills are markdown instruction sets that extend what an agent knows how to do. Each skill lives in its own directory with a `SKILL.md` file.
+Skills are markdown instruction sets that teach an agent how to do something. Each skill is a directory under `.ship/skills/` containing a `SKILL.md` file.
 
 Create a local skill:
 
 ```bash
-ship skill create code-review
+ship skills create code-review
 ```
 
-This scaffolds `.ship/agents/skills/code-review/SKILL.md`. Edit it with your instructions, then reference it from your agent profile:
+This scaffolds `.ship/skills/code-review/SKILL.md`. The file uses YAML frontmatter for metadata:
 
-```toml
-[skills]
-refs = ["code-review"]
+```markdown
+---
+name: code-review
+description: Structured code review workflow
+tags: [review, quality]
+authors: [your-name]
+---
+
+# Code Review
+
+Review every PR against these criteria:
+
+1. Does the change have tests?
+2. Are error messages actionable?
+3. Does it follow existing patterns in the codebase?
 ```
 
-Run `ship use my-agent` again to recompile with the new skill.
+Reference the skill from your agent profile:
 
-To install a skill from a remote repo:
+```jsonc
+{
+  "skills": {
+    "refs": ["code-review"],
+  },
+}
+```
+
+Run `ship use my-agent` to recompile with the new skill included.
+
+To install a skill from a remote source:
 
 ```bash
-ship skill add github.com/owner/skill-repo
+ship skills add github.com/owner/skill-repo
 ```
 
-## Add an MCP server
+List all installed skills:
 
-MCP servers expose tools to agents at runtime. Ship's own MCP server provides workspace, session, and job coordination tools.
+```bash
+ship skills list
+```
 
-Register it:
+### Configure MCP servers
+
+MCP (Model Context Protocol) servers expose tools to agents at runtime. Server definitions live in `.ship/mcp.jsonc`.
+
+Register a stdio server:
 
 ```bash
 ship mcp add-stdio ship ship mcp serve
 ```
 
-Then reference it in your agent profile:
+Register an HTTP server:
 
-```toml
-[mcp]
-servers = ["ship"]
+```bash
+ship mcp add my-api --url http://localhost:8080/mcp
 ```
 
-Run `ship use my-agent` to recompile — the MCP server entry will appear in `.mcp.json`.
+This writes the definition to `.ship/mcp.jsonc`:
+
+```jsonc
+{
+  "$schema": "../schemas/mcp.schema.json",
+  "mcp": {
+    "servers": {
+      "ship": {
+        "name": "Ship",
+        "command": "ship",
+        "args": ["mcp", "serve"],
+        "server_type": "stdio",
+        "env": {},
+      },
+      "github": {
+        "name": "GitHub MCP",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "server_type": "stdio",
+        "env": {
+          "GITHUB_TOKEN": "${GITHUB_TOKEN}",
+        },
+      },
+    },
+  },
+}
+```
+
+Reference servers by ID in your agent profile:
+
+```jsonc
+{
+  "mcp": {
+    "servers": ["ship", "github"],
+  },
+}
+```
+
+List configured servers:
+
+```bash
+ship mcp list
+```
+
+### Set permissions
+
+Permissions control what tools an agent can use without asking. Ship provides four presets on a strict-to-loose continuum.
+
+Define presets in `.ship/permissions.jsonc`:
+
+```jsonc
+{
+  "$schema": "../schemas/permissions.schema.json",
+
+  "ship-readonly": {
+    // Read-only. Reviewers, auditors, tutors.
+    "default_mode": "plan",
+    "tools_allow": [
+      "Read", "Glob", "Grep",
+      "Bash(ship *)",
+      "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Write(*)", "Edit(*)", "Bash(rm*)",
+    ],
+  },
+
+  "ship-standard": {
+    // Interactive sessions. Human-paired work.
+    "default_mode": "default",
+    "tools_allow": [
+      "Read", "Glob", "Grep",
+      "Bash(ship *)",
+      "mcp__ship__*",
+    ],
+  },
+
+  "ship-autonomous": {
+    // Dispatched specialist agents. Zero prompts.
+    "default_mode": "dontAsk",
+    "tools_allow": [
+      "Read", "Write", "Edit", "Glob", "Grep",
+      "Bash(*)",
+      "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push*)",
+      "Bash(cargo publish*)",
+      "Bash(npm publish*)",
+    ],
+  },
+
+  "ship-elevated": {
+    // CI agents, release automation. Unlocks push/publish.
+    "default_mode": "dontAsk",
+    "tools_allow": [
+      "Read", "Write", "Edit", "Glob", "Grep",
+      "Bash(*)",
+      "mcp__ship__*",
+    ],
+    "tools_deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+    ],
+  },
+}
+```
+
+Reference a preset from your agent profile. Layer per-agent overrides on top:
+
+```jsonc
+{
+  "permissions": {
+    "preset": "ship-autonomous",
+    "tools_deny": ["Bash(rm -rf *)", "Bash(git reset --hard*)"],
+    "tools_ask": ["Bash(git push --force*)"],
+  },
+}
+```
+
+| Preset | Mode | Use case |
+|--------|------|----------|
+| `ship-readonly` | `plan` | Reviewers, gate agents, analysis-only |
+| `ship-standard` | `default` | Interactive sessions, paired work |
+| `ship-autonomous` | `dontAsk` | Specialist agents in worktrees |
+| `ship-elevated` | `dontAsk` | CI agents, release automation |
+
+### Multi-provider agents
+
+Target multiple providers from a single agent profile:
+
+```jsonc
+{
+  "agent": {
+    "id": "my-agent",
+    "providers": ["claude", "gemini", "codex"],
+  },
+}
+```
+
+When you run `ship use my-agent`, Ship compiles for every listed provider simultaneously. You can also compile for a single provider:
+
+```bash
+ship compile --provider claude
+ship compile --provider gemini
+ship compile --provider codex
+```
+
+Each provider gets its own output format:
+
+**Claude** writes `CLAUDE.md`, `.mcp.json`, and `.claude/skills/`.
+
+**Gemini** writes `GEMINI.md`, `.gemini/settings.json`, `.gemini/skills/`, and a workspace policy file.
+
+**Codex** writes `AGENTS.md`, `.codex/config.toml`, and `.agents/skills/`.
+
+All output files are listed in `.ship/.gitignore` and should never be committed.
+
+### Clone and specialize
+
+Create variants of an agent quickly:
+
+```bash
+ship agents clone my-agent rust-expert
+ship agents edit rust-expert
+```
+
+This copies the full profile. Edit the clone to specialize it -- narrow the skill set, adjust permissions, add domain-specific rules.
+
+### Validate before committing
+
+Check your entire `.ship/` configuration for errors:
+
+```bash
+ship validate
+```
+
+Validate a single agent:
+
+```bash
+ship validate --agent my-agent
+```
+
+## Project structure reference
+
+After full setup, your `.ship/` directory looks like this:
+
+```
+.ship/
+  ship.jsonc                    # project manifest
+  permissions.jsonc             # permission presets
+  mcp.jsonc                     # MCP server definitions
+  .gitignore                    # ignores compiled output
+  agents/
+    my-agent.jsonc              # agent profile
+    rust-expert.jsonc           # another agent profile
+  skills/
+    code-review/
+      SKILL.md                  # skill definition
+    tdd/
+      SKILL.md
+  rules/                        # shared rule files (optional)
+```
+
+Compiled output (gitignored, at project root):
+
+```
+CLAUDE.md                       # claude provider
+GEMINI.md                       # gemini provider
+AGENTS.md                       # codex provider
+.mcp.json                       # claude MCP config
+.gemini/                        # gemini config + skills
+.codex/                         # codex config
+.claude/skills/                 # claude native skills
+.agents/skills/                 # codex native skills
+```
+
+## Quick command reference
+
+```bash
+# Setup
+ship init                         # scaffold .ship/ in current project
+ship init --global                # configure ~/.ship/ identity and defaults
+ship init --provider gemini       # set default provider
+
+# Daily use
+ship use <agent-id>               # activate and compile an agent
+ship status                       # show active agent
+ship compile                      # recompile after config changes
+ship compile --dry-run             # preview without writing files
+ship compile --provider claude     # compile for one provider
+ship validate                     # check config for errors
+
+# Agent management
+ship agents list                  # list available agents
+ship agents create <name>         # create a new agent profile
+ship agents edit <name>           # open agent in $EDITOR
+ship agents clone <src> <dst>     # duplicate an agent
+ship agents delete <name>         # remove an agent
+
+# Skills
+ship skills list                  # list installed skills
+ship skills create <id>           # scaffold a new skill
+ship skills add <source>          # install from registry or path
+ship skills remove <id>           # remove a skill
+
+# MCP servers
+ship mcp list                     # list configured servers
+ship mcp add-stdio <id> <cmd>     # register a stdio server
+ship mcp add <id> --url <url>     # register an HTTP server
+ship mcp remove <id>              # remove a server
+ship mcp serve                    # run Ship's own MCP server
+
+# Help
+ship docs topics                  # list help topics
+ship docs <topic>                 # detailed help (agents, skills, mcp, compile, providers, workflow)
+```
 
 ## Next steps
 
-- [CLI Reference](cli.md) — every command with flags and examples
-- [Schema Reference](schema.md) — full field reference for all config files
-- [Architecture](architecture.md) — how the compiler pipeline works
+- `ship docs agents` -- creating and managing agent definitions
+- `ship docs skills` -- adding and authoring skills
+- `ship docs mcp` -- MCP server configuration
+- `ship docs providers` -- supported providers and output formats
+- `ship docs compile` -- how the compilation pipeline works
+- `ship docs workflow` -- typical day-to-day workflow

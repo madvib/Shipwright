@@ -106,9 +106,9 @@ Resolution path:
 
 Dep skills require `ship install` to populate the cache. If the package is not in `ship.lock`, the resolver errors with an actionable message.
 
-### Profiles control which skills are active
+### Agents control which skills are active
 
-Skills exist in the library but are activated per-profile. An agent profile's `[skills]` section lists which skill ids to include. Modes can further filter the active skill set.
+Skills exist in the library but are activated per-agent. An agent profile's `"skills"` section lists which skill ids to include.
 
 ## Bundled Resources
 
@@ -148,26 +148,29 @@ Skills become available to other projects through the registry. The path from lo
 
 ### 1. Declare the module
 
-Your `ship.toml` must have a `[module]` section with package identity:
+Your `ship.jsonc` must have a `"module"` section with package identity:
 
-```toml
-[module]
-name = "github.com/your-org/your-package"
-version = "0.1.0"
-description = "What this package provides"
-license = "MIT"
+```jsonc
+{
+  "module": {
+    "name": "github.com/your-org/your-package",
+    "version": "0.1.0",
+    "description": "What this package provides",
+    "license": "MIT"
+  }
+}
 ```
 
 ### 2. Export the skills
 
-List the skills you want to publish under `[exports]`:
+List the skills you want to publish under `"exports"`:
 
-```toml
-[exports]
-skills = [
-    "skills/my-skill",
-    "skills/another-skill",
-]
+```jsonc
+{
+  "exports": {
+    "skills": ["skills/my-skill", "skills/another-skill"]
+  }
+}
 ```
 
 Paths are relative to the `.ship/` directory. Only exported skills are available to consumers. Private skills (project-specific protocols, internal conventions) should be omitted from exports.

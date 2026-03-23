@@ -19,7 +19,7 @@ Do not wait for a question. Do not introduce yourself. Immediately:
 
 1. Run `ship status` to see what's active
 2. Run `ship agent list` to see available agents
-3. Read `.ship/ship.toml` to understand the project
+3. Read `.ship/ship.jsonc` to understand the project
 4. Glob for provider configs: `CLAUDE.md`, `.cursorrules`, `.cursor/rules/`, `AGENTS.md`, `GEMINI.md`
 5. Detect context: is this the Ship repo (look for `apps/mcp` or `apps/ship-studio-cli` in Cargo workspace) or a user project?
 
@@ -46,23 +46,23 @@ Then present a **situational greeting** based on what you found.
 
 **Never recite documentation.** If they ask "what are skills?", don't define skills — find a skill in the project, read it, and say "here's one — it's a markdown file with frontmatter that gets compiled into agent context."
 
-**Be concrete.** Instead of "agents have permissions", show them the actual permission preset in `permissions.toml` and explain what it means.
+**Be concrete.** Instead of "agents have permissions", show them the actual permission preset in `permissions.jsonc` and explain what it means.
 
 ## Topics you can teach (follow their interest)
 
-**The compilation model**: .ship/ is source, provider configs are build artifacts. Read an agent TOML, show the compiled output side-by-side.
+**The compilation model**: .ship/ is source, provider configs are build artifacts. Read an agent JSONC, show the compiled output side-by-side.
 
-**Agent anatomy**: Read an agent TOML, explain each section — skills refs, MCP servers, permissions, rules.
+**Agent anatomy**: Read an agent JSONC, explain each section — skills refs, MCP servers, permissions, rules.
 
 **Skills**: Find a skill, read the SKILL.md, show frontmatter, explain how it becomes agent context.
 
-**The registry**: Show ship.toml dependencies, ship.lock pinning, the cache at ~/.ship/cache/.
+**The registry**: Show ship.jsonc dependencies, ship.lock pinning, the cache at ~/.ship/cache/.
 
 **Multi-provider**: Show how one agent compiles to different provider formats. Compare the outputs.
 
 **MCP integration**: Show the agent's `[mcp]` section, the compiled .mcp.json, explain tool gating.
 
-**Permissions**: Show permissions.toml, explain the 4-tier preset system, show how it compiles to settings.json.
+**Permissions**: Show permissions.jsonc, explain the 4-tier preset system, show how it compiles to settings.json.
 
 ## Clean exit
 

@@ -1,127 +1,103 @@
 ---
 name: ship-schema-reference
-description: Use when the user asks about Ship configuration format, available fields, valid values, or how to structure their .ship/ directory. Covers ship.toml manifest, agent profile TOML, permissions.toml, and ship.lock schemas.
+description: Use when the user asks about Ship configuration format, available fields, valid values, or how to structure their .ship/ directory. Covers ship.jsonc manifest, agent profile JSONC, permissions.jsonc, mcp.jsonc, and ship.lock schemas.
 tags: [reference, schema, configuration, documentation]
 authors: [ship]
 ---
 
 # Ship Configuration Schema Reference
 
-## 1. ship.toml — Project Manifest
+All Ship config files use JSONC (JSON with comments). JSON Schemas are available at `https://raw.githubusercontent.com/madvib/ship/main/schemas/` for editor autocompletion.
 
-**Location**: `.ship/ship.toml`
+## 1. ship.jsonc — Project Manifest
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | auto | Stable project identifier. Created on first run. Do not edit. |
+**Location**: `.ship/ship.jsonc`
+**Schema**: `https://raw.githubusercontent.com/madvib/ship/main/schemas/ship.schema.json`
 
-### `[module]` — Package identity
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | **yes** | Namespaced package path, e.g. `github.com/owner/repo`. |
-| `version` | string | **yes** | Semver string (`1.0.0`). Optional `v` prefix is stripped. |
-| `description` | string | no | Human-readable summary. |
-| `license` | string | no | SPDX identifier, e.g. `MIT`. |
-
-### `[dependencies]` — Dependency map
-
-Keys are namespaced paths. Values: version string or `{ version = "...", grant = ["Bash"] }`.
-
-### `[exports]` — Published artifacts
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `skills` | string[] | Skill directory paths relative to `.ship/` (each must contain `SKILL.md`). |
-| `agents` | string[] | Agent profile TOML paths relative to `.ship/`. |
-
----
-
-## 2. Agent Profile TOML
-
-**Location**: `.ship/agents/profiles/<id>.toml`
-
-### `[profile]` — Agent identity (required)
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | **yes** | Unique agent identifier. Matches filename stem. |
-| `name` | string | **yes** | Display name. |
-| `version` | string | no | Semver version. |
-| `description` | string | no | What this agent does. |
-| `providers` | string[] | no | Target providers: `"claude"`, `"cursor"`, `"codex"`, `"gemini"`. Default: all. |
-
-### `[skills]` — Skill references
-
-`refs` (string[]): Skill IDs to attach. Resolved from local `.ship/agents/skills/` and dependencies.
-
-### `[mcp]` — MCP server references
-
-`servers` (string[]): MCP server IDs to connect.
-
-### `[plugins]` — Provider plugins
-
-`install` (string[]): Plugin identifiers, e.g. `"rust-analyzer-lsp@claude-plugins-official"`.
-`scope` (string): `"project"` or `"workspace"`.
-
-### `[permissions]` — Tool access control
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `preset` | string | Preset name from `permissions.toml` (e.g. `"ship-standard"`). |
-| `tools_allow` | string[] | Glob patterns for tools to always allow. |
-| `tools_ask` | string[] | Glob patterns for tools requiring confirmation. |
-| `tools_deny` | string[] | Glob patterns for tools to block. |
-| `default_mode` | string | `"default"`, `"acceptEdits"`, `"plan"`, `"dontAsk"`, `"bypassPermissions"`. |
-
-### `[rules]` — System prompt
-
-`inline` (string): Rules body injected as the agent's system prompt. Use triple-quoted TOML for multiline.
-
-### `[provider_settings]` — Opaque provider config
-
-Free-form key/value table. Passed through without validation.
-
-### Example
-
-```toml
-[profile]
-id = "rust-compiler"
-name = "Rust Compiler"
-providers = ["claude"]
-
-[skills]
-refs = ["lint-fix", "test-runner"]
-
-[permissions]
-preset = "ship-autonomous"
-tools_deny = ["Bash(git push --force*)"]
-
-[rules]
-inline = """
-Your domain is the Ship compiler.
-After changes: `cargo test -p compiler` must pass.
-"""
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/madvib/ship/main/schemas/ship.schema.json",
+  "id": "auto-generated",
+  "project": {
+    "providers": ["claude", "gemini"]
+  },
+  "module": {
+    "name": "github.com/owner/repo",
+    "version": "0.1.0",
+    "description": "What this package provides",
+    "license": "MIT"
+  },
+  "dependencies": {
+    "github.com/acme/toolkit": "^1.0.0",
+    "github.com/acme/tools": { "version": "main", "grant": ["Bash"] }
+  },
+  "exports": {
+    "skills": ["skills/my-skill"],
+    "agents": ["agents/my-agent.jsonc"]
+  }
+}
 ```
 
----
+- `project` — project-level settings (providers). Used for non-registry projects.
+- `module` — package identity for registry publishing. `name` and `version` required.
+- `dependencies` — package paths → version constraints or `{ version, grant }`.
+- `exports` — skills and agents available to consumers. Paths relative to `.ship/`.
 
-## 3. permissions.toml — Permission Presets
+## 2. Agent Profile — Agent Definition
 
-**Location**: `.ship/agents/permissions.toml`
+**Location**: `.ship/agents/<id>.jsonc`
+**Schema**: `https://raw.githubusercontent.com/madvib/ship/main/schemas/agent.schema.json`
 
-Each top-level key is a preset name with fields: `default_mode` (string), `tools_deny` (string[]), `tools_allow_override` (string[]).
-
-### Base rules (injected by compiler into all presets)
-
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/madvib/ship/main/schemas/agent.schema.json",
+  "agent": {
+    "id": "backend",
+    "name": "Backend Engineer",
+    "version": "0.1.0",
+    "description": "Rust backend specialist",
+    "providers": ["claude", "gemini"]
+  },
+  "skills": {
+    "refs": ["tdd", "code-review"]
+  },
+  "mcp": {
+    "servers": ["ship", "github"],
+    "active_tools": []
+  },
+  "plugins": {
+    "install": ["rust-analyzer-lsp@claude-plugins-official"],
+    "scope": "project"
+  },
+  "permissions": {
+    "preset": "ship-autonomous",
+    "tools_deny": ["Bash(git push --force*)"],
+    "tools_ask": [],
+    "default_mode": "dontAsk"
+  },
+  "rules": {
+    "inline": "Your domain is Rust backend code.\nRun cargo test before marking work done."
+  },
+  "hooks": {
+    "stop": "ship mcp end-session",
+    "subagent_stop": ""
+  },
+  "provider_settings": {}
+}
 ```
-always_allow = ["mcp__ship__*", "Bash(ship *)"]
-always_deny  = ["Bash(sqlite3 ~/.ship/*)", "Bash(git push*)", "Bash(*publish*)",
-                 "Read(.env*)", "Write(.env*)", "Read(credentials*)", "Write(credentials*)"]
-always_ask   = ["Write(.ship/*)", "Edit(.ship/*)"]
-```
 
-### Built-in presets
+- `agent` — identity and metadata. `id` must match filename stem. `providers` overrides project default.
+- `skills.refs` — skill IDs to activate. Local or namespaced (`github.com/owner/repo/skill-name`).
+- `mcp.servers` — MCP server IDs from `.ship/mcp.jsonc`.
+- `permissions.preset` — one of `ship-readonly`, `ship-standard`, `ship-autonomous`, `ship-elevated`.
+- `rules.inline` — rules injected into the agent's compiled context.
+
+## 3. permissions.jsonc — Permission Presets
+
+**Location**: `.ship/permissions.jsonc`
+**Schema**: `https://raw.githubusercontent.com/madvib/ship/main/schemas/permissions.schema.json`
+
+Each top-level key is a preset name. Fields: `default_mode`, `tools_allow`, `tools_deny`, `tools_ask`.
 
 | Preset | Mode | Use case |
 |--------|------|----------|
@@ -130,33 +106,63 @@ always_ask   = ["Write(.ship/*)", "Edit(.ship/*)"]
 | `ship-autonomous` | `dontAsk` | Dispatched specialists in worktrees. |
 | `ship-elevated` | `dontAsk` | Deploy/release. Unlocks `git push` and `publish`. |
 
----
+## 4. mcp.jsonc — MCP Server Definitions
 
-## 4. ship.lock — Dependency Lockfile
+**Location**: `.ship/mcp.jsonc`
+**Schema**: `https://raw.githubusercontent.com/madvib/ship/main/schemas/mcp.schema.json`
 
-**Location**: `.ship/ship.lock`
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/madvib/ship/main/schemas/mcp.schema.json",
+  "mcp": {
+    "servers": {
+      "ship": {
+        "name": "Ship",
+        "command": "ship",
+        "args": ["mcp", "serve"],
+        "server_type": "stdio"
+      },
+      "github": {
+        "name": "GitHub MCP",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "server_type": "stdio",
+        "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+      }
+    }
+  }
+}
+```
 
-Top-level `version` (integer, current: `1`). Array of `[[package]]` entries:
+Server types: `stdio` (local process), `http`, `sse` (remote URL via `url` field).
+
+## 5. ship.lock — Dependency Lockfile
+
+**Location**: `.ship/ship.lock` (TOML — the one file that isn't JSONC)
+
+Generated by `ship install`. Do not hand-edit. Always commit it.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `path` | string | Package path, e.g. `github.com/owner/repo`. |
-| `version` | string | Resolved tag or branch name. |
-| `commit` | string | Full 40-char git commit SHA. |
-| `hash` | string | Content integrity hash: `sha256:<hex>`. |
-
----
+| `path` | string | Package path, e.g. `github.com/owner/repo` |
+| `version` | string | Resolved tag or branch name |
+| `commit` | string | Full 40-char git commit SHA |
+| `hash` | string | Content integrity hash: `sha256:<hex>` |
 
 ## .ship/ Directory Layout
 
 ```
 .ship/
-  ship.toml              # Project manifest
-  ship.lock              # Dependency lockfile (generated)
+  ship.jsonc              # Project manifest
+  ship.lock               # Dependency lockfile (generated)
+  permissions.jsonc        # Permission presets
+  mcp.jsonc               # MCP server definitions
   agents/
-    permissions.toml     # Permission presets
-    profiles/            # Agent profile TOML files
-    skills/              # Skill directories (each contains SKILL.md)
+    <id>.jsonc            # Agent profiles
+  skills/
+    <skill-id>/
+      SKILL.md            # Skill content with frontmatter
+  rules/                  # Shared rule files (.md)
 ```
 
-`ship.lock` and compiled output files are generated artifacts. Do not hand-edit the lockfile.
+Compiled output (CLAUDE.md, .mcp.json, .cursor/, etc.) is generated by `ship use` and gitignored.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://getship.dev/schemas/agent.schema.json",
+  "$id": "https://raw.githubusercontent.com/madvib/ship/main/schemas/agent.schema.json",
   "title": "Ship Agent Configuration",
   "description": "Schema for .ship/agents/<id>.jsonc — an agent definition that controls identity, skills, MCP servers, plugins, permissions, rules, hooks, and provider settings.",
   "type": "object",

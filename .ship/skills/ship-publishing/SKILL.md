@@ -1,50 +1,59 @@
 ---
 name: ship-publishing
-description: How to publish and consume Ship packages — skills, agents, and workflows on the registry. Use when users want to publish their skills, add dependencies, understand versioning, or learn how the registry works. Covers ship.toml manifest, ship install, ship add, ship publish, and the dependency resolution flow.
+description: How to publish and consume Ship packages — skills, agents, and workflows on the registry. Use when users want to publish their skills, add dependencies, understand versioning, or learn how the registry works. Covers ship.jsonc manifest, ship install, ship add, ship publish, and the dependency resolution flow.
 tags: [guide, registry, publishing, documentation]
 authors: [ship]
 ---
 
 # Ship Publishing
 
-Ship packages are Git repositories with a `.ship/ship.toml` manifest. The registry resolves dependencies directly from Git remotes — no central server required in v0.1.
+Ship packages are Git repositories with a `.ship/ship.jsonc` manifest. The registry resolves dependencies directly from Git remotes — no central server required in v0.1.
 
 ## Package Structure
 
-A publishable package is any Git repository containing `.ship/ship.toml` with a `[module]` section:
+A publishable package is any Git repository containing `.ship/ship.jsonc` with a `"module"` section:
 
-```toml
-[module]
-name = "github.com/yourorg/your-package"
-version = "0.1.0"
-description = "What this package provides"
-license = "MIT"
+```jsonc
+{
+  "module": {
+    "name": "github.com/yourorg/your-package",
+    "version": "0.1.0",
+    "description": "What this package provides",
+    "license": "MIT"
+  }
+}
 ```
 
 The `name` field is the package path — it doubles as the Git clone URL (`https://<name>.git`). The `version` field follows semver and corresponds to Git tags (`v0.1.0`).
 
 ## Declaring Exports
 
-The `[exports]` section declares what the package provides to consumers:
+The `"exports"` section declares what the package provides to consumers:
 
-```toml
-[exports]
-skills = ["skills/my-skill"]
-agents = ["agents/profiles/my-agent.toml"]
+```jsonc
+{
+  "exports": {
+    "skills": ["skills/my-skill"],
+    "agents": ["agents/my-agent.jsonc"]
+  }
+}
 ```
 
-Anything not listed in `[exports]` stays private — it works locally but is not installed when someone depends on your package.
+Anything not listed in `"exports"` stays private — it works locally but is not installed when someone depends on your package.
 
 ## Declaring Dependencies
 
-```toml
-[dependencies]
-"github.com/better-auth/skills" = "main"
-"github.com/acme/toolkit" = "^1.0.0"
-"github.com/acme/pinned" = { version = "main", grant = ["Bash"] }
+```jsonc
+{
+  "dependencies": {
+    "github.com/better-auth/skills": "main",
+    "github.com/acme/toolkit": "^1.0.0",
+    "github.com/acme/pinned": { "version": "main", "grant": ["Bash"] }
+  }
+}
 ```
 
-Each key is a package path. The value is a version string or inline table with `version` and optional `grant` (tool permissions).
+Each key is a package path. The value is a version string or object with `version` and optional `grant` (tool permissions).
 
 ## Version Constraints
 
@@ -67,7 +76,7 @@ ship add github.com/better-auth/skills          # defaults to @main
 ship add github.com/acme/toolkit@^1.0.0         # semver constraint
 ```
 
-Parses the spec, validates, appends to `[dependencies]`, resolves, updates `ship.lock`, recompiles. Restores `ship.toml` on failure.
+Parses the spec, validates, appends to `"dependencies"`, resolves, updates `ship.lock`, recompiles. Restores ship.jsonc on failure.
 
 ### `ship install [--frozen]`
 
@@ -79,7 +88,7 @@ ship install --frozen  # fail if ship.lock would change (CI mode)
 ## How Resolution Works
 
 ```
-ship.toml constraint → parse → git ls-remote → resolve version
+ship.jsonc constraint → parse → git ls-remote → resolve version
   → cache lookup (hit? verify hash) → fetch if miss → store in cache
   → write ship.lock atomically (sorted, deterministic)
 ```
@@ -105,14 +114,18 @@ Safe to delete — `ship install` repopulates.
 
 ## Publishing
 
-In v0.1, publishing means pushing `.ship/ship.toml` to a public Git repository:
-1. Add `[module]` with `name` matching repo path and semver `version`
-2. Declare exports in `[exports]`
-3. Tag releases with semver tags (`v1.0.0`)
-4. Push to a publicly accessible Git remote
+```bash
+ship publish            # publish to the registry
+ship publish --dry-run  # preview without network
+ship publish --tag beta # pre-release dist-tag
+```
 
-### Planned
+Requires authentication (`ship login`). The `--dry-run` flag parses the manifest, computes the tree hash, and prints the package name, version, and hash without making any network requests.
 
-- `ship publish` — push metadata to the Ship registry API
-- Content signing and namespace ownership verification
-- Transitive dependency resolution
+### Package naming
+
+| Format | Example | Use case |
+|--------|---------|----------|
+| Canonical | `github.com/owner/repo` | Direct GitHub reference |
+| Scoped | `@owner/package` | Short alias |
+| Unofficial | `@unofficial/package` | Community-seeded, claimable by owner |

@@ -1,6 +1,6 @@
 ---
 name: ship-cli-reference
-description: Use when the user asks how to use a specific ship command, what flags are available, or needs examples of ship CLI usage. Covers init, use, compile, agent, skill, install, add, publish, status, and help.
+description: Use when the user asks how to use a specific ship command, what flags are available, or needs examples of ship CLI usage. Covers init, use, compile, agent, skill, install, add, publish, status, docs, and view.
 tags: [reference, cli, documentation]
 authors: [ship]
 ---
@@ -19,24 +19,24 @@ ship init [--global] [--provider <id>] [--force]
 - `--force` — overwrite existing `.ship/`
 
 ### `ship validate`
-Check `.ship/` config for errors before compile — TOML, skill refs, MCP fields, permissions.
+Check `.ship/` config for errors before compile — JSONC syntax, skill refs, MCP fields, permissions.
 ```
-ship validate [--profile <id>] [--json] [--path <dir>]
+ship validate [--agent <id>] [--json] [--path <dir>]
 ```
 
 ## Agents
 
 ### `ship use`
-Activate an agent profile and compile immediately.
+Activate an agent and compile immediately.
 ```
-ship use <profile-id> [--path <dir>]
+ship use <agent-id> [--path <dir>]
 ```
-`<profile-id>` — local ID, registry ref (`@org/profile`), or URL.
+`<agent-id>` — local ID, registry ref (`@org/agent`), or URL.
 
 ### `ship compile`
-Compile the active profile to provider-native config (CLAUDE.md, .cursor/, .mcp.json).
+Compile the active agent to provider-native config (CLAUDE.md, .cursor/, .mcp.json).
 ```
-ship compile [--provider <id>] [--dry-run] [--watch] [--path <dir>]
+ship compile [--provider <id>] [--dry-run] [--path <dir>]
 ```
 
 ### `ship agent list`
@@ -115,30 +115,25 @@ ship mcp remove <id>
 ## Registry
 
 ### `ship install`
-Resolve and install all dependencies from `.ship/ship.toml`, then compile.
+Resolve and install all dependencies from `.ship/ship.jsonc`, then compile.
 ```
 ship install [--frozen]
 ```
-`--frozen` — fail if lockfile would change (CI-safe). Requires `[module]` in `ship.toml`.
+`--frozen` — fail if lockfile would change (CI-safe). Requires `"module"` in `ship.jsonc`.
 
 ### `ship add`
-Add a package dependency to `.ship/ship.toml` and install it. Restores ship.toml on failure.
+Add a package dependency to `.ship/ship.jsonc` and install it. Restores ship.jsonc on failure.
 ```
 ship add <package>[@version]
 ```
 Version defaults to `main` if omitted.
 
-### `ship import`
-Import a profile from getship.dev, GitHub, or a local path.
+### `ship publish`
+Publish the current package to the Ship registry. Requires `ship login`.
 ```
-ship import <source>
+ship publish [--dry-run] [--tag <tag>]
 ```
-
-### `ship export`
-Export compiled output for a specific provider.
-```
-ship export <provider> [--zip]
-```
+`--dry-run` — preview without network. `--tag` — dist-tag for pre-release.
 
 ## Auth
 
@@ -152,7 +147,7 @@ ship whoami     # show current identity
 ## Info
 
 ### `ship status`
-Show active profile and compilation status.
+Show active agent and compilation status.
 ```
 ship status [--path <dir>]
 ```
@@ -169,8 +164,15 @@ Print the CLI command tree and MCP core tools as markdown.
 ship surface [--emit] [--check]
 ```
 
+### `ship docs`
+Extended help topics.
+```
+ship docs [topic]
+```
+Topics: agents, compile, config, mcp, providers, skills, workflow.
+
 ### `ship view`
-Browse workflow state in a read-only terminal UI.
+Browse workflow state in the terminal UI.
 ```
 ship view
 ```

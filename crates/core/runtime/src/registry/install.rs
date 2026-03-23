@@ -6,7 +6,7 @@ use anyhow::Context;
 use super::cache::{CachedPackage, PackageCache};
 use super::constraint::parse_constraint;
 use super::fetch::fetch_package_content;
-use super::resolver::resolve_version;
+use super::resolver::{resolve_alias, resolve_version};
 use super::tracking::track_install;
 use super::types::{LockedPackage, ShipLock, ShipManifest, parse_ship_lock, serialize_ship_lock};
 
@@ -101,7 +101,10 @@ pub fn resolve_and_fetch(
     let mut resolved_versions: std::collections::HashMap<String, (String, String)> =
         std::collections::HashMap::new();
 
-    while let Some((dep_path, version_str, ancestors)) = queue.pop_front() {
+    while let Some((raw_dep_path, version_str, ancestors)) = queue.pop_front() {
+        // Resolve scoped aliases (@owner/repo → github.com/owner/repo).
+        let dep_path = resolve_alias(&raw_dep_path)
+            .with_context(|| format!("resolving alias for {raw_dep_path}"))?;
         let requestor = ancestors.last().cloned().unwrap_or_default();
 
         if visited.contains(&dep_path) {
@@ -198,7 +201,7 @@ pub fn resolve_and_fetch(
     })
 }
 
-/// Check a cached package directory for a `ship.toml` with `[dependencies]`.
+/// Check a cached package directory for a manifest with `[dependencies]`.
 /// Returns `(dep_path, version_string)` pairs for transitive deps.
 /// Errors if a sub-dep is already in the ancestor chain (cycle).
 fn discover_transitive_deps(
@@ -206,12 +209,16 @@ fn discover_transitive_deps(
     parent_path: &str,
     ancestors: &[String],
 ) -> anyhow::Result<Vec<(String, String)>> {
-    let manifest_path = cached_dir.join("ship.toml");
-    if !manifest_path.exists() {
+    // Try JSONC first, then TOML for backward compat.
+    let manifest_path = if cached_dir.join("ship.jsonc").exists() {
+        cached_dir.join("ship.jsonc")
+    } else if cached_dir.join("ship.toml").exists() {
+        cached_dir.join("ship.toml")
+    } else {
         return Ok(vec![]);
-    }
+    };
     let sub_manifest = compiler::manifest::ShipManifest::from_file(&manifest_path)
-        .with_context(|| format!("parsing ship.toml in transitive dep {parent_path}"))?;
+        .with_context(|| format!("parsing manifest in transitive dep {parent_path}"))?;
     let mut deps = Vec::new();
     for (path, dep_val) in sub_manifest.dependencies {
         if ancestors.contains(&path) {
@@ -251,8 +258,17 @@ fn fetch_and_store(
     let git_url = format!("https://{}.git", dep_path);
     fetch_package_content(&git_url, commit, tmp.path())
         .with_context(|| format!("fetching {dep_path} @ {commit}"))?;
+
+    // Ship-native packages land in tmp/.ship/; root-manifest packages land in tmp/.
+    let ship_dir = tmp.path().join(".ship");
+    let content_dir = if ship_dir.is_dir() {
+        ship_dir.as_path()
+    } else {
+        tmp.path()
+    };
+
     let cached = cache
-        .store(dep_path, version, commit, tmp.path())
+        .store(dep_path, version, commit, content_dir)
         .with_context(|| format!("storing {dep_path}@{version} in cache"))?;
 
     // Fire-and-forget install tracking for freshly downloaded packages.

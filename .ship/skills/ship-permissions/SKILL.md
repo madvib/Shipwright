@@ -7,18 +7,19 @@ authors: [ship]
 
 # Ship Permissions
 
-Ship controls what AI agents can do through a layered permission system. Permissions are declared in TOML, compiled by `ship use`, and emitted as provider-specific config (`.claude/settings.json`, `.cursor/cli.json`, etc.). The agent never sees the TOML — it sees the compiled output.
+Ship controls what AI agents can do through a layered permission system. Permissions are declared in `.ship/permissions.jsonc`, compiled by `ship use`, and emitted as provider-specific config (`.claude/settings.json`, `.cursor/cli.json`, etc.). The agent never sees the JSONC — it sees the compiled output.
 
 ## The 4 Presets
 
-Every agent profile references a preset via `[permissions] preset = "<name>"`. Presets are defined in `.ship/agents/permissions.toml` and sit on a strict-to-loose continuum.
+Every agent profile references a preset via `"permissions": { "preset": "<name>" }`. Presets are defined in `.ship/permissions.jsonc` and sit on a strict-to-loose continuum.
 
 ### ship-readonly
 
-```toml
-[ship-readonly]
-default_mode = "plan"
-tools_deny = ["Write(*)", "Edit(*)", "Bash(rm*)"]
+```jsonc
+"ship-readonly": {
+  "default_mode": "plan",
+  "tools_deny": ["Write(*)", "Edit(*)", "Bash(rm*)"]
+}
 ```
 
 **Mode:** Plan only — the agent proposes actions but cannot execute them.
@@ -27,9 +28,10 @@ tools_deny = ["Write(*)", "Edit(*)", "Bash(rm*)"]
 
 ### ship-standard
 
-```toml
-[ship-standard]
-default_mode = "default"
+```jsonc
+"ship-standard": {
+  "default_mode": "default"
+}
 ```
 
 **Mode:** Default — the agent asks for confirmation before tool calls that modify state.
@@ -38,9 +40,10 @@ default_mode = "default"
 
 ### ship-autonomous
 
-```toml
-[ship-autonomous]
-default_mode = "dontAsk"
+```jsonc
+"ship-autonomous": {
+  "default_mode": "dontAsk"
+}
 ```
 
 **Mode:** Don't ask — the agent executes without confirmation prompts.
@@ -49,10 +52,11 @@ default_mode = "dontAsk"
 
 ### ship-elevated
 
-```toml
-[ship-elevated]
-default_mode = "dontAsk"
-tools_allow_override = ["Bash(git push*)", "Bash(*publish*)"]
+```jsonc
+"ship-elevated": {
+  "default_mode": "dontAsk",
+  "tools_allow": ["Bash(git push*)", "Bash(*publish*)"]
+}
 ```
 
 **Mode:** Don't ask, plus unlocks commands that base rules normally deny.
@@ -63,36 +67,36 @@ tools_allow_override = ["Bash(git push*)", "Bash(*publish*)"]
 
 The compiler injects these rules into every preset automatically. They cannot be removed by profile-level overrides.
 
-```toml
-# Always permitted — Ship's own tools must always work
-always_allow = ["mcp__ship__*", "Bash(ship *)"]
+```jsonc
+// Always permitted — Ship's own tools must always work
+"always_allow": ["mcp__ship__*", "Bash(ship *)"],
 
-# Always blocked — dangerous operations require explicit elevation
-always_deny = [
-  "Bash(sqlite3 ~/.ship/*)",      # direct DB access bypasses the runtime
-  "Bash(git push*)",               # only ship-elevated unlocks this
-  "Bash(*publish*)",               # only ship-elevated unlocks this
-  "Read(.env*)", "Write(.env*)",   # secrets
+// Always blocked — dangerous operations require explicit elevation
+"always_deny": [
+  "Bash(sqlite3 ~/.ship/*)",      // direct DB access bypasses the runtime
+  "Bash(git push*)",               // only ship-elevated unlocks this
+  "Bash(*publish*)",               // only ship-elevated unlocks this
+  "Read(.env*)", "Write(.env*)",   // secrets
   "Read(.dev.vars*)", "Write(.dev.vars*)",
   "Read(credentials*)", "Write(credentials*)",
-  "Read(secrets/*)", "Write(secrets/*)",
-]
+  "Read(secrets/*)", "Write(secrets/*)"
+],
 
-# Always requires confirmation — even in dontAsk mode
-always_ask = ["Write(.ship/*)", "Edit(.ship/*)"]
+// Always requires confirmation — even in dontAsk mode
+"always_ask": ["Write(.ship/*)", "Edit(.ship/*)"],
 
-# Ship is the memory layer — provider-native memories are always off
-autoMemoryEnabled = false
+// Ship is the memory layer — provider-native memories are always off
+"autoMemoryEnabled": false
 ```
 
 Key points:
-- `always_deny` blocks `git push` and `publish` globally. Only `ship-elevated` reopens them via `tools_allow_override`.
+- `always_deny` blocks `git push` and `publish` globally. Only `ship-elevated` reopens them via `tools_allow`.
 - `always_ask` protects `.ship/` config files even in autonomous mode — an agent cannot silently rewrite its own configuration.
 - Direct SQLite access is denied because all state must flow through Ship's runtime (MCP tools or CLI).
 
 ## Per-Profile Customization
 
-Profiles add overrides on top of their preset. The `[permissions]` section in a profile TOML supports:
+Agent profiles add overrides on top of their preset. The `"permissions"` section in an agent JSONC supports:
 
 | Field | Type | Effect |
 |-------|------|--------|
@@ -103,30 +107,31 @@ Profiles add overrides on top of their preset. The `[permissions]` section in a 
 
 Example — a Rust specialist that blocks force push and publish:
 
-```toml
-[permissions]
-preset = "ship-autonomous"
-tools_deny = ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
+```jsonc
+"permissions": {
+  "preset": "ship-autonomous",
+  "tools_deny": ["Bash(git push --force*)", "Bash(*cargo publish*)", "Bash(*npm publish*)"]
+}
 ```
 
 Example — a commander that wants confirmation on destructive git ops:
 
-```toml
-[permissions]
-preset = "ship-standard"
-tools_deny = []
-tools_ask = ["Bash(git reset*)", "Bash(git push --force*)"]
+```jsonc
+"permissions": {
+  "preset": "ship-standard",
+  "tools_ask": ["Bash(git reset*)", "Bash(git push --force*)"]
+}
 ```
 
-Profiles can only add restrictions (deny, ask) on top of presets. They cannot remove base rules.
+Agents can only add restrictions (deny, ask) on top of presets. They cannot remove base rules.
 
 ## How Compilation Works
 
 When you run `ship use <profile>`, the compiler:
 
 1. **Loads the base** `Permissions` struct (safe defaults from the runtime).
-2. **Resolves the preset** from `.ship/agents/permissions.toml` by section name (e.g. `[ship-autonomous]`). This sets `default_mode`, `tools_deny`, `tools_ask`, and optionally `tools_allow`.
-3. **Applies profile overrides** — `tools_deny` and `tools_ask` from the profile TOML are merged on top. Profile-level `default_mode` wins over the preset value.
+2. **Resolves the preset** from `.ship/permissions.jsonc` by key name (e.g. `"ship-autonomous"`). This sets `default_mode`, `tools_deny`, `tools_ask`, and optionally `tools_allow`.
+3. **Applies agent overrides** — `tools_deny` and `tools_ask` from the agent JSONC are merged on top. Agent-level `default_mode` wins over the preset value.
 4. **Emits provider-specific config.** For Claude Code, this becomes `.claude/settings.json`:
 
 ```json
@@ -140,7 +145,7 @@ When you run `ship use <profile>`, the compiler:
 }
 ```
 
-For Cursor, permissions go to `.cursor/cli.json`. For Gemini, they go to `.gemini/policies/`. The TOML is the single source — provider configs are ephemeral build artifacts.
+For Cursor, permissions go to `.cursor/cli.json`. For Gemini, they go to `.gemini/policies/`. The JSONC is the single source — provider configs are ephemeral build artifacts.
 
 ## The Compound Command Problem
 
@@ -159,14 +164,15 @@ Rules for working around this:
 - **Use `tools_ask` only for specific destructive operations** where the pattern is unambiguous (e.g. `Bash(rm -rf*)`).
 - If a workflow always chains commands, either document the full pattern or grant the preset that doesn't need to ask.
 
-```toml
-# Wrong: trying to pattern-match compound commands
-tools_ask = ["Bash(ship exec*)"]   # misses: cd dir && ship exec
+```jsonc
+// Wrong: trying to pattern-match compound commands
+"tools_ask": ["Bash(ship exec*)"]   // misses: cd dir && ship exec
 
-# Right: set mode via preset, guard only what's genuinely dangerous
-[permissions]
-preset = "ship-autonomous"
-tools_deny = ["Bash(rm -rf*)"]
+// Right: set mode via preset, guard only what's genuinely dangerous
+"permissions": {
+  "preset": "ship-autonomous",
+  "tools_deny": ["Bash(rm -rf*)"]
+}
 ```
 
 ## Security Model: Defense in Depth
