@@ -2,7 +2,6 @@ import {
   Package,
   Code2,
   Zap,
-  Search,
   Lock,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -20,33 +19,33 @@ const FEATURES: FeatureCard[] = [
     icon: Package,
     iconColor: 'text-primary',
     iconBg: 'bg-primary/10',
-    title: 'Package manager for agents',
+    title: 'The package manager for agents',
     description:
-      'Install agents, skills, and MCP servers like npm packages. Version them. Share them. Compose them into exactly the agent you need.',
+      'Install skills, MCP servers, and agent configs from the registry. Compose them like dependencies. Share what you build. Version everything.',
   },
   {
-    icon: Code2,
+    icon: Lock,
     iconColor: 'text-blue-400',
     iconBg: 'bg-blue-500/10',
-    title: 'Full provider configuration',
+    title: 'Granular permissions',
     description:
-      'Near-complete support for Claude Code, Cursor, Gemini CLI, and Codex — settings, permissions, hooks, rules, and MCP servers. Not just context files — the full config surface.',
+      'Five permission dimensions — tools, filesystem, commands, network, and agent limits. Scope each MCP server down to individual tool-level allow, ask, or deny.',
   },
   {
     icon: Zap,
     iconColor: 'text-emerald-400',
     iconBg: 'bg-emerald-500/10',
-    title: 'Visual skill editor',
+    title: 'Ship Studio',
     description:
-      'Create and edit skills in an IDE-lite environment. Syntax highlighting, live preview, and one-click publish to the registry.',
+      'Configure agents visually with live preview. See the compiled output for every provider as you edit. Create skills in a built-in IDE. Publish to the registry.',
   },
   {
-    icon: Search,
+    icon: Code2,
     iconColor: 'text-violet-400',
     iconBg: 'bg-violet-500/10',
-    title: 'Community registry',
+    title: 'Every provider, one config',
     description:
-      'Browse hundreds of skills, agents, and MCP servers. Install with one click. Publish your own for the community.',
+      'First-class support for the settings developers use daily across Claude Code, Cursor, Gemini, and Codex. Full schema pass-through for everything else.',
   },
 ]
 
@@ -76,11 +75,10 @@ export function FeatureGrid() {
     <section className="mx-auto max-w-[62rem] px-6 pb-20 sm:px-10">
       <div className="mb-12 text-center">
         <h2 className="mb-2 font-display text-3xl font-extrabold sm:text-4xl">
-          Everything agents need
+          What Ship gives your agents
         </h2>
         <p className="text-[15px] text-muted-foreground">
-          A complete platform for configuring, scoping, and distributing AI
-          coding agents.
+          Configuration as code. Permissions as policy. Distribution as a service.
         </p>
       </div>
 
@@ -110,13 +108,12 @@ export function FeatureGrid() {
                 <Lock className="size-5 text-primary" />
               </div>
               <h3 className="mb-1.5 text-base font-bold">
-                Scope agents to exactly what they need
+                Per-tool scoping in action
               </h3>
               <p className="text-[13px] leading-relaxed text-muted-foreground">
-                Same MCP server, different tool sets per agent. Allow read
-                operations, require confirmation for writes, deny destructive
-                actions. Five permission dimensions: tools, filesystem, commands,
-                network, and agent limits.
+                Same MCP server, different tool sets per agent. A reviewer gets
+                read access. A developer gets write. Nobody gets delete. Every
+                tool individually controlled.
               </p>
             </div>
             <ToolScopeDemo />
