@@ -51,7 +51,7 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
             <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
             <div className="absolute top-full left-0 mt-1.5 z-50 rounded-xl border border-border/60 bg-popover shadow-xl p-3 animate-in fade-in slide-in-from-top-1 duration-150 w-[320px]">
               {/* Category tabs */}
-              <div className="flex gap-0.5 mb-2 overflow-x-auto [scrollbar-width:none]">
+              <div className="flex flex-wrap gap-0.5 mb-2">
                 {ICON_CATEGORIES.map((cat) => (
                   <button
                     key={cat.id}
