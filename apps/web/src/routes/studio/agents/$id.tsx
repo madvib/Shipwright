@@ -225,7 +225,7 @@ function AgentDetailPage() {
 
             <div id="section-providers">
               <ProviderSettingsSection
-                providers={profile.profile.providers ?? []}
+                providers={['claude', 'gemini', 'codex', 'cursor']}
                 providerSettings={providerSettings}
                 onChange={setProviderSettings}
               />
