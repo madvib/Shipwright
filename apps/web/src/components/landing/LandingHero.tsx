@@ -30,8 +30,8 @@ export function LandingHero() {
 
         {/* Subhead */}
         <p className="mx-auto mb-8 max-w-lg text-lg leading-relaxed text-muted-foreground">
-          Composable, distributable agent configurations. Install skills,
-          scope permissions, swap setups in one command.
+          Turn your agents into building blocks, scoped with the permissions
+          and tools they need to succeed. Nothing more.
         </p>
 
         {/* CTAs */}
