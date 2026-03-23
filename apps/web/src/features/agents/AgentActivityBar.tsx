@@ -5,8 +5,6 @@ import {
   Users,
   Shield,
   SlidersHorizontal,
-  Settings,
-  Link2,
   FileText,
 } from 'lucide-react'
 
@@ -16,8 +14,6 @@ export const SECTION_DEFS = [
   { id: 'subagents', label: 'Subagents', icon: Users, countable: true },
   { id: 'permissions', label: 'Permissions', icon: Shield, countable: false },
   { id: 'providers', label: 'Provider Settings', icon: SlidersHorizontal, countable: false },
-  { id: 'settings', label: 'Settings', icon: Settings, countable: false },
-  { id: 'hooks', label: 'Hooks', icon: Link2, countable: true },
   { id: 'rules', label: 'Rules', icon: FileText, countable: true },
 ] as const
 

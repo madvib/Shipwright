@@ -8,17 +8,14 @@ import { McpSection } from '#/features/agents/sections/McpSection'
 import { SubagentsSection } from '#/features/agents/sections/SubagentsSection'
 import { PermissionsSection } from '#/features/agents/sections/PermissionsSection'
 import { ProviderSettingsSection } from '#/features/agents/sections/ProviderSettingsSection'
-import { SettingsSection } from '#/features/agents/sections/SettingsSection'
-import { HooksSection } from '#/features/agents/sections/HooksSection'
 import { RulesSection } from '#/features/agents/sections/RulesSection'
 import { AddSkillDialog } from '#/features/agents/dialogs/AddSkillDialog'
 import { AddMcpDialog } from '#/features/agents/dialogs/AddMcpDialog'
 import { AddSubagentDialog } from '#/features/agents/dialogs/AddSubagentDialog'
 import { EditAgentDialog } from '#/features/agents/dialogs/EditAgentDialog'
 import { PermissionsDialog } from '#/features/agents/dialogs/PermissionsDialog'
-import { HookEditorDialog } from '#/features/agents/dialogs/HookEditorDialog'
 import { RuleEditorDialog } from '#/features/agents/dialogs/RuleEditorDialog'
-import type { HookConfig, AgentProfile, AgentSettings, ToolPermission } from '#/features/agents/types'
+import type { AgentProfile, ToolPermission } from '#/features/agents/types'
 import type { Skill, Rule, Permissions } from '@ship/ui'
 
 import { AgentDetailSkeleton } from '#/features/studio/StudioSkeleton'
@@ -71,11 +68,6 @@ function AgentDetailPage() {
     [update],
   )
 
-  const updateSettings = useCallback(
-    (patch: Partial<AgentSettings>) => update({ settings: { ...profile.settings, ...patch } }),
-    [update, profile.settings],
-  )
-
   const setToolPermission = useCallback(
     (serverName: string, toolName: string, permission: ToolPermission) => {
       const serverTools = profile.mcpToolStates[serverName] ?? {}
@@ -98,20 +90,6 @@ function AgentDetailPage() {
       })
     },
     [update, profile.mcpToolStates],
-  )
-
-  const addHook = useCallback(
-    (hook: HookConfig) => update({ hooks: [...profile.hooks, hook] }),
-    [update, profile.hooks],
-  )
-  const updateHook = useCallback(
-    (index: number, hook: HookConfig) =>
-      update({ hooks: profile.hooks.map((h, i) => (i === index ? hook : h)) }),
-    [update, profile.hooks],
-  )
-  const removeHook = useCallback(
-    (index: number) => update({ hooks: profile.hooks.filter((_, i) => i !== index) }),
-    [update, profile.hooks],
   )
 
   const addRule = useCallback(
@@ -151,8 +129,6 @@ function AgentDetailPage() {
   const [subagentOpen, setSubagentOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [permsOpen, setPermsOpen] = useState(false)
-  const [hookOpen, setHookOpen] = useState(false)
-  const [hookEdit, setHookEdit] = useState<{ index: number; hook: HookConfig } | null>(null)
   const [ruleOpen, setRuleOpen] = useState(false)
   const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: Rule } | null>(null)
 
@@ -211,13 +187,11 @@ function AgentDetailPage() {
     skills: profile.skills.length,
     mcp: profile.mcpServers.length,
     subagents: profile.subagents.length,
-    hooks: profile.hooks.length,
     rules: profile.rules.length,
   }), [
     profile.skills.length,
     profile.mcpServers.length,
     profile.subagents.length,
-    profile.hooks.length,
     profile.rules.length,
   ])
 
@@ -285,19 +259,6 @@ function AgentDetailPage() {
               />
             </div>
 
-            <div id="section-settings">
-              <SettingsSection settings={profile.settings} onUpdate={updateSettings} />
-            </div>
-
-            <div id="section-hooks">
-              <HooksSection
-                hooks={profile.hooks}
-                onAdd={() => { setHookEdit(null); setHookOpen(true) }}
-                onEdit={(i) => { setHookEdit({ index: i, hook: profile.hooks[i] }); setHookOpen(true) }}
-                onRemove={removeHook}
-              />
-            </div>
-
             <div id="section-rules">
               <RulesSection
                 rules={profile.rules}
@@ -347,17 +308,6 @@ function AgentDetailPage() {
         onOpenChange={setPermsOpen}
         permissions={profile.permissions}
         onSave={updatePermissions}
-      />
-
-      <HookEditorDialog
-        open={hookOpen}
-        onOpenChange={setHookOpen}
-        hook={hookEdit?.hook ?? null}
-        onSave={(hook) => {
-          if (hookEdit) updateHook(hookEdit.index, hook)
-          else addHook(hook)
-        }}
-        onDelete={hookEdit ? () => removeHook(hookEdit.index) : undefined}
       />
 
       <RuleEditorDialog
