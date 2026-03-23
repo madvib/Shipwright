@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Pencil } from 'lucide-react'
 import type { ResolvedAgentProfile } from './types'
 import { getAgentIcon, setAgentIcon } from './agent-icons'
@@ -14,6 +14,19 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
   const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id))
   const [pickerOpen, setPickerOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<string>(ICON_CATEGORIES[0].id)
+
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [pickerOpen])
 
   const handleIconSelect = (key: string) => {
     setAgentIcon(profile.profile.id, key)
@@ -47,9 +60,7 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
 
         {/* Icon picker dropdown */}
         {pickerOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
-            <div className="absolute top-full left-0 mt-1.5 z-50 rounded-xl border border-border/60 bg-popover shadow-xl p-3 animate-in fade-in slide-in-from-top-1 duration-150 w-[320px]">
+            <div ref={pickerRef} className="absolute top-full left-0 mt-1.5 z-50 rounded-xl border border-border/60 bg-popover shadow-xl p-3 animate-in fade-in slide-in-from-top-1 duration-150 w-[320px]">
               {/* Category tabs */}
               <div className="flex flex-wrap gap-0.5 mb-2">
                 {ICON_CATEGORIES.map((cat) => (
@@ -82,7 +93,6 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
                 ))}
               </div>
             </div>
-          </>
         )}
       </div>
 
