@@ -102,7 +102,7 @@ export function AnimatedShowcase() {
 
         <div className="flex flex-col sm:flex-row">
           {/* ── Left: Agent config ──────────────────────────────────────── */}
-          <div className="flex-1 min-w-0 p-5 sm:p-6 border-b sm:border-b-0 sm:border-r border-border/40">
+          <div className="flex-1 min-w-0 p-5 sm:p-6 border-b sm:border-b-0 sm:border-r border-border/40 sm:h-[340px] overflow-hidden">
             {/* Agent selector tabs */}
             <div className="flex gap-1 mb-4">
               {AGENTS.map((a, i) => (
@@ -184,7 +184,7 @@ export function AnimatedShowcase() {
           </div>
 
           {/* ── Right: Compiled output ──────────────────────────────────── */}
-          <div className="w-full sm:w-[280px] shrink-0 p-5 sm:p-6 flex flex-col">
+          <div className="w-full sm:w-[280px] shrink-0 p-5 sm:p-6 flex flex-col sm:h-[340px]">
             {/* Provider tabs */}
             <div className="flex gap-1.5 mb-3">
               {PROVIDERS.map((p, i) => (
