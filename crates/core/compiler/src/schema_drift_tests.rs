@@ -170,8 +170,8 @@ fn permissions_schema_preset_fields_match_loader() {
         &["$defs", "PermissionPreset", "properties"],
     );
 
-    // These 4 fields are what load_permission_preset actually reads
-    for field in ["default_mode", "tools_allow", "tools_deny", "tools_ask"] {
+    // These 5 fields are what the permissions system reads
+    for field in ["default_mode", "tools_allow", "tools_deny", "tools_ask", "additional_directories"] {
         assert!(
             preset_props.contains(&field.to_string()),
             "permissions.schema.json missing {}",

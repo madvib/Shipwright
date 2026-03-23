@@ -149,6 +149,11 @@
           "type": "string",
           "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
           "description": "Default permission mode for the agent session."
+        },
+        "additional_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional directories the agent can access outside the project root. Compiled to Claude Code's additionalDirectories."
         }
       },
       "additionalProperties": false
