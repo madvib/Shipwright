@@ -719,10 +719,17 @@ fn is_likely_rust_test_binary(path: &Path) -> bool {
 
 #[cfg(unix)]
 extern "C" fn cleanup_test_global_dir_on_exit() {
-    if let Some(path) = TEST_GLOBAL_CLEANUP_PATH.get()
-        && let Some(run_root) = path.parent()
-    {
-        let _ = fs::remove_dir_all(run_root);
+    // Remove all per-thread test dirs for this PID.
+    let prefix = format!("{}{}-", TEST_GLOBAL_DIR_PREFIX, std::process::id());
+    if let Ok(entries) = fs::read_dir(std::env::temp_dir()) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str()
+                && name.starts_with(&prefix)
+                && entry.path().is_dir()
+            {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
     }
 }
 
@@ -1025,6 +1032,44 @@ Vision -> Release -> Feature -> Spec -> Close Feature -> Ship Release
     Ok(ship_path)
 }
 
+/// Result of [`init_project_with_registry`].
+#[derive(Debug)]
+pub struct InitWithRegistryResult {
+    pub ship_dir: PathBuf,
+    /// Number of default dependencies seeded into ship.jsonc.
+    pub deps_seeded: usize,
+    /// Whether registry install succeeded. `false` means offline fallback was used.
+    pub registry_installed: bool,
+}
+
+/// Full project init with registry-backed default dependencies.
+///
+/// 1. Scaffold `.ship/` directories and default files via [`init_project`].
+/// 2. Seed `@ship/*` default dependencies into `ship.jsonc`.
+/// 3. Attempt to install them via the registry.
+/// 4. If install fails (offline/unreachable), the bare scaffold skills from
+///    step 1 remain as fallback.
+///
+/// Idempotent: safe to call multiple times on the same directory.
+pub fn init_project_with_registry(base_dir: PathBuf) -> Result<InitWithRegistryResult> {
+    let ship_dir = init_project(base_dir)?;
+
+    // Seed default dependencies — idempotent, skips if deps already present.
+    let seed = crate::registry::init_deps::seed_default_dependencies(&ship_dir)?;
+    let deps_seeded = seed.added;
+
+    // Best-effort install. Failure is not an error — bare scaffold skills
+    // remain as the offline fallback.
+    let registry_installed = crate::registry::init_deps::try_install_init_deps(&ship_dir)
+        .unwrap_or_default();
+
+    Ok(InitWithRegistryResult {
+        ship_dir,
+        deps_seeded,
+        registry_installed,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1218,6 +1263,60 @@ mod tests {
         };
 
         assert!(!normalize_app_state_paths(&mut state));
+        Ok(())
+    }
+
+    #[test]
+    fn init_with_registry_seeds_deps_and_falls_back_offline() -> Result<()> {
+        let tmp = tempdir()?;
+        let result = init_project_with_registry(tmp.path().to_path_buf())?;
+
+        // Bare scaffold should exist (fallback).
+        assert!(
+            skills_dir(&result.ship_dir)
+                .join("task-policy/SKILL.md")
+                .is_file(),
+            "task-policy skill must be present as offline fallback"
+        );
+
+        // Dependencies should be seeded in ship.jsonc.
+        let content = fs::read_to_string(
+            result.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
+        )?;
+        let doc: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)?;
+        assert!(
+            doc.get("dependencies").is_some(),
+            "ship.jsonc must contain dependencies after init_project_with_registry"
+        );
+
+        // Registry install should have failed (no real registry in tests).
+        assert!(!result.registry_installed);
+        assert_eq!(
+            result.deps_seeded,
+            crate::registry::init_deps::DEFAULT_INIT_DEPS.len()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn init_with_registry_is_idempotent() -> Result<()> {
+        let tmp = tempdir()?;
+
+        // First init.
+        let r1 = init_project_with_registry(tmp.path().to_path_buf())?;
+        assert!(r1.deps_seeded > 0);
+
+        // Second init -- deps already present, nothing added.
+        let r2 = init_project_with_registry(tmp.path().to_path_buf())?;
+        assert_eq!(r2.deps_seeded, 0, "second init must not re-add deps");
+        assert_eq!(r1.ship_dir, r2.ship_dir);
+
+        // ship.jsonc should still have dependencies from first init.
+        let content = fs::read_to_string(
+            r2.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
+        )?;
+        let doc: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)?;
+        assert!(doc.get("dependencies").is_some());
         Ok(())
     }
 }

@@ -39,7 +39,6 @@ pub struct Capability {
     pub milestone_id: Option<String>,
     pub phase: Option<String>,
     pub acceptance_criteria: Vec<String>,
-    pub preset_hint: Option<String>,
     pub file_scope: Vec<String>,
     pub assigned_to: Option<String>,
     pub priority: i32,
@@ -65,7 +64,6 @@ pub struct CapabilityPatch {
     pub status: Option<String>,
     pub phase: Option<String>,
     pub acceptance_criteria: Option<Vec<String>>,
-    pub preset_hint: Option<String>,
     pub file_scope: Option<Vec<String>>,
     pub assigned_to: Option<String>,
     pub priority: Option<i32>,
@@ -76,7 +74,7 @@ pub struct CapabilityPatch {
 const T_COLS: &str = "id, kind, title, description, status, goal, phase, due_date, body_markdown, file_scope_json, created_at, updated_at";
 
 const C_COLS: &str = "id, target_id, title, status, evidence, milestone_id, phase, acceptance_criteria, \
-     preset_hint, file_scope, assigned_to, priority, created_at, updated_at";
+     file_scope, assigned_to, priority, created_at, updated_at";
 
 // ─── Row mapping ──────────────────────────────────────────────────────────────
 
@@ -116,7 +114,6 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default(),
-        preset_hint: row.get("preset_hint"),
         file_scope: scope
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
@@ -262,7 +259,6 @@ pub fn create_capability(
         milestone_id: milestone_id.map(str::to_string),
         phase: None,
         acceptance_criteria: vec![],
-        preset_hint: None,
         file_scope: vec![],
         assigned_to: None,
         priority: 0,
@@ -296,13 +292,12 @@ pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> R
     block_on(async {
         sqlx::query(
             "UPDATE capability SET title=?, status=?, phase=?, acceptance_criteria=?, \
-             preset_hint=?, file_scope=?, assigned_to=?, priority=?, updated_at=? WHERE id=?",
+             file_scope=?, assigned_to=?, priority=?, updated_at=? WHERE id=?",
         )
         .bind(patch.title.unwrap_or(current.title))
         .bind(patch.status.unwrap_or(current.status))
         .bind(patch.phase.or(current.phase))
         .bind(&ac)
-        .bind(patch.preset_hint.or(current.preset_hint))
         .bind(&scope)
         .bind(patch.assigned_to.or(current.assigned_to))
         .bind(patch.priority.unwrap_or(current.priority))

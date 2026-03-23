@@ -163,56 +163,6 @@ pub fn list_events_by_workspace(ship_dir: &Path, workspace_id: &str) -> Result<V
     rows.iter().map(row_to_record).collect()
 }
 
-/// Migrate existing job_log entries into event_log.
-///
-/// Each job_log row becomes an event with entity_type='job', action='log'.
-/// Already-migrated rows are skipped (idempotent via INSERT OR IGNORE on nanoid).
-/// Returns the number of rows migrated.
-pub fn migrate_job_log_to_events(ship_dir: &Path) -> Result<usize> {
-    let mut conn = open_db(ship_dir)?;
-
-    // Read all job_log rows
-    let rows = block_on(async {
-        sqlx::query(
-            "SELECT job_id, branch, message, actor, created_at FROM job_log ORDER BY id ASC",
-        )
-        .fetch_all(&mut conn)
-        .await
-    })?;
-
-    let mut migrated = 0usize;
-    for row in &rows {
-        let job_id: Option<String> = row.get(0);
-        let _branch: Option<String> = row.get(1);
-        let message: String = row.get(2);
-        let actor: Option<String> = row.get(3);
-        let created_at: String = row.get(4);
-
-        let id = crate::gen_nanoid();
-        let actor_str = actor.as_deref().unwrap_or("ship");
-        let entity_id = job_id.as_deref();
-
-        block_on(async {
-            sqlx::query(
-                "INSERT INTO event_log \
-                 (id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at) \
-                 VALUES (?, ?, 'job', ?, 'log', ?, NULL, NULL, ?, ?)",
-            )
-            .bind(&id)
-            .bind(actor_str)
-            .bind(entity_id)
-            .bind(&message)
-            .bind(job_id.as_deref())
-            .bind(&created_at)
-            .execute(&mut conn)
-            .await
-        })?;
-        migrated += 1;
-    }
-
-    Ok(migrated)
-}
-
 /// Record a gate pass/fail outcome as an event.
 ///
 /// Creates an event with entity=Gate, entity_id=job_id, action=Pass or Fail.

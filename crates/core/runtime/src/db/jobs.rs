@@ -1,9 +1,5 @@
-//! Job queue and job_log for agent coordination.
+//! Job queue for agent coordination.
 //! Written by `ship agent job` commands; referenced from skills.
-//!
-//! NOTE: `append_log` and `list_logs` still write to the deprecated `job_log`
-//! table. New callers should use `db::events::insert_event` with
-//! entity_type='job' instead. See `schema/work.rs` for removal criteria.
 
 pub mod file_ownership;
 pub use file_ownership::{claim_file, get_file_owner};
@@ -48,22 +44,10 @@ pub struct JobPatch {
     pub capability_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JobLogEntry {
-    pub id: i64,
-    pub job_id: Option<String>,
-    pub branch: Option<String>,
-    pub message: String,
-    pub actor: Option<String>,
-    pub created_at: String,
-}
-
 const J_COLS: &str = concat!(
     "id, kind, status, branch, payload_json, created_by, claimed_by,",
     " touched_files, assigned_to, priority, blocked_by, created_at, updated_at, file_scope, capability_id"
 );
-
-const L_COLS: &str = "id, job_id, branch, message, actor, created_at";
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_job(
@@ -264,78 +248,6 @@ pub fn list_jobs(ship_dir: &Path, branch: Option<&str>, status: Option<&str>) ->
     Ok(rows.iter().map(row_to_job).collect())
 }
 
-pub fn append_log(
-    ship_dir: &Path,
-    message: &str,
-    job_id: Option<&str>,
-    branch: Option<&str>,
-    actor: Option<&str>,
-) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
-    let now = Utc::now().to_rfc3339();
-    block_on(async {
-        sqlx::query(
-            "INSERT INTO job_log (job_id, branch, message, actor, created_at)
-             VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(job_id)
-        .bind(branch)
-        .bind(message)
-        .bind(actor)
-        .bind(&now)
-        .execute(&mut conn)
-        .await
-    })?;
-    Ok(())
-}
-
-pub fn list_logs(
-    ship_dir: &Path,
-    branch: Option<&str>,
-    job_id: Option<&str>,
-    limit: Option<u32>,
-) -> Result<Vec<JobLogEntry>> {
-    let mut conn = open_db(ship_dir)?;
-    let lim = limit.unwrap_or(100);
-    let rows = match (branch, job_id) {
-        (Some(b), Some(j)) => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {L_COLS} FROM job_log WHERE branch = ? AND job_id = ? ORDER BY created_at DESC LIMIT ?"
-            ))
-            .bind(b).bind(j).bind(lim)
-            .fetch_all(&mut conn)
-            .await
-        })?,
-        (Some(b), None) => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {L_COLS} FROM job_log WHERE branch = ? ORDER BY created_at DESC LIMIT ?"
-            ))
-            .bind(b)
-            .bind(lim)
-            .fetch_all(&mut conn)
-            .await
-        })?,
-        (None, Some(j)) => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {L_COLS} FROM job_log WHERE job_id = ? ORDER BY created_at DESC LIMIT ?"
-            ))
-            .bind(j)
-            .bind(lim)
-            .fetch_all(&mut conn)
-            .await
-        })?,
-        (None, None) => block_on(async {
-            sqlx::query(&format!(
-                "SELECT {L_COLS} FROM job_log ORDER BY created_at DESC LIMIT ?"
-            ))
-            .bind(lim)
-            .fetch_all(&mut conn)
-            .await
-        })?,
-    };
-    Ok(rows.iter().map(row_to_log).collect())
-}
-
 fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
     // Column order matches J_COLS:
     // 0:id 1:kind 2:status 3:branch 4:payload_json 5:created_by 6:claimed_by
@@ -360,17 +272,6 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         updated_at: row.get(12),
         file_scope: serde_json::from_str(&scope_str).unwrap_or_default(),
         capability_id: row.get(14),
-    }
-}
-
-fn row_to_log(row: &sqlx::sqlite::SqliteRow) -> JobLogEntry {
-    JobLogEntry {
-        id: row.get(0),
-        job_id: row.get(1),
-        branch: row.get(2),
-        message: row.get(3),
-        actor: row.get(4),
-        created_at: row.get(5),
     }
 }
 
@@ -473,25 +374,6 @@ mod tests {
         assert_eq!(pending.len(), 2);
     }
 
-    #[test]
-    fn test_append_and_list_logs() {
-        let (_tmp, ship_dir) = setup();
-        append_log(
-            &ship_dir,
-            "starting compile",
-            None,
-            Some("feat/x"),
-            Some("agent-1"),
-        )
-        .unwrap();
-        append_log(&ship_dir, "done", None, Some("feat/x"), Some("agent-1")).unwrap();
-        append_log(&ship_dir, "unrelated", None, Some("main"), None).unwrap();
-        let logs = list_logs(&ship_dir, Some("feat/x"), None, None).unwrap();
-        assert_eq!(logs.len(), 2);
-        let all = list_logs(&ship_dir, None, None, None).unwrap();
-        assert_eq!(all.len(), 3);
-    }
-
     // ── Priority 2 gap tests ──────────────────────────────────────────────────
 
     /// Two-step status transition: pending → running → done.
@@ -564,51 +446,6 @@ mod tests {
         assert_eq!(got.assigned_to, Some("agent-42".to_string()));
         assert_eq!(got.priority, 10);
         assert_eq!(got.touched_files, vec!["a.rs".to_string()]);
-    }
-
-    /// append_log with job_id=None (branch-only log entry) is stored and retrievable.
-    #[test]
-    fn test_append_log_null_job_id() {
-        let (_tmp, ship_dir) = setup();
-        // No job created — log is purely branch-scoped.
-        append_log(
-            &ship_dir,
-            "branch-only event",
-            None,
-            Some("feat/no-job"),
-            Some("watcher"),
-        )
-        .unwrap();
-        let logs = list_logs(&ship_dir, Some("feat/no-job"), None, None).unwrap();
-        assert_eq!(logs.len(), 1);
-        assert!(logs[0].job_id.is_none());
-        assert_eq!(logs[0].message, "branch-only event");
-        assert_eq!(logs[0].actor, Some("watcher".to_string()));
-    }
-
-    /// list_logs respects the limit parameter — returns at most `limit` entries.
-    #[test]
-    fn test_list_logs_limit_respected() {
-        let (_tmp, ship_dir) = setup();
-        for i in 0..10_u32 {
-            append_log(
-                &ship_dir,
-                &format!("msg-{i}"),
-                None,
-                Some("feat/limit"),
-                None,
-            )
-            .unwrap();
-        }
-        let all = list_logs(&ship_dir, Some("feat/limit"), None, None).unwrap();
-        assert_eq!(all.len(), 10);
-
-        let limited = list_logs(&ship_dir, Some("feat/limit"), None, Some(3)).unwrap();
-        assert_eq!(limited.len(), 3);
-
-        // limit=1 returns exactly one entry
-        let one = list_logs(&ship_dir, Some("feat/limit"), None, Some(1)).unwrap();
-        assert_eq!(one.len(), 1);
     }
 
     #[test]

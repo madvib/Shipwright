@@ -23,9 +23,12 @@ pub mod workspace_state;
 
 use anyhow::{Context, Result, anyhow};
 use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::{Connection, SqliteConnection};
+use sqlx::{Connection, Row, SqliteConnection};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+
+/// Bump when the schema changes to invalidate the fast-path.
+const SCHEMA_VERSION: i32 = 1;
 
 /// The one database path: `~/.ship/platform.db`.
 ///
@@ -36,18 +39,15 @@ pub fn db_path() -> Result<PathBuf> {
 }
 
 /// Open a connection, ensuring schema exists first.
-///
-/// On first call, migrates any `.ship/platform.db` from `ship_dir` to the
-/// global location so existing data is preserved.
 pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
-    migrate_local_db_to_global(ship_dir);
     ensure_db(ship_dir)?;
     let path = db_path()?;
     connect(&path)
 }
 
 /// Ensure the schema exists. Idempotent — every statement uses
-/// `CREATE TABLE IF NOT EXISTS`.
+/// `CREATE TABLE IF NOT EXISTS`. Uses `PRAGMA user_version` as a
+/// fast-path: if the version matches, skip all DDL.
 pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
     let path = db_path()?;
     if let Some(parent) = path.parent() {
@@ -59,31 +59,16 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
         .create_if_missing(true);
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
-    // Migrations — idempotent, ignore errors (already applied or table absent).
-    let migrations: &[&str] = &[
-        "ALTER TABLE agent_mode RENAME TO agent_config",
-        // Session record gained optional metrics columns.
-        "ALTER TABLE workspace_session_record ADD COLUMN duration_secs INTEGER",
-        "ALTER TABLE workspace_session_record ADD COLUMN provider TEXT",
-        "ALTER TABLE workspace_session_record ADD COLUMN model TEXT",
-        "ALTER TABLE workspace_session_record ADD COLUMN agent_id TEXT",
-        "ALTER TABLE workspace_session_record ADD COLUMN files_changed INTEGER",
-        "ALTER TABLE workspace_session_record ADD COLUMN gate_result TEXT",
-    ];
-    for sql in migrations {
-        let _ = block_on(async { sqlx::query(sql).execute(&mut conn).await });
-    }
-
-    // Old event_log (pre-v0.1.0) used incompatible columns (seq, timestamp, entity, subject).
-    // Detect by checking for the old `seq` column; if present, drop and let DDL recreate.
-    let has_old_schema = block_on(async {
-        sqlx::query("SELECT seq FROM event_log LIMIT 0")
-            .execute(&mut conn)
+    // Fast-path: schema already initialized.
+    let version: i32 = block_on(async {
+        sqlx::query("PRAGMA user_version")
+            .fetch_one(&mut conn)
             .await
     })
-    .is_ok();
-    if has_old_schema {
-        let _ = block_on(async { sqlx::query("DROP TABLE event_log").execute(&mut conn).await });
+    .map(|row| row.get::<i32, _>(0))
+    .unwrap_or(0);
+    if version == SCHEMA_VERSION {
+        return Ok(());
     }
 
     // Execute each statement individually — sqlx only runs one statement at a time.
@@ -100,43 +85,14 @@ pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
             })?;
         }
     }
-    Ok(())
-}
 
-/// One-time migration: if `~/.ship/platform.db` is missing or empty but
-/// `.ship/platform.db` inside the project has data, copy it to the global
-/// location so existing data is preserved.
-fn migrate_local_db_to_global(ship_dir: &Path) {
-    let global_path = match db_path() {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let global_has_data = global_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    if global_has_data {
-        return;
-    }
-    let local_path = ship_dir.join("platform.db");
-    let local_has_data = local_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    if !local_has_data {
-        return;
-    }
-    if let Some(parent) = global_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match std::fs::copy(&local_path, &global_path) {
-        Ok(_) => {
-            eprintln!(
-                "migrated platform.db from {} → {}",
-                local_path.display(),
-                global_path.display()
-            );
-            let _ = std::fs::remove_file(&local_path);
-        }
-        Err(e) => eprintln!(
-            "warning: failed to migrate platform.db to {}: {e}",
-            global_path.display()
-        ),
-    }
+    // Stamp so subsequent calls take the fast-path.
+    block_on(async {
+        sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
+            .execute(&mut conn)
+            .await
+    })?;
+    Ok(())
 }
 
 fn connect(path: &Path) -> Result<SqliteConnection> {

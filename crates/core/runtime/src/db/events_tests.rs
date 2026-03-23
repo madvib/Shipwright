@@ -281,52 +281,6 @@ fn new_entity_types_serialize_correctly() {
     assert_eq!(all[3].action, EventAction::Claim);
 }
 
-#[test]
-fn migrate_job_log_to_events_works() {
-    let (_tmp, ship_dir) = setup();
-
-    // Seed job_log entries directly
-    crate::db::jobs::append_log(
-        &ship_dir,
-        "compiling module A",
-        Some("j1"),
-        Some("feat/x"),
-        Some("agent-1"),
-    )
-    .unwrap();
-    crate::db::jobs::append_log(
-        &ship_dir,
-        "tests passing",
-        Some("j1"),
-        Some("feat/x"),
-        Some("agent-1"),
-    )
-    .unwrap();
-    crate::db::jobs::append_log(&ship_dir, "branch note", None, Some("main"), None).unwrap();
-
-    // Migrate
-    let migrated = migrate_job_log_to_events(&ship_dir).unwrap();
-    assert_eq!(migrated, 3);
-
-    // Verify events exist
-    let all = list_all_events(&ship_dir).unwrap();
-    assert_eq!(all.len(), 3);
-    assert_eq!(all[0].entity, EventEntity::Job);
-    assert_eq!(all[0].action, EventAction::Log);
-    assert_eq!(all[0].details.as_deref(), Some("compiling module A"));
-    assert_eq!(all[0].job_id.as_deref(), Some("j1"));
-    assert_eq!(all[0].actor, "agent-1");
-
-    // Third entry had no actor, should default to "ship"
-    assert_eq!(all[2].actor, "ship");
-    assert!(all[2].job_id.is_none());
-
-    // Migration is additive (running again adds duplicates -- caller should
-    // run once). This tests that the function itself succeeds twice.
-    let migrated2 = migrate_job_log_to_events(&ship_dir).unwrap();
-    assert_eq!(migrated2, 3);
-}
-
 // ── Gate outcome tests ────────────────────────────────────────────────────
 
 #[test]

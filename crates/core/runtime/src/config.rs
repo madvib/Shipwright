@@ -1429,20 +1429,6 @@ pub fn list_hooks(project_dir: Option<PathBuf>) -> Result<Vec<HookConfig>> {
     Ok(config.hooks)
 }
 
-/// Migrate `config.json` → `ship.toml` in-place (no-op if already migrated).
-pub fn migrate_json_config_file(project_dir: &Path) -> Result<bool> {
-    let json_path = project_dir.join("config.json");
-    let primary_path = project_dir.join(PRIMARY_CONFIG_FILE);
-    let legacy_path = project_dir.join(LEGACY_CONFIG_FILE);
-    if !json_path.exists() || primary_path.exists() || legacy_path.exists() {
-        return Ok(false);
-    }
-    let config = migrate_json_config(&json_path)?;
-    save_config(&config, Some(project_dir.to_path_buf()))?;
-    fs::remove_file(json_path)?;
-    Ok(true)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

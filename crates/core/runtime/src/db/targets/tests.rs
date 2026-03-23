@@ -156,7 +156,6 @@ fn update_capability_new_fields_round_trip() {
                 "ship workspace create works".to_string(),
                 "worktree created".to_string(),
             ]),
-            preset_hint: Some("rust-runtime".to_string()),
             file_scope: Some(vec!["apps/ship-studio-cli/".to_string()]),
             assigned_to: Some("rust-lane".to_string()),
             priority: Some(1),
@@ -171,7 +170,6 @@ fn update_capability_new_fields_round_trip() {
         fetched.acceptance_criteria,
         vec!["ship workspace create works", "worktree created"]
     );
-    assert_eq!(fetched.preset_hint.as_deref(), Some("rust-runtime"));
     assert_eq!(fetched.file_scope, vec!["apps/ship-studio-cli/"]);
     assert_eq!(fetched.assigned_to.as_deref(), Some("rust-lane"));
     assert_eq!(fetched.priority, 1);
