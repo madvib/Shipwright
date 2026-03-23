@@ -2,12 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/madvib/ship/main/schemas/ship.schema.json",
   "title": "Ship Project Manifest",
-  "description": "Schema for .ship/ship.jsonc — the Ship project manifest that declares module identity, dependencies, and exports.",
+  "description": "Schema for .ship/ship.jsonc — the Ship project manifest that declares providers, modes, module identity, dependencies, and exports.",
   "type": "object",
   "properties": {
     "$schema": {
       "type": "string",
       "description": "JSON Schema reference for editor autocompletion."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Currently '1'. Used for forward-compatible migrations."
     },
     "id": {
       "type": "string",
@@ -15,15 +20,87 @@
     },
     "project": {
       "type": "object",
-      "description": "Project-level settings for non-registry projects.",
+      "description": "Project-level settings.",
       "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable project name."
+        },
         "providers": {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["claude", "cursor", "codex", "gemini"]
+            "enum": ["claude", "cursor", "codex", "gemini", "opencode"]
           },
           "description": "AI provider targets for this project."
+        },
+        "provider_defaults": {
+          "type": "object",
+          "description": "Project-level provider settings inherited by all agents. Keys are provider names. Values validated against upstream provider schemas, with Ship-managed keys excluded. Agents override via provider_settings (deep merge, agent wins).",
+          "properties": {
+            "claude": {
+              "allOf": [
+                { "$ref": "https://www.schemastore.org/claude-code-settings.json" },
+                {
+                  "properties": {
+                    "permissions": false,
+                    "hooks": false,
+                    "model": false,
+                    "env": false,
+                    "availableModels": false,
+                    "maxCostPerSession": false,
+                    "maxTurns": false,
+                    "autoMemoryEnabled": false
+                  }
+                }
+              ]
+            },
+            "codex": {
+              "allOf": [
+                { "$ref": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json" },
+                {
+                  "properties": {
+                    "model": false,
+                    "mcp_servers": false
+                  }
+                }
+              ]
+            },
+            "gemini": {
+              "allOf": [
+                { "$ref": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json" },
+                {
+                  "properties": {
+                    "model": false,
+                    "hooks": false,
+                    "mcpServers": false
+                  }
+                }
+              ]
+            },
+            "cursor": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "opencode": {
+              "allOf": [
+                { "$ref": "https://opencode.ai/config.json" },
+                {
+                  "properties": {
+                    "model": false,
+                    "mcp": false,
+                    "permission": false
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "modes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ModeConfig" },
+          "description": "Named modes that filter which MCP servers, skills, rules, and hooks are active. Selected per-workspace via `ship set-mode <id>`."
         }
       },
       "additionalProperties": false
@@ -100,5 +177,65 @@
       "additionalProperties": false
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "ModeConfig": {
+      "type": "object",
+      "required": ["id", "name"],
+      "description": "A named mode that narrows the active configuration. Modes filter which resources are included in compiled output — they don't add, only restrict.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Machine-readable mode identifier.",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable mode name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this mode is for."
+        },
+        "mcp_servers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "MCP server IDs to include when this mode is active. Servers not listed are excluded from compiled output."
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Skill IDs to include when this mode is active."
+        },
+        "rules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Rule IDs to include when this mode is active. Matched by filename stem (numeric prefix and .md suffix stripped)."
+        },
+        "permissions": {
+          "type": "object",
+          "description": "Permission overrides active only in this mode. Overlayed (additive) on top of the agent's permissions.",
+          "properties": {
+            "allow": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Additional tool patterns to allow in this mode."
+            },
+            "deny": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Additional tool patterns to deny in this mode."
+            }
+          },
+          "additionalProperties": false
+        },
+        "target_agents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Override the project's providers list when this mode is active."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

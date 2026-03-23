@@ -74,6 +74,8 @@ pub struct ResolvedConfig {
     pub codex_shell_env_policy: Option<String>,
     pub codex_notify: Option<serde_json::Value>,
     pub codex_settings_extra: Option<serde_json::Value>,
+    // ── OpenCode provider settings ────────────────────────────────────────────
+    pub opencode_settings_extra: Option<serde_json::Value>,
     // ── Cursor provider settings ───────────────────────────────────────────────
     pub cursor_environment: Option<serde_json::Value>,
     pub cursor_settings_extra: Option<serde_json::Value>,
@@ -120,6 +122,10 @@ pub struct ProjectLibrary {
     /// Plugin install intent from the active preset's `[plugins]` section.
     #[serde(default)]
     pub plugins: PluginsManifest,
+    /// Project-level provider defaults from `project.provider_defaults` in `ship.jsonc`.
+    /// Merged as base under agent-level `*_settings_extra` during resolution.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub provider_defaults: std::collections::HashMap<String, serde_json::Value>,
     /// Pass-through from `[provider_settings.claude]` in the active preset.
     /// Merged verbatim into `.claude/settings.json` on compile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -173,6 +179,9 @@ pub struct ProjectLibrary {
     pub codex_notify: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_settings_extra: Option<serde_json::Value>,
+    // ── OpenCode provider settings ────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opencode_settings_extra: Option<serde_json::Value>,
     // ── Cursor provider settings ───────────────────────────────────────────────
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_environment: Option<serde_json::Value>,
@@ -185,6 +194,39 @@ pub struct ProjectLibrary {
     pub claude_auto_updates: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_include_co_authored_by: Option<bool>,
+}
+
+/// Deep-merge two JSON values. `override_val` wins on key conflicts.
+/// Arrays are replaced, not concatenated.
+fn merge_json(base: &serde_json::Value, override_val: &serde_json::Value) -> serde_json::Value {
+    match (base, override_val) {
+        (serde_json::Value::Object(b), serde_json::Value::Object(o)) => {
+            let mut merged = b.clone();
+            for (k, v) in o {
+                let entry = merged
+                    .entry(k.clone())
+                    .or_insert(serde_json::Value::Null);
+                *entry = merge_json(entry, v);
+            }
+            serde_json::Value::Object(merged)
+        }
+        // Non-object: override wins
+        (_, o) => o.clone(),
+    }
+}
+
+/// Merge provider_defaults (base) with *_settings_extra (agent override).
+/// Returns the merged value, or None if both are None.
+fn merge_provider_extra(
+    defaults: Option<&serde_json::Value>,
+    agent_extra: Option<&serde_json::Value>,
+) -> Option<serde_json::Value> {
+    match (defaults, agent_extra) {
+        (Some(d), Some(a)) => Some(merge_json(d, a)),
+        (Some(d), None) => Some(d.clone()),
+        (None, Some(a)) => Some(a.clone()),
+        (None, None) => None,
+    }
 }
 
 /// Resolve a [`ProjectLibrary`] directly — the new-model entry point.
@@ -210,7 +252,12 @@ pub fn resolve_library(
         active_agent_override,
     );
     resolved.plugins = library.plugins.clone();
-    resolved.claude_settings_extra = library.claude_settings_extra.clone();
+    // Merge provider_defaults with agent-level *_settings_extra.
+    // provider_defaults is the base; *_settings_extra is the agent override.
+    resolved.claude_settings_extra = merge_provider_extra(
+        library.provider_defaults.get("claude"),
+        library.claude_settings_extra.as_ref(),
+    );
     resolved.agent_profiles = library.agent_profiles.clone();
     resolved.claude_team_agents = library.claude_team_agents.clone();
     resolved.env = library.env.clone();
@@ -226,7 +273,10 @@ pub fn resolve_library(
     resolved.gemini_disable_yolo_mode = library.gemini_disable_yolo_mode;
     resolved.gemini_disable_always_allow = library.gemini_disable_always_allow;
     resolved.gemini_tools_sandbox = library.gemini_tools_sandbox.clone();
-    resolved.gemini_settings_extra = library.gemini_settings_extra.clone();
+    resolved.gemini_settings_extra = merge_provider_extra(
+        library.provider_defaults.get("gemini"),
+        library.gemini_settings_extra.as_ref(),
+    );
     // Codex settings
     resolved.codex_approval_policy = library.codex_approval_policy.clone();
     resolved.codex_reasoning_effort = library.codex_reasoning_effort.clone();
@@ -235,10 +285,21 @@ pub fn resolve_library(
     resolved.codex_job_max_runtime_seconds = library.codex_job_max_runtime_seconds;
     resolved.codex_shell_env_policy = library.codex_shell_env_policy.clone();
     resolved.codex_notify = library.codex_notify.clone();
-    resolved.codex_settings_extra = library.codex_settings_extra.clone();
+    resolved.codex_settings_extra = merge_provider_extra(
+        library.provider_defaults.get("codex"),
+        library.codex_settings_extra.as_ref(),
+    );
+    // OpenCode settings
+    resolved.opencode_settings_extra = merge_provider_extra(
+        library.provider_defaults.get("opencode"),
+        library.opencode_settings_extra.as_ref(),
+    );
     // Cursor settings
     resolved.cursor_environment = library.cursor_environment.clone();
-    resolved.cursor_settings_extra = library.cursor_settings_extra.clone();
+    resolved.cursor_settings_extra = merge_provider_extra(
+        library.provider_defaults.get("cursor"),
+        library.cursor_settings_extra.as_ref(),
+    );
     // Claude settings
     resolved.claude_theme = library.claude_theme.clone();
     resolved.claude_auto_updates = library.claude_auto_updates;
@@ -362,6 +423,7 @@ pub fn resolve(
         codex_shell_env_policy: None,
         codex_notify: None,
         codex_settings_extra: None,
+        opencode_settings_extra: None,
         cursor_environment: None,
         cursor_settings_extra: None,
         claude_theme: None,
@@ -380,7 +442,10 @@ fn normalize_providers(ids: &[String]) -> Vec<String> {
         if id.is_empty() {
             continue;
         }
-        if !matches!(id.as_str(), "claude" | "gemini" | "codex" | "cursor") {
+        if !matches!(
+            id.as_str(),
+            "claude" | "gemini" | "codex" | "cursor" | "opencode"
+        ) {
             continue;
         }
         if seen.insert(id.clone()) {
@@ -933,5 +998,53 @@ mod tests {
         );
         assert_eq!(code.active_agent.as_deref(), Some("code"));
         assert_eq!(code.skills[0].id, "code-skill");
+    }
+
+    #[test]
+    fn provider_defaults_merge_with_agent_extra() {
+        use serde_json::json;
+
+        // provider_defaults sets a base; agent extra overrides one key, adds another
+        let mut defaults = std::collections::HashMap::new();
+        defaults.insert(
+            "claude".to_string(),
+            json!({"theme": "dark", "autoUpdates": true, "nested": {"a": 1, "b": 2}}),
+        );
+        defaults.insert(
+            "gemini".to_string(),
+            json!({"yoloMode": false}),
+        );
+
+        let library = ProjectLibrary {
+            provider_defaults: defaults,
+            claude_settings_extra: Some(json!({"theme": "light", "newKey": "hello", "nested": {"b": 99, "c": 3}})),
+            // gemini: no agent override — defaults should pass through
+            gemini_settings_extra: None,
+            // codex: agent override but no defaults — agent wins
+            codex_settings_extra: Some(json!({"policy": "suggest"})),
+            ..Default::default()
+        };
+
+        let resolved = super::resolve_library(&library, None, None);
+
+        // Claude: agent override wins on "theme", base kept for "autoUpdates", deep merge on "nested"
+        let claude = resolved.claude_settings_extra.unwrap();
+        assert_eq!(claude["theme"], "light");
+        assert_eq!(claude["autoUpdates"], true);
+        assert_eq!(claude["newKey"], "hello");
+        assert_eq!(claude["nested"]["a"], 1);
+        assert_eq!(claude["nested"]["b"], 99);
+        assert_eq!(claude["nested"]["c"], 3);
+
+        // Gemini: defaults pass through when no agent override
+        let gemini = resolved.gemini_settings_extra.unwrap();
+        assert_eq!(gemini["yoloMode"], false);
+
+        // Codex: agent override only, no defaults
+        let codex = resolved.codex_settings_extra.unwrap();
+        assert_eq!(codex["policy"], "suggest");
+
+        // Cursor: neither defaults nor agent — should be None
+        assert!(resolved.cursor_settings_extra.is_none());
     }
 }

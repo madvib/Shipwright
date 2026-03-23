@@ -2,12 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/madvib/ship/main/schemas/mcp.schema.json",
   "title": "Ship MCP Server Definitions",
-  "description": "Schema for .ship/mcp.jsonc — shared MCP server definitions referenced by agent configs via \"mcp\": { \"servers\": [\"<id>\", ...] }.",
+  "description": "Schema for .ship/mcp.jsonc — shared MCP server definitions referenced by agent configs via mcp.servers.",
   "type": "object",
   "properties": {
     "$schema": {
       "type": "string",
       "description": "JSON Schema reference for editor autocompletion."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Currently '1'."
     },
     "mcp": {
       "type": "object",
@@ -15,7 +20,7 @@
       "properties": {
         "servers": {
           "type": "object",
-          "description": "Server definitions keyed by server ID. Each key becomes the server's id if the id field is empty.",
+          "description": "Server definitions keyed by server ID.",
           "additionalProperties": {
             "$ref": "#/$defs/McpServerEntry"
           }
@@ -28,7 +33,7 @@
   "$defs": {
     "McpServerEntry": {
       "type": "object",
-      "description": "An MCP server definition.",
+      "description": "An MCP server definition. For stdio servers, command is required. For http/sse servers, url is required.",
       "properties": {
         "id": {
           "type": "string",
@@ -36,11 +41,11 @@
         },
         "name": {
           "type": "string",
-          "description": "Human-readable server name shown in `ship mcp list` and editor UI."
+          "description": "Human-readable server name."
         },
         "command": {
           "type": "string",
-          "description": "Binary to run for stdio servers, e.g. npx, ship, antigravity."
+          "description": "Binary to run for stdio servers, e.g. npx, ship, node."
         },
         "args": {
           "type": "array",
@@ -50,10 +55,11 @@
         "env": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Environment variables for the server process. Values may use ${VAR} syntax for shell variable expansion."
+          "description": "Environment variables for the server process."
         },
         "url": {
           "type": "string",
+          "format": "uri",
           "description": "URL for http or sse transport servers. Required when server_type is http or sse."
         },
         "scope": {
@@ -66,20 +72,63 @@
           "type": "string",
           "enum": ["stdio", "sse", "http"],
           "default": "stdio",
-          "description": "Transport type. stdio (default) runs a local process; http and sse connect to a URL."
+          "description": "Transport type. stdio runs a local process; http and sse connect to a URL."
         },
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "When true, the server definition is retained but not activated during compilation."
+          "description": "When true, the server is retained but not activated during compilation."
         },
         "timeout_secs": {
           "type": "integer",
           "minimum": 1,
-          "description": "Connection timeout in seconds for this server."
+          "description": "Connection timeout in seconds."
+        },
+        "codex_enabled_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Codex-only: tool names to enable for this server."
+        },
+        "codex_disabled_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Codex-only: tool names to disable for this server."
+        },
+        "gemini_trust": {
+          "type": "boolean",
+          "description": "Gemini-only: whether this server is trusted."
+        },
+        "gemini_include_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Gemini-only: tool names to include from this server."
+        },
+        "gemini_exclude_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Gemini-only: tool names to exclude from this server."
+        },
+        "gemini_timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Gemini-only: per-server timeout in milliseconds."
+        },
+        "cursor_env_file": {
+          "type": "string",
+          "description": "Cursor-only: path to an env file to load for this stdio server."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": {
+        "properties": { "server_type": { "enum": ["http", "sse"] } },
+        "required": ["server_type"]
+      },
+      "then": {
+        "required": ["url"]
+      },
+      "else": {
+        "required": ["command"]
+      }
     }
   }
 }

@@ -2,14 +2,6 @@ use rmcp::schemars::{self, JsonSchema};
 use serde::Deserialize;
 
 #[derive(Deserialize, JsonSchema)]
-pub struct ProviderMatrixRequest {
-    /// Filter to a single provider ID (claude, gemini, codex, cursor). Omit for all.
-    pub provider: Option<String>,
-    /// Output format: "json" (default), "text", or "diff".
-    pub format: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
 pub struct CreateTargetRequest {
     /// Target kind: "milestone" (e.g. v0.1.0) or "surface" (e.g. compiler, studio)
     pub kind: String,

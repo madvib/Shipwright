@@ -7,6 +7,7 @@ mod context;
 mod cursor;
 mod gemini;
 mod mcp;
+mod opencode;
 mod plugins;
 mod skills;
 
@@ -102,6 +103,10 @@ pub struct CompileOutput {
     /// Cursor-only: `.cursor/environment.json` content.
     /// Only populated when `cursor_environment` is set in the resolved config.
     pub cursor_environment_json: Option<Json>,
+
+    /// OpenCode-only: full `opencode.json` content (model + MCP + extras).
+    /// Only populated for the `opencode` provider.
+    pub opencode_config_patch: Option<Json>,
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -168,6 +173,10 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
         // cursor_cli_permissions is now merged with cursor_settings_extra via build_cursor_cli_json
         out.cursor_cli_permissions = cursor::build_cursor_cli_json(resolved);
         out.cursor_environment_json = cursor::build_cursor_environment(resolved);
+    }
+
+    if provider_id == "opencode" {
+        out.opencode_config_patch = opencode::build_opencode_config_patch(resolved);
     }
 
     out.plugins_manifest = plugins::build_plugins_manifest(&resolved.plugins, provider_id);

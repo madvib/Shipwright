@@ -25,7 +25,6 @@ const CORE_TOOLS: &[&str] = &[
     "claim_file",
     "get_file_owner",
     "list_events",
-    "provider_matrix",
 ];
 
 pub fn generate() -> String {

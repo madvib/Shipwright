@@ -1,11 +1,12 @@
 pub mod agent_parser;
 pub mod compile;
+pub mod decompile;
 pub mod jsonc;
 pub mod lockfile;
 pub mod manifest;
-pub mod matrix;
 pub mod permissions;
 pub mod resolve;
+pub mod schemas;
 pub mod types;
 
 // ─── Top-level re-exports ─────────────────────────────────────────────────────
@@ -15,10 +16,11 @@ pub use compile::{
     ProviderFeatureFlags, SkillsDir, agents::compile_agent_profiles, build_claude_settings_patch,
     compile, get_provider, list_providers, translate_to_cursor_permission,
 };
-pub use matrix::{
-    Capability, Coverage, Matrix, ProviderMatrix, build_matrix, render_diffable, render_summary,
-    render_text,
+pub use decompile::{
+    DetectedProviders, decompile_all, decompile_claude, decompile_codex, decompile_cursor,
+    decompile_gemini, decompile_opencode, detect_providers,
 };
+pub use schemas::{PROVIDER_MANAGED_KEYS, PROVIDER_SCHEMAS, managed_keys, schema_url};
 pub use resolve::{ProjectLibrary, ResolvedConfig, WorkspaceOverrides, resolve, resolve_library};
 pub use types::{
     AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogCategory, CatalogEntry,
@@ -39,6 +41,10 @@ pub fn gen_nanoid() -> String {
     ];
     nanoid::format(nanoid::rngs::default, &alphabet, 8)
 }
+
+#[cfg(test)]
+#[path = "schema_drift_tests.rs"]
+mod schema_drift_tests;
 
 // ─── WASM bindings ────────────────────────────────────────────────────────────
 
@@ -79,6 +85,8 @@ mod wasm {
         cursor_cli_permissions: Option<serde_json::Value>,
         /// Cursor-only: `.cursor/environment.json` content.
         cursor_environment_json: Option<serde_json::Value>,
+        /// OpenCode-only: full `opencode.json` content (model + MCP + extras).
+        opencode_config_patch: Option<serde_json::Value>,
         /// Provider-native agent files: path → content.
         /// e.g. `.claude/agents/reviewer.md`, `.gemini/agents/reviewer.md`.
         agent_files: std::collections::HashMap<String, String>,
@@ -124,6 +132,7 @@ mod wasm {
             cursor_hooks_patch: output.cursor_hooks_patch,
             cursor_cli_permissions: output.cursor_cli_permissions,
             cursor_environment_json: output.cursor_environment_json,
+            opencode_config_patch: output.opencode_config_patch,
             agent_files: output.agent_files,
             plugins_manifest: output.plugins_manifest,
         };
@@ -162,6 +171,7 @@ mod wasm {
                     cursor_hooks_patch: output.cursor_hooks_patch,
                     cursor_cli_permissions: output.cursor_cli_permissions,
                     cursor_environment_json: output.cursor_environment_json,
+                    opencode_config_patch: output.opencode_config_patch,
                     agent_files: output.agent_files,
                     plugins_manifest: output.plugins_manifest,
                 };

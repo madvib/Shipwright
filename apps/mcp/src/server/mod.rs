@@ -418,27 +418,6 @@ impl ShipServer {
         job::get_file_owner(&project_dir, &req.path)
     }
 
-    // ---- Provider matrix ----
-
-    #[tool(description = "Show the provider capability matrix with gap analysis.")]
-    async fn provider_matrix(&self, Parameters(req): Parameters<ProviderMatrixRequest>) -> String {
-        let mut matrix = compiler::build_matrix();
-        if let Some(pid) = &req.provider {
-            matrix.providers.retain(|p| p.provider_id == pid);
-            if matrix.providers.is_empty() {
-                return format!(
-                    "Unknown provider: {}. Options: claude, gemini, codex, cursor",
-                    pid
-                );
-            }
-        }
-        match req.format.as_deref().unwrap_or("json") {
-            "text" => compiler::render_text(&matrix),
-            "diff" => compiler::render_diffable(&matrix),
-            _ => serde_json::to_string_pretty(&matrix)
-                .unwrap_or_else(|e| format!("Serialization error: {}", e)),
-        }
-    }
 }
 
 // ---- Server entry point ----
