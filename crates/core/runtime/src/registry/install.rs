@@ -267,6 +267,22 @@ fn fetch_and_store(
         tmp.path()
     };
 
+    // Security scan: block packages with critical hidden Unicode characters.
+    let findings = crate::security::scan_dir(content_dir);
+    if crate::security::has_critical(&findings) {
+        let critical_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == crate::security::Severity::Critical)
+            .collect();
+        let details: Vec<String> = critical_findings.iter().map(|f| f.to_string()).collect();
+        anyhow::bail!(
+            "security scan blocked {dep_path}@{version}: {} critical finding(s) \
+             (hidden Unicode characters that may be prompt injection vectors):\n  {}",
+            critical_findings.len(),
+            details.join("\n  ")
+        );
+    }
+
     let cached = cache
         .store(dep_path, version, commit, content_dir)
         .with_context(|| format!("storing {dep_path}@{version} in cache"))?;

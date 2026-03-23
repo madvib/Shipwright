@@ -6,10 +6,10 @@ pub mod events;
 pub mod fs_util;
 pub mod hooks;
 pub mod log;
-pub mod migration;
 pub mod plugin;
 pub mod project;
 pub mod registry;
+pub mod security;
 pub mod workspace;
 
 // Backward-compatible module aliases.
@@ -34,7 +34,7 @@ pub use config::{
     McpServerType, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_agent,
     add_hook, add_mcp_server, add_status, ensure_registered_namespaces, generate_gitignore,
     get_active_agent, get_config, get_effective_config, get_git_config, get_project_statuses,
-    is_category_committed, list_hooks, list_mcp_servers, migrate_json_config_file, remove_agent,
+    is_category_committed, list_hooks, list_mcp_servers, remove_agent,
     remove_hook, remove_mcp_server, remove_status, save_config, set_active_agent,
     set_category_committed, set_git_config,
 };
@@ -45,10 +45,6 @@ pub use events::{
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
-pub use migration::{
-    GlobalStateMigrationReport, ProjectFileMigrationReport, ProjectStateMigrationReport,
-    migrate_global_state, migrate_project_state,
-};
 pub use permissions::{
     AgentLimits, CommandPermissions, FsPermissions, NetworkPermissions, NetworkPolicy, Permissions,
     ToolPermissions, get_permissions, permission_tool_ids_for_provider, save_permissions,
@@ -78,8 +74,8 @@ pub use db::file_claims::{FileClaim, check_conflicts, claim_files, list_claims, 
 pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
 pub use db::session::get_workspace_session_record_db;
 pub use db::types::{
-    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb, DatabaseMigrationReport,
-    WorkspaceSessionDb, WorkspaceSessionRecordDb, WorkspaceUpsert,
+    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb, WorkspaceSessionDb,
+    WorkspaceSessionRecordDb, WorkspaceUpsert,
 };
 pub use db::workspace_state::upsert_workspace_db;
 

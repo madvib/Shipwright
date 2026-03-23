@@ -1,6 +1,7 @@
 mod add;
 mod agent;
 mod agent_config;
+mod audit;
 mod auth;
 mod cli;
 mod commands;
@@ -12,6 +13,7 @@ mod diff;
 mod events_cmd;
 mod help_topics;
 mod init;
+mod init_from_url;
 mod install;
 mod job;
 mod loader;
@@ -86,6 +88,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 let root = std::env::current_dir()?;
                 add::run_add(&root, &package)
             }
+            Commands::Audit { path, json } => audit::run_audit(path, json),
             Commands::Validate { agent, json, path } => {
                 let root = path
                     .as_deref()
@@ -96,10 +99,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Events { action } => dispatch_events(action),
-            Commands::View => {
-                let ship_dir = paths::project_ship_dir_required()?;
-                view::run_view(ship_dir)
-            }
+            Commands::View => view::run_view(),
         },
     }
 }

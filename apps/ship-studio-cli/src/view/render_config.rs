@@ -195,14 +195,14 @@ fn discover_local_skills() -> Vec<SkillEntry> {
         .flatten()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_dir() && e.path().join("SKILL.md").is_file())
-        .filter_map(|e| {
+        .map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
             let path = e.path().join("SKILL.md");
-            Some(SkillEntry {
+            SkillEntry {
                 name,
                 source: "local".to_string(),
                 path,
-            })
+            }
         })
         .collect()
 }

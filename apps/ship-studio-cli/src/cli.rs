@@ -13,6 +13,7 @@ const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
 \x1b[1mPackages:\x1b[0m
   ship add <package>     Add a dependency
   ship install           Resolve all dependencies
+  ship audit             Scan for hidden Unicode (security)
   ship publish           Share your package on the registry
 
 \x1b[1mConfiguration:\x1b[0m
@@ -166,6 +167,16 @@ pub enum Commands {
     Add {
         /// Package path with optional version: github.com/owner/repo[@version]
         package: String,
+    },
+
+    /// Scan files for hidden Unicode characters (prompt injection vectors)
+    Audit {
+        /// Path to scan (defaults to .ship/ in current directory)
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Emit findings as JSON array
+        #[arg(long)]
+        json: bool,
     },
 
     /// Convert provider config files (CLAUDE.md, .cursor/) into .ship/ format
