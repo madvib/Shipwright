@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { ResolvedAgentProfile } from './types'
 import { getAgentIcon, setAgentIcon } from './agent-icons'
-import { TechIcon, TECH_STACK_LIST, TECH_STACKS } from '#/features/studio/TechIcon'
+import { TechIcon, ICON_CATEGORIES, TECH_STACKS } from '#/features/studio/TechIcon'
 
 interface AgentStickyHeaderProps {
   profile: ResolvedAgentProfile
@@ -13,12 +13,15 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
   const initial = profile.profile.name.charAt(0).toUpperCase()
   const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id))
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<string>(ICON_CATEGORIES[0].id)
 
   const handleIconSelect = (key: string) => {
     setAgentIcon(profile.profile.id, key)
     setIconKey(key)
     setPickerOpen(false)
   }
+
+  const activeCat = ICON_CATEGORIES.find((c) => c.id === activeCategory) ?? ICON_CATEGORIES[0]
 
   return (
     <div className="flex items-center gap-3 border-b border-border/30 bg-background/80 backdrop-blur-sm px-5 h-12 shrink-0 sticky top-0 z-10">
@@ -46,16 +49,36 @@ export function AgentStickyHeader({ profile, onEdit }: AgentStickyHeaderProps) {
         {pickerOpen && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
-            <div className="absolute top-full left-0 mt-1.5 z-50 rounded-xl border border-border/60 bg-popover shadow-lg p-2 animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="grid grid-cols-8 gap-1 w-[240px] max-h-[280px] overflow-y-auto">
-                {TECH_STACK_LIST.filter(t => t.slug !== null).map((tech) => (
+            <div className="absolute top-full left-0 mt-1.5 z-50 rounded-xl border border-border/60 bg-popover shadow-xl p-3 animate-in fade-in slide-in-from-top-1 duration-150 w-[320px]">
+              {/* Category tabs */}
+              <div className="flex gap-0.5 mb-2 overflow-x-auto [scrollbar-width:none]">
+                {ICON_CATEGORIES.map((cat) => (
                   <button
-                    key={tech.id}
-                    onClick={() => handleIconSelect(tech.id)}
-                    className={`rounded-lg p-0.5 transition hover:bg-muted ${iconKey === tech.id ? 'ring-1 ring-primary bg-primary/10' : ''}`}
-                    title={tech.id}
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                      activeCategory === cat.id
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                    }`}
                   >
-                    <TechIcon stack={tech.id} size={24} />
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Icon grid */}
+              <div className="grid grid-cols-7 gap-1.5">
+                {activeCat.keys.map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => handleIconSelect(key)}
+                    className={`rounded-lg p-1 transition hover:bg-muted ${
+                      iconKey === key ? 'ring-2 ring-primary bg-primary/10' : ''
+                    }`}
+                    title={key}
+                  >
+                    <TechIcon stack={key} size={36} />
                   </button>
                 ))}
               </div>

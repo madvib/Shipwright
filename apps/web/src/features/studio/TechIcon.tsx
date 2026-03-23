@@ -78,6 +78,16 @@ export type TechStack = keyof typeof TECH_STACKS
 
 export const TECH_STACK_LIST = Object.entries(TECH_STACKS).map(([id, v]) => ({ id: id as TechStack, ...v }))
 
+export const ICON_CATEGORIES = [
+  { id: 'languages', label: 'Languages', keys: ['typescript','javascript','python','rust','go','java','csharp','swift','kotlin','ruby','php','elixir'] },
+  { id: 'frameworks', label: 'Frameworks', keys: ['react','nextjs','vue','svelte','angular','astro','tailwind','django','rails','flask','fastapi'] },
+  { id: 'infra', label: 'Infra', keys: ['docker','kubernetes','terraform','aws','gcp','azure','cloudflare','vercel','nginx'] },
+  { id: 'data', label: 'Data', keys: ['postgres','mysql','mongodb','redis','sqlite','graphql'] },
+  { id: 'tools', label: 'Tools', keys: ['git','github','node','bun','deno','linux','vim'] },
+  { id: 'ai', label: 'AI', keys: ['openai','anthropic','huggingface','pytorch'] },
+  { id: 'roles', label: 'Roles', keys: ['code','security','test','docs','api','deploy','monitor'] },
+] as const
+
 interface TechIconProps {
   stack: string
   size?: number
