@@ -9,8 +9,8 @@ use super::{block_on, open_db};
 
 /// Look up which linked entity is associated with `branch`.
 /// Returns `(link_type, link_id)` or `None`.
-pub fn get_branch_link(ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_branch_link(_ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
+    let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query("SELECT link_type, link_id FROM branch_context WHERE branch = ?")
             .bind(branch)
@@ -26,12 +26,12 @@ pub fn get_branch_link(ship_dir: &Path, branch: &str) -> Result<Option<(String, 
 
 /// Record that `branch` is associated with `link_type` and entity id.
 pub fn set_branch_link(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     branch: &str,
     link_type: &str,
     link_id: &str,
 ) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
@@ -53,8 +53,8 @@ pub fn set_branch_link(
 }
 
 /// Remove branch link mapping for `branch`.
-pub fn clear_branch_link(ship_dir: &Path, branch: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn clear_branch_link(_ship_dir: &Path, branch: &str) -> Result<()> {
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM branch_context WHERE branch = ?")
             .bind(branch)
@@ -65,16 +65,16 @@ pub fn clear_branch_link(ship_dir: &Path, branch: &str) -> Result<()> {
 }
 
 /// Legacy alias.
-pub fn get_branch_doc(ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
-    get_branch_link(ship_dir, branch)
+pub fn get_branch_doc(_ship_dir: &Path, branch: &str) -> Result<Option<(String, String)>> {
+    get_branch_link(_ship_dir, branch)
 }
 
 /// Legacy alias.
-pub fn set_branch_doc(ship_dir: &Path, branch: &str, doc_type: &str, doc_uuid: &str) -> Result<()> {
-    set_branch_link(ship_dir, branch, doc_type, doc_uuid)
+pub fn set_branch_doc(_ship_dir: &Path, branch: &str, doc_type: &str, doc_uuid: &str) -> Result<()> {
+    set_branch_link(_ship_dir, branch, doc_type, doc_uuid)
 }
 
 /// Legacy alias.
-pub fn clear_branch_doc(ship_dir: &Path, branch: &str) -> Result<()> {
-    clear_branch_link(ship_dir, branch)
+pub fn clear_branch_doc(_ship_dir: &Path, branch: &str) -> Result<()> {
+    clear_branch_link(_ship_dir, branch)
 }

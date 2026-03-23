@@ -7,8 +7,8 @@ use std::path::Path;
 
 use crate::db::{block_on, open_db};
 
-pub fn set(ship_dir: &Path, namespace: &str, key: &str, value: &serde_json::Value) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn set(_ship_dir: &Path, namespace: &str, key: &str, value: &serde_json::Value) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let value_json = serde_json::to_string(value)?;
     block_on(async {
@@ -29,8 +29,8 @@ pub fn set(ship_dir: &Path, namespace: &str, key: &str, value: &serde_json::Valu
     Ok(())
 }
 
-pub fn get(ship_dir: &Path, namespace: &str, key: &str) -> Result<Option<serde_json::Value>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get(_ship_dir: &Path, namespace: &str, key: &str) -> Result<Option<serde_json::Value>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query("SELECT value_json FROM kv_state WHERE namespace = ? AND key = ?")
             .bind(namespace)
@@ -47,8 +47,8 @@ pub fn get(ship_dir: &Path, namespace: &str, key: &str) -> Result<Option<serde_j
     }
 }
 
-pub fn delete(ship_dir: &Path, namespace: &str, key: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete(_ship_dir: &Path, namespace: &str, key: &str) -> Result<()> {
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM kv_state WHERE namespace = ? AND key = ?")
             .bind(namespace)
@@ -59,8 +59,8 @@ pub fn delete(ship_dir: &Path, namespace: &str, key: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list_keys(ship_dir: &Path, namespace: &str) -> Result<Vec<String>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_keys(_ship_dir: &Path, namespace: &str) -> Result<Vec<String>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query("SELECT key FROM kv_state WHERE namespace = ? ORDER BY key")
             .bind(namespace)
@@ -81,7 +81,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 

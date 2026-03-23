@@ -10,7 +10,7 @@ use tempfile::tempdir;
 fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
     let tmp = tempdir().unwrap();
     let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-    ensure_db(&ship_dir).unwrap();
+    ensure_db().unwrap();
     (tmp, ship_dir)
 }
 

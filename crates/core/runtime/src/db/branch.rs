@@ -20,8 +20,8 @@ pub struct BranchConfig {
 
 const COLS: &str = "branch, preset_id, workspace_id, plugins_json, compiled_at, updated_at";
 
-pub fn upsert_branch_config(ship_dir: &Path, cfg: &BranchConfig) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn upsert_branch_config(_ship_dir: &Path, cfg: &BranchConfig) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let plugins = serde_json::to_string(&cfg.plugins)?;
     block_on(async {
@@ -48,8 +48,8 @@ pub fn upsert_branch_config(ship_dir: &Path, cfg: &BranchConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn get_branch_config(ship_dir: &Path, branch: &str) -> Result<Option<BranchConfig>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_branch_config(_ship_dir: &Path, branch: &str) -> Result<Option<BranchConfig>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!(
             "SELECT {COLS} FROM branch_config WHERE branch = ?"
@@ -61,8 +61,8 @@ pub fn get_branch_config(ship_dir: &Path, branch: &str) -> Result<Option<BranchC
     Ok(row.map(|r| row_to_cfg(&r)))
 }
 
-pub fn list_branch_configs(ship_dir: &Path) -> Result<Vec<BranchConfig>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_branch_configs(_ship_dir: &Path) -> Result<Vec<BranchConfig>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {COLS} FROM branch_config ORDER BY updated_at DESC"
@@ -94,7 +94,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 

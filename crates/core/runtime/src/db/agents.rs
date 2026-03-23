@@ -8,8 +8,8 @@ use std::path::Path;
 use super::types::{AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb};
 use super::{block_on, open_db};
 
-pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRuntimeSettingsDb>> {
-    let mut conn = match open_db(ship_dir) {
+pub fn get_agent_runtime_settings_db(_ship_dir: &Path) -> Result<Option<AgentRuntimeSettingsDb>> {
+    let mut conn = match open_db() {
         Ok(c) => c,
         Err(e) if e.to_string().contains("no id field") => return Ok(None),
         Err(e) => return Err(e),
@@ -50,7 +50,7 @@ pub fn get_agent_runtime_settings_db(ship_dir: &Path) -> Result<Option<AgentRunt
 
 #[allow(clippy::too_many_arguments)]
 pub fn set_agent_runtime_settings_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     providers: &[String],
     active_agent: Option<&str>,
     hooks_json: &str,
@@ -59,7 +59,7 @@ pub fn set_agent_runtime_settings_db(
     git_json: &str,
     namespaces_json: &str,
 ) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let providers_json = serde_json::to_string(providers)
         .with_context(|| "Failed to serialize providers for agent runtime settings")?;
     let now = Utc::now().to_rfc3339();
@@ -93,14 +93,14 @@ pub fn set_agent_runtime_settings_db(
 }
 
 pub fn upsert_agent_artifact_registry_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     external_id: &str,
     name: &str,
     source_path: &str,
     content_hash: &str,
 ) -> Result<String> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let existing_uuid = block_on(async {
         sqlx::query(
             "SELECT uuid
@@ -142,11 +142,11 @@ pub fn upsert_agent_artifact_registry_db(
 }
 
 pub fn get_agent_artifact_registry_by_uuid_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     uuid: &str,
 ) -> Result<Option<AgentArtifactRegistryDb>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query(
             "SELECT uuid, kind, external_id, name, source_path, content_hash
@@ -174,11 +174,11 @@ pub fn get_agent_artifact_registry_by_uuid_db(
 }
 
 pub fn get_agent_artifact_registry_by_external_id_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     external_id: &str,
 ) -> Result<Option<AgentArtifactRegistryDb>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query(
             "SELECT uuid, kind, external_id, name, source_path, content_hash
@@ -205,8 +205,8 @@ pub fn get_agent_artifact_registry_by_external_id_db(
     }))
 }
 
-pub fn list_agent_configs_db(ship_dir: &Path) -> Result<Vec<AgentConfigDb>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_agent_configs_db(_ship_dir: &Path) -> Result<Vec<AgentConfigDb>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(
             "SELECT id, name, description, active_tools_json, mcp_refs_json, skill_refs_json, rule_refs_json, prompt_id, hooks_json, permissions_json, target_agents_json
@@ -236,8 +236,8 @@ pub fn list_agent_configs_db(ship_dir: &Path) -> Result<Vec<AgentConfigDb>> {
     Ok(modes)
 }
 
-pub fn upsert_agent_config_db(ship_dir: &Path, mode: &AgentConfigDb) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn upsert_agent_config_db(_ship_dir: &Path, mode: &AgentConfigDb) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
@@ -275,8 +275,8 @@ pub fn upsert_agent_config_db(ship_dir: &Path, mode: &AgentConfigDb) -> Result<(
     Ok(())
 }
 
-pub fn delete_agent_config_db(ship_dir: &Path, id: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete_agent_config_db(_ship_dir: &Path, id: &str) -> Result<()> {
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM agent_config WHERE id = ?")
             .bind(id)

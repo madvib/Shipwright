@@ -23,13 +23,13 @@ pub struct Note {
 const COLS: &str = "id, title, content, tags_json, branch, synced_at, created_at, updated_at";
 
 pub fn create_note(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     title: &str,
     content: &str,
     tags: Vec<String>,
     branch: Option<&str>,
 ) -> Result<Note> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     let tags_json = serde_json::to_string(&tags)?;
@@ -61,13 +61,13 @@ pub fn create_note(
 }
 
 pub fn update_note(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     id: &str,
     title: Option<&str>,
     content: Option<&str>,
     tags: Option<Vec<String>>,
 ) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     // Fetch current, apply partial update.
     let current =
@@ -91,8 +91,8 @@ pub fn update_note(
     Ok(())
 }
 
-pub fn get_note(ship_dir: &Path, id: &str) -> Result<Option<Note>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_note(_ship_dir: &Path, id: &str) -> Result<Option<Note>> {
+    let mut conn = open_db()?;
     get_note_impl(&mut conn, id)
 }
 
@@ -106,8 +106,8 @@ fn get_note_impl(conn: &mut sqlx::SqliteConnection, id: &str) -> Result<Option<N
     Ok(row.map(|r| row_to_note(&r)))
 }
 
-pub fn list_notes(ship_dir: &Path, branch: Option<&str>) -> Result<Vec<Note>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_notes(_ship_dir: &Path, branch: Option<&str>) -> Result<Vec<Note>> {
+    let mut conn = open_db()?;
     let rows = match branch {
         Some(b) => block_on(async {
             sqlx::query(&format!(
@@ -126,8 +126,8 @@ pub fn list_notes(ship_dir: &Path, branch: Option<&str>) -> Result<Vec<Note>> {
     Ok(rows.iter().map(row_to_note).collect())
 }
 
-pub fn delete_note(ship_dir: &Path, id: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete_note(_ship_dir: &Path, id: &str) -> Result<()> {
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM note WHERE id = ?")
             .bind(id)
@@ -138,8 +138,8 @@ pub fn delete_note(ship_dir: &Path, id: &str) -> Result<()> {
 }
 
 /// Mark a note as synced to cloud. Called by sync layer after successful push.
-pub fn mark_synced(ship_dir: &Path, id: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn mark_synced(_ship_dir: &Path, id: &str) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query("UPDATE note SET synced_at = ? WHERE id = ?")
@@ -174,7 +174,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 

@@ -53,8 +53,8 @@ const W_COLS: &str =
 const S_COLS: &str = "id, workspace_id, workspace_branch, status, preset_id, primary_provider,
      goal, summary, started_at, ended_at, created_at, updated_at";
 
-pub fn upsert_workspace(ship_dir: &Path, w: &Workspace) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn upsert_workspace(_ship_dir: &Path, w: &Workspace) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let providers = serde_json::to_string(&w.providers)?;
     let skills = serde_json::to_string(&w.skills)?;
@@ -101,8 +101,8 @@ pub fn upsert_workspace(ship_dir: &Path, w: &Workspace) -> Result<()> {
     Ok(())
 }
 
-pub fn get_workspace(ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_workspace(_ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!(
             "SELECT {W_COLS} FROM workspace WHERE id = ? OR branch = ?"
@@ -115,8 +115,8 @@ pub fn get_workspace(ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
     Ok(row.map(|r| row_to_workspace(&r)))
 }
 
-pub fn get_workspace_by_branch(ship_dir: &Path, branch: &str) -> Result<Option<Workspace>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_workspace_by_branch(_ship_dir: &Path, branch: &str) -> Result<Option<Workspace>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {W_COLS} FROM workspace WHERE branch = ?"))
             .bind(branch)
@@ -126,8 +126,8 @@ pub fn get_workspace_by_branch(ship_dir: &Path, branch: &str) -> Result<Option<W
     Ok(row.map(|r| row_to_workspace(&r)))
 }
 
-pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {W_COLS} FROM workspace ORDER BY COALESCE(created_at, resolved_at) DESC"
@@ -139,13 +139,13 @@ pub fn list_workspaces(ship_dir: &Path) -> Result<Vec<Workspace>> {
 }
 
 pub fn start_session(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     workspace_id: &str,
     branch: &str,
     preset_id: Option<&str>,
     goal: Option<&str>,
 ) -> Result<WorkspaceSession> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     block_on(async {
@@ -182,8 +182,8 @@ pub fn start_session(
     })
 }
 
-pub fn end_session(ship_dir: &Path, session_id: &str, summary: Option<&str>) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn end_session(_ship_dir: &Path, session_id: &str, summary: Option<&str>) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
@@ -201,8 +201,8 @@ pub fn end_session(ship_dir: &Path, session_id: &str, summary: Option<&str>) -> 
     Ok(())
 }
 
-pub fn get_active_session(ship_dir: &Path, workspace_id: &str) -> Result<Option<WorkspaceSession>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_active_session(_ship_dir: &Path, workspace_id: &str) -> Result<Option<WorkspaceSession>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!(
             "SELECT {S_COLS} FROM workspace_session
@@ -266,7 +266,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 

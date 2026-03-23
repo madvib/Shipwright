@@ -13,8 +13,8 @@ use crate::db::{block_on, open_db};
 
 /// Atomically claim `path` for `job_id`. Returns `true` if the claim was
 /// granted (this job is now the owner), `false` if another job already owns it.
-pub fn claim_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<bool> {
-    let mut conn = open_db(ship_dir)?;
+pub fn claim_file(_ship_dir: &Path, job_id: &str, path: &str) -> Result<bool> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let result = block_on(async {
         sqlx::query("INSERT OR IGNORE INTO job_file (path, job_id, claimed_at) VALUES (?, ?, ?)")
@@ -28,8 +28,8 @@ pub fn claim_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<bool> {
 }
 
 /// Return the job_id that currently owns `path`, or `None` if unclaimed.
-pub fn get_file_owner(ship_dir: &Path, path: &str) -> Result<Option<String>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_file_owner(_ship_dir: &Path, path: &str) -> Result<Option<String>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query("SELECT job_id FROM job_file WHERE path = ?")
             .bind(path)
@@ -41,8 +41,8 @@ pub fn get_file_owner(ship_dir: &Path, path: &str) -> Result<Option<String>> {
 
 /// Release all file claims held by `job_id`. Called automatically by
 /// `update_job` when the job reaches a terminal status.
-pub fn release_job_files(ship_dir: &Path, job_id: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn release_job_files(_ship_dir: &Path, job_id: &str) -> Result<()> {
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM job_file WHERE job_id = ?")
             .bind(job_id)
@@ -63,13 +63,13 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 
-    fn mkjob(ship_dir: &Path, kind: &str) -> String {
+    fn mkjob(_ship_dir: &Path, kind: &str) -> String {
         create_job(
-            ship_dir,
+            _ship_dir,
             kind,
             None,
             None,

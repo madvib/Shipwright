@@ -51,7 +51,7 @@ const J_COLS: &str = concat!(
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_job(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     branch: Option<&str>,
     payload: Option<serde_json::Value>,
@@ -62,7 +62,7 @@ pub fn create_job(
     touched_files: Vec<String>,
     file_scope: Vec<String>,
 ) -> Result<Job> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     let payload = payload.unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
@@ -104,9 +104,9 @@ pub fn create_job(
 /// Patch one or more mutable job fields atomically.
 /// Reads current state, merges the patch, writes back, and releases file
 /// claims when the job reaches a terminal status ("complete", "failed", "done").
-pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> {
+pub fn update_job(_ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> {
     let current =
-        get_job(ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+        get_job(_ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let new_status = patch
         .status
@@ -121,7 +121,7 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
     let new_cap = patch.capability_id.or(current.capability_id);
     let files_str = serde_json::to_string(&new_files)?;
     let scope_str = serde_json::to_string(&new_scope)?;
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
             "UPDATE job SET status=?, assigned_to=?, priority=?, blocked_by=?, \
@@ -140,22 +140,22 @@ pub fn update_job(ship_dir: &Path, job_id: &str, patch: JobPatch) -> Result<()> 
         .await
     })?;
     if matches!(new_status.as_str(), "complete" | "failed" | "done") {
-        file_ownership::release_job_files(ship_dir, job_id)?;
+        file_ownership::release_job_files(_ship_dir, job_id)?;
     }
     Ok(())
 }
 
 /// Append a single file path to the job's `touched_files` list (deduplicates).
-pub fn append_touched_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<()> {
+pub fn append_touched_file(_ship_dir: &Path, job_id: &str, path: &str) -> Result<()> {
     let current =
-        get_job(ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+        get_job(_ship_dir, job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let mut files = current.touched_files;
     let path_owned = path.to_string();
     if !files.contains(&path_owned) {
         files.push(path_owned);
     }
     update_job(
-        ship_dir,
+        _ship_dir,
         job_id,
         JobPatch {
             touched_files: Some(files),
@@ -167,8 +167,8 @@ pub fn append_touched_file(ship_dir: &Path, job_id: &str, path: &str) -> Result<
 /// Atomically claim a pending job. Returns false if already claimed — prevents
 /// double-claiming when multiple commanders share the same queue (e.g. Claude + Codex,
 /// or two machines syncing the same platform.db).
-pub fn claim_job(ship_dir: &Path, job_id: &str, claimed_by: &str) -> Result<bool> {
-    let mut conn = open_db(ship_dir)?;
+pub fn claim_job(_ship_dir: &Path, job_id: &str, claimed_by: &str) -> Result<bool> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let rows = block_on(async {
         sqlx::query(
@@ -184,8 +184,8 @@ pub fn claim_job(ship_dir: &Path, job_id: &str, claimed_by: &str) -> Result<bool
     Ok(rows.rows_affected() == 1)
 }
 
-pub fn update_job_status(ship_dir: &Path, job_id: &str, status: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn update_job_status(_ship_dir: &Path, job_id: &str, status: &str) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query("UPDATE job SET status = ?, updated_at = ? WHERE id = ?")
@@ -198,8 +198,8 @@ pub fn update_job_status(ship_dir: &Path, job_id: &str, status: &str) -> Result<
     Ok(())
 }
 
-pub fn get_job(ship_dir: &Path, job_id: &str) -> Result<Option<Job>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_job(_ship_dir: &Path, job_id: &str) -> Result<Option<Job>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {J_COLS} FROM job WHERE id = ?"))
             .bind(job_id)
@@ -209,8 +209,8 @@ pub fn get_job(ship_dir: &Path, job_id: &str) -> Result<Option<Job>> {
     Ok(row.map(|r| row_to_job(&r)))
 }
 
-pub fn list_jobs(ship_dir: &Path, branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_jobs(_ship_dir: &Path, branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>> {
+    let mut conn = open_db()?;
     let rows = match (branch, status) {
         (Some(b), Some(s)) => block_on(async {
             sqlx::query(&format!(
@@ -285,7 +285,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 

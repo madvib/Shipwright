@@ -26,13 +26,13 @@ const COLS: &str =
     "id, title, status, date, context, decision, tags_json, supersedes_id, created_at, updated_at";
 
 pub fn create_adr(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     title: &str,
     context: &str,
     decision: &str,
     status: &str,
 ) -> Result<AdrRecord> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     block_on(async {
@@ -95,8 +95,8 @@ pub fn update_adr(
     Ok(())
 }
 
-pub fn get_adr(ship_dir: &Path, id: &str) -> Result<Option<AdrRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_adr(_ship_dir: &Path, id: &str) -> Result<Option<AdrRecord>> {
+    let mut conn = open_db()?;
     get_adr_impl(&mut conn, id)
 }
 
@@ -110,8 +110,8 @@ fn get_adr_impl(conn: &mut sqlx::SqliteConnection, id: &str) -> Result<Option<Ad
     Ok(row.map(|r| row_to_adr(&r)))
 }
 
-pub fn list_adrs(ship_dir: &Path) -> Result<Vec<AdrRecord>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_adrs(_ship_dir: &Path) -> Result<Vec<AdrRecord>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
             "SELECT {COLS} FROM adr ORDER BY date DESC, created_at DESC"
@@ -122,8 +122,8 @@ pub fn list_adrs(ship_dir: &Path) -> Result<Vec<AdrRecord>> {
     Ok(rows.iter().map(row_to_adr).collect())
 }
 
-pub fn delete_adr(ship_dir: &Path, id: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete_adr(_ship_dir: &Path, id: &str) -> Result<()> {
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query("DELETE FROM adr WHERE id = ?")
             .bind(id)
@@ -158,7 +158,7 @@ mod tests {
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
         let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        ensure_db().unwrap();
         (tmp, ship_dir)
     }
 
@@ -226,7 +226,7 @@ mod tests {
             "proposed",
         )
         .unwrap();
-        let mut conn = open_db(&ship_dir).unwrap();
+        let mut conn = open_db().unwrap();
         update_adr(
             &mut conn,
             &adr.id,

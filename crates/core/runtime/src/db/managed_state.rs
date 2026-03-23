@@ -9,10 +9,10 @@ use super::{block_on, open_db};
 
 /// Returns `(server_ids, last_mode)` for the given provider, or empty defaults.
 pub fn get_managed_state_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     provider: &str,
 ) -> Result<(Vec<String>, Option<String>)> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query("SELECT server_ids_json, last_mode FROM managed_mcp_state WHERE provider = ?")
             .bind(provider)
@@ -31,12 +31,12 @@ pub fn get_managed_state_db(
 
 /// Persist the managed server ids and last mode for the given provider.
 pub fn set_managed_state_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     provider: &str,
     ids: &[String],
     last_mode: Option<&str>,
 ) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let ids_json = serde_json::to_string(ids)
         .with_context(|| format!("Failed to serialize server ids for provider {}", provider))?;
     let now = Utc::now().to_rfc3339();

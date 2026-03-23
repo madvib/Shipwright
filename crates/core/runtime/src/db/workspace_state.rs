@@ -11,8 +11,8 @@ use super::types::{WorkspaceDbListRow, WorkspaceDbRow, WorkspaceUpsert};
 use super::{block_on, open_db};
 
 /// Retrieve the workspace record for the given branch, or None if none exists.
-pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<WorkspaceDbRow>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_workspace_db(_ship_dir: &Path, branch: &str) -> Result<Option<WorkspaceDbRow>> {
+    let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query(
             "SELECT COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, COALESCE(resolved_at, ''), is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
@@ -69,8 +69,8 @@ pub fn get_workspace_db(ship_dir: &Path, branch: &str) -> Result<Option<Workspac
     }
 }
 
-pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_workspaces_db(_ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(
             "SELECT branch, COALESCE(id, branch), workspace_type, status, environment_id, feature_id, target_id, active_agent, providers_json, mcp_servers_json, skills_json, COALESCE(resolved_at, ''), is_worktree, worktree_path, last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error
@@ -138,8 +138,8 @@ pub fn list_workspaces_db(ship_dir: &Path) -> Result<Vec<WorkspaceDbListRow>> {
 }
 
 /// Upsert the workspace record for the given branch.
-pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn upsert_workspace_db(_ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Result<()> {
+    let mut conn = open_db()?;
     let providers_json = serde_json::to_string(record.providers)
         .with_context(|| "Failed to serialize workspace providers")?;
     let mcp_servers_json = serde_json::to_string(record.mcp_servers)
@@ -196,8 +196,8 @@ pub fn upsert_workspace_db(ship_dir: &Path, record: WorkspaceUpsert<'_>) -> Resu
 }
 
 /// Delete workspace state for a branch, including any session history.
-pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete_workspace_db(_ship_dir: &Path, branch: &str) -> Result<bool> {
+    let mut conn = open_db()?;
     let workspace_id = block_on(async {
         sqlx::query_scalar::<_, String>(
             "SELECT COALESCE(id, branch) FROM workspace WHERE branch = ?",
@@ -231,11 +231,11 @@ pub fn delete_workspace_db(ship_dir: &Path, branch: &str) -> Result<bool> {
 
 /// Mark any currently active workspace as idle except `active_branch`.
 pub fn demote_other_active_workspaces_db(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     active_branch: &str,
     resolved_at: &str,
 ) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
             "UPDATE workspace

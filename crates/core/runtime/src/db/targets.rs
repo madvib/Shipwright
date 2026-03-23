@@ -128,14 +128,14 @@ fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
 // ─── Target operations ────────────────────────────────────────────────────────
 
 pub fn create_target(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     kind: &str,
     title: &str,
     description: Option<&str>,
     goal: Option<&str>,
     status: Option<&str>,
 ) -> Result<Target> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     let status = status.unwrap_or("active");
@@ -165,8 +165,8 @@ pub fn create_target(
     })
 }
 
-pub fn get_target(ship_dir: &Path, id: &str) -> Result<Option<Target>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_target(_ship_dir: &Path, id: &str) -> Result<Option<Target>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {T_COLS} FROM target WHERE id = ?"))
             .bind(id)
@@ -176,8 +176,8 @@ pub fn get_target(ship_dir: &Path, id: &str) -> Result<Option<Target>> {
     Ok(row.as_ref().map(row_to_target))
 }
 
-pub fn list_targets(ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn list_targets(_ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> {
+    let mut conn = open_db()?;
     let rows = block_on(async {
         if let Some(k) = kind {
             sqlx::query(&format!(
@@ -197,12 +197,12 @@ pub fn list_targets(ship_dir: &Path, kind: Option<&str>) -> Result<Vec<Target>> 
     Ok(rows.iter().map(row_to_target).collect())
 }
 
-pub fn update_target(ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()> {
+pub fn update_target(_ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()> {
     let current =
-        get_target(ship_dir, id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
+        get_target(_ship_dir, id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
             "UPDATE target SET title=?, description=?, goal=?, status=?, phase=?, \
@@ -227,12 +227,12 @@ pub fn update_target(ship_dir: &Path, id: &str, patch: TargetPatch) -> Result<()
 // ─── Capability operations ────────────────────────────────────────────────────
 
 pub fn create_capability(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     target_id: &str,
     title: &str,
     milestone_id: Option<&str>,
 ) -> Result<Capability> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
     block_on(async {
@@ -267,8 +267,8 @@ pub fn create_capability(
     })
 }
 
-pub fn get_capability(ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
-    let mut conn = open_db(ship_dir)?;
+pub fn get_capability(_ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
+    let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(&format!("SELECT {C_COLS} FROM capability WHERE id = ?"))
             .bind(id)
@@ -278,8 +278,8 @@ pub fn get_capability(ship_dir: &Path, id: &str) -> Result<Option<Capability>> {
     Ok(row.as_ref().map(row_to_capability))
 }
 
-pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> Result<()> {
-    let current = get_capability(ship_dir, id)?
+pub fn update_capability(_ship_dir: &Path, id: &str, patch: CapabilityPatch) -> Result<()> {
+    let current = get_capability(_ship_dir, id)?
         .ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let ac = serde_json::to_string(
@@ -288,7 +288,7 @@ pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> R
             .unwrap_or(current.acceptance_criteria),
     )?;
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
             "UPDATE capability SET title=?, status=?, phase=?, acceptance_criteria=?, \
@@ -309,8 +309,8 @@ pub fn update_capability(ship_dir: &Path, id: &str, patch: CapabilityPatch) -> R
     Ok(())
 }
 
-pub fn delete_capability(ship_dir: &Path, id: &str) -> Result<bool> {
-    let mut conn = open_db(ship_dir)?;
+pub fn delete_capability(_ship_dir: &Path, id: &str) -> Result<bool> {
+    let mut conn = open_db()?;
     let rows_affected = block_on(async {
         sqlx::query("DELETE FROM capability WHERE id = ?")
             .bind(id)
@@ -321,8 +321,8 @@ pub fn delete_capability(ship_dir: &Path, id: &str) -> Result<bool> {
     Ok(rows_affected > 0)
 }
 
-pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Result<()> {
-    let mut conn = open_db(ship_dir)?;
+pub fn mark_capability_actual(_ship_dir: &Path, id: &str, evidence: &str) -> Result<()> {
+    let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
         sqlx::query(
@@ -338,12 +338,12 @@ pub fn mark_capability_actual(ship_dir: &Path, id: &str, evidence: &str) -> Resu
 }
 
 pub fn list_capabilities(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     target_id: Option<&str>,
     status: Option<&str>,
     phase: Option<&str>,
 ) -> Result<Vec<Capability>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let mut qb: QueryBuilder<sqlx::Sqlite> =
         QueryBuilder::new(format!("SELECT {C_COLS} FROM capability"));
     let mut sep = " WHERE ";
@@ -365,11 +365,11 @@ pub fn list_capabilities(
 
 /// List capabilities linked to a milestone. Used by get_target on milestone targets.
 pub fn list_capabilities_for_milestone(
-    ship_dir: &Path,
+    _ship_dir: &Path,
     milestone_id: &str,
     status: Option<&str>,
 ) -> Result<Vec<Capability>> {
-    let mut conn = open_db(ship_dir)?;
+    let mut conn = open_db()?;
     let rows = block_on(async {
         if let Some(s) = status {
             sqlx::query(&format!(

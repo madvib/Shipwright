@@ -36,8 +36,8 @@ pub fn db_path() -> Result<PathBuf> {
 }
 
 /// Open a connection, ensuring schema exists first.
-pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
-    ensure_db(ship_dir)?;
+pub fn open_db() -> Result<SqliteConnection> {
+    ensure_db()?;
     let path = db_path()?;
     connect(&path)
 }
@@ -46,7 +46,7 @@ pub fn open_db(ship_dir: &Path) -> Result<SqliteConnection> {
 ///
 /// Idempotent — sqlx tracks applied migrations in `_sqlx_migrations`.
 /// Connection-level PRAGMAs are set on every call.
-pub fn ensure_db(_ship_dir: &Path) -> Result<()> {
+pub fn ensure_db() -> Result<()> {
     let path = db_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -131,23 +131,23 @@ mod tests {
     #[test]
     fn test_ensure_db_creates_fresh() {
         let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        let _ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db().unwrap();
     }
 
     #[test]
     fn test_ensure_db_idempotent() {
         let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        ensure_db(&ship_dir).unwrap();
-        ensure_db(&ship_dir).unwrap();
+        let _ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db().unwrap();
+        ensure_db().unwrap();
     }
 
     #[test]
     fn test_open_db_returns_connection() {
         let tmp = tempdir().unwrap();
-        let ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
-        let conn = open_db(&ship_dir);
+        let _ship_dir = init_project(tmp.path().to_path_buf()).unwrap();
+        let conn = open_db();
         assert!(conn.is_ok());
     }
 }
