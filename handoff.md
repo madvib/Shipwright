@@ -1,62 +1,118 @@
-# Handoff: Live MCP Sync — Studio <-> CLI
+# Session Handoff — Studio v0.1.0 Phase 1 + Architecture Plan
 
-## What Changed
+## Branch: `v0.1.0`
 
-Built full 2-way sync between Studio (browser SPA) and the local CLI via MCP over localhost HTTP. Zero cloud infrastructure. Browser connects directly to `ship mcp serve --http` on the user's machine.
+## What was done this session
 
-## Key Decisions
+### Phase 1: Delete Lies (COMPLETE)
+Removed all hardcoded/fake/demo data from Studio UI. 341/341 tests passing, TypeScript clean.
 
-- **No cloud storage** — no D1, KV, Durable Objects, or URL encoding. Direct localhost MCP connection.
-- **SSE fix** — `tower-http::CorsLayer` broke chunked SSE streaming. Replaced with manual CORS middleware. Disabled `sse_retry` (priming event) and `sse_keep_alive` so SSE body closes cleanly after response — browser fetch can't reliably read multi-chunk SSE streams that never close.
-- **Default port 51741** — high ephemeral range, not IANA registered.
-- **Shared context** — `LocalMcpProvider` wraps the Studio layout so both PublishPanel and agent list pages can access MCP connection state.
+**Deleted files:**
+- `features/agents/sections/SettingsSection.tsx` (dead component)
+- `features/agents/sections/McpToolPanel.tsx` (depended on fake registry)
+- `features/registry/mock-data.ts` (12 fake packages)
 
-## New Files
+**Cleaned files:**
+- `SectionShell.tsx` — removed OrangeDot export and showOrangeDot prop
+- `SettingsLayout.tsx` — removed OrangeDot export
+- `types.ts` — removed MCP_TOOL_REGISTRY, GITHUB_TOOLS, McpToolConfig
+- `SkillsPreviewPanel.tsx` — replaced MOCK_AGENTS with real useAgentStore queries
+- `SkillsFileExplorer.tsx` — replaced INSTALLED_SKILLS with empty state
+- `registry-cards.ts` — removed MOCK_CARDS, REGISTRY_CARDS now empty array
+- `RegistryCardGrid.tsx` — replaced OrangeDots with disabled "Coming soon" buttons
+- `ProviderSettingsSection.tsx` — rebuilt as JSON editor per provider
+- `McpSection.tsx` — rebuilt without fake tool list
+- `SettingsForm.tsx` — removed hardcoded CLAUDE_MODELS, added dontAsk to DEFAULT_MODES
+- All provider lists updated to 5 providers: claude, gemini, codex, cursor, opencode
+- `ProviderLogo.tsx` + `ModeHeader.tsx` — added opencode support
 
-| File | Purpose |
-|------|---------|
-| `apps/web/src/lib/mcp-client.ts` | Browser MCP client — pure fetch, JSON-RPC 2.0, SSE parsing |
-| `apps/web/src/lib/__tests__/mcp-client.test.ts` | 9 tests, all passing |
-| `apps/web/src/features/studio/useLocalMcp.ts` | React hook — connection lifecycle, config persistence, localAgentIds tracking |
-| `apps/web/src/features/studio/McpConnectionSection.tsx` | UI — connect/disconnect, push to CLI, import from CLI |
-| `apps/web/src/features/studio/LocalMcpContext.tsx` | React context provider for shared MCP state |
-| `apps/mcp/src/tools/studio.rs` | MCP tools: `pull_agents`, `list_local_agents` |
-| `apps/mcp/src/tools/studio_push.rs` | MCP tool: `push_bundle` with security scanning |
+**Test fixes:** schema-validation, schema-hints, mcp-client (8 expectations updated)
 
-## Modified Files
+### State Management Audit (COMPLETE)
+Every store is localStorage-only. Server sync is stubbed (agent-api.ts no-ops, useLibrarySync returns 'idle'). Provider settings and MCP tool permissions are ephemeral component state — data loss bugs.
 
-| File | Change |
-|------|--------|
-| `apps/mcp/src/http.rs` | Manual CORS middleware replacing CorsLayer, disabled sse_retry/sse_keep_alive |
-| `apps/mcp/Cargo.toml` | Removed `tower-http` dependency |
-| `apps/mcp/src/server/mod.rs` | Wired `push_bundle`, `pull_agents`, `list_local_agents` tools |
-| `apps/mcp/src/server/tool_gate.rs` | Added new tools to PLATFORM_TOOLS |
-| `apps/mcp/src/tools/mod.rs` | Added `studio`, `studio_push` modules |
-| `apps/mcp/src/requests/project.rs` | Added `PushBundleRequest` |
-| `apps/web/src/features/studio/PublishPanel.tsx` | Uses LocalMcpContext, renders McpConnectionSection |
-| `apps/web/src/routes/studio.tsx` | Wraps layout with `LocalMcpProvider` |
-| `apps/web/src/routes/studio/agents/index.tsx` | Green "Local" badge on agents synced to CLI |
+### Product Direction Decided
+- v0.1.0: CLI-first, KPI = CLI installs. MCP bridge = primary sync.
+- Better Auth + GitHub app: keep code, don't surface in UI.
+- localStorage = "draft state", push to CLI = real persistence.
+- Two local layers: `~/.ship` (global library cache, single DB) and `<project>/.ship` (project declarations + exports).
+- Studio surfaces library vs project as a **filter** in agents/skills pages.
+- v0.1.X: add auth + GitHub publishing.
+- v0.2.0: paid tier, agent cloud, workflows.
 
-## MCP Tools Added
+---
 
-| Tool | Direction | What |
-|------|-----------|------|
-| `pull_agents` | CLI -> Studio | Reads all `.ship/agents/*.jsonc`, resolves skills from SKILL.md, rules from rules/*.md, returns ResolvedAgentProfile JSON |
-| `push_bundle` | Studio -> CLI | Receives TransferBundle JSON, security-scans it, writes to `.ship/agents/` and `.ship/skills/` |
-| `list_local_agents` | Status | Returns agent IDs from `.ship/agents/` for sync badges |
+## BLOCKER: HTTPS → localhost bridge test
 
-## What Works
+Must validate `fetch('http://localhost:51741/mcp')` works from `https://staging.getship.dev`. Browsers special-case localhost as potentially trustworthy (Chrome, Firefox) but needs live testing before further investment.
 
-- Connect from Studio to local `ship mcp serve --http --port 51741`
-- Push active agent to CLI's `.ship/`
-- Import all local agents (with resolved skills, rules, MCP refs) into Studio
-- Green "Local" badge on agent cards when agent exists in `.ship/`
-- Auto-refresh badges after push/pull
+### Deploy to staging
 
-## What's Next
+```bash
+cd apps/web
+pnpm build
+pnpm wrangler d1 migrations apply ship-auth-staging --remote --env staging
+pnpm wrangler d1 migrations apply ship-registry-staging --remote --env staging
+pnpm wrangler deploy --env staging
+```
 
-1. **Skills on push** — `McpConnectionSection` sends `skills: {}` on push. Need to populate with actual skill content from `activeAgent.skills` so push includes inline skills.
-2. **`ship sync` CLI alias** — shorthand for `ship mcp serve --http --port 51741`.
-3. **Auto-open project** — MCP server should auto-detect the project dir on connect instead of requiring `open_project` call.
-4. **Diff-aware sync** — show which agents differ between Studio and CLI before bulk import.
-5. **Permissions roundtrip** — `pull_agents` returns permissions JSON but `push_bundle` doesn't write them yet.
+Set secrets (one-time):
+```bash
+pnpm wrangler secret put BETTER_AUTH_SECRET --env staging
+pnpm wrangler secret put BETTER_AUTH_URL --env staging   # https://staging.getship.dev
+pnpm wrangler secret put GITHUB_CLIENT_ID --env staging
+pnpm wrangler secret put GITHUB_CLIENT_SECRET --env staging
+```
+
+DNS: ensure `staging.getship.dev` CNAME exists in Cloudflare zone.
+
+**TODO:** Add `"deploy:staging": "pnpm build && wrangler deploy --env staging"` to `apps/web/package.json`.
+
+---
+
+## Execution Plan (after bridge test passes)
+
+Full plan: `.ship-session/studio-v010-execution-plan.md`
+
+| Phase | Work | Depends on |
+|-------|------|------------|
+| 1 | Add TransferBundle + pull response types to compiler crate with `#[derive(specta::Type)]` | — |
+| 2 | Regen specta types + rebuild WASM | Phase 1 |
+| 3 | Create useMcpQuery/useMcpMutation hooks (TanStack Query wrapping MCP calls) | Phase 2 |
+| 4 | Fix ephemeral state: provider settings + tool permissions persisted on agent profile | — |
+| 5 | Strip auth/GitHub from Studio UI surfaces | — |
+| 6 | Replace SyncStatus with honest local/CLI status | — |
+| 7 | Library/project filter in agents + skills pages | Phase 3 |
+| 8 | Agent editor schema alignment (hooks section, permissions default_mode, SECTION_DEFS reorder) | — |
+
+Phases 4-6 can run parallel with 1-3.
+
+### MCP bridge type requirement
+TransferBundle, AgentBundle, SkillBundle, PullResponse, ListAgentsResponse must be specta-generated from the compiler crate → flow to @ship/ui. Currently hand-written in `apps/mcp/src/tools/studio_push.rs` with no TypeScript equivalents. Web app constructs bundles inline in CliStatusPopover.tsx with zero type safety.
+
+### TanStack Query requirement
+MCP calls currently use raw `callTool()` → `JSON.parse(raw) as SomeType`. Must wrap with TanStack Query for loading states, caching, invalidation, retry. QueryClient is already set up (`integrations/tanstack-query/root-provider.tsx`) but only used for Registry features.
+
+---
+
+## Key files
+
+| File | What |
+|------|------|
+| `.ship-session/studio-v010-execution-plan.md` | Full execution plan |
+| `apps/web/src/features/agents/useAgentStore.ts` | Agent persistence (localStorage, server sync stubbed) |
+| `apps/web/src/features/compiler/useLibrary.ts` | Library persistence (localStorage only) |
+| `apps/web/src/features/compiler/useLibrarySync.ts` | Dead stub, returns 'idle' |
+| `apps/web/src/features/agents/agent-api.ts` | Server API — all no-ops |
+| `apps/web/src/features/studio/useLocalMcp.ts` | MCP connection hook |
+| `apps/web/src/lib/mcp-client.ts` | Low-level MCP JSON-RPC client |
+| `apps/web/src/features/studio/CliStatusPopover.tsx` | Push/pull UI + untyped bundle construction |
+| `apps/mcp/src/tools/studio_push.rs` | Hand-written TransferBundle (needs specta migration) |
+| `apps/mcp/src/tools/studio.rs` | pull_agents, list_local_agents |
+| `apps/web/wrangler.jsonc` | Cloudflare Workers config with staging env |
+
+## Uncommitted changes
+
+All Phase 1 changes on branch `v0.1.0`. Ready to commit — 341 tests pass, TypeScript clean.
+
+Changed: 17 files. Deleted: 3 files. New: 2 plan files in .ship-session/.
