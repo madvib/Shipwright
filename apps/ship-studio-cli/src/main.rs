@@ -105,6 +105,11 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
             Commands::Events { action } => dispatch_events(action),
             Commands::View => view::run_view(),
+            Commands::Help => {
+                use clap::CommandFactory;
+                Cli::command().print_help()?;
+                Ok(())
+            }
         },
     }
 }
