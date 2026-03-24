@@ -7,15 +7,13 @@ import { useScrollspy } from '#/features/agents/useScrollspy'
 import { SkillsSection } from '#/features/agents/sections/SkillsSection'
 import { McpSection } from '#/features/agents/sections/McpSection'
 import { PermissionsSection } from '#/features/agents/sections/PermissionsSection'
-import { ProviderSettingsSection } from '#/features/agents/sections/ProviderSettingsSection'
+import { ProvidersSection } from '#/features/agents/sections/ProvidersSection'
 import { RulesSection } from '#/features/agents/sections/RulesSection'
-import { HooksSection } from '#/features/agents/sections/HooksSection'
 import { AddSkillDialog } from '#/features/agents/dialogs/AddSkillDialog'
 import { AddMcpDialog } from '#/features/agents/dialogs/AddMcpDialog'
 import { EditAgentDialog } from '#/features/agents/dialogs/EditAgentDialog'
 import { PermissionsDialog } from '#/features/agents/dialogs/PermissionsDialog'
 import { RuleEditorDialog } from '#/features/agents/dialogs/RuleEditorDialog'
-import { HookEditorDialog } from '#/features/agents/dialogs/HookEditorDialog'
 import type { ResolvedAgentProfile, ToolPermission } from '#/features/agents/types'
 import type { Skill, Rule, HookConfig, ProfilePermissions } from '@ship/ui'
 
@@ -109,23 +107,28 @@ function AgentDetailPage() {
     [update, profile.rules],
   )
 
-  // ── Hook mutators ─────────────────────────────────────────────────────
-  const addHook = useCallback(
-    (hook: HookConfig) => update({ hooks: [...profile.hooks, hook] }),
-    [update, profile.hooks],
-  )
-  const updateHook = useCallback(
-    (index: number, hook: HookConfig) =>
-      update({ hooks: profile.hooks.map((h, i) => (i === index ? hook : h)) }),
-    [update, profile.hooks],
-  )
-  const removeHook = useCallback(
-    (index: number) => update({ hooks: profile.hooks.filter((_, i) => i !== index) }),
-    [update, profile.hooks],
-  )
-
-  // ── Provider settings ─────────────────────────────────────────────────
+  // ── Provider mutators ─────────────────────────────────────────────────
   const providerSettings = profile.providerSettings ?? {}
+  const setModel = useCallback(
+    (model: string | null) => update({ model }),
+    [update],
+  )
+  const setEnv = useCallback(
+    (env: Record<string, string>) => update({ env }),
+    [update],
+  )
+  const setAvailableModels = useCallback(
+    (availableModels: string[]) => update({ availableModels }),
+    [update],
+  )
+  const setAgentLimits = useCallback(
+    (agentLimits: Record<string, unknown>) => update({ agentLimits: agentLimits as { max_turns?: number; max_cost_per_session?: number } }),
+    [update],
+  )
+  const setHooks = useCallback(
+    (hooks: HookConfig[]) => update({ hooks }),
+    [update],
+  )
   const setProviderSettings = useCallback(
     (settings: Record<string, Record<string, unknown>>) => update({ providerSettings: settings }),
     [update],
@@ -138,15 +141,13 @@ function AgentDetailPage() {
   const [permsOpen, setPermsOpen] = useState(false)
   const [ruleOpen, setRuleOpen] = useState(false)
   const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: Rule } | null>(null)
-  const [hookOpen, setHookOpen] = useState(false)
-  const [hookEdit, setHookEdit] = useState<{ index: number; hook: HookConfig } | null>(null)
 
   const counts = useMemo(() => ({
     skills: profile.skills.length,
     mcp: profile.mcpServers.length,
     rules: profile.rules.length,
-    hooks: profile.hooks.length,
-  }), [profile.skills.length, profile.mcpServers.length, profile.rules.length, profile.hooks.length])
+    providers: profile.profile.providers?.length ?? 0,
+  }), [profile.skills.length, profile.mcpServers.length, profile.rules.length, profile.profile.providers?.length])
 
   return (
     <>
@@ -167,11 +168,22 @@ function AgentDetailPage() {
             <div id="section-rules">
               <RulesSection rules={profile.rules} onAdd={() => { setRuleEdit(null); setRuleOpen(true) }} onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }} onRemove={removeRule} />
             </div>
-            <div id="section-hooks">
-              <HooksSection hooks={profile.hooks} onAdd={() => { setHookEdit(null); setHookOpen(true) }} onEdit={(i) => { setHookEdit({ index: i, hook: profile.hooks[i] }); setHookOpen(true) }} onRemove={removeHook} />
-            </div>
             <div id="section-providers">
-              <ProviderSettingsSection providers={['claude', 'gemini', 'codex', 'cursor', 'opencode']} providerSettings={providerSettings} onChange={setProviderSettings} />
+              <ProvidersSection
+                providers={profile.profile.providers ?? []}
+                model={profile.model}
+                env={profile.env}
+                availableModels={profile.availableModels}
+                agentLimits={profile.agentLimits}
+                hooks={profile.hooks}
+                providerSettings={providerSettings}
+                onChangeModel={setModel}
+                onChangeEnv={setEnv}
+                onChangeAvailableModels={setAvailableModels}
+                onChangeAgentLimits={setAgentLimits}
+                onChangeHooks={setHooks}
+                onChangeProviderSettings={setProviderSettings}
+              />
             </div>
             <div className="h-24" />
           </div>
@@ -183,7 +195,6 @@ function AgentDetailPage() {
       <EditAgentDialog open={editOpen} onOpenChange={setEditOpen} profile={profile} onSave={(patch) => update(patch)} />
       <PermissionsDialog open={permsOpen} onOpenChange={setPermsOpen} permissions={profile.permissions ?? {}} onSave={updatePermissions} />
       <RuleEditorDialog open={ruleOpen} onOpenChange={setRuleOpen} rule={ruleEdit?.rule ?? null} onSave={(rule) => { if (ruleEdit) updateRule(ruleEdit.index, rule); else addRule(rule) }} onDelete={ruleEdit ? () => removeRule(ruleEdit.index) : undefined} />
-      <HookEditorDialog open={hookOpen} onOpenChange={setHookOpen} hook={hookEdit?.hook ?? null} onSave={(hook) => { if (hookEdit) updateHook(hookEdit.index, hook); else addHook(hook) }} onDelete={hookEdit ? () => removeHook(hookEdit.index) : undefined} />
     </>
   )
 }
