@@ -6,7 +6,7 @@ export type AgentLayerConfig = { skills?: string[]; prompts?: string[]; context?
 export type AgentLimits = { max_cost_per_session?: number | null; max_turns?: number | null; require_confirmation?: string[] }
 
 /**
- * An agent profile parsed from `.ship/agents/profiles/<id>.toml`.
+ * An agent parsed from `.ship/agents/<id>.toml`.
  * 
  * Profiles define specialist agents that the compiler emits as
  * provider-native subagent definitions (`.claude/agents/`, `.gemini/agents/`,
@@ -139,7 +139,12 @@ agent_files: Partial<{ [key in string]: string }>;
  * Cursor-only: `.cursor/environment.json` content.
  * Only populated when `cursor_environment` is set in the resolved config.
  */
-cursor_environment_json: JsonValue | null }
+cursor_environment_json: JsonValue | null; 
+/**
+ * OpenCode-only: full `opencode.json` content (model + MCP + extras).
+ * Only populated for the `opencode` provider.
+ */
+opencode_config_patch: JsonValue | null }
 
 export type FsPermissions = { allow?: string[]; deny?: string[] }
 
@@ -266,33 +271,33 @@ export type ProjectConfig = { version?: string; id?: string; name: string | null
  * Resolve the effective agent config from pre-loaded project data.
  * 
  * Resolution order (highest wins):
- * 1. Project defaults (`ship.toml` types + `agents/` content)
+ * 1. Project defaults (manifest types + `agents/` content)
  * 2. Active mode filter (restricts servers/skills/rules)
  * 3. Feature overrides (model, providers, additional server/skill filter)
  * 
  * A self-contained library of agent config assets loaded from the `agents/`
  * directory. This is the primary input for the compiler in the new config model:
- * ship.toml holds identity only; the library holds everything the compiler needs.
+ * The manifest holds identity only; the library holds everything the compiler needs.
  */
 export type ProjectLibrary = { 
 /**
- * Mode definitions from `agents/modes/*.toml`.
+ * Agent definitions from `agents/*.jsonc`.
  */
 modes?: ModeConfig[]; 
 /**
- * Active mode for this resolve (e.g. workspace override).
+ * Active agent for this resolve (e.g. workspace override).
  */
 active_agent?: string | null; 
 /**
- * MCP server definitions from `agents/mcp.toml`.
+ * MCP server definitions from `mcp.jsonc`.
  */
 mcp_servers?: McpServerConfig[]; 
 /**
- * Skills from `agents/skills/`.
+ * Skills from `skills/`.
  */
 skills?: Skill[]; 
 /**
- * Rules from `agents/rules/` or `agents/rules.md`.
+ * Rules from `rules/`.
  */
 rules?: Rule[]; 
 /**
@@ -308,12 +313,17 @@ hooks?: HookConfig[];
  */
 plugins?: PluginsManifest; 
 /**
+ * Project-level provider defaults from `project.provider_defaults` in `ship.jsonc`.
+ * Merged as base under agent-level `*_settings_extra` during resolution.
+ */
+provider_defaults: Partial<{ [key in string]: JsonValue }>; 
+/**
  * Pass-through from `[provider_settings.claude]` in the active preset.
  * Merged verbatim into `.claude/settings.json` on compile.
  */
 claude_settings_extra?: JsonValue | null; 
 /**
- * Agent profiles from `.ship/agents/profiles/*.toml`.
+ * Agent profiles from `.ship/agents/*.toml`.
  */
 agent_profiles: AgentProfile[]; 
 /**
@@ -335,7 +345,7 @@ codex_sandbox?: string | null;
 /**
  * Shared model override used by Gemini + Codex when no feature override present.
  */
-model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_session_turns?: number | null; gemini_disable_yolo_mode?: boolean | null; gemini_disable_always_allow?: boolean | null; gemini_tools_sandbox?: string | null; gemini_settings_extra?: JsonValue | null; codex_approval_policy?: string | null; codex_reasoning_effort?: string | null; codex_max_threads?: number | null; codex_max_depth?: number | null; codex_job_max_runtime_seconds?: number | null; codex_shell_env_policy?: string | null; codex_notify?: JsonValue | null; codex_settings_extra?: JsonValue | null; cursor_environment?: JsonValue | null; cursor_settings_extra?: JsonValue | null; claude_theme?: string | null; claude_auto_updates?: boolean | null; claude_include_co_authored_by?: boolean | null }
+model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_session_turns?: number | null; gemini_disable_yolo_mode?: boolean | null; gemini_disable_always_allow?: boolean | null; gemini_tools_sandbox?: string | null; gemini_settings_extra?: JsonValue | null; codex_approval_policy?: string | null; codex_reasoning_effort?: string | null; codex_max_threads?: number | null; codex_max_depth?: number | null; codex_job_max_runtime_seconds?: number | null; codex_shell_env_policy?: string | null; codex_notify?: JsonValue | null; codex_settings_extra?: JsonValue | null; opencode_settings_extra?: JsonValue | null; cursor_environment?: JsonValue | null; cursor_settings_extra?: JsonValue | null; claude_theme?: string | null; claude_auto_updates?: boolean | null; claude_include_co_authored_by?: boolean | null }
 
 /**
  * A rule from `agents/rules/*.md`. Always active — no mode/feature filtering.

@@ -12,6 +12,7 @@ const EMPTY_LIB: ProjectLibrary = {
   claude_team_agents: [],
   env: {},
   available_models: [],
+  provider_defaults: {},
 }
 
 describe('libraryToShipFiles', () => {

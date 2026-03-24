@@ -12,6 +12,7 @@ function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
     skill_files: {},
     claude_settings_patch: null,
     codex_config_patch: null,
+    opencode_config_patch: null,
     gemini_settings_patch: null,
     gemini_policy_patch: null,
     cursor_hooks_patch: null,
@@ -245,6 +246,7 @@ describe('buildShipManifest', () => {
       claude_team_agents: [],
       env: {},
       available_models: [],
+      provider_defaults: {},
     }
     const raw = buildShipManifest(library)
     const manifest = JSON.parse(raw)
@@ -260,6 +262,7 @@ describe('buildShipManifest', () => {
       claude_team_agents: [],
       env: {},
       available_models: [],
+      provider_defaults: {},
     }
     const raw = buildShipManifest(library, agent)
     const manifest = JSON.parse(raw)
@@ -316,7 +319,7 @@ describe('collectShipSourceFiles', () => {
   })
 
   it('does not include agent config when no activeAgent', () => {
-    const files = collectShipSourceFiles({ skills: [], agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] })
+    const files = collectShipSourceFiles({ skills: [], agent_profiles: [], claude_team_agents: [], env: {}, available_models: [], provider_defaults: {} })
     expect(files).toHaveLength(1)
     expect(files[0].path).toBe('.ship/ship.jsonc')
   })

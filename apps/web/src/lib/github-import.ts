@@ -60,7 +60,7 @@ export function extractLibrary(files: RepoFiles): ProjectLibrary | null {
 
   if (rules.length === 0 && mcpServers.length === 0) return null
 
-  return { modes: [], active_agent: null, mcp_servers: mcpServers, skills: [], rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
+  return { modes: [], active_agent: null, mcp_servers: mcpServers, skills: [], rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [], provider_defaults: {} }
 }
 
 function extractFromShipProject(files: RepoFiles): ProjectLibrary {
@@ -84,7 +84,7 @@ function extractFromShipProject(files: RepoFiles): ProjectLibrary {
     mcpServers.push(...parseShipMcpToml(files['.ship/agents/mcp.toml']))
   }
 
-  return { modes: [], active_agent: null, mcp_servers: mcpServers, skills, rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [] }
+  return { modes: [], active_agent: null, mcp_servers: mcpServers, skills, rules, agent_profiles: [], claude_team_agents: [], env: {}, available_models: [], provider_defaults: {} }
 }
 
 function parseMcpJson(content: string): McpServerConfig[] {

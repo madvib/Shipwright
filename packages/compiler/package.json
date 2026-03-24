@@ -1,5 +1,5 @@
 {
-  "name": "@ship/compiler",
+  "name": "compiler",
   "type": "module",
   "description": "WASM-safe agent config compiler — types, resolution, and output generation",
   "version": "0.1.0",
