@@ -23,7 +23,6 @@ impl ShipServer {
         "create_workspace",
         "complete_workspace",
         "list_stale_worktrees",
-        "set_agent",
         "list_workspaces",
         "start_session",
         "end_session",
