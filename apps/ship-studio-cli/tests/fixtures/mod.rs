@@ -87,6 +87,7 @@ pub fn write_lock(lock_path: &Path, pkg_path: &str, commit: &str, hash: &str) {
             version: commit.to_string(),
             commit: commit.to_string(),
             hash: hash.to_string(),
+            export_hashes: Default::default(),
         }],
     };
     lock.write_atomic(lock_path).expect("write_lock");

@@ -1,16 +1,28 @@
-use anyhow::{Context, Result};
+use std::collections::BTreeMap;
 use std::path::Path;
 
+use anyhow::{Context, Result};
+
 use compiler::manifest::ShipManifest;
-use runtime::registry::hash::compute_tree_hash;
+use runtime::registry::hash::{compute_combined_hash, compute_export_hashes, compute_tree_hash};
 
 use crate::config::Credentials;
 
 /// `ship publish --dry-run` output.
-fn dry_run(manifest: &ShipManifest, tree_hash: &str) {
+fn dry_run(
+    manifest: &ShipManifest,
+    combined_hash: &str,
+    export_hashes: &BTreeMap<String, String>,
+) {
     println!("Package:  {}", manifest.module.name);
     println!("Version:  {}", manifest.module.version);
-    println!("Hash:     {}", tree_hash);
+    println!("Hash:     {}", combined_hash);
+    if !export_hashes.is_empty() {
+        println!("Exports:");
+        for (path, hash) in export_hashes {
+            println!("  {path}  {hash}");
+        }
+    }
     if let Some(ref desc) = manifest.module.description {
         println!("Description: {}", desc);
     }
@@ -24,12 +36,20 @@ fn dry_run(manifest: &ShipManifest, tree_hash: &str) {
 }
 
 /// Build the JSON payload for the publish API.
-fn build_payload(manifest: &ShipManifest, tree_hash: &str, tag: Option<&str>) -> serde_json::Value {
+fn build_payload(
+    manifest: &ShipManifest,
+    combined_hash: &str,
+    export_hashes: &BTreeMap<String, String>,
+    tag: Option<&str>,
+) -> serde_json::Value {
     let mut payload = serde_json::json!({
         "name": manifest.module.name,
         "version": manifest.module.version,
-        "hash": tree_hash,
+        "hash": combined_hash,
     });
+    if !export_hashes.is_empty() {
+        payload["export_hashes"] = serde_json::json!(export_hashes);
+    }
     if let Some(ref desc) = manifest.module.description {
         payload["description"] = serde_json::Value::String(desc.clone());
     }
@@ -58,10 +78,23 @@ pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<(
         .context("reading .ship/ship.toml — is this a Ship project?")?;
 
     let ship_dir = root.join(".ship");
-    let tree_hash = compute_tree_hash(&ship_dir).context("computing content hash for .ship/")?;
+
+    // Compute per-export hashes, falling back to whole-tree hash when no exports declared.
+    let (combined_hash, export_hashes) = if manifest.exports.skills.is_empty()
+        && manifest.exports.agents.is_empty()
+    {
+        let tree_hash =
+            compute_tree_hash(&ship_dir).context("computing content hash for .ship/")?;
+        (tree_hash, BTreeMap::new())
+    } else {
+        let eh = compute_export_hashes(&ship_dir, &manifest.exports)
+            .context("computing per-export hashes")?;
+        let combined = compute_combined_hash(&eh);
+        (combined, eh)
+    };
 
     if is_dry_run {
-        dry_run(&manifest, &tree_hash);
+        dry_run(&manifest, &combined_hash, &export_hashes);
         return Ok(());
     }
 
@@ -70,7 +103,7 @@ pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<(
         anyhow::anyhow!("Not authenticated. Run `ship login` first, then retry `ship publish`.")
     })?;
 
-    let payload = build_payload(&manifest, &tree_hash, tag);
+    let payload = build_payload(&manifest, &combined_hash, &export_hashes, tag);
 
     let mut resp = ureq::post("https://getship.dev/api/registry/publish")
         .header("Authorization", &format!("Bearer {}", token))
@@ -91,7 +124,7 @@ pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<(
 
     println!(
         "Published {}@{} ({})",
-        manifest.module.name, manifest.module.version, tree_hash
+        manifest.module.name, manifest.module.version, combined_hash
     );
     Ok(())
 }
@@ -99,6 +132,7 @@ pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use tempfile::tempdir;
 
     #[test]
@@ -170,7 +204,17 @@ agents = ["agents/profiles/bar.toml"]
         )
         .unwrap();
 
-        let payload = build_payload(&manifest, "sha256:abc123", Some("beta"));
+        let mut eh = BTreeMap::new();
+        eh.insert(
+            "agents/skills/foo".to_string(),
+            "sha256:skillhash".to_string(),
+        );
+        eh.insert(
+            "agents/profiles/bar.toml".to_string(),
+            "sha256:agenthash".to_string(),
+        );
+
+        let payload = build_payload(&manifest, "sha256:abc123", &eh, Some("beta"));
         assert_eq!(payload["name"], "github.com/test/pkg");
         assert_eq!(payload["version"], "1.0.0");
         assert_eq!(payload["hash"], "sha256:abc123");
@@ -179,5 +223,25 @@ agents = ["agents/profiles/bar.toml"]
         assert_eq!(payload["tag"], "beta");
         assert_eq!(payload["authors"][0], "Alice");
         assert_eq!(payload["exports_skills"][0], "agents/skills/foo");
+        assert_eq!(payload["export_hashes"]["agents/skills/foo"], "sha256:skillhash");
+        assert_eq!(
+            payload["export_hashes"]["agents/profiles/bar.toml"],
+            "sha256:agenthash"
+        );
+    }
+
+    #[test]
+    fn build_payload_no_export_hashes_when_empty() {
+        let manifest = ShipManifest::from_toml_str(
+            r#"
+[module]
+name = "github.com/test/pkg"
+version = "1.0.0"
+"#,
+        )
+        .unwrap();
+
+        let payload = build_payload(&manifest, "sha256:abc", &BTreeMap::new(), None);
+        assert!(payload.get("export_hashes").is_none());
     }
 }

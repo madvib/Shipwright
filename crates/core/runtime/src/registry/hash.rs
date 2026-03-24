@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Context;
+use compiler::manifest::ManifestExports;
 
 /// Files excluded from content hashing.
 fn should_exclude(rel_path: &str) -> bool {
@@ -88,6 +90,49 @@ pub fn compute_file_hash(path: &Path) -> anyhow::Result<String> {
     Ok(format!("sha256:{}", hex::encode_sha256(&content)))
 }
 
+/// Compute per-export hashes for all exported artifacts.
+///
+/// Skills (directories) are hashed with `compute_tree_hash`.
+/// Agents (files) are hashed with `compute_file_hash`.
+/// Returns a map of `{ "skills/foo": "sha256:...", "agents/bar.toml": "sha256:..." }`.
+pub fn compute_export_hashes(
+    ship_dir: &Path,
+    exports: &ManifestExports,
+) -> anyhow::Result<BTreeMap<String, String>> {
+    let mut hashes = BTreeMap::new();
+
+    for skill_path in &exports.skills {
+        let full = ship_dir.join(skill_path);
+        let hash = compute_tree_hash(&full)
+            .with_context(|| format!("hashing exported skill '{skill_path}'"))?;
+        hashes.insert(skill_path.clone(), hash);
+    }
+
+    for agent_path in &exports.agents {
+        let full = ship_dir.join(agent_path);
+        let hash = compute_file_hash(&full)
+            .with_context(|| format!("hashing exported agent '{agent_path}'"))?;
+        hashes.insert(agent_path.clone(), hash);
+    }
+
+    Ok(hashes)
+}
+
+/// Compute a combined hash from per-export hashes.
+///
+/// SHA-256 of sorted `"{path}:{hash}"` entries concatenated with newlines.
+/// Returns `"sha256:<hex>"`.
+pub fn compute_combined_hash(export_hashes: &BTreeMap<String, String>) -> String {
+    let mut acc = String::new();
+    for (path, hash) in export_hashes {
+        acc.push_str(path);
+        acc.push(':');
+        acc.push_str(hash);
+        acc.push('\n');
+    }
+    format!("sha256:{}", hex::encode_sha256(acc.as_bytes()))
+}
+
 mod hex {
     use sha2::{Digest, Sha256};
 
@@ -102,6 +147,7 @@ mod hex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use std::fs;
     use tempfile::tempdir;
 
@@ -191,6 +237,114 @@ mod tests {
         // SHA-256 of "hello" is known.
         assert!(h.contains("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"));
         Ok(())
+    }
+
+    #[test]
+    fn test_compute_export_hashes_skills_and_agents() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let ship = dir.path();
+
+        // Create an exported skill directory
+        let skill = ship.join("agents/skills/my-skill");
+        fs::create_dir_all(&skill)?;
+        fs::write(skill.join("SKILL.md"), "# My Skill")?;
+
+        // Create an exported agent file
+        let agents = ship.join("agents/profiles");
+        fs::create_dir_all(&agents)?;
+        fs::write(agents.join("bar.toml"), "[agent]\nname = \"bar\"")?;
+
+        let exports = ManifestExports {
+            skills: vec!["agents/skills/my-skill".into()],
+            agents: vec!["agents/profiles/bar.toml".into()],
+        };
+
+        let hashes = compute_export_hashes(ship, &exports)?;
+        assert_eq!(hashes.len(), 2);
+        assert!(hashes["agents/skills/my-skill"].starts_with("sha256:"));
+        assert!(hashes["agents/profiles/bar.toml"].starts_with("sha256:"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_internal_change_does_not_affect_export_hashes() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let ship = dir.path();
+
+        // Create an exported skill
+        let skill = ship.join("agents/skills/exported");
+        fs::create_dir_all(&skill)?;
+        fs::write(skill.join("SKILL.md"), "# Exported")?;
+
+        // Create an internal-only skill (not in exports)
+        let internal = ship.join("agents/skills/internal");
+        fs::create_dir_all(&internal)?;
+        fs::write(internal.join("SKILL.md"), "# Internal v1")?;
+
+        let exports = ManifestExports {
+            skills: vec!["agents/skills/exported".into()],
+            agents: vec![],
+        };
+
+        let hashes_before = compute_export_hashes(ship, &exports)?;
+        let combined_before = compute_combined_hash(&hashes_before);
+
+        // Modify internal-only skill
+        fs::write(internal.join("SKILL.md"), "# Internal v2 changed")?;
+
+        let hashes_after = compute_export_hashes(ship, &exports)?;
+        let combined_after = compute_combined_hash(&hashes_after);
+
+        assert_eq!(hashes_before, hashes_after, "internal change must not affect export hashes");
+        assert_eq!(combined_before, combined_after, "internal change must not affect combined hash");
+        Ok(())
+    }
+
+    #[test]
+    fn test_exported_change_does_affect_hashes() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let ship = dir.path();
+
+        let skill = ship.join("agents/skills/foo");
+        fs::create_dir_all(&skill)?;
+        fs::write(skill.join("SKILL.md"), "# Foo v1")?;
+
+        let exports = ManifestExports {
+            skills: vec!["agents/skills/foo".into()],
+            agents: vec![],
+        };
+
+        let hashes_before = compute_export_hashes(ship, &exports)?;
+        let combined_before = compute_combined_hash(&hashes_before);
+
+        // Modify the exported skill
+        fs::write(skill.join("SKILL.md"), "# Foo v2 changed")?;
+
+        let hashes_after = compute_export_hashes(ship, &exports)?;
+        let combined_after = compute_combined_hash(&hashes_after);
+
+        assert_ne!(hashes_before, hashes_after, "exported change must affect export hashes");
+        assert_ne!(combined_before, combined_after, "exported change must affect combined hash");
+        Ok(())
+    }
+
+    #[test]
+    fn test_combined_hash_deterministic_and_sorted() {
+        let mut map = BTreeMap::new();
+        map.insert("z/last".into(), "sha256:aaa".to_string());
+        map.insert("a/first".into(), "sha256:bbb".to_string());
+
+        let h1 = compute_combined_hash(&map);
+        let h2 = compute_combined_hash(&map);
+        assert_eq!(h1, h2);
+        assert!(h1.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn test_combined_hash_empty_exports() {
+        let map = BTreeMap::new();
+        let h = compute_combined_hash(&map);
+        assert!(h.starts_with("sha256:"));
     }
 
     #[test]
