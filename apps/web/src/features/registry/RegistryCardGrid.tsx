@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Download, Star, Zap } from 'lucide-react'
 import type { RegistryCard } from './registry-cards'
@@ -7,14 +6,6 @@ import { formatInstalls, TYPE_ICON_STYLES, FEATURED_COLLECTION } from './registr
 // ── Featured banner ──────────────────────────────────────────────────────────
 
 export function FeaturedBanner() {
-  const [installing, setInstalling] = useState(false)
-
-  const handleInstallPack = () => {
-    setInstalling(true)
-    console.log('[Registry] Install pack requested: superpowers-skill-pack')
-    setTimeout(() => setInstalling(false), 1200)
-  }
-
   return (
     <div className="flex items-center gap-4 rounded-xl border border-primary/15 bg-gradient-to-r from-primary/5 to-transparent p-5 mb-7">
       <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70">
@@ -31,19 +22,13 @@ export function FeaturedBanner() {
           {FEATURED_COLLECTION.description}
         </div>
       </div>
-      <div className="shrink-0 relative">
+      <div className="shrink-0">
         <button
-          onClick={handleInstallPack}
-          disabled={installing}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+          disabled
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition opacity-60 cursor-not-allowed"
         >
-          {installing ? 'Installing...' : 'Install pack'}
+          Coming soon
         </button>
-        {/* Orange dot: install flow not wired */}
-        <span
-          className="absolute -top-1 -right-1 size-2 rounded-full bg-status-orange"
-          title="Full install flow not yet wired"
-        />
       </div>
     </div>
   )
@@ -142,29 +127,21 @@ function RegistryPackageCard({
             <span>{card.toolCount} tools</span>
           )}
         </div>
-        <div className="relative">
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              onInstall()
-            }}
-            className={`rounded-md border px-2.5 py-1 text-[10px] font-medium transition-colors ${
-              isInstalled
-                ? 'text-status-green border-status-green/20'
-                : 'text-muted-foreground border-border/60 hover:border-primary hover:text-primary'
-            }`}
-          >
-            {isInstalled ? 'Installed' : 'Install'}
-          </button>
-          {/* Orange dot: install flow not fully wired */}
-          {!isInstalled && (
-            <span
-              className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-status-orange"
-              title="Full install flow not yet wired"
-            />
-          )}
-        </div>
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onInstall()
+          }}
+          disabled={!isInstalled}
+          className={`rounded-md border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+            isInstalled
+              ? 'text-status-green border-status-green/20'
+              : 'text-muted-foreground border-border/60 cursor-not-allowed opacity-50'
+          }`}
+        >
+          {isInstalled ? 'Installed' : 'Coming soon'}
+        </button>
       </div>
     </Link>
   )

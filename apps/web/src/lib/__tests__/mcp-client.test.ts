@@ -160,7 +160,6 @@ describe('McpClient', () => {
   it('handles SSE response format', async () => {
     const ssePayload = '{"jsonrpc":"2.0","result":{"serverInfo":{"name":"ship","version":"0.1.0"}},"id":1}'
     const sseText = `data: \n\ndata: ${ssePayload}\n\n`
-    const encoder = new TextEncoder()
 
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({

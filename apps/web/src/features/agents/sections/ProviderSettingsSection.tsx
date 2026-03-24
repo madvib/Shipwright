@@ -1,80 +1,15 @@
-import { Settings2, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import { Settings2, ChevronDown, ChevronRight } from 'lucide-react'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
-import { EnvVarEditor } from '#/features/agents/dialogs/EnvVarEditor'
 import { SectionShell } from './SectionShell'
-
-// ── Provider-specific field definitions ─────────────────────────────────────
-
-type FieldType = 'toggle' | 'select' | 'number' | 'kv'
-type FieldDef = { key: string; label: string; type: FieldType; options?: string[] }
-
-const CLAUDE_FIELDS: FieldDef[] = [
-  { key: 'theme', label: 'Theme', type: 'select', options: ['light', 'dark', 'auto'] },
-  { key: 'auto_updates', label: 'Auto-updates', type: 'toggle' },
-  { key: 'include_co_authored_by', label: 'Include co-authored-by', type: 'toggle' },
-]
-
-const GEMINI_FIELDS: FieldDef[] = [
-  {
-    key: 'default_approval_mode',
-    label: 'Default approval mode',
-    type: 'select',
-    options: ['ask-every-time', 'auto-approve-reads', 'auto-approve-all'],
-  },
-  { key: 'max_session_turns', label: 'Max session turns', type: 'number' },
-  { key: 'disable_yolo_mode', label: 'Disable YOLO mode', type: 'toggle' },
-  { key: 'disable_always_allow', label: 'Disable always-allow', type: 'toggle' },
-  {
-    key: 'tools_sandbox',
-    label: 'Tools sandbox',
-    type: 'select',
-    options: ['docker', 'none'],
-  },
-]
-
-const CODEX_FIELDS: FieldDef[] = [
-  {
-    key: 'approval_policy',
-    label: 'Approval policy',
-    type: 'select',
-    options: ['ask-every-time', 'unless-allow-listed', 'auto-approve'],
-  },
-  {
-    key: 'sandbox',
-    label: 'Sandbox',
-    type: 'select',
-    options: ['docker', 'none'],
-  },
-  {
-    key: 'reasoning_effort',
-    label: 'Reasoning effort',
-    type: 'select',
-    options: ['low', 'medium', 'high'],
-  },
-  { key: 'max_threads', label: 'Max threads', type: 'number' },
-  { key: 'notify', label: 'Notify', type: 'toggle' },
-]
-
-const CURSOR_FIELDS: FieldDef[] = [
-  { key: 'environment', label: 'Environment variables', type: 'kv' },
-]
-
-const PROVIDER_FIELDS: Record<string, FieldDef[]> = {
-  claude: CLAUDE_FIELDS,
-  gemini: GEMINI_FIELDS,
-  codex: CODEX_FIELDS,
-  cursor: CURSOR_FIELDS,
-}
 
 const PROVIDER_LABELS: Record<string, string> = {
   claude: 'Claude',
   gemini: 'Gemini',
   codex: 'Codex',
   cursor: 'Cursor',
+  opencode: 'OpenCode',
 }
-
-// ── Component ───────────────────────────────────────────────────────────────
 
 interface ProviderSettingsSectionProps {
   providers: string[]
@@ -100,12 +35,13 @@ export function ProviderSettingsSection({
     })
   }
 
-  const updateField = (provider: string, key: string, value: unknown) => {
-    const current = providerSettings[provider] ?? {}
-    onChange({
-      ...providerSettings,
-      [provider]: { ...current, [key]: value },
-    })
+  const updateJson = (provider: string, json: string) => {
+    try {
+      const parsed = JSON.parse(json) as Record<string, unknown>
+      onChange({ ...providerSettings, [provider]: parsed })
+    } catch {
+      // Invalid JSON — don't update
+    }
   }
 
   if (providers.length === 0) return null
@@ -118,13 +54,13 @@ export function ProviderSettingsSection({
     >
       <div className="space-y-2">
         {providers.map((provider) => (
-          <ProviderGroup
+          <ProviderCard
             key={provider}
             provider={provider}
             expanded={expandedProviders.has(provider)}
             onToggle={() => toggleExpanded(provider)}
-            values={providerSettings[provider] ?? {}}
-            onUpdateField={(key, value) => updateField(provider, key, value)}
+            value={providerSettings[provider] ?? {}}
+            onJsonChange={(json) => updateJson(provider, json)}
           />
         ))}
       </div>
@@ -132,23 +68,32 @@ export function ProviderSettingsSection({
   )
 }
 
-// ── Provider group ──────────────────────────────────────────────────────────
-
-function ProviderGroup({
+function ProviderCard({
   provider,
   expanded,
   onToggle,
-  values,
-  onUpdateField,
+  value,
+  onJsonChange,
 }: {
   provider: string
   expanded: boolean
   onToggle: () => void
-  values: Record<string, unknown>
-  onUpdateField: (key: string, value: unknown) => void
+  value: Record<string, unknown>
+  onJsonChange: (json: string) => void
 }) {
-  const fields = PROVIDER_FIELDS[provider]
-  const hasFields = fields && fields.length > 0
+  const hasValues = Object.keys(value).length > 0
+  const [draft, setDraft] = useState(() => JSON.stringify(value, null, 2))
+  const [parseError, setParseError] = useState<string | null>(null)
+
+  const handleBlur = () => {
+    try {
+      JSON.parse(draft)
+      setParseError(null)
+      onJsonChange(draft)
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Invalid JSON')
+    }
+  }
 
   return (
     <div className="rounded-lg border border-border/40 bg-card/30 overflow-hidden">
@@ -165,129 +110,31 @@ function ProviderGroup({
         <span className="text-xs font-medium text-foreground/80">
           {PROVIDER_LABELS[provider] ?? provider}
         </span>
-        {!hasFields && (
+        {!hasValues && (
           <span className="ml-auto text-[10px] text-muted-foreground/40 italic">
-            no settings available
+            defaults
           </span>
         )}
       </button>
 
-      {expanded && hasFields && (
-        <div className="border-t border-border/30 px-3 py-2 space-y-2">
-          {fields.map((field) => (
-            <ProviderField
-              key={field.key}
-              field={field}
-              value={values[field.key]}
-              onChange={(v) => onUpdateField(field.key, v)}
-            />
-          ))}
-        </div>
-      )}
-
-      {expanded && !hasFields && (
-        <div className="border-t border-border/30 px-3 py-2">
-          <p className="text-[11px] text-muted-foreground/40 italic">
-            Provider targeted for compilation. No additional settings.
+      {expanded && (
+        <div className="border-t border-border/30 px-3 py-2 space-y-1.5">
+          <p className="text-[10px] text-muted-foreground/40">
+            Provider-specific overrides (JSON). Leave empty for defaults.
           </p>
+          <textarea
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); setParseError(null) }}
+            onBlur={handleBlur}
+            spellCheck={false}
+            className="w-full rounded-md border border-border/40 bg-background/60 px-2.5 py-2 font-mono text-[11px] text-foreground/80 leading-relaxed resize-y min-h-[80px] outline-none focus:border-primary/50"
+            rows={4}
+          />
+          {parseError && (
+            <p className="text-[10px] text-destructive">{parseError}</p>
+          )}
         </div>
       )}
     </div>
   )
-}
-
-// ── Individual field renderers ──────────────────────────────────────────────
-
-function ProviderField({
-  field,
-  value,
-  onChange,
-}: {
-  field: FieldDef
-  value: unknown
-  onChange: (v: unknown) => void
-}) {
-  if (field.type === 'toggle') {
-    const checked = value === true
-    return (
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] text-foreground/70">{field.label}</span>
-        <button
-          onClick={() => onChange(!checked)}
-          className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${
-            checked ? 'bg-primary' : 'bg-muted'
-          }`}
-        >
-          <span
-            className={`absolute top-[2px] size-3 rounded-full bg-white transition-all ${
-              checked ? 'left-[18px]' : 'left-[2px]'
-            }`}
-          />
-        </button>
-      </div>
-    )
-  }
-
-  if (field.type === 'select' && field.options) {
-    const current = (value as string) ?? field.options[0]
-    return (
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] text-foreground/70">{field.label}</span>
-        <select
-          value={current}
-          onChange={(e) => onChange(e.target.value)}
-          className="rounded-md border border-border/40 bg-card/50 px-2 py-1 text-[11px] text-foreground/80 outline-none focus:border-primary"
-        >
-          {field.options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-      </div>
-    )
-  }
-
-  if (field.type === 'number') {
-    const numValue = typeof value === 'number' ? value : ''
-    return (
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] text-foreground/70">{field.label}</span>
-        <input
-          type="number"
-          min={1}
-          value={numValue}
-          onChange={(e) => {
-            const v = e.target.value
-            onChange(v === '' ? undefined : Number(v))
-          }}
-          placeholder="unlimited"
-          className="w-24 rounded-md border border-border/40 bg-card/50 px-2 py-1 text-[11px] text-foreground/80 outline-none focus:border-primary text-right"
-        />
-      </div>
-    )
-  }
-
-  if (field.type === 'kv') {
-    return <KvField value={value} onChange={onChange} />
-  }
-
-  return null
-}
-
-// ── Key-value field (delegates to EnvVarEditor) ─────────────────────────────
-
-function KvField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
-  // cursor_environment is a JSON object { KEY: "value" } on ProjectLibrary.
-  // EnvVarEditor works with { key, value }[] entries, so convert both ways.
-  const obj = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as Record<string, string>
-  const entries = Object.entries(obj).map(([k, v]) => ({ key: k, value: String(v) }))
-
-  const handleChange = (updated: { key: string; value: string }[]) => {
-    const result: Record<string, string> = {}
-    for (const e of updated) {
-      if (e.key) result[e.key] = e.value
-    }
-    onChange(Object.keys(result).length > 0 ? result : undefined)
-  }
-
-  return <EnvVarEditor entries={entries} onChange={handleChange} />
 }

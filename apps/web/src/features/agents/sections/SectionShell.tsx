@@ -1,11 +1,5 @@
 import { Plus } from 'lucide-react'
 
-// ── Orange Dot ──────────────────────────────────────────────────────────────
-// Small indicator for buttons/actions without a working backend yet.
-export function OrangeDot() {
-  return <span className="size-2 shrink-0 rounded-full bg-primary" />
-}
-
 // ── Section wrapper ─────────────────────────────────────────────────────────
 
 interface SectionShellProps {
@@ -15,7 +9,6 @@ interface SectionShellProps {
   count?: string
   actionLabel?: string
   onAction?: () => void
-  showOrangeDot?: boolean
   children: React.ReactNode
 }
 
@@ -26,7 +19,6 @@ export function SectionShell({
   count,
   actionLabel,
   onAction,
-  showOrangeDot,
   children,
 }: SectionShellProps) {
   return (
@@ -48,7 +40,6 @@ export function SectionShell({
           >
             <Plus className="size-3" />
             {actionLabel}
-            {showOrangeDot && <OrangeDot />}
           </button>
         )}
       </div>
@@ -134,11 +125,9 @@ export function ChipIcon({
 export function AddChip({
   label,
   onClick,
-  showOrangeDot,
 }: {
   label: string
   onClick?: () => void
-  showOrangeDot?: boolean
 }) {
   return (
     <button
@@ -147,7 +136,6 @@ export function AddChip({
     >
       <Plus className="size-3" />
       {label}
-      {showOrangeDot && <OrangeDot />}
     </button>
   )
 }

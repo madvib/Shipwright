@@ -67,31 +67,26 @@ describe('validateAgentProfile', () => {
   it('passes for all valid providers', () => {
     const result = validateAgentProfile(
       makeValidProfile({
-        profile: { id: 'test-agent', name: 'Test', providers: ['claude', 'cursor', 'codex', 'gemini'] },
+        profile: { id: 'test-agent', name: 'Test', providers: ['claude', 'cursor', 'codex', 'gemini', 'opencode'] },
       }),
     )
     expect(result.valid).toBe(true)
   })
 
-  it('accepts any preset string (presets resolved at compile time, not schema-validated)', () => {
+  it('passes for any permission preset (freeform string)', () => {
+    // Schema no longer constrains preset to an enum — it's a freeform key
+    // that references .ship/permissions.jsonc entries
     const result = validateAgentProfile(
-      makeValidProfile({ permissions: { preset: 'any-preset-name' } }),
+      makeValidProfile({ permissions: { preset: 'my-custom-preset' } }),
     )
     expect(result.valid).toBe(true)
   })
 
-  it('passes for "custom" permission preset (special case)', () => {
+  it('passes for "custom" permission preset', () => {
     const result = validateAgentProfile(
       makeValidProfile({ permissions: { preset: 'custom' } }),
     )
     expect(result.valid).toBe(true)
-  })
-
-  it('passes for valid permission presets', () => {
-    for (const preset of ['ship-readonly', 'ship-standard', 'ship-autonomous', 'ship-elevated']) {
-      const result = validateAgentProfile(makeValidProfile({ permissions: { preset } }))
-      expect(result.valid).toBe(true)
-    }
   })
 
   it('fails for invalid id pattern', () => {
@@ -116,11 +111,12 @@ describe('validateAgentProfile', () => {
   it('collects multiple errors at once', () => {
     const result = validateAgentProfile(
       makeValidProfile({
-        profile: { id: 'test', name: '', providers: ['bad-provider'] },
+        profile: { id: 'UPPER', name: '', providers: ['bad-provider'] },
       }),
     )
     expect(result.valid).toBe(false)
-    expect(result.errors.length).toBeGreaterThanOrEqual(2)
+    // name empty + bad id pattern + bad provider = 3 errors
+    expect(result.errors.length).toBeGreaterThanOrEqual(3)
   })
 })
 
@@ -137,11 +133,10 @@ describe('schema enum extractors', () => {
     expect(providers).toHaveLength(5)
   })
 
-  it('getPermissionPresets returns empty (presets are runtime-resolved, not schema-defined)', () => {
+  it('getPermissionPresets returns empty (preset is freeform)', () => {
+    // Schema no longer has a preset enum — presets are keys in permissions.jsonc
     const presets = getPermissionPresets()
-    // Schema no longer enumerates presets — they're free-form strings
-    // resolved from .ship/permissions.jsonc at compile time
-    expect(Array.isArray(presets)).toBe(true)
+    expect(presets).toHaveLength(0)
   })
 
   it('getPluginScopes returns schema-defined scopes', () => {

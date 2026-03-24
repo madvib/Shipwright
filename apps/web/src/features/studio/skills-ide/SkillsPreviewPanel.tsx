@@ -1,5 +1,6 @@
 import { X, FileText } from 'lucide-react'
 import type { Skill } from '@ship/ui'
+import { useAgentStore } from '#/features/agents/useAgentStore'
 import { parseFrontmatter } from './skill-frontmatter'
 
 interface Props {
@@ -16,16 +17,11 @@ const TABS: { id: 'metadata' | 'output' | 'used-by'; label: string }[] = [
   { id: 'used-by', label: 'Used by' },
 ]
 
-// Placeholder agents for the "used by" / "attached" display
-const MOCK_AGENTS = [
-  { id: 'web-lane', initial: 'W', color: 'text-primary' },
-  { id: 'commander', initial: 'C', color: 'text-violet-400' },
-  { id: 'rust-runtime', initial: 'R', color: 'text-emerald-400' },
-]
-
 function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
   const fm = parseFrontmatter(content)
   const tools = fm.allowed_tools ?? skill.allowed_tools ?? []
+  const { agents } = useAgentStore()
+  const attachedAgents = agents.filter((a) => a.skills.some((s) => s.id === skill.id))
 
   return (
     <div className="space-y-4">
@@ -74,17 +70,21 @@ function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
         <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/40 mb-2">
           Attached to Agents
         </h4>
-        <div className="space-y-1.5">
-          {MOCK_AGENTS.map((agent) => (
-            <div
-              key={agent.id}
-              className="flex items-center gap-2 px-2 py-1.5 bg-card/60 border border-border/30 rounded-md text-[11px]"
-            >
-              <span className={`font-semibold ${agent.color}`}>{agent.initial}</span>
-              <span className="text-muted-foreground/70">{agent.id}</span>
-            </div>
-          ))}
-        </div>
+        {attachedAgents.length === 0 ? (
+          <p className="text-[11px] italic text-muted-foreground/30">Not attached to any agents.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {attachedAgents.map((agent) => (
+              <div
+                key={agent.profile.id}
+                className="flex items-center gap-2 px-2 py-1.5 bg-card/60 border border-border/30 rounded-md text-[11px]"
+              >
+                <span className="font-semibold text-primary">{agent.profile.name[0]?.toUpperCase() ?? '?'}</span>
+                <span className="text-muted-foreground/70">{agent.profile.id}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -140,24 +140,31 @@ function OutputTab({ skill, content }: { skill: Skill; content: string }) {
   )
 }
 
-function UsedByTab() {
+function UsedByTab({ skill }: { skill: Skill }) {
+  const { agents } = useAgentStore()
+  const referencingAgents = agents.filter((a) => a.skills.some((s) => s.id === skill.id))
+
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-muted-foreground/40 mb-3">
         Agents and profiles that reference this skill.
       </p>
-      {MOCK_AGENTS.map((agent) => (
-        <div
-          key={agent.id}
-          className="flex items-center gap-2 px-3 py-2 bg-card/60 border border-border/30 rounded-md"
-        >
-          <span className={`text-xs font-bold ${agent.color}`}>{agent.initial}</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-foreground/80">{agent.id}</p>
-            <p className="text-[10px] text-muted-foreground/30">Active profile</p>
+      {referencingAgents.length === 0 ? (
+        <p className="text-[11px] italic text-muted-foreground/30">No agents reference this skill.</p>
+      ) : (
+        referencingAgents.map((agent) => (
+          <div
+            key={agent.profile.id}
+            className="flex items-center gap-2 px-3 py-2 bg-card/60 border border-border/30 rounded-md"
+          >
+            <span className="text-xs font-bold text-primary">{agent.profile.name[0]?.toUpperCase() ?? '?'}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-foreground/80">{agent.profile.id}</p>
+              <p className="text-[10px] text-muted-foreground/30">{agent.profile.name}</p>
+            </div>
           </div>
-        </div>
-      ))}
+        ))
+      )}
     </div>
   )
 }
@@ -201,7 +208,7 @@ export function SkillsPreviewPanel({ skill, content, activeTab, onTabChange, onC
       <div className="flex-1 overflow-y-auto p-3">
         {activeTab === 'metadata' && <MetadataTab skill={skill} content={content} />}
         {activeTab === 'output' && <OutputTab skill={skill} content={content} />}
-        {activeTab === 'used-by' && <UsedByTab />}
+        {activeTab === 'used-by' && <UsedByTab skill={skill} />}
       </div>
     </div>
   )

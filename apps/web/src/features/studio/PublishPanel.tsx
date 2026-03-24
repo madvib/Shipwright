@@ -69,7 +69,7 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
   )
 }
 
-const ALL_PREVIEW_PROVIDERS = ['claude', 'gemini', 'codex', 'cursor']
+const ALL_PREVIEW_PROVIDERS = ['claude', 'gemini', 'codex', 'cursor', 'opencode']
 
 function OutputSection({ compileState, hasContent }: {
   compileState: CompileState; hasContent: boolean

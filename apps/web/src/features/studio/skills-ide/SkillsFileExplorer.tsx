@@ -1,5 +1,5 @@
 import {
-  Search, Plus, ChevronRight, ChevronDown, FileText, Package, Zap,
+  Search, Plus, ChevronRight, ChevronDown, FileText, Zap,
 } from 'lucide-react'
 import type { Skill } from '@ship/ui'
 
@@ -14,12 +14,6 @@ interface Props {
   onCreateSkill: () => void
 }
 
-// Placeholder installed skills (read-only display)
-const INSTALLED_SKILLS = [
-  { id: 'code-review', name: 'code-review', version: 'v1.2.0' },
-  { id: 'debug-expert', name: 'debug-expert', version: 'v1.0.0' },
-  { id: 'frontend-design', name: 'frontend-design', version: 'v0.2.0' },
-]
 
 export function SkillsFileExplorer({
   filteredSkills,
@@ -120,18 +114,9 @@ export function SkillsFileExplorer({
               Installed
             </span>
           </div>
-          {INSTALLED_SKILLS.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground/50"
-            >
-              <Package className="size-3.5 shrink-0 text-blue-400/70" />
-              <span className="flex-1 truncate">{s.name}</span>
-              <span className="text-[9px] text-muted-foreground/30 bg-muted/50 px-1.5 rounded">
-                {s.version}
-              </span>
-            </div>
-          ))}
+          <p className="px-4 py-3 text-[11px] italic text-muted-foreground/30">
+            No registry skills installed.
+          </p>
         </div>
 
         <div className="h-px bg-border/20 mx-3" />

@@ -8,7 +8,7 @@ const PROVIDER_COLOR: Record<string, string> = {
   gemini: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
   codex: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
   cursor: 'bg-violet-500/15 text-violet-700 dark:text-violet-400',
-  opencode: 'bg-stone-500/15 text-stone-700 dark:text-stone-400',
+  opencode: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
 }
 
 const PROVIDER_SHORT: Record<string, string> = {

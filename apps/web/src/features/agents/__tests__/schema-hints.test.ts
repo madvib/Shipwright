@@ -35,9 +35,10 @@ describe('getFieldDescription', () => {
 // ── Enum tests ──────────────────────────────────────────────────────────────
 
 describe('getFieldEnum', () => {
-  it('returns empty enum for permissions.preset (presets are runtime-resolved)', () => {
+  it('returns empty enum for permissions.preset (freeform string)', () => {
+    // preset is a freeform string referencing permissions.jsonc keys — no enum
     const values = getFieldEnum('permissions.preset')
-    expect(Array.isArray(values)).toBe(true)
+    expect(values).toEqual([])
   })
 
   it('returns enum from array items for agent.providers', () => {
@@ -46,6 +47,7 @@ describe('getFieldEnum', () => {
     expect(values).toContain('cursor')
     expect(values).toContain('codex')
     expect(values).toContain('gemini')
+    expect(values).toContain('opencode')
   })
 
   it('returns enum for permissions.default_mode', () => {
@@ -153,6 +155,7 @@ describe('getFieldProperties', () => {
     const props = getFieldProperties('permissions')
     expect(props).toContain('preset')
     expect(props).toContain('tools_allow')
+    expect(props).toContain('tools_deny')
     expect(props).toContain('default_mode')
   })
 
