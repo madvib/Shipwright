@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState, useMemo } from 'react'
-import { Plus, ArrowRight, Monitor, FolderOpen, Library } from 'lucide-react'
+import { Plus, ArrowRight, Monitor, FolderOpen, Library, PenLine } from 'lucide-react'
+import { useAgents } from '#/features/agents/useAgents'
+import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import { getAgentIcon } from '#/features/agents/agent-icons'
 import { TechIcon, TECH_STACKS } from '#/features/studio/TechIcon'
@@ -17,7 +19,9 @@ export const Route = createFileRoute('/studio/agents/')({
 })
 
 function AgentsListPage() {
-  const { agents, createAgent } = useAgentStore()
+  const { agents } = useAgents()
+  const { hasDraft } = useAgentDrafts()
+  const { createAgent } = useAgentStore()
   const navigate = useNavigate()
   const mcp = useLocalMcpContext()
   const localIds = mcp?.localAgentIds ?? new Set<string>()
@@ -67,86 +71,99 @@ function AgentsListPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm font-medium text-foreground">No agents yet</p>
-            <p className="mt-1 text-xs text-muted-foreground max-w-xs">
-              Create your first agent to get started.
-            </p>
-            <button
-              onClick={handleNewAgent}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
-            >
-              <Plus className="size-3.5" />
-              Create agent
-            </button>
-          </div>
+          <EmptyState onNew={handleNewAgent} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filtered.map((a) => {
-              const icon = getAgentIcon(a.profile.id)
-              const preset = a.permissions?.preset ?? 'custom'
-
-              return (
-                <Link
-                  key={a.profile.id}
-                  to="/studio/agents/$id"
-                  params={{ id: a.profile.id }}
-                  className="group rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
-                >
-                  <div className="flex items-start gap-3 mb-3">
-                    {icon && icon in TECH_STACKS ? (
-                      <TechIcon stack={icon} size={40} />
-                    ) : (
-                      <div
-                        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
-                        style={{ background: 'linear-gradient(135deg, oklch(0.67 0.16 58), oklch(0.5 0.16 30))' }}
-                      >
-                        {a.profile.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-foreground truncate">{a.profile.name}</div>
-                      {a.profile.description && (
-                        <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{a.profile.description}</p>
-                      )}
-                    </div>
-                    <ArrowRight className="size-3.5 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors mt-1" />
-                  </div>
-
-                  {/* Stats row */}
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                    <span>{a.skills.length} skill{a.skills.length !== 1 ? 's' : ''}</span>
-                    <span className="text-border">·</span>
-                    <span>{a.mcpServers.length} MCP</span>
-                    <span className="text-border">·</span>
-                    <span>{a.rules.length} rule{a.rules.length !== 1 ? 's' : ''}</span>
-                  </div>
-
-                  {/* Badges */}
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground">
-                      {preset.replace('ship-', '')}
-                    </span>
-                    {a.source === 'library' && (
-                      <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-violet-500/30 bg-violet-500/10 text-violet-500">
-                        <Library className="size-2.5" />
-                        Library
-                      </span>
-                    )}
-                    {localIds.has(a.profile.id) && (
-                      <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
-                        <Monitor className="size-2.5" />
-                        Local
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              )
-            })}
+            {filtered.map((a) => (
+              <AgentCard key={a.profile.id} agent={a} isDraft={hasDraft(a.profile.id)} isLocal={localIds.has(a.profile.id)} />
+            ))}
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function EmptyState({ onNew }: { onNew: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <p className="text-sm font-medium text-foreground">No agents yet</p>
+      <p className="mt-1 text-xs text-muted-foreground max-w-xs">
+        Create your first agent to get started.
+      </p>
+      <button
+        onClick={onNew}
+        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+      >
+        <Plus className="size-3.5" />
+        Create agent
+      </button>
+    </div>
+  )
+}
+
+function AgentCard({ agent: a, isDraft, isLocal }: { agent: ReturnType<typeof useAgents>['agents'][number]; isDraft: boolean; isLocal: boolean }) {
+  const icon = getAgentIcon(a.profile.id)
+  const preset = a.permissions?.preset ?? 'custom'
+
+  return (
+    <Link
+      to="/studio/agents/$id"
+      params={{ id: a.profile.id }}
+      className="group rounded-xl border border-border/60 bg-card p-4 hover:border-primary/30 transition-colors no-underline"
+    >
+      <div className="flex items-start gap-3 mb-3">
+        {icon && icon in TECH_STACKS ? (
+          <TechIcon stack={icon} size={40} />
+        ) : (
+          <div
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, oklch(0.67 0.16 58), oklch(0.5 0.16 30))' }}
+          >
+            {a.profile.name.charAt(0).toUpperCase()}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-foreground truncate">{a.profile.name}</div>
+          {a.profile.description && (
+            <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{a.profile.description}</p>
+          )}
+        </div>
+        <ArrowRight className="size-3.5 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors mt-1" />
+      </div>
+
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span>{a.skills.length} skill{a.skills.length !== 1 ? 's' : ''}</span>
+        <span className="text-border">·</span>
+        <span>{a.mcpServers.length} MCP</span>
+        <span className="text-border">·</span>
+        <span>{a.rules.length} rule{a.rules.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="text-[9px] px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground">
+          {preset.replace('ship-', '')}
+        </span>
+        {a.source === 'library' && (
+          <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-violet-500/30 bg-violet-500/10 text-violet-500">
+            <Library className="size-2.5" />
+            Library
+          </span>
+        )}
+        {isLocal && (
+          <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
+            <Monitor className="size-2.5" />
+            Local
+          </span>
+        )}
+        {isDraft && (
+          <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500">
+            <PenLine className="size-2.5" />
+            Modified
+          </span>
+        )}
+      </div>
+    </Link>
   )
 }
 

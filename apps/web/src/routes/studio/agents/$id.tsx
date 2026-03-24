@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, useCallback, useMemo } from 'react'
-import { useAgentStore, makeAgent } from '#/features/agents/useAgentStore'
+import { useAgents } from '#/features/agents/useAgents'
+import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
+import { makeAgent } from '#/features/agents/useAgentStore'
 import { AgentActivityBar } from '#/features/agents/AgentActivityBar'
 import { AgentStickyHeader } from '#/features/agents/AgentStickyHeader'
 import { useScrollspy } from '#/features/agents/useScrollspy'
@@ -30,111 +32,108 @@ export const Route = createFileRoute('/studio/agents/$id')({
 function AgentDetailPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
-  const { getAgent, updateAgent, deleteAgent } = useAgentStore()
+  const { getAgent } = useAgents()
+  const { setDraft, hasDraft } = useAgentDrafts()
   const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
   const { scrollRef, activeSection, handleSectionClick } = useScrollspy()
+  const isDraft = hasDraft(id)
 
   const handleDelete = useCallback(() => {
     if (!confirm(`Delete "${profile.profile.name}"?`)) return
-    deleteAgent(id)
     void navigate({ to: '/studio/agents', replace: true })
-  }, [id, profile.profile.name, deleteAgent, navigate])
+  }, [profile.profile.name, navigate])
 
   const update = useCallback(
-    (patch: Partial<ResolvedAgentProfile>) => updateAgent(id, patch),
-    [id, updateAgent],
+    (patch: Partial<ResolvedAgentProfile>) => setDraft(id, patch),
+    [id, setDraft],
   )
 
-  // ── Skill mutators ────────────────────────────────────────────────────
+  return (
+    <AgentDetailView
+      profile={profile}
+      isDraft={isDraft}
+      activeSection={activeSection}
+      scrollRef={scrollRef}
+      onSectionClick={handleSectionClick}
+      onUpdate={update}
+      onDelete={handleDelete}
+    />
+  )
+}
+
+// ── Inner view (split to keep AgentDetailPage under 300 lines) ──────────
+
+interface ViewProps {
+  profile: ResolvedAgentProfile
+  isDraft: boolean
+  activeSection: string
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  onSectionClick: (section: string) => void
+  onUpdate: (patch: Partial<ResolvedAgentProfile>) => void
+  onDelete: () => void
+}
+
+function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSectionClick, onUpdate, onDelete }: ViewProps) {
   const removeSkill = useCallback(
-    (skillId: string) => update({ skills: profile.skills.filter((s) => s.id !== skillId) }),
-    [update, profile.skills],
+    (skillId: string) => onUpdate({ skills: profile.skills.filter((s) => s.id !== skillId) }),
+    [onUpdate, profile.skills],
   )
   const addSkill = useCallback(
     (skill: Skill) => {
       if (profile.skills.some((s) => s.id === skill.id)) return
-      update({ skills: [...profile.skills, skill] })
+      onUpdate({ skills: [...profile.skills, skill] })
     },
-    [update, profile.skills],
+    [onUpdate, profile.skills],
   )
-
-  // ── MCP mutators ──────────────────────────────────────────────────────
   const removeServer = useCallback(
-    (name: string) => update({ mcpServers: profile.mcpServers.filter((s) => s.name !== name) }),
-    [update, profile.mcpServers],
+    (name: string) => onUpdate({ mcpServers: profile.mcpServers.filter((s) => s.name !== name) }),
+    [onUpdate, profile.mcpServers],
   )
   const mcpToolStates = profile.toolPermissions ?? {}
   const setToolPermission = useCallback(
     (serverName: string, toolName: string, permission: ToolPermission) => {
       const prev = profile.toolPermissions ?? {}
       const serverTools = prev[serverName] ?? {}
-      update({ toolPermissions: { ...prev, [serverName]: { ...serverTools, [toolName]: permission } } })
+      onUpdate({ toolPermissions: { ...prev, [serverName]: { ...serverTools, [toolName]: permission } } })
     },
-    [update, profile.toolPermissions],
+    [onUpdate, profile.toolPermissions],
   )
   const setGroupPermission = useCallback(
     (serverName: string, toolNames: string[], permission: ToolPermission) => {
       const prev = profile.toolPermissions ?? {}
       const serverTools = { ...(prev[serverName] ?? {}) }
       for (const name of toolNames) serverTools[name] = permission
-      update({ toolPermissions: { ...prev, [serverName]: serverTools } })
+      onUpdate({ toolPermissions: { ...prev, [serverName]: serverTools } })
     },
-    [update, profile.toolPermissions],
+    [onUpdate, profile.toolPermissions],
   )
-
-  // ── Permissions mutators ──────────────────────────────────────────────
   const setPermissionPreset = useCallback(
-    (preset: string) => update({ permissions: { ...profile.permissions, preset } }),
-    [update, profile.permissions],
+    (preset: string) => onUpdate({ permissions: { ...profile.permissions, preset } }),
+    [onUpdate, profile.permissions],
   )
   const updatePermissions = useCallback(
-    (permissions: ProfilePermissions) => update({ permissions: { ...permissions, preset: 'custom' } }),
-    [update],
+    (permissions: ProfilePermissions) => onUpdate({ permissions: { ...permissions, preset: 'custom' } }),
+    [onUpdate],
   )
-
-  // ── Rule mutators ─────────────────────────────────────────────────────
-  const addRule = useCallback(
-    (rule: Rule) => update({ rules: [...profile.rules, rule] }),
-    [update, profile.rules],
-  )
+  const addRule = useCallback((rule: Rule) => onUpdate({ rules: [...profile.rules, rule] }), [onUpdate, profile.rules])
   const updateRule = useCallback(
-    (index: number, rule: Rule) =>
-      update({ rules: profile.rules.map((r, i) => (i === index ? rule : r)) }),
-    [update, profile.rules],
+    (index: number, rule: Rule) => onUpdate({ rules: profile.rules.map((r, i) => (i === index ? rule : r)) }),
+    [onUpdate, profile.rules],
   )
-  const removeRule = useCallback(
-    (index: number) => update({ rules: profile.rules.filter((_, i) => i !== index) }),
-    [update, profile.rules],
-  )
-
-  // ── Provider mutators ─────────────────────────────────────────────────
-  const providerSettings = profile.providerSettings ?? {}
-  const setModel = useCallback(
-    (model: string | null) => update({ model }),
-    [update],
-  )
-  const setEnv = useCallback(
-    (env: Record<string, string>) => update({ env }),
-    [update],
-  )
-  const setAvailableModels = useCallback(
-    (availableModels: string[]) => update({ availableModels }),
-    [update],
-  )
+  const removeRule = useCallback((index: number) => onUpdate({ rules: profile.rules.filter((_, i) => i !== index) }), [onUpdate, profile.rules])
+  const setModel = useCallback((model: string | null) => onUpdate({ model }), [onUpdate])
+  const setEnv = useCallback((env: Record<string, string>) => onUpdate({ env }), [onUpdate])
+  const setAvailableModels = useCallback((availableModels: string[]) => onUpdate({ availableModels }), [onUpdate])
   const setAgentLimits = useCallback(
-    (agentLimits: Record<string, unknown>) => update({ agentLimits: agentLimits as { max_turns?: number; max_cost_per_session?: number } }),
-    [update],
+    (agentLimits: Record<string, unknown>) => onUpdate({ agentLimits: agentLimits as { max_turns?: number; max_cost_per_session?: number } }),
+    [onUpdate],
   )
-  const setHooks = useCallback(
-    (hooks: HookConfig[]) => update({ hooks }),
-    [update],
-  )
+  const setHooks = useCallback((hooks: HookConfig[]) => onUpdate({ hooks }), [onUpdate])
   const setProviderSettings = useCallback(
-    (settings: Record<string, Record<string, unknown>>) => update({ providerSettings: settings }),
-    [update],
+    (settings: Record<string, Record<string, unknown>>) => onUpdate({ providerSettings: settings }),
+    [onUpdate],
   )
 
-  // ── Dialog state ──────────────────────────────────────────────────────
   const [skillOpen, setSkillOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -152,9 +151,9 @@ function AgentDetailPage() {
   return (
     <>
       <div className="flex h-full min-h-0 overflow-hidden">
-        <AgentActivityBar activeSection={activeSection} onSectionClick={handleSectionClick} counts={counts} />
+        <AgentActivityBar activeSection={activeSection} onSectionClick={onSectionClick} counts={counts} />
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <AgentStickyHeader profile={profile} onEdit={() => setEditOpen(true)} onDelete={handleDelete} />
+          <AgentStickyHeader profile={profile} onEdit={() => setEditOpen(true)} onDelete={onDelete} isDraft={isDraft} />
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
             <div id="section-skills">
               <SkillsSection skills={profile.skills} onRemove={removeSkill} onAdd={() => setSkillOpen(true)} />
@@ -169,30 +168,15 @@ function AgentDetailPage() {
               <RulesSection rules={profile.rules} onAdd={() => { setRuleEdit(null); setRuleOpen(true) }} onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }} onRemove={removeRule} />
             </div>
             <div id="section-providers">
-              <ProvidersSection
-                providers={profile.profile.providers ?? []}
-                model={profile.model}
-                env={profile.env}
-                availableModels={profile.availableModels}
-                agentLimits={profile.agentLimits}
-                hooks={profile.hooks}
-                providerSettings={providerSettings}
-                onChangeModel={setModel}
-                onChangeEnv={setEnv}
-                onChangeAvailableModels={setAvailableModels}
-                onChangeAgentLimits={setAgentLimits}
-                onChangeHooks={setHooks}
-                onChangeProviderSettings={setProviderSettings}
-              />
+              <ProvidersSection providers={profile.profile.providers ?? []} model={profile.model} env={profile.env} availableModels={profile.availableModels} agentLimits={profile.agentLimits} hooks={profile.hooks} providerSettings={profile.providerSettings ?? {}} onChangeModel={setModel} onChangeEnv={setEnv} onChangeAvailableModels={setAvailableModels} onChangeAgentLimits={setAgentLimits} onChangeHooks={setHooks} onChangeProviderSettings={setProviderSettings} />
             </div>
             <div className="h-24" />
           </div>
         </div>
       </div>
-
       <AddSkillDialog open={skillOpen} onOpenChange={setSkillOpen} existingIds={profile.skills.map((s) => s.id)} onAdd={addSkill} />
-      <AddMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} existingNames={profile.mcpServers.map((s) => s.name)} onAdd={(server) => update({ mcpServers: [...profile.mcpServers, server] })} />
-      <EditAgentDialog open={editOpen} onOpenChange={setEditOpen} profile={profile} onSave={(patch) => update(patch)} />
+      <AddMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} existingNames={profile.mcpServers.map((s) => s.name)} onAdd={(server) => onUpdate({ mcpServers: [...profile.mcpServers, server] })} />
+      <EditAgentDialog open={editOpen} onOpenChange={setEditOpen} profile={profile} onSave={(patch) => onUpdate(patch)} />
       <PermissionsDialog open={permsOpen} onOpenChange={setPermsOpen} permissions={profile.permissions ?? {}} onSave={updatePermissions} />
       <RuleEditorDialog open={ruleOpen} onOpenChange={setRuleOpen} rule={ruleEdit?.rule ?? null} onSave={(rule) => { if (ruleEdit) updateRule(ruleEdit.index, rule); else addRule(rule) }} onDelete={ruleEdit ? () => removeRule(ruleEdit.index) : undefined} />
     </>

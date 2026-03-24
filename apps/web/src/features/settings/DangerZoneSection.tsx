@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { useAgentStore } from '#/features/agents/useAgentStore'
+import { clearAllDrafts } from '#/features/agents/useAgentDrafts'
 import { SettingsSection, SettingsRow } from './SettingsLayout'
 
 const AGENT_STORAGE_KEY = 'ship-agents-v2'
@@ -33,6 +34,7 @@ export function DangerZoneSection() {
       for (const agent of agents) {
         deleteAgent(agent.profile.id)
       }
+      clearAllDrafts()
       window.localStorage.removeItem(AGENT_STORAGE_KEY)
       toast.success('All agents deleted')
     } catch {

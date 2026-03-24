@@ -7,7 +7,7 @@ import { PublishPanel } from '#/features/studio/PublishPanel'
 import { useLibrarySync } from '#/features/compiler/useLibrarySync'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
-import { useAgentStore } from '#/features/agents/useAgentStore'
+import { useAgents } from '#/features/agents/useAgents'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 import { LocalMcpProvider } from '#/features/studio/LocalMcpContext'
@@ -24,15 +24,6 @@ function StudioLayout() {
       <StudioSyncShell />
     </LocalMcpProvider>
   )
-}
-
-function agentSyncToStatusValue(
-  status: 'syncing' | 'synced' | 'error' | 'offline',
-): SyncStatusValue {
-  if (status === 'syncing') return 'saving'
-  if (status === 'synced') return 'saved'
-  if (status === 'error') return 'error'
-  return 'idle'
 }
 
 function StudioSyncShell() {
@@ -55,13 +46,12 @@ function StudioSyncShell() {
 
   const [panelOpen, setPanelOpen] = useState(true)
 
-  const { getAgent, syncStatus: agentSyncStatus } = useAgentStore()
+  const { getAgent, isConnected } = useAgents()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
 
-  const combinedSyncStatus = combineSyncStatuses(
-    librarySyncStatus,
-    agentSyncToStatusValue(agentSyncStatus.status),
-  )
+  // Derive sync status from MCP connection state
+  const agentSyncValue: SyncStatusValue = isConnected ? 'saved' : 'idle'
+  const combinedSyncStatus = combineSyncStatuses(librarySyncStatus, agentSyncValue)
 
   // Build effective library: merge agent config when viewing an agent
   const effectiveLibrary = useMemo(() => {

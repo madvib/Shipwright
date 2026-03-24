@@ -8,9 +8,10 @@ interface AgentStickyHeaderProps {
   profile: ResolvedAgentProfile
   onEdit: () => void
   onDelete?: () => void
+  isDraft?: boolean
 }
 
-export function AgentStickyHeader({ profile, onEdit, onDelete }: AgentStickyHeaderProps) {
+export function AgentStickyHeader({ profile, onEdit, onDelete, isDraft }: AgentStickyHeaderProps) {
   const initial = profile.profile.name.charAt(0).toUpperCase()
   const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id))
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -109,6 +110,12 @@ export function AgentStickyHeader({ profile, onEdit, onDelete }: AgentStickyHead
       <span className="hidden sm:inline text-[10px] text-muted-foreground/50 tabular-nums">
         {profile.profile.version}
       </span>
+
+      {isDraft && (
+        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500">
+          Modified
+        </span>
+      )}
 
       <div className="flex-1" />
 

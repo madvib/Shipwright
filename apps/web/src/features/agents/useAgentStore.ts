@@ -1,18 +1,11 @@
-// Unified agent store: localStorage + server sync via useSyncExternalStore.
+// Agent store: localStorage persistence for agent creation and local state.
+// MCP pull is now the source of truth for existing agents.
+// This store handles agent creation and the legacy localStorage cache.
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { toast } from 'sonner'
-import { useAuth } from '#/lib/components/protected-route'
-import { fetchAgents, createAgentApi, updateAgentApi, deleteAgentApi } from './agent-api'
+import { useCallback, useSyncExternalStore } from 'react'
 import type { ResolvedAgentProfile } from './types'
 
 const STORAGE_KEY = 'ship-agents-v2'
-const DEBOUNCE_MS = 2000
-
-export interface AgentSyncStatus {
-  status: 'syncing' | 'synced' | 'error' | 'offline'
-  lastSyncedAt?: number
-}
 
 interface StoreState { agents: ResolvedAgentProfile[]; activeId: string | null }
 
@@ -28,7 +21,6 @@ function loadState(): StoreState {
     if (!raw) return emptyState()
     const parsed = JSON.parse(raw) as StoreState
     if (!Array.isArray(parsed.agents)) return emptyState()
-    // Drop any agents missing the profile.id shape (stale format)
     const valid = parsed.agents.filter((a) => a?.profile?.id)
     return { agents: valid, activeId: parsed.activeId ?? valid[0]?.profile?.id ?? null }
   } catch {
@@ -95,32 +87,7 @@ export function makeAgent(partial?: Partial<ResolvedAgentProfile>): ResolvedAgen
   }
 }
 
-function mergeAgents(
-  local: ResolvedAgentProfile[],
-  server: ResolvedAgentProfile[],
-): ResolvedAgentProfile[] {
-  const merged = new Map<string, ResolvedAgentProfile>()
-
-  // Server wins for ID conflicts
-  for (const a of server) merged.set(a.profile.id, a)
-  // Local-only entries are preserved
-  for (const a of local) {
-    if (!merged.has(a.profile.id)) merged.set(a.profile.id, a)
-  }
-
-  return Array.from(merged.values())
-}
-
 export function useAgentStore() {
-  const { isAuthenticated, isPending: authPending } = useAuth()
-  const initialSyncDoneRef = useRef(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isFirstSnapshotRef = useRef(true)
-  const lastSyncedRef = useRef<string | null>(null)
-  const [syncStatus, setSyncStatus] = useState<AgentSyncStatus>({
-    status: isAuthenticated ? 'synced' : 'offline',
-  })
-
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
   const state: StoreState = (() => {
     try { return JSON.parse(raw) as StoreState } catch { return emptyState() }
@@ -164,7 +131,6 @@ export function useAgentStore() {
             ),
           }
         }
-        // Upsert: create agent with the patch if it doesn't exist
         const agent = makeAgent({ profile: { id, name: id }, ...patch })
         return { agents: [...prev.agents, agent], activeId: prev.activeId ?? agent.profile.id }
       })
@@ -185,111 +151,13 @@ export function useAgentStore() {
     [setState],
   )
 
-  useEffect(() => {
-    if (authPending) return
-    if (!isAuthenticated) {
-      setSyncStatus({ status: 'offline' })
-      return
-    }
-    if (initialSyncDoneRef.current) return
-    initialSyncDoneRef.current = true
-
-    setSyncStatus({ status: 'syncing' })
-
-    void (async () => {
-      try {
-        const serverAgents = await fetchAgents()
-        const local = loadState()
-        const merged = mergeAgents(local.agents, serverAgents)
-
-        saveState({ agents: merged, activeId: local.activeId ?? merged[0]?.profile.id ?? null })
-        lastSyncedRef.current = JSON.stringify(merged)
-
-        // Push local-only agents to server
-        const serverIds = new Set(serverAgents.map((a) => a.profile.id))
-        const localOnly = merged.filter((a) => !serverIds.has(a.profile.id))
-        await Promise.all(localOnly.map((a) => createAgentApi(a)))
-
-        setSyncStatus({ status: 'synced', lastSyncedAt: Date.now() })
-      } catch {
-        // API unreachable -- localStorage is authoritative
-        setSyncStatus({ status: 'error' })
-        toast.error('Agent sync failed', { description: 'Changes saved locally.' })
-      }
-    })()
-  }, [authPending, isAuthenticated])
-
-  useEffect(() => {
-    if (isFirstSnapshotRef.current) {
-      isFirstSnapshotRef.current = false
-      return
-    }
-    if (!isAuthenticated || authPending) return
-
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-
-    setSyncStatus((prev) => ({ ...prev, status: 'syncing' }))
-
-    debounceRef.current = setTimeout(() => {
-      const current = loadState()
-      const serialized = JSON.stringify(current.agents)
-
-      // Skip if unchanged since last sync
-      if (serialized === lastSyncedRef.current) {
-        setSyncStatus((prev) => ({ ...prev, status: 'synced' }))
-        return
-      }
-      lastSyncedRef.current = serialized
-
-      void syncToServer(current.agents)
-        .then(() => {
-          setSyncStatus({ status: 'synced', lastSyncedAt: Date.now() })
-        })
-        .catch(() => {
-          setSyncStatus((prev) => ({ ...prev, status: 'error' }))
-          toast.error('Agent sync failed', { description: 'Changes saved locally.' })
-        })
-    }, DEBOUNCE_MS)
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [raw, isAuthenticated, authPending])
-
   return {
     agents: state.agents,
     activeId: state.activeId,
-    syncStatus,
     setActiveId,
     getAgent,
     createAgent,
     updateAgent,
     deleteAgent,
   }
-}
-
-async function syncToServer(agents: ResolvedAgentProfile[]): Promise<void> {
-  const serverAgents = await fetchAgents()
-  const serverMap = new Map(serverAgents.map((a) => [a.profile.id, a]))
-  const localMap = new Map(agents.map((a) => [a.profile.id, a]))
-
-  const ops: Promise<void>[] = []
-
-  // Create or update local agents on server
-  for (const agent of agents) {
-    if (serverMap.has(agent.profile.id)) {
-      ops.push(updateAgentApi(agent.profile.id, agent))
-    } else {
-      ops.push(createAgentApi(agent))
-    }
-  }
-
-  // Delete server agents not present locally
-  for (const sa of serverAgents) {
-    if (!localMap.has(sa.profile.id)) {
-      ops.push(deleteAgentApi(sa.profile.id))
-    }
-  }
-
-  await Promise.all(ops)
 }
