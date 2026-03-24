@@ -1,41 +1,10 @@
-
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ship-studio",
   "compatibility_date": "2025-09-02",
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
-
-  // D1 databases — split into auth and registry concerns
-  "d1_databases": [
-    {
-      "binding": "AUTH_DB",
-      "database_name": "ship-auth",
-      "database_id": "11371c7b-f2b9-4084-a7ad-d1be24b0ddf8",
-      "migrations_dir": "migrations/auth"
-    },
-    {
-      "binding": "REGISTRY_DB",
-      "database_name": "ship-registry",
-      "database_id": "169f1ff8-dc1c-4d66-b3bf-773aee944965",
-      "migrations_dir": "migrations/registry"
-    }
-  ],
-
-  // Rate limiting — Cloudflare native binding. period must be 10 or 60 (seconds).
-  "ratelimits": [
-    { "name": "RATE_LIMITER_PUBLISH",  "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
-    { "name": "RATE_LIMITER_CLAIM",    "namespace_id": "1002", "simple": { "limit": 5,  "period": 60 } },
-    { "name": "RATE_LIMITER_INSTALL",  "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } },
-    { "name": "RATE_LIMITER_SEARCH",   "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
-    { "name": "RATE_LIMITER_STAR",     "namespace_id": "1005", "simple": { "limit": 30, "period": 60 } }
-  ],
-
-  // Production: update pattern and zone_name to match your domain
-  "routes": [
-    { "pattern": "getship.dev/*", "zone_name": "getship.dev" }
-  ],
-
+  "observability": { "enabled": true },
   "env": {
     "staging": {
       "name": "ship-studio-staging",
@@ -43,17 +12,17 @@
         { "pattern": "staging.getship.dev/*", "zone_name": "getship.dev" }
       ],
       "d1_databases": [
-
         {
           "binding": "AUTH_DB",
           "database_name": "ship-auth-staging",
-      "database_id": "8ed88437-8d37-429a-8309-186b509bdb6c",
+          "database_id": "8ed88437-8d37-429a-8309-186b509bdb6c",
           "migrations_dir": "migrations/auth"
         },
         {
           "binding": "REGISTRY_DB",
-      "database_name": "ship-registry-staging",
-      "database_id": "5f360153-5ba4-4bc4-8661-5a34f26a93bd",          "migrations_dir": "migrations/registry"
+          "database_name": "ship-registry-staging",
+          "database_id": "5f360153-5ba4-4bc4-8661-5a34f26a93bd",
+          "migrations_dir": "migrations/registry"
         }
       ],
       "ratelimits": [
@@ -65,7 +34,7 @@
       ]
     },
     "production": {
-      "name": "ship-studio",
+      "name": "ship-studio-production",
       "routes": [
         { "pattern": "getship.dev/*", "zone_name": "getship.dev" }
       ],
@@ -73,13 +42,13 @@
         {
           "binding": "AUTH_DB",
           "database_name": "ship-auth",
-      "database_id": "11371c7b-f2b9-4084-a7ad-d1be24b0ddf8",
+          "database_id": "11371c7b-f2b9-4084-a7ad-d1be24b0ddf8",
           "migrations_dir": "migrations/auth"
         },
         {
           "binding": "REGISTRY_DB",
           "database_name": "ship-registry",
-      "database_id": "169f1ff8-dc1c-4d66-b3bf-773aee944965",
+          "database_id": "169f1ff8-dc1c-4d66-b3bf-773aee944965",
           "migrations_dir": "migrations/registry"
         }
       ],
