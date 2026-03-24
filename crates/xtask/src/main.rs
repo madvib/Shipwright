@@ -74,6 +74,18 @@ fn collect_types() -> TypeCollection {
     // compile/mod.rs
     c.register::<compiler::CompileOutput>();
 
+    // types/transfer.rs — MCP bridge types
+    c.register::<compiler::TransferBundle>();
+    c.register::<compiler::AgentBundle>();
+    c.register::<compiler::SkillBundle>();
+    c.register::<compiler::PullResponse>();
+    c.register::<compiler::PullAgent>();
+    c.register::<compiler::PullProfile>();
+    c.register::<compiler::PullSkill>();
+    c.register::<compiler::PullMcpServer>();
+    c.register::<compiler::PullRule>();
+    c.register::<compiler::ListAgentsResponse>();
+
     c
 }
 

@@ -1,37 +1,6 @@
-use serde::Deserialize;
 use std::path::Path;
 
-/// Transfer bundle sent from Studio to the local CLI via MCP.
-#[derive(Debug, Deserialize)]
-pub struct TransferBundle {
-    pub agent: AgentBundle,
-    #[serde(default)]
-    pub dependencies: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    pub skills: std::collections::HashMap<String, SkillBundle>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AgentBundle {
-    pub id: String,
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub skills: Vec<String>,
-    #[serde(default)]
-    pub rules: Vec<String>,
-    #[serde(default)]
-    pub mcp_servers: Vec<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SkillBundle {
-    pub files: std::collections::HashMap<String, String>,
-}
+pub use compiler::{AgentBundle, SkillBundle, TransferBundle};
 
 pub fn push_bundle(project_dir: &Path, bundle_json: &str) -> String {
     let bundle: TransferBundle = match serde_json::from_str(bundle_json) {

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use compiler::{ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullRule, PullSkill};
 use std::path::Path;
 
 pub use super::studio_push::push_bundle;
@@ -8,7 +8,8 @@ pub use super::studio_push::push_bundle;
 pub fn list_local_agents(project_dir: &Path) -> String {
     let agents_dir = project_dir.join(".ship").join("agents");
     if !agents_dir.exists() {
-        return serde_json::json!({ "agents": [] }).to_string();
+        return serde_json::to_string(&ListAgentsResponse { agents: vec![] })
+            .unwrap_or_default();
     }
     let mut ids = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&agents_dir) {
@@ -21,13 +22,13 @@ pub fn list_local_agents(project_dir: &Path) -> String {
         }
     }
     ids.sort();
-    serde_json::json!({ "agents": ids }).to_string()
+    serde_json::to_string(&ListAgentsResponse { agents: ids }).unwrap_or_default()
 }
 
 // ── Pull: CLI → Studio ──────────────────────────────────────────────────
 
 /// JSONC agent file shape (nested, with comments stripped by compiler).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AgentJsonc {
     agent: AgentJsoncProfile,
     #[serde(default)]
@@ -40,7 +41,7 @@ struct AgentJsonc {
     rules: Option<AgentJsoncRefs>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AgentJsoncProfile {
     id: String,
     #[serde(default)]
@@ -53,79 +54,38 @@ struct AgentJsoncProfile {
     providers: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AgentJsoncRefs {
     #[serde(default)]
     refs: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AgentJsoncMcp {
     #[serde(default)]
     servers: Vec<String>,
 }
 
-/// Browser-ready resolved agent (matches ResolvedAgentProfile).
-#[derive(Serialize)]
-struct PullAgent {
-    profile: PullProfile,
-    skills: Vec<PullSkill>,
-    #[serde(rename = "mcpServers")]
-    mcp_servers: Vec<PullMcpServer>,
-    rules: Vec<PullRule>,
-    hooks: Vec<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    permissions: Option<serde_json::Value>,
-}
-
-#[derive(Serialize)]
-struct PullProfile {
-    id: String,
-    name: String,
-    description: String,
-    providers: Vec<String>,
-    version: String,
-}
-
-#[derive(Serialize)]
-struct PullSkill {
-    id: String,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    content: String,
-    source: String,
-}
-
-#[derive(Serialize)]
-struct PullMcpServer {
-    name: String,
-    command: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    url: Option<String>,
-}
-
-#[derive(Serialize)]
-struct PullRule {
-    file_name: String,
-    content: String,
-}
-
 pub fn pull_agents(project_dir: &Path) -> String {
     let ship_dir = project_dir.join(".ship");
     if !ship_dir.exists() {
-        return serde_json::json!({ "agents": [] }).to_string();
+        return serde_json::to_string(&compiler::PullResponse { agents: vec![] })
+            .unwrap_or_default();
     }
 
     let agents_dir = ship_dir.join("agents");
     if !agents_dir.exists() {
-        return serde_json::json!({ "agents": [] }).to_string();
+        return serde_json::to_string(&compiler::PullResponse { agents: vec![] })
+            .unwrap_or_default();
     }
 
     let mut agents = Vec::new();
     let entries = match std::fs::read_dir(&agents_dir) {
         Ok(e) => e,
-        Err(_) => return serde_json::json!({ "agents": [] }).to_string(),
+        Err(_) => {
+            return serde_json::to_string(&compiler::PullResponse { agents: vec![] })
+                .unwrap_or_default()
+        }
     };
 
     for entry in entries.flatten() {
@@ -175,7 +135,7 @@ pub fn pull_agents(project_dir: &Path) -> String {
     }
 
     agents.sort_by(|a, b| a.profile.id.cmp(&b.profile.id));
-    serde_json::json!({ "agents": agents }).to_string()
+    serde_json::to_string(&compiler::PullResponse { agents }).unwrap_or_default()
 }
 
 fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {

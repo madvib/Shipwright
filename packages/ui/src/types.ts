@@ -3,6 +3,7 @@
 // regenerate after changing Rust types.
 
 export type {
+  AgentBundle,
   AgentLayerConfig,
   AgentLimits,
   AgentProfile,
@@ -15,6 +16,7 @@ export type {
   GitConfig,
   HookConfig,
   HookTrigger,
+  ListAgentsResponse,
   McpRefs,
   McpServerConfig,
   McpServerType,
@@ -32,12 +34,20 @@ export type {
   ProfileRules,
   ProjectConfig,
   ProjectLibrary,
+  PullAgent,
+  PullMcpServer,
+  PullProfile,
+  PullResponse,
+  PullRule,
+  PullSkill,
   Rule,
   Skill,
+  SkillBundle,
   SkillRefs,
   SkillSource,
   StatusConfig,
   ToolPermissions,
+  TransferBundle,
 } from './generated'
 
 // ── MCP Registry types (not from Rust — external schema) ─────────────────────

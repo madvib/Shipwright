@@ -29,6 +29,8 @@ pub use types::{
     PermissionConfig, Permissions, PluginEntry, PluginRefs, PluginsManifest, ProfileMeta,
     ProfilePermissions, ProfileRules, ProjectConfig, Rule, Skill, SkillRefs, SkillSource,
     StatusConfig, ToolPermissions, list_catalog, list_catalog_by_kind, search_catalog,
+    AgentBundle, ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullResponse, PullRule,
+    PullSkill, SkillBundle, TransferBundle,
 };
 
 /// Generate a nanoid using Ship's 56-character alphabet (no ambiguous chars).

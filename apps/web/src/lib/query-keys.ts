@@ -9,6 +9,13 @@ export const studioKeys = {
   workspace: (id: string) => ['studio', 'workspaces', id] as const,
 } as const
 
+export const mcpKeys = {
+  all: ['mcp'] as const,
+  agents: () => ['mcp', 'agents'] as const,
+  agentList: () => ['mcp', 'agents', 'list'] as const,
+  pull: () => ['mcp', 'agents', 'pull'] as const,
+} as const
+
 export const libraryKeys = {
   all: () => ['libraries'] as const,
   list: () => [...libraryKeys.all(), 'list'] as const,

@@ -6,9 +6,9 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useLocalMcpContext } from './LocalMcpContext'
+import { usePushBundle, useLocalAgentIds } from './mcp-queries'
 import { useAgentStore } from '#/features/agents/useAgentStore'
-import type { Skill } from '@ship/ui'
-import type { ResolvedAgentProfile } from '#/features/agents/types'
+import type { Skill, TransferBundle } from '@ship/ui'
 
 const DOT: Record<string, string> = {
   disconnected: 'bg-muted-foreground/40',
@@ -54,7 +54,6 @@ function PopoverBody({ mcp, onAddSkill }: {
 }) {
   const [showSettings, setShowSettings] = useState(false)
   const [portInput, setPortInput] = useState(String(mcp.port))
-  const [pushing, setPushing] = useState(false)
   const [pulling, setPulling] = useState(false)
   const [copied, setCopied] = useState(false)
   const { agents, activeId, updateAgent } = useAgentStore()
@@ -62,51 +61,47 @@ function PopoverBody({ mcp, onAddSkill }: {
   const startCmd = `ship mcp serve --http --port ${mcp.port}`
   const isIdle = mcp.status !== 'connected' && mcp.status !== 'connecting'
 
+  const pushBundle = usePushBundle()
+  useLocalAgentIds() // keep agent list warm in query cache
+
   const handlePortSave = () => {
     const p = parseInt(portInput, 10)
     if (p > 0 && p < 65536) mcp.setPort(p)
   }
 
-  const handlePush = async () => {
+  const handlePush = () => {
     if (!activeAgent) return
-    setPushing(true)
-    try {
-      const bundle = {
-        agent: {
-          id: activeAgent.profile.id,
-          name: activeAgent.profile.name,
-          description: activeAgent.profile.description,
-          skills: activeAgent.skills.map((s) => s.id),
-          rules: activeAgent.rules.map((r) => r.content),
-          mcp_servers: activeAgent.mcpServers,
-        },
-        skills: Object.fromEntries(
-          activeAgent.skills.map((s) => [s.id, { files: { 'SKILL.md': s.content } }]),
-        ),
-        dependencies: {},
-      }
-      const result = await mcp.callTool('push_bundle', { bundle: JSON.stringify(bundle) })
-      toast.success(result)
-      await mcp.refreshLocalAgents()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Push failed')
-    } finally {
-      setPushing(false)
+    const bundle: TransferBundle = {
+      agent: {
+        id: activeAgent.profile.id,
+        name: activeAgent.profile.name,
+        description: activeAgent.profile.description,
+        skills: activeAgent.skills.map((s) => s.id),
+        rules: activeAgent.rules.map((r) => r.content),
+        mcp_servers: activeAgent.mcpServers,
+      },
+      skills: Object.fromEntries(
+        activeAgent.skills.map((s) => [s.id, { files: { 'SKILL.md': s.content } }]),
+      ),
+      dependencies: {},
     }
+    pushBundle.mutate(bundle, {
+      onSuccess: (result) => toast.success(result),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Push failed'),
+    })
   }
 
   const handlePull = async () => {
     setPulling(true)
     try {
       const raw = await mcp.callTool('pull_agents')
-      const parsed = JSON.parse(raw) as { agents: ResolvedAgentProfile[] }
+      const parsed = JSON.parse(raw) as { agents: Array<{ profile: { id: string; name: string }; skills: Skill[] }> }
       let count = 0
       for (const a of parsed.agents) {
         for (const skill of a.skills ?? []) onAddSkill(skill)
-        updateAgent(a.profile.id, a)
+        updateAgent(a.profile.id, a as Parameters<typeof updateAgent>[1])
         count++
       }
-      await mcp.refreshLocalAgents()
       toast.success(`Imported ${count} agent${count !== 1 ? 's' : ''} from CLI`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Pull failed')
@@ -178,7 +173,7 @@ function PopoverBody({ mcp, onAddSkill }: {
       {/* Connected: push/pull */}
       {mcp.status === 'connected' && (
         <div className="space-y-1.5">
-          <SyncBtn icon={pushing ? <Loader2 className="size-3.5 text-primary animate-spin" /> : <ArrowUpToLine className="size-3.5 text-primary" />} label={pushing ? 'Pushing...' : 'Push to CLI'} desc={activeAgent ? `Write ${activeAgent.profile.id} to .ship/` : 'Select an agent first'} disabled={!activeAgent || pushing} primary onClick={() => void handlePush()} />
+          <SyncBtn icon={pushBundle.isPending ? <Loader2 className="size-3.5 text-primary animate-spin" /> : <ArrowUpToLine className="size-3.5 text-primary" />} label={pushBundle.isPending ? 'Pushing...' : 'Push to CLI'} desc={activeAgent ? `Write ${activeAgent.profile.id} to .ship/` : 'Select an agent first'} disabled={!activeAgent || pushBundle.isPending} primary onClick={handlePush} />
           <SyncBtn icon={pulling ? <Loader2 className="size-3.5 text-muted-foreground animate-spin" /> : <ArrowDownToLine className="size-3.5 text-muted-foreground" />} label={pulling ? 'Importing...' : 'Import from CLI'} desc="Pull .ship/ agents and skills into Studio" disabled={pulling} onClick={() => void handlePull()} />
         </div>
       )}
