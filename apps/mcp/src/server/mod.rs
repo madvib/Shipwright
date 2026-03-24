@@ -12,7 +12,8 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{
-    adr, agent, events, job, notes, project, session, skills, target, workspace, workspace_ops,
+    adr, agent, events, job, notes, project, session, skills, studio, target, workspace,
+    workspace_ops,
 };
 use target::{
     delete_capability as tool_delete_capability, update_capability as tool_update_capability,
@@ -102,6 +103,41 @@ impl ShipServer {
             Err(e) => return e,
         };
         agent::set_agent(project_dir, req.id.as_deref())
+    }
+
+    // ---- Studio sync ----
+
+    #[tool(
+        description = "Pull all local agents with resolved skills, rules, and MCP configs. \
+        Returns the full agent profiles ready for import into Studio."
+    )]
+    async fn pull_agents(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        studio::pull_agents(&project_dir)
+    }
+
+    #[tool(description = "List agent profile IDs that exist locally in .ship/agents/.")]
+    async fn list_local_agents(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        studio::list_local_agents(&project_dir)
+    }
+
+    #[tool(
+        description = "Receive an agent config bundle from Studio and write it to .ship/. \
+        The bundle parameter is a JSON string containing agent profile, inline skills, and dependencies."
+    )]
+    async fn push_bundle(&self, Parameters(req): Parameters<PushBundleRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        studio::push_bundle(&project_dir, &req.bundle)
     }
 
     // ---- Workspace ----

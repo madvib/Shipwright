@@ -70,6 +70,31 @@ async fn bearer_auth(
     }
 }
 
+/// Manual CORS middleware that adds headers without wrapping the response body.
+/// tower-http's CorsLayer interferes with SSE chunked streaming — the browser
+/// only receives the first chunk when CorsLayer wraps the body.
+async fn cors_middleware(req: Request<Body>, next: Next) -> Response {
+    use axum::http::{HeaderValue, Method};
+
+    // Handle preflight
+    if req.method() == Method::OPTIONS {
+        let mut res = Response::new(Body::empty());
+        let h = res.headers_mut();
+        h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
+        h.insert("access-control-allow-methods", HeaderValue::from_static("GET, POST, DELETE, OPTIONS"));
+        h.insert("access-control-allow-headers", HeaderValue::from_static("content-type, authorization, accept, mcp-session-id"));
+        h.insert("access-control-expose-headers", HeaderValue::from_static("mcp-session-id"));
+        h.insert("access-control-max-age", HeaderValue::from_static("86400"));
+        return res;
+    }
+
+    let mut res = next.run(req).await;
+    let h = res.headers_mut();
+    h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
+    h.insert("access-control-expose-headers", HeaderValue::from_static("mcp-session-id"));
+    res
+}
+
 /// Build the axum Router for the MCP HTTP server.
 /// If `token` is Some, bearer token auth is required on all requests.
 pub fn build_mcp_app(token: Option<String>, ct: CancellationToken) -> Router {
@@ -79,11 +104,17 @@ pub fn build_mcp_app(token: Option<String>, ct: CancellationToken) -> Router {
             Default::default(),
             StreamableHttpServerConfig {
                 cancellation_token: ct,
+                // Disable priming event and keep-alive — browser fetch can't
+                // reliably read multi-chunk SSE streams that never close.
+                sse_retry: None,
+                sse_keep_alive: None,
                 ..Default::default()
             },
         );
 
-    let mcp_router = Router::new().nest_service("/mcp", service);
+    let mcp_router = Router::new()
+        .nest_service("/mcp", service)
+        .layer(middleware::from_fn(cors_middleware));
 
     if let Some(tok) = token {
         mcp_router.route_layer(middleware::from_fn_with_state(tok, bearer_auth))

@@ -1,10 +1,11 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Plus, ArrowRight } from 'lucide-react'
+import { Plus, ArrowRight, Monitor } from 'lucide-react'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import { getAgentIcon } from '#/features/agents/agent-icons'
 import { TechIcon, TECH_STACKS } from '#/features/studio/TechIcon'
 import { AgentListSkeleton } from '#/features/studio/StudioSkeleton'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
+import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 
 export const Route = createFileRoute('/studio/agents/')({
   component: AgentsListPage,
@@ -15,6 +16,8 @@ export const Route = createFileRoute('/studio/agents/')({
 function AgentsListPage() {
   const { agents, createAgent } = useAgentStore()
   const navigate = useNavigate()
+  const mcp = useLocalMcpContext()
+  const localIds = mcp?.localAgentIds ?? new Set<string>()
 
   const handleNewAgent = () => {
     const id = createAgent()
@@ -96,11 +99,17 @@ function AgentsListPage() {
                     <span>{a.rules.length} rule{a.rules.length !== 1 ? 's' : ''}</span>
                   </div>
 
-                  {/* Preset badge */}
-                  <div className="mt-2">
+                  {/* Badges */}
+                  <div className="mt-2 flex items-center gap-1.5">
                     <span className="text-[9px] px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground">
                       {preset.replace('ship-', '')}
                     </span>
+                    {localIds.has(a.profile.id) && (
+                      <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
+                        <Monitor className="size-2.5" />
+                        Local
+                      </span>
+                    )}
                   </div>
                 </Link>
               )
