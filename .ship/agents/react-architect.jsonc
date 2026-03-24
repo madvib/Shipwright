@@ -9,7 +9,7 @@
     "providers": ["claude"],
   },
   "skills": {
-    "refs": [],
+    "refs": ["ship-schema-reference", "studio-mcp-bridge"],
   },
   "mcp": {
     "servers": ["ship"],
