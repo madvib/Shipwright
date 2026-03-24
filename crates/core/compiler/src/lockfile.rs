@@ -6,6 +6,7 @@
 //! NOTE: `.ship/ship.state` (formerly `.ship/ship.lock`) stores workspace state
 //! (active_profile, compiled_at). These are completely separate files.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Context;
@@ -26,6 +27,9 @@ pub struct LockPackage {
     pub commit: String,
     /// Content hash in `sha256:<hex>` format.
     pub hash: String,
+    /// Per-export integrity hashes, e.g. `{ "skills/foo": "sha256:..." }`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub export_hashes: BTreeMap<String, String>,
 }
 
 /// The parsed `.ship/ship.lock` file.
@@ -74,6 +78,12 @@ impl ShipLock {
             out.push_str(&format!("version = {:?}\n", pkg.version));
             out.push_str(&format!("commit = {:?}\n", pkg.commit));
             out.push_str(&format!("hash = {:?}\n", pkg.hash));
+            if !pkg.export_hashes.is_empty() {
+                out.push_str("[package.export_hashes]\n");
+                for (k, v) in &pkg.export_hashes {
+                    out.push_str(&format!("{:?} = {:?}\n", k, v));
+                }
+            }
         }
         out
     }
@@ -117,6 +127,8 @@ impl ShipLock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
     use crate::manifest::ShipManifest;
 
     fn sample_lock() -> ShipLock {
@@ -128,12 +140,14 @@ mod tests {
                     version: "1.0.0".into(),
                     commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
                     hash: "sha256:bbbb".into(),
+                    export_hashes: BTreeMap::new(),
                 },
                 LockPackage {
                     path: "github.com/a/first".into(),
                     version: "2.0.0".into(),
                     commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                     hash: "sha256:aaaa".into(),
+                    export_hashes: BTreeMap::new(),
                 },
             ],
         }
@@ -157,6 +171,7 @@ mod tests {
                 version: "1.0.0".into(),
                 commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                 hash: "sha256:cafe".into(),
+                export_hashes: BTreeMap::new(),
             }],
         };
         let s = lock.to_toml_string();
@@ -245,6 +260,7 @@ version = "1.0.0"
                 version: "1.0.0".into(),
                 commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                 hash: "sha256:aaaa".into(),
+                export_hashes: BTreeMap::new(),
             }],
         };
         let manifest = ShipManifest::from_toml_str(
@@ -268,6 +284,60 @@ version = "1.0.0"
         assert!(path.exists());
         // Ensure tmp file is cleaned up
         assert!(!dir.path().join("ship.lock.tmp").exists());
+    }
+
+    #[test]
+    fn export_hashes_round_trip() {
+        let mut eh = BTreeMap::new();
+        eh.insert("skills/foo".to_string(), "sha256:abc123".to_string());
+        eh.insert("agents/bar.toml".to_string(), "sha256:def456".to_string());
+        let lock = ShipLock {
+            version: 1,
+            packages: vec![LockPackage {
+                path: "github.com/x/y".into(),
+                version: "1.0.0".into(),
+                commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+                hash: "sha256:combined".into(),
+                export_hashes: eh.clone(),
+            }],
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ship.lock");
+        lock.write_atomic(&path).unwrap();
+        let loaded = ShipLock::from_file(&path).unwrap();
+        assert_eq!(loaded.packages[0].export_hashes, eh);
+    }
+
+    #[test]
+    fn export_hashes_backward_compat_missing_field() {
+        // Old lockfile without export_hashes should parse fine
+        let toml_str = r#"
+version = 1
+
+[[package]]
+path = "github.com/a/b"
+version = "1.0.0"
+commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+hash = "sha256:aaaa"
+"#;
+        let lock: ShipLock = toml::from_str(toml_str).unwrap();
+        assert!(lock.packages[0].export_hashes.is_empty());
+    }
+
+    #[test]
+    fn export_hashes_omitted_when_empty() {
+        let lock = ShipLock {
+            version: 1,
+            packages: vec![LockPackage {
+                path: "github.com/x/y".into(),
+                version: "1.0.0".into(),
+                commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+                hash: "sha256:cafe".into(),
+                export_hashes: BTreeMap::new(),
+            }],
+        };
+        let s = lock.to_toml_string();
+        assert!(!s.contains("export_hashes"), "empty export_hashes should not appear in output");
     }
 
     #[test]
