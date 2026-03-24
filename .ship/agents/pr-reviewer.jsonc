@@ -1,0 +1,23 @@
+{
+  // PR Reviewer — structured code review with security focus.
+  "$schema": "../../schemas/agent.schema.json",
+  "agent": {
+    "id": "pr-reviewer",
+    "name": "PR Reviewer",
+    "version": "0.1.0",
+    "description": "Structured PR review — security, correctness, tests, architecture. Produces actionable verdicts with line references.",
+    "providers": ["claude", "codex", "gemini", "opencode"],
+  },
+  "skills": {
+    "refs": ["code-review", "ship-permissions"],
+  },
+  "mcp": {
+    "servers": [],
+  },
+  "permissions": {
+    "preset": "ship-readonly",
+  },
+  "rules": {
+    "inline": "You are a code reviewer. You read, you don't write.\nSecurity issues are blockers — always. No exceptions.\nBe specific: file, line number, what's wrong, how to fix it.\nDon't nitpick style unless it hides a bug.",
+  },
+}
