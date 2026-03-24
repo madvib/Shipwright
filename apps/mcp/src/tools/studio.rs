@@ -1,4 +1,5 @@
 use compiler::{ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullRule, PullSkill};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub use super::studio_push::push_bundle;
@@ -40,18 +41,30 @@ pub fn list_local_agents(project_dir: &Path) -> String {
 
 // ── Pull: CLI → Studio ──────────────────────────────────────────────────
 
-/// JSONC agent file shape (nested, with comments stripped by compiler).
+/// Full JSONC agent file shape — every field the schema defines.
 #[derive(Debug, serde::Deserialize)]
 struct AgentJsonc {
     agent: AgentJsoncProfile,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    env: Option<HashMap<String, String>>,
+    #[serde(default)]
+    available_models: Option<Vec<String>>,
+    #[serde(default)]
+    agent_limits: Option<serde_json::Value>,
     #[serde(default)]
     skills: Option<AgentJsoncRefs>,
     #[serde(default)]
     mcp: Option<AgentJsoncMcp>,
     #[serde(default)]
+    plugins: Option<serde_json::Value>,
+    #[serde(default)]
     permissions: Option<serde_json::Value>,
     #[serde(default)]
-    rules: Option<AgentJsoncRefs>,
+    rules: Option<AgentJsoncRules>,
+    #[serde(default)]
+    provider_settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -77,6 +90,14 @@ struct AgentJsoncRefs {
 struct AgentJsoncMcp {
     #[serde(default)]
     servers: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AgentJsoncRules {
+    #[serde(default)]
+    refs: Vec<String>,
+    #[serde(default)]
+    inline: Option<String>,
 }
 
 pub fn pull_agents(project_dir: &Path) -> String {
@@ -128,7 +149,9 @@ fn pull_agents_from_dir(
         }
 
         let skill_refs = parsed.skills.map(|s| s.refs).unwrap_or_default();
-        let rule_refs = parsed.rules.map(|r| r.refs).unwrap_or_default();
+        let rules_section = parsed.rules;
+        let rule_refs = rules_section.as_ref().map(|r| r.refs.clone()).unwrap_or_default();
+        let rules_inline = rules_section.and_then(|r| r.inline);
         let mcp_names = parsed.mcp.map(|m| m.servers).unwrap_or_default();
 
         let skills = resolve_skills(ship_dir, &skill_refs);
@@ -153,8 +176,15 @@ fn pull_agents_from_dir(
             skills,
             mcp_servers,
             rules,
+            rules_inline,
             hooks: vec![],
             permissions: parsed.permissions,
+            model: parsed.model,
+            env: parsed.env,
+            available_models: parsed.available_models,
+            agent_limits: parsed.agent_limits,
+            plugins: parsed.plugins,
+            provider_settings: parsed.provider_settings,
             source: source.into(),
         });
     }
@@ -221,11 +251,11 @@ fn resolve_rules(ship_dir: &Path, refs: &[String]) -> Vec<PullRule> {
 mod tests {
     use super::*;
 
-    fn write_agent(dir: &Path, id: &str) {
+    fn write_agent_file(dir: &Path, id: &str, extra: &str) {
         let agents = dir.join("agents");
         std::fs::create_dir_all(&agents).unwrap();
         let content = format!(
-            r#"{{ "agent": {{ "id": "{id}", "name": "{id}", "providers": ["claude"] }} }}"#,
+            r#"{{ "agent": {{ "id": "{id}", "name": "{id}", "providers": ["claude"] }}{extra} }}"#,
         );
         std::fs::write(agents.join(format!("{id}.jsonc")), content).unwrap();
     }
@@ -235,7 +265,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().join("project");
         std::fs::create_dir_all(&project).unwrap();
-        write_agent(&project.join(".ship"), "agent-a");
+        write_agent_file(&project.join(".ship"), "agent-a", "");
 
         let raw = pull_agents(&project);
         let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
@@ -250,11 +280,10 @@ mod tests {
         let library = tmp.path().join("library");
         std::fs::create_dir_all(&project).unwrap();
 
-        write_agent(&project.join(".ship"), "shared-agent");
-        write_agent(&library, "shared-agent");
-        write_agent(&library, "lib-only");
+        write_agent_file(&project.join(".ship"), "shared-agent", "");
+        write_agent_file(&library, "shared-agent", "");
+        write_agent_file(&library, "lib-only", "");
 
-        // Test with explicit dirs (bypassing library_dir() which reads global)
         let mut agents = Vec::new();
         let mut seen = std::collections::HashSet::new();
         pull_agents_from_dir(&project.join(".ship"), "project", &mut agents, &mut seen);
@@ -269,6 +298,37 @@ mod tests {
     }
 
     #[test]
+    fn pull_preserves_all_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        write_agent_file(
+            &project.join(".ship"),
+            "full-agent",
+            r#",
+            "model": "claude-sonnet-4-20250514",
+            "env": { "API_KEY": "test" },
+            "available_models": ["claude-sonnet-4-20250514"],
+            "agent_limits": { "max_turns": 50 },
+            "permissions": { "preset": "ship-standard", "default_mode": "plan" },
+            "provider_settings": { "claude": { "contextWindowTokens": 100000 } },
+            "rules": { "inline": "Be concise." }
+            "#,
+        );
+
+        let raw = pull_agents(&project);
+        let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
+        let a = &resp.agents[0];
+        assert_eq!(a.model.as_deref(), Some("claude-sonnet-4-20250514"));
+        assert_eq!(a.env.as_ref().unwrap().get("API_KEY").unwrap(), "test");
+        assert_eq!(a.available_models.as_ref().unwrap().len(), 1);
+        assert!(a.agent_limits.is_some());
+        assert!(a.permissions.is_some());
+        assert!(a.provider_settings.is_some());
+        assert_eq!(a.rules_inline.as_deref(), Some("Be concise."));
+    }
+
+    #[test]
     fn collect_agent_ids_handles_missing_dir() {
         let ids = collect_agent_ids(Path::new("/nonexistent/path"));
         assert!(ids.is_empty());
@@ -277,9 +337,105 @@ mod tests {
     #[test]
     fn list_local_agents_project_only() {
         let tmp = tempfile::tempdir().unwrap();
-        write_agent(&tmp.path().join(".ship"), "my-agent");
+        write_agent_file(&tmp.path().join(".ship"), "my-agent", "");
         let raw = list_local_agents(tmp.path());
         let resp: ListAgentsResponse = serde_json::from_str(&raw).unwrap();
         assert!(resp.agents.contains(&"my-agent".to_string()));
+    }
+
+    #[test]
+    fn push_then_pull_round_trips_all_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join(".ship")).unwrap();
+
+        // Push a fully-configured agent
+        let bundle = serde_json::json!({
+            "agent": {
+                "id": "round-trip",
+                "name": "Round Trip Agent",
+                "description": "Tests lossless transfer",
+                "version": "1.2.3",
+                "providers": ["claude", "cursor"],
+                "model": "claude-sonnet-4-20250514",
+                "env": { "SECRET": "abc" },
+                "available_models": ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"],
+                "agent_limits": { "max_turns": 100, "max_cost_per_session": 5.0 },
+                "skill_refs": ["tdd", "code-review"],
+                "rule_refs": ["style-guide"],
+                "rules_inline": "Always write tests first.",
+                "mcp_servers": ["ship", "github"],
+                "plugins": { "install": ["superpowers"], "scope": "project" },
+                "permissions": {
+                    "preset": "ship-standard",
+                    "default_mode": "plan",
+                    "tools_allow": ["Read", "Glob"],
+                    "tools_deny": ["Bash(rm -rf *)"]
+                },
+                "provider_settings": {
+                    "claude": { "contextWindowTokens": 100000 },
+                    "cursor": { "tabAutocomplete": true }
+                },
+                "hooks": [{ "event": "onSave", "command": "cargo fmt" }]
+            },
+            "skills": {
+                "tdd": { "files": { "SKILL.md": "---\nname: TDD\n---\nWrite tests first." } },
+                "code-review": { "files": { "SKILL.md": "---\nname: Code Review\n---\nReview code." } }
+            },
+            "rules": {
+                "style-guide": "Use snake_case for all functions."
+            },
+            "dependencies": {}
+        });
+
+        let result = push_bundle(project, &serde_json::to_string(&bundle).unwrap());
+        assert!(!result.starts_with("Error"), "push failed: {result}");
+
+        // Now pull it back
+        let raw = pull_agents(project);
+        let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
+        assert_eq!(resp.agents.len(), 1);
+        let a = &resp.agents[0];
+
+        // Profile fields
+        assert_eq!(a.profile.id, "round-trip");
+        assert_eq!(a.profile.name, "Round Trip Agent");
+        assert_eq!(a.profile.description, "Tests lossless transfer");
+        assert_eq!(a.profile.version, "1.2.3");
+        assert_eq!(a.profile.providers, vec!["claude", "cursor"]);
+
+        // Top-level fields
+        assert_eq!(a.model.as_deref(), Some("claude-sonnet-4-20250514"));
+        assert_eq!(a.env.as_ref().unwrap().get("SECRET").unwrap(), "abc");
+        assert_eq!(a.available_models.as_ref().unwrap().len(), 2);
+        let limits = a.agent_limits.as_ref().unwrap();
+        assert_eq!(limits["max_turns"], 100);
+
+        // Permissions
+        let perms = a.permissions.as_ref().unwrap();
+        assert_eq!(perms["preset"], "ship-standard");
+        assert_eq!(perms["default_mode"], "plan");
+
+        // Skills resolved with content
+        assert_eq!(a.skills.len(), 2);
+        let tdd = a.skills.iter().find(|s| s.id == "tdd").unwrap();
+        assert!(tdd.content.contains("Write tests first"));
+
+        // Rules resolved with content
+        assert_eq!(a.rules.len(), 1);
+        assert!(a.rules[0].content.contains("snake_case"));
+        assert_eq!(a.rules_inline.as_deref(), Some("Always write tests first."));
+
+        // MCP servers
+        assert_eq!(a.mcp_servers.len(), 2);
+
+        // Plugins
+        let plugins = a.plugins.as_ref().unwrap();
+        assert_eq!(plugins["install"][0], "superpowers");
+
+        // Provider settings
+        let ps = a.provider_settings.as_ref().unwrap();
+        assert_eq!(ps["claude"]["contextWindowTokens"], 100000);
+        assert_eq!(ps["cursor"]["tabAutocomplete"], true);
     }
 }

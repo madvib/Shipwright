@@ -3,8 +3,25 @@
 
 /**
  * Agent configuration within a transfer bundle.
+ * Every field the agent.schema.json defines is represented here.
  */
-export type AgentBundle = { id: string; name?: string | null; description?: string | null; model?: string | null; skills?: string[]; rules?: string[]; mcp_servers?: JsonValue[] }
+export type AgentBundle = { id: string; name?: string | null; description?: string | null; version?: string | null; providers?: string[] | null; model?: string | null; env?: Partial<{ [key in string]: string }> | null; available_models?: string[] | null; agent_limits?: JsonValue | null; 
+/**
+ * Skill IDs to activate.
+ */
+skill_refs?: string[]; 
+/**
+ * Rule file IDs to reference (e.g. "code-style").
+ */
+rule_refs?: string[]; 
+/**
+ * Inline rules text (appended after file-based rules).
+ */
+rules_inline?: string | null; 
+/**
+ * MCP server names from .ship/mcp.jsonc.
+ */
+mcp_servers?: string[]; plugins?: JsonValue | null; permissions?: JsonValue | null; provider_settings?: JsonValue | null; hooks?: JsonValue[] | null }
 
 export type AgentLayerConfig = { skills?: string[]; prompts?: string[]; context?: string[] }
 
@@ -359,8 +376,9 @@ model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_
 
 /**
  * Resolved agent as returned by pull_agents.
+ * Every schema field is present — nothing dropped on pull.
  */
-export type PullAgent = { profile: PullProfile; skills: PullSkill[]; mcpServers: PullMcpServer[]; rules: PullRule[]; hooks: JsonValue[]; permissions?: JsonValue | null; 
+export type PullAgent = { profile: PullProfile; skills: PullSkill[]; mcpServers: PullMcpServer[]; rules: PullRule[]; rules_inline?: string | null; hooks: JsonValue[]; permissions?: JsonValue | null; model?: string | null; env?: Partial<{ [key in string]: string }> | null; available_models?: string[] | null; agent_limits?: JsonValue | null; plugins?: JsonValue | null; provider_settings?: JsonValue | null; 
 /**
  * "project" (from .ship/) or "library" (from ~/.ship/).
  */
@@ -443,5 +461,9 @@ ask?: string[]; deny?: string[] }
 /**
  * Bundle sent from Studio to the local CLI via MCP push_bundle tool.
  */
-export type TransferBundle = { agent: AgentBundle; dependencies?: Partial<{ [key in string]: string }>; skills?: Partial<{ [key in string]: SkillBundle }> }
+export type TransferBundle = { agent: AgentBundle; dependencies?: Partial<{ [key in string]: string }>; skills?: Partial<{ [key in string]: SkillBundle }>; 
+/**
+ * Rule file content keyed by filename (e.g. "code-style.md" → content).
+ */
+rules?: Partial<{ [key in string]: string }> }
 

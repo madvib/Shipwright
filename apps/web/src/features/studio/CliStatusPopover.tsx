@@ -76,12 +76,19 @@ function PopoverBody({ mcp, onAddSkill }: {
         id: activeAgent.profile.id,
         name: activeAgent.profile.name,
         description: activeAgent.profile.description,
-        skills: activeAgent.skills.map((s) => s.id),
-        rules: activeAgent.rules.map((r) => r.content),
-        mcp_servers: activeAgent.mcpServers,
+        version: activeAgent.profile.version,
+        providers: activeAgent.profile.providers,
+        skill_refs: activeAgent.skills.map((s) => s.id),
+        rule_refs: activeAgent.rules.map((r) => r.file_name ?? r.content.slice(0, 30)),
+        mcp_servers: activeAgent.mcpServers.map((s) => s.name ?? s),
+        permissions: activeAgent.permissions as TransferBundle['agent']['permissions'],
+        provider_settings: activeAgent.providerSettings as TransferBundle['agent']['provider_settings'],
       },
       skills: Object.fromEntries(
         activeAgent.skills.map((s) => [s.id, { files: { 'SKILL.md': s.content } }]),
+      ),
+      rules: Object.fromEntries(
+        activeAgent.rules.map((r) => [r.file_name ?? `rule-${r.content.slice(0, 20)}`, r.content]),
       ),
       dependencies: {},
     }

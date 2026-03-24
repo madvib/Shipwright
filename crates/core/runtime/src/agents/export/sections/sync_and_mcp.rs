@@ -1039,7 +1039,15 @@ fn export_toml(
 
     // Ship self-entry
     let mut ship_entry = toml::value::Table::new();
-    ship_entry.insert("command".into(), toml::Value::String("ship".into()));
+    let ship_cmd = if cfg!(debug_assertions) {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+            .unwrap_or_else(|| "ship".to_string())
+    } else {
+        "ship".to_string()
+    };
+    ship_entry.insert("command".into(), toml::Value::String(ship_cmd));
     ship_entry.insert(
         "args".into(),
         toml::Value::Array(vec![
@@ -1169,8 +1177,16 @@ fn teardown_toml(config_path: &Path, mcp_key: &str, tool_state: &ToolState) -> R
 // ─── Entry builders ───────────────────────────────────────────────────────────
 
 fn ship_server_entry() -> (&'static str, serde_json::Value) {
+    let command = if cfg!(debug_assertions) {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+            .unwrap_or_else(|| "ship".to_string())
+    } else {
+        "ship".to_string()
+    };
     let entry = serde_json::json!({
-        "command": "ship",
+        "command": command,
         "args": ["mcp", "serve"],
         "type": "stdio",
         "_ship": { "managed": true }
