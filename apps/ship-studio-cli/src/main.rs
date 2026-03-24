@@ -1,5 +1,6 @@
 mod add;
 mod add_from;
+mod add_from_write;
 mod agent;
 mod agent_config;
 mod audit;

@@ -8,7 +8,9 @@ use std::io::Write as _;
 use serde_json::json;
 use tempfile::TempDir;
 
-use crate::decompile::{decompile_claude, decompile_codex, decompile_cursor, decompile_gemini};
+use crate::decompile::{
+    decompile_claude, decompile_codex, decompile_cursor, decompile_gemini, decompile_opencode,
+};
 use crate::resolve::ProjectLibrary;
 use crate::types::{
     HookConfig, HookTrigger, McpServerConfig, McpServerType, Permissions, Rule, ToolPermissions,
@@ -290,4 +292,38 @@ fn cursor_roundtrip_preserves_mcp_and_rules() {
             .iter()
             .any(|p| p.contains("Bash") || p.contains("Read")));
     }
+}
+
+// ── OpenCode round-trip ──────────────────────────────────────────────────────
+
+#[test]
+fn opencode_roundtrip_preserves_model_and_mcp() {
+    let library = test_library();
+    let resolved = resolve_library(&library, None, None);
+    let output = compile(&resolved, "opencode").unwrap();
+
+    let tmp = TempDir::new().unwrap();
+
+    // opencode.json (config patch)
+    if let Some(patch) = &output.opencode_config_patch {
+        write_file(
+            &tmp,
+            "opencode.json",
+            &serde_json::to_string_pretty(patch).unwrap(),
+        );
+    }
+
+    // AGENTS.md (context file)
+    if let Some(content) = &output.context_content {
+        write_file(&tmp, "AGENTS.md", content);
+    }
+
+    let decompiled = decompile_opencode(tmp.path());
+
+    // Model survives
+    assert_eq!(decompiled.model.as_deref(), Some("test-model"));
+    // MCP servers survive
+    assert!(decompiled.mcp_servers.iter().any(|s| s.id == "ship"));
+    // Rules survive (from AGENTS.md)
+    assert!(!decompiled.rules.is_empty());
 }
