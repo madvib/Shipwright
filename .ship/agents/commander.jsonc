@@ -9,7 +9,7 @@
     "providers": ["claude"],
   },
   "skills": {
-    "refs": ["cmdr", "cmdr-planner", "cmdr-orchestrator", "cmdr-gate", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "find-skills"],
+    "refs": ["cmdr", "cmdr-planner", "cmdr-orchestrator", "cmdr-gate", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "ship-permissions"],
   },
   "mcp": {
     "servers": ["ship"],

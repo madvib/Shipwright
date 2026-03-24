@@ -25,6 +25,7 @@ fn compile_writes_claude_md() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: None,
@@ -40,6 +41,7 @@ fn compile_writes_mcp_json() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: None,
@@ -60,6 +62,7 @@ fn compile_dry_run_writes_nothing() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: true,
         active_agent: None,
@@ -78,6 +81,7 @@ fn compile_gemini_writes_settings_json_with_mcp_and_context() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("gemini"),
         dry_run: false,
         active_agent: None,
@@ -99,6 +103,7 @@ fn compile_gemini_writes_gemini_md_with_rules() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("gemini"),
         dry_run: false,
         active_agent: None,
@@ -117,6 +122,7 @@ fn compile_codex_writes_agents_md_with_rules() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("codex"),
         dry_run: false,
         active_agent: None,
@@ -135,6 +141,7 @@ fn compile_codex_writes_toml_config_with_mcp_servers() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("codex"),
         dry_run: false,
         active_agent: None,
@@ -162,6 +169,7 @@ fn compile_cursor_writes_mdc_rule_files() {
     setup_minimal_project(&tmp);
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("cursor"),
         dry_run: false,
         active_agent: None,

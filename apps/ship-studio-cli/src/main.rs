@@ -155,8 +155,8 @@ fn dispatch_config(action: ConfigCommands) -> Result<()> {
 /// Activate an agent: load, compile, install plugins, write workspace state.
 fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
     let ship_dir = match path {
-        Some(p) => {
-            let sd = std::fs::canonicalize(&p)?.join(".ship");
+        Some(ref p) => {
+            let sd = std::fs::canonicalize(p)?.join(".ship");
             anyhow::ensure!(
                 sd.exists(),
                 ".ship/ not found in {}. Run: ship init",
@@ -167,7 +167,18 @@ fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
         None => paths::project_ship_dir_required()?,
     };
     let project_root = ship_dir.parent().unwrap().to_path_buf();
-    profile::activate_agent(agent_id, &project_root)
+
+    // When --path is not given and project_root was resolved via worktree pointer,
+    // the cwd (worktree) differs from project_root (main repo). Compiled output
+    // (CLAUDE.md, .claude/settings.json) must go to the cwd, not the main repo.
+    let output_root = if path.is_none() {
+        let cwd = std::env::current_dir()?;
+        if cwd != project_root { Some(cwd) } else { None }
+    } else {
+        None
+    };
+
+    profile::activate_agent(agent_id, &project_root, output_root.as_deref())
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -288,6 +299,7 @@ fn run_compile_cmd(
     let state = profile::WorkspaceState::load(&project_root.join(".ship"));
     compile::run_compile(compile::CompileOptions {
         project_root: &project_root,
+        output_root: None,
         provider,
         dry_run,
         active_agent: state.active_agent.as_deref(),

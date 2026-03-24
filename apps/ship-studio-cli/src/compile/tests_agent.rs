@@ -24,6 +24,7 @@ deny = ["Bash(rm -rf *)"]
     );
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: None,
@@ -53,6 +54,7 @@ preset = "ship-readonly"
     );
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("readonly"),
@@ -83,6 +85,7 @@ inline = "Never delete files without explicit confirmation."
     );
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("strict"),
@@ -110,6 +113,7 @@ stop = "ship permissions sync"
     );
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("commander"),
@@ -160,6 +164,7 @@ preset = "ship-fast"
     );
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("fast"),
@@ -197,6 +202,7 @@ default_mode = "bypassPermissions"
     );
     run_compile(CompileOptions {
         project_root: tmp.path(),
+        output_root: None,
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("autonomous"),

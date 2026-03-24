@@ -190,6 +190,7 @@ fn do_add(project_root: &Path, pkg_path: &str, _version: &str) -> Result<()> {
     let state = crate::profile::WorkspaceState::load(&ship_dir);
     crate::compile::run_compile(crate::compile::CompileOptions {
         project_root,
+        output_root: None,
         provider: None,
         dry_run: false,
         active_agent: state.active_agent.as_deref(),

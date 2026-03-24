@@ -16,7 +16,6 @@
     // Public skills — useful to any Ship user.
     "skills": [
       "skills/configure-agent",
-      "skills/find-skills",
       "skills/write-adr",
       "skills/tdd",
       "skills/visual-brainstorm",
@@ -28,9 +27,17 @@
       "skills/ship-cli-reference",
       "skills/ship-schema-reference",
       "skills/ship-permissions",
+      "skills/mission-control",
+      "skills/spawn-agent",
+      "skills/setup-workspace",
+      "skills/qa-workflow",
+      "skills/review-workflow",
     ],
-    // Private skills (commander, ship-coordination, spawn-agent) are project-specific.
+    // Private skills (cmdr*, ship-coordination) are project-specific.
     "agents": [
+      "agents/mission-control.jsonc",
+      "agents/qa-lead.jsonc",
+      "agents/pr-reviewer.jsonc",
       "agents/better-auth.jsonc",
       "agents/cli-lane.jsonc",
       "agents/cloudflare.jsonc",

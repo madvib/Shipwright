@@ -25,6 +25,10 @@ pub fn make_local_dep_repo(base: &Path, skill_name: &str, skill_content: &str) -
     git(&work_dir, &["config", "user.email", "test@test.local"]).unwrap();
     git(&work_dir, &["config", "user.name", "Test"]).unwrap();
 
+    // fetch_package_content requires ship.jsonc — use root-manifest shape
+    // so the entire repo (including skills/) gets copied to dest.
+    fs::write(work_dir.join("ship.jsonc"), "{}").unwrap();
+
     let skill_dir = work_dir.join("skills").join(skill_name);
     fs::create_dir_all(&skill_dir).unwrap();
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();

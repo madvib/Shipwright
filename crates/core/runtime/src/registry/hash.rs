@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Context;
-use compiler::manifest::ManifestExports;
 
 /// Files excluded from content hashing.
 fn should_exclude(rel_path: &str) -> bool {
@@ -90,45 +89,79 @@ pub fn compute_file_hash(path: &Path) -> anyhow::Result<String> {
     Ok(format!("sha256:{}", hex::encode_sha256(&content)))
 }
 
-/// Compute per-export hashes for all exported artifacts.
-///
-/// Skills (directories) are hashed with `compute_tree_hash`.
-/// Agents (files) are hashed with `compute_file_hash`.
-/// Returns a map of `{ "skills/foo": "sha256:...", "agents/bar.toml": "sha256:..." }`.
-pub fn compute_export_hashes(
-    ship_dir: &Path,
-    exports: &ManifestExports,
-) -> anyhow::Result<BTreeMap<String, String>> {
-    let mut hashes = BTreeMap::new();
-
-    for skill_path in &exports.skills {
-        let full = ship_dir.join(skill_path);
-        let hash = compute_tree_hash(&full)
-            .with_context(|| format!("hashing exported skill '{skill_path}'"))?;
-        hashes.insert(skill_path.clone(), hash);
-    }
-
-    for agent_path in &exports.agents {
-        let full = ship_dir.join(agent_path);
-        let hash = compute_file_hash(&full)
-            .with_context(|| format!("hashing exported agent '{agent_path}'"))?;
-        hashes.insert(agent_path.clone(), hash);
-    }
-
-    Ok(hashes)
+/// Per-export content hashes and a combined top-level hash.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportHashes {
+    /// Map from export path (e.g. `"agents/skills/my-skill"`) to `"sha256:<hex>"`.
+    pub per_export: BTreeMap<String, String>,
+    /// Combined hash: SHA-256 of the sorted per-export hashes concatenated.
+    pub combined: String,
 }
 
-/// Compute a combined hash from per-export hashes.
+/// Compute per-export content hashes for a package.
 ///
-/// SHA-256 of sorted `"{path}:{hash}"` entries concatenated with newlines.
-/// Returns `"sha256:<hex>"`.
-pub fn compute_combined_hash(export_hashes: &BTreeMap<String, String>) -> String {
+/// For each export path in `skill_exports` and `agent_exports`, hashes the
+/// corresponding subtree or file under `ship_dir`. Returns per-export hashes
+/// plus a combined hash derived only from exported artifacts.
+///
+/// Export paths are relative to `.ship/` (e.g. `"agents/skills/my-skill"`).
+/// Skill exports are directories (hashed with `compute_tree_hash`).
+/// Agent exports are single files (hashed with `compute_file_hash`).
+pub fn compute_export_hashes(
+    ship_dir: &Path,
+    skill_exports: &[String],
+    agent_exports: &[String],
+) -> anyhow::Result<ExportHashes> {
+    let mut per_export = BTreeMap::new();
+
+    for skill_path in skill_exports {
+        let full = ship_dir.join(skill_path);
+        if !full.is_dir() {
+            anyhow::bail!(
+                "exported skill '{}' not found at {}",
+                skill_path,
+                full.display()
+            );
+        }
+        let hash = compute_tree_hash(&full)
+            .with_context(|| format!("hashing exported skill '{}'", skill_path))?;
+        per_export.insert(skill_path.clone(), hash);
+    }
+
+    for agent_path in agent_exports {
+        let full = ship_dir.join(agent_path);
+        if !full.is_file() {
+            anyhow::bail!(
+                "exported agent '{}' not found at {}",
+                agent_path,
+                full.display()
+            );
+        }
+        let hash = compute_file_hash(&full)
+            .with_context(|| format!("hashing exported agent '{}'", agent_path))?;
+        per_export.insert(agent_path.clone(), hash);
+    }
+
+    let combined = combine_export_hashes(&per_export);
+    Ok(ExportHashes {
+        per_export,
+        combined,
+    })
+}
+
+/// Derive a combined hash from sorted per-export hashes.
+///
+/// Concatenates `"<path>\0<hash>"` for each export in sorted order,
+/// then SHA-256s the result. Returns `"sha256:<hex>"`.
+fn combine_export_hashes(hashes: &BTreeMap<String, String>) -> String {
     let mut acc = String::new();
-    for (path, hash) in export_hashes {
+    for (path, hash) in hashes {
         acc.push_str(path);
-        acc.push(':');
+        acc.push('\0');
         acc.push_str(hash);
-        acc.push('\n');
+    }
+    if acc.is_empty() {
+        return format!("sha256:{}", hex::encode_sha256(b""));
     }
     format!("sha256:{}", hex::encode_sha256(acc.as_bytes()))
 }
@@ -145,216 +178,5 @@ mod hex {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_compute_tree_hash_deterministic() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("a.txt"), "hello")?;
-        fs::create_dir_all(dir.path().join("sub"))?;
-        fs::write(dir.path().join("sub").join("b.txt"), "world")?;
-
-        let h1 = compute_tree_hash(dir.path())?;
-        let h2 = compute_tree_hash(dir.path())?;
-        assert_eq!(h1, h2);
-        assert!(h1.starts_with("sha256:"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_excludes_git() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("file.txt"), "content")?;
-        let hash_without_git = compute_tree_hash(dir.path())?;
-
-        fs::create_dir_all(dir.path().join(".git"))?;
-        fs::write(dir.path().join(".git").join("HEAD"), "ref: refs/heads/main")?;
-        let hash_with_git = compute_tree_hash(dir.path())?;
-
-        assert_eq!(
-            hash_without_git, hash_with_git,
-            ".git/ must not affect hash"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_excludes_ship_lock() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("file.txt"), "content")?;
-        let hash_without_lock = compute_tree_hash(dir.path())?;
-
-        fs::write(dir.path().join("ship.lock"), "[[package]]\n")?;
-        let hash_with_lock = compute_tree_hash(dir.path())?;
-
-        assert_eq!(
-            hash_without_lock, hash_with_lock,
-            "ship.lock must not affect hash"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_excludes_ds_store() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("file.txt"), "content")?;
-        let hash_without_ds = compute_tree_hash(dir.path())?;
-
-        fs::write(dir.path().join(".DS_Store"), "binary garbage")?;
-        let hash_with_ds = compute_tree_hash(dir.path())?;
-
-        assert_eq!(
-            hash_without_ds, hash_with_ds,
-            ".DS_Store must not affect hash"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_different_content() -> anyhow::Result<()> {
-        let dir1 = tempdir()?;
-        let dir2 = tempdir()?;
-        fs::write(dir1.path().join("file.txt"), "content-a")?;
-        fs::write(dir2.path().join("file.txt"), "content-b")?;
-
-        let h1 = compute_tree_hash(dir1.path())?;
-        let h2 = compute_tree_hash(dir2.path())?;
-        assert_ne!(h1, h2);
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_file_hash() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let path = dir.path().join("test.txt");
-        fs::write(&path, "hello")?;
-        let h = compute_file_hash(&path)?;
-        assert!(h.starts_with("sha256:"));
-        // SHA-256 of "hello" is known.
-        assert!(h.contains("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_export_hashes_skills_and_agents() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let ship = dir.path();
-
-        // Create an exported skill directory
-        let skill = ship.join("agents/skills/my-skill");
-        fs::create_dir_all(&skill)?;
-        fs::write(skill.join("SKILL.md"), "# My Skill")?;
-
-        // Create an exported agent file
-        let agents = ship.join("agents/profiles");
-        fs::create_dir_all(&agents)?;
-        fs::write(agents.join("bar.toml"), "[agent]\nname = \"bar\"")?;
-
-        let exports = ManifestExports {
-            skills: vec!["agents/skills/my-skill".into()],
-            agents: vec!["agents/profiles/bar.toml".into()],
-        };
-
-        let hashes = compute_export_hashes(ship, &exports)?;
-        assert_eq!(hashes.len(), 2);
-        assert!(hashes["agents/skills/my-skill"].starts_with("sha256:"));
-        assert!(hashes["agents/profiles/bar.toml"].starts_with("sha256:"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_internal_change_does_not_affect_export_hashes() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let ship = dir.path();
-
-        // Create an exported skill
-        let skill = ship.join("agents/skills/exported");
-        fs::create_dir_all(&skill)?;
-        fs::write(skill.join("SKILL.md"), "# Exported")?;
-
-        // Create an internal-only skill (not in exports)
-        let internal = ship.join("agents/skills/internal");
-        fs::create_dir_all(&internal)?;
-        fs::write(internal.join("SKILL.md"), "# Internal v1")?;
-
-        let exports = ManifestExports {
-            skills: vec!["agents/skills/exported".into()],
-            agents: vec![],
-        };
-
-        let hashes_before = compute_export_hashes(ship, &exports)?;
-        let combined_before = compute_combined_hash(&hashes_before);
-
-        // Modify internal-only skill
-        fs::write(internal.join("SKILL.md"), "# Internal v2 changed")?;
-
-        let hashes_after = compute_export_hashes(ship, &exports)?;
-        let combined_after = compute_combined_hash(&hashes_after);
-
-        assert_eq!(hashes_before, hashes_after, "internal change must not affect export hashes");
-        assert_eq!(combined_before, combined_after, "internal change must not affect combined hash");
-        Ok(())
-    }
-
-    #[test]
-    fn test_exported_change_does_affect_hashes() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let ship = dir.path();
-
-        let skill = ship.join("agents/skills/foo");
-        fs::create_dir_all(&skill)?;
-        fs::write(skill.join("SKILL.md"), "# Foo v1")?;
-
-        let exports = ManifestExports {
-            skills: vec!["agents/skills/foo".into()],
-            agents: vec![],
-        };
-
-        let hashes_before = compute_export_hashes(ship, &exports)?;
-        let combined_before = compute_combined_hash(&hashes_before);
-
-        // Modify the exported skill
-        fs::write(skill.join("SKILL.md"), "# Foo v2 changed")?;
-
-        let hashes_after = compute_export_hashes(ship, &exports)?;
-        let combined_after = compute_combined_hash(&hashes_after);
-
-        assert_ne!(hashes_before, hashes_after, "exported change must affect export hashes");
-        assert_ne!(combined_before, combined_after, "exported change must affect combined hash");
-        Ok(())
-    }
-
-    #[test]
-    fn test_combined_hash_deterministic_and_sorted() {
-        let mut map = BTreeMap::new();
-        map.insert("z/last".into(), "sha256:aaa".to_string());
-        map.insert("a/first".into(), "sha256:bbb".to_string());
-
-        let h1 = compute_combined_hash(&map);
-        let h2 = compute_combined_hash(&map);
-        assert_eq!(h1, h2);
-        assert!(h1.starts_with("sha256:"));
-    }
-
-    #[test]
-    fn test_combined_hash_empty_exports() {
-        let map = BTreeMap::new();
-        let h = compute_combined_hash(&map);
-        assert!(h.starts_with("sha256:"));
-    }
-
-    #[test]
-    fn test_should_exclude() {
-        assert!(should_exclude(".git/config"));
-        assert!(should_exclude(".DS_Store"));
-        assert!(should_exclude("ship.lock"));
-        assert!(should_exclude("foo.swp"));
-        assert!(should_exclude("Thumbs.db"));
-        assert!(!should_exclude("README.md"));
-        assert!(!should_exclude("src/main.rs"));
-    }
-}
+#[path = "hash_tests.rs"]
+mod tests;

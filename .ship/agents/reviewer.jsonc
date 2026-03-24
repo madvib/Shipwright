@@ -9,7 +9,7 @@
     "providers": ["claude"],
   },
   "skills": {
-    "refs": ["ship-coordination"],
+    "refs": ["ship-coordination", "ship-permissions"],
   },
   "mcp": {
     "servers": ["ship"],
