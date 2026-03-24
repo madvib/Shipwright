@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { useLocalMcpContext } from './LocalMcpContext'
 import { usePushBundle, useLocalAgentIds } from './mcp-queries'
 import { useAgentStore } from '#/features/agents/useAgentStore'
-import type { Skill, TransferBundle } from '@ship/ui'
+import type { Skill, TransferBundle, PullResponse, PullSkill } from '@ship/ui'
 
 const DOT: Record<string, string> = {
   disconnected: 'bg-muted-foreground/40',
@@ -95,11 +95,11 @@ function PopoverBody({ mcp, onAddSkill }: {
     setPulling(true)
     try {
       const raw = await mcp.callTool('pull_agents')
-      const parsed = JSON.parse(raw) as { agents: Array<{ profile: { id: string; name: string }; skills: Skill[] }> }
+      const parsed = JSON.parse(raw) as PullResponse
       let count = 0
       for (const a of parsed.agents) {
-        for (const skill of a.skills ?? []) onAddSkill(skill)
-        updateAgent(a.profile.id, a as Parameters<typeof updateAgent>[1])
+        for (const skill of a.skills ?? []) onAddSkill(skill as PullSkill & Skill)
+        updateAgent(a.profile.id, { ...a, source: a.source ?? 'project' } as Parameters<typeof updateAgent>[1])
         count++
       }
       toast.success(`Imported ${count} agent${count !== 1 ? 's' : ''} from CLI`)

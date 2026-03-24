@@ -1,11 +1,14 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Plus, ArrowRight, Monitor } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Plus, ArrowRight, Monitor, FolderOpen, Library } from 'lucide-react'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import { getAgentIcon } from '#/features/agents/agent-icons'
 import { TechIcon, TECH_STACKS } from '#/features/studio/TechIcon'
 import { AgentListSkeleton } from '#/features/studio/StudioSkeleton'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+
+type SourceFilter = 'all' | 'project' | 'library'
 
 export const Route = createFileRoute('/studio/agents/')({
   component: AgentsListPage,
@@ -18,6 +21,13 @@ function AgentsListPage() {
   const navigate = useNavigate()
   const mcp = useLocalMcpContext()
   const localIds = mcp?.localAgentIds ?? new Set<string>()
+  const [filter, setFilter] = useState<SourceFilter>('all')
+
+  const hasLibrary = agents.some((a) => a.source === 'library')
+  const filtered = useMemo(() => {
+    if (filter === 'all') return agents
+    return agents.filter((a) => (a.source ?? 'project') === filter)
+  }, [agents, filter])
 
   const handleNewAgent = () => {
     const id = createAgent()
@@ -31,19 +41,32 @@ function AgentsListPage() {
           <div>
             <h1 className="font-display text-2xl font-bold text-foreground">Agents</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {agents.length} agent{agents.length !== 1 ? 's' : ''} configured
+              {filtered.length} agent{filtered.length !== 1 ? 's' : ''}{filter !== 'all' ? ` (${filter})` : ''}
             </p>
           </div>
-          <button
-            onClick={handleNewAgent}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
-          >
-            <Plus className="size-3.5" />
-            New agent
-          </button>
+          <div className="flex items-center gap-2">
+            {hasLibrary && (
+              <div className="flex items-center rounded-lg border border-border/40 bg-card/50 p-0.5">
+                <FilterPill active={filter === 'all'} onClick={() => setFilter('all')}>All</FilterPill>
+                <FilterPill active={filter === 'project'} onClick={() => setFilter('project')}>
+                  <FolderOpen className="size-3" /> Project
+                </FilterPill>
+                <FilterPill active={filter === 'library'} onClick={() => setFilter('library')}>
+                  <Library className="size-3" /> Library
+                </FilterPill>
+              </div>
+            )}
+            <button
+              onClick={handleNewAgent}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+            >
+              <Plus className="size-3.5" />
+              New agent
+            </button>
+          </div>
         </div>
 
-        {agents.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-sm font-medium text-foreground">No agents yet</p>
             <p className="mt-1 text-xs text-muted-foreground max-w-xs">
@@ -59,7 +82,7 @@ function AgentsListPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {agents.map((a) => {
+            {filtered.map((a) => {
               const icon = getAgentIcon(a.profile.id)
               const preset = a.permissions?.preset ?? 'custom'
 
@@ -104,6 +127,12 @@ function AgentsListPage() {
                     <span className="text-[9px] px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground">
                       {preset.replace('ship-', '')}
                     </span>
+                    {a.source === 'library' && (
+                      <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-violet-500/30 bg-violet-500/10 text-violet-500">
+                        <Library className="size-2.5" />
+                        Library
+                      </span>
+                    )}
                     {localIds.has(a.profile.id) && (
                       <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
                         <Monitor className="size-2.5" />
@@ -118,5 +147,20 @@ function AgentsListPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+        active
+          ? 'bg-primary/10 text-primary'
+          : 'text-muted-foreground/60 hover:text-muted-foreground'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

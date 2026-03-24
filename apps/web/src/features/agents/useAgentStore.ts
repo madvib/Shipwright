@@ -87,6 +87,7 @@ export function makeAgent(partial?: Partial<ResolvedAgentProfile>): ResolvedAgen
     rules: partial?.rules ?? [],
     providerSettings: partial?.providerSettings ?? {},
     toolPermissions: partial?.toolPermissions ?? {},
+    source: partial?.source ?? 'project',
   }
 }
 

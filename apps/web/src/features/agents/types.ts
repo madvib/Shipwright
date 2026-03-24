@@ -21,6 +21,8 @@ export type ResolvedAgentProfile =
     // UI-only persisted state — not in compiler schema
     providerSettings?: Record<string, Record<string, unknown>>
     toolPermissions?: Record<string, ToolToggleState>
+    /** "project" | "library" — set on pull, used for filtering. */
+    source?: string
   }
 
 // UI-only types — not in the compiler schema.

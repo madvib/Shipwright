@@ -61,6 +61,13 @@ pub struct PullAgent {
     pub hooks: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permissions: Option<serde_json::Value>,
+    /// "project" (from .ship/) or "library" (from ~/.ship/).
+    #[serde(default = "default_source")]
+    pub source: String,
+}
+
+fn default_source() -> String {
+    "project".into()
 }
 
 /// Agent profile metadata as returned by pull_agents.

@@ -360,7 +360,11 @@ model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_
 /**
  * Resolved agent as returned by pull_agents.
  */
-export type PullAgent = { profile: PullProfile; skills: PullSkill[]; mcpServers: PullMcpServer[]; rules: PullRule[]; hooks: JsonValue[]; permissions?: JsonValue | null }
+export type PullAgent = { profile: PullProfile; skills: PullSkill[]; mcpServers: PullMcpServer[]; rules: PullRule[]; hooks: JsonValue[]; permissions?: JsonValue | null; 
+/**
+ * "project" (from .ship/) or "library" (from ~/.ship/).
+ */
+source?: string }
 
 /**
  * MCP server reference as returned by pull_agents.
