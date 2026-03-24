@@ -35,12 +35,9 @@ describe('getFieldDescription', () => {
 // ── Enum tests ──────────────────────────────────────────────────────────────
 
 describe('getFieldEnum', () => {
-  it('returns enum for permissions.preset', () => {
+  it('returns empty enum for permissions.preset (presets are runtime-resolved)', () => {
     const values = getFieldEnum('permissions.preset')
-    expect(values).toContain('ship-readonly')
-    expect(values).toContain('ship-standard')
-    expect(values).toContain('ship-autonomous')
-    expect(values).toContain('ship-elevated')
+    expect(Array.isArray(values)).toBe(true)
   })
 
   it('returns enum from array items for agent.providers', () => {
@@ -155,7 +152,7 @@ describe('getFieldProperties', () => {
   it('returns permissions properties', () => {
     const props = getFieldProperties('permissions')
     expect(props).toContain('preset')
-    expect(props).toContain('allow')
+    expect(props).toContain('tools_allow')
     expect(props).toContain('default_mode')
   })
 

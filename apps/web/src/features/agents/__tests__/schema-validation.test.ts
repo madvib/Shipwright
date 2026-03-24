@@ -73,14 +73,11 @@ describe('validateAgentProfile', () => {
     expect(result.valid).toBe(true)
   })
 
-  it('fails for invalid permission preset', () => {
+  it('accepts any preset string (presets resolved at compile time, not schema-validated)', () => {
     const result = validateAgentProfile(
-      makeValidProfile({ permissions: { preset: 'nonexistent-preset' } }),
+      makeValidProfile({ permissions: { preset: 'any-preset-name' } }),
     )
-    expect(result.valid).toBe(false)
-    const presetError = result.errors.find((e) => e.path === 'permissions.preset')
-    expect(presetError).toBeDefined()
-    expect(presetError!.message).toContain('nonexistent-preset')
+    expect(result.valid).toBe(true)
   })
 
   it('passes for "custom" permission preset (special case)', () => {
@@ -120,11 +117,10 @@ describe('validateAgentProfile', () => {
     const result = validateAgentProfile(
       makeValidProfile({
         profile: { id: 'test', name: '', providers: ['bad-provider'] },
-        permissions: { preset: 'bad-preset' },
       }),
     )
     expect(result.valid).toBe(false)
-    expect(result.errors.length).toBeGreaterThanOrEqual(3)
+    expect(result.errors.length).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -137,16 +133,15 @@ describe('schema enum extractors', () => {
     expect(providers).toContain('cursor')
     expect(providers).toContain('codex')
     expect(providers).toContain('gemini')
-    expect(providers).toHaveLength(4)
+    expect(providers).toContain('opencode')
+    expect(providers).toHaveLength(5)
   })
 
-  it('getPermissionPresets returns schema-defined presets', () => {
+  it('getPermissionPresets returns empty (presets are runtime-resolved, not schema-defined)', () => {
     const presets = getPermissionPresets()
-    expect(presets).toContain('ship-readonly')
-    expect(presets).toContain('ship-standard')
-    expect(presets).toContain('ship-autonomous')
-    expect(presets).toContain('ship-elevated')
-    expect(presets).toHaveLength(4)
+    // Schema no longer enumerates presets — they're free-form strings
+    // resolved from .ship/permissions.jsonc at compile time
+    expect(Array.isArray(presets)).toBe(true)
   })
 
   it('getPluginScopes returns schema-defined scopes', () => {

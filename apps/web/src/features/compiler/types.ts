@@ -47,4 +47,10 @@ export const PROVIDERS: Provider[] = [
     description: 'AI-first code editor by Anysphere',
     files: ['AGENTS.md', '.cursor/mcp.json', '.cursor/rules/'],
   },
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    description: 'Open-source AI coding assistant',
+    files: ['opencode.json'],
+  },
 ]
