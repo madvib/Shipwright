@@ -19,11 +19,11 @@ export function combineSyncStatuses(...statuses: SyncStatusValue[]): SyncStatusV
 }
 
 /**
- * Minimal non-blocking indicator shown while a library is being saved.
- * - idle: renders nothing
+ * Minimal non-blocking indicator for local save state.
+ * - idle: "Local draft" (always visible)
  * - saving: spinner + "Saving..."
- * - saved: checkmark + "Saved", fades out after 2 s
- * - error: warning + "Sync failed", fades out after 3 s
+ * - saved: checkmark + "Synced to CLI", fades to idle after 2 s
+ * - error: warning + "Save failed", fades to idle after 3 s
  */
 export function SyncStatus({ status }: SyncStatusProps) {
   const [visible, setVisible] = useState(false)
@@ -57,7 +57,16 @@ export function SyncStatus({ status }: SyncStatusProps) {
     }
   }, [status])
 
-  if (!visible || status === 'idle') return null
+  if (!visible && status === 'idle') {
+    return (
+      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground" aria-live="polite" aria-label="Local draft">
+        <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+        <span>Local draft</span>
+      </span>
+    )
+  }
+
+  if (!visible) return null
 
   return (
     <span
@@ -65,7 +74,7 @@ export function SyncStatus({ status }: SyncStatusProps) {
         fading ? 'opacity-0' : 'opacity-100'
       }`}
       aria-live="polite"
-      aria-label={status === 'saving' ? 'Saving' : status === 'error' ? 'Sync failed' : 'Saved'}
+      aria-label={status === 'saving' ? 'Saving' : status === 'error' ? 'Save failed' : 'Synced to CLI'}
     >
       {status === 'saving' && (
         <>
@@ -76,13 +85,13 @@ export function SyncStatus({ status }: SyncStatusProps) {
       {status === 'saved' && (
         <>
           <Check className="size-3 text-emerald-500" />
-          <span>Saved</span>
+          <span>Synced to CLI</span>
         </>
       )}
       {status === 'error' && (
         <>
           <AlertCircle className="size-3 text-amber-500" />
-          <span className="text-amber-500">Sync failed</span>
+          <span className="text-amber-500">Save failed</span>
         </>
       )}
     </span>

@@ -18,6 +18,9 @@ export type ResolvedAgentProfile =
     mcpServers: McpServerConfig[]
     rules: Rule[]
     hooks: HookConfig[]
+    // UI-only persisted state — not in compiler schema
+    providerSettings?: Record<string, Record<string, unknown>>
+    toolPermissions?: Record<string, ToolToggleState>
   }
 
 // UI-only types — not in the compiler schema.

@@ -1,27 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Github, Upload, ChevronRight, X, Copy, CheckCheck, Loader2 } from 'lucide-react'
-import { authClient } from '#/lib/auth-client'
+import { X, Copy, CheckCheck, Loader2 } from 'lucide-react'
 import { ProviderLogo } from '#/features/compiler/ProviderLogo'
 import { PROVIDER_SHORT } from '#/features/compiler/components/ModeHeader'
-import { PublishDialog } from '#/features/studio/PublishDialog'
-import { PushToGitHubDialog } from '#/features/studio/PushToGitHubDialog'
 import type { CompileState } from '#/features/compiler/useCompiler'
 import type { CompileResult } from '#/features/compiler/types'
 
 interface PublishPanelProps {
-  auth: { isAuthenticated: boolean; user: { name: string } | null }
   library: any
   compileState: CompileState
-  selectedProviders: string[]
   onClose: () => void
 }
 
-export function PublishPanel({ auth, library, compileState, selectedProviders, onClose }: PublishPanelProps) {
+export function PublishPanel({ library, compileState, onClose }: PublishPanelProps) {
   const hasContent = (library?.skills?.length ?? 0) > 0 || (library?.mcp_servers?.length ?? 0) > 0
-  const [publishOpen, setPublishOpen] = useState(false)
-  const [pushOpen, setPushOpen] = useState(false)
-
-  const compileOutput = compileState.status === 'ok' ? compileState.output : null
 
   return (
     <aside className="w-96 border-l border-border/60 bg-card/30 flex flex-col overflow-hidden shrink-0">
@@ -43,28 +34,6 @@ export function PublishPanel({ auth, library, compileState, selectedProviders, o
 
       {/* Output preview */}
       <OutputSection compileState={compileState} hasContent={hasContent} />
-
-      {/* Distribution */}
-      <div className="border-t border-border/40 shrink-0">
-        {!auth.isAuthenticated ? (
-          <SignInCTA />
-        ) : (
-          <DistributeSection
-            hasContent={hasContent}
-            isCompiled={compileState.status === 'ok'}
-            onPublish={() => setPublishOpen(true)}
-            onPush={() => setPushOpen(true)}
-          />
-        )}
-      </div>
-
-      <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} />
-      <PushToGitHubDialog
-        open={pushOpen}
-        onOpenChange={setPushOpen}
-        compileOutput={compileOutput}
-        selectedProviders={selectedProviders}
-      />
     </aside>
   )
 }
@@ -166,54 +135,6 @@ function OutputSection({ compileState, hasContent }: {
         )}
       </div>
     </div>
-  )
-}
-
-function SignInCTA() {
-  return (
-    <div className="p-4">
-      <p className="text-xs font-medium text-foreground mb-1">Sign in to distribute</p>
-      <p className="text-[10px] text-muted-foreground mb-3">Push to GitHub or publish to the registry.</p>
-      <button
-        onClick={() => void authClient.signIn.social({ provider: 'github', callbackURL: window.location.href })}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-      >
-        <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        Sign in with GitHub
-      </button>
-    </div>
-  )
-}
-
-function DistributeSection({ hasContent, isCompiled, onPublish, onPush }: {
-  hasContent: boolean; isCompiled: boolean; onPublish: () => void; onPush: () => void
-}) {
-  return (
-    <div className="p-3 space-y-1.5">
-      <DistAction icon={<Github className="size-3.5" />} label="Push to repo" desc="Create a PR with .ship/ config" disabled={!isCompiled} onClick={onPush} />
-      <DistAction icon={<Upload className="size-3.5" />} label="Publish to registry" desc="Share with the community" disabled={!hasContent} onClick={onPublish} />
-    </div>
-  )
-}
-
-function DistAction({ icon, label, desc, disabled, onClick }: {
-  icon: React.ReactNode; label: string; desc: string; disabled?: boolean; onClick?: () => void
-}) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 rounded-lg border border-border/40 px-3 py-2 text-left transition ${
-        disabled ? 'opacity-30 cursor-not-allowed' : 'hover:border-primary/30 hover:bg-primary/5'
-      }`}
-    >
-      <span className="text-muted-foreground">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <span className="text-[11px] font-medium text-foreground">{label}</span>
-        <p className="text-[9px] text-muted-foreground/60">{desc}</p>
-      </div>
-      <ChevronRight className="size-3 text-muted-foreground/20" />
-    </button>
   )
 }
 

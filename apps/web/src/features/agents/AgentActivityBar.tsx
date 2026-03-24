@@ -5,14 +5,16 @@ import {
   Shield,
   SlidersHorizontal,
   FileText,
+  Link2,
 } from 'lucide-react'
 
 export const SECTION_DEFS = [
   { id: 'skills', label: 'Skills', icon: Zap, countable: true },
   { id: 'mcp', label: 'MCP Servers', icon: Grid3X3, countable: true },
   { id: 'permissions', label: 'Permissions', icon: Shield, countable: false },
-  { id: 'providers', label: 'Provider Settings', icon: SlidersHorizontal, countable: false },
   { id: 'rules', label: 'Rules', icon: FileText, countable: true },
+  { id: 'hooks', label: 'Hooks', icon: Link2, countable: true },
+  { id: 'providers', label: 'Provider Settings', icon: SlidersHorizontal, countable: false },
 ] as const
 
 interface AgentActivityBarProps {
