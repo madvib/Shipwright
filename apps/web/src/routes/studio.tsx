@@ -4,13 +4,13 @@ import { StudioDock } from '#/features/studio/StudioDock'
 import { SyncStatus, combineSyncStatuses } from '#/features/studio/SyncStatus'
 import type { SyncStatusValue } from '#/features/studio/SyncStatus'
 import { PublishPanel } from '#/features/studio/PublishPanel'
-import { ProtectedRoute, useAuth } from '#/lib/components/protected-route'
 import { useLibrarySync } from '#/features/compiler/useLibrarySync'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { useAgentStore } from '#/features/agents/useAgentStore'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
+import { LocalMcpProvider } from '#/features/studio/LocalMcpContext'
 
 export const Route = createFileRoute('/studio')({
   component: StudioLayout,
@@ -20,9 +20,9 @@ export const Route = createFileRoute('/studio')({
 
 function StudioLayout() {
   return (
-    <ProtectedRoute>
+    <LocalMcpProvider>
       <StudioSyncShell />
-    </ProtectedRoute>
+    </LocalMcpProvider>
   )
 }
 
@@ -37,9 +37,8 @@ function agentSyncToStatusValue(
 
 function StudioSyncShell() {
   const { syncStatus: librarySyncStatus } = useLibrarySync()
-  const { library, selectedProviders } = useLibrary()
+  const { library, addSkill } = useLibrary()
   const { state: compileState, compile } = useCompiler()
-  const auth = useAuth()
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Detect active agent from route matches (/studio/agents/$id)
@@ -94,11 +93,8 @@ function StudioSyncShell() {
         </div>
         {panelOpen && (
           <PublishPanel
-            auth={auth}
             library={effectiveLibrary}
             compileState={compileState}
-            selectedProviders={selectedProviders}
-            onCompile={() => { if (effectiveLibrary) compile(effectiveLibrary) }}
             onClose={() => setPanelOpen(false)}
           />
         )}
@@ -106,6 +102,7 @@ function StudioSyncShell() {
       <StudioDock
         previewOpen={panelOpen}
         onTogglePreview={() => setPanelOpen((p) => !p)}
+        onAddSkill={addSkill}
       />
       <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
         <SyncStatus status={combinedSyncStatus} />

@@ -85,6 +85,9 @@ export function makeAgent(partial?: Partial<ResolvedAgentProfile>): ResolvedAgen
     permissions: partial?.permissions ?? { preset: 'ship-standard' },
     hooks: partial?.hooks ?? [],
     rules: partial?.rules ?? [],
+    providerSettings: partial?.providerSettings ?? {},
+    toolPermissions: partial?.toolPermissions ?? {},
+    source: partial?.source ?? 'project',
   }
 }
 

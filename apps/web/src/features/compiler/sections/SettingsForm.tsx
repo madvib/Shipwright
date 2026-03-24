@@ -22,18 +22,13 @@ interface Props {
   onHooksChange: (hooks: HookConfig[]) => void
 }
 
-const CLAUDE_MODELS = [
-  { id: '', label: '— default —' },
-  { id: 'claude-opus-4-6', label: 'claude-opus-4-6' },
-  { id: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' },
-  { id: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4-5' },
-]
-
+// Schema-aligned values from permissions.schema.json
 const DEFAULT_MODES = [
   { id: '', label: '— not set —' },
   { id: 'default', label: 'default' },
-  { id: 'acceptEdits', label: 'acceptEdits' },
   { id: 'plan', label: 'plan' },
+  { id: 'acceptEdits', label: 'acceptEdits' },
+  { id: 'dontAsk', label: 'dontAsk' },
   { id: 'bypassPermissions', label: 'bypassPermissions' },
 ]
 
@@ -189,9 +184,8 @@ export function SettingsForm({ claudeSettingsExtra, hooks, onClaudeSettingsChang
     <div className="space-y-4">
       <Block title="Identity">
         <Row label="Model">
-          <select value={s.model ?? ''} onChange={(e) => upd({ model: e.target.value || undefined })} className={sx.select}>
-            {CLAUDE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
+          <input value={s.model ?? ''} onChange={(e) => upd({ model: e.target.value || undefined })}
+            placeholder="e.g. claude-sonnet-4-6" className={`${sx.input} flex-1 font-mono`} />
         </Row>
         <Row label="Language">
           <input value={s.language ?? ''} onChange={(e) => upd({ language: e.target.value || undefined })}

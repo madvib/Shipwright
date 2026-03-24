@@ -10,6 +10,7 @@ export const PROVIDER_SHORT: Record<string, string> = {
   gemini: 'Gemini',
   codex: 'Codex',
   cursor: 'Cursor',
+  opencode: 'OpenCode',
 }
 
 function triggerDownload(text: string, name: string) {

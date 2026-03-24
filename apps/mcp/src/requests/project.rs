@@ -112,3 +112,9 @@ pub struct SetAgentRequest {
     /// Agent ID to activate. Omit to clear active agent.
     pub id: Option<String>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct PushBundleRequest {
+    /// JSON string containing the TransferBundle (agent, skills, dependencies).
+    pub bundle: String,
+}

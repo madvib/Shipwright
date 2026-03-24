@@ -191,12 +191,14 @@ pub enum Commands {
 
     // ── Inspection ───────────────────────────────────────────────────────────
     /// Query the project event log
+    #[cfg(feature = "workflow")]
     Events {
         #[command(subcommand)]
         action: EventsCommands,
     },
 
     /// Browse and manage project state in the terminal UI
+    #[cfg(feature = "workflow")]
     View,
 
     /// Show detailed help for a topic (run `ship docs topics` to list)
@@ -205,21 +207,26 @@ pub enum Commands {
         topic: Option<String>,
     },
 
+    #[cfg(feature = "workflow")]
     #[command(hide = true)]
     Job {
         #[command(subcommand)]
         action: JobCommands,
     },
 
+    #[cfg(feature = "workflow")]
     #[command(hide = true)]
     Adrs,
 
+    #[cfg(feature = "workflow")]
     #[command(hide = true)]
     Notes,
 
+    #[cfg(feature = "workflow")]
     #[command(hide = true)]
     Migrate,
 
+    #[cfg(feature = "workflow")]
     #[command(hide = true)]
     Diff {
         #[arg(long)]

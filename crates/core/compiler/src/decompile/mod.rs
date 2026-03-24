@@ -11,9 +11,14 @@ mod cursor_helpers;
 mod gemini;
 mod gemini_policies;
 mod opencode;
+mod opencode_agents;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "opencode_tests.rs"]
+mod opencode_tests;
 
 #[cfg(test)]
 #[path = "roundtrip_tests.rs"]
@@ -151,6 +156,17 @@ fn merge_into(target: &mut ProjectLibrary, source: ProjectLibrary, provider_id: 
     for hook in source.hooks {
         if !target.hooks.iter().any(|h| h.id == hook.id) {
             target.hooks.push(hook);
+        }
+    }
+
+    // Agent profiles — append, dedup by id
+    for profile in source.agent_profiles {
+        if !target
+            .agent_profiles
+            .iter()
+            .any(|p| p.profile.id == profile.profile.id)
+        {
+            target.agent_profiles.push(profile);
         }
     }
 

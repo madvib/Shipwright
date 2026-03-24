@@ -22,7 +22,7 @@ export function useLibrary() {
   const stored = useRef(loadStored())
   const [library, setLibrary] = useState<ProjectLibrary>(stored.current?.library ?? DEFAULT_LIBRARY)
   const [modeName, setModeName] = useState(stored.current?.modeName ?? 'untitled-mode')
-  const ALL_PROVIDERS = ['claude', 'gemini', 'codex', 'cursor']
+  const ALL_PROVIDERS = ['claude', 'gemini', 'codex', 'cursor', 'opencode']
   const [selectedProviders, setSelectedProviders] = useState<string[]>(ALL_PROVIDERS)
   const { state, compile } = useCompiler()
 

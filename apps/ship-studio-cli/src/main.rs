@@ -1,5 +1,6 @@
 mod add;
 mod add_from;
+mod add_from_write;
 mod agent;
 mod agent_config;
 mod audit;
@@ -10,12 +11,15 @@ mod compile;
 mod config;
 mod convert;
 mod dep_skills;
+#[cfg(feature = "workflow")]
 mod diff;
+#[cfg(feature = "workflow")]
 mod events_cmd;
 mod help_topics;
 mod init;
 mod init_from_url;
 mod install;
+#[cfg(feature = "workflow")]
 mod job;
 mod loader;
 mod logging;
@@ -26,13 +30,13 @@ mod profile;
 mod publish;
 mod skill;
 mod validate;
+#[cfg(feature = "workflow")]
 mod view;
 
 use anyhow::Result;
-use cli::{
-    AgentCommands, Cli, Commands, ConfigCommands, EventsCommands, JobCommands, McpCommands,
-    SkillCommands,
-};
+use cli::{AgentCommands, Cli, Commands, ConfigCommands, McpCommands, SkillCommands};
+#[cfg(feature = "workflow")]
+use cli::{EventsCommands, JobCommands};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -73,9 +77,13 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Mcp { action } => dispatch_mcp(action),
             Commands::Convert { source } => convert::run_convert(&source),
             Commands::Docs { topic } => help_topics::run(topic.as_deref()),
+            #[cfg(feature = "workflow")]
             Commands::Job { action } => dispatch_job(action),
+            #[cfg(feature = "workflow")]
             Commands::Adrs => run_adrs(),
+            #[cfg(feature = "workflow")]
             Commands::Notes => run_notes(),
+            #[cfg(feature = "workflow")]
             Commands::Migrate => run_migrate(),
             Commands::Publish { dry_run, tag } => {
                 let root = std::env::current_dir()?;
@@ -102,8 +110,11 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                     .unwrap_or_else(|| std::env::current_dir().unwrap());
                 validate::run_validate(agent.as_deref(), json, &root)
             }
+            #[cfg(feature = "workflow")]
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
+            #[cfg(feature = "workflow")]
             Commands::Events { action } => dispatch_events(action),
+            #[cfg(feature = "workflow")]
             Commands::View => view::run_view(),
             Commands::Help => {
                 use clap::CommandFactory;
@@ -318,6 +329,7 @@ fn run_compile_cmd(
 
 // ── Subcommand dispatchers ────────────────────────────────────────────────────
 
+#[cfg(feature = "workflow")]
 fn dispatch_job(action: JobCommands) -> Result<()> {
     match action {
         JobCommands::Create {
@@ -382,6 +394,7 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
 
 // ── Hidden / legacy ──────────────────────────────────────────────────────────
 
+#[cfg(feature = "workflow")]
 fn run_adrs() -> Result<()> {
     let _ship_dir = paths::project_ship_dir_required()?;
     let adrs = runtime::db::adrs::list_adrs()?;
@@ -395,6 +408,7 @@ fn run_adrs() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "workflow")]
 fn run_notes() -> Result<()> {
     let _ship_dir = paths::project_ship_dir_required()?;
     let notes = runtime::db::notes::list_notes(None)?;
@@ -408,11 +422,13 @@ fn run_notes() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "workflow")]
 fn run_migrate() -> Result<()> {
     println!("migration infrastructure removed — state_db consolidated into platform.db");
     Ok(())
 }
 
+#[cfg(feature = "workflow")]
 fn dispatch_events(action: EventsCommands) -> Result<()> {
     let ship_dir = paths::project_ship_dir_required()?;
     match action {

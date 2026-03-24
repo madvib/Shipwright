@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Users, Zap, Settings, Radio, PanelRightOpen } from 'lucide-react'
+import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
+import type { Skill } from '@ship/ui'
 
 const NAV_ITEMS = [
   { to: '/studio/agents', icon: Users, label: 'Agents', exact: false },
@@ -11,9 +13,10 @@ const NAV_ITEMS = [
 interface StudioDockProps {
   previewOpen?: boolean
   onTogglePreview?: () => void
+  onAddSkill: (skill: Skill) => void
 }
 
-export function StudioDock({ previewOpen, onTogglePreview }: StudioDockProps) {
+export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioDockProps) {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -66,6 +69,9 @@ export function StudioDock({ previewOpen, onTogglePreview }: StudioDockProps) {
 
         {/* Separator */}
         <div className="h-6 w-px bg-border/60 mx-1" />
+
+        {/* CLI status */}
+        <CliStatusPopover onAddSkill={onAddSkill} />
 
         {/* Preview panel toggle */}
         <button

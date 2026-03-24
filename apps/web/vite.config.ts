@@ -36,12 +36,7 @@ const config = defineConfig({
       clientPort: 3002,
     },
     fs: {
-      allow: [
-        // monorepo root
-        fileURLToPath(new URL('../../', import.meta.url)),
-        // pnpm store (fonts, etc.)
-        '/home/dev/.local/share/pnpm/store',
-      ],
+      strict: false,
     },
   },
 })

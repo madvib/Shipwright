@@ -17,45 +17,55 @@ impl ShipServer {
         normalized
     }
 
-    pub fn core_tools() -> &'static [&'static str] {
-        &[
-            "open_project",
-            "create_note",
-            "update_note",
-            "create_adr",
-            "activate_workspace",
-            "create_workspace",
-            "complete_workspace",
-            "list_stale_worktrees",
-            "set_agent",
-            "list_workspaces",
-            "start_session",
-            "end_session",
-            "log_progress",
-            "list_skills",
-            "create_job",
-            "update_job",
-            "list_jobs",
-            "append_job_log",
-            "claim_file",
-            "get_file_owner",
-            "list_events",
-            "provider_matrix",
-            "create_target",
-            "update_target",
-            "list_targets",
-            "get_target",
-            "create_capability",
-            "update_capability",
-            "delete_capability",
-            "mark_capability_actual",
-            "list_capabilities",
-        ]
-    }
+    const PLATFORM_TOOLS: &[&str] = &[
+        "open_project",
+        "activate_workspace",
+        "create_workspace",
+        "complete_workspace",
+        "list_stale_worktrees",
+        "set_agent",
+        "list_workspaces",
+        "start_session",
+        "end_session",
+        "log_progress",
+        "list_skills",
+        "list_events",
+        "push_bundle",
+        "pull_agents",
+        "list_local_agents",
+    ];
+
+    const WORKFLOW_TOOLS: &[&str] = &[
+        "create_note",
+        "update_note",
+        "create_adr",
+        "create_job",
+        "update_job",
+        "list_jobs",
+        "append_job_log",
+        "claim_file",
+        "get_file_owner",
+        "create_target",
+        "update_target",
+        "list_targets",
+        "get_target",
+        "create_capability",
+        "update_capability",
+        "delete_capability",
+        "mark_capability_actual",
+        "list_capabilities",
+    ];
 
     pub fn is_core_tool(tool_name: &str) -> bool {
         let normalized = Self::normalize_mode_tool_id(tool_name);
-        Self::core_tools().contains(&normalized.as_str())
+        if Self::PLATFORM_TOOLS.contains(&normalized.as_str()) {
+            return true;
+        }
+        #[cfg(feature = "workflow")]
+        if Self::WORKFLOW_TOOLS.contains(&normalized.as_str()) {
+            return true;
+        }
+        false
     }
 
     pub fn is_project_workspace_tool(_tool_name: &str) -> bool {

@@ -8,4 +8,6 @@ pub mod session;
 pub mod skills;
 pub mod target;
 pub mod workspace;
+pub mod studio;
+pub mod studio_push;
 pub mod workspace_ops;

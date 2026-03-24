@@ -77,6 +77,7 @@ describe('GET /api/github/repos-config', () => {
       claude_team_agents: [],
       env: {},
       available_models: [],
+      provider_defaults: {},
     }
     vi.mocked(ghImport.extractLibrary).mockReturnValue(mockLibrary)
     const res = await GET({

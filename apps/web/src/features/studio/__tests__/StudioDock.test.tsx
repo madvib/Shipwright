@@ -11,50 +11,59 @@ vi.mock('@tanstack/react-router', () => ({
     select({ location: { pathname: mockPathname } }),
 }))
 
+vi.mock('#/features/studio/CliStatusPopover', () => ({
+  CliStatusPopover: () => <button>CLI</button>,
+}))
+
+const noopAddSkill = vi.fn()
+const dockProps = { onAddSkill: noopAddSkill }
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
 describe('StudioDock', () => {
-  it('renders nav items + output toggle', () => {
-    render(<StudioDock />)
+  // 3 nav items + CLI mock + Preview = 5
+  it('renders nav items, CLI status, and preview toggle', () => {
+    render(<StudioDock {...dockProps} />)
     expect(screen.getByRole('navigation')).toBeTruthy()
     const buttons = screen.getAllByRole('button')
-    expect(buttons.length).toBeGreaterThanOrEqual(4)
+    expect(buttons).toHaveLength(5)
   })
 
   it('Agents is active on /studio/agents', () => {
     mockPathname = '/studio/agents'
-    render(<StudioDock />)
+    render(<StudioDock {...dockProps} />)
     const buttons = screen.getAllByRole('button')
     expect(buttons[0]?.className).toContain('bg-primary')
   })
 
   it('Skills is active on /studio/skills', () => {
     mockPathname = '/studio/skills'
-    render(<StudioDock />)
+    render(<StudioDock {...dockProps} />)
     const buttons = screen.getAllByRole('button')
     expect(buttons[1]?.className).toContain('bg-primary')
   })
 
   it('Settings is active on /studio/settings', () => {
     mockPathname = '/studio/settings'
-    render(<StudioDock />)
+    render(<StudioDock {...dockProps} />)
     const buttons = screen.getAllByRole('button')
     expect(buttons[2]?.className).toContain('bg-primary')
   })
 
   it('output toggle calls onTogglePreview', () => {
     const onToggle = vi.fn()
-    render(<StudioDock onTogglePreview={onToggle} />)
+    render(<StudioDock {...dockProps} onTogglePreview={onToggle} />)
     const buttons = screen.getAllByRole('button')
-    buttons[buttons.length - 1]?.click()
+    // CLI is [3], Preview is [4]
+    buttons[4]?.click()
     expect(onToggle).toHaveBeenCalledOnce()
   })
 
   it('nav has accessible label', () => {
-    render(<StudioDock />)
+    render(<StudioDock {...dockProps} />)
     const nav = screen.getByRole('navigation')
     expect(nav.getAttribute('aria-label')).toBe('Studio navigation')
   })

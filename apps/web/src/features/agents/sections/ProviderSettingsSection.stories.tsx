@@ -10,36 +10,16 @@ const meta: Meta<typeof ProviderSettingsSection> = {
 export default meta
 type Story = StoryObj<typeof ProviderSettingsSection>
 
-/** Claude only with some settings pre-filled. */
-export const ClaudeOnly: Story = {
-  args: {
-    providers: ['claude'],
-    providerSettings: {
-      claude: {
-        theme: 'dark',
-        auto_updates: true,
-        include_co_authored_by: false,
-      },
-    },
-    onChange: fn(),
-  },
-}
-
-/** All four providers configured. */
+/** All five providers with defaults. */
 export const AllProviders: Story = {
   args: {
-    providers: ['claude', 'gemini', 'codex', 'cursor'],
-    providerSettings: {
-      claude: { theme: 'auto', auto_updates: true },
-      gemini: { default_approval_mode: 'auto-approve-reads', max_session_turns: 50 },
-      codex: { approval_policy: 'unless-allow-listed', sandbox: 'docker', reasoning_effort: 'high' },
-      cursor: { environment: { EDITOR: 'cursor', NODE_ENV: 'development' } },
-    },
+    providers: ['claude', 'gemini', 'codex', 'cursor', 'opencode'],
+    providerSettings: {},
     onChange: fn(),
   },
 }
 
-/** No providers -- the component returns null and renders nothing. */
+/** No providers -- the component returns null. */
 export const NoProviders: Story = {
   args: {
     providers: [],
@@ -48,11 +28,14 @@ export const NoProviders: Story = {
   },
 }
 
-/** Two providers with empty settings -- shows defaults. */
-export const TwoProvidersDefaults: Story = {
+/** Two providers with custom settings. */
+export const WithOverrides: Story = {
   args: {
-    providers: ['gemini', 'codex'],
-    providerSettings: {},
+    providers: ['claude', 'codex'],
+    providerSettings: {
+      claude: { theme: 'dark', auto_updates: true },
+      codex: { approval_policy: 'auto-approve', sandbox: 'docker' },
+    },
     onChange: fn(),
   },
 }

@@ -1,12 +1,6 @@
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 
-// ── Orange dot indicator for unfinished backend features ─────────────────────
-
-export function OrangeDot() {
-  return <span className="inline-block size-2 rounded-full bg-primary" />
-}
-
 // ── Section wrapper ──────────────────────────────────────────────────────────
 
 export function SettingsSection({

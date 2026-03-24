@@ -12,9 +12,12 @@ use crate::types::{McpServerConfig, McpServerType, Rule};
 use crate::ProjectLibrary;
 
 use super::json_string_array;
+use super::opencode_agents::parse_opencode_agent;
 
 /// Known top-level keys in `opencode.json` that map to structured Ship fields.
-const KNOWN_CONFIG_KEYS: &[&str] = &["mcp", "mcpServers", "model", "permission", "$schema"];
+const KNOWN_CONFIG_KEYS: &[&str] = &[
+    "agent", "mcp", "mcpServers", "model", "permission", "$schema",
+];
 
 /// Parse OpenCode native config files and produce a partial [`ProjectLibrary`].
 ///
@@ -79,6 +82,15 @@ fn parse_opencode_config(library: &mut ProjectLibrary, config: &Json) {
         for (id, entry) in servers {
             if let Some(server) = parse_opencode_mcp_server(id, entry) {
                 library.mcp_servers.push(server);
+            }
+        }
+    }
+
+    // ── Agents ────────────────────────────────────────────────────────────────
+    if let Some(agents) = obj.get("agent").and_then(|v| v.as_object()) {
+        for (name, agent_obj) in agents {
+            if let Some(profile) = parse_opencode_agent(name, agent_obj) {
+                library.agent_profiles.push(profile);
             }
         }
     }

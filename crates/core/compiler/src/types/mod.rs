@@ -5,6 +5,7 @@ pub mod permissions;
 pub mod plugin;
 pub mod rule;
 pub mod skill;
+pub mod transfer;
 
 pub use agent_profile::{
     AgentProfile, McpRefs, PluginRefs, ProfileMeta, ProfilePermissions, ProfileRules, SkillRefs,
@@ -23,3 +24,7 @@ pub use permissions::{
 pub use plugin::{PluginEntry, PluginsManifest};
 pub use rule::Rule;
 pub use skill::{Skill, SkillSource, is_valid_skill_name};
+pub use transfer::{
+    AgentBundle, ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullResponse, PullRule,
+    PullSkill, SkillBundle, TransferBundle,
+};
