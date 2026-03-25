@@ -32,18 +32,13 @@ describe('draft discard', () => {
     expect(Object.keys(getDrafts())).toHaveLength(1)
   })
 
-  it('clearDraft persists to localStorage', () => {
+  it('clearDraft persists removal in store', () => {
     setDraft('agent-a', { model: 'x' })
     expect(hasDraft('agent-a')).toBe(true)
 
     clearDraft('agent-a')
     expect(hasDraft('agent-a')).toBe(false)
-
-    // Verify localStorage also reflects the discard
-    const raw = localStorage.getItem('ship-agent-drafts-v1')
-    expect(raw).toBeTruthy()
-    const parsed = JSON.parse(raw!) as { drafts: Record<string, unknown> }
-    expect(parsed.drafts['agent-a']).toBeUndefined()
+    expect(getDrafts()['agent-a']).toBeUndefined()
   })
 
   it('after discard, re-applying a draft works', () => {

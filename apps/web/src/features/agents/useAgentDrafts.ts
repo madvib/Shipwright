@@ -1,8 +1,9 @@
 // Draft overlay store: holds unsaved edits keyed by agent ID.
 // Only stores deltas -- not full agent objects.
-// Persists to localStorage for offline resilience.
+// Persists to IndexedDB for offline resilience (no 5 MB limit).
 
 import { useSyncExternalStore, useCallback } from 'react'
+import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
 import type { ResolvedAgentProfile } from './types'
 
 const STORAGE_KEY = 'ship-agent-drafts-v1'
@@ -15,31 +16,35 @@ interface DraftState {
 
 // ── Store singleton ──────────────────────────────────────────────────────────
 
-let state: DraftState = loadFromStorage()
+let state: DraftState = { drafts: {} }
 const listeners = new Set<() => void>()
 
 function emit() {
   for (const fn of listeners) fn()
 }
 
-function loadFromStorage(): DraftState {
-  try {
-    const raw = typeof window !== 'undefined'
-      ? window.localStorage.getItem(STORAGE_KEY)
-      : null
-    if (!raw) return { drafts: {} }
-    const parsed = JSON.parse(raw) as DraftState
-    if (!parsed.drafts || typeof parsed.drafts !== 'object') return { drafts: {} }
-    return parsed
-  } catch {
-    return { drafts: {} }
-  }
+// Async init: migrate from localStorage then load from IDB
+function initFromIdb() {
+  migrateFromLocalStorage<DraftState>(STORAGE_KEY)
+    .then(async (migrated) => {
+      if (migrated?.drafts) {
+        state = migrated
+        emit()
+        return
+      }
+      const data = await idbGet<DraftState>(STORAGE_KEY)
+      if (data?.drafts) {
+        state = data
+        emit()
+      }
+    })
+    .catch(() => {})
 }
 
-function persistToStorage() {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch { /* storage full or unavailable */ }
+if (typeof window !== 'undefined') initFromIdb()
+
+function persistToIdb() {
+  idbSet(STORAGE_KEY, state).catch(() => {})
 }
 
 // ── Public mutations ─────────────────────────────────────────────────────────
@@ -47,20 +52,20 @@ function persistToStorage() {
 export function setDraft(agentId: string, patch: AgentPatch) {
   const existing = state.drafts[agentId] ?? {}
   state = { drafts: { ...state.drafts, [agentId]: { ...existing, ...patch } } }
-  persistToStorage()
+  persistToIdb()
   emit()
 }
 
 export function clearDraft(agentId: string) {
   const { [agentId]: _, ...rest } = state.drafts
   state = { drafts: rest }
-  persistToStorage()
+  persistToIdb()
   emit()
 }
 
 export function clearAllDrafts() {
   state = { drafts: {} }
-  persistToStorage()
+  persistToIdb()
   emit()
 }
 

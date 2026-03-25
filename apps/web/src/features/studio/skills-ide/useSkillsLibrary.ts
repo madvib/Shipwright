@@ -2,9 +2,10 @@
 // Skills come from pulled agents (PullAgent.skills). Each skill tracks which
 // agents reference it and its origin (project vs library).
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { usePullAgents } from '#/features/studio/mcp-queries'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
 import type { Skill, PullSkill } from '@ship/ui'
 
 const CACHE_KEY = 'ship-skills-library-cache'
@@ -20,24 +21,6 @@ export interface UseSkillsLibraryReturn {
   skills: LibrarySkill[]
   isLoading: boolean
   isConnected: boolean
-}
-
-function loadCachedSkills(): LibrarySkill[] {
-  try {
-    const raw = typeof window !== 'undefined'
-      ? window.localStorage.getItem(CACHE_KEY)
-      : null
-    if (!raw) return []
-    return JSON.parse(raw) as LibrarySkill[]
-  } catch {
-    return []
-  }
-}
-
-function cacheSkills(skills: LibrarySkill[]) {
-  try {
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(skills))
-  } catch { /* storage full or unavailable */ }
 }
 
 /** Convert a PullSkill to the Skill shape used by the IDE. */
@@ -91,6 +74,22 @@ export function useSkillsLibrary(): UseSkillsLibraryReturn {
   const mcp = useLocalMcpContext()
   const isConnected = mcp?.status === 'connected'
   const pullQuery = usePullAgents()
+  const [cachedSkills, setCachedSkills] = useState<LibrarySkill[]>([])
+
+  // Load cache from IndexedDB on mount (migrate from localStorage if needed)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const migrated = await migrateFromLocalStorage<LibrarySkill[]>(CACHE_KEY)
+        if (migrated && !cancelled) { setCachedSkills(migrated); return }
+        const data = await idbGet<LibrarySkill[]>(CACHE_KEY)
+        if (data && !cancelled) setCachedSkills(data)
+      } catch { /* IDB unavailable */ }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
 
   const pulledSkills = useMemo(() => {
     if (!pullQuery.data?.agents) return []
@@ -102,16 +101,19 @@ export function useSkillsLibrary(): UseSkillsLibraryReturn {
     return aggregateSkills(agentInputs)
   }, [pullQuery.data])
 
-  // Cache pulled skills for offline use
-  useMemo(() => {
-    if (pulledSkills.length > 0) cacheSkills(pulledSkills)
+  // Cache pulled skills to IndexedDB
+  useEffect(() => {
+    if (pulledSkills.length > 0) {
+      setCachedSkills(pulledSkills)
+      idbSet(CACHE_KEY, pulledSkills).catch(() => {})
+    }
   }, [pulledSkills])
 
   const skills = useMemo(() => {
     if (pulledSkills.length > 0) return pulledSkills
-    if (!isConnected) return loadCachedSkills()
+    if (!isConnected) return cachedSkills
     return []
-  }, [pulledSkills, isConnected])
+  }, [pulledSkills, isConnected, cachedSkills])
 
   return {
     skills,

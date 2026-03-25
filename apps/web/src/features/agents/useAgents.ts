@@ -1,32 +1,15 @@
 // Merged agent hook: combines MCP pull data with draft overlays.
 // This is the primary read path for agent data in the UI.
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { usePullAgents } from '#/features/studio/mcp-queries'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { useAgentDrafts } from './useAgentDrafts'
 import { pullAgentToResolved } from './pull-adapter'
+import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
 import type { ResolvedAgentProfile } from './types'
 
 const CACHE_KEY = 'ship-agents-pull-cache'
-
-function loadCachedAgents(): ResolvedAgentProfile[] {
-  try {
-    const raw = typeof window !== 'undefined'
-      ? window.localStorage.getItem(CACHE_KEY)
-      : null
-    if (!raw) return []
-    return JSON.parse(raw) as ResolvedAgentProfile[]
-  } catch {
-    return []
-  }
-}
-
-function cacheAgents(agents: ResolvedAgentProfile[]) {
-  try {
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(agents))
-  } catch { /* storage full or unavailable */ }
-}
 
 export interface UseAgentsReturn {
   agents: ResolvedAgentProfile[]
@@ -40,6 +23,22 @@ export function useAgents(): UseAgentsReturn {
   const isConnected = mcp?.status === 'connected'
   const pullQuery = usePullAgents()
   const { drafts } = useAgentDrafts()
+  const [cachedAgents, setCachedAgents] = useState<ResolvedAgentProfile[]>([])
+
+  // Load cache from IndexedDB on mount (migrate from localStorage if needed)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const migrated = await migrateFromLocalStorage<ResolvedAgentProfile[]>(CACHE_KEY)
+        if (migrated && !cancelled) { setCachedAgents(migrated); return }
+        const data = await idbGet<ResolvedAgentProfile[]>(CACHE_KEY)
+        if (data && !cancelled) setCachedAgents(data)
+      } catch { /* IDB unavailable */ }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
 
   // Convert pull data to resolved format
   const pulledAgents = useMemo(() => {
@@ -47,17 +46,20 @@ export function useAgents(): UseAgentsReturn {
     return pullQuery.data.agents.map(pullAgentToResolved)
   }, [pullQuery.data])
 
-  // Cache pulled agents for offline use
-  useMemo(() => {
-    if (pulledAgents.length > 0) cacheAgents(pulledAgents)
+  // Cache pulled agents to IndexedDB
+  useEffect(() => {
+    if (pulledAgents.length > 0) {
+      setCachedAgents(pulledAgents)
+      idbSet(CACHE_KEY, pulledAgents).catch(() => {})
+    }
   }, [pulledAgents])
 
   // Use pulled agents when available, fall back to cache when disconnected
   const baseAgents = useMemo(() => {
     if (pulledAgents.length > 0) return pulledAgents
-    if (!isConnected) return loadCachedAgents()
+    if (!isConnected) return cachedAgents
     return []
-  }, [pulledAgents, isConnected])
+  }, [pulledAgents, isConnected, cachedAgents])
 
   // Merge drafts on top of base agents
   const agents = useMemo(() => {
