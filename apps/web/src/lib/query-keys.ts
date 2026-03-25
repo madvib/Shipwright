@@ -14,6 +14,7 @@ export const mcpKeys = {
   agents: () => ['mcp', 'agents'] as const,
   agentList: () => ['mcp', 'agents', 'list'] as const,
   pull: () => ['mcp', 'agents', 'pull'] as const,
+  skills: () => ['mcp', 'skills'] as const,
 } as const
 
 export const libraryKeys = {
