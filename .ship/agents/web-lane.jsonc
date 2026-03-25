@@ -6,7 +6,7 @@
     "name": "Web Lane",
     "version": "0.1.0",
     "description": "Active context for the Web lane agent",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["github.com/better-auth/skills/better-auth", "ship-coordination", "visual-brainstorm", "visual-spec"],

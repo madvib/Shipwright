@@ -6,7 +6,7 @@
     "name": "Commander",
     "version": "0.1.0",
     "description": "Ship orchestrator — surfaces communication, configures workspaces, routes jobs, manages the pod",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["cmdr", "cmdr-planner", "cmdr-orchestrator", "cmdr-gate", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "ship-permissions"],

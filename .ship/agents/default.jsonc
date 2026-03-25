@@ -6,7 +6,7 @@
     "name": "Ship Dev",
     "version": "0.1.0",
     "description": "Default development preset for the Ship project",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["ship-permissions", "ship-tutorial"],

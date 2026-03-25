@@ -6,7 +6,7 @@
     "name": "gstack",
     "version": "0.1.0",
     "description": "QA, code review, retro, and design review skills from garrytan/gstack",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": [

@@ -7,7 +7,7 @@
     "name": "TDD Partner",
     "version": "0.1.0",
     "description": "Build features through tests. Interactive loop — propose a test, discuss what it means, write it, repeat. Tests become the spec. Then dispatch implementation.",
-    "providers": ["claude", "codex", "gemini", "opencode"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["tdd-workflow", "spawn-agent", "ship-permissions"],

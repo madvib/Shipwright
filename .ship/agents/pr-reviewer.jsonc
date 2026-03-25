@@ -6,7 +6,7 @@
     "name": "PR Reviewer",
     "version": "0.1.0",
     "description": "Structured PR review — security, correctness, tests, architecture. Produces actionable verdicts with line references.",
-    "providers": ["claude", "codex", "gemini", "opencode"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["code-review", "ship-permissions"],

@@ -6,7 +6,7 @@
     "name": "Test Writer",
     "version": "0.1.0",
     "description": "Writes focused, meaningful tests — unit, integration, property. No implementation code.",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["ship-coordination"],

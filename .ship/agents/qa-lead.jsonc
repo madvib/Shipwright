@@ -7,7 +7,7 @@
     "name": "QA Lead",
     "version": "0.1.0",
     "description": "Systematic web QA — browse, test, screenshot, file bugs, dispatch fix agents, verify. The test-fix-verify loop.",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": [

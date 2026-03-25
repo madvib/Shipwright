@@ -6,7 +6,7 @@
     "name": "Designer",
     "version": "0.1.0",
     "description": "Design and ship UI — brainstorm HTML mockups, preview in browser, extract design spec, dispatch implementation, verify with screenshots. Idea to shipped code.",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": [

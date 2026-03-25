@@ -6,7 +6,7 @@
     "name": "Skeptic",
     "version": "0.1.0",
     "description": "Adversarial reviewer — reads plans, specs, and diffs to find failure modes, untested assumptions, and simpler alternatives. Read-only. Cannot write code.",
-    "providers": ["claude", "codex", "gemini", "opencode"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["code-review"],
