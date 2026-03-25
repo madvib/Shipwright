@@ -77,11 +77,10 @@ fn build_payload(
 
 /// Publish the package at `root` to the Ship registry.
 pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<()> {
-    let manifest_path = root.join(".ship").join("ship.toml");
-    let manifest = ShipManifest::from_file(&manifest_path)
-        .context("reading .ship/ship.toml — is this a Ship project?")?;
-
     let ship_dir = root.join(".ship");
+    let manifest_path = ship_dir.join("ship.jsonc");
+    let manifest = ShipManifest::from_file(&manifest_path)
+        .context("reading .ship/ship.jsonc — is this a Ship project?")?;
     let hashes = resolve_hashes(&ship_dir, &manifest)?;
 
     if is_dry_run {
@@ -132,18 +131,20 @@ mod tests {
         let ship_dir = dir.path().join(".ship");
         std::fs::create_dir_all(&ship_dir)?;
         std::fs::write(
-            ship_dir.join("ship.toml"),
-            r#"
-[module]
-name = "github.com/test/pkg"
-version = "0.1.0"
-description = "Test package"
-license = "MIT"
-authors = ["Test Author"]
-
-[exports]
-skills = ["agents/skills/my-skill"]
-"#,
+            ship_dir.join("ship.jsonc"),
+            r#"{
+  // Ship manifest
+  "module": {
+    "name": "github.com/test/pkg",
+    "version": "0.1.0",
+    "description": "Test package",
+    "license": "MIT",
+    "authors": ["Test Author"]
+  },
+  "exports": {
+    "skills": ["agents/skills/my-skill"]
+  }
+}"#,
         )?;
         // Create a dummy skill so the hash is non-empty
         let skill_dir = ship_dir.join("agents").join("skills").join("my-skill");
@@ -161,12 +162,13 @@ skills = ["agents/skills/my-skill"]
         let ship_dir = dir.path().join(".ship");
         std::fs::create_dir_all(&ship_dir)?;
         std::fs::write(
-            ship_dir.join("ship.toml"),
-            r#"
-[module]
-name = "github.com/test/pkg"
-version = "0.1.0"
-"#,
+            ship_dir.join("ship.jsonc"),
+            r#"{
+  "module": {
+    "name": "github.com/test/pkg",
+    "version": "0.1.0"
+  }
+}"#,
         )?;
 
         let err = run_publish(dir.path(), false, None).unwrap_err();
@@ -221,6 +223,33 @@ agents = ["agents/profiles/bar.toml"]
             payload["export_hashes"]["agents/profiles/bar.toml"],
             "sha256:bbb"
         );
+    }
+
+    #[test]
+    fn dry_run_reads_jsonc_manifest() -> Result<()> {
+        let dir = tempdir()?;
+        let ship_dir = dir.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir)?;
+        std::fs::write(
+            ship_dir.join("ship.jsonc"),
+            r#"{
+  // JSONC manifest
+  "module": {
+    "name": "github.com/test/jsonc-pkg",
+    "version": "0.2.0"
+  },
+  "exports": {
+    "skills": ["agents/skills/my-skill"]
+  }
+}"#,
+        )?;
+        let skill_dir = ship_dir.join("agents").join("skills").join("my-skill");
+        std::fs::create_dir_all(&skill_dir)?;
+        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill")?;
+
+        // Dry run should succeed using the JSONC manifest
+        run_publish(dir.path(), true, None)?;
+        Ok(())
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //
 // Body: { repo_url: string, tag?: string }
 //
-// Fetches .ship/ship.toml from the repo at the given tag (or HEAD).
+// Fetches .ship/ship.jsonc from the repo at the given tag (or HEAD).
 // Validates [module] section, reads [exports], indexes skill metadata.
 // Requires authentication — claimed_by is always set to the session user.
 
@@ -15,7 +15,9 @@ import { checkRateLimit, rateLimitResponse } from '#/lib/rate-limit'
 import {
   parseGithubUrl,
   fetchFileFromGitHub,
-  parseShipToml,
+  fetchShipManifest,
+  parseShipManifest,
+  resolveGitHubRef,
 } from '#/lib/registry-github'
 import { scanSkillContent } from '#/lib/skill-scan'
 import { computeContentHash } from '#/lib/content-hash'
@@ -74,36 +76,31 @@ export const Route = createFileRoute('/api/registry/publish')({
         const session = sessionResult
         const ref = tag || 'HEAD'
 
-        // Fetch .ship/ship.toml
-        const tomlContent = await fetchFileFromGitHub(
-          ghParsed.owner,
-          ghParsed.repo,
-          '.ship/ship.toml',
-          ref,
-        )
-        if (!tomlContent) {
+        // Fetch .ship/ship.jsonc
+        const manifest = await fetchShipManifest(ghParsed.owner, ghParsed.repo, ref)
+        if (!manifest) {
           return Response.json(
             {
               error:
-                'No .ship/ship.toml found in this repository. ' +
-                'Create a .ship/ship.toml with [module] and [exports] sections to publish.',
+                'No .ship/ship.jsonc found in this repository. ' +
+                'Create a ship.jsonc manifest with module and exports sections to publish.',
             },
             { status: 422 },
           )
         }
 
-        const tomlBytes = new TextEncoder().encode(tomlContent).length
-        if (tomlBytes > TOML_MAX_BYTES) {
+        const manifestBytes = new TextEncoder().encode(manifest.content).length
+        if (manifestBytes > TOML_MAX_BYTES) {
           return Response.json(
-            { error: 'ship.toml exceeds maximum size of 100KB' },
+            { error: 'Ship manifest exceeds maximum size of 100KB' },
             { status: 422 },
           )
         }
 
-        const toml = parseShipToml(tomlContent)
+        const toml = parseShipManifest(manifest.content, manifest.format)
         if (!toml.module) {
           return Response.json(
-            { error: '.ship/ship.toml missing [module] section with name and version' },
+            { error: '.ship/ship.jsonc missing [module] section with name and version' },
             { status: 422 },
           )
         }
@@ -162,6 +159,9 @@ export const Route = createFileRoute('/api/registry/publish')({
           updatedAt: now,
         })
 
+        // Resolve the ref to a commit SHA via GitHub API
+        const commitSha = await resolveGitHubRef(ghParsed.owner, ghParsed.repo, ref) || ref
+
         // Create version record
         const versionId = nanoid()
         const skillIds: string[] = []
@@ -177,7 +177,7 @@ export const Route = createFileRoute('/api/registry/publish')({
           packageId: pkg.id,
           version: toml.module.version || '0.0.0',
           gitTag: tag || 'HEAD',
-          commitSha: '', // Populated by webhook flow with actual SHA
+          commitSha,
           contentHash: null,
           skillsJson: JSON.stringify(skillIds),
           agentsJson: JSON.stringify(agentNames),
@@ -196,6 +196,7 @@ export const Route = createFileRoute('/api/registry/publish')({
 
         // Index exported skills and scan for injection patterns
         let skillsIndexed = 0
+        const skillHashes: string[] = []
         for (const skillId of skillIds) {
           const skillPath = `.ship/skills/${skillId}.md`
           const content = await fetchFileFromGitHub(
@@ -225,6 +226,7 @@ export const Route = createFileRoute('/api/registry/publish')({
           }
 
           const hash = await computeContentHash(content)
+          skillHashes.push(hash)
           await repos.createPackageSkill({
             id: nanoid(),
             packageId: pkg.id,
@@ -235,6 +237,14 @@ export const Route = createFileRoute('/api/registry/publish')({
             contentHash: hash,
           })
           skillsIndexed++
+        }
+
+        // Compute combined content hash from per-skill hashes and update version
+        if (skillHashes.length > 0) {
+          const combinedHash = await computeContentHash(
+            skillHashes.sort().join('\0'),
+          )
+          await repos.updatePackageVersionHash(version.id, combinedHash)
         }
 
         return Response.json({
