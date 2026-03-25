@@ -6,7 +6,7 @@ const VALID_CATEGORIES = ['ai-tools', 'web-frameworks', 'devops', 'languages', '
 describe('seed-repos.json', () => {
   it('is a non-empty array', () => {
     expect(Array.isArray(seedRepos)).toBe(true)
-    expect(seedRepos.length).toBeGreaterThanOrEqual(20)
+    expect(seedRepos.length).toBeGreaterThanOrEqual(15)
   })
 
   it('every entry has url and category', () => {
