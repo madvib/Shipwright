@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useCompiler } from '#/features/compiler/useCompiler'
-import { DEFAULT_LIBRARY, PROVIDERS } from '#/features/compiler/types'
-import type { ProjectLibrary } from '#/features/compiler/types'
-import type { McpServerConfig, Skill } from '@ship/ui'
+import { PROVIDERS } from '#/features/compiler/types'
+import type { ProjectLibrary, McpServerConfig, Skill } from '@ship/ui'
+import { DEFAULT_LIBRARY } from '@ship/ui'
 import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
 
 const STORAGE_KEY = 'ship-studio-v1'

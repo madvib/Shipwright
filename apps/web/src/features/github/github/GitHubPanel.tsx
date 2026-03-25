@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Github, Lock, Unlock, Loader2, ExternalLink, GitPullRequest, AlertCircle, ChevronRight } from 'lucide-react'
 import { authClient } from '#/lib/auth-client'
-import type { ProjectLibrary } from '#/features/compiler/types'
+import type { ProjectLibrary } from '@ship/ui'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,7 @@ export function GitHubPanel({ modeName, onImport }: GitHubPanelProps) {
         <p className="text-[11px] text-muted-foreground text-center">
           Connect GitHub to import from private repos and create config PRs.
         </p>
+        {/* GitHub brand colors per https://github.com/logos — not design-system tokens */}
         <button
           onClick={handleConnect}
           className="inline-flex items-center gap-2 rounded-lg bg-[#24292f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#32383f]"

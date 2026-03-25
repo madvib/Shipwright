@@ -1,4 +1,5 @@
-import type { CompileResult, ProjectLibrary } from '#/features/compiler/types'
+import type { ProjectLibrary } from '@ship/ui'
+import type { CompileResult } from '#/features/compiler/types'
 import type { ResolvedAgentProfile } from '#/features/agents/types'
 
 /** File entry for ZIP assembly */
