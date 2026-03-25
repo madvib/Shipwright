@@ -18,13 +18,12 @@ const makeVersion = (
   daysAgo: number,
 ): PackageVersion => ({
   id: `ver-${version}`,
-  package_id: 'pkg-001',
   version,
-  git_tag: gitTag,
-  commit_sha: commitSha,
+  gitTag,
+  commitSha,
   skills,
   agents: [],
-  indexed_at: new Date(Date.now() - daysAgo * 86_400_000).toISOString(),
+  indexedAt: Date.now() - daysAgo * 86_400_000,
 })
 
 /** Empty state -- no versions indexed yet. */
