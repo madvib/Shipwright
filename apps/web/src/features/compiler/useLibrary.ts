@@ -1,11 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useCompiler } from '#/features/compiler/useCompiler'
-import { DEFAULT_LIBRARY } from '#/features/compiler/types'
+import { DEFAULT_LIBRARY, PROVIDERS } from '#/features/compiler/types'
 import type { ProjectLibrary } from '#/features/compiler/types'
 import type { McpServerConfig, Skill } from '@ship/ui'
 
 const STORAGE_KEY = 'ship-studio-v1'
+
+/** Derive provider IDs from the canonical PROVIDERS list. */
+const DEFAULT_PROVIDER_IDS = PROVIDERS.map((p) => p.id)
 
 function loadStored(): { library: ProjectLibrary; modeName: string; selectedProviders: string[] } | null {
   try {
@@ -22,8 +25,9 @@ export function useLibrary() {
   const stored = useRef(loadStored())
   const [library, setLibrary] = useState<ProjectLibrary>(stored.current?.library ?? DEFAULT_LIBRARY)
   const [modeName, setModeName] = useState(stored.current?.modeName ?? 'untitled-mode')
-  const ALL_PROVIDERS = ['claude', 'gemini', 'codex', 'cursor', 'opencode']
-  const [selectedProviders, setSelectedProviders] = useState<string[]>(ALL_PROVIDERS)
+  const [selectedProviders, setSelectedProviders] = useState<string[]>(
+    stored.current?.selectedProviders ?? DEFAULT_PROVIDER_IDS,
+  )
   const { state, compile } = useCompiler()
 
   // Persist to localStorage and notify sync listeners

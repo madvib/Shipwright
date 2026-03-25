@@ -1,6 +1,9 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState, useMemo } from 'react'
-import { Plus, ArrowRight, Monitor, FolderOpen, Library, PenLine } from 'lucide-react'
+import {
+  Plus, ArrowRight, Monitor, FolderOpen, Library, PenLine,
+  Terminal, ExternalLink,
+} from 'lucide-react'
 import { useAgents } from '#/features/agents/useAgents'
 import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
 import { useAgentStore } from '#/features/agents/useAgentStore'
@@ -19,7 +22,7 @@ export const Route = createFileRoute('/studio/agents/')({
 })
 
 function AgentsListPage() {
-  const { agents } = useAgents()
+  const { agents, isConnected } = useAgents()
   const { hasDraft } = useAgentDrafts()
   const { createAgent } = useAgentStore()
   const navigate = useNavigate()
@@ -71,7 +74,7 @@ function AgentsListPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <EmptyState onNew={handleNewAgent} />
+          <EmptyState isConnected={isConnected} onNew={handleNewAgent} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filtered.map((a) => (
@@ -84,20 +87,58 @@ function AgentsListPage() {
   )
 }
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () => void }) {
+  if (isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm font-medium text-foreground">No agents found</p>
+        <p className="mt-1 text-xs text-muted-foreground max-w-xs">
+          Your CLI is connected but no agents exist yet. Create one to get started.
+        </p>
+        <button
+          onClick={onNew}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+        >
+          <Plus className="size-3.5" />
+          Create agent
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <p className="text-sm font-medium text-foreground">No agents yet</p>
-      <p className="mt-1 text-xs text-muted-foreground max-w-xs">
-        Create your first agent to get started.
+    <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
+      <div className="flex size-12 items-center justify-center rounded-xl border border-border/60 bg-muted/40 mb-4">
+        <Terminal className="size-5 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Connect to CLI to see your agents</p>
+      <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+        Agents are configured in your local .ship/ directory and synced via the Ship CLI.
+        Install the CLI, then click Connect in the dock.
       </p>
-      <button
-        onClick={onNew}
-        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
-      >
-        <Plus className="size-3.5" />
-        Create agent
-      </button>
+      <div className="mt-4 w-full rounded-lg border border-border/40 bg-card/60 px-4 py-3">
+        <code className="text-[11px] font-mono text-emerald-400">
+          curl -fsSL https://ship.dev/install | sh
+        </code>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <a
+          href="https://github.com/madvib/Ship#installation"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border/40 px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition no-underline"
+        >
+          <ExternalLink className="size-3" />
+          Installation docs
+        </a>
+        <button
+          onClick={onNew}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+        >
+          <Plus className="size-3.5" />
+          Create locally
+        </button>
+      </div>
     </div>
   )
 }

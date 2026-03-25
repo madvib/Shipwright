@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { Users, Zap, Settings, Radio, PanelRightOpen } from 'lucide-react'
+import { Users, Zap, Settings, Radio, PanelRightOpen, WifiOff } from 'lucide-react'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
+import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import type { Skill } from '@ship/ui'
 
 const NAV_ITEMS = [
@@ -20,6 +21,8 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const mcp = useLocalMcpContext()
+  const isConnected = mcp?.status === 'connected'
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
@@ -69,6 +72,17 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
 
         {/* Separator */}
         <div className="h-6 w-px bg-border/60 mx-1" />
+
+        {/* Offline indicator */}
+        {!isConnected && (
+          <div
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-amber-500 font-medium"
+            title="Working offline — data may be stale"
+          >
+            <WifiOff className="size-3" />
+            <span className="hidden sm:inline">Offline</span>
+          </div>
+        )}
 
         {/* CLI status */}
         <CliStatusPopover onAddSkill={onAddSkill} />

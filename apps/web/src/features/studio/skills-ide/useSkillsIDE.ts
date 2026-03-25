@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useLibrary } from '#/features/compiler/useLibrary'
+import { useSkillsLibrary } from './useSkillsLibrary'
+import type { LibrarySkill } from './useSkillsLibrary'
 import type { Skill } from '@ship/ui'
 import { newSkillTemplate } from './skill-frontmatter'
 
@@ -36,8 +37,8 @@ function persistState(state: PersistedIDEState) {
 }
 
 export function useSkillsIDE() {
-  const { library, updateLibrary } = useLibrary()
-  const skills = library.skills ?? []
+  const { skills: librarySkills, isLoading, isConnected } = useSkillsLibrary()
+  const skills: Skill[] = librarySkills
   const persisted = useRef(loadPersistedState())
 
   const [openTabIds, setOpenTabIds] = useState<string[]>(persisted.current.openTabIds ?? [])
@@ -50,7 +51,7 @@ export function useSkillsIDE() {
   const [previewTab, setPreviewTab] = useState<'metadata' | 'output' | 'used-by'>('metadata')
   const [previewOpen, setPreviewOpen] = useState(true)
 
-  // Local content buffers for unsaved edits
+  // Local content buffers for unsaved edits (drafts)
   const [contentBuffers, setContentBuffers] = useState<Record<string, string>>({})
 
   // Persist layout state
@@ -98,23 +99,20 @@ export function useSkillsIDE() {
     setUnsavedIds((prev) => new Set(prev).add(id))
   }, [])
 
+  // Save stages content as a draft (marks unsaved cleared).
+  // Actual persistence to CLI happens via push.
   const saveSkill = useCallback((id: string) => {
     const content = contentBuffers[id]
     if (content === undefined) return
-    const updated = skills.map((s) => (s.id === id ? { ...s, content } : s))
-    updateLibrary({ skills: updated })
+    // Draft is stored in contentBuffers; clearing unsaved marker means
+    // the edit is acknowledged but not yet pushed to CLI.
     setUnsavedIds((prev) => { const n = new Set(prev); n.delete(id); return n })
-  }, [contentBuffers, skills, updateLibrary])
+  }, [contentBuffers])
 
   const saveAll = useCallback(() => {
     if (unsavedIds.size === 0) return
-    const updated = skills.map((s) => {
-      const buf = contentBuffers[s.id]
-      return buf !== undefined ? { ...s, content: buf } : s
-    })
-    updateLibrary({ skills: updated })
     setUnsavedIds(new Set())
-  }, [contentBuffers, skills, updateLibrary, unsavedIds])
+  }, [unsavedIds])
 
   const toggleFolder = useCallback((id: string) => {
     setExpandedFolders((prev) => {
@@ -125,28 +123,21 @@ export function useSkillsIDE() {
     })
   }, [])
 
-  const createSkill = useCallback(() => {
+  const createSkill = useCallback((idOrUndefined?: string) => {
     const ts = Date.now()
-    const id = `new-skill-${ts}`
-    const name = 'New Skill'
+    const id = idOrUndefined ?? `new-skill-${ts}`
+    const name = id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     const content = newSkillTemplate(name, id)
-    const skill: Skill = {
-      id,
-      name,
-      description: null,
-      content,
-      source: 'custom',
-    }
-    updateLibrary({ skills: [...skills, skill] })
+    // New skill creation is a local draft only — not yet pushed
+    setContentBuffers((prev) => ({ ...prev, [id]: content }))
     setExpandedFolders((prev) => new Set(prev).add(id))
     openSkill(id)
-    setContentBuffers((prev) => ({ ...prev, [id]: content }))
-  }, [skills, updateLibrary, openSkill])
+    setUnsavedIds((prev) => new Set(prev).add(id))
+  }, [openSkill])
 
   const deleteSkill = useCallback((id: string) => {
-    updateLibrary({ skills: skills.filter((s) => s.id !== id) })
     closeTab(id)
-  }, [skills, updateLibrary, closeTab])
+  }, [closeTab])
 
   const filteredSkills = searchQuery
     ? skills.filter((s) => {
@@ -154,6 +145,11 @@ export function useSkillsIDE() {
         return s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
       })
     : skills
+
+  /** Get the LibrarySkill metadata (origin, usedBy) for a skill ID. */
+  const getLibrarySkill = useCallback((id: string): LibrarySkill | undefined => {
+    return librarySkills.find((s) => s.id === id)
+  }, [librarySkills])
 
   const state: IDEState = {
     openTabIds,
@@ -171,6 +167,9 @@ export function useSkillsIDE() {
     state,
     activeSkill,
     activeContent,
+    isLoading,
+    isConnected,
+    getLibrarySkill,
     openSkill,
     closeTab,
     setActiveTabId,
