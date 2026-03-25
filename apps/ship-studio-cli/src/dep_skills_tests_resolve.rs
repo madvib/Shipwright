@@ -97,6 +97,7 @@ fn make_lock(path: &str, hash: &str) -> ShipLock {
             version: "main".to_string(),
             commit: "a".repeat(40),
             hash: hash.to_string(),
+            export_hashes: Default::default(),
         }],
     }
 }

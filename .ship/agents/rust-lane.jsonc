@@ -6,7 +6,7 @@
     "name": "Rust Lane",
     "version": "0.1.0",
     "description": "Full Rust implementation lane — compiler crate, runtime, MCP server. Use for cross-crate work.",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["ship-coordination"],

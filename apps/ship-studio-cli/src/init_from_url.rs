@@ -129,7 +129,10 @@ pub fn run_from_url(url: &str) -> Result<()> {
 mod tests {
     use super::*;
 
+    static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn run_in_tmp<F: FnOnce(&std::path::Path)>(f: F) {
+        let _guard = CWD_LOCK.lock().unwrap();
         let tmp = tempfile::TempDir::new().unwrap();
         let orig = std::env::current_dir().unwrap();
         std::env::set_current_dir(tmp.path()).unwrap();

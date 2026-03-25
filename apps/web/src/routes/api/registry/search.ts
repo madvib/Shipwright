@@ -73,24 +73,36 @@ export const Route = createFileRoute('/api/registry/search')({
         const sortOrder = (sort ?? 'installs') as 'installs' | 'recent' | 'name'
         const result = await repos.searchPackages(query, scope, page, limit, sortOrder)
 
-        return Response.json({
-          packages: result.packages.map((p) => ({
-            id: p.id,
-            path: p.path,
-            name: p.name,
-            description: p.description,
-            scope: p.scope,
-            latestVersion: p.latestVersion,
-            updatedAt: p.updatedAt,
-            installs: p.installs,
-            stars: p.stars,
-            deprecatedBy: p.deprecatedBy,
-            repoUrl: p.repoUrl,
-            claimedBy: p.claimedBy,
-          })),
-          total: result.total,
-          page: result.page,
-        })
+        const cappedTotal = Math.min(result.total, 1000)
+        const hasMore = result.total > 1000
+
+        return Response.json(
+          {
+            packages: result.packages.map((p) => ({
+              id: p.id,
+              path: p.path,
+              name: p.name,
+              description: p.description,
+              scope: p.scope,
+              latestVersion: p.latestVersion,
+              updatedAt: p.updatedAt,
+              installs: p.installs,
+              stars: p.stars,
+              deprecatedBy: p.deprecatedBy,
+              repoUrl: p.repoUrl,
+              claimedBy: p.claimedBy,
+            })),
+            total: cappedTotal,
+            ...(hasMore ? { hasMore: true } : {}),
+            page: result.page,
+          },
+          {
+            headers: {
+              'Cache-Control': 'public, max-age=60',
+              'Vary': 'Accept',
+            },
+          },
+        )
       },
     },
   },

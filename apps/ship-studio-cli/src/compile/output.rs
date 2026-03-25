@@ -106,6 +106,21 @@ pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> R
         println!("  {} .cursor/cli.json", provider_id);
     }
 
+    // Cursor environment → .cursor/environment.json
+    if let Some(env) = &output.cursor_environment_json {
+        let path = root.join(".cursor/environment.json");
+        ensure_parent(&path)?;
+        std::fs::write(&path, serde_json::to_string_pretty(env)?)?;
+        println!("  {} .cursor/environment.json", provider_id);
+    }
+
+    // OpenCode config patch → opencode.json
+    if let Some(patch) = &output.opencode_config_patch {
+        let path = root.join("opencode.json");
+        std::fs::write(&path, serde_json::to_string_pretty(patch)?)?;
+        println!("  {} opencode.json", provider_id);
+    }
+
     Ok(())
 }
 
@@ -143,6 +158,12 @@ pub(crate) fn print_dry_run(provider_id: &str, output: &CompileOutput) {
     }
     if output.cursor_cli_permissions.is_some() {
         println!("  would write .cursor/cli.json");
+    }
+    if output.cursor_environment_json.is_some() {
+        println!("  would write .cursor/environment.json");
+    }
+    if output.opencode_config_patch.is_some() {
+        println!("  would write opencode.json");
     }
 }
 

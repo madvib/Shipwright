@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Context;
@@ -88,6 +89,83 @@ pub fn compute_file_hash(path: &Path) -> anyhow::Result<String> {
     Ok(format!("sha256:{}", hex::encode_sha256(&content)))
 }
 
+/// Per-export content hashes and a combined top-level hash.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportHashes {
+    /// Map from export path (e.g. `"agents/skills/my-skill"`) to `"sha256:<hex>"`.
+    pub per_export: BTreeMap<String, String>,
+    /// Combined hash: SHA-256 of the sorted per-export hashes concatenated.
+    pub combined: String,
+}
+
+/// Compute per-export content hashes for a package.
+///
+/// For each export path in `skill_exports` and `agent_exports`, hashes the
+/// corresponding subtree or file under `ship_dir`. Returns per-export hashes
+/// plus a combined hash derived only from exported artifacts.
+///
+/// Export paths are relative to `.ship/` (e.g. `"agents/skills/my-skill"`).
+/// Skill exports are directories (hashed with `compute_tree_hash`).
+/// Agent exports are single files (hashed with `compute_file_hash`).
+pub fn compute_export_hashes(
+    ship_dir: &Path,
+    skill_exports: &[String],
+    agent_exports: &[String],
+) -> anyhow::Result<ExportHashes> {
+    let mut per_export = BTreeMap::new();
+
+    for skill_path in skill_exports {
+        let full = ship_dir.join(skill_path);
+        if !full.is_dir() {
+            anyhow::bail!(
+                "exported skill '{}' not found at {}",
+                skill_path,
+                full.display()
+            );
+        }
+        let hash = compute_tree_hash(&full)
+            .with_context(|| format!("hashing exported skill '{}'", skill_path))?;
+        per_export.insert(skill_path.clone(), hash);
+    }
+
+    for agent_path in agent_exports {
+        let full = ship_dir.join(agent_path);
+        if !full.is_file() {
+            anyhow::bail!(
+                "exported agent '{}' not found at {}",
+                agent_path,
+                full.display()
+            );
+        }
+        let hash = compute_file_hash(&full)
+            .with_context(|| format!("hashing exported agent '{}'", agent_path))?;
+        per_export.insert(agent_path.clone(), hash);
+    }
+
+    let combined = combine_export_hashes(&per_export);
+    Ok(ExportHashes {
+        per_export,
+        combined,
+    })
+}
+
+/// Derive a combined hash from sorted per-export hashes.
+///
+/// Concatenates `"<path>\0<hash>"` for each export in sorted order,
+/// then SHA-256s the result. Returns `"sha256:<hex>"`.
+fn combine_export_hashes(hashes: &BTreeMap<String, String>) -> String {
+    let mut acc = String::new();
+    for (path, hash) in hashes {
+        acc.push_str(path);
+        acc.push('\0');
+        acc.push_str(hash);
+    }
+    if acc.is_empty() {
+        return format!("sha256:{}", hex::encode_sha256(b""));
+    }
+    format!("sha256:{}", hex::encode_sha256(acc.as_bytes()))
+}
+
 mod hex {
     use sha2::{Digest, Sha256};
 
@@ -100,107 +178,5 @@ mod hex {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_compute_tree_hash_deterministic() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("a.txt"), "hello")?;
-        fs::create_dir_all(dir.path().join("sub"))?;
-        fs::write(dir.path().join("sub").join("b.txt"), "world")?;
-
-        let h1 = compute_tree_hash(dir.path())?;
-        let h2 = compute_tree_hash(dir.path())?;
-        assert_eq!(h1, h2);
-        assert!(h1.starts_with("sha256:"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_excludes_git() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("file.txt"), "content")?;
-        let hash_without_git = compute_tree_hash(dir.path())?;
-
-        fs::create_dir_all(dir.path().join(".git"))?;
-        fs::write(dir.path().join(".git").join("HEAD"), "ref: refs/heads/main")?;
-        let hash_with_git = compute_tree_hash(dir.path())?;
-
-        assert_eq!(
-            hash_without_git, hash_with_git,
-            ".git/ must not affect hash"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_excludes_ship_lock() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("file.txt"), "content")?;
-        let hash_without_lock = compute_tree_hash(dir.path())?;
-
-        fs::write(dir.path().join("ship.lock"), "[[package]]\n")?;
-        let hash_with_lock = compute_tree_hash(dir.path())?;
-
-        assert_eq!(
-            hash_without_lock, hash_with_lock,
-            "ship.lock must not affect hash"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_excludes_ds_store() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        fs::write(dir.path().join("file.txt"), "content")?;
-        let hash_without_ds = compute_tree_hash(dir.path())?;
-
-        fs::write(dir.path().join(".DS_Store"), "binary garbage")?;
-        let hash_with_ds = compute_tree_hash(dir.path())?;
-
-        assert_eq!(
-            hash_without_ds, hash_with_ds,
-            ".DS_Store must not affect hash"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_tree_hash_different_content() -> anyhow::Result<()> {
-        let dir1 = tempdir()?;
-        let dir2 = tempdir()?;
-        fs::write(dir1.path().join("file.txt"), "content-a")?;
-        fs::write(dir2.path().join("file.txt"), "content-b")?;
-
-        let h1 = compute_tree_hash(dir1.path())?;
-        let h2 = compute_tree_hash(dir2.path())?;
-        assert_ne!(h1, h2);
-        Ok(())
-    }
-
-    #[test]
-    fn test_compute_file_hash() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let path = dir.path().join("test.txt");
-        fs::write(&path, "hello")?;
-        let h = compute_file_hash(&path)?;
-        assert!(h.starts_with("sha256:"));
-        // SHA-256 of "hello" is known.
-        assert!(h.contains("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_should_exclude() {
-        assert!(should_exclude(".git/config"));
-        assert!(should_exclude(".DS_Store"));
-        assert!(should_exclude("ship.lock"));
-        assert!(should_exclude("foo.swp"));
-        assert!(should_exclude("Thumbs.db"));
-        assert!(!should_exclude("README.md"));
-        assert!(!should_exclude("src/main.rs"));
-    }
-}
+#[path = "hash_tests.rs"]
+mod tests;

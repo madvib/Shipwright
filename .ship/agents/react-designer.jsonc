@@ -6,7 +6,7 @@
     "name": "React Designer",
     "version": "0.1.0",
     "description": "UI component work — shadcn/ui, @ship/primitives, Tailwind, accessibility, visual polish",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": [],

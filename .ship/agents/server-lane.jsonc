@@ -6,7 +6,7 @@
     "name": "Server Lane — feat/server-auth",
     "version": "0.1.0",
     "description": "Active context for the Server lane agent",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["github.com/better-auth/skills/better-auth", "ship-coordination"],

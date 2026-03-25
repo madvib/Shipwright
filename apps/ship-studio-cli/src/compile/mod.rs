@@ -28,8 +28,11 @@ pub use output::write_output;
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 pub struct CompileOptions<'a> {
-    /// Project root (where CLAUDE.md etc. get written).
+    /// Source root — where .ship/ lives (may be the main repo for worktrees).
     pub project_root: &'a Path,
+    /// Output root — where compiled files (CLAUDE.md, .claude/, .mcp.json) go.
+    /// Defaults to project_root. Set to cwd for worktree compilation.
+    pub output_root: Option<&'a Path>,
     /// Optionally restrict to a single provider.
     pub provider: Option<&'a str>,
     /// Print what would be written without touching the filesystem.
@@ -40,6 +43,7 @@ pub struct CompileOptions<'a> {
 
 pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     let ship_dir = opts.project_root.join(".ship");
+    let output_root = opts.output_root.unwrap_or(opts.project_root);
 
     // 1. Load raw library from .ship/ (flat layout)
     let mut library = load_library(&ship_dir).context("failed to load .ship/")?;
@@ -83,7 +87,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         return Ok(());
     }
 
-    // 5. Compile + write
+    // 5. Compile + write (output goes to output_root, not project_root)
     for provider_id in &providers {
         let Some(output) = compile(&resolved, provider_id) else {
             eprintln!("warning: unknown provider '{}', skipping", provider_id);
@@ -92,20 +96,18 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
         if opts.dry_run {
             print_dry_run(provider_id, &output);
         } else {
-            write_output(opts.project_root, provider_id, &output)
+            write_output(output_root, provider_id, &output)
                 .with_context(|| format!("failed to write {} output", provider_id))?;
         }
     }
 
     // 6. Pre-approve ship MCP tools globally for each provider.
-    //    The ship-mcp server is always injected by the compiler into every compile.
-    //    This avoids per-session approval prompts for ship MCP tools.
     if !opts.dry_run {
         for provider in &providers {
             let result = match provider.as_str() {
                 "claude" => ensure_ship_mcp_allowed_claude(),
                 "gemini" => ensure_ship_mcp_allowed_gemini(),
-                "cursor" => ensure_ship_mcp_allowed_cursor(opts.project_root),
+                "cursor" => ensure_ship_mcp_allowed_cursor(output_root),
                 _ => Ok(()),
             };
             if let Err(e) = result {
@@ -115,7 +117,7 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
     }
 
     if !opts.dry_run {
-        ensure_session_gitignored(opts.project_root)?;
+        ensure_session_gitignored(output_root)?;
         println!("✓ compiled for: {}", providers.join(", "));
     }
     Ok(())

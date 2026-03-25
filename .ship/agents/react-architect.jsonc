@@ -6,7 +6,7 @@
     "name": "React Architect",
     "version": "0.1.0",
     "description": "App structure, data flow, TanStack Router/Query/Start, state management, performance",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["ship-schema-reference", "studio-mcp-bridge"],

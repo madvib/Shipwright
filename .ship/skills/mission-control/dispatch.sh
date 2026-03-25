@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Ship dispatch — create a worktree, write a job spec, compile the agent, open a terminal.
+# Usage: bash scripts/dispatch.sh --slug <name> --agent <agent> --spec <file> [options]
+set -euo pipefail
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+WORKTREE_BASE="${SHIP_WORKTREE_DIR:-${HOME}/dev/ship-worktrees}"
+BASE_BRANCH=""
+NO_OPEN=false
+DRY_RUN=false
+CONFIRM="${SHIP_DISPATCH_CONFIRM:-}"
+SLUG=""
+AGENT=""
+SPEC_FILE=""
+
+# ── Parse args ────────────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slug)     SLUG="$2"; shift 2 ;;
+    --agent)    AGENT="$2"; shift 2 ;;
+    --spec)     SPEC_FILE="$2"; shift 2 ;;
+    --base)     BASE_BRANCH="$2"; shift 2 ;;
+    --dir)      WORKTREE_BASE="$2"; shift 2 ;;
+    --no-open)  NO_OPEN=true; shift ;;
+    --dry-run)  DRY_RUN=true; shift ;;
+    --confirm)  CONFIRM=1; shift ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [[ -z "$SLUG" || -z "$AGENT" || -z "$SPEC_FILE" ]]; then
+  echo "Usage: dispatch.sh --slug <name> --agent <agent> --spec <file>" >&2
+  echo "  --base <branch>   Branch to fork from (default: current)" >&2
+  echo "  --dir <path>      Worktree base dir (default: ~/dev/ship-worktrees)" >&2
+  echo "  --no-open         Print launch command instead of opening terminal" >&2
+  echo "  --confirm         Show spec and ask y/n before launching" >&2
+  echo "  --dry-run         Show what would happen" >&2
+  exit 1
+fi
+
+if [[ ! -f "$SPEC_FILE" ]]; then
+  echo "Spec file not found: $SPEC_FILE" >&2
+  exit 1
+fi
+
+WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}"
+BRANCH_NAME="job/${SLUG}"
+BASE_BRANCH="${BASE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+
+# ── Detect terminal ───────────────────────────────────────────────────────────
+detect_terminal() {
+  local term="${SHIP_DEFAULT_TERMINAL:-}"
+  if [[ -n "$term" ]]; then echo "$term"; return; fi
+  if [[ -n "${WT_SESSION:-}" ]]; then echo "wt"; return; fi
+  if [[ -n "${TMUX:-}" ]]; then echo "tmux"; return; fi
+  case "${TERM_PROGRAM:-}" in
+    iTerm.app)       echo "iterm" ;;
+    WarpTerminal)    echo "warp" ;;
+    vscode)          echo "vscode" ;;
+    Apple_Terminal)  echo "manual" ;;
+    *)               echo "manual" ;;
+  esac
+}
+
+TERMINAL=$(detect_terminal)
+
+# ── Dry run ───────────────────────────────────────────────────────────────────
+if $DRY_RUN; then
+  echo "dispatch (dry run):"
+  echo "  slug:      $SLUG"
+  echo "  agent:     $AGENT"
+  echo "  spec:      $SPEC_FILE"
+  echo "  base:      $BASE_BRANCH"
+  echo "  worktree:  $WORKTREE_PATH"
+  echo "  branch:    $BRANCH_NAME"
+  echo "  terminal:  $TERMINAL"
+  exit 0
+fi
+
+# ── Confirm ───────────────────────────────────────────────────────────────────
+if [[ -n "$CONFIRM" ]]; then
+  echo "=== Job Spec ==="
+  cat "$SPEC_FILE"
+  echo ""
+  echo "Agent: $AGENT | Worktree: $WORKTREE_PATH | Branch: $BRANCH_NAME"
+  read -rp "Dispatch? [y/N] " answer
+  if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+    echo "Cancelled."
+    exit 0
+  fi
+fi
+
+# ── Create worktree (idempotent) ──────────────────────────────────────────────
+mkdir -p "$WORKTREE_BASE"
+
+if [[ -d "$WORKTREE_PATH" ]]; then
+  echo "Worktree already exists: $WORKTREE_PATH"
+else
+  echo "Creating worktree: $WORKTREE_PATH (branch: $BRANCH_NAME from $BASE_BRANCH)"
+  git worktree add "$WORKTREE_PATH" -b "$BRANCH_NAME" "$BASE_BRANCH"
+fi
+
+# ── Write job spec ────────────────────────────────────────────────────────────
+DEST_SPEC="$WORKTREE_PATH/.ship-session/job-spec.md"
+mkdir -p "$(dirname "$DEST_SPEC")"
+cp "$SPEC_FILE" "$DEST_SPEC"
+echo "Job spec written: $DEST_SPEC"
+
+# ── Compile agent ─────────────────────────────────────────────────────────────
+if command -v ship &>/dev/null; then
+  echo "Compiling agent: ship use $AGENT"
+  (cd "$WORKTREE_PATH" && ship use "$AGENT")
+else
+  echo "Warning: ship CLI not found. Run 'ship use $AGENT' manually in the worktree."
+fi
+
+# ── Detect provider CLI ────────────────────────────────────────────────────────
+PROVIDER_CLI="${SHIP_PROVIDER_CLI:-}"
+if [[ -z "$PROVIDER_CLI" ]]; then
+  # Read the first provider from the compiled agent config
+  if [[ -f "$WORKTREE_PATH/CLAUDE.md" ]]; then
+    PROVIDER_CLI="claude"
+  elif [[ -f "$WORKTREE_PATH/AGENTS.md" ]]; then
+    PROVIDER_CLI="codex"
+  elif [[ -f "$WORKTREE_PATH/GEMINI.md" ]]; then
+    PROVIDER_CLI="gemini"
+  elif [[ -d "$WORKTREE_PATH/.cursor" ]]; then
+    PROVIDER_CLI="cursor"
+  elif [[ -f "$WORKTREE_PATH/.opencode.json" ]] || [[ -d "$WORKTREE_PATH/.opencode" ]]; then
+    PROVIDER_CLI="opencode"
+  else
+    PROVIDER_CLI="claude"  # fallback
+  fi
+fi
+
+# ── Open terminal ─────────────────────────────────────────────────────────────
+LAUNCH_CMD="cd ${WORKTREE_PATH} && ${PROVIDER_CLI}"
+
+if $NO_OPEN; then
+  echo ""
+  echo "Launch manually:"
+  echo "  $LAUNCH_CMD"
+  exit 0
+fi
+
+case "$TERMINAL" in
+  iterm)
+    osascript -e "
+      tell application \"iTerm2\"
+        tell current window
+          set newTab to (create tab with default profile)
+          tell current session of newTab
+            write text \"$LAUNCH_CMD\"
+            set name to \"$SLUG\"
+          end tell
+        end tell
+      end tell" 2>/dev/null || echo "iTerm2 AppleScript failed. Launch manually: $LAUNCH_CMD"
+    ;;
+  tmux)
+    tmux new-window -n "$SLUG" "$LAUNCH_CMD" 2>/dev/null || echo "tmux failed. Launch manually: $LAUNCH_CMD"
+    ;;
+  warp)
+    open -a Warp --args --working-directory "$WORKTREE_PATH" 2>/dev/null || echo "Warp launch failed. Launch manually: $LAUNCH_CMD"
+    ;;
+  vscode)
+    code "$WORKTREE_PATH" 2>/dev/null || echo "VS Code launch failed. Launch manually: $LAUNCH_CMD"
+    ;;
+  *)
+    echo ""
+    echo "Launch in a new terminal:"
+    echo "  $LAUNCH_CMD"
+    ;;
+esac
+
+echo ""
+echo "Dispatched: $SLUG → $AGENT @ $WORKTREE_PATH"

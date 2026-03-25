@@ -6,7 +6,7 @@
     "name": "Rust Runtime",
     "version": "0.1.0",
     "description": "Ship runtime, CLI, MCP server — Rust, sqlx, SQLite, platform architecture",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["ship-coordination"],

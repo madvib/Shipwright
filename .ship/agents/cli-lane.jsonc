@@ -6,7 +6,7 @@
     "name": "CLI Lane — feat/cli-init",
     "version": "0.1.0",
     "description": "Active context for the CLI lane agent",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["ship-coordination"],

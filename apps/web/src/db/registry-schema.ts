@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 // ---------------------------------------------------------------------------
 // Registry tables — packages, versions, skills
@@ -54,6 +54,7 @@ export const packageVersions = sqliteTable(
   },
   (t) => [
     index('pkg_versions_package_indexed').on(t.packageId, t.indexedAt),
+    uniqueIndex('pkg_versions_package_tag').on(t.packageId, t.gitTag),
   ],
 )
 

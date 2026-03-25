@@ -67,6 +67,7 @@ pub fn run_install(project_root: &Path, frozen: bool, offline: bool) -> Result<(
     let state = WorkspaceState::load(&ship_dir);
     run_compile(CompileOptions {
         project_root,
+        output_root: None,
         provider: None,
         dry_run: false,
         active_agent: state.active_agent.as_deref(),

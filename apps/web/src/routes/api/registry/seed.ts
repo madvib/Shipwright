@@ -9,7 +9,7 @@ import { getRegistryDb, nanoid } from '#/lib/d1'
 import { parseGithubUrl, extractLibrary } from '#/lib/github-import'
 import { fetchRepoFiles } from '#/lib/fetch-repo-files'
 import { computeContentHash } from '#/lib/content-hash'
-import { fetchFileFromGitHub, parseShipToml } from '#/lib/registry-github'
+import { fetchFileFromGitHub, fetchShipManifest, parseShipManifest } from '#/lib/registry-github'
 import { createRegistryRepositories, type RegistryRepositories } from '#/db/registry-repositories'
 import type { InsertPackage } from '#/db/registry-schema'
 import seedReposJson from '#/lib/seed-repos.json'
@@ -103,23 +103,23 @@ async function importRepo(
     })
   }
 
-  // Index native Ship skills from .ship/ship.toml [exports].skills
-  await indexShipTomlSkills(owner, repo, pkg.id, db)
+  // Index native Ship skills from .ship/ship.jsonc [exports].skills
+  await indexShipManifestSkills(owner, repo, pkg.id, db)
 
   return { status: 'imported' }
 }
 
-/** Fetch .ship/ship.toml and index any exported skills from .ship/skills/. */
-async function indexShipTomlSkills(
+/** Fetch ship manifest and index any exported skills from .ship/skills/. */
+async function indexShipManifestSkills(
   owner: string,
   repo: string,
   packageId: string,
   db: RegistryRepositories,
 ): Promise<void> {
-  const tomlContent = await fetchFileFromGitHub(owner, repo, '.ship/ship.toml', 'HEAD')
-  if (!tomlContent) return
+  const manifest = await fetchShipManifest(owner, repo, 'HEAD')
+  if (!manifest) return
 
-  const toml = parseShipToml(tomlContent)
+  const toml = parseShipManifest(manifest.content, manifest.format)
   const skillIds = toml.exports?.skills ?? []
   if (skillIds.length === 0) return
 

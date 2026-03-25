@@ -9,8 +9,9 @@ import { createRegistryRepositories } from '#/db/registry-repositories'
 import { getRegistryDb, nanoid } from '#/lib/d1'
 import { env as cloudflareEnv } from 'cloudflare:workers'
 import {
-  fetchFileFromGitHub,
-  parseShipToml,
+  fetchShipManifest,
+  parseShipManifest,
+  resolveGitHubRef,
 } from '#/lib/registry-github'
 import { isNewerVersion } from '#/lib/semver'
 import { verifySignature, getPayloadAgeMs } from '#/lib/webhook-verify'
@@ -86,20 +87,20 @@ async function handleTagCreate(
   const repoUrl = `https://github.com/${fullName}`
   const [owner, repoName] = fullName.split('/')
 
-  // Fetch .ship/ship.toml at the tag
-  const tomlContent = await fetchFileFromGitHub(owner, repoName, '.ship/ship.toml', tag)
-  if (!tomlContent) {
+  // Fetch .ship/ship.jsonc at the tag
+  const manifest = await fetchShipManifest(owner, repoName, tag)
+  if (!manifest) {
     return Response.json({
       status: 'skipped',
-      reason: 'no .ship/ship.toml at tag',
+      reason: 'no .ship/ship.jsonc at tag',
     })
   }
 
-  const toml = parseShipToml(tomlContent)
+  const toml = parseShipManifest(manifest.content, manifest.format)
   if (!toml.module?.name) {
     return Response.json({
       status: 'skipped',
-      reason: 'ship.toml missing [module] name',
+      reason: 'ship.jsonc missing module name',
     })
   }
 
@@ -140,17 +141,32 @@ async function handleTagCreate(
   const skillIds = toml.exports?.skills || []
   const agentNames = toml.exports?.agents || []
 
-  await repos.createPackageVersion({
-    id: nanoid(),
-    packageId: pkg.id,
-    version: toml.module.version || tag,
-    gitTag: tag,
-    commitSha: '',
-    contentHash: null,
-    skillsJson: JSON.stringify(skillIds),
-    agentsJson: JSON.stringify(agentNames),
-    indexedAt: now,
-  })
+  // Resolve the tag to a commit SHA
+  const commitSha = await resolveGitHubRef(owner, repoName, tag) || tag
+
+  try {
+    await repos.createPackageVersion({
+      id: nanoid(),
+      packageId: pkg.id,
+      version: toml.module.version || tag,
+      gitTag: tag,
+      commitSha,
+      contentHash: null,
+      skillsJson: JSON.stringify(skillIds),
+      agentsJson: JSON.stringify(agentNames),
+      indexedAt: now,
+    })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('UNIQUE constraint')) {
+      return Response.json({
+        status: 'duplicate',
+        package_id: pkg.id,
+        version: toml.module.version || tag,
+      })
+    }
+    throw err
+  }
 
   return Response.json({
     status: 'indexed',

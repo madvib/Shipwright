@@ -232,6 +232,9 @@ pub enum Commands {
         #[arg(long)]
         milestone: Option<String>,
     },
+
+    /// Show help — same as --help
+    Help,
 }
 
 #[derive(Subcommand, Debug)]

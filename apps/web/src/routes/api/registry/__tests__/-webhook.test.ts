@@ -14,8 +14,9 @@ vi.mock('#/lib/d1', () => ({
 }))
 
 vi.mock('#/lib/registry-github', () => ({
-  fetchFileFromGitHub: vi.fn(),
-  parseShipToml: vi.fn(),
+  fetchShipManifest: vi.fn(),
+  parseShipManifest: vi.fn(),
+  resolveGitHubRef: vi.fn(),
 }))
 
 import { Route } from '../webhook'
@@ -123,9 +124,9 @@ describe('POST /api/registry/webhook', () => {
       },
     }
 
-    // Mock the GitHub file fetch to return null (skipped, no toml)
+    // Mock the GitHub manifest fetch to return null (skipped, no manifest)
     const registryGithub = await import('#/lib/registry-github')
-    vi.mocked(registryGithub.fetchFileFromGitHub).mockResolvedValue(null)
+    vi.mocked(registryGithub.fetchShipManifest).mockResolvedValue(null)
 
     const helper = makeWebhookRequest('create', payload)
     const req = await helper.toRequest()

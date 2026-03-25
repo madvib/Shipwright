@@ -82,7 +82,7 @@ impl WorkspaceState {
 
 /// Activate an agent: compile + install plugins + persist workspace state to platform.db.
 /// If `agent_id` is None, re-runs the active agent from platform.db.
-pub fn activate_agent(agent_id: Option<&str>, project_root: &Path) -> Result<()> {
+pub fn activate_agent(agent_id: Option<&str>, project_root: &Path, output_root: Option<&Path>) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     let mut state = WorkspaceState::load(&ship_dir);
     let id = agent_id
@@ -96,6 +96,7 @@ pub fn activate_agent(agent_id: Option<&str>, project_root: &Path) -> Result<()>
 
     run_compile(CompileOptions {
         project_root,
+        output_root,
         provider: None,
         dry_run: false,
         active_agent: Some(&id),

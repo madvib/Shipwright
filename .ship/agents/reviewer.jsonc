@@ -6,10 +6,10 @@
     "name": "Code Reviewer",
     "version": "0.1.0",
     "description": "Code quality gate — reviews diffs for correctness, security, performance, and architecture drift",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["ship-coordination"],
+    "refs": ["ship-coordination", "ship-permissions"],
   },
   "mcp": {
     "servers": ["ship"],

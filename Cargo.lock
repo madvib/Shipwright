@@ -2396,7 +2396,6 @@ dependencies = [
  "flate2",
  "home",
  "nanoid",
- "regex",
  "semver",
  "serde",
  "serde_json",

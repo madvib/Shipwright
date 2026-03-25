@@ -6,6 +6,7 @@
 //! NOTE: `.ship/ship.state` (formerly `.ship/ship.lock`) stores workspace state
 //! (active_profile, compiled_at). These are completely separate files.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Context;
@@ -24,8 +25,13 @@ pub struct LockPackage {
     pub version: String,
     /// Exact 40-char hex commit SHA.
     pub commit: String,
-    /// Content hash in `sha256:<hex>` format.
+    /// Content hash in `sha256:<hex>` format (combined export hash).
     pub hash: String,
+    /// Per-export integrity hashes: export path -> `"sha256:<hex>"`.
+    /// Present for packages published with per-export hashing (v0.1+).
+    /// Absent for legacy lockfiles — deserialized as empty map.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub export_hashes: BTreeMap<String, String>,
 }
 
 /// The parsed `.ship/ship.lock` file.
@@ -74,6 +80,12 @@ impl ShipLock {
             out.push_str(&format!("version = {:?}\n", pkg.version));
             out.push_str(&format!("commit = {:?}\n", pkg.commit));
             out.push_str(&format!("hash = {:?}\n", pkg.hash));
+            if !pkg.export_hashes.is_empty() {
+                out.push_str("\n[package.export_hashes]\n");
+                for (k, v) in &pkg.export_hashes {
+                    out.push_str(&format!("{:?} = {:?}\n", k, v));
+                }
+            }
         }
         out
     }
@@ -118,6 +130,7 @@ impl ShipLock {
 mod tests {
     use super::*;
     use crate::manifest::ShipManifest;
+    use std::collections::BTreeMap;
 
     fn sample_lock() -> ShipLock {
         ShipLock {
@@ -128,12 +141,14 @@ mod tests {
                     version: "1.0.0".into(),
                     commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
                     hash: "sha256:bbbb".into(),
+                    export_hashes: BTreeMap::new(),
                 },
                 LockPackage {
                     path: "github.com/a/first".into(),
                     version: "2.0.0".into(),
                     commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                     hash: "sha256:aaaa".into(),
+                    export_hashes: BTreeMap::new(),
                 },
             ],
         }
@@ -157,6 +172,7 @@ mod tests {
                 version: "1.0.0".into(),
                 commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                 hash: "sha256:cafe".into(),
+                export_hashes: BTreeMap::new(),
             }],
         };
         let s = lock.to_toml_string();
@@ -245,6 +261,7 @@ version = "1.0.0"
                 version: "1.0.0".into(),
                 commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                 hash: "sha256:aaaa".into(),
+                export_hashes: BTreeMap::new(),
             }],
         };
         let manifest = ShipManifest::from_toml_str(

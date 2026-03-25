@@ -6,7 +6,7 @@
     "name": "Rust Compiler",
     "version": "0.1.0",
     "description": "Ship compiler crate — WASM build, compiler logic, provider output generation",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": [],

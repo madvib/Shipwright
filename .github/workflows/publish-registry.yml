@@ -1,0 +1,83 @@
+name: Publish to Registry
+
+# Publishes the Ship package to the getship.dev registry.
+# Distinct from release-cli.yml (which creates GitHub Releases with binaries).
+# This workflow pushes package metadata + export hashes to the registry API.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v0.1.0, v0.2.0-beta)'
+        required: false
+
+concurrency:
+  group: publish-registry-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Publish package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          # workflow_dispatch input takes priority; otherwise use the pushed tag
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.value }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build ship binary
+        run: cargo build --release -p ship-studio-cli
+
+      # Write credentials file directly -- ship login is interactive (PKCE)
+      # and cannot run in CI. The CLI reads ~/.ship/credentials as TOML:
+      #
+      #   [account]
+      #   token = "..."
+      #
+      # See: apps/ship-studio-cli/src/config.rs  Credentials::load()
+      - name: Write registry credentials
+        run: |
+          mkdir -p ~/.ship
+          cat > ~/.ship/credentials <<EOF
+          [account]
+          token = "$SHIP_REGISTRY_TOKEN"
+          EOF
+          chmod 600 ~/.ship/credentials
+        env:
+          SHIP_REGISTRY_TOKEN: ${{ secrets.SHIP_REGISTRY_TOKEN }}
+
+      # The CLI --tag flag is a dist-tag (e.g. beta, next), not the git tag.
+      # Extract a dist-tag from pre-release suffixes like v0.2.0-beta or v1.0.0-rc.1.
+      # Stable releases (v1.0.0) publish without a dist-tag (defaults to "latest").
+      - name: Publish to Ship registry
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          # Extract pre-release suffix: v0.2.0-beta.1 -> beta, v1.0.0-rc.2 -> rc
+          DIST_TAG=$(echo "$TAG" | sed -n 's/^v[0-9]*\.[0-9]*\.[0-9]*-\([a-zA-Z]*\).*/\1/p')
+          if [ -n "$DIST_TAG" ]; then
+            ./target/release/ship publish --tag "$DIST_TAG"
+          else
+            ./target/release/ship publish
+          fi

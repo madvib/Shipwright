@@ -41,18 +41,30 @@ Commit at green. Each passing test is a stable checkpoint. Small commits — one
 
 Skip for: config files, generated code, throwaway prototypes.
 
-## Rust
+## Running Tests
+
+Detect the project's test framework automatically:
 
 ```bash
-cargo test <test_name>        # run one test
-cargo test                    # run all
-cargo test -- --nocapture     # see println output
+bash scripts/detect-test-runner.sh <project-root>
 ```
 
-## TypeScript / Vitest
+Detection priority:
+1. `Cargo.toml` → `cargo test`
+2. `package.json` with `vitest` → `npx vitest run`
+3. `package.json` with `jest` → `npx jest`
+4. `pyproject.toml` with `pytest` → `pytest`
+5. `go.mod` → `go test ./...`
+6. `Makefile` with `test:` target → `make test`
+7. None detected → ask the user
 
-```bash
-pnpm test <test_file>         # run one file
-pnpm test                     # run all
-pnpm test --reporter=verbose  # see each test name
-```
+Run a single test by appending the test name or file to the detected command. For framework-specific flags:
+
+| Framework | Run one test | Verbose output |
+|-----------|-------------|----------------|
+| cargo | `cargo test <name>` | `cargo test -- --nocapture` |
+| vitest | `npx vitest run <file>` | `npx vitest run --reporter=verbose` |
+| jest | `npx jest <file>` | `npx jest --verbose` |
+| pytest | `pytest <file>` | `pytest -v` |
+| go | `go test -run <name> ./...` | `go test -v ./...` |
+| make | `make test` | `make test VERBOSE=1` |

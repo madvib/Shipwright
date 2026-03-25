@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 ///
 /// Encodes everything except unreserved characters (RFC 3986):
 /// ALPHA / DIGIT / "-" / "." / "_" / "~"
-fn percent_encode(input: &str) -> String {
+pub fn percent_encode(input: &str) -> String {
     let mut encoded = String::with_capacity(input.len());
     for byte in input.bytes() {
         match byte {

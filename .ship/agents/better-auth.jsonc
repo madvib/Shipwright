@@ -6,7 +6,7 @@
     "name": "Better Auth",
     "version": "0.1.0",
     "description": "Authentication, sessions, OAuth providers, middleware, user management",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": ["github.com/better-auth/skills/better-auth"],

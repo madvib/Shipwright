@@ -6,7 +6,7 @@
     "name": "Cloudflare",
     "version": "0.1.0",
     "description": "Cloudflare Workers, D1, R2, KV, Durable Objects, Pages, wrangler config",
-    "providers": ["claude"],
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
     "refs": [],

@@ -280,6 +280,7 @@ fn missing_skill_path_in_cached_package_lists_available() {
             version: commit.clone(),
             commit: commit.clone(),
             hash: pkg.hash,
+            export_hashes: Default::default(),
         }],
     };
 
@@ -330,6 +331,7 @@ fn local_and_dep_skills_both_appear_in_compiled_output() {
             version: commit.clone(),
             commit: commit.clone(),
             hash: pkg.hash,
+            export_hashes: Default::default(),
         }],
     };
 

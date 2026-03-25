@@ -1,5 +1,5 @@
 // GitHub API helpers for the registry publish flow.
-// Fetches files from repos, parses ship.toml manifests.
+// Fetches files from repos, parses ship.jsonc manifests.
 
 export interface ParsedGitHubUrl {
   owner: string
@@ -82,66 +82,115 @@ export async function fetchTreeFromGitHub(
   return data.tree.filter((item) => item.type === 'blob')
 }
 
+/** Resolve a git ref to a commit SHA via the GitHub API. */
+export async function resolveGitHubRef(
+  owner: string,
+  repo: string,
+  ref: string,
+): Promise<string | null> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/commits/${ref}`
+  const res = await fetch(url, { headers: getAuthHeaders() })
+  if (!res.ok) return null
+  const data = (await res.json()) as { sha?: string }
+  return data.sha ?? null
+}
+
 /**
- * Parse a minimal ship.toml manifest.
- *
- * This is a lightweight TOML parser that handles only the subset we need:
- * [module] and [exports] sections with simple key = "value" and arrays.
+ * Fetch the ship.jsonc manifest from a GitHub repo.
+ * Returns { content, format } or null if not found.
  */
-export function parseShipToml(content: string): ParsedShipToml {
-  const result: ParsedShipToml = {}
-  let currentSection = ''
-
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-
-    const sectionMatch = trimmed.match(/^\[(\w+)\]$/)
-    if (sectionMatch) {
-      currentSection = sectionMatch[1]
-      if (currentSection === 'module') result.module = { name: '' }
-      if (currentSection === 'exports') result.exports = {}
-      continue
-    }
-
-    const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/)
-    if (!kvMatch) continue
-
-    const [, key, rawValue] = kvMatch
-    const value = parseTomlValue(rawValue)
-
-    if (currentSection === 'module' && result.module) {
-      if (key === 'name') result.module.name = value as string
-      if (key === 'version') result.module.version = value as string
-      if (key === 'description') result.module.description = value as string
-      if (key === 'license') result.module.license = value as string
-    }
-
-    if (currentSection === 'exports' && result.exports) {
-      if (key === 'skills') result.exports.skills = value as string[]
-      if (key === 'agents') result.exports.agents = value as string[]
-    }
-  }
-
-  return result
+export async function fetchShipManifest(
+  owner: string,
+  repo: string,
+  ref: string,
+): Promise<{ content: string; format: 'jsonc' } | null> {
+  const jsonc = await fetchFileFromGitHub(owner, repo, '.ship/ship.jsonc', ref)
+  if (jsonc) return { content: jsonc, format: 'jsonc' }
+  return null
 }
 
-function parseTomlValue(raw: string): string | string[] {
-  const trimmed = raw.trim()
-
-  // Array: ["a", "b", "c"]
-  if (trimmed.startsWith('[')) {
-    const inner = trimmed.slice(1, -1)
-    return inner
-      .split(',')
-      .map((s) => s.trim().replace(/^["']|["']$/g, ''))
-      .filter(Boolean)
-  }
-
-  // Quoted string
-  if (trimmed.startsWith('"') || trimmed.startsWith("'")) {
-    return trimmed.slice(1, -1)
-  }
-
-  return trimmed
+/**
+ * Parse a ship.jsonc manifest.
+ * The registry only supports JSONC format.
+ */
+export function parseShipManifest(
+  content: string,
+  _format: 'jsonc' = 'jsonc',
+): ParsedShipToml {
+  return parseShipJsonc(content)
 }
+
+/**
+ * Parse a ship.jsonc manifest.
+ * Strips JSONC comments and trailing commas, then extracts module/exports.
+ */
+export function parseShipJsonc(content: string): ParsedShipToml {
+  const stripped = stripJsoncComments(content)
+  try {
+    const obj = JSON.parse(stripped) as Record<string, unknown>
+    const result: ParsedShipToml = {}
+
+    const mod = obj.module as Record<string, unknown> | undefined
+    if (mod) {
+      result.module = {
+        name: (mod.name as string) || '',
+        version: mod.version as string | undefined,
+        description: mod.description as string | undefined,
+        license: mod.license as string | undefined,
+      }
+    }
+
+    const exp = obj.exports as Record<string, unknown> | undefined
+    if (exp) {
+      result.exports = {
+        skills: Array.isArray(exp.skills) ? (exp.skills as string[]) : undefined,
+        agents: Array.isArray(exp.agents) ? (exp.agents as string[]) : undefined,
+      }
+    }
+
+    return result
+  } catch {
+    return {}
+  }
+}
+
+/** Strip // and /* comments plus trailing commas from JSONC. */
+function stripJsoncComments(input: string): string {
+  let out = ''
+  let i = 0
+  const len = input.length
+
+  while (i < len) {
+    if (input[i] === '"') {
+      out += '"'
+      i++
+      while (i < len) {
+        if (input[i] === '\\' && i + 1 < len) {
+          out += input[i] + input[i + 1]
+          i += 2
+        } else if (input[i] === '"') {
+          out += '"'
+          i++
+          break
+        } else {
+          out += input[i]
+          i++
+        }
+      }
+    } else if (input[i] === '/' && i + 1 < len && input[i + 1] === '/') {
+      i += 2
+      while (i < len && input[i] !== '\n') i++
+    } else if (input[i] === '/' && i + 1 < len && input[i + 1] === '*') {
+      i += 2
+      while (i + 1 < len && !(input[i] === '*' && input[i + 1] === '/')) i++
+      if (i + 1 < len) i += 2
+    } else {
+      out += input[i]
+      i++
+    }
+  }
+
+  // Strip trailing commas before ] or }
+  return out.replace(/,(\s*[}\]])/g, '$1')
+}
+

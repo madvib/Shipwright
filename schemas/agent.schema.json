@@ -38,6 +38,11 @@
           "type": "string",
           "description": "What this agent does — shown in `ship agents` and editor UI."
         },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Searchable tags for registry discovery (e.g. workflow, review, testing, frontend)."
+        },
         "providers": {
           "type": "array",
           "items": {
