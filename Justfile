@@ -9,22 +9,22 @@ default:
 dev:
     pnpm --filter web dev
 
-# Watch and rebuild Rust on changes
+# Watch and rebuild Rust on changes (unstable — includes all dev tools)
 watch:
-    cargo watch -x "build -p ship-studio-cli -p mcp"
+    cargo watch -x "build --features unstable -p ship-studio-cli -p mcp"
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 
-# Build CLI + MCP server (release)
+# Build CLI + MCP (unstable dev build — default for development)
 build:
+    cargo build --features unstable -p ship-studio-cli -p mcp
+
+# Build release binary (stable — no unstable features, what users get)
+build-release:
     cargo build --release -p ship-studio-cli -p mcp
 
-# Build in debug mode (faster iteration)
-build-dev:
-    cargo build -p ship-studio-cli -p mcp
-
-# Install ship binary to ~/.cargo/bin
-install: build
+# Install stable binary to ~/.cargo/bin
+install: build-release
     cargo install --path apps/ship-studio-cli
 
 # Rebuild WASM compiler (requires build-essential)
@@ -36,8 +36,12 @@ wasm:
 # Run all tests (Rust + web)
 test: test-rust test-web
 
-# Rust workspace tests
+# Rust workspace tests (unstable)
 test-rust:
+    cargo test --workspace --features unstable
+
+# Rust tests — stable surface only (CI release gate)
+test-rust-stable:
     cargo test --workspace
 
 # Runtime crate only (fastest Rust)
@@ -68,9 +72,9 @@ cf-types:
 
 # ── Lint & Format ──────────────────────────────────────────────────────────────
 
-# Rust clippy
+# Rust clippy (unstable)
 lint:
-    cargo clippy --workspace -- -D warnings
+    cargo clippy --workspace --features unstable -- -D warnings
 
 # Format Rust
 fmt:
@@ -137,3 +141,9 @@ db-reset:
 rebuild: clean build wasm
     pnpm install
     just db-migrate
+
+# Verify both stable and unstable compile (CI check)
+check-gates:
+    cargo build -p ship-studio-cli -p mcp
+    cargo build --features unstable -p ship-studio-cli -p mcp
+    @echo "Both gates compile ✓"

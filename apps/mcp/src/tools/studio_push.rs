@@ -152,6 +152,13 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
         root.insert("provider_settings".into(), ps.clone());
     }
 
+    // hooks section
+    if let Some(ref hooks) = agent.hooks {
+        if !hooks.is_empty() {
+            root.insert("hooks".into(), serde_json::json!(hooks));
+        }
+    }
+
     let content = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".into());
     let dest = agents_dir.join(format!("{}.jsonc", agent.id));
     std::fs::write(&dest, content).map_err(|e| format!("writing {}: {e}", dest.display()))?;

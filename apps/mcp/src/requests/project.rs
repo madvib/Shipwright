@@ -41,16 +41,16 @@ pub struct ListNotesRequest {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct GetNoteRequest {
-    /// Note filename (e.g. "session-summary.md")
-    pub file_name: String,
+    /// Note ID (nanoid returned by create_note)
+    pub id: String,
     /// Scope: project (default) or user
     pub scope: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 pub struct UpdateNoteRequest {
-    /// Note filename (e.g. "session-summary.md")
-    pub file_name: String,
+    /// Note ID (nanoid returned by create_note)
+    pub id: String,
     /// Full replacement markdown content
     pub content: String,
     /// Scope: project (default) or user

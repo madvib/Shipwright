@@ -65,6 +65,8 @@ struct AgentJsonc {
     rules: Option<AgentJsoncRules>,
     #[serde(default)]
     provider_settings: Option<serde_json::Value>,
+    #[serde(default)]
+    hooks: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -177,7 +179,7 @@ fn pull_agents_from_dir(
             mcp_servers,
             rules,
             rules_inline,
-            hooks: vec![],
+            hooks: parsed.hooks.unwrap_or_default(),
             permissions: parsed.permissions,
             model: parsed.model,
             env: parsed.env,
@@ -437,5 +439,10 @@ mod tests {
         let ps = a.provider_settings.as_ref().unwrap();
         assert_eq!(ps["claude"]["contextWindowTokens"], 100000);
         assert_eq!(ps["cursor"]["tabAutocomplete"], true);
+
+        // Hooks survive round-trip
+        assert_eq!(a.hooks.len(), 1);
+        assert_eq!(a.hooks[0]["event"], "onSave");
+        assert_eq!(a.hooks[0]["command"], "cargo fmt");
     }
 }

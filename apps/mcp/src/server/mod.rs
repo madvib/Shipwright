@@ -61,7 +61,7 @@ impl ShipServer {
         notes::create_note(&project_dir, &req.title, req.content, req.branch.as_deref())
     }
 
-    #[tool(description = "Replace a note's markdown content by filename.")]
+    #[tool(description = "Replace a note's markdown content by ID.")]
     async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
         let scope = match notes::parse_note_scope(req.scope.as_deref()) {
             Ok(s) => s,
@@ -75,7 +75,7 @@ impl ShipServer {
             },
             NoteScope::User => None,
         };
-        notes::update_note(scope, dir.as_deref(), &req.file_name, &req.content)
+        notes::update_note(scope, dir.as_deref(), &req.id, &req.content)
     }
 
     // ---- ADR ----

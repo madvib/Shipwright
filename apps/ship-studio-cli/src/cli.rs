@@ -30,7 +30,7 @@ const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
 
 #[derive(Parser, Debug)]
 #[command(name = "ship")]
-#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(version = crate::build_version())]
 #[command(about = "Agent configuration compiler — compose, compile, distribute")]
 #[command(after_help = AFTER_HELP)]
 #[command(disable_help_subcommand = true)]
@@ -191,14 +191,14 @@ pub enum Commands {
 
     // ── Inspection ───────────────────────────────────────────────────────────
     /// Query the project event log
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     Events {
         #[command(subcommand)]
         action: EventsCommands,
     },
 
     /// Browse and manage project state in the terminal UI
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     View,
 
     /// Show detailed help for a topic (run `ship docs topics` to list)
@@ -207,26 +207,26 @@ pub enum Commands {
         topic: Option<String>,
     },
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Job {
         #[command(subcommand)]
         action: JobCommands,
     },
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Adrs,
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Notes,
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Migrate,
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Diff {
         #[arg(long)]

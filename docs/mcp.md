@@ -62,7 +62,7 @@ Replace the content of an existing note.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file_name` | string | yes | Note filename (e.g. `session-summary.md`) |
+| `id` | string | yes | Note ID (nanoid returned by `create_note`) |
 | `content` | string | yes | Full replacement markdown content |
 | `scope` | string | no | `project` (default) or `user` |
 
