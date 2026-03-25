@@ -50,7 +50,7 @@
         "id": "",
         "name": "Ship",
         "command": "ship",
-        "args": ["mcp", "serve"],
+        "args": ["mcp"],
         "scope": "project",
         "server_type": "stdio",
         "disabled": false,
