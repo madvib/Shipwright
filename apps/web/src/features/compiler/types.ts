@@ -1,14 +1,3 @@
-// Re-export shared types from @ship/ui (generated from Rust via specta)
-export type {
-  McpServerConfig,
-  Skill,
-  Rule,
-  Permissions,
-  ModeConfig,
-  ProjectLibrary,
-} from '@ship/ui'
-export { DEFAULT_PERMISSIONS, DEFAULT_LIBRARY } from '@ship/ui'
-
 // Compile output types — generated from Rust `CompileOutput`.
 // The TS codebase calls the per-provider result "CompileResult".
 import type { CompileOutput as _CompileOutput } from '@ship/ui'

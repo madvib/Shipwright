@@ -1,38 +1,9 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Sun, Moon, LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
+import { LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
 import { useEffect, useState, useRef, useMemo } from 'react'
+import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
 import { useAgents } from '#/features/agents/useAgents'
-
-type ThemeMode = 'light' | 'dark'
-
-function applyTheme(mode: ThemeMode) {
-  document.documentElement.classList.remove('light', 'dark')
-  document.documentElement.classList.add(mode)
-  document.documentElement.setAttribute('data-theme', mode)
-  document.documentElement.style.colorScheme = mode
-  window.localStorage.setItem('theme', mode)
-}
-
-function ThemeToggle() {
-  const [mode, setMode] = useState<ThemeMode>(() => {
-    try {
-      const stored = localStorage.getItem('theme')
-      if (stored === 'light' || stored === 'dark') return stored
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    } catch { return 'dark' }
-  })
-  useEffect(() => { applyTheme(mode) }, [mode])
-  return (
-    <button
-      onClick={() => setMode((p) => (p === 'dark' ? 'light' : 'dark'))}
-      className="flex items-center justify-center size-8 rounded-md border border-border/60 bg-card text-muted-foreground transition hover:text-foreground hover:border-border"
-      title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-    >
-      {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
-    </button>
-  )
-}
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -213,7 +184,7 @@ export default function Header() {
             </button>
           )}
           {user && <UserMenu user={{ name: user.name, email: user.email, image: user.image }} />}
-          <ThemeToggle />
+          <ThemeToggle variant="icon" />
         </div>
       </nav>
     </header>

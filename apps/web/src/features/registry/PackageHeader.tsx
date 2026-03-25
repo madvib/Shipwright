@@ -9,7 +9,7 @@ import { SCOPE_COLORS, extractGitHubOwner } from '#/features/registry/types'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { authClient } from '#/lib/auth-client'
 import type { RegistryPackage, PackageSkill } from '#/features/registry/types'
-import type { Skill } from '#/features/compiler/types'
+import type { Skill } from '@ship/ui'
 
 /** Convert a registry PackageSkill into a Skill for the library. */
 function packageSkillToLibrarySkill(ps: PackageSkill): Skill {

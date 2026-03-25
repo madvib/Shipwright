@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, BookOpen, Search } from 'lucide-react'
-import type { Skill } from '#/features/compiler/types'
+import type { Skill } from '@ship/ui'
 
 interface Props {
   skills: Skill[]

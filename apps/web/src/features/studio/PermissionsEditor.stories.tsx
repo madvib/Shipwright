@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from '@storybook/test'
 import { PermissionsEditor } from './PermissionsEditor'
-import { DEFAULT_PERMISSIONS } from '#/features/compiler/types'
+import { DEFAULT_PERMISSIONS } from '@ship/ui'
 
 const meta: Meta<typeof PermissionsEditor> = {
   title: 'Studio/PermissionsEditor',

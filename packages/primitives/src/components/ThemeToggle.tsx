@@ -20,7 +20,7 @@ function applyTheme(mode: ThemeMode) {
   window.localStorage.setItem('theme', mode)
 }
 
-export function ThemeToggle() {
+function useThemeMode() {
   const [mode, setMode] = useState<ThemeMode>('dark')
 
   useEffect(() => {
@@ -29,13 +29,48 @@ export function ThemeToggle() {
     applyTheme(initial)
   }, [])
 
+  const toggle = () => {
+    setMode((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark'
+      applyTheme(next)
+      return next
+    })
+  }
+
   const set = (next: ThemeMode) => {
     setMode(next)
     applyTheme(next)
   }
 
+  return { mode, toggle, set }
+}
+
+interface ThemeToggleProps {
+  /** "switch" renders the full segmented control; "icon" renders a compact button. */
+  variant?: 'switch' | 'icon'
+  className?: string
+}
+
+export function ThemeToggle({ variant = 'switch', className }: ThemeToggleProps) {
+  const { mode, toggle, set } = useThemeMode()
+
+  if (variant === 'icon') {
+    return (
+      <button
+        onClick={toggle}
+        className={cn(
+          'flex items-center justify-center size-8 rounded-md border border-border/60 bg-card text-muted-foreground transition hover:text-foreground hover:border-border',
+          className,
+        )}
+        title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+      </button>
+    )
+  }
+
   return (
-    <div className="flex items-center gap-1 rounded-full border bg-muted/20 p-1">
+    <div className={cn('flex items-center gap-1 rounded-full border bg-muted/20 p-1', className)}>
       <div
         className={cn(
           'flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 transition-all',

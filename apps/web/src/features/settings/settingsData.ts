@@ -1,5 +1,10 @@
 const SETTINGS_KEY = 'ship-settings-v1'
 
+/**
+ * UI-local state: user preferences persisted to localStorage.
+ * These fields are not derived from `@ship/ui` or `#/db/schema` because
+ * they represent client-side Studio preferences, not compiler config.
+ */
 export interface SettingsData {
   autoImport: boolean
   createPr: boolean
@@ -37,7 +42,8 @@ export function loadSettings(): SettingsData {
         : null
     if (!raw) return DEFAULT_SETTINGS
     return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
-  } catch {
+  } catch (err) {
+    console.warn('Failed to load settings from localStorage', err)
     return DEFAULT_SETTINGS
   }
 }
@@ -45,7 +51,7 @@ export function loadSettings(): SettingsData {
 export function saveSettings(data: SettingsData) {
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(data))
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.warn('Failed to save settings to localStorage', err)
   }
 }

@@ -1,35 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Menu, X, Sun, Moon } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
+import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
-
-type ThemeMode = 'light' | 'dark'
-
-function ThemeToggle() {
-  const [mode, setMode] = useState<ThemeMode>(() => {
-    try {
-      const stored = localStorage.getItem('theme')
-      if (stored === 'light' || stored === 'dark') return stored
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    } catch { return 'dark' }
-  })
-  useEffect(() => {
-    document.documentElement.classList.remove('light', 'dark')
-    document.documentElement.classList.add(mode)
-    document.documentElement.setAttribute('data-theme', mode)
-    document.documentElement.style.colorScheme = mode
-    window.localStorage.setItem('theme', mode)
-  }, [mode])
-  return (
-    <button
-      onClick={() => setMode((p) => (p === 'dark' ? 'light' : 'dark'))}
-      className="flex items-center justify-center size-8 rounded-md border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground hover:border-border"
-      title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-    >
-      {mode === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
-    </button>
-  )
-}
 
 export default function LandingNav() {
   const { data: session } = authClient.useSession()
@@ -72,7 +45,7 @@ export default function LandingNav() {
               </Link>
             </>
           )}
-          <ThemeToggle />
+          <ThemeToggle variant="icon" />
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition hover:text-foreground sm:hidden"
