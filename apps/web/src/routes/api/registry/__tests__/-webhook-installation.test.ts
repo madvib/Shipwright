@@ -21,7 +21,6 @@ vi.mock('#/lib/d1', () => ({
 
 vi.mock('#/lib/registry-github', () => ({
   fetchFileFromGitHub: vi.fn(),
-  parseShipToml: vi.fn(),
 }))
 
 import { Route } from '../webhook'

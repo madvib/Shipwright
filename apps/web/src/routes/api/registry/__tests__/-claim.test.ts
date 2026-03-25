@@ -61,6 +61,7 @@ function makeRepos(overrides: Record<string, unknown> = {}) {
   return {
     getPackage: vi.fn().mockResolvedValue(VALID_PACKAGE),
     upsertPackage: vi.fn().mockResolvedValue(VALID_PACKAGE),
+    claimPackage: vi.fn().mockResolvedValue(true),
     searchPackages: vi.fn(),
     getLatestVersion: vi.fn().mockResolvedValue(null),
     getPackageVersions: vi.fn(),
@@ -171,8 +172,8 @@ describe('POST /api/registry/claim', () => {
     const req = makeRequest({ package_path: 'github.com/testowner/testrepo' })
     const res = await POST({ request: req } as Parameters<typeof POST>[0])
     expect(res.status).toBe(200)
-    expect(repos.upsertPackage).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: 'community', claimedBy: 'user-1' })
+    expect(repos.claimPackage).toHaveBeenCalledWith(
+      'github.com/testowner/testrepo', 'user-1', 'community'
     )
   })
 

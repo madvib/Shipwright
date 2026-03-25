@@ -58,6 +58,10 @@ export interface RegistryRepositories {
   incrementStars(packageId: string): Promise<number>
 
   deprecatePackage(packageId: string, deprecatedBy: string): Promise<void>
+
+  claimPackage(path: string, userId: string, newScope: string): Promise<boolean>
+
+  updatePackageVersionHash(versionId: string, contentHash: string): Promise<void>
 }
 
 export function createRegistryRepositories(
@@ -250,6 +254,27 @@ export function createRegistryRepositories(
         .update(packages)
         .set({ deprecatedBy, updatedAt: Date.now() })
         .where(eq(packages.id, packageId))
+    },
+
+    async updatePackageVersionHash(versionId, contentHash) {
+      await db
+        .update(packageVersions)
+        .set({ contentHash })
+        .where(eq(packageVersions.id, versionId))
+    },
+
+    async claimPackage(path, userId, newScope) {
+      const result = await db
+        .update(packages)
+        .set({ claimedBy: userId, scope: newScope, updatedAt: Date.now() })
+        .where(
+          and(
+            eq(packages.path, path),
+            or(sql`${packages.claimedBy} IS NULL`, eq(packages.claimedBy, '')),
+          ),
+        )
+      const rows = (result as unknown as { rowsAffected: number }).rowsAffected
+      return rows > 0
     },
   }
 }

@@ -104,20 +104,17 @@ export const Route = createFileRoute('/api/registry/claim')({
           return Response.json({ error: 'Package not found' }, { status: 404 })
         }
 
-        // Already claimed by someone else
-        if (pkg.claimedBy && pkg.claimedBy !== auth.sub) {
+        if (pkg.claimedBy === auth.sub) {
+          return Response.json({ claimed: true, package_path: pkg.path })
+        }
+
+        if (pkg.claimedBy) {
           return Response.json(
             { error: 'Package already claimed by another user' },
             { status: 409 },
           )
         }
 
-        // Already claimed by this user
-        if (pkg.claimedBy === auth.sub) {
-          return Response.json({ claimed: true, package_path: pkg.path })
-        }
-
-        // Validate GitHub repo ownership
         const repoParsed = parseRepoUrl(pkg.repoUrl)
         if (!repoParsed) {
           return Response.json(
@@ -141,9 +138,15 @@ export const Route = createFileRoute('/api/registry/claim')({
           )
         }
 
-        // Set claimedBy and transition scope from 'unofficial' to 'community'
         const newScope = pkg.scope === 'unofficial' ? 'community' : pkg.scope
-        await repos.upsertPackage({ ...pkg, claimedBy: auth.sub, scope: newScope, updatedAt: Date.now() })
+        const claimed = await repos.claimPackage(pkg.path, auth.sub, newScope)
+
+        if (!claimed) {
+          return Response.json(
+            { error: 'Package already claimed by another user' },
+            { status: 409 },
+          )
+        }
 
         return Response.json({ claimed: true, package_path: pkg.path })
       },
