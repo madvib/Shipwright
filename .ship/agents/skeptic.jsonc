@@ -10,7 +10,7 @@
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["code-review", "agentic-principles"],
+    "refs": ["code-review", "no-slop"],
   },
   "mcp": {
     "servers": [],

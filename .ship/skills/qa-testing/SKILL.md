@@ -96,7 +96,7 @@ Silent failure, no feedback
 Group bugs by file scope. For each group:
 
 ```bash
-bash scripts/dispatch.sh \
+bash .ship/skills/mission-control/dispatch.sh \
   --slug fix-settings-validation \
   --agent web-lane \
   --spec .ship-session/bugs/group-settings.md

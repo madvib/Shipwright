@@ -2,8 +2,8 @@
   // PR Reviewer — structured code review with security focus.
   "$schema": "../../schemas/agent.schema.json",
   "agent": {
-    "id": "pr-reviewer",
-    "name": "PR Reviewer",
+    "id": "gatekeeper",
+    "name": "Gatekeeper",
     "version": "0.1.0",
     "description": "Structured PR review — security, correctness, tests, architecture. Produces actionable verdicts with line references.",
     "tags": ["review", "security", "pr", "code-quality"],

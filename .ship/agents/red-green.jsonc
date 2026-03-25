@@ -3,15 +3,15 @@
   // Builds specs through tests, one at a time, in conversation with the user.
   "$schema": "../../schemas/agent.schema.json",
   "agent": {
-    "id": "tdd-partner",
-    "name": "TDD Partner",
+    "id": "red-green",
+    "name": "Red Green",
     "version": "0.1.0",
     "description": "Build features through tests. Interactive loop — propose a test, discuss what it means, write it, repeat. Tests become the spec. Then dispatch implementation.",
     "tags": ["testing", "tdd", "spec", "interactive"],
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["tdd-workflow", "tdd", "spawn-agent", "agentic-principles"],
+    "refs": ["tdd-workflow", "tdd", "spawn-agent", "no-slop"],
   },
   "mcp": {
     "servers": [],

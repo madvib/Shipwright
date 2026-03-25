@@ -1,6 +1,6 @@
 ---
-name: agentic-principles
-description: Ten commandments for AI agents building software. Hard-won, opinionated, concise.
+name: no-slop
+description: Ten commandments for building software with AI agents. No slop.. Hard-won, opinionated, concise.
 tags: [philosophy, quality, agents, principles]
 authors: [ship]
 ---

@@ -2,8 +2,8 @@
   // Release — the full cut-test-review-ship pipeline.
   "$schema": "../../schemas/agent.schema.json",
   "agent": {
-    "id": "release",
-    "name": "Release Engineer",
+    "id": "shipper",
+    "name": "Shipper",
     "version": "0.1.0",
     "description": "Cut releases — merge base branch, run full test suite, review diff for breaking changes, bump version, update changelog, commit, push, create PR.",
     "tags": ["release", "changelog", "versioning", "ci"],
