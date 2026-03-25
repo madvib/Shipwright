@@ -1,8 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { useAgents } from '#/features/agents/useAgents'
-import { useAgentStore } from '#/features/agents/useAgentStore'
-import { AGENT_TEMPLATES, templateToAgent } from '#/features/agents/agent-templates'
 import { DashboardSkeleton } from '#/features/studio/StudioSkeleton'
 
 export const Route = createFileRoute('/studio/')({
@@ -11,20 +8,10 @@ export const Route = createFileRoute('/studio/')({
 })
 
 function StudioRedirect() {
-  const { agents } = useAgents()
-  const { createAgent } = useAgentStore()
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (agents.length > 0) {
-      // Returning user -> agents list
-      void navigate({ to: '/studio/agents', replace: true })
-    } else {
-      // First visit -> create agent from default template and open it
-      const template = AGENT_TEMPLATES[0]
-      const id = createAgent(templateToAgent(template, template.name))
-      void navigate({ to: '/studio/agents/$id', params: { id }, replace: true })
-    }
+    void navigate({ to: '/studio/agents', replace: true })
   }, [])
 
   return <DashboardSkeleton />

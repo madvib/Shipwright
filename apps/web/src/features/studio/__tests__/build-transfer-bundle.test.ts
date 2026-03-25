@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildTransferBundle } from '../build-transfer-bundle'
-import { makeAgent } from '#/features/agents/useAgentStore'
+import { makeAgent } from '#/features/agents/make-agent'
 import type { TransferBundle } from '@ship/ui'
 
 describe('buildTransferBundle', () => {

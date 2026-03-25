@@ -5,10 +5,13 @@ import {
 } from '@ship/primitives'
 import { Input } from '@ship/primitives'
 import { Button } from '@ship/primitives'
-import { useAgentStore } from '#/features/agents/useAgentStore'
+import { makeAgent } from '#/features/agents/make-agent'
+import { buildTransferBundle } from '#/features/studio/build-transfer-bundle'
+import { usePushBundle } from '#/features/studio/mcp-queries'
+import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { getFieldEnum, getFieldDescription } from '#/features/agents/schema-hints'
 import { validateAgentProfile } from '#/features/agents/schema-validation'
-import { makeAgent } from '#/features/agents/useAgentStore'
+import { toast } from 'sonner'
 
 interface CreateAgentDialogProps {
   open: boolean
@@ -16,8 +19,11 @@ interface CreateAgentDialogProps {
 }
 
 export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps) {
-  const { createAgent } = useAgentStore()
   const navigate = useNavigate()
+  const pushBundle = usePushBundle()
+  const mcp = useLocalMcpContext()
+  const isConnected = mcp?.status === 'connected'
+
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [selectedProviders, setSelectedProviders] = useState<string[]>(['claude'])
@@ -34,24 +40,38 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
   const handleCreate = () => {
     if (!name.trim()) return
-    // Validate via schema before creating
-    const draft = makeAgent({
+    const agent = makeAgent({
       profile: { id: '', name: name.trim(), description: description.trim(), providers: selectedProviders },
     })
-    const result = validateAgentProfile(draft)
+    const result = validateAgentProfile(agent)
     if (!result.valid) {
       setValidationErrors(result.errors.map((e) => e.message))
       return
     }
     setValidationErrors([])
-    const id = createAgent({
-      profile: { id: '', name: name.trim(), description: description.trim(), providers: selectedProviders },
-    })
-    onOpenChange(false)
+
+    if (isConnected) {
+      const bundle = buildTransferBundle(agent)
+      pushBundle.mutate(bundle, {
+        onSuccess: () => {
+          onOpenChange(false)
+          resetForm()
+          void navigate({ to: '/studio/agents/$id', params: { id: agent.profile.id } })
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : 'Failed to create agent')
+        },
+      })
+    } else {
+      toast.error('Connect to CLI to create agents')
+    }
+  }
+
+  const resetForm = () => {
     setName('')
     setDescription('')
     setSelectedProviders(['claude'])
-    void navigate({ to: '/studio/agents/$id', params: { id } })
+    setValidationErrors([])
   }
 
   return (
@@ -110,6 +130,12 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
             </div>
           </div>
 
+          {!isConnected && (
+            <p className="text-[11px] text-amber-500">
+              Connect to CLI to create agents. Agents are stored in your local .ship/ directory.
+            </p>
+          )}
+
           {validationErrors.length > 0 && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
               {validationErrors.map((err, i) => (
@@ -121,7 +147,12 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleCreate} disabled={!name.trim()}>Create agent</Button>
+          <Button
+            onClick={handleCreate}
+            disabled={!name.trim() || !isConnected || pushBundle.isPending}
+          >
+            {pushBundle.isPending ? 'Creating...' : 'Create agent'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

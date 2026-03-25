@@ -2,7 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { Sun, Moon, LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { authClient } from '#/lib/auth-client'
-import { useAgentStore } from '#/features/agents/useAgentStore'
+import { useAgents } from '#/features/agents/useAgents'
 
 type ThemeMode = 'light' | 'dark'
 
@@ -155,7 +155,7 @@ export default function Header() {
   const rawSegments = pathname.split('/').filter(Boolean)
   const isStudio = pathname.startsWith('/studio')
   const isRegistry = pathname.startsWith('/registry')
-  const { getAgent } = useAgentStore()
+  const { getAgent } = useAgents()
 
   // Resolve agent ID to name in breadcrumb
   const segments = useMemo(() => rawSegments.map((seg, i) => {

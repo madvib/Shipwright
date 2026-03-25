@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { CLISection, DangerZoneSection } from '#/features/settings/sections'
+import { CLISection } from '#/features/settings/sections'
 import { SettingsSkeleton } from '#/features/studio/StudioSkeleton'
 
 export const Route = createFileRoute('/studio/settings')({
@@ -17,7 +17,6 @@ function SettingsPage() {
       </div>
 
       <CLISection />
-      <DangerZoneSection />
     </div>
   )
 }

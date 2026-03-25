@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useMemo } from 'react'
 import {
   Plus, ArrowRight, Monitor, FolderOpen, Library, PenLine,
@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 import { useAgents } from '#/features/agents/useAgents'
 import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
-import { useAgentStore } from '#/features/agents/useAgentStore'
 import { getAgentIcon } from '#/features/agents/agent-icons'
+import { CreateAgentDialog } from '#/features/agents/dialogs/CreateAgentDialog'
 import { TechIcon, TECH_STACKS } from '#/features/studio/TechIcon'
 import { AgentListSkeleton } from '#/features/studio/StudioSkeleton'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
@@ -24,11 +24,10 @@ export const Route = createFileRoute('/studio/agents/')({
 function AgentsListPage() {
   const { agents, isConnected } = useAgents()
   const { hasDraft } = useAgentDrafts()
-  const { createAgent } = useAgentStore()
-  const navigate = useNavigate()
   const mcp = useLocalMcpContext()
   const localIds = mcp?.localAgentIds ?? new Set<string>()
   const [filter, setFilter] = useState<SourceFilter>('all')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const hasLibrary = agents.some((a) => a.source === 'library')
   const filtered = useMemo(() => {
@@ -36,10 +35,7 @@ function AgentsListPage() {
     return agents.filter((a) => (a.source ?? 'project') === filter)
   }, [agents, filter])
 
-  const handleNewAgent = () => {
-    const id = createAgent()
-    void navigate({ to: '/studio/agents/$id', params: { id } })
-  }
+  const handleNewAgent = () => setCreateOpen(true)
 
   return (
     <div className="flex-1 overflow-auto">
@@ -82,6 +78,8 @@ function AgentsListPage() {
             ))}
           </div>
         )}
+
+        <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} />
       </div>
     </div>
   )
