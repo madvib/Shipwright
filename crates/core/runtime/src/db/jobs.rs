@@ -11,7 +11,7 @@ use sqlx::Row;
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Job {
     pub id: String,
     pub kind: String,
@@ -258,16 +258,25 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         kind: row.get(1),
         status: row.get(2),
         branch: row.get(3),
-        payload: serde_json::from_str(&payload_str).unwrap_or_default(),
+        payload: serde_json::from_str(&payload_str).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in job.payload_json (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         created_by: row.get(5),
         claimed_by: row.get(6),
-        touched_files: serde_json::from_str(&files_str).unwrap_or_default(),
+        touched_files: serde_json::from_str(&files_str).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in job.touched_files (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         assigned_to: row.get(8),
         priority: row.get(9),
         blocked_by: row.get(10),
         created_at: row.get(11),
         updated_at: row.get(12),
-        file_scope: serde_json::from_str(&scope_str).unwrap_or_default(),
+        file_scope: serde_json::from_str(&scope_str).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in job.file_scope (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         capability_id: row.get(14),
     }
 }

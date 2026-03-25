@@ -11,6 +11,7 @@ use rmcp::{
 use runtime::{get_active_agent, workspace::get_active_workspace_type};
 use std::path::Path;
 
+use crate::resource_resolver;
 use crate::resources;
 use crate::tools::project;
 
@@ -20,7 +21,7 @@ use super::ShipServer;
 
 impl ShipServer {
     pub async fn resolve_resource_uri(&self, uri: &str, dir: &Path) -> Option<String> {
-        resources::resolve_resource_uri(uri, dir, project::get_project_info(dir)).await
+        resource_resolver::resolve_resource_uri(uri, dir, project::get_project_info(dir)).await
     }
 }
 

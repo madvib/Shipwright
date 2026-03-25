@@ -146,11 +146,8 @@ fn trims_whitespace() {
 
 #[test]
 fn core_tools_are_recognized() {
-    let core_tools = [
+    let platform_tools = [
         "open_project",
-        "create_note",
-        "update_note",
-        "create_adr",
         "activate_workspace",
         "create_workspace",
         "complete_workspace",
@@ -159,21 +156,8 @@ fn core_tools_are_recognized() {
         "end_session",
         "log_progress",
         "list_skills",
-        "create_job",
-        "update_job",
-        "list_jobs",
-        "provider_matrix",
-        "create_target",
-        "update_target",
-        "list_targets",
-        "get_target",
-        "create_capability",
-        "update_capability",
-        "delete_capability",
-        "mark_capability_actual",
-        "list_capabilities",
     ];
-    for tool in core_tools {
+    for tool in platform_tools {
         assert!(
             ShipServer::is_core_tool(tool),
             "{tool} should be a core tool"
@@ -185,6 +169,34 @@ fn core_tools_are_recognized() {
 fn core_tool_with_prefix_and_suffix() {
     assert!(ShipServer::is_core_tool("ship_create_workspace_tool"));
     assert!(ShipServer::is_core_tool("ship_log_progress_tool"));
+}
+
+#[test]
+#[cfg(feature = "unstable")]
+fn unstable_tools_are_core_when_feature_enabled() {
+    let unstable_tools = [
+        "create_note",
+        "update_note",
+        "create_adr",
+        "create_job",
+        "update_job",
+        "list_jobs",
+        "create_target",
+        "update_target",
+        "list_targets",
+        "get_target",
+        "create_capability",
+        "update_capability",
+        "delete_capability",
+        "mark_capability_actual",
+        "list_capabilities",
+    ];
+    for tool in unstable_tools {
+        assert!(
+            ShipServer::is_core_tool(tool),
+            "{tool} should be a core tool with unstable feature"
+        );
+    }
 }
 
 #[test]
