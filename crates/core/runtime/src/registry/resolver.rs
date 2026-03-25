@@ -46,6 +46,10 @@ pub fn resolve_alias(dep_path: &str) -> anyhow::Result<String> {
 }
 
 /// Check the static aliases.json hosted on GitHub.
+///
+/// Supports two formats:
+/// - **Namespace**: `@ship/tdd` → look up `@ship` in `namespaces`, append skill path.
+/// - **Exact**: `@ship/skills` → look up exact key in `aliases` (legacy).
 fn try_static_alias(dep_path: &str) -> Option<String> {
     let url = "https://raw.githubusercontent.com/madvib/ship/main/registry/aliases.json";
     let resp = ureq::get(url)
@@ -56,6 +60,16 @@ fn try_static_alias(dep_path: &str) -> Option<String> {
         return None;
     }
     let body: serde_json::Value = resp.into_body().read_json().ok()?;
+
+    // Try namespace resolution: @scope/name → namespaces[@scope] repo path.
+    if let Some(slash) = dep_path[1..].find('/') {
+        let scope = &dep_path[..slash + 1]; // "@ship"
+        if let Some(repo) = body["namespaces"][scope].as_str() {
+            return Some(repo.to_string());
+        }
+    }
+
+    // Legacy exact-match aliases.
     body["aliases"][dep_path].as_str().map(|s| s.to_string())
 }
 

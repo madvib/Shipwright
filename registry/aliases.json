@@ -1,7 +1,8 @@
 {
-  "$comment": "Ship registry aliases. Maps scoped names (@scope/name) to canonical package paths. PRs welcome for new aliases — this is the curation layer.",
-  "aliases": {
-    "@ship/skills": "github.com/madvib/ship",
-    "@unofficial/better-auth": "github.com/madvib/ship-unofficial-skills"
+  "$comment": "Ship registry namespaces. Maps @scope prefixes to canonical repo paths. @scope/skill-id resolves to the repo + skill. PRs welcome.",
+  "namespaces": {
+    "@ship": "github.com/madvib/ship",
+    "@better-auth": "github.com/better-auth/skills",
+    "@gstack": "github.com/garrytan/gstack"
   }
 }
