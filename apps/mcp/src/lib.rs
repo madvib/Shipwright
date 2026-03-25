@@ -1,5 +1,6 @@
 pub mod http;
 mod requests;
+mod resource_resolver;
 mod resources;
 mod server;
 mod tools;
@@ -38,3 +39,6 @@ impl mcp_framework::McpApp for ShipMcpApp {
 pub async fn run() -> Result<()> {
     mcp_framework::run::<ShipMcpApp>().await
 }
+
+#[cfg(test)]
+mod resource_tests;
