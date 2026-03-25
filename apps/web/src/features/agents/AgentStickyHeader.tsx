@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, Undo2 } from 'lucide-react'
 import type { ResolvedAgentProfile } from './types'
 import { getAgentIcon, setAgentIcon } from './agent-icons'
 import { TechIcon, ICON_CATEGORIES, TECH_STACKS } from '#/features/studio/TechIcon'
@@ -8,10 +8,11 @@ interface AgentStickyHeaderProps {
   profile: ResolvedAgentProfile
   onEdit: () => void
   onDelete?: () => void
+  onDiscard?: () => void
   isDraft?: boolean
 }
 
-export function AgentStickyHeader({ profile, onEdit, onDelete, isDraft }: AgentStickyHeaderProps) {
+export function AgentStickyHeader({ profile, onEdit, onDelete, onDiscard, isDraft }: AgentStickyHeaderProps) {
   const initial = profile.profile.name.charAt(0).toUpperCase()
   const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id))
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -112,9 +113,23 @@ export function AgentStickyHeader({ profile, onEdit, onDelete, isDraft }: AgentS
       </span>
 
       {isDraft && (
-        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500">
-          Modified
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500">
+            Modified
+          </span>
+          {onDiscard && (
+            <button
+              onClick={() => {
+                if (confirm('Discard unsaved changes?')) onDiscard()
+              }}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
+              title="Discard changes"
+            >
+              <Undo2 className="size-3" />
+              Discard
+            </button>
+          )}
+        </div>
       )}
 
       <div className="flex-1" />

@@ -33,7 +33,7 @@ function AgentDetailPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
   const { getAgent } = useAgents()
-  const { setDraft, hasDraft } = useAgentDrafts()
+  const { setDraft, hasDraft, clearDraft } = useAgentDrafts()
   const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
   const { scrollRef, activeSection, handleSectionClick } = useScrollspy()
   const isDraft = hasDraft(id)
@@ -48,6 +48,8 @@ function AgentDetailPage() {
     [id, setDraft],
   )
 
+  const handleDiscard = useCallback(() => clearDraft(id), [id, clearDraft])
+
   return (
     <AgentDetailView
       profile={profile}
@@ -57,6 +59,7 @@ function AgentDetailPage() {
       onSectionClick={handleSectionClick}
       onUpdate={update}
       onDelete={handleDelete}
+      onDiscard={handleDiscard}
     />
   )
 }
@@ -71,9 +74,10 @@ interface ViewProps {
   onSectionClick: (section: string) => void
   onUpdate: (patch: Partial<ResolvedAgentProfile>) => void
   onDelete: () => void
+  onDiscard: () => void
 }
 
-function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSectionClick, onUpdate, onDelete }: ViewProps) {
+function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSectionClick, onUpdate, onDelete, onDiscard }: ViewProps) {
   const removeSkill = useCallback(
     (skillId: string) => onUpdate({ skills: profile.skills.filter((s) => s.id !== skillId) }),
     [onUpdate, profile.skills],
@@ -153,7 +157,7 @@ function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSection
       <div className="flex h-full min-h-0 overflow-hidden">
         <AgentActivityBar activeSection={activeSection} onSectionClick={onSectionClick} counts={counts} />
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <AgentStickyHeader profile={profile} onEdit={() => setEditOpen(true)} onDelete={onDelete} isDraft={isDraft} />
+          <AgentStickyHeader profile={profile} onEdit={() => setEditOpen(true)} onDelete={onDelete} onDiscard={isDraft ? onDiscard : undefined} isDraft={isDraft} />
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
             <div id="section-skills">
               <SkillsSection skills={profile.skills} onRemove={removeSkill} onAdd={() => setSkillOpen(true)} />

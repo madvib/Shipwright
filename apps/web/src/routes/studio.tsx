@@ -1,10 +1,9 @@
 import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { StudioDock } from '#/features/studio/StudioDock'
-import { SyncStatus, combineSyncStatuses } from '#/features/studio/SyncStatus'
+import { SyncStatus } from '#/features/studio/SyncStatus'
 import type { SyncStatusValue } from '#/features/studio/SyncStatus'
 import { PublishPanel } from '#/features/studio/PublishPanel'
-import { useLibrarySync } from '#/features/compiler/useLibrarySync'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { useAgents } from '#/features/agents/useAgents'
@@ -27,7 +26,6 @@ function StudioLayout() {
 }
 
 function StudioSyncShell() {
-  const { syncStatus: librarySyncStatus } = useLibrarySync()
   const { library, addSkill } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -50,8 +48,7 @@ function StudioSyncShell() {
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
 
   // Derive sync status from MCP connection state
-  const agentSyncValue: SyncStatusValue = isConnected ? 'saved' : 'idle'
-  const combinedSyncStatus = combineSyncStatuses(librarySyncStatus, agentSyncValue)
+  const syncStatus: SyncStatusValue = isConnected ? 'saved' : 'idle'
 
   // Build effective library: merge agent config when viewing an agent
   const effectiveLibrary = useMemo(() => {
@@ -95,7 +92,7 @@ function StudioSyncShell() {
         onAddSkill={addSkill}
       />
       <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
-        <SyncStatus status={combinedSyncStatus} />
+        <SyncStatus status={syncStatus} />
       </div>
     </main>
   )

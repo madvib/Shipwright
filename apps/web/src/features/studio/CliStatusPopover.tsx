@@ -6,10 +6,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useLocalMcpContext } from './LocalMcpContext'
-import { usePushBundle, useLocalAgentIds } from './mcp-queries'
+import { usePushBundle, useLocalAgentIds, usePullAgents } from './mcp-queries'
 import { useAgents } from '#/features/agents/useAgents'
 import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
-import type { Skill, TransferBundle } from '@ship/ui'
+import { buildTransferBundle } from './build-transfer-bundle'
+import type { Skill } from '@ship/ui'
 
 const DOT: Record<string, string> = {
   disconnected: 'bg-muted-foreground/40',
@@ -63,11 +64,16 @@ function PopoverBody({ mcp }: {
   const isConnected = mcp.status === 'connected'
 
   const pushBundle = usePushBundle()
+  const pullQuery = usePullAgents()
   useLocalAgentIds()
 
   // Find agents with drafts
   const draftAgentIds = Object.keys(drafts)
   const draftAgents = agents.filter((a) => draftAgentIds.includes(a.profile.id))
+
+  // Last synced timestamp from pull query
+  const lastSynced = pullQuery.dataUpdatedAt
+  const lastSyncedLabel = lastSynced ? formatTimeAgo(lastSynced) : null
 
   const handlePortSave = () => {
     const p = parseInt(portInput, 10)
@@ -85,27 +91,7 @@ function PopoverBody({ mcp }: {
   const executePush = () => {
     setConfirmPush(false)
     for (const agent of draftAgents) {
-      const bundle: TransferBundle = {
-        agent: {
-          id: agent.profile.id,
-          name: agent.profile.name,
-          description: agent.profile.description,
-          version: agent.profile.version,
-          providers: agent.profile.providers,
-          skill_refs: agent.skills.map((s) => s.id),
-          rule_refs: agent.rules.map((r) => r.file_name ?? r.content.slice(0, 30)),
-          mcp_servers: agent.mcpServers.map((s) => s.name ?? s),
-          permissions: agent.permissions as TransferBundle['agent']['permissions'],
-          provider_settings: agent.providerSettings as TransferBundle['agent']['provider_settings'],
-        },
-        skills: Object.fromEntries(
-          agent.skills.map((s) => [s.id, { files: { 'SKILL.md': s.content } }]),
-        ),
-        rules: Object.fromEntries(
-          agent.rules.map((r) => [r.file_name ?? `rule-${r.content.slice(0, 20)}`, r.content]),
-        ),
-        dependencies: {},
-      }
+      const bundle = buildTransferBundle(agent)
       pushBundle.mutate(bundle, {
         onSuccess: (result) => {
           clearDraft(agent.profile.id)
@@ -136,6 +122,11 @@ function PopoverBody({ mcp }: {
             primary
             onClick={handlePush}
           />
+          {lastSyncedLabel && (
+            <p className="text-[9px] text-muted-foreground/50 text-center">
+              Last synced {lastSyncedLabel}
+            </p>
+          )}
         </div>
       )}
 
@@ -237,4 +228,14 @@ function SyncBtn({ icon, label, desc, disabled, primary, onClick }: {
       </div>
     </button>
   )
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 5) return 'just now'
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ago`
 }
