@@ -7,10 +7,11 @@
     "name": "Mission Control",
     "version": "0.1.0",
     "description": "Coordinate specialist agents across git worktrees using file-based job tracking. Plan, dispatch, gate — no MCP server needed.",
+    "tags": ["orchestration", "multi-agent", "worktree", "coordination"],
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["mission-control", "spawn-agent", "setup-workspace", "ship-permissions", "write-adr"],
+    "refs": ["mission-control", "spawn-agent", "setup-workspace", "ship-permissions"],
   },
   "mcp": {
     "servers": [],

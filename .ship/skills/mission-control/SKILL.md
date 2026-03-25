@@ -87,7 +87,7 @@ dispatched: <ISO timestamp>
 SPEC
 
 # 2. Create worktree and launch
-bash scripts/dispatch.sh --slug <slug> --agent <agent-id> --spec .ship-session/jobs/<slug>.md
+bash .ship/skills/mission-control/dispatch.sh --slug <slug> --agent <agent-id> --spec .ship-session/jobs/<slug>.md
 ```
 
 Log each dispatch to `.ship-session/log.md`:

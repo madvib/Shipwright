@@ -6,6 +6,7 @@
     "name": "Release Engineer",
     "version": "0.1.0",
     "description": "Cut releases — merge base branch, run full test suite, review diff for breaking changes, bump version, update changelog, commit, push, create PR.",
+    "tags": ["release", "changelog", "versioning", "ci"],
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {

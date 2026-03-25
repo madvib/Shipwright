@@ -7,10 +7,11 @@
     "name": "TDD Partner",
     "version": "0.1.0",
     "description": "Build features through tests. Interactive loop — propose a test, discuss what it means, write it, repeat. Tests become the spec. Then dispatch implementation.",
+    "tags": ["testing", "tdd", "spec", "interactive"],
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["tdd-workflow", "spawn-agent", "ship-permissions"],
+    "refs": ["tdd-workflow", "tdd", "spawn-agent", "agentic-principles"],
   },
   "mcp": {
     "servers": [],
