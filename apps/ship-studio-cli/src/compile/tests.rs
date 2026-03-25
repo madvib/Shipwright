@@ -181,3 +181,70 @@ fn compile_cursor_writes_mdc_rule_files() {
     assert!(content.contains("Use explicit types."));
     assert!(content.starts_with("---\n"), "must have frontmatter");
 }
+
+#[test]
+fn compile_opencode_writes_agents_md_with_rules() {
+    let tmp = TempDir::new().unwrap();
+    setup_minimal_project(&tmp);
+    run_compile(CompileOptions {
+        project_root: tmp.path(),
+        output_root: None,
+        provider: Some("opencode"),
+        dry_run: false,
+        active_agent: None,
+    })
+    .unwrap();
+    let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+    assert!(
+        content.contains("Use explicit types."),
+        "AGENTS.md must contain rules for opencode"
+    );
+}
+
+#[test]
+fn compile_opencode_writes_opencode_json_with_mcp() {
+    let tmp = TempDir::new().unwrap();
+    setup_minimal_project(&tmp);
+    run_compile(CompileOptions {
+        project_root: tmp.path(),
+        output_root: None,
+        provider: Some("opencode"),
+        dry_run: false,
+        active_agent: None,
+    })
+    .unwrap();
+    let path = tmp.path().join("opencode.json");
+    assert!(path.exists(), "opencode.json must be written for opencode");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert!(
+        parsed["mcp"]["ship"].is_object(),
+        "ship server must be in opencode.json mcp"
+    );
+    assert!(
+        parsed["mcp"]["github"].is_object(),
+        "github server must be in opencode.json mcp"
+    );
+}
+
+#[test]
+fn compile_opencode_dry_run_writes_nothing() {
+    let tmp = TempDir::new().unwrap();
+    setup_minimal_project(&tmp);
+    run_compile(CompileOptions {
+        project_root: tmp.path(),
+        output_root: None,
+        provider: Some("opencode"),
+        dry_run: true,
+        active_agent: None,
+    })
+    .unwrap();
+    assert!(
+        !tmp.path().join("opencode.json").exists(),
+        "dry-run must not write opencode.json"
+    );
+    assert!(
+        !tmp.path().join("AGENTS.md").exists(),
+        "dry-run must not write AGENTS.md"
+    );
+}

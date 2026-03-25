@@ -98,3 +98,5 @@ SESSION.json
 .ship-session/
 .ship/platform.db
 .cursor/
+.opencode/
+opencode.json
