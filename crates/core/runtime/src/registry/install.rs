@@ -9,6 +9,7 @@ use super::fetch::fetch_package_content;
 use super::resolver::{resolve_alias, resolve_version};
 use super::tracking::track_install;
 use super::types::{LockedPackage, ShipLock, ShipManifest, parse_ship_lock, serialize_ship_lock};
+use super::verify::check_registry_hash;
 
 /// Options passed to `resolve_and_fetch`.
 #[derive(Debug, Default)]
@@ -143,6 +144,22 @@ pub fn resolve_and_fetch(
             }
             None => fetch_and_store(cache, &dep_path, &resolved.tag, &resolved.commit, opts.offline)?,
         };
+
+        // For new deps (no existing lockfile entry), verify against the
+        // registry's published hash. Advisory only — warns but does not block.
+        let in_existing_lock = existing_lock
+            .as_ref()
+            .is_some_and(|lock| lock.package.iter().any(|p| p.path == dep_path));
+        if !in_existing_lock {
+            if let Some(warning) = check_registry_hash(
+                &dep_path,
+                &resolved.tag,
+                &cached.hash,
+                opts.offline,
+            ) {
+                eprintln!("{warning}");
+            }
+        }
 
         // Record in lock.
         locked.retain(|p| p.path != dep_path);

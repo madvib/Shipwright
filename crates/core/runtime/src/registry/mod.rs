@@ -18,6 +18,7 @@ pub mod install;
 pub mod resolver;
 pub mod tracking;
 pub mod types;
+pub mod verify;
 
 pub use cache::{CachedPackage, PackageCache};
 pub use constraint::{VersionConstraint, parse_constraint};
