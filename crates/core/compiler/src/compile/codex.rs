@@ -61,7 +61,7 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
     mcp.insert("ship".into(), toml::Value::Table(ship_entry));
 
     for s in servers {
-        if s.disabled {
+        if s.disabled || s.id == "ship" {
             continue;
         }
         let mut entry = toml::Table::new();
