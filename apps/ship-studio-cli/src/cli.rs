@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
+pub use crate::commands::{AgentCommands, McpCommands, SkillCommands};
+#[cfg(feature = "unstable")]
+pub use crate::commands::{EventsCommands, JobCommands};
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
   ship init              Start here — scaffold .ship/
