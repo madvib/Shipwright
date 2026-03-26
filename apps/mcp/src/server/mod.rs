@@ -15,6 +15,7 @@ use crate::tools::{
     adr, agent, events, job, notes, project, session, skills, studio, target, workspace,
     workspace_ops,
 };
+use skills::{get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool};
 use target::{
     delete_capability as tool_delete_capability, update_capability as tool_update_capability,
     update_target as tool_update_target,
@@ -268,6 +269,43 @@ impl ShipServer {
             Err(e) => return e,
         };
         skills::list_skills(&project_dir, req)
+    }
+
+    #[tool(
+        description = "Get the merged variable state for a skill (defaults + user state + project state). \
+        Returns JSON object of var name → current value."
+    )]
+    async fn get_skill_vars(&self, Parameters(req): Parameters<GetSkillVarsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        get_skill_vars_tool(&project_dir, req)
+    }
+
+    #[tool(
+        description = "Set a skill variable value. Pass value_json as a JSON-encoded string \
+        (e.g. '\"gitmoji\"' for strings, 'true' for bools, '42' for numbers). \
+        The variable must be declared in the skill's vars.json."
+    )]
+    async fn set_skill_var(&self, Parameters(req): Parameters<SetSkillVarRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        set_skill_var_tool(&project_dir, req)
+    }
+
+    #[tool(
+        description = "List all skills that have configurable variables (vars.json). \
+        Optionally filter to a single skill_id. Shows current value for each var."
+    )]
+    async fn list_skill_vars(&self, Parameters(req): Parameters<ListSkillVarsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        list_skill_vars_tool(&project_dir, req)
     }
 
     // ---- Targets ----
