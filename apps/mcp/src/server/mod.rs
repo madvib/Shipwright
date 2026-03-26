@@ -11,10 +11,11 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{
-    adr, agent, events, job, notes, project, session, skills, studio, target, workspace,
-    workspace_ops,
-};
+use crate::tools::{agent, events, project, session, skills, studio, workspace, workspace_ops};
+
+#[cfg(feature = "unstable")]
+use crate::tools::{adr, job, notes, target};
+#[cfg(feature = "unstable")]
 use target::{
     delete_capability as tool_delete_capability, update_capability as tool_update_capability,
     update_target as tool_update_target,
@@ -28,12 +29,17 @@ pub struct ShipServer {
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
 }
 
+// ---- Stable tool registration ----
+
 #[tool_router]
 impl ShipServer {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let mut router = Self::tool_router();
+        #[cfg(feature = "unstable")]
+        router.merge(Self::unstable_tool_router());
         Self {
-            tool_router: Self::tool_router(),
+            tool_router: router,
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -42,54 +48,21 @@ impl ShipServer {
         project::get_effective_project_dir(&self.active_project).await
     }
 
+    #[cfg(test)]
+    pub fn registered_tool_names(&self) -> Vec<String> {
+        self.tool_router
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect()
+    }
+
     // ---- Project ----
 
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
         let (msg, _) = project::open_project(&req.path, &self.active_project).await;
         msg
-    }
-
-    // ---- Notes ----
-
-    #[tool(description = "Create a standalone note attached to this project.")]
-    async fn create_note(&self, Parameters(req): Parameters<CreateNoteRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        notes::create_note(&project_dir, &req.title, req.content, req.branch.as_deref())
-    }
-
-    #[tool(description = "Replace a note's markdown content by ID.")]
-    async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
-        let scope = match notes::parse_note_scope(req.scope.as_deref()) {
-            Ok(s) => s,
-            Err(e) => return format!("Error: {}", e),
-        };
-        use crate::tools::notes::NoteScope;
-        let dir = match scope {
-            NoteScope::Project => match self.get_effective_project_dir().await {
-                Ok(d) => Some(d),
-                Err(e) => return e,
-            },
-            NoteScope::User => None,
-        };
-        notes::update_note(scope, dir.as_deref(), &req.id, &req.content)
-    }
-
-    // ---- ADR ----
-
-    #[tool(
-        description = "Create a new Architecture Decision Record (ADR). Use when committing to a \
-        technical approach, trade-off, or design choice that future contributors need to understand."
-    )]
-    async fn create_adr(&self, Parameters(req): Parameters<LogDecisionRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        adr::create_adr(&project_dir, &req.title, &req.decision)
     }
 
     // ---- Agent ----
@@ -270,6 +243,69 @@ impl ShipServer {
         skills::list_skills(&project_dir, req)
     }
 
+    // ---- Events ----
+
+    #[tool(
+        description = "Query the project event log. Returns JSON array of events. \
+        Filter by since (ISO 8601 or relative: '1h', '24h', '7d'), actor, entity, or action. \
+        Default limit: 50, max: 200."
+    )]
+    async fn list_events(&self, Parameters(req): Parameters<ListEventsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        events::list_events(&project_dir, req)
+    }
+}
+
+// ---- Unstable tool registration ----
+
+#[cfg(feature = "unstable")]
+#[tool_router(router = unstable_tool_router)]
+impl ShipServer {
+    // ---- Notes ----
+
+    #[tool(description = "Create a standalone note attached to this project.")]
+    async fn create_note(&self, Parameters(req): Parameters<CreateNoteRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        notes::create_note(&project_dir, &req.title, req.content, req.branch.as_deref())
+    }
+
+    #[tool(description = "Replace a note's markdown content by ID.")]
+    async fn update_note(&self, Parameters(req): Parameters<UpdateNoteRequest>) -> String {
+        let scope = match notes::parse_note_scope(req.scope.as_deref()) {
+            Ok(s) => s,
+            Err(e) => return format!("Error: {}", e),
+        };
+        use crate::tools::notes::NoteScope;
+        let dir = match scope {
+            NoteScope::Project => match self.get_effective_project_dir().await {
+                Ok(d) => Some(d),
+                Err(e) => return e,
+            },
+            NoteScope::User => None,
+        };
+        notes::update_note(scope, dir.as_deref(), &req.id, &req.content)
+    }
+
+    // ---- ADR ----
+
+    #[tool(
+        description = "Create a new Architecture Decision Record (ADR). Use when committing to a \
+        technical approach, trade-off, or design choice that future contributors need to understand."
+    )]
+    async fn create_adr(&self, Parameters(req): Parameters<LogDecisionRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        adr::create_adr(&project_dir, &req.title, &req.decision)
+    }
+
     // ---- Targets ----
 
     #[tool(
@@ -383,21 +419,6 @@ impl ShipServer {
         target::list_capabilities(&project_dir, req)
     }
 
-    // ---- Events ----
-
-    #[tool(
-        description = "Query the project event log. Returns JSON array of events. \
-        Filter by since (ISO 8601 or relative: '1h', '24h', '7d'), actor, entity, or action. \
-        Default limit: 50, max: 200."
-    )]
-    async fn list_events(&self, Parameters(req): Parameters<ListEventsRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        events::list_events(&project_dir, req)
-    }
-
     // ---- Jobs ----
 
     #[tool(description = "Create a new coordination job. Returns the new job id.")]
@@ -453,7 +474,6 @@ impl ShipServer {
         };
         job::get_file_owner(&project_dir, &req.path)
     }
-
 }
 
 // ---- Server entry point ----
