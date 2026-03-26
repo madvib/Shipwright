@@ -1023,8 +1023,14 @@ fn e2e_validate_then_compile_catches_bad_config() {
         .assert()
         .success();
 
+    // The config has no rules, so CLAUDE.md is correctly not written.
+    // The MCP config is always written for the claude provider.
     assert!(
-        tmp.path().join("CLAUDE.md").exists(),
-        "CLAUDE.md must be written after successful compile"
+        !tmp.path().join("CLAUDE.md").exists(),
+        "CLAUDE.md must NOT be written when there are no rules"
+    );
+    assert!(
+        tmp.path().join(".mcp.json").exists(),
+        ".mcp.json must be written after successful compile"
     );
 }

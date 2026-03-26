@@ -191,7 +191,7 @@ pub(super) fn build_gemini_mcp_servers(
     );
 
     for s in servers {
-        if s.disabled {
+        if s.disabled || s.id == "ship" {
             continue;
         }
         map.insert(s.id.clone(), build_gemini_server_entry(desc, s));

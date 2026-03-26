@@ -6,7 +6,7 @@ pub use crate::commands::{
 };
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
-  ship init [--from url] Start here — scaffold .ship/
+  ship init              Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
   ship status            Show active agent
   ship compile           Re-compile after editing config
@@ -55,9 +55,6 @@ pub enum Commands {
         /// Overwrite existing .ship/ configuration
         #[arg(long)]
         force: bool,
-        /// Fetch a JSON config bundle from a URL and scaffold .ship/ from it
-        #[arg(long)]
-        from: Option<String>,
     },
 
     /// Authenticate with getship.dev
@@ -102,9 +99,6 @@ pub enum Commands {
         /// Preview output without writing any files
         #[arg(long)]
         dry_run: bool,
-        /// Recompile automatically when agent files change
-        #[arg(long)]
-        watch: bool,
         /// Path to project root (defaults to current directory)
         #[arg(long)]
         path: Option<PathBuf>,
@@ -229,10 +223,6 @@ pub enum Commands {
     #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Notes,
-
-    #[cfg(feature = "unstable")]
-    #[command(hide = true)]
-    Migrate,
 
     #[cfg(feature = "unstable")]
     #[command(hide = true)]

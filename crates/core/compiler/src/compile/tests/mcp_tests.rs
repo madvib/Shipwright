@@ -7,6 +7,33 @@ use super::fixtures::*;
 // ── MCP server output correctness ─────────────────────────────────────────────
 
 #[test]
+fn ship_server_args_include_serve_subcommand() {
+    // Regression: ship use was generating args: ["mcp"] — missing "serve".
+    // The correct command is `ship mcp serve`.
+    let r = resolved(vec![]);
+    for provider_id in &["claude", "gemini", "codex", "cursor"] {
+        let out = compile(&r, provider_id).unwrap();
+        let ship = &out.mcp_servers["ship"];
+        assert_eq!(
+            ship["command"].as_str(),
+            Some("ship"),
+            "{provider_id}: ship server command must be 'ship'"
+        );
+        let args: Vec<&str> = ship["args"]
+            .as_array()
+            .expect("args must be present")
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            args,
+            vec!["mcp", "serve"],
+            "{provider_id}: ship server args must be [\"mcp\", \"serve\"]"
+        );
+    }
+}
+
+#[test]
 fn ship_server_always_first() {
     let r = resolved(vec![make_server("github"), make_server("linear")]);
     let out = compile(&r, "claude").unwrap();
