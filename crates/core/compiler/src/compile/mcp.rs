@@ -11,7 +11,7 @@ pub(super) fn build_mcp_servers(desc: &ProviderDescriptor, servers: &[McpServerC
     map.insert("ship".to_string(), ship_server_entry(desc.emit_type_field));
 
     for s in servers {
-        if s.disabled {
+        if s.disabled || s.id == "ship" {
             continue;
         }
         map.insert(s.id.clone(), server_entry(desc, s));
