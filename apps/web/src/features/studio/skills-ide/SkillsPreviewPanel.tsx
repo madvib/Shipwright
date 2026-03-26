@@ -1,7 +1,7 @@
-import { X, FileText } from 'lucide-react'
+import { X, FileText, AlertTriangle, AlertCircle } from 'lucide-react'
 import type { Skill } from '@ship/ui'
 import { useAgentStore } from '#/features/agents/useAgentStore'
-import { parseFrontmatter } from './skill-frontmatter'
+import { parseFrontmatter, validateFrontmatter } from './skill-frontmatter'
 
 interface Props {
   skill: Skill | null
@@ -20,14 +20,36 @@ const TABS: { id: 'metadata' | 'output' | 'used-by'; label: string }[] = [
 function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
   const fm = parseFrontmatter(content)
   const tools = fm.allowed_tools ?? skill.allowed_tools ?? []
+  const warnings = validateFrontmatter(content)
   const { agents } = useAgentStore()
   const attachedAgents = agents.filter((a) => a.skills.some((s) => s.id === skill.id))
 
   return (
     <div className="space-y-4">
+      {/* Validation */}
+      {warnings.length > 0 && (
+        <div className="space-y-1">
+          {warnings.map((w, i) => (
+            <div
+              key={i}
+              className={`flex items-start gap-1.5 text-[11px] px-2 py-1 rounded ${
+                w.severity === 'error'
+                  ? 'bg-destructive/10 text-destructive'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              }`}
+            >
+              {w.severity === 'error'
+                ? <AlertCircle className="size-3 shrink-0 mt-0.5" />
+                : <AlertTriangle className="size-3 shrink-0 mt-0.5" />}
+              <span>{w.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Identity */}
       <div>
-        <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/40 mb-2">
+        <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/50 mb-2">
           Identity
         </h4>
         <div className="space-y-0.5">
@@ -39,7 +61,7 @@ function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
             ['Source', skill.source ?? 'project'],
           ].map(([key, val]) => (
             <div key={key} className="flex justify-between text-[11px] py-0.5">
-              <span className="text-muted-foreground/40">{key}</span>
+              <span className="text-muted-foreground/50">{key}</span>
               <span className="text-muted-foreground/70">{val}</span>
             </div>
           ))}
@@ -49,7 +71,7 @@ function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
       {/* Allowed Tools */}
       {tools.length > 0 && (
         <div>
-          <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/40 mb-2">
+          <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/50 mb-2">
             Allowed Tools
           </h4>
           <div className="flex flex-wrap gap-1">
@@ -67,11 +89,11 @@ function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
 
       {/* Attached to Agents */}
       <div>
-        <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/40 mb-2">
+        <h4 className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground/50 mb-2">
           Attached to Agents
         </h4>
         {attachedAgents.length === 0 ? (
-          <p className="text-[11px] italic text-muted-foreground/30">Not attached to any agents.</p>
+          <p className="text-[11px] italic text-muted-foreground/50">Not attached to any agents.</p>
         ) : (
           <div className="space-y-1.5">
             {attachedAgents.map((agent) => (
@@ -96,7 +118,7 @@ function OutputTab({ skill, content }: { skill: Skill; content: string }) {
 
   // Build a simplified compiled output preview
   const previewLines = [
-    { text: '---', cls: 'text-muted-foreground/30' },
+    { text: '---', cls: 'text-muted-foreground/50' },
     { text: `name: ${fm.name ?? skill.name}`, cls: '', key: 'name:', val: fm.name ?? skill.name },
     ...(tools.length > 0
       ? [
@@ -104,16 +126,16 @@ function OutputTab({ skill, content }: { skill: Skill; content: string }) {
           ...tools.map((t) => ({ text: `  - ${t}`, cls: '', key: '', val: t })),
         ]
       : []),
-    { text: '---', cls: 'text-muted-foreground/30' },
+    { text: '---', cls: 'text-muted-foreground/50' },
     { text: '', cls: '' },
-    { text: `# ${fm.name ?? skill.name}`, cls: 'text-emerald-300' },
-    { text: fm.description ?? skill.description ?? '...', cls: 'text-muted-foreground/40' },
+    { text: `# ${fm.name ?? skill.name}`, cls: 'text-emerald-600 dark:text-emerald-300' },
+    { text: fm.description ?? skill.description ?? '...', cls: 'text-muted-foreground/50' },
   ]
 
   return (
     <div>
       <div className="bg-card/60 border border-border/30 rounded-lg p-3">
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/40 font-semibold mb-2">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 font-semibold mb-2">
           <FileText className="size-3" />
           .claude/skills/{skill.id}/SKILL.md
         </div>
@@ -122,8 +144,8 @@ function OutputTab({ skill, content }: { skill: Skill; content: string }) {
             <div key={i} className={line.cls}>
               {line.key ? (
                 <>
-                  <span className="text-sky-300">{line.key}</span>
-                  {line.val && <span className="text-amber-300"> {line.val}</span>}
+                  <span className="text-sky-600 dark:text-sky-300">{line.key}</span>
+                  {line.val && <span className="text-amber-600 dark:text-amber-300"> {line.val}</span>}
                 </>
               ) : (
                 <span>{line.text || '\u00A0'}</span>
@@ -132,7 +154,7 @@ function OutputTab({ skill, content }: { skill: Skill; content: string }) {
           ))}
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground/30">
+      <div className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
         <span className="size-1.5 rounded-full bg-primary" />
         WASM compiler output preview
       </div>
@@ -146,11 +168,11 @@ function UsedByTab({ skill }: { skill: Skill }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-muted-foreground/40 mb-3">
+      <p className="text-[11px] text-muted-foreground/50 mb-3">
         Agents and profiles that reference this skill.
       </p>
       {referencingAgents.length === 0 ? (
-        <p className="text-[11px] italic text-muted-foreground/30">No agents reference this skill.</p>
+        <p className="text-[11px] italic text-muted-foreground/50">No agents reference this skill.</p>
       ) : (
         referencingAgents.map((agent) => (
           <div
@@ -160,7 +182,7 @@ function UsedByTab({ skill }: { skill: Skill }) {
             <span className="text-xs font-bold text-primary">{agent.profile.name[0]?.toUpperCase() ?? '?'}</span>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-foreground/80">{agent.profile.id}</p>
-              <p className="text-[10px] text-muted-foreground/30">{agent.profile.name}</p>
+              <p className="text-[10px] text-muted-foreground/50">{agent.profile.name}</p>
             </div>
           </div>
         ))
@@ -176,12 +198,12 @@ export function SkillsPreviewPanel({ skill, content, activeTab, onTabChange, onC
     <div className="flex w-80 shrink-0 flex-col border-l border-border/30 bg-card/10">
       {/* Header */}
       <div className="flex items-center justify-between px-3.5 py-2 border-b border-border/30 shrink-0">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground/40">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground/50">
           Skill Info
         </h3>
         <button
           onClick={onClose}
-          className="text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+          className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
         >
           <X className="size-3.5" />
         </button>
@@ -196,7 +218,7 @@ export function SkillsPreviewPanel({ skill, content, activeTab, onTabChange, onC
             className={`flex-1 py-1.5 text-center text-[10px] border-b-2 transition-colors ${
               activeTab === tab.id
                 ? 'text-primary border-primary'
-                : 'text-muted-foreground/30 border-transparent hover:text-muted-foreground/50'
+                : 'text-muted-foreground/50 border-transparent hover:text-muted-foreground/70'
             }`}
           >
             {tab.label}
