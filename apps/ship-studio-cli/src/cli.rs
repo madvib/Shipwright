@@ -4,7 +4,7 @@ use std::path::PathBuf;
 pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
-  ship init [--from url] Start here — scaffold .ship/
+  ship init              Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
   ship status            Show active agent
   ship compile           Re-compile after editing config
@@ -53,9 +53,6 @@ pub enum Commands {
         /// Overwrite existing .ship/ configuration
         #[arg(long)]
         force: bool,
-        /// Fetch a JSON config bundle from a URL and scaffold .ship/ from it
-        #[arg(long)]
-        from: Option<String>,
     },
 
     /// Authenticate with getship.dev

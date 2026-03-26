@@ -17,7 +17,6 @@ mod diff;
 mod events_cmd;
 mod help_topics;
 mod init;
-mod init_from_url;
 mod install;
 #[cfg(feature = "unstable")]
 mod job;
@@ -62,8 +61,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 global,
                 provider,
                 force: _,
-                from,
-            } => init::run(global, provider, from),
+            } => init::run(global, provider),
             Commands::Config { action } => dispatch_config(action),
             Commands::Login => auth::run_login(),
             Commands::Logout => auth::run_logout(),
