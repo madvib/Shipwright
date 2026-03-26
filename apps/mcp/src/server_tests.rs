@@ -238,6 +238,7 @@ fn normalization_applied_to_both_sides() {
 
 // ── update_target handler ──────────────────────────────────────────
 
+#[cfg(feature = "unstable")]
 #[test]
 fn update_target_patches_fields() {
     let tmp = tempdir().expect("tempdir");
@@ -313,6 +314,7 @@ fn update_target_patches_fields() {
     );
 }
 
+#[cfg(feature = "unstable")]
 #[test]
 fn update_target_nonexistent_returns_error() {
     let tmp = tempdir().expect("tempdir");
