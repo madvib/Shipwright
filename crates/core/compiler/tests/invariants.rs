@@ -20,6 +20,7 @@ fn make_skill(id: &str) -> Skill {
         metadata: Default::default(),
         content: format!("# {id}\nDo something useful."),
         source: Default::default(),
+        vars: Default::default(),
     }
 }
 

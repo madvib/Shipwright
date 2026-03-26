@@ -303,10 +303,23 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
             if skill_md.exists() {
                 let id = entry.file_name().to_string_lossy().to_string();
                 let raw = std::fs::read_to_string(&skill_md)?;
-                skills.push(parse_skill(&id, &raw));
+                let mut skill = parse_skill(&id, &raw);
+                // Load vars if vars.json exists in the skill directory.
+                let vars_path = path.join("vars.json");
+                if vars_path.exists() {
+                    match crate::vars::load_vars_json(&vars_path) {
+                        Ok(var_defs) => {
+                            skill.vars = crate::vars::read_skill_state(&id, agents_dir, &var_defs);
+                        }
+                        Err(e) => {
+                            eprintln!("warning: skill '{}': failed to read vars.json: {}", id, e);
+                        }
+                    }
+                }
+                skills.push(skill);
             }
         } else if path.extension().is_some_and(|x| x == "md") {
-            // Flat format: <skill-id>.md
+            // Flat format: <skill-id>.md (no vars support — vars.json needs a directory)
             let id = path
                 .file_stem()
                 .unwrap_or_default()
@@ -398,6 +411,7 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
         metadata,
         content,
         source: SkillSource::default(),
+        vars: Default::default(),
     }
 }
 

@@ -100,6 +100,21 @@ fn tree_hash_empty_dir() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn tree_hash_excludes_state_dir() -> anyhow::Result<()> {
+    let dir = make_tree(&[("SKILL.md", "# Skill\nContent here.")])?;
+    let h_before = compute_tree_hash(dir.path())?;
+    // Add state files — should not affect hash
+    fs::create_dir_all(dir.path().join("state/skills"))?;
+    fs::write(
+        dir.path().join("state/skills/my-skill.json"),
+        r#"{"commit_style":"gitmoji"}"#,
+    )?;
+    let h_after = compute_tree_hash(dir.path())?;
+    assert_eq!(h_before, h_after, "state/ must be excluded from content hash");
+    Ok(())
+}
+
 // ── compute_file_hash ───────────────────────────────────────────────
 
 #[test]

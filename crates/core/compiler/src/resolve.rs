@@ -512,6 +512,7 @@ mod tests {
             metadata: Default::default(),
             content: String::new(),
             source: Default::default(),
+            vars: Default::default(),
         }
     }
 

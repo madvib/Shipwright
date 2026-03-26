@@ -30,6 +30,16 @@ pub(super) fn format_skill_file(skill: &Skill) -> String {
 
     let mut fm = format!("---\nname: {}\ndescription: {}", skill.id, description);
 
+    // Resolve template variables in content before emitting.
+    // Warnings go to stderr so they surface during `ship use` / `ship compile`.
+    let resolved_content;
+    let content: &str = if skill.vars.is_empty() {
+        &skill.content
+    } else {
+        resolved_content = crate::vars::resolve_template(&skill.content, &skill.vars);
+        &resolved_content
+    };
+
     if let Some(license) = &skill.license {
         fm.push_str(&format!("\nlicense: {}", license));
     }
@@ -56,7 +66,7 @@ pub(super) fn format_skill_file(skill: &Skill) -> String {
     }
 
     fm.push_str("\n---\n\n");
-    fm.push_str(&skill.content);
+    fm.push_str(content);
     fm
 }
 
@@ -76,6 +86,7 @@ mod tests {
             metadata: HashMap::new(),
             content: "Instructions here.".to_string(),
             source: Default::default(),
+            vars: HashMap::new(),
         }
     }
 
@@ -145,5 +156,21 @@ mod tests {
             out.contains("description: No description provided."),
             "got:\n{out}"
         );
+    }
+
+    #[test]
+    fn format_skill_file_resolves_template_vars() {
+        let mut skill = base_skill();
+        skill.content = "Use {{ style }} commits.".to_string();
+        skill.vars.insert("style".to_string(), serde_json::json!("gitmoji"));
+        let out = format_skill_file(&skill);
+        assert!(out.contains("Use gitmoji commits."), "got:\n{out}");
+    }
+
+    #[test]
+    fn format_skill_file_no_vars_passthrough() {
+        let skill = base_skill();
+        let out = format_skill_file(&skill);
+        assert!(out.contains("Instructions here."), "got:\n{out}");
     }
 }

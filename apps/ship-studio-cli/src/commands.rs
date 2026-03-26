@@ -137,6 +137,48 @@ pub enum SkillCommands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum VarsCommands {
+    /// Set a skill variable value
+    Set {
+        /// Skill ID (e.g. commit)
+        skill_id: String,
+        /// Variable name
+        key: String,
+        /// Value to set
+        value: String,
+    },
+    /// Get skill variable value(s)
+    Get {
+        /// Skill ID
+        skill_id: String,
+        /// Variable name (omit to show all)
+        key: Option<String>,
+    },
+    /// Open the skill state file in $EDITOR
+    Edit {
+        /// Skill ID
+        skill_id: String,
+        /// Editor to use (defaults to $EDITOR)
+        #[arg(long)]
+        editor: Option<String>,
+    },
+    /// Append an element to an array variable
+    Append {
+        /// Skill ID
+        skill_id: String,
+        /// Variable name (must be type: array)
+        key: String,
+        /// JSON element to append
+        json: String,
+    },
+    /// Reset state files — next compile uses defaults
+    Reset {
+        /// Skill ID
+        skill_id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum McpCommands {
     /// Run the Ship MCP server (stdio by default; --http for HTTP daemon)
     Serve {

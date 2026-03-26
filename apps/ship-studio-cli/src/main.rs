@@ -30,11 +30,12 @@ mod profile;
 mod publish;
 mod skill;
 mod validate;
+mod vars;
 #[cfg(feature = "unstable")]
 mod view;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, ConfigCommands, McpCommands, SkillCommands};
+use cli::{AgentCommands, Cli, Commands, ConfigCommands, McpCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
 use cli::{EventsCommands, JobCommands};
 use std::path::PathBuf;
@@ -82,6 +83,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 path,
             } => run_compile_cmd(provider.as_deref(), dry_run, watch, path),
             Commands::Skill { action } => dispatch_skill(action),
+            Commands::Vars { action } => dispatch_vars(action),
             Commands::Mcp { action } => dispatch_mcp(action),
             Commands::Convert { source } => convert::run_convert(&source),
             Commands::Docs { topic } => help_topics::run(topic.as_deref()),
@@ -377,6 +379,27 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
             skill,
             global,
         } => skill::add(&source, skill.as_deref(), global),
+    }
+}
+
+fn dispatch_vars(action: VarsCommands) -> Result<()> {
+    let ship_dir = paths::project_ship_dir_required()?;
+    match action {
+        VarsCommands::Set { skill_id, key, value } => {
+            vars::run_vars_set(&ship_dir, &skill_id, &key, &value)
+        }
+        VarsCommands::Get { skill_id, key } => {
+            vars::run_vars_get(&ship_dir, &skill_id, key.as_deref())
+        }
+        VarsCommands::Edit { skill_id, editor } => {
+            vars::run_vars_edit(&ship_dir, &skill_id, editor.as_deref())
+        }
+        VarsCommands::Append { skill_id, key, json } => {
+            vars::run_vars_append(&ship_dir, &skill_id, &key, &json)
+        }
+        VarsCommands::Reset { skill_id } => {
+            vars::run_vars_reset(&ship_dir, &skill_id)
+        }
     }
 }
 
