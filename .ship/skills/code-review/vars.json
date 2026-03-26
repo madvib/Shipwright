@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agentskills.io/schemas/vars/v1.json",
+  "post_to_github": {
+    "type": "bool",
+    "default": false,
+    "storage-hint": "user",
+    "label": "Post review to GitHub",
+    "description": "When true, automatically post the review to the GitHub PR using gh cli."
+  }
+}

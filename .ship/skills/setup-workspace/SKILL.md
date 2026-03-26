@@ -1,5 +1,6 @@
 ---
 name: setup-workspace
+stable-id: setup-workspace
 description: Use when starting a multi-agent work session to configure the terminal environment. Detects iTerm2, tmux, Warp, or VS Code and sets up panes/tabs for each agent in the pod. Customizable per user.
 tags: [environment, terminal, workflow, setup]
 authors: [ship]
@@ -50,7 +51,7 @@ tell application "iTerm2"
     # For each specialist agent:
     set newTab to (create tab with default profile)
     tell current session of newTab
-      write text "cd '"$WORKTREE_PATH/<slug>"' && ship use <agent>"
+      write text "cd '"{{ worktree_dir }}/<slug>"' && ship use <agent>"
       set name to "<emoji> <agent-name>"
     end tell
   end tell
@@ -75,7 +76,7 @@ tmux send-keys -t "$SESSION:control" "cd $PROJECT_ROOT && ship use mission-contr
 
 # For each agent:
 tmux new-window -t "$SESSION" -n "<agent>"
-tmux send-keys -t "$SESSION:<agent>" "cd $WORKTREE_PATH/<slug> && ship use <agent>" Enter
+tmux send-keys -t "$SESSION:<agent>" "cd {{ worktree_dir }}/<slug> && ship use <agent>" Enter
 
 # Layout: tiled view of all windows
 tmux select-layout -t "$SESSION" tiled
@@ -110,7 +111,7 @@ Warp supports launch configurations:
 ```bash
 # Each agent gets its own Warp tab
 for agent in "${AGENTS[@]}"; do
-  open -a Warp --args --working-directory "$WORKTREE_PATH/$agent"
+  open -a Warp --args --working-directory "{{ worktree_dir }}/$agent"
 done
 ```
 
@@ -122,8 +123,8 @@ When terminal can't be detected, print launch commands:
 Your pod is ready. Open these in separate terminals:
 
   Tab 1 (control):  cd /project && ship use mission-control
-  Tab 2 (rust):     cd ~/dev/ship-worktrees/rust-work && ship use rust-runtime
-  Tab 3 (web):      cd ~/dev/ship-worktrees/web-work && ship use web-lane
+  Tab 2 (rust):     cd {{ worktree_dir }}/rust-work && ship use rust-runtime
+  Tab 3 (web):      cd {{ worktree_dir }}/web-work && ship use web-lane
 ```
 
 ## Saving Your Layout
@@ -142,25 +143,26 @@ agents:
     emoji: 🎯
   - name: rust
     agent: rust-runtime
-    path: ~/dev/ship-worktrees/rust-work
+    path: {{ worktree_dir }}/rust-work
     emoji: 🦀
   - name: web
     agent: web-lane
-    path: ~/dev/ship-worktrees/web-work
+    path: {{ worktree_dir }}/web-work
     emoji: 🌐
 ```
 
 Next session, this skill reads `pod.md` and recreates the exact same layout. Users customize once, reuse forever.
 
-## Customization Points
+## User preferences
 
-Users can set preferences in `.ship/config.jsonc` or env vars:
+Terminal: **{{ terminal }}**, worktree base: **{{ worktree_dir }}**, tab emoji: **{{ pod_emoji }}**
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `SHIP_DEFAULT_TERMINAL` | auto-detect | Override terminal detection |
-| `SHIP_WORKTREE_DIR` | `~/dev/<project>-worktrees` | Base worktree path |
-| `SHIP_POD_EMOJI` | `1` | Use emoji in tab names (set `0` to disable) |
+To change:
+```bash
+ship vars set setup-workspace terminal <auto|iterm|tmux|warp|vscode|manual>
+ship vars set setup-workspace worktree_dir <path>
+ship vars set setup-workspace pod_emoji false
+```
 
 ## Teardown
 

@@ -1,5 +1,6 @@
 ---
 name: ship-tutorial
+stable-id: ship-tutorial
 description: Use when onboarding a developer to Ship — scans the project, detects existing config, and teaches concepts interactively by showing real state.
 tags: [tutorial, onboarding, getting-started]
 authors: [ship]

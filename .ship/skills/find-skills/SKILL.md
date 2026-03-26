@@ -1,5 +1,6 @@
 ---
 name: find-skills
+stable-id: find-skills
 description: Use when the user asks "how do I do X", "find a skill for X", "is there a skill that can...", or expresses interest in extending capabilities. Discovers and installs agent skills matching the requested functionality.
 tags: [discovery, registry, skills]
 authors: [ship]

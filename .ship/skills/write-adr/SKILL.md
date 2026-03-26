@@ -1,5 +1,6 @@
 ---
 name: write-adr
+stable-id: write-adr
 description: Use when committing to a technical or product decision that future contributors — human or agent — need to understand. Captures context, decision, alternatives, consequences, and how to measure success. Do NOT use for minor implementation choices — only decisions with meaningful alternatives that constrain future work.
 tags: [architecture, decisions, documentation]
 authors: [ship]

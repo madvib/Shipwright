@@ -1,5 +1,6 @@
 ---
 name: ship-publishing
+stable-id: ship-publishing
 description: How to publish and consume Ship packages — skills, agents, and workflows on the registry. Use when users want to publish their skills, add dependencies, understand versioning, or learn how the registry works. Covers ship.jsonc manifest, ship install, ship add, ship publish, and the dependency resolution flow.
 tags: [guide, registry, publishing, documentation]
 authors: [ship]

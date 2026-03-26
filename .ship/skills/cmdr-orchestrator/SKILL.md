@@ -1,5 +1,6 @@
 ---
 name: cmdr-orchestrator
+stable-id: cmdr-orchestrator
 description: Commander ORCHESTRATOR mode — monitors running jobs, surfaces blockers, routes cross-agent work. Does not do specialist work.
 ---
 

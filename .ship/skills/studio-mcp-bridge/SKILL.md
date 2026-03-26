@@ -1,5 +1,6 @@
 ---
 name: Studio MCP Bridge
+stable-id: studio-mcp-bridge
 description: Architecture and patterns for the MCP bridge between Studio (web app) and the local CLI. Transfer types, sync protocol, TanStack Query layer.
 ---
 

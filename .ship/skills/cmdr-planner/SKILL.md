@@ -1,5 +1,6 @@
 ---
 name: cmdr-planner
+stable-id: cmdr-planner
 description: Commander PLANNER mode — translates human intent into a capability map. Ask 1-2 questions, build the plan, get confirmation before dispatching anything.
 ---
 

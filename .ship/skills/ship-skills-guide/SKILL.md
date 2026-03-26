@@ -1,5 +1,6 @@
 ---
 name: ship-skills-guide
+stable-id: ship-skills-guide
 description: How to create, structure, and publish Ship skills. Use when users want to write a new skill, understand the SKILL.md format, organize skill directories, add frontmatter metadata, or prepare skills for publishing to the registry. Covers the agentskills.io specification.
 tags: [guide, skills, authoring, documentation]
 authors: [ship]

@@ -1,5 +1,6 @@
 ---
 name: tdd-workflow
+stable-id: tdd-workflow
 description: Use when building a feature or fixing a bug through test-first development. Interactive loop — write tests WITH the user to build a spec, then dispatch implementation. Not just "make tests pass" but collaborative test design.
 tags: [testing, workflow, tdd, spec]
 authors: [ship]

@@ -1,5 +1,6 @@
 ---
 name: mission-control
+stable-id: mission-control
 description: Use when coordinating multiple agents across worktrees without Ship's MCP server. File-based job tracking, three-mode operation (plan, dispatch, gate), and structured handoffs. Works with any AI provider that supports Ship.
 tags: [coordination, orchestration, workflow]
 authors: [ship]

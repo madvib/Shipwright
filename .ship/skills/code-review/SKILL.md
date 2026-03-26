@@ -1,5 +1,6 @@
 ---
 name: code-review
+stable-id: code-review
 description: Use when reviewing a PR or branch diff. Security, correctness, test coverage, architecture drift. Produces structured verdicts with line references.
 tags: [review, code-quality, security]
 authors: [ship]
@@ -94,12 +95,15 @@ For each changed file, check in order:
 
 ### 5. Post or surface
 
-If reviewing a GitHub PR:
+{% if post_to_github %}
+Post to GitHub:
 ```bash
 gh pr review <number> --request-changes --body-file .ship-session/review.md
 # or
 gh pr review <number> --approve --body-file .ship-session/review.md
 ```
+{% else %}
+Surface the review inline or to mission-control. Blockers = gate fail. Suggestions = pass with notes.
 
-If reviewing a branch for gate:
-Surface the review to mission-control. Blockers = gate fail. Suggestions = pass with notes.
+To post directly to GitHub: `ship vars set code-review post_to_github true`
+{% endif %}
