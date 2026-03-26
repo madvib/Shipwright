@@ -19,9 +19,9 @@ const FEATURES: FeatureCard[] = [
     icon: Package,
     iconColor: 'text-primary',
     iconBg: 'bg-primary/10',
-    title: 'The package manager for agents',
+    title: 'Composable agent configs',
     description:
-      'Install skills, MCP servers, and agent configs from the registry. Compose them like dependencies. Share what you build. Version everything.',
+      'Define skills, MCP servers, and agent configs in a portable format. Compose them like dependencies. Share what you build via Git.',
   },
   {
     icon: Lock,
@@ -29,7 +29,7 @@ const FEATURES: FeatureCard[] = [
     iconBg: 'bg-blue-500/10',
     title: 'Granular permissions',
     description:
-      'Five permission dimensions — tools, filesystem, commands, network, and agent limits. Scope each MCP server down to individual tool-level allow, ask, or deny.',
+      'Control which tools each agent can use — allow, ask, or deny at the individual tool level. Scope MCP servers per-agent with different access for different roles.',
   },
   {
     icon: Zap,
@@ -37,7 +37,7 @@ const FEATURES: FeatureCard[] = [
     iconBg: 'bg-emerald-500/10',
     title: 'Ship Studio',
     description:
-      'Configure agents visually with live preview. See the compiled output for every provider as you edit. Create skills in a built-in IDE. Publish to the registry.',
+      'Configure agents visually with live preview. See the compiled output for every provider as you edit. Add skills, set permissions, write rules — all in the browser.',
   },
   {
     icon: Code2,
@@ -78,7 +78,7 @@ export function FeatureGrid() {
           What Ship gives your agents
         </h2>
         <p className="text-[15px] text-muted-foreground">
-          Configuration as code. Permissions as policy. Distribution as a service.
+          Configuration as code. Permissions as policy. Every provider from one source.
         </p>
       </div>
 
