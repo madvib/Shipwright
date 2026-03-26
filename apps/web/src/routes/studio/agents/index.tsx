@@ -127,6 +127,9 @@ function AgentsListPage() {
                     <span className="text-[9px] px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground">
                       {preset.replace('ship-', '')}
                     </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500">
+                      Draft
+                    </span>
                     {a.source === 'library' && (
                       <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-violet-500/30 bg-violet-500/10 text-violet-500">
                         <Library className="size-2.5" />

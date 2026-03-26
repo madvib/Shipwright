@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link2, X, Trash2 } from 'lucide-react'
 import type { HookConfig, HookTrigger } from '@ship/ui'
 
-const TRIGGERS: HookTrigger[] = [
+const DEFAULT_TRIGGERS: HookTrigger[] = [
   'PreToolUse', 'PostToolUse', 'Stop', 'Notification', 'SubagentStop', 'PreCompact',
 ]
 
@@ -12,9 +12,12 @@ interface HookEditorDialogProps {
   hook: HookConfig | null
   onSave: (hook: HookConfig) => void
   onDelete?: () => void
+  /** Provider-specific trigger list. Defaults to Claude triggers. */
+  triggers?: string[]
 }
 
-export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete }: HookEditorDialogProps) {
+export function HookEditorDialog({ open, onOpenChange, hook, onSave, onDelete, triggers }: HookEditorDialogProps) {
+  const TRIGGERS = (triggers ?? DEFAULT_TRIGGERS) as HookTrigger[]
   const [trigger, setTrigger] = useState<string>('')
   const [command, setCommand] = useState('')
   const [matcher, setMatcher] = useState('')

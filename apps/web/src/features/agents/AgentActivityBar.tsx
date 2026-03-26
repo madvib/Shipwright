@@ -3,9 +3,8 @@ import {
   Zap,
   Grid3X3,
   Shield,
-  SlidersHorizontal,
   FileText,
-  Link2,
+  Cpu,
 } from 'lucide-react'
 
 export const SECTION_DEFS = [
@@ -13,8 +12,7 @@ export const SECTION_DEFS = [
   { id: 'mcp', label: 'MCP Servers', icon: Grid3X3, countable: true },
   { id: 'permissions', label: 'Permissions', icon: Shield, countable: false },
   { id: 'rules', label: 'Rules', icon: FileText, countable: true },
-  { id: 'hooks', label: 'Hooks', icon: Link2, countable: true },
-  { id: 'providers', label: 'Provider Settings', icon: SlidersHorizontal, countable: false },
+  { id: 'model', label: 'Model', icon: Cpu, countable: false },
 ] as const
 
 interface AgentActivityBarProps {
