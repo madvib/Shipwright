@@ -1,50 +1,54 @@
 //! Skill variable state — read/write for CLI and MCP tools.
 //!
-//! Storage:
-//! - User-scoped vars  → `platform.db` KV store, namespace `skill_vars:{skill_id}`
-//! - Project-scoped vars → `.ship/state.json`, keyed by skill id
+//! Storage: all scopes use `platform.db` KV. No files.
 //!
-//! Merge order (last wins): defaults → user state → project state.
+//! KV namespaces:
+//! - global  `skill_vars:{skill_id}`                      machine-wide preferences
+//! - local   `skill_vars.local:{ctx}:{skill_id}`          per-context, not shared
+//! - project `skill_vars.project:{ctx}:{skill_id}`        per-context, intended to be shared
+//!
+//! Where `ctx` is a stable hex token derived from the ship_dir path.
+//!
+//! Merge order (last wins): defaults → global → local → project.
+//!
+//! vars.json lives at `skills/{id}/assets/vars.json`.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::hash::{Hash, Hasher};
+use std::path::Path;
 
-// ── Project state file ────────────────────────────────────────────────────────
+// ── Context key ───────────────────────────────────────────────────────────────
 
-fn project_state_path(ship_dir: &Path) -> PathBuf {
-    ship_dir.join("state.json")
+/// Stable 16-char hex token derived from the canonical ship_dir path.
+/// Scopes local/project state to a specific context without exposing the path.
+fn context_key(ship_dir: &Path) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    ship_dir.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
-fn read_project_state(ship_dir: &Path) -> HashMap<String, HashMap<String, Value>> {
-    let path = project_state_path(ship_dir);
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        return HashMap::new();
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+// ── KV namespaces ─────────────────────────────────────────────────────────────
+
+fn kv_ns_global(skill_id: &str) -> String {
+    format!("skill_vars:{skill_id}")
 }
 
-fn write_project_state(
-    ship_dir: &Path,
-    state: &HashMap<String, HashMap<String, Value>>,
-) -> Result<()> {
-    let json = serde_json::to_string_pretty(state)?;
-    let path = project_state_path(ship_dir);
-    let mut tmp = tempfile::NamedTempFile::new_in(ship_dir)
-        .context("creating temp file for state.json")?;
-    use std::io::Write;
-    tmp.write_all(json.as_bytes())?;
-    tmp.persist(&path)
-        .with_context(|| format!("writing {}", path.display()))?;
-    Ok(())
+fn kv_ns_local(ctx: &str, skill_id: &str) -> String {
+    format!("skill_vars.local:{ctx}:{skill_id}")
 }
 
-// ── vars.json schema (minimal) ────────────────────────────────────────────────
+fn kv_ns_project(ctx: &str, skill_id: &str) -> String {
+    format!("skill_vars.project:{ctx}:{skill_id}")
+}
+
+// ── vars.json schema (minimal, read-only) ─────────────────────────────────────
 
 #[derive(PartialEq)]
 enum StorageHint {
-    User,
+    Global,
+    Local,
     Project,
 }
 
@@ -53,10 +57,12 @@ struct VarMeta {
     default: Option<Value>,
 }
 
+/// Parse `assets/vars.json` for a skill. Returns `None` if the file is absent.
 fn parse_vars_schema(ship_dir: &Path, skill_id: &str) -> Option<HashMap<String, VarMeta>> {
     let path = ship_dir
         .join("skills")
         .join(skill_id)
+        .join("assets")
         .join("vars.json");
     let content = std::fs::read_to_string(&path).ok()?;
     let raw: serde_json::Map<String, Value> = serde_json::from_str(&content).ok()?;
@@ -70,11 +76,11 @@ fn parse_vars_schema(ship_dir: &Path, skill_id: &str) -> Option<HashMap<String, 
         let hint = obj
             .get("storage-hint")
             .and_then(|v| v.as_str())
-            .unwrap_or("user");
-        let storage_hint = if hint == "project" {
-            StorageHint::Project
-        } else {
-            StorageHint::User
+            .unwrap_or("global");
+        let storage_hint = match hint {
+            "local" => StorageHint::Local,
+            "project" => StorageHint::Project,
+            _ => StorageHint::Global,
         };
         result.insert(
             key.clone(),
@@ -87,18 +93,12 @@ fn parse_vars_schema(ship_dir: &Path, skill_id: &str) -> Option<HashMap<String, 
     Some(result)
 }
 
-// ── KV namespace ──────────────────────────────────────────────────────────────
-
-fn kv_namespace(skill_id: &str) -> String {
-    format!("skill_vars:{}", skill_id)
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Read merged variable state for a skill.
 ///
-/// Returns `None` if the skill has no `vars.json`.
-/// Merge order: defaults → user state (KV) → project state (state.json).
+/// Returns `None` if the skill has no `assets/vars.json`.
+/// Merge order: defaults → global (KV) → local (KV) → project (KV).
 pub fn get_skill_vars(
     ship_dir: &Path,
     skill_id: &str,
@@ -107,6 +107,7 @@ pub fn get_skill_vars(
         return Ok(None);
     };
 
+    let ctx = context_key(ship_dir);
     let mut merged: HashMap<String, Value> = HashMap::new();
 
     // 1. Defaults
@@ -116,24 +117,32 @@ pub fn get_skill_vars(
         }
     }
 
-    // 2. User state from platform.db KV
-    let ns = kv_namespace(skill_id);
-    for name in schema.keys().filter(|k| {
-        schema
-            .get(*k)
-            .is_some_and(|m| m.storage_hint == StorageHint::User)
-    }) {
-        if let Ok(Some(val)) = crate::db::kv::get(&ns, name) {
-            merged.insert(name.clone(), val);
+    // 2. Global state (machine-wide)
+    let ns_global = kv_ns_global(skill_id);
+    for (name, meta) in &schema {
+        if meta.storage_hint == StorageHint::Global {
+            if let Ok(Some(val)) = crate::db::kv::get(&ns_global, name) {
+                merged.insert(name.clone(), val);
+            }
         }
     }
 
-    // 3. Project state from .ship/state.json
-    let project_state = read_project_state(ship_dir);
-    if let Some(skill_state) = project_state.get(skill_id) {
-        for (k, v) in skill_state {
-            if schema.contains_key(k) {
-                merged.insert(k.clone(), v.clone());
+    // 3. Local state (this context, not shared)
+    let ns_local = kv_ns_local(&ctx, skill_id);
+    for (name, meta) in &schema {
+        if meta.storage_hint == StorageHint::Local {
+            if let Ok(Some(val)) = crate::db::kv::get(&ns_local, name) {
+                merged.insert(name.clone(), val);
+            }
+        }
+    }
+
+    // 4. Project state (this context, intended to be shared)
+    let ns_project = kv_ns_project(&ctx, skill_id);
+    for (name, meta) in &schema {
+        if meta.storage_hint == StorageHint::Project {
+            if let Ok(Some(val)) = crate::db::kv::get(&ns_project, name) {
+                merged.insert(name.clone(), val);
             }
         }
     }
@@ -143,8 +152,7 @@ pub fn get_skill_vars(
 
 /// Set a single variable value for a skill.
 ///
-/// Routes to KV (user-scoped) or `state.json` (project-scoped)
-/// based on the var's `storage-hint` in `vars.json`.
+/// Routes to the appropriate KV namespace based on the var's `storage-hint`.
 pub fn set_skill_var(
     ship_dir: &Path,
     skill_id: &str,
@@ -152,29 +160,47 @@ pub fn set_skill_var(
     value: Value,
 ) -> Result<()> {
     let schema = parse_vars_schema(ship_dir, skill_id)
-        .ok_or_else(|| anyhow::anyhow!("skill '{}' has no vars.json", skill_id))?;
+        .ok_or_else(|| anyhow::anyhow!("skill '{}' has no assets/vars.json", skill_id))?;
 
     let meta = schema
         .get(key)
         .ok_or_else(|| anyhow::anyhow!("unknown variable '{}' for skill '{}'", key, skill_id))?;
 
+    let ctx = context_key(ship_dir);
     match meta.storage_hint {
-        StorageHint::User => {
-            crate::db::kv::set(&kv_namespace(skill_id), key, &value)?;
+        StorageHint::Global => {
+            crate::db::kv::set(&kv_ns_global(skill_id), key, &value)?;
+        }
+        StorageHint::Local => {
+            crate::db::kv::set(&kv_ns_local(&ctx, skill_id), key, &value)?;
         }
         StorageHint::Project => {
-            let mut state = read_project_state(ship_dir);
-            state
-                .entry(skill_id.to_string())
-                .or_default()
-                .insert(key.to_string(), value);
-            write_project_state(ship_dir, &state)?;
+            crate::db::kv::set(&kv_ns_project(&ctx, skill_id), key, &value)?;
         }
     }
     Ok(())
 }
 
-/// List all skills in the project that have a `vars.json`, with their merged state.
+/// Clear all stored state for a skill across all three scopes.
+pub fn reset_skill_vars(ship_dir: &Path, skill_id: &str) -> Result<bool> {
+    let ctx = context_key(ship_dir);
+    let mut removed = false;
+
+    for ns in [
+        kv_ns_global(skill_id),
+        kv_ns_local(&ctx, skill_id),
+        kv_ns_project(&ctx, skill_id),
+    ] {
+        for k in crate::db::kv::list_keys(&ns)? {
+            crate::db::kv::delete(&ns, &k)?;
+            removed = true;
+        }
+    }
+
+    Ok(removed)
+}
+
+/// List all skills in the project that have `assets/vars.json`, with their merged state.
 pub fn list_skill_vars(ship_dir: &Path) -> Result<Vec<(String, HashMap<String, Value>)>> {
     let skills_path = ship_dir.join("skills");
     if !skills_path.exists() {
@@ -184,7 +210,7 @@ pub fn list_skill_vars(ship_dir: &Path) -> Result<Vec<(String, HashMap<String, V
     let mut result = Vec::new();
     for entry in std::fs::read_dir(&skills_path)?.flatten() {
         let path = entry.path();
-        if !path.is_dir() || !path.join("vars.json").exists() {
+        if !path.is_dir() || !path.join("assets").join("vars.json").exists() {
             continue;
         }
         let skill_id = entry.file_name().to_string_lossy().to_string();
@@ -204,6 +230,7 @@ mod tests {
     use crate::db::ensure_db;
     use crate::project::init_project;
     use serde_json::json;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     fn setup() -> (tempfile::TempDir, PathBuf) {
@@ -214,22 +241,26 @@ mod tests {
     }
 
     fn write_vars_json(ship_dir: &Path, skill_id: &str, content: &str) {
-        let dir = ship_dir.join("skills").join(skill_id);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("vars.json"), content).unwrap();
+        let assets = ship_dir.join("skills").join(skill_id).join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(assets.join("vars.json"), content).unwrap();
     }
 
     const VARS_JSON: &str = r#"{
         "commit_style": {
             "type": "enum",
             "default": "conventional",
-            "storage-hint": "user",
+            "storage-hint": "global",
             "values": ["conventional", "gitmoji"]
         },
         "verbose_mode": {
             "type": "bool",
             "default": false,
             "storage-hint": "project"
+        },
+        "local_override": {
+            "type": "string",
+            "storage-hint": "local"
         }
     }"#;
 
@@ -250,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn set_skill_var_user_scoped_goes_to_kv() {
+    fn set_skill_var_global_goes_to_kv() {
         let (_tmp, ship_dir) = setup();
         write_vars_json(&ship_dir, "commit", VARS_JSON);
         set_skill_var(&ship_dir, "commit", "commit_style", json!("gitmoji")).unwrap();
@@ -261,14 +292,29 @@ mod tests {
     }
 
     #[test]
-    fn set_skill_var_project_scoped_goes_to_state_json() {
+    fn set_skill_var_project_goes_to_kv() {
         let (_tmp, ship_dir) = setup();
         write_vars_json(&ship_dir, "commit", VARS_JSON);
         set_skill_var(&ship_dir, "commit", "verbose_mode", json!(true)).unwrap();
-        let state = read_project_state(&ship_dir);
-        assert_eq!(state["commit"]["verbose_mode"], json!(true));
-        // state.json should NOT exist in the wrong place
-        assert!(!ship_dir.join("state/skills/commit.json").exists());
+        let ctx = context_key(&ship_dir);
+        let val = crate::db::kv::get(&kv_ns_project(&ctx, "commit"), "verbose_mode")
+            .unwrap()
+            .unwrap();
+        assert_eq!(val, json!(true));
+        // No state.json file should exist
+        assert!(!ship_dir.join("state.json").exists());
+    }
+
+    #[test]
+    fn set_skill_var_local_goes_to_kv() {
+        let (_tmp, ship_dir) = setup();
+        write_vars_json(&ship_dir, "commit", VARS_JSON);
+        set_skill_var(&ship_dir, "commit", "local_override", json!("mine")).unwrap();
+        let ctx = context_key(&ship_dir);
+        let val = crate::db::kv::get(&kv_ns_local(&ctx, "commit"), "local_override")
+            .unwrap()
+            .unwrap();
+        assert_eq!(val, json!("mine"));
     }
 
     #[test]
@@ -279,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn user_state_overlays_default() {
+    fn global_state_overlays_default() {
         let (_tmp, ship_dir) = setup();
         write_vars_json(&ship_dir, "commit", VARS_JSON);
         set_skill_var(&ship_dir, "commit", "commit_style", json!("gitmoji")).unwrap();
@@ -295,6 +341,18 @@ mod tests {
         set_skill_var(&ship_dir, "commit", "verbose_mode", json!(true)).unwrap();
         let vars = get_skill_vars(&ship_dir, "commit").unwrap().unwrap();
         assert_eq!(vars["verbose_mode"], json!(true));
+    }
+
+    #[test]
+    fn reset_clears_all_scopes() {
+        let (_tmp, ship_dir) = setup();
+        write_vars_json(&ship_dir, "commit", VARS_JSON);
+        set_skill_var(&ship_dir, "commit", "commit_style", json!("gitmoji")).unwrap();
+        set_skill_var(&ship_dir, "commit", "verbose_mode", json!(true)).unwrap();
+        assert!(reset_skill_vars(&ship_dir, "commit").unwrap());
+        let vars = get_skill_vars(&ship_dir, "commit").unwrap().unwrap();
+        assert_eq!(vars["commit_style"], json!("conventional")); // back to default
+        assert_eq!(vars["verbose_mode"], json!(false)); // back to default
     }
 
     #[test]

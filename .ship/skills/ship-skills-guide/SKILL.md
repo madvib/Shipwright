@@ -118,12 +118,26 @@ Skills that need supporting files use subdirectories within the skill directory:
 ```
 my-skill/
   SKILL.md
-  references/        # reference docs, specs, API tables
-  scripts/           # helper scripts the skill instructs agents to run
-  assets/            # images, templates, config snippets
+  assets/
+    vars.json          # variable schema and defaults (if the skill has vars)
+    scripts/           # helper scripts the skill instructs agents to run
+    templates/         # config snippets, reusable templates
+  references/
+    docs/              # human + agent-readable documentation (.mdoc, Markdoc)
+    api/               # API tables, external specs
 ```
 
-Reference supporting files from the skill body using relative paths. The skill directory is self-contained -- everything the skill needs to function should be co-located.
+### Variable schema (`assets/vars.json`)
+
+Skills that expose user-configurable variables declare them in `assets/vars.json`. The compiler injects resolved values into `SKILL.md` at compile time via MiniJinja (`{{ var }}`, `{% if %}`, `{% for %}`).
+
+### Documentation (`references/docs/`)
+
+`references/docs/` contains Markdoc (`.mdoc`) files. The main page is `index.mdoc`.
+
+Documentation here is human-readable (rendered by the docs site) and agent-discoverable (exposed as MCP resources, retrieved on demand without consuming context window). This keeps `SKILL.md` focused on concise agent instructions while richer content lives where it can be retrieved when needed.
+
+Reference supporting files from the skill body using relative paths. The skill directory is self-contained — everything the skill needs to function should be co-located.
 
 ## Writing Tips
 

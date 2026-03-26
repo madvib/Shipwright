@@ -3,7 +3,7 @@
   "commit_style": {
     "type": "enum",
     "default": "conventional",
-    "storage-hint": "user",
+    "storage-hint": "global",
     "values": ["conventional", "gitmoji", "angular"],
     "label": "Commit style",
     "description": "Format applied to every commit message. conventional = feat:/fix: prefixes, gitmoji = emoji prefixes, angular = Angular-style."

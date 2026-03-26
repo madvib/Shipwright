@@ -154,14 +154,6 @@ pub enum VarsCommands {
         /// Variable name (omit to show all)
         key: Option<String>,
     },
-    /// Open the skill state file in $EDITOR
-    Edit {
-        /// Skill ID
-        skill_id: String,
-        /// Editor to use (defaults to $EDITOR)
-        #[arg(long)]
-        editor: Option<String>,
-    },
     /// Append an element to an array variable
     Append {
         /// Skill ID

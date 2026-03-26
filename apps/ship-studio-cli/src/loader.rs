@@ -304,8 +304,8 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
                 let id = entry.file_name().to_string_lossy().to_string();
                 let raw = std::fs::read_to_string(&skill_md)?;
                 let mut skill = parse_skill(&id, &raw);
-                // Load vars if vars.json exists in the skill directory.
-                let vars_path = path.join("vars.json");
+                // Load vars if assets/vars.json exists in the skill directory.
+                let vars_path = path.join("assets").join("vars.json");
                 if vars_path.exists() {
                     // Use stable-id as the state key if declared; fall back to directory name.
                     let state_key = skill.stable_id.as_deref().unwrap_or(id.as_str());

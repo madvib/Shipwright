@@ -3,7 +3,7 @@
   "default_tier": {
     "type": "enum",
     "default": "standard",
-    "storage-hint": "user",
+    "storage-hint": "global",
     "values": ["quick", "standard", "exhaustive"],
     "label": "Default QA tier",
     "description": "Rigor level when not explicitly specified. quick = critical+high only, standard = +medium, exhaustive = +cosmetic+responsive."

@@ -18,15 +18,17 @@ pub enum VarType {
     Object,
 }
 
-/// Storage hint declared by the skill author.
+/// Storage hint declared by the skill author. All scopes use platform.db KV.
 ///
-/// Ship maps `User` → `platform.db` KV (namespace `skill_vars:{id}`) and
-/// `Project` → `.ship/state.json` (keyed by skill id).
+/// - `global`  — machine-wide preference, shared across all contexts
+/// - `local`   — this context only, not shared (personal override)
+/// - `project` — this context, intended to be shared with the team
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageHint {
+    Global,
+    Local,
     Project,
-    User,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,7 +57,7 @@ impl Default for VarType {
 
 impl Default for StorageHint {
     fn default() -> Self {
-        StorageHint::User
+        StorageHint::Global
     }
 }
 
@@ -131,7 +133,7 @@ mod tests {
         "commit_style": {
             "type": "enum",
             "default": "conventional",
-            "storage-hint": "user",
+            "storage-hint": "global",
             "values": ["conventional", "gitmoji", "angular"],
             "label": "Commit style",
             "description": "Format applied to every commit message"
@@ -143,7 +145,7 @@ mod tests {
         },
         "team_members": {
             "type": "array",
-            "storage-hint": "project"
+            "storage-hint": "local"
         }
     }"#;
 
@@ -155,7 +157,7 @@ mod tests {
         let commit = defs.get("commit_style").unwrap();
         assert_eq!(commit.var_type, VarType::Enum);
         assert_eq!(commit.default, Some(Value::String("conventional".into())));
-        assert_eq!(commit.storage_hint, StorageHint::User);
+        assert_eq!(commit.storage_hint, StorageHint::Global);
         assert_eq!(commit.values, ["conventional", "gitmoji", "angular"]);
         assert_eq!(commit.label.as_deref(), Some("Commit style"));
 
@@ -167,7 +169,7 @@ mod tests {
         let members = defs.get("team_members").unwrap();
         assert_eq!(members.var_type, VarType::Array);
         assert!(members.default.is_none());
-        assert_eq!(members.storage_hint, StorageHint::Project);
+        assert_eq!(members.storage_hint, StorageHint::Local);
     }
 
     #[test]
@@ -195,12 +197,19 @@ mod tests {
     }
 
     #[test]
+    fn storage_hint_local_parsed() {
+        let json = r#"{"myvar": {"storage-hint": "local"}}"#;
+        let defs = parse_vars_json(json).unwrap();
+        assert_eq!(defs["myvar"].storage_hint, StorageHint::Local);
+    }
+
+    #[test]
     fn defaults_apply_for_missing_fields() {
         let minimal = r#"{"myvar": {}}"#;
         let defs = parse_vars_json(minimal).unwrap();
         let def = defs.get("myvar").unwrap();
         assert_eq!(def.var_type, VarType::String);
-        assert_eq!(def.storage_hint, StorageHint::User);
+        assert_eq!(def.storage_hint, StorageHint::Global);
         assert!(def.default.is_none());
     }
 

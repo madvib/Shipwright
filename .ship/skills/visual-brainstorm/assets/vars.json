@@ -3,7 +3,7 @@
   "server_port": {
     "type": "string",
     "default": "8765",
-    "storage-hint": "user",
+    "storage-hint": "global",
     "label": "Preview server port",
     "description": "Port for the local HTTP preview server."
   }

@@ -3,7 +3,7 @@
   "terminal": {
     "type": "enum",
     "default": "auto",
-    "storage-hint": "user",
+    "storage-hint": "global",
     "values": ["auto", "wt", "iterm", "tmux", "gnome", "vscode", "manual"],
     "label": "Terminal",
     "description": "Terminal to open when dispatching agents. auto = detect from environment."
@@ -11,14 +11,14 @@
   "worktree_dir": {
     "type": "string",
     "default": "~/dev/ship-worktrees",
-    "storage-hint": "user",
+    "storage-hint": "global",
     "label": "Worktree base directory",
     "description": "Base directory where git worktrees are created."
   },
   "confirm_on_dispatch": {
     "type": "bool",
     "default": false,
-    "storage-hint": "user",
+    "storage-hint": "global",
     "label": "Confirm before dispatch",
     "description": "Show job spec summary and prompt y/n before launching the agent."
   }

@@ -391,9 +391,6 @@ fn dispatch_vars(action: VarsCommands) -> Result<()> {
         VarsCommands::Get { skill_id, key } => {
             vars::run_vars_get(&ship_dir, &skill_id, key.as_deref())
         }
-        VarsCommands::Edit { skill_id, editor } => {
-            vars::run_vars_edit(&ship_dir, &skill_id, editor.as_deref())
-        }
         VarsCommands::Append { skill_id, key, json } => {
             vars::run_vars_append(&ship_dir, &skill_id, &key, &json)
         }
