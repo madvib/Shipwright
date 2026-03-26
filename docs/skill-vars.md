@@ -1,16 +1,16 @@
 # Skill Variables
 
-Skill variables let skill authors define named parameters that users can customize without forking the skill. Variable values are stored in typed JSON state files and resolved into skill content at compile time.
+Skill variables let skill authors define named parameters that users can customize without forking the skill. Variable values are stored in typed state and resolved into skill content at compile time.
 
 ## How it works
 
 ```
-vars.json           state files              compiler output
+vars.json           state                    compiler output
 (schema + defaults) + (user overrides)  →   resolved SKILL.md
 ```
 
 1. The skill author defines variables in `vars.json` alongside `SKILL.md`.
-2. Users set values with `ship vars set` or by editing state files directly.
+2. Users set values with `ship vars set`.
 3. At compile time (`ship use` / `ship compile`), Ship reads the merged state and resolves template markers in `SKILL.md` before writing the provider-specific output.
 
 Variables are only supported for directory-format skills (`.ship/skills/{id}/SKILL.md`). Flat-format `.ship/skills/{id}.md` files do not support vars.
@@ -27,7 +27,7 @@ Place `vars.json` next to `SKILL.md` in the skill directory.
   "commit_style": {
     "type": "enum",
     "default": "conventional",
-    "scope": "user",
+    "storage-hint": "user",
     "values": ["conventional", "gitmoji", "angular"],
     "label": "Commit message format",
     "description": "Applied to every commit in this project"
@@ -35,11 +35,11 @@ Place `vars.json` next to `SKILL.md` in the skill directory.
   "verbose_output": {
     "type": "bool",
     "default": false,
-    "scope": "project"
+    "storage-hint": "project"
   },
   "team_members": {
     "type": "array",
-    "scope": "project"
+    "storage-hint": "project"
   }
 }
 ```
@@ -49,8 +49,8 @@ Place `vars.json` next to `SKILL.md` in the skill directory.
 | Field | Required | Description |
 |-------|----------|-------------|
 | `type` | no | `string` (default), `bool`, `enum`, `array`, `object` |
-| `default` | no | Default value used when no state file exists |
-| `scope` | no | `user` (default) or `project` — controls which state file stores this var |
+| `default` | no | Default value used when no state exists |
+| `storage-hint` | no | `user` (default) or `project` — controls where this var is stored |
 | `values` | enum only | Allowed values; `ship vars set` rejects anything not in this list |
 | `label` | no | Human-readable name shown in Studio and `ship vars get` |
 | `description` | no | Longer explanation of what the var controls |
@@ -59,31 +59,50 @@ The `$schema` key is ignored at parse time and exists only for IDE tooling.
 
 ---
 
-## Scope
+## Storage
 
-Each variable has a scope declared in `vars.json`. The scope is set by the skill author.
+Each variable has a `storage-hint` declared in `vars.json`. The hint is set by the skill author.
 
-### User scope (`scope: user`)
+### User hint (`storage-hint: user`)
 
-State stored at `~/.ship/state/skills/{skill-id}.json`.
+State stored in `platform.db` KV, namespace `skill_vars:{skill-id}`.
 
 Use for personal preferences that follow the developer across all projects: commit message style, preferred language, output verbosity.
 
-### Project scope (`scope: project`)
+### Project hint (`storage-hint: project`)
 
-State stored at `.ship/state/skills/{skill-id}.json` (relative to the `.ship/` directory).
+State stored in `.ship/state.json` (relative to the project root), keyed by skill id.
 
 Use for team-wide configuration: team member lists, project-specific conventions.
 
-**Important:** Project-scoped state files are only shared if `.ship/state/` is committed to version control. Consider adding it explicitly when using project-scoped vars.
+**Sharing project state:** `.ship/state.json` can be committed to version control. Teams using project-scoped vars should commit this file.
 
 ### Merge order
 
 ```
-1. defaults (vars.json)
-2. user state  (~/.ship/state/skills/{id}.json)
-3. project state (.ship/state/skills/{id}.json)
+1. defaults      (vars.json)
+2. user state    (platform.db KV, namespace skill_vars:{id})
+3. project state (.ship/state.json, key: {id})
 ```
+
+Later layers win. A project-scoped value overrides a user-scoped value for the same key.
+
+---
+
+## stable-id
+
+Skills are identified by their directory name by default. If a skill is renamed, any stored state would be orphaned because the key no longer matches.
+
+To preserve state across renames, add a `stable-id` to the skill's `SKILL.md` frontmatter:
+
+```markdown
+---
+name: My Renamed Commit Skill
+stable-id: commit
+---
+```
+
+The `stable-id` must be lowercase letters, digits, and hyphens only. When set, Ship uses it as the storage key instead of the directory name.
 
 ---
 
@@ -159,36 +178,6 @@ Template syntax errors (malformed `{% if %}` etc.) fall back to the original unr
 
 ---
 
-## State file format
-
-State files are JSON objects mapping variable name to value, with a reserved `_meta` block:
-
-```json
-{
-  "commit_style": "gitmoji",
-  "team_members": ["Alice", "Bob"],
-  "_meta": {
-    "v": 1,
-    "skill": "commit",
-    "migrations": []
-  }
-}
-```
-
-`_meta` is written by Ship and stripped before vars reach the template engine. Do not edit it by hand.
-
-Files are created on first write. Missing files are treated as empty (defaults apply). Unknown keys are silently ignored at read time.
-
-### Changes log
-
-Every write via `ship vars set` or `ship vars append` appends an entry to `.ship/state/skills/{id}.changes.jsonl`:
-
-```jsonl
-{"ts":"2026-03-25T14:00:00Z","key":"commit_style","from":"conventional","to":"gitmoji","actor":"user:cli"}
-```
-
----
-
 ## CLI reference
 
 ```bash
@@ -204,7 +193,7 @@ ship vars set commit commit_style gitmoji
 # Append to an array var (value must be valid JSON)
 ship vars append commit team_members '"Alice"'
 
-# Open the project state file in $EDITOR
+# Open .ship/state.json in $EDITOR (project-scoped vars only)
 ship vars edit commit
 
 # Delete all state for a skill (resets to defaults on next compile)
@@ -213,15 +202,17 @@ ship vars reset commit
 
 `ship vars set` validates against the declared type and, for `enum` vars, against the `values` list.
 
+`ship vars edit` opens `.ship/state.json`. User-scoped vars live in `platform.db` — use `ship vars set` to change them.
+
 ---
 
 ## Gotchas
 
-**Compile-time resolution only.** Variables are baked into the output at `ship use` / `ship compile` time. Changing a state file has no effect until the next compile.
+**Compile-time resolution only.** Variables are baked into the output at `ship use` / `ship compile` time. Changing state has no effect until the next compile.
 
 **Flat-format skills have no vars support.** `{{ var }}` markers in `.ship/skills/{id}.md` (single-file format) are never resolved. Use the directory format to get vars.
 
-**Project state is only shared if committed.** `.ship/state/` is not automatically added to version control. Teams using project-scoped vars should commit this directory.
+**Project state is only shared if committed.** `.ship/state.json` is not automatically added to version control. Teams using project-scoped vars should commit this file.
 
 **Enum validation is enforced at the CLI and at compile time.** `ship vars set` rejects values not in the `values` list. At compile time (`ship use` / `ship compile`), invalid enum values produce a warning to stderr — the skill still compiles, using the stored value as-is.
 
@@ -241,34 +232,38 @@ ship vars reset commit
   "commit_style": {
     "type": "enum",
     "default": "conventional",
-    "scope": "user",
+    "storage-hint": "user",
     "values": ["conventional", "gitmoji", "angular"],
     "label": "Commit style"
   },
-  "include_scope": {
+  "sign_commits": {
     "type": "bool",
-    "default": true,
-    "scope": "user",
-    "label": "Include scope in commit subject"
+    "default": false,
+    "storage-hint": "project",
+    "label": "Sign commits"
   }
 }
 ```
 
 **SKILL.md:**
 ```markdown
+---
+name: commit
+stable-id: commit
+---
+
 Write commit messages in {{ commit_style }} format.
 
 {% if commit_style == "conventional" %}
 Format: `type(scope): subject` where type is feat, fix, docs, etc.
-{% if include_scope %}Always include the scope in parentheses.{% endif %}
 {% endif %}
 
 {% if commit_style == "gitmoji" %}
 Start every commit message with the appropriate gitmoji.
 {% endif %}
 
-{% if commit_style == "angular" %}
-Follow the Angular commit message convention strictly.
+{% if sign_commits %}
+Sign every commit with `-S`.
 {% endif %}
 ```
 

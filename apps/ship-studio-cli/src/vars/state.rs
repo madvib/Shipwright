@@ -41,17 +41,6 @@ pub fn validate_skill_id(skill_id: &str) -> Result<()> {
 
 // ── Wrappers over runtime ─────────────────────────────────────────────────────
 
-/// Read merged variable state for a skill. Delegates to runtime::skill_vars.
-pub fn read_skill_state(
-    skill_id: &str,
-    ship_dir: &Path,
-    _var_defs: &std::collections::HashMap<String, super::schema::VarDef>,
-) -> std::collections::HashMap<String, Value> {
-    runtime::skill_vars::get_skill_vars(ship_dir, skill_id)
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-}
 
 /// Append an element to an array variable. Reads current value, appends, writes back.
 pub fn append_to_array(skill_id: &str, key: &str, element: &Value, ship_dir: &Path) -> Result<()> {

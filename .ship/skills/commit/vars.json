@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agentskills.io/schemas/vars/v1.json",
+  "commit_style": {
+    "type": "enum",
+    "default": "conventional",
+    "storage-hint": "user",
+    "values": ["conventional", "gitmoji", "angular"],
+    "label": "Commit style",
+    "description": "Format applied to every commit message. conventional = feat:/fix: prefixes, gitmoji = emoji prefixes, angular = Angular-style."
+  },
+  "sign_commits": {
+    "type": "bool",
+    "default": false,
+    "storage-hint": "project",
+    "label": "Sign commits",
+    "description": "Whether to pass -S to git commit. Requires GPG or SSH signing configured."
+  },
+  "co_authors": {
+    "type": "array",
+    "storage-hint": "project",
+    "label": "Co-authors",
+    "description": "List of Co-Authored-By trailers appended to every commit. Each entry is a string: 'Name <email>'."
+  }
+}

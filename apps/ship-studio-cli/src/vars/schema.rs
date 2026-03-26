@@ -18,11 +18,10 @@ pub enum VarType {
     Object,
 }
 
-/// Storage scope hint declared by the skill author.
+/// Storage hint declared by the skill author.
 ///
-/// Runtimes map this to their storage model — it is not a mandate about file paths.
-/// Ship maps `User` → `~/.ship/state/skills/{id}.json` and
-/// `Project` → `.ship/state/skills/{id}.json`.
+/// Ship maps `User` → `platform.db` KV (namespace `skill_vars:{id}`) and
+/// `Project` → `.ship/state.json` (keyed by skill id).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageHint {
@@ -31,12 +30,12 @@ pub enum StorageHint {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct VarDef {
     #[serde(rename = "type", default)]
     pub var_type: VarType,
     pub default: Option<Value>,
-    /// Storage scope hint. Runtimes map this to their storage model.
-    /// Ship maps `user` → user-scoped file, `project` → project-scoped file.
+    /// Storage scope hint. `user` → platform.db KV, `project` → .ship/state.json.
     #[serde(rename = "storage-hint", default)]
     pub storage_hint: StorageHint,
     /// Allowed values (enum type only).

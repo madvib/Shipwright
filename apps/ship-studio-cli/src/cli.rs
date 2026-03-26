@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands, VarsCommands};
+pub use crate::commands::{
+    AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands, VarsCommands,
+};
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
   ship init [--from url] Start here — scaffold .ship/
