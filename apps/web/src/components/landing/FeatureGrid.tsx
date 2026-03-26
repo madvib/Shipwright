@@ -19,9 +19,9 @@ const FEATURES: FeatureCard[] = [
     icon: Package,
     iconColor: 'text-primary',
     iconBg: 'bg-primary/10',
-    title: 'Composable agent configs',
+    title: 'The package manager for agents',
     description:
-      'Define skills, MCP servers, and agent configs in a portable format. Compose them like dependencies. Share what you build via Git.',
+      'Install skills, MCP servers, and agent configs from the registry. Compose them like dependencies. Share what you build. Version everything.',
   },
   {
     icon: Lock,
@@ -78,7 +78,7 @@ export function FeatureGrid() {
           What Ship gives your agents
         </h2>
         <p className="text-[15px] text-muted-foreground">
-          Configuration as code. Permissions as policy. Every provider from one source.
+          Configuration as code. Permissions as policy. Distribution as a service.
         </p>
       </div>
 
