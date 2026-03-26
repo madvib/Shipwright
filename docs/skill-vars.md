@@ -223,7 +223,7 @@ ship vars reset commit
 
 **Project state is only shared if committed.** `.ship/state/` is not automatically added to version control. Teams using project-scoped vars should commit this directory.
 
-**Enum validation is CLI-only.** Writing a value outside the `values` list directly to the state file bypasses validation. The compiler uses whatever value is in state.
+**Enum validation is enforced at the CLI and at compile time.** `ship vars set` rejects values not in the `values` list. At compile time (`ship use` / `ship compile`), invalid enum values produce a warning to stderr — the skill still compiles, using the stored value as-is.
 
 ---
 

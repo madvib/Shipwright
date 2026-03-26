@@ -60,6 +60,39 @@ impl Default for StorageHint {
     }
 }
 
+// ── Validation ────────────────────────────────────────────────────────────────
+
+/// Warn to stderr for any enum vars whose current state value is not in the allowed list.
+///
+/// Called at compile time after merging state. Does not fail the build — the compiler
+/// renders whatever value is in state, but authors should be aware of the mismatch.
+pub fn warn_invalid_enum_vars(
+    skill_id: &str,
+    var_defs: &HashMap<String, VarDef>,
+    state: &HashMap<String, Value>,
+) {
+    for (name, def) in var_defs {
+        if def.var_type != VarType::Enum || def.values.is_empty() {
+            continue;
+        }
+        let Some(val) = state.get(name) else {
+            continue;
+        };
+        let Some(s) = val.as_str() else {
+            continue;
+        };
+        if !def.values.contains(&s.to_string()) {
+            eprintln!(
+                "warning: skill '{}': var '{}' has value '{}' which is not in allowed values: {}",
+                skill_id,
+                name,
+                s,
+                def.values.join(", ")
+            );
+        }
+    }
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 /// Parse a vars.json file into a map of variable name → definition.
@@ -170,5 +203,25 @@ mod tests {
         assert_eq!(def.var_type, VarType::String);
         assert_eq!(def.storage_hint, StorageHint::User);
         assert!(def.default.is_none());
+    }
+
+    #[test]
+    fn warn_invalid_enum_vars_no_panic_for_valid_value() {
+        let json = r#"{"style": {"type": "enum", "values": ["a", "b"]}}"#;
+        let defs = parse_vars_json(json).unwrap();
+        let mut state = HashMap::new();
+        state.insert("style".to_string(), Value::String("a".into()));
+        // Should not panic; valid values produce no warning.
+        warn_invalid_enum_vars("test-skill", &defs, &state);
+    }
+
+    #[test]
+    fn warn_invalid_enum_vars_no_panic_for_invalid_value() {
+        let json = r#"{"style": {"type": "enum", "values": ["a", "b"]}}"#;
+        let defs = parse_vars_json(json).unwrap();
+        let mut state = HashMap::new();
+        state.insert("style".to_string(), Value::String("invalid".into()));
+        // Should not panic; the compiler still compiles, just writes to stderr.
+        warn_invalid_enum_vars("test-skill", &defs, &state);
     }
 }
