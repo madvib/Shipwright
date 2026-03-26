@@ -113,9 +113,7 @@ pub async fn get_project_info(project_dir: &Path) -> String {
         if let Some(ref mode) = ws.active_agent {
             out.push_str(&format!(" mode={}", mode));
         }
-        if let Some(ref fid) = ws.feature_id {
-            out.push_str(&format!(" feature={}", fid));
-        }
+
         out.push('\n');
 
         match runtime_get_active_workspace_session(project_dir, &ws.branch) {

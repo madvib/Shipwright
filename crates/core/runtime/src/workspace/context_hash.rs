@@ -58,9 +58,6 @@ pub(super) fn compute_workspace_context_hash(
         "workspace": {
             "branch": workspace.branch,
             "workspace_type": workspace.workspace_type.to_string(),
-            "environment_id": workspace.environment_id,
-            "feature_id": workspace.feature_id,
-            "target_id": workspace.target_id,
             "agent_id": resolved_agent.active_agent,
             "provider_overrides": normalize_nonempty_id_list(&workspace.providers),
             "mcp_server_overrides": normalize_nonempty_id_list(&workspace.mcp_servers),

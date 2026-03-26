@@ -20,15 +20,6 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
         .clone()
         .unwrap_or_else(|| new_workspace(&branch, now));
 
-    if let Some(feature_id) = request.feature_id {
-        workspace.feature_id = Some(feature_id);
-    }
-    if let Some(environment_id) = request.environment_id {
-        workspace.environment_id = normalize_optional_text(Some(environment_id));
-    }
-    if let Some(target_id) = request.target_id {
-        workspace.target_id = Some(target_id);
-    }
     if let Some(active_agent) = request.active_agent {
         workspace.active_agent = Some(validate_agent_exists(ship_dir, &active_agent)?);
     }
@@ -75,7 +66,7 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
         existing
             .as_ref()
             .map(|entry| entry.workspace_type)
-            .unwrap_or_else(|| infer_workspace_type(&branch, workspace.feature_id.as_deref()))
+            .unwrap_or_else(|| infer_workspace_type(&branch))
     });
 
     hydrate_from_feature_links(ship_dir, &mut workspace)?;
@@ -90,7 +81,6 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     workspace.id = workspace_id_from_branch(&branch);
     workspace.branch = branch;
     workspace.status = next_status;
-    workspace.resolved_at = now;
     if next_status == WorkspaceStatus::Active {
         workspace.last_activated_at = Some(now);
     }
@@ -106,12 +96,6 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
         format!("type={}", workspace.workspace_type),
         format!("status={}", workspace.status),
     ];
-    if let Some(feature_id) = workspace.feature_id.as_deref() {
-        details.push(format!("feature={feature_id}"));
-    }
-    if let Some(target_id) = workspace.target_id.as_deref() {
-        details.push(format!("target={target_id}"));
-    }
     if let Some(agent_id) = workspace.active_agent.as_deref() {
         details.push(format!("agent={agent_id}"));
     }
@@ -154,7 +138,6 @@ pub fn transition_workspace_status(
     }
 
     workspace.status = next_status;
-    workspace.resolved_at = now;
     upsert_workspace(ship_dir, &workspace)?;
     append_event(
         ship_dir,
@@ -184,7 +167,7 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     workspace.id = workspace_id_from_branch(branch);
     workspace.branch = branch.to_string();
     if workspace.workspace_type == ShipWorkspaceKind::Feature {
-        workspace.workspace_type = infer_workspace_type(branch, workspace.feature_id.as_deref());
+        workspace.workspace_type = infer_workspace_type(branch);
     }
     validate_workspace_transition(
         workspace.workspace_type,
@@ -193,7 +176,6 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     )?;
 
     workspace.status = WorkspaceStatus::Active;
-    workspace.resolved_at = now;
     workspace.last_activated_at = Some(now);
 
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
@@ -227,7 +209,6 @@ pub fn set_workspace_active_agent(
         Some(a) => Some(validate_agent_exists(ship_dir, a)?),
         None => None,
     };
-    workspace.resolved_at = Utc::now();
     if workspace.status == WorkspaceStatus::Active {
         let active_agent = workspace.active_agent.clone();
         compile_workspace_context(ship_dir, &mut workspace, active_agent.as_deref())?;

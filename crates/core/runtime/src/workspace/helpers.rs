@@ -1,4 +1,4 @@
-use crate::db::branch_context::{clear_branch_link, get_branch_link, set_branch_link};
+use crate::db::branch_context::clear_branch_link;
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -77,30 +77,23 @@ pub(crate) fn workspace_id_from_branch(branch: &str) -> String {
     sanitize_file_name(branch)
 }
 
-pub(crate) fn infer_workspace_type(branch: &str, feature_id: Option<&str>) -> ShipWorkspaceKind {
-    if feature_id.is_some() {
-        return ShipWorkspaceKind::Feature;
-    }
+pub(crate) fn infer_workspace_type(branch: &str) -> ShipWorkspaceKind {
     if branch.starts_with("patch/") {
         return ShipWorkspaceKind::Patch;
     }
     ShipWorkspaceKind::Feature
 }
 
-pub(crate) fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
+pub(crate) fn new_workspace(branch: &str, _now: DateTime<Utc>) -> Workspace {
     Workspace {
         id: workspace_id_from_branch(branch),
         branch: branch.to_string(),
         workspace_type: ShipWorkspaceKind::Feature,
         status: WorkspaceStatus::Active,
-        environment_id: None,
-        feature_id: None,
-        target_id: None,
         active_agent: None,
         providers: Vec::new(),
         mcp_servers: Vec::new(),
         skills: Vec::new(),
-        resolved_at: now,
         last_activated_at: None,
         is_worktree: false,
         worktree_path: None,
@@ -115,20 +108,9 @@ pub(crate) fn new_workspace(branch: &str, now: DateTime<Utc>) -> Workspace {
 
 pub(crate) fn hydrate_from_branch_links(
     _ship_dir: &Path,
-    branch: &str,
-    workspace: &mut Workspace,
+    _branch: &str,
+    _workspace: &mut Workspace,
 ) -> Result<()> {
-    if let Some((link_type, link_id)) = get_branch_link(branch)? {
-        match link_type.as_str() {
-            "feature" => {
-                workspace.feature_id = Some(link_id);
-            }
-            "target" | "release" => {
-                workspace.target_id = Some(link_id);
-            }
-            _ => {}
-        }
-    }
     Ok(())
 }
 
@@ -146,9 +128,6 @@ pub(crate) fn persist_branch_link_from_workspace(
     _ship_dir: &Path,
     workspace: &Workspace,
 ) -> Result<()> {
-    if let Some(feature_id) = workspace.feature_id.as_deref() {
-        return set_branch_link(&workspace.branch, "feature", feature_id);
-    }
     clear_branch_link(&workspace.branch)
 }
 

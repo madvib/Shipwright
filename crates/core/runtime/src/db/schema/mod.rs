@@ -18,8 +18,7 @@
 //! ## Workflow (`workflow.rs`) — opinionated planning layer
 //! - `target` -- named goals (milestones and surfaces)
 //! - `capability` -- concrete requirements under targets
-//! - `job` -- queued unit of work
-//! - `job_file` -- exclusive file claims per job
+//! - `jobs` -- agent work queue
 //! - `file_claim` -- batch-atomic file claims with workspace tracking
 //! - `note` -- human-facing scratchpad
 //! - `adr` -- architecture decision records

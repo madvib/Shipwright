@@ -1,7 +1,6 @@
 //! Atomic file-claim tracking for concurrent agent coordination.
 //!
-//! Unlike `job_file` (first-wins, single file at a time), this module
-//! provides batch atomic claims: either ALL paths are claimed or NONE are.
+//! Provides batch atomic claims: either ALL paths are claimed or NONE are.
 //! Claims include an optional `workspace_id` for cross-workspace tracking.
 
 use anyhow::{Result, anyhow};

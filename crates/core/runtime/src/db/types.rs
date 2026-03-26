@@ -1,46 +1,38 @@
 //! Shared types for the platform database layer.
 
 pub type WorkspaceDbRow = (
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<String>,
-    String,
-    bool,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    i64,
-    Option<String>,
-    Option<String>,
+    String,        // 0: id
+    String,        // 1: workspace_type
+    String,        // 2: status
+    Option<String>, // 3: active_agent
+    Vec<String>,   // 4: providers
+    Vec<String>,   // 5: mcp_servers
+    Vec<String>,   // 6: skills
+    bool,          // 7: is_worktree
+    Option<String>, // 8: worktree_path
+    Option<String>, // 9: last_activated_at
+    Option<String>, // 10: context_hash
+    i64,           // 11: config_generation
+    Option<String>, // 12: compiled_at
+    Option<String>, // 13: compile_error
 );
 
 pub type WorkspaceDbListRow = (
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<String>,
-    String,
-    bool,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    i64,
-    Option<String>,
-    Option<String>,
+    String,        // 0: branch
+    String,        // 1: id
+    String,        // 2: workspace_type
+    String,        // 3: status
+    Option<String>, // 4: active_agent
+    Vec<String>,   // 5: providers
+    Vec<String>,   // 6: mcp_servers
+    Vec<String>,   // 7: skills
+    bool,          // 8: is_worktree
+    Option<String>, // 9: worktree_path
+    Option<String>, // 10: last_activated_at
+    Option<String>, // 11: context_hash
+    i64,           // 12: config_generation
+    Option<String>, // 13: compiled_at
+    Option<String>, // 14: compile_error
 );
 
 pub struct WorkspaceUpsert<'a> {
@@ -48,14 +40,10 @@ pub struct WorkspaceUpsert<'a> {
     pub workspace_id: &'a str,
     pub workspace_type: &'a str,
     pub status: &'a str,
-    pub environment_id: Option<&'a str>,
-    pub feature_id: Option<&'a str>,
-    pub target_id: Option<&'a str>,
     pub active_agent: Option<&'a str>,
     pub providers: &'a [String],
     pub mcp_servers: &'a [String],
     pub skills: &'a [String],
-    pub resolved_at: &'a str,
     pub is_worktree: bool,
     pub worktree_path: Option<&'a str>,
     pub last_activated_at: Option<&'a str>,

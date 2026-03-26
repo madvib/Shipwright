@@ -27,16 +27,11 @@ CREATE TABLE IF NOT EXISTS workspace (
   id                 TEXT,
   workspace_type     TEXT NOT NULL DEFAULT 'feature',
   status             TEXT NOT NULL DEFAULT 'active',
-  environment_id     TEXT,
-  feature_id         TEXT,
-  target_id          TEXT,
   active_agent       TEXT,
   active_preset      TEXT,
   providers_json     TEXT NOT NULL DEFAULT '[]',
   mcp_servers_json   TEXT NOT NULL DEFAULT '[]',
   skills_json        TEXT NOT NULL DEFAULT '[]',
-  plugins_json       TEXT NOT NULL DEFAULT '[]',
-  resolved_at        TEXT,
   is_worktree        INTEGER NOT NULL DEFAULT 0,
   worktree_path      TEXT,
   last_activated_at  TEXT,
@@ -125,20 +120,25 @@ CREATE TABLE IF NOT EXISTS branch_context (
 /// Context columns enable scoped queries without joins.
 pub const EVENT_LOG: &str = r#"
 CREATE TABLE IF NOT EXISTS event_log (
-    id            TEXT PRIMARY KEY NOT NULL,
-    actor         TEXT NOT NULL DEFAULT 'ship',
-    entity_type   TEXT NOT NULL,
-    entity_id     TEXT,
-    action        TEXT NOT NULL,
-    detail        TEXT,
-    workspace_id  TEXT,
-    session_id    TEXT,
-    job_id        TEXT,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    id             TEXT PRIMARY KEY NOT NULL,
+    actor          TEXT NOT NULL DEFAULT 'ship',
+    entity_type    TEXT NOT NULL,
+    entity_id      TEXT,
+    action         TEXT NOT NULL,
+    detail         TEXT,
+    workspace_id   TEXT,
+    session_id     TEXT,
+    job_id         TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    version        INTEGER,
+    correlation_id TEXT,
+    causation_id   TEXT,
+    synced_at      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_event_workspace ON event_log(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_event_session ON event_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_event_job ON event_log(job_id);
+CREATE INDEX IF NOT EXISTS idx_event_entity ON event_log(entity_type, entity_id);
 "#;
 
 /// Agent runtime settings: singleton row (id=1) holding global agent config.
