@@ -95,6 +95,7 @@ fn resolve_single(ref_str: &str, lock: &ShipLock, cache: &Path) -> anyhow::Resul
     Ok(Skill {
         id: ref_str.to_string(),
         name: ref_str.to_string(),
+        stable_id: None,
         description: None,
         license: None,
         compatibility: None,
@@ -339,6 +340,7 @@ fn local_and_dep_skills_both_appear_in_compiled_output() {
     let local = Skill {
         id: "local-skill".into(),
         name: "Local".into(),
+        stable_id: None,
         description: None,
         license: None,
         compatibility: None,

@@ -18,9 +18,14 @@ pub enum VarType {
     Object,
 }
 
+/// Storage scope hint declared by the skill author.
+///
+/// Runtimes map this to their storage model — it is not a mandate about file paths.
+/// Ship maps `User` → `~/.ship/state/skills/{id}.json` and
+/// `Project` → `.ship/state/skills/{id}.json`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum VarScope {
+pub enum StorageHint {
     Project,
     User,
 }
@@ -30,8 +35,10 @@ pub struct VarDef {
     #[serde(rename = "type", default)]
     pub var_type: VarType,
     pub default: Option<Value>,
-    #[serde(default)]
-    pub scope: VarScope,
+    /// Storage scope hint. Runtimes map this to their storage model.
+    /// Ship maps `user` → user-scoped file, `project` → project-scoped file.
+    #[serde(rename = "storage-hint", default)]
+    pub storage_hint: StorageHint,
     /// Allowed values (enum type only).
     #[serde(default)]
     pub values: Vec<String>,
@@ -47,9 +54,9 @@ impl Default for VarType {
     }
 }
 
-impl Default for VarScope {
+impl Default for StorageHint {
     fn default() -> Self {
-        VarScope::User
+        StorageHint::User
     }
 }
 
@@ -92,7 +99,7 @@ mod tests {
         "commit_style": {
             "type": "enum",
             "default": "conventional",
-            "scope": "user",
+            "storage-hint": "user",
             "values": ["conventional", "gitmoji", "angular"],
             "label": "Commit style",
             "description": "Format applied to every commit message"
@@ -100,11 +107,11 @@ mod tests {
         "verbose_mode": {
             "type": "bool",
             "default": false,
-            "scope": "project"
+            "storage-hint": "project"
         },
         "team_members": {
             "type": "array",
-            "scope": "project"
+            "storage-hint": "project"
         }
     }"#;
 
@@ -116,19 +123,19 @@ mod tests {
         let commit = defs.get("commit_style").unwrap();
         assert_eq!(commit.var_type, VarType::Enum);
         assert_eq!(commit.default, Some(Value::String("conventional".into())));
-        assert_eq!(commit.scope, VarScope::User);
+        assert_eq!(commit.storage_hint, StorageHint::User);
         assert_eq!(commit.values, ["conventional", "gitmoji", "angular"]);
         assert_eq!(commit.label.as_deref(), Some("Commit style"));
 
         let verbose = defs.get("verbose_mode").unwrap();
         assert_eq!(verbose.var_type, VarType::Bool);
         assert_eq!(verbose.default, Some(Value::Bool(false)));
-        assert_eq!(verbose.scope, VarScope::Project);
+        assert_eq!(verbose.storage_hint, StorageHint::Project);
 
         let members = defs.get("team_members").unwrap();
         assert_eq!(members.var_type, VarType::Array);
         assert!(members.default.is_none());
-        assert_eq!(members.scope, VarScope::Project);
+        assert_eq!(members.storage_hint, StorageHint::Project);
     }
 
     #[test]
@@ -149,12 +156,19 @@ mod tests {
     }
 
     #[test]
+    fn storage_hint_project_parsed() {
+        let json = r#"{"myvar": {"storage-hint": "project"}}"#;
+        let defs = parse_vars_json(json).unwrap();
+        assert_eq!(defs["myvar"].storage_hint, StorageHint::Project);
+    }
+
+    #[test]
     fn defaults_apply_for_missing_fields() {
         let minimal = r#"{"myvar": {}}"#;
         let defs = parse_vars_json(minimal).unwrap();
         let def = defs.get("myvar").unwrap();
         assert_eq!(def.var_type, VarType::String);
-        assert_eq!(def.scope, VarScope::User);
+        assert_eq!(def.storage_hint, StorageHint::User);
         assert!(def.default.is_none());
     }
 }

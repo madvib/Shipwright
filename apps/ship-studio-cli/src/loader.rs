@@ -307,9 +307,12 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
                 // Load vars if vars.json exists in the skill directory.
                 let vars_path = path.join("vars.json");
                 if vars_path.exists() {
+                    // Use stable-id as the state key if declared; fall back to directory name.
+                    let state_key = skill.stable_id.as_deref().unwrap_or(id.as_str());
                     match crate::vars::load_vars_json(&vars_path) {
                         Ok(var_defs) => {
-                            skill.vars = crate::vars::read_skill_state(&id, agents_dir, &var_defs);
+                            skill.vars =
+                                crate::vars::read_skill_state(state_key, agents_dir, &var_defs);
                         }
                         Err(e) => {
                             eprintln!("warning: skill '{}': failed to read vars.json: {}", id, e);
@@ -334,14 +337,15 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
 
 /// Parse a SKILL.md file per the agentskills.io spec.
 ///
-/// Frontmatter keys parsed: `name`, `description`, `license`, `compatibility`,
-/// `allowed-tools` (space-delimited), `metadata` (key-value block).
+/// Frontmatter keys parsed: `name`, `stable-id`, `description`, `license`,
+/// `compatibility`, `allowed-tools` (space-delimited), `metadata` (key-value block).
 /// Legacy top-level `version` and `author` keys are folded into `metadata`.
 /// Emits a warning if the frontmatter `name` does not match the directory `id`.
 fn parse_skill(id: &str, raw: &str) -> Skill {
     use std::collections::HashMap;
 
     let mut name = id.to_string();
+    let mut stable_id: Option<String> = None;
     let mut description = None;
     let mut license = None;
     let mut compatibility = None;
@@ -369,6 +373,16 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
             }
             if let Some(v) = line.strip_prefix("name:") {
                 name = v.trim().to_string();
+            } else if let Some(v) = line.strip_prefix("stable-id:") {
+                let sid = v.trim().to_string();
+                if crate::vars::state::validate_skill_id(&sid).is_ok() {
+                    stable_id = Some(sid);
+                } else {
+                    eprintln!(
+                        "warning: skill '{}': invalid stable-id '{}' ignored",
+                        id, sid
+                    );
+                }
             } else if let Some(v) = line.strip_prefix("description:") {
                 description = Some(v.trim().to_string());
             } else if let Some(v) = line.strip_prefix("license:") {
@@ -404,6 +418,7 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
     Skill {
         id: id.to_string(),
         name,
+        stable_id,
         description,
         license,
         compatibility,

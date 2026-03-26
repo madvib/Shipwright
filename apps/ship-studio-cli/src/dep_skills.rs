@@ -220,6 +220,7 @@ fn parse_dep_skill(dep_ref: &str, raw: &str) -> Skill {
     Skill {
         id: dep_ref.to_string(),
         name,
+        stable_id: None,
         description,
         license,
         compatibility,

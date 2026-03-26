@@ -57,7 +57,7 @@ pub fn run_vars_set(ship_dir: &Path, skill_id: &str, key: &str, value_str: &str)
         _ => Value::String(value_str.to_string()),
     };
 
-    write_skill_state(skill_id, key, &value, &def.scope, ship_dir)?;
+    write_skill_state(skill_id, key, &value, &def.storage_hint, ship_dir)?;
     println!("set {}.{} = {}", skill_id, key, value_str);
     Ok(())
 }
@@ -129,7 +129,7 @@ pub fn run_vars_append(
     let element: Value =
         serde_json::from_str(json_str).with_context(|| format!("invalid JSON: {}", json_str))?;
 
-    append_to_array(skill_id, key, &element, &def.scope, ship_dir)?;
+    append_to_array(skill_id, key, &element, &def.storage_hint, ship_dir)?;
     println!("appended to {}.{}", skill_id, key);
     Ok(())
 }

@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::schema::{VarDef, VarScope};
+use super::schema::{StorageHint, VarDef};
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -158,12 +158,12 @@ pub fn write_skill_state(
     skill_id: &str,
     key: &str,
     value: &Value,
-    scope: &VarScope,
+    scope: &StorageHint,
     ship_dir: &Path,
 ) -> Result<()> {
     let path = match scope {
-        VarScope::Project => project_state_path(skill_id, ship_dir),
-        VarScope::User => user_state_path(skill_id),
+        StorageHint::Project => project_state_path(skill_id, ship_dir),
+        StorageHint::User => user_state_path(skill_id),
     };
     let mut state = read_state_file(&path);
     let old = state.get(key).cloned();
@@ -178,12 +178,12 @@ pub fn append_to_array(
     skill_id: &str,
     key: &str,
     element: &Value,
-    scope: &VarScope,
+    scope: &StorageHint,
     ship_dir: &Path,
 ) -> Result<()> {
     let path = match scope {
-        VarScope::Project => project_state_path(skill_id, ship_dir),
-        VarScope::User => user_state_path(skill_id),
+        StorageHint::Project => project_state_path(skill_id, ship_dir),
+        StorageHint::User => user_state_path(skill_id),
     };
     let mut state = read_state_file(&path);
     let old = state.get(key).cloned();
@@ -212,7 +212,7 @@ pub fn create_default_state(
     let mut proj_state = read_state_file(&proj_path);
     let proj_vars: Vec<(&String, &VarDef)> = var_defs
         .iter()
-        .filter(|(_, d)| d.scope == VarScope::Project)
+        .filter(|(_, d)| d.storage_hint == StorageHint::Project)
         .collect();
     if !proj_vars.is_empty() {
         proj_state.retain(|k, _| var_defs.contains_key(k));
@@ -230,7 +230,7 @@ pub fn create_default_state(
     let mut user_state = read_state_file(&user_path);
     let user_vars: Vec<(&String, &VarDef)> = var_defs
         .iter()
-        .filter(|(_, d)| d.scope == VarScope::User)
+        .filter(|(_, d)| d.storage_hint == StorageHint::User)
         .collect();
     if !user_vars.is_empty() {
         user_state.retain(|k, _| var_defs.contains_key(k));
@@ -288,17 +288,17 @@ mod tests {
             "commit_style": {
                 "type": "enum",
                 "default": "conventional",
-                "scope": "user",
+                "storage-hint": "user",
                 "values": ["conventional", "gitmoji"]
             },
             "verbose_mode": {
                 "type": "bool",
                 "default": false,
-                "scope": "project"
+                "storage-hint": "project"
             },
             "team_members": {
                 "type": "array",
-                "scope": "project"
+                "storage-hint": "project"
             }
         }"#).unwrap()
     }
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn write_skill_state_creates_file() {
         let tmp = tempdir().unwrap();
-        write_skill_state("my-skill", "verbose_mode", &Value::Bool(true), &VarScope::Project, tmp.path()).unwrap();
+        write_skill_state("my-skill", "verbose_mode", &Value::Bool(true), &StorageHint::Project, tmp.path()).unwrap();
         let proj_path = project_state_path("my-skill", tmp.path());
         assert!(proj_path.exists());
         let content = std::fs::read_to_string(&proj_path).unwrap();

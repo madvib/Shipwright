@@ -1,8 +1,8 @@
-//! Skill variable state management — vars.yaml parsing, state I/O, CLI commands.
+//! Skill variable state management — vars.json parsing, state I/O, CLI commands.
 //!
 //! State files:
-//! - Project scope: `.ship/state/skills/{id}.json`
-//! - User scope:    `~/.ship/state/skills/{id}.json`
+//! - Project storage-hint: `.ship/state/skills/{id}.json`
+//! - User storage-hint:    `~/.ship/state/skills/{id}.json`
 //!
 //! Merge order (last wins): defaults → user state → project state.
 

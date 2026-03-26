@@ -20,6 +20,13 @@ pub enum SkillSource {
 pub struct Skill {
     pub id: String,
     pub name: String,
+    /// Canonical identifier from `stable-id:` frontmatter field.
+    ///
+    /// When set, this is used as the key for state file lookups instead of the
+    /// directory name. Allows renaming the skill directory without orphaning state.
+    /// Must be a valid skill id (`[a-z0-9][a-z0-9-]*`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stable_id: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -37,8 +44,7 @@ pub struct Skill {
     pub source: SkillSource,
     /// Resolved variable values for template substitution.
     /// Merged from: user state (~/.ship/state/skills/{id}.json) +
-    /// project state (.ship/state/skills/{id}.json) + vars.yaml defaults.
-    /// Used by the compiler to resolve `%var%` markers in skill content.
+    /// project state (.ship/state/skills/{id}.json) + vars.json defaults.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub vars: HashMap<String, serde_json::Value>,
 }
@@ -85,6 +91,7 @@ mod tests {
         let skill = Skill {
             id: "test".to_string(),
             name: "test".to_string(),
+            stable_id: None,
             description: None,
             license: None,
             compatibility: None,
@@ -94,6 +101,7 @@ mod tests {
             source: SkillSource::Custom,
             vars: HashMap::new(),
         };
+        assert!(skill.stable_id.is_none());
         assert!(skill.license.is_none());
         assert!(skill.compatibility.is_none());
         assert!(skill.allowed_tools.is_empty());

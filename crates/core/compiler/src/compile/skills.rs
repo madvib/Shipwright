@@ -79,6 +79,7 @@ mod tests {
         Skill {
             id: "my-skill".to_string(),
             name: "My Skill".to_string(),
+            stable_id: None,
             description: Some("Does things.".to_string()),
             license: None,
             compatibility: None,

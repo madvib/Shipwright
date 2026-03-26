@@ -13,6 +13,7 @@ fn make_skill(id: &str) -> Skill {
     Skill {
         id: id.to_string(),
         name: id.to_string(),
+        stable_id: None,
         description: Some(format!("Description for {id}")),
         license: None,
         compatibility: None,
