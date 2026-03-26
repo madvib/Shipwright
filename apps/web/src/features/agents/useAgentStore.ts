@@ -28,8 +28,13 @@ function loadState(): StoreState {
     if (!raw) return emptyState()
     const parsed = JSON.parse(raw) as StoreState
     if (!Array.isArray(parsed.agents)) return emptyState()
-    // Drop any agents missing the profile.id shape (stale format)
-    const valid = parsed.agents.filter((a) => a?.profile?.id)
+    // Drop any agents missing the profile.id shape (stale format), deduplicate by ID
+    const seen = new Set<string>()
+    const valid = parsed.agents.filter((a) => {
+      if (!a?.profile?.id || seen.has(a.profile.id)) return false
+      seen.add(a.profile.id)
+      return true
+    })
     return { agents: valid, activeId: parsed.activeId ?? valid[0]?.profile?.id ?? null }
   } catch {
     return emptyState()
@@ -139,10 +144,16 @@ export function useAgentStore() {
   const createAgent = useCallback(
     (partial?: Partial<ResolvedAgentProfile>): string => {
       const agent = makeAgent(partial)
-      setState((prev) => ({
-        agents: [...prev.agents, agent],
-        activeId: agent.profile.id,
-      }))
+      setState((prev) => {
+        // Prevent duplicate IDs
+        if (prev.agents.some((a) => a.profile.id === agent.profile.id)) {
+          return { ...prev, activeId: agent.profile.id }
+        }
+        return {
+          agents: [...prev.agents, agent],
+          activeId: agent.profile.id,
+        }
+      })
       return agent.profile.id
     },
     [setState],
