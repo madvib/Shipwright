@@ -35,9 +35,13 @@ pub struct ShipServer {
 impl ShipServer {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let mut router = Self::tool_router();
-        #[cfg(feature = "unstable")]
-        router.merge(Self::unstable_tool_router());
+        let router = {
+            #[allow(unused_mut)]
+            let mut r = Self::tool_router();
+            #[cfg(feature = "unstable")]
+            r.merge(Self::unstable_tool_router());
+            r
+        };
         Self {
             tool_router: router,
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
