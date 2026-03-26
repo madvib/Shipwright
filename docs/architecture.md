@@ -88,7 +88,7 @@ The runtime is the only layer that talks to SQLite. Transport layers call runtim
 
 Parses commands via clap, delegates to runtime and compiler. The CLI never contains domain logic — it maps flags to function calls and formats output.
 
-Key commands: `init`, `use`, `compile`, `status`, `agent`, `skill`, `mcp`, `validate`, `events`, `surface`, `view` (TUI).
+Key commands: `init`, `use`, `compile`, `status`, `agents`, `skills`, `mcp`, `validate`, `convert`, `events`, `view` (TUI).
 
 ### MCP server (`apps/mcp/`)
 
