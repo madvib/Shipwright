@@ -125,6 +125,8 @@ my-skill/
   references/
     docs/              # human + agent-readable documentation (.mdoc, Markdoc)
     api/               # API tables, external specs
+  evals/
+    evals.json         # eval test cases (prompts, expected outputs, assertions)
 ```
 
 ### Variable schema (`assets/vars.json`)
