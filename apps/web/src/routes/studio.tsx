@@ -92,11 +92,13 @@ function StudioSyncShell() {
           <Outlet />
         </div>
         {panelOpen && (
-          <PublishPanel
-            library={effectiveLibrary}
-            compileState={compileState}
-            onClose={() => setPanelOpen(false)}
-          />
+          <div className="hidden md:block">
+            <PublishPanel
+              library={effectiveLibrary}
+              compileState={compileState}
+              onClose={() => setPanelOpen(false)}
+            />
+          </div>
         )}
       </div>
       <StudioDock
