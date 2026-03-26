@@ -12,26 +12,6 @@ pub fn run(global: bool, provider: Option<String>) -> Result<()> {
     }
 }
 
-/// Quote a string for TOML output.
-pub(crate) fn quote_toml(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// Replace characters that are not safe in filenames.
-pub(crate) fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
-}
-
 // ── Normal init paths ────────────────────────────────────────────────────────
 
 fn run_global() -> Result<()> {
@@ -232,15 +212,3 @@ fn seed_and_install_deps(ship_dir: &std::path::Path) -> (usize, bool) {
     (seeded, installed)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanitize_and_quote() {
-        assert_eq!(sanitize_filename("hello world"), "hello-world");
-        assert_eq!(sanitize_filename("path/name"), "path-name");
-        assert_eq!(quote_toml("simple"), "\"simple\"");
-        assert_eq!(quote_toml("a\"b"), "\"a\\\"b\"");
-    }
-}

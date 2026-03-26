@@ -209,7 +209,7 @@ fn build_opencode_mcp(resolved: &ResolvedConfig) -> Json {
 /// Always returns `Some` — the mcp block is unconditionally populated with at least the ship server.
 pub(super) fn build_opencode_config_patch(resolved: &ResolvedConfig) -> Option<Json> {
     let model = resolved.model.as_deref();
-    let has_extra = resolved
+    let _has_extra = resolved
         .opencode_settings_extra
         .as_ref()
         .is_some_and(|v| !v.is_null());
