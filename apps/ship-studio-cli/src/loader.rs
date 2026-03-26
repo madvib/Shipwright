@@ -311,9 +311,9 @@ fn load_skills(agents_dir: &Path) -> Result<Vec<Skill>> {
                     let state_key = skill.stable_id.as_deref().unwrap_or(id.as_str());
                     match crate::vars::load_vars_json(&vars_path) {
                         Ok(var_defs) => {
-                            let state =
-                                crate::vars::read_skill_state(state_key, agents_dir, &var_defs);
-                            // Warn at compile time if any enum var has an out-of-spec value.
+                            let state = runtime::skill_vars::get_skill_vars(agents_dir, state_key)
+                                .unwrap_or_default()
+                                .unwrap_or_default();
                             crate::vars::warn_invalid_enum_vars(state_key, &var_defs, &state);
                             skill.vars = state;
                         }

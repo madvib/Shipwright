@@ -5,10 +5,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 use super::schema::{VarType, load_vars_json};
-use super::state::{
-    append_to_array, create_default_state, project_state_path, read_skill_state, user_state_path,
-    validate_skill_id, write_skill_state,
-};
+use super::state::{append_to_array, reset_skill_state, validate_skill_id};
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +54,7 @@ pub fn run_vars_set(ship_dir: &Path, skill_id: &str, key: &str, value_str: &str)
         _ => Value::String(value_str.to_string()),
     };
 
-    write_skill_state(skill_id, key, &value, &def.storage_hint, ship_dir)?;
+    runtime::skill_vars::set_skill_var(ship_dir, skill_id, key, value)?;
     println!("set {}.{} = {}", skill_id, key, value_str);
     Ok(())
 }
@@ -65,7 +62,8 @@ pub fn run_vars_set(ship_dir: &Path, skill_id: &str, key: &str, value_str: &str)
 /// `ship vars get <skill-id> [key]`
 pub fn run_vars_get(ship_dir: &Path, skill_id: &str, key: Option<&str>) -> Result<()> {
     let var_defs = load_vars_json(&find_vars_json(ship_dir, skill_id)?)?;
-    let state = read_skill_state(skill_id, ship_dir, &var_defs);
+    let state = runtime::skill_vars::get_skill_vars(ship_dir, skill_id)?
+        .unwrap_or_default();
 
     match key {
         Some(k) => {
@@ -87,19 +85,28 @@ pub fn run_vars_get(ship_dir: &Path, skill_id: &str, key: Option<&str>) -> Resul
     Ok(())
 }
 
-/// `ship vars edit <skill-id>`
+/// `ship vars edit <skill-id>` — opens `.ship/state.json` in $EDITOR.
+///
+/// Only project-scoped vars are visible in state.json. User-scoped vars
+/// live in platform.db — use `ship vars set` to change them.
 pub fn run_vars_edit(ship_dir: &Path, skill_id: &str, editor: Option<&str>) -> Result<()> {
-    let var_defs = load_vars_json(&find_vars_json(ship_dir, skill_id)?)?;
+    validate_skill_id(skill_id)?;
+    find_vars_json(ship_dir, skill_id)?; // ensure skill exists
 
-    let state_path = project_state_path(skill_id, ship_dir);
+    let state_path = ship_dir.join("state.json");
     if !state_path.exists() {
-        create_default_state(skill_id, &var_defs, ship_dir)?;
+        std::fs::write(&state_path, "{}\n")?;
     }
 
     let editor = editor
         .map(str::to_string)
         .or_else(|| std::env::var("EDITOR").ok())
         .unwrap_or_else(|| "vi".to_string());
+
+    eprintln!(
+        "note: state.json contains project-scoped vars only. \
+        Use 'ship vars set' to change user-scoped vars."
+    );
 
     std::process::Command::new(&editor)
         .arg(&state_path)
@@ -129,27 +136,15 @@ pub fn run_vars_append(
     let element: Value =
         serde_json::from_str(json_str).with_context(|| format!("invalid JSON: {}", json_str))?;
 
-    append_to_array(skill_id, key, &element, &def.storage_hint, ship_dir)?;
+    append_to_array(skill_id, key, &element, ship_dir)?;
     println!("appended to {}.{}", skill_id, key);
     Ok(())
 }
 
 /// `ship vars reset <skill-id>`
 pub fn run_vars_reset(ship_dir: &Path, skill_id: &str) -> Result<()> {
-    let proj = project_state_path(skill_id, ship_dir);
-    let user = user_state_path(skill_id);
-
-    let mut removed = false;
-    if proj.exists() {
-        std::fs::remove_file(&proj)?;
-        removed = true;
-    }
-    if user.exists() {
-        std::fs::remove_file(&user)?;
-        removed = true;
-    }
-
-    if removed {
+    validate_skill_id(skill_id)?;
+    if reset_skill_state(skill_id, ship_dir)? {
         println!("reset state for '{}' — next compile uses defaults", skill_id);
     } else {
         println!("no state found for '{}' (already at defaults)", skill_id);
