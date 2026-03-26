@@ -1,6 +1,7 @@
 import { useRef, useCallback, useMemo } from 'react'
-import { X, AlignLeft, Eye, Clock, Zap } from 'lucide-react'
+import { X, Eye, Zap } from 'lucide-react'
 import type { Skill } from '@ship/ui'
+import { parseTabId } from './useSkillsIDE'
 
 interface Props {
   skills: Skill[]
@@ -8,10 +9,12 @@ interface Props {
   activeTabId: string | null
   unsavedIds: Set<string>
   content: string
+  previewOpen?: boolean
   onTabSelect: (id: string) => void
   onTabClose: (id: string) => void
   onContentChange: (id: string, content: string) => void
   onSave: (id: string) => void
+  onTogglePreview?: () => void
 }
 
 /** Split content into lines and apply simple syntax classes. */
@@ -24,7 +27,7 @@ function highlightLines(content: string) {
     if (line.trim() === '---') {
       fenceCount++
       inFrontmatter = fenceCount === 1
-      return { text: line, className: 'text-muted-foreground/40' }
+      return { text: line, className: 'text-muted-foreground/50' }
     }
 
     if (inFrontmatter && fenceCount === 1) {
@@ -36,13 +39,13 @@ function highlightLines(content: string) {
           text: line,
           className: '',
           fragments: [
-            { text: key, className: 'text-sky-300' },
-            { text: ':', className: 'text-muted-foreground/40' },
-            { text: val, className: 'text-emerald-300' },
+            { text: key, className: 'text-sky-600 dark:text-sky-300' },
+            { text: ':', className: 'text-muted-foreground/50' },
+            { text: val, className: 'text-emerald-600 dark:text-emerald-300' },
           ],
         }
       }
-      return { text: line, className: 'text-emerald-300' }
+      return { text: line, className: 'text-emerald-600 dark:text-emerald-300' }
     }
 
     if (line.startsWith('# ')) return { text: line, className: 'text-foreground font-bold text-sm' }
@@ -77,14 +80,17 @@ export function SkillsEditor({
   activeTabId,
   unsavedIds,
   content,
+  previewOpen,
   onTabSelect,
   onTabClose,
   onContentChange,
   onSave,
+  onTogglePreview,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const activeSkill = skills.find((s) => s.id === activeTabId)
+  const activeTab = activeTabId ? parseTabId(activeTabId) : null
+  const activeSkill = activeTab ? skills.find((s) => s.id === activeTab.skillId) : undefined
   const lines = useMemo(() => highlightLines(content), [content])
 
   const handleKeyDown = useCallback(
@@ -99,11 +105,11 @@ export function SkillsEditor({
 
   if (!activeTabId || !activeSkill) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground/30 min-w-0">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground/50 min-w-0">
         <Zap className="size-10 opacity-30" />
         <div>
-          <p className="text-sm font-medium text-muted-foreground/50">No file open</p>
-          <p className="mt-1 text-xs text-muted-foreground/30">
+          <p className="text-sm font-medium text-muted-foreground/60">No file open</p>
+          <p className="mt-1 text-xs text-muted-foreground/50">
             Select a skill from the explorer to start editing.
           </p>
         </div>
@@ -111,36 +117,38 @@ export function SkillsEditor({
     )
   }
 
-  const breadcrumb = `skills / ${activeSkill.name || activeSkill.id} / SKILL.md`
+  const activeFilePath = activeTab?.filePath ?? 'SKILL.md'
+  const breadcrumb = `skills / ${activeSkill.name || activeSkill.id} / ${activeFilePath}`
 
   return (
     <div className="flex flex-1 flex-col min-w-0">
       {/* Tab bar */}
       <div className="flex items-center border-b border-border/30 bg-card/20 px-2 h-8 shrink-0 overflow-x-auto">
-        {openTabIds.map((id) => {
-          const skill = skills.find((s) => s.id === id)
+        {openTabIds.map((tabId) => {
+          const { skillId, filePath } = parseTabId(tabId)
+          const skill = skills.find((s) => s.id === skillId)
           if (!skill) return null
-          const isActive = id === activeTabId
-          const isUnsaved = unsavedIds.has(id)
+          const isActive = tabId === activeTabId
+          const isUnsaved = unsavedIds.has(tabId)
           return (
             <button
-              key={id}
-              onClick={() => onTabSelect(id)}
+              key={tabId}
+              onClick={() => onTabSelect(tabId)}
               className={`group flex items-center gap-1.5 px-3 py-1 text-xs whitespace-nowrap border-b-2 transition-colors ${
                 isActive
                   ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground/50 hover:text-muted-foreground'
+                  : 'border-transparent text-muted-foreground/60 hover:text-muted-foreground'
               }`}
             >
               {isUnsaved && (
                 <span className="size-1.5 rounded-full bg-primary shrink-0" />
               )}
               <span className="truncate max-w-[140px]">
-                {skill.name || skill.id}/SKILL.md
+                {skill.name || skill.id}/{filePath}
               </span>
               <span
-                onClick={(e) => { e.stopPropagation(); onTabClose(id) }}
-                className="ml-1 text-muted-foreground/30 hover:text-destructive transition-colors"
+                onClick={(e) => { e.stopPropagation(); onTabClose(tabId) }}
+                className="ml-1 text-muted-foreground/50 hover:text-destructive transition-colors"
               >
                 <X className="size-3" />
               </span>
@@ -151,37 +159,29 @@ export function SkillsEditor({
 
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-1.5 border-b border-border/20 bg-background/50 shrink-0">
-        <div className="text-[11px] text-muted-foreground/40 flex items-center gap-1">
+        <div className="text-[11px] text-muted-foreground/50 flex items-center gap-1">
           {breadcrumb.split(' / ').map((part, i, arr) => (
             <span key={i}>
-              {i > 0 && <span className="mx-1 text-muted-foreground/20">/</span>}
+              {i > 0 && <span className="mx-1 text-muted-foreground/40">/</span>}
               <span className={i === arr.length - 1 ? 'text-muted-foreground/60' : ''}>
                 {part}
               </span>
             </span>
           ))}
         </div>
-        <div className="flex gap-1">
-          {[
-            { icon: AlignLeft, label: 'Format' },
-            { icon: Eye, label: 'Preview' },
-            { icon: Clock, label: 'History' },
-          ].map(({ icon: Icon, label }) => (
-            <button
-              key={label}
-              className="p-1 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
-              title={label}
-            >
-              <Icon className="size-3.5" />
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={onTogglePreview}
+          className={`p-1 transition-colors ${previewOpen ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}`}
+          title="Toggle skill info"
+        >
+          <Eye className="size-3.5" />
+        </button>
       </div>
 
       {/* Editor area with line numbers */}
       <div className="flex flex-1 min-h-0 overflow-auto" onKeyDown={handleKeyDown}>
         {/* Line numbers */}
-        <div className="shrink-0 w-10 pt-4 pb-4 text-right pr-2 font-mono text-[11px] leading-[1.7] text-muted-foreground/20 select-none border-r border-border/10">
+        <div className="shrink-0 w-10 pt-4 pb-4 text-right pr-2 font-mono text-[11px] leading-[1.7] text-muted-foreground/40 select-none border-r border-border/10">
           {lines.map((_, i) => (
             <div key={i}>{i + 1}</div>
           ))}

@@ -50,6 +50,48 @@ export function parseFrontmatter(content: string): SkillFrontmatter {
   return result
 }
 
+/** Known frontmatter fields from the agentskills.io spec. */
+const KNOWN_FIELDS = new Set([
+  'name', 'id', 'version', 'description', 'author', 'license',
+  'allowed_tools', 'allowed-tools', 'compatibility', 'metadata',
+])
+
+export interface FrontmatterWarning {
+  field: string
+  message: string
+  severity: 'error' | 'warning'
+}
+
+/** Validate frontmatter and return warnings/errors. */
+export function validateFrontmatter(content: string): FrontmatterWarning[] {
+  const block = extractFrontmatterBlock(content)
+  if (!block) {
+    return [{ field: '', message: 'Missing frontmatter block (--- fences)', severity: 'error' }]
+  }
+
+  const fm = parseFrontmatter(content)
+  const warnings: FrontmatterWarning[] = []
+
+  if (!fm.name) {
+    warnings.push({ field: 'name', message: 'name is required', severity: 'error' })
+  }
+  if (!fm.version) {
+    warnings.push({ field: 'version', message: 'version is recommended', severity: 'warning' })
+  }
+  if (!fm.description) {
+    warnings.push({ field: 'description', message: 'description is recommended', severity: 'warning' })
+  }
+
+  // Flag unknown fields
+  for (const key of Object.keys(fm)) {
+    if (!KNOWN_FIELDS.has(key)) {
+      warnings.push({ field: key, message: `Unknown field: ${key}`, severity: 'warning' })
+    }
+  }
+
+  return warnings
+}
+
 /** Generate a SKILL.md frontmatter template for new skills. */
 export function newSkillTemplate(name: string, id: string): string {
   return `---

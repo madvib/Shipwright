@@ -42,8 +42,11 @@ function SkillsIDEPage() {
           searchQuery={ide.state.searchQuery}
           onSearchChange={ide.setSearchQuery}
           onToggleFolder={ide.toggleFolder}
-          onOpenSkill={ide.openSkill}
+          onOpenFile={ide.openFile}
           onCreateSkill={() => setCreateOpen(true)}
+          onAddFile={ide.addFile}
+          onDeleteFile={ide.deleteFile}
+          getFilesForSkill={ide.getFilesForSkill}
         />
 
         <SkillsEditor
@@ -52,10 +55,12 @@ function SkillsIDEPage() {
           activeTabId={ide.state.activeTabId}
           unsavedIds={ide.state.unsavedIds}
           content={ide.activeContent}
+          previewOpen={ide.state.previewOpen}
           onTabSelect={ide.setActiveTabId}
           onTabClose={ide.closeTab}
           onContentChange={ide.updateContent}
           onSave={ide.saveSkill}
+          onTogglePreview={() => ide.setPreviewOpen((p) => !p)}
         />
 
         {ide.state.previewOpen && (
