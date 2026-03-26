@@ -73,10 +73,10 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
         {/* CLI status */}
         <CliStatusPopover onAddSkill={onAddSkill} />
 
-        {/* Preview panel toggle */}
+        {/* Preview panel toggle — hidden on mobile where panel is always hidden */}
         <button
           onClick={onTogglePreview}
-          className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+          className={`hidden md:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
             previewOpen
               ? 'bg-primary text-primary-foreground'
               : 'bg-primary/10 text-primary hover:bg-primary/20'

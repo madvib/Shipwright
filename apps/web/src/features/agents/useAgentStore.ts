@@ -144,16 +144,23 @@ export function useAgentStore() {
   const createAgent = useCallback(
     (partial?: Partial<ResolvedAgentProfile>): string => {
       const agent = makeAgent(partial)
-      setState((prev) => {
-        // Prevent duplicate IDs
-        if (prev.agents.some((a) => a.profile.id === agent.profile.id)) {
-          return { ...prev, activeId: agent.profile.id }
+      const current = loadState()
+      // Ensure unique ID — append counter if slug collides
+      let id = agent.profile.id
+      const ids = new Set(current.agents.map((a) => a.profile.id))
+      if (ids.has(id)) {
+        let n = 2
+        while (ids.has(`${id}-${n}`)) n++
+        id = `${id}-${n}`
+        agent.profile.id = id
+        if (agent.profile.name === 'New Agent') {
+          agent.profile.name = `New Agent ${n}`
         }
-        return {
-          agents: [...prev.agents, agent],
-          activeId: agent.profile.id,
-        }
-      })
+      }
+      setState((prev) => ({
+        agents: [...prev.agents, agent],
+        activeId: agent.profile.id,
+      }))
       return agent.profile.id
     },
     [setState],

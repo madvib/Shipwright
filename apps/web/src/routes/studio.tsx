@@ -53,7 +53,9 @@ function StudioSyncShell() {
     return null
   }, [matches])
 
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  )
 
   const { getAgent, syncStatus: agentSyncStatus } = useAgentStore()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
