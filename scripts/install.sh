@@ -125,7 +125,7 @@ main() {
     version="$(resolve_version)"
     say "version:  $version"
 
-    archive_name="ship-${version#v}-${platform}"
+    archive_name="ship-${platform}"
 
     ext="tar.gz"
     case "$platform" in
