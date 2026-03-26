@@ -29,14 +29,27 @@ const PROVIDER_FIELD_DEFS: Record<string, FieldDef[]> = {
     { key: 'maxSessionTurns', label: 'Max session turns', type: 'integer', min: 1 },
     { key: 'theme', label: 'Theme', type: 'select', options: ['system', 'dark', 'light'] },
     { key: 'yolo', label: 'YOLO mode', type: 'boolean' },
+    { key: 'disableYoloMode', label: 'Disable YOLO mode', type: 'boolean' },
+    { key: 'disableAlwaysAllow', label: 'Disable always-allow', type: 'boolean' },
+    { key: 'toolsSandbox', label: 'Tools sandbox', type: 'string', placeholder: 'e.g. docker' },
   ],
   codex: [
     { key: 'approval_policy', label: 'Approval policy', type: 'select', options: ['suggest', 'auto-edit', 'full-auto'] },
     { key: 'notify', label: 'Notifications', type: 'boolean' },
     { key: 'disable_response_storage', label: 'Disable response storage', type: 'boolean' },
+    { key: 'sandbox', label: 'Sandbox', type: 'select', options: ['host', 'container'] },
+    { key: 'reasoningEffort', label: 'Reasoning effort', type: 'select', options: ['low', 'medium', 'high'] },
+    { key: 'maxThreads', label: 'Max threads', type: 'integer', min: 1 },
+    { key: 'maxDepth', label: 'Max depth', type: 'integer', min: 1 },
+    { key: 'jobMaxRuntimeSeconds', label: 'Job max runtime (seconds)', type: 'integer', min: 1 },
+    { key: 'shellEnvPolicy', label: 'Shell env policy', type: 'select', options: ['inherit', 'none', 'os'] },
   ],
   cursor: [],
-  opencode: [],
+  opencode: [
+    { key: 'theme', label: 'Theme', type: 'select', options: ['dark', 'light'] },
+    { key: 'provider', label: 'Provider', type: 'string', placeholder: 'e.g. anthropic, openai' },
+    { key: 'autoupdate', label: 'Auto-update', type: 'boolean' },
+  ],
 }
 
 const PROVIDER_HOOK_TRIGGERS: Record<string, string[]> = {

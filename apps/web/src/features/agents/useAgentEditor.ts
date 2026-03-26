@@ -92,7 +92,6 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       }
     }
     case 'set_model': {
-      const ps = state.agent.providerSettings ?? {}
       // model lives at top level on the working copy — store it as a virtual field
       const agent = { ...state.agent, _model: action.model }
       return {
