@@ -255,7 +255,7 @@ pub(super) fn build_cursor_mcp_servers(
     );
 
     for s in servers {
-        if s.disabled {
+        if s.disabled || s.id == "ship" {
             continue;
         }
         map.insert(s.id.clone(), build_cursor_server_entry(desc, s));

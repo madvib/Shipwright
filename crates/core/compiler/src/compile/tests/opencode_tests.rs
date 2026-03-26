@@ -64,6 +64,23 @@ fn opencode_mcp_ship_server_first() {
 }
 
 #[test]
+fn opencode_mcp_ship_server_command_includes_serve() {
+    // Regression: ship use was generating ["ship", "mcp"] — missing "serve".
+    // The correct command is `ship mcp serve`.
+    let r = resolved(vec![]);
+    let patch = opencode_patch(&r);
+    let cmd = patch["mcp"]["ship"]["command"]
+        .as_array()
+        .expect("ship server must have command array");
+    let cmd_strs: Vec<&str> = cmd.iter().map(|v| v.as_str().unwrap()).collect();
+    assert_eq!(
+        cmd_strs,
+        vec!["ship", "mcp", "serve"],
+        "opencode ship server command must be [\"ship\", \"mcp\", \"serve\"]"
+    );
+}
+
+#[test]
 fn opencode_mcp_local_format() {
     let mut s = make_server("context7");
     s.command = "npx".to_string();
