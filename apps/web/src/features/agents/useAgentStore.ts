@@ -157,13 +157,31 @@ export function useAgentStore() {
           agent.profile.name = `New Agent ${n}`
         }
       }
-      setState((prev) => ({
-        agents: [...prev.agents, agent],
-        activeId: agent.profile.id,
-      }))
+      // Don't persist — agent is "unsaved" until explicit save from editor
       return agent.profile.id
     },
+    [],
+  )
+
+  const saveDraft = useCallback(
+    (id: string, agent: ResolvedAgentProfile) => {
+      setState((prev) => {
+        const exists = prev.agents.some((a) => a.profile.id === id)
+        if (exists) {
+          return {
+            ...prev,
+            agents: prev.agents.map((a) => a.profile.id === id ? agent : a),
+          }
+        }
+        return { agents: [...prev.agents, agent], activeId: prev.activeId ?? id }
+      })
+    },
     [setState],
+  )
+
+  const isPersistedAgent = useCallback(
+    (id: string): boolean => state.agents.some((a) => a.profile.id === id),
+    [state.agents],
   )
 
   const updateAgent = useCallback(
@@ -279,6 +297,8 @@ export function useAgentStore() {
     createAgent,
     updateAgent,
     deleteAgent,
+    saveDraft,
+    isPersistedAgent,
   }
 }
 

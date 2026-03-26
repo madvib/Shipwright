@@ -11,6 +11,7 @@ import { useAgentStore } from '#/features/agents/useAgentStore'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 import { LocalMcpProvider } from '#/features/studio/LocalMcpContext'
+import { PanicSaveProvider } from '#/features/agents/PanicSaveContext'
 
 export const Route = createFileRoute('/studio')({
   component: StudioLayout,
@@ -20,9 +21,11 @@ export const Route = createFileRoute('/studio')({
 
 function StudioLayout() {
   return (
-    <LocalMcpProvider>
-      <StudioSyncShell />
-    </LocalMcpProvider>
+    <PanicSaveProvider>
+      <LocalMcpProvider>
+        <StudioSyncShell />
+      </LocalMcpProvider>
+    </PanicSaveProvider>
   )
 }
 
