@@ -990,8 +990,12 @@ fn e2e_validate_then_compile_catches_bad_config() {
         r#"{ "agent": { "name": "Broken" } }"#,
     );
 
-    // Validate should fail
-    ship().args(["validate", "--path", p]).assert().failure();
+    // Validate should fail. Use ship_in to isolate platform.db so no stale
+    // active_agent from a prior test run or the developer's machine leaks in.
+    ship_in(&tmp)
+        .args(["validate", "--path", p])
+        .assert()
+        .failure();
 
     // Fix the config by adding the required fields
     write(
@@ -1011,14 +1015,17 @@ fn e2e_validate_then_compile_catches_bad_config() {
     );
 
     // Validate should now pass
-    ship()
+    ship_in(&tmp)
         .args(["validate", "--path", p])
         .assert()
         .success()
         .stdout(predicate::str::contains("valid"));
 
-    // Compile should succeed
-    ship()
+    // Compile must use ship_in so platform.db is isolated to this test's tmp
+    // dir. Without isolation, a stale active_agent in the global platform.db
+    // causes build_context_content to emit a mode comment, making parts
+    // non-empty and CLAUDE.md to be written even when there are no rules.
+    ship_in(&tmp)
         .args(["compile", "--provider", "claude", "--path", p])
         .assert()
         .success();
