@@ -78,9 +78,8 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Compile {
                 provider,
                 dry_run,
-                watch,
                 path,
-            } => run_compile_cmd(provider.as_deref(), dry_run, watch, path),
+            } => run_compile_cmd(provider.as_deref(), dry_run, path),
             Commands::Skill { action } => dispatch_skill(action),
             Commands::Mcp { action } => dispatch_mcp(action),
             Commands::Convert { source } => convert::run_convert(&source),
@@ -91,8 +90,6 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Adrs => run_adrs(),
             #[cfg(feature = "unstable")]
             Commands::Notes => run_notes(),
-            #[cfg(feature = "unstable")]
-            Commands::Migrate => run_migrate(),
             Commands::Publish { dry_run, tag } => {
                 let root = std::env::current_dir()?;
                 publish::run_publish(&root, dry_run, tag.as_deref())
@@ -307,7 +304,6 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
 fn run_compile_cmd(
     provider: Option<&str>,
     dry_run: bool,
-    watch: bool,
     path: Option<PathBuf>,
 ) -> Result<()> {
     let project_root = path
@@ -327,12 +323,7 @@ fn run_compile_cmd(
         provider,
         dry_run,
         active_agent: state.active_agent.as_deref(),
-    })?;
-
-    if watch {
-        println!("--watch not yet implemented. Run compile manually after changes.");
-    }
-    Ok(())
+    })
 }
 
 // ── Subcommand dispatchers ────────────────────────────────────────────────────
@@ -427,12 +418,6 @@ fn run_notes() -> Result<()> {
             println!("{}\t{}", entry.id, entry.title);
         }
     }
-    Ok(())
-}
-
-#[cfg(feature = "unstable")]
-fn run_migrate() -> Result<()> {
-    println!("migration infrastructure removed — state_db consolidated into platform.db");
     Ok(())
 }
 

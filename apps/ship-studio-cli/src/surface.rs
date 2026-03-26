@@ -69,7 +69,6 @@ fn write_cli_tree(out: &mut String) {
         ("ship compile", "Compile the active agent to provider-native config files", Some(&[
             ("--provider <id>", "Compile for a specific provider only"),
             ("--dry-run", "Preview without writing files"),
-            ("--watch", "Recompile on changes (not yet implemented)"),
             ("--path <dir>", "Project root"),
         ])),
         ("ship agents", "Manage agents", Some(&[
@@ -79,7 +78,7 @@ fn write_cli_tree(out: &mut String) {
             ("delete <name>", "Delete an agent"),
             ("clone <source> <target>", "Clone an agent under a new ID"),
         ])),
-        ("ship skill", "Manage agent skills", Some(&[
+        ("ship skills", "Manage agent skills", Some(&[
             ("add <source> [--skill <id>] [--global]", "Install a skill"),
             ("list", "List installed skills"),
             ("remove <id> [--global]", "Remove a skill"),

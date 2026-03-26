@@ -100,9 +100,6 @@ pub enum Commands {
         /// Preview output without writing any files
         #[arg(long)]
         dry_run: bool,
-        /// Recompile automatically when agent files change
-        #[arg(long)]
-        watch: bool,
         /// Path to project root (defaults to current directory)
         #[arg(long)]
         path: Option<PathBuf>,
@@ -221,10 +218,6 @@ pub enum Commands {
     #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Notes,
-
-    #[cfg(feature = "unstable")]
-    #[command(hide = true)]
-    Migrate,
 
     #[cfg(feature = "unstable")]
     #[command(hide = true)]
