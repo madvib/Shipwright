@@ -3,6 +3,11 @@ import starlight from "@astrojs/starlight";
 
 export default defineConfig({
   site: "https://docs.getship.dev",
+  vite: {
+    resolve: {
+      preserveSymlinks: false,
+    },
+  },
   integrations: [
     starlight({
       title: "Ship Docs",
