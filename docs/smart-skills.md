@@ -39,7 +39,7 @@ platform.db KV (user state)
 
 ```json
 {
-  "$schema": "https://agentskills.io/schemas/vars/v1.json",
+  "$schema": "https://getship.dev/schemas/vars/v1.json",
   "commit_style": {
     "type": "enum",
     "default": "conventional",
