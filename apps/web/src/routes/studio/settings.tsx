@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { CLISection } from '#/features/settings/sections'
+import { CLIConnectionSection, AppearanceSection, AboutSection } from '#/features/settings/sections'
 import { SettingsSkeleton } from '#/features/studio/StudioSkeleton'
 
 export const Route = createFileRoute('/studio/settings')({
@@ -16,7 +16,9 @@ function SettingsPage() {
         <p className="text-[13px] text-muted-foreground">Studio and CLI configuration</p>
       </div>
 
-      <CLISection />
+      <CLIConnectionSection />
+      <AppearanceSection />
+      <AboutSection />
     </div>
   )
 }

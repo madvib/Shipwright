@@ -1,8 +1,8 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { useState, useCallback, useMemo } from 'react'
+import { ArrowLeft, SearchX } from 'lucide-react'
 import { useAgents } from '#/features/agents/useAgents'
 import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
-import { makeAgent } from '#/features/agents/make-agent'
 import { AgentActivityBar } from '#/features/agents/AgentActivityBar'
 import { AgentStickyHeader } from '#/features/agents/AgentStickyHeader'
 import { useScrollspy } from '#/features/agents/useScrollspy'
@@ -29,27 +29,52 @@ export const Route = createFileRoute('/studio/agents/$id')({
   ssr: false,
 })
 
+function AgentNotFound({ id }: { id: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="flex size-12 items-center justify-center rounded-xl border border-border bg-muted/40 mb-4">
+        <SearchX className="size-5 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Agent not found</p>
+      <p className="mt-1 text-xs text-muted-foreground max-w-xs">
+        No agent with ID "{id}" exists in this project.
+      </p>
+      <Link
+        to="/studio/agents"
+        className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition no-underline"
+      >
+        <ArrowLeft className="size-3" />
+        Back to agents
+      </Link>
+    </div>
+  )
+}
+
 function AgentDetailPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
-  const { getAgent } = useAgents()
+  const { getAgent, isLoading } = useAgents()
   const { setDraft, hasDraft, clearDraft } = useAgentDrafts()
-  const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
+  const profile = getAgent(id)
   const { scrollRef, activeSection, handleSectionClick } = useScrollspy()
   const isDraft = hasDraft(id)
 
+  if (isLoading && !profile) {
+    return <AgentDetailSkeleton />
+  }
+
+  if (!profile) {
+    return <AgentNotFound id={id} />
+  }
+
   // -- Delete ---------------------------------------------------------------
-  const handleDelete = useCallback(() => {
+  const handleDelete = () => {
     if (!confirm(`Delete "${profile.profile.name}"?`)) return
     void navigate({ to: '/studio/agents', replace: true })
-  }, [profile.profile.name, navigate])
+  }
 
-  const update = useCallback(
-    (patch: Partial<ResolvedAgentProfile>) => setDraft(id, patch),
-    [id, setDraft],
-  )
-
-  const handleDiscard = useCallback(() => clearDraft(id), [id, clearDraft])
+  const update = (patch: Partial<ResolvedAgentProfile>) => setDraft(id, patch)
+  const handleDiscard = () => clearDraft(id)
 
   return (
     <AgentDetailView

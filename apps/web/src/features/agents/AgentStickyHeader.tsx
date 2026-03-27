@@ -40,7 +40,7 @@ export function AgentStickyHeader({ profile, onEdit, onDelete, onDiscard, isDraf
   const activeCat = ICON_CATEGORIES.find((c) => c.id === activeCategory) ?? ICON_CATEGORIES[0]
 
   return (
-    <div className="flex items-center gap-3 border-b border-border/30 bg-background/80 backdrop-blur-sm px-5 h-12 shrink-0 sticky top-0 z-10">
+    <div className="flex items-center gap-3 border-b border-border bg-background/80 backdrop-blur-sm px-5 h-12 shrink-0 sticky top-0 z-10">
       {/* Avatar / Icon -- click to pick */}
       <div className="relative">
         <button
@@ -104,11 +104,11 @@ export function AgentStickyHeader({ profile, onEdit, onDelete, onDiscard, isDraf
         <span className="font-display text-sm font-bold text-foreground truncate">
           {profile.profile.name}
         </span>
-        <Pencil className="size-3 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors shrink-0" />
+        <Pencil className="size-3 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
       </button>
 
       {/* Version */}
-      <span className="hidden sm:inline text-[10px] text-muted-foreground/50 tabular-nums">
+      <span className="hidden sm:inline text-[10px] text-muted-foreground tabular-nums">
         {profile.profile.version}
       </span>
 
@@ -137,7 +137,7 @@ export function AgentStickyHeader({ profile, onEdit, onDelete, onDiscard, isDraf
       {/* Edit metadata button */}
       <button
         onClick={onEdit}
-        className="rounded-md p-1.5 text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted/50 transition"
+        className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
         title="Edit metadata"
       >
         <Pencil className="size-3.5" />
@@ -146,7 +146,7 @@ export function AgentStickyHeader({ profile, onEdit, onDelete, onDiscard, isDraf
       {onDelete && (
         <button
           onClick={onDelete}
-          className="rounded-md p-1.5 text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition"
+          className="rounded-md p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition"
           title="Delete agent"
         >
           <Trash2 className="size-3.5" />

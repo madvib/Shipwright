@@ -49,7 +49,7 @@ function AgentsListPage() {
           </div>
           <div className="flex items-center gap-2">
             {hasLibrary && (
-              <div className="flex items-center rounded-lg border border-border/40 bg-card/50 p-0.5">
+              <div className="flex items-center rounded-lg border border-border bg-card/50 p-0.5">
                 <FilterPill active={filter === 'all'} onClick={() => setFilter('all')}>All</FilterPill>
                 <FilterPill active={filter === 'project'} onClick={() => setFilter('project')}>
                   <FolderOpen className="size-3" /> Project
@@ -114,7 +114,7 @@ function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () =>
         Agents are configured in your local .ship/ directory and synced via the Ship CLI.
         Install the CLI, then click Connect in the dock.
       </p>
-      <div className="mt-4 w-full rounded-lg border border-border/40 bg-card/60 px-4 py-3">
+      <div className="mt-4 w-full rounded-lg border border-border bg-card/60 px-4 py-3">
         <code className="text-[11px] font-mono text-emerald-400">
           curl -fsSL https://ship.dev/install | sh
         </code>
@@ -124,7 +124,7 @@ function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () =>
           href="https://github.com/madvib/Ship#installation"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border/40 px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition no-underline"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition no-underline"
         >
           <ExternalLink className="size-3" />
           Installation docs
@@ -168,7 +168,7 @@ function AgentCard({ agent: a, isDraft, isLocal }: { agent: ReturnType<typeof us
             <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{a.profile.description}</p>
           )}
         </div>
-        <ArrowRight className="size-3.5 text-muted-foreground/20 group-hover:text-muted-foreground transition-colors mt-1" />
+        <ArrowRight className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors mt-1" />
       </div>
 
       <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
@@ -180,7 +180,7 @@ function AgentCard({ agent: a, isDraft, isLocal }: { agent: ReturnType<typeof us
       </div>
 
       <div className="mt-2 flex items-center gap-1.5">
-        <span className="text-[9px] px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground">
+        <span className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">
           {preset.replace('ship-', '')}
         </span>
         {a.source === 'library' && (
@@ -213,7 +213,7 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
       className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
         active
           ? 'bg-primary/10 text-primary'
-          : 'text-muted-foreground/60 hover:text-muted-foreground'
+          : 'text-muted-foreground hover:text-foreground'
       }`}
     >
       {children}
