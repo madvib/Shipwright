@@ -38,7 +38,7 @@ describe('pullAgentToResolved', () => {
   it('converts skills from PullSkill to Skill', () => {
     const pull = makePullAgent({
       skills: [
-        { id: 'skill-1', name: 'Skill One', description: 'Desc', content: '# Skill', source: 'custom' },
+        { id: 'skill-1', name: 'Skill One', description: 'Desc', content: '# Skill', source: 'custom', tags: [], authors: [], files: [], reference_docs: {} },
       ],
     })
     const resolved = pullAgentToResolved(pull)

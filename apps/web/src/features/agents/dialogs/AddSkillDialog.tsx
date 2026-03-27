@@ -50,6 +50,7 @@ export function AddSkillDialog({ open, onOpenChange, existingIds, onAdd }: AddSk
       description: result.description,
       source: 'community',
       content: '',
+      vars: {},
     }
     onAdd(skill)
     onOpenChange(false)

@@ -6,12 +6,16 @@
 
 export interface SkillFrontmatter {
   name?: string
-  id?: string
-  version?: string
+  'stable-id'?: string
   description?: string
-  author?: string
+  tags?: string[]
+  authors?: string[]
+  version?: string
   license?: string
+  compatibility?: string
+  'allowed-tools'?: string[]
   allowed_tools?: string[]
+  attribution?: string
   [key: string]: string | string[] | undefined
 }
 
@@ -50,11 +54,15 @@ export function parseFrontmatter(content: string): SkillFrontmatter {
   return result
 }
 
-/** Known frontmatter fields from the agentskills.io spec. */
+/** Known frontmatter fields from the smart skills spec. */
 const KNOWN_FIELDS = new Set([
-  'name', 'id', 'version', 'description', 'author', 'license',
-  'allowed_tools', 'allowed-tools', 'compatibility', 'metadata',
+  'name', 'stable-id', 'description', 'tags', 'authors',
+  'version', 'license', 'compatibility', 'attribution',
+  'allowed-tools', 'allowed_tools', 'metadata',
 ])
+
+/** Valid stable-id pattern: lowercase alphanumeric + hyphens. */
+const STABLE_ID_RE = /^[a-z0-9][a-z0-9-]*$/
 
 export interface FrontmatterWarning {
   field: string
@@ -75,11 +83,13 @@ export function validateFrontmatter(content: string): FrontmatterWarning[] {
   if (!fm.name) {
     warnings.push({ field: 'name', message: 'name is required', severity: 'error' })
   }
-  if (!fm.version) {
-    warnings.push({ field: 'version', message: 'version is recommended', severity: 'warning' })
+  if (!fm['stable-id']) {
+    warnings.push({ field: 'stable-id', message: 'stable-id is recommended for state persistence', severity: 'warning' })
+  } else if (!STABLE_ID_RE.test(fm['stable-id'])) {
+    warnings.push({ field: 'stable-id', message: 'stable-id must match [a-z0-9][a-z0-9-]*', severity: 'error' })
   }
   if (!fm.description) {
-    warnings.push({ field: 'description', message: 'description is recommended', severity: 'warning' })
+    warnings.push({ field: 'description', message: 'description is recommended for trigger matching', severity: 'warning' })
   }
 
   // Flag unknown fields
@@ -95,24 +105,14 @@ export function validateFrontmatter(content: string): FrontmatterWarning[] {
 /** Generate a SKILL.md frontmatter template for new skills. */
 export function newSkillTemplate(name: string, id: string): string {
   return `---
-name: ${name}
-id: ${id}
-version: 0.1.0
-description:
-author:
-license: MIT
-allowed_tools: []
+name: ${id}
+stable-id: ${id}
+description: Use when...
+tags: []
+authors: []
 ---
 
 # ${name}
-
-Describe when and how to use this skill.
-
-## When to use
-
--
-
-## Instructions
 
 `
 }

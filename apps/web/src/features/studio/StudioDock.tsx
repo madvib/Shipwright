@@ -13,11 +13,12 @@ const NAV_ITEMS = [
 
 interface StudioDockProps {
   previewOpen?: boolean
+  showPreviewToggle?: boolean
   onTogglePreview?: () => void
   onAddSkill: (skill: Skill) => void
 }
 
-export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioDockProps) {
+export function StudioDock({ previewOpen, showPreviewToggle = true, onTogglePreview, onAddSkill }: StudioDockProps) {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -87,25 +88,27 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
         {/* CLI status */}
         <CliStatusPopover onAddSkill={onAddSkill} />
 
-        {/* Preview panel toggle — hidden on mobile where panel is always hidden */}
-        <button
-          onClick={onTogglePreview}
-          className={`hidden md:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-            previewOpen
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-primary/10 text-primary hover:bg-primary/20'
-          }`}
-        >
-          {previewOpen ? (
-            <PanelRightOpen className="size-3.5" />
-          ) : (
-            <>
-              <Radio className="size-3 animate-pulse" />
-              <span>Preview</span>
-            </>
-          )}
-          {previewOpen && 'Preview'}
-        </button>
+        {/* Compiler output toggle — only on agent detail pages */}
+        {showPreviewToggle && (
+          <button
+            onClick={onTogglePreview}
+            className={`hidden md:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+              previewOpen
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-primary/10 text-primary hover:bg-primary/20'
+            }`}
+          >
+            {previewOpen ? (
+              <PanelRightOpen className="size-3.5" />
+            ) : (
+              <>
+                <Radio className="size-3 animate-pulse" />
+                <span>Preview</span>
+              </>
+            )}
+            {previewOpen && 'Preview'}
+          </button>
+        )}
       </nav>
     </div>
   )

@@ -77,13 +77,16 @@ function StudioSyncShell() {
     }
   }, [panelOpen])
 
+  // Only show compiler output panel on agent detail pages
+  const showCompilerPanel = Boolean(activeAgentId)
+
   return (
     <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative pb-20">
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="flex-1 overflow-auto min-w-0">
           <Outlet />
         </div>
-        {panelOpen && (
+        {showCompilerPanel && panelOpen && (
           <div className="hidden md:block">
             <PublishPanel
               library={effectiveLibrary}
@@ -94,7 +97,8 @@ function StudioSyncShell() {
         )}
       </div>
       <StudioDock
-        previewOpen={panelOpen}
+        previewOpen={showCompilerPanel && panelOpen}
+        showPreviewToggle={showCompilerPanel}
         onTogglePreview={() => setPanelOpen((p) => !p)}
         onAddSkill={addSkill}
       />

@@ -57,15 +57,6 @@ export function SyncStatus({ status }: SyncStatusProps) {
     }
   }, [status])
 
-  if (!visible && status === 'idle') {
-    return (
-      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground" aria-live="polite" aria-label="Local draft">
-        <span className="size-1.5 rounded-full bg-muted-foreground/40" />
-        <span>Local draft</span>
-      </span>
-    )
-  }
-
   if (!visible) return null
 
   return (

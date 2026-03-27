@@ -22,7 +22,7 @@ function SkillsIDEPage() {
     <>
       {/* Mobile fallback */}
       <div className="flex md:hidden flex-col items-center justify-center gap-4 px-8 py-20 text-center min-h-[60vh]">
-        <div className="flex size-12 items-center justify-center rounded-xl border border-border/60 bg-muted/40">
+        <div className="flex size-12 items-center justify-center rounded-xl border border-border bg-muted/40">
           <Zap className="size-5 text-muted-foreground" />
         </div>
         <div>
@@ -35,11 +35,10 @@ function SkillsIDEPage() {
 
       {/* Full IDE layout */}
       <div className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden">
-        {/* Offline banner */}
         {!ide.isConnected && (
-          <div className="flex items-center gap-2 px-4 py-1.5 border-b border-amber-500/20 bg-amber-500/5 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
+          <div className="flex items-center gap-2 px-4 py-1.5 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
             <WifiOff className="size-3 shrink-0" />
-            Working offline — showing cached data. Changes are saved locally and will sync when you connect to CLI.
+            CLI disconnected — edits saved locally, connect to sync
           </div>
         )}
 
@@ -50,10 +49,13 @@ function SkillsIDEPage() {
             expandedFolders={ide.state.expandedFolders}
             searchQuery={ide.state.searchQuery}
             isConnected={ide.isConnected}
+            isLoading={ide.isLoading}
             getLibrarySkill={ide.getLibrarySkill}
             onSearchChange={ide.setSearchQuery}
             onToggleFolder={ide.toggleFolder}
-            onOpenSkill={ide.openSkill}
+            onCollapseAll={ide.collapseAll}
+            onOpenFile={ide.openFile}
+            onAddFile={ide.addFile}
             onCreateSkill={() => setCreateOpen(true)}
           />
 
@@ -63,10 +65,15 @@ function SkillsIDEPage() {
             activeTabId={ide.state.activeTabId}
             unsavedIds={ide.state.unsavedIds}
             content={ide.activeContent}
+            isConnected={ide.isConnected}
+            isLoading={ide.isLoading}
+            previewOpen={ide.state.previewOpen}
             onTabSelect={ide.setActiveTabId}
             onTabClose={ide.closeTab}
             onContentChange={ide.updateContent}
             onSave={ide.saveSkill}
+            onTogglePreview={() => ide.setPreviewOpen(!ide.state.previewOpen)}
+            onCreateSkill={() => setCreateOpen(true)}
           />
 
           {ide.state.previewOpen && (
@@ -76,6 +83,7 @@ function SkillsIDEPage() {
               activeTab={ide.state.previewTab}
               onTabChange={ide.setPreviewTab}
               onClose={() => ide.setPreviewOpen(false)}
+              onAddFile={ide.addFile}
             />
           )}
         </div>

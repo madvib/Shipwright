@@ -140,3 +140,21 @@ pub struct ListSkillVarsRequest {
     /// Optional skill id filter — if omitted, lists all skills with vars.json
     pub skill_id: Option<String>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct WriteSkillFileRequest {
+    /// Skill directory name (e.g. "tdd", "browse")
+    pub skill_id: String,
+    /// Relative path within the skill directory (e.g. "SKILL.md", "assets/vars.json")
+    pub file_path: String,
+    /// File content to write
+    pub content: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeleteSkillFileRequest {
+    /// Skill directory name (e.g. "tdd", "browse")
+    pub skill_id: String,
+    /// Relative path within the skill directory (e.g. "assets/vars.json")
+    pub file_path: String,
+}

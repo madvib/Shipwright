@@ -197,40 +197,148 @@ fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
     refs.iter()
         .filter_map(|r| {
             let id = r.rsplit('/').next().unwrap_or(r);
-            let skill_md = skills_dir.join(id).join("SKILL.md");
+            let skill_dir = skills_dir.join(id);
+            let skill_md = skill_dir.join("SKILL.md");
             let content = std::fs::read_to_string(&skill_md).ok()?;
-            let (name, description) = parse_skill_frontmatter(&content);
+            let fm = parse_skill_frontmatter(&content);
+
+            // Collect all files in the skill directory
+            let files = collect_skill_files(&skill_dir);
+
+            // Read assets/vars.json
+            let vars_schema = std::fs::read_to_string(skill_dir.join("assets/vars.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok());
+
+            // Read evals/evals.json
+            let evals = std::fs::read_to_string(skill_dir.join("evals/evals.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok());
+
+            // Read reference docs
+            let reference_docs = collect_reference_docs(&skill_dir);
+
             Some(PullSkill {
                 id: id.to_string(),
-                name: name.unwrap_or_else(|| id.to_string()),
-                description,
+                name: fm.name.unwrap_or_else(|| id.to_string()),
+                description: fm.description,
                 content,
                 source: "imported".into(),
+                stable_id: fm.stable_id,
+                tags: fm.tags,
+                authors: fm.authors,
+                vars_schema,
+                files,
+                reference_docs,
+                evals,
             })
         })
         .collect()
 }
 
-fn parse_skill_frontmatter(content: &str) -> (Option<String>, Option<String>) {
+/// Collect all file paths in a skill directory, relative to the skill root.
+fn collect_skill_files(skill_dir: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    if !skill_dir.is_dir() {
+        return files;
+    }
+    collect_files_recursive(skill_dir, skill_dir, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_recursive(root, &path, out);
+        } else if path.is_file() {
+            if let Ok(rel) = path.strip_prefix(root) {
+                let rel_str = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push(rel_str);
+            }
+        }
+    }
+}
+
+/// Read markdown files from references/docs/ into a map.
+fn collect_reference_docs(skill_dir: &Path) -> HashMap<String, String> {
+    let docs_dir = skill_dir.join("references").join("docs");
+    let mut docs = HashMap::new();
+    if !docs_dir.is_dir() {
+        return docs;
+    }
+    let mut doc_files = Vec::new();
+    collect_files_recursive(skill_dir, &docs_dir, &mut doc_files);
+    for rel_path in doc_files {
+        let full = skill_dir.join(&rel_path);
+        if let Ok(content) = std::fs::read_to_string(&full) {
+            docs.insert(rel_path, content);
+        }
+    }
+    docs
+}
+
+struct SkillFrontmatter {
+    name: Option<String>,
+    description: Option<String>,
+    stable_id: Option<String>,
+    tags: Vec<String>,
+    authors: Vec<String>,
+}
+
+fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
+    let mut fm = SkillFrontmatter {
+        name: None,
+        description: None,
+        stable_id: None,
+        tags: Vec::new(),
+        authors: Vec::new(),
+    };
+
     if !content.starts_with("---") {
-        return (None, None);
+        return fm;
     }
     let rest = &content[3..];
     let end = match rest.find("\n---") {
         Some(i) => i,
-        None => return (None, None),
+        None => return fm,
     };
-    let fm = &rest[..end];
-    let mut name = None;
-    let mut desc = None;
-    for line in fm.lines() {
+    let block = &rest[..end];
+    for line in block.lines() {
         if let Some(v) = line.strip_prefix("name:") {
-            name = Some(v.trim().to_string());
+            fm.name = Some(v.trim().to_string());
         } else if let Some(v) = line.strip_prefix("description:") {
-            desc = Some(v.trim().to_string());
+            fm.description = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("stable-id:") {
+            fm.stable_id = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("tags:") {
+            fm.tags = parse_inline_array(v.trim());
+        } else if let Some(v) = line.strip_prefix("authors:") {
+            fm.authors = parse_inline_array(v.trim());
         }
     }
-    (name, desc)
+    fm
+}
+
+/// Parse `[a, b, c]` into `vec!["a", "b", "c"]`.
+fn parse_inline_array(s: &str) -> Vec<String> {
+    let trimmed = s.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return Vec::new();
+    }
+    trimmed[1..trimmed.len() - 1]
+        .split(',')
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect()
 }
 
 fn resolve_rules(ship_dir: &Path, refs: &[String]) -> Vec<PullRule> {

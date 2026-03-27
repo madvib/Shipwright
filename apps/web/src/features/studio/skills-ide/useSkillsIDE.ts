@@ -1,23 +1,24 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useSkillsLibrary } from './useSkillsLibrary'
 import type { LibrarySkill } from './useSkillsLibrary'
-import type { Skill } from '@ship/ui'
 import { newSkillTemplate } from './skill-frontmatter'
+import { useSaveSkillFile } from '#/features/studio/mcp-queries'
+import { idbGet, idbSet } from '#/lib/idb-cache'
+import {
+  SKILL_MD,
+  makeTabId,
+  parseTabId,
+  deriveUnsavedIds,
+  deriveLocalFiles,
+  type SkillDraft,
+} from './skill-drafts'
+
+// Re-export tab-ID utilities so existing component imports keep working.
+export { SKILL_MD, makeTabId, parseTabId } from './skill-drafts'
 
 const IDE_STATE_KEY = 'ship-skills-ide-v1'
-export const SKILL_MD = 'SKILL.md'
-
-/** Composite tab ID: `skillId::filePath` */
-export function makeTabId(skillId: string, filePath: string): string {
-  return `${skillId}::${filePath}`
-}
-
-export function parseTabId(tabId: string): { skillId: string; filePath: string } {
-  const idx = tabId.indexOf('::')
-  // Backward compat: bare skill IDs become skillId::SKILL.md
-  if (idx === -1) return { skillId: tabId, filePath: SKILL_MD }
-  return { skillId: tabId.slice(0, idx), filePath: tabId.slice(idx + 2) }
-}
+const DRAFTS_IDB_KEY = 'ship-skills-ide-drafts'
+const DRAFTS_SAVE_DELAY = 800
 
 interface IDEState {
   openTabIds: string[]
@@ -25,7 +26,7 @@ interface IDEState {
   expandedFolders: Set<string>
   unsavedIds: Set<string>
   searchQuery: string
-  previewTab: 'metadata' | 'output' | 'used-by'
+  previewTab: string
   previewOpen: boolean
 }
 
@@ -40,7 +41,6 @@ function loadPersistedState(): Partial<PersistedIDEState> {
     const raw = window.localStorage.getItem(IDE_STATE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw)
-    // Migrate old bare-skillId tab IDs to composite format
     if (parsed.openTabIds) {
       parsed.openTabIds = parsed.openTabIds.map((id: string) =>
         id.includes('::') ? id : makeTabId(id, SKILL_MD),
@@ -54,65 +54,100 @@ function loadPersistedState(): Partial<PersistedIDEState> {
   return {}
 }
 
-function persistState(state: PersistedIDEState) {
-  try {
-    window.localStorage.setItem(IDE_STATE_KEY, JSON.stringify(state))
-  } catch { /* ignore */ }
+/** Resolve file content from pull data for a given skill + file path. */
+function resolveOriginal(skills: LibrarySkill[], skillId: string, filePath: string): string {
+  const skill = skills.find((s) => s.id === skillId)
+  if (!skill) return ''
+  if (filePath === SKILL_MD) return skill.content ?? ''
+  if (skill.referenceDocs?.[filePath]) return skill.referenceDocs[filePath]
+  if (filePath === 'assets/vars.json' && skill.varsSchema) {
+    return JSON.stringify(skill.varsSchema, null, 2)
+  }
+  if (filePath === 'evals/evals.json' && skill.evals) {
+    return JSON.stringify(skill.evals, null, 2)
+  }
+  return ''
 }
 
 export function useSkillsIDE() {
   const { skills: librarySkills, isLoading, isConnected } = useSkillsLibrary()
-  const skills: Skill[] = librarySkills
   const persisted = useRef(loadPersistedState())
+  const saveMutation = useSaveSkillFile()
 
   const [openTabIds, setOpenTabIds] = useState<string[]>(persisted.current.openTabIds ?? [])
   const [activeTabId, setActiveTabId] = useState<string | null>(persisted.current.activeTabId ?? null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(persisted.current.expandedFolders ?? []),
   )
-  const [unsavedIds, setUnsavedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
-  const [previewTab, setPreviewTab] = useState<'metadata' | 'output' | 'used-by'>('metadata')
+  const [previewTab, setPreviewTab] = useState('vars')
   const [previewOpen, setPreviewOpen] = useState(true)
 
-  // Local content buffers for unsaved edits (drafts)
-  const [contentBuffers, setContentBuffers] = useState<Record<string, string>>({})
+  // Single drafts map replaces contentBuffers + unsavedIds + localFiles
+  const [drafts, setDrafts] = useState<Record<string, SkillDraft>>({})
+  const draftsLoadedRef = useRef(false)
+  const draftsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Persist layout state
+  // Load drafts from IndexedDB on mount
   useEffect(() => {
-    persistState({
-      openTabIds,
-      activeTabId,
-      expandedFolders: Array.from(expandedFolders),
+    let cancelled = false
+    async function load() {
+      try {
+        const stored = await idbGet<Record<string, SkillDraft>>(DRAFTS_IDB_KEY)
+        if (stored && !cancelled) setDrafts(stored)
+      } catch { /* IDB unavailable */ }
+      draftsLoadedRef.current = true
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
+
+  // Debounced persist drafts to IndexedDB
+  useEffect(() => {
+    if (!draftsLoadedRef.current) return
+    if (draftsSaveTimerRef.current) clearTimeout(draftsSaveTimerRef.current)
+    draftsSaveTimerRef.current = setTimeout(() => {
+      idbSet(DRAFTS_IDB_KEY, drafts).catch(() => {})
+    }, DRAFTS_SAVE_DELAY)
+    return () => { if (draftsSaveTimerRef.current) clearTimeout(draftsSaveTimerRef.current) }
+  }, [drafts])
+
+  const unsavedIds = useMemo(() => deriveUnsavedIds(drafts), [drafts])
+  const localFiles = useMemo(() => deriveLocalFiles(drafts), [drafts])
+
+  const skills: LibrarySkill[] = useMemo(() => {
+    if (Object.keys(localFiles).length === 0) return librarySkills
+    return librarySkills.map((s) => {
+      const added = localFiles[s.id]
+      if (!added?.length) return s
+      return { ...s, files: Array.from(new Set([...s.files, ...added])).sort() }
     })
+  }, [librarySkills, localFiles])
+
+  // Persist layout state to localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(IDE_STATE_KEY, JSON.stringify({
+        openTabIds, activeTabId, expandedFolders: Array.from(expandedFolders),
+      }))
+    } catch { /* ignore */ }
   }, [openTabIds, activeTabId, expandedFolders])
 
-  // If active tab's skill doesn't exist, clear it
+  // Clear active tab if its skill was removed
   useEffect(() => {
     if (!activeTabId) return
     const { skillId } = parseTabId(activeTabId)
     if (!skills.some((s) => s.id === skillId)) {
-      // Find first open tab whose skill still exists
-      const fallback = openTabIds.find((tid) => {
-        const { skillId: sid } = parseTabId(tid)
-        return skills.some((s) => s.id === sid)
-      })
+      const fallback = openTabIds.find((tid) => skills.some((s) => s.id === parseTabId(tid).skillId))
       setActiveTabId(fallback ?? null)
     }
   }, [skills, activeTabId, openTabIds])
 
-  // Derive active skill and content from composite tab ID
   const activeTab = activeTabId ? parseTabId(activeTabId) : null
   const activeSkill = activeTab ? (skills.find((s) => s.id === activeTab.skillId) ?? null) : null
 
-  const getFileContent = useCallback((skillId: string, filePath: string): string => {
-    const skill = skills.find((s) => s.id === skillId)
-    if (filePath === SKILL_MD) return skill?.content ?? ''
-    return ''
-  }, [skills])
-
   const activeContent = activeTabId
-    ? (contentBuffers[activeTabId] ?? (activeTab ? getFileContent(activeTab.skillId, activeTab.filePath) : ''))
+    ? (drafts[activeTabId]?.content ?? (activeTab ? resolveOriginal(librarySkills, activeTab.skillId, activeTab.filePath) : ''))
     : ''
 
   const openFile = useCallback((skillId: string, filePath: string) => {
@@ -121,12 +156,16 @@ export function useSkillsIDE() {
     setActiveTabId(tabId)
   }, [])
 
+  const addFile = useCallback((skillId: string, filePath: string, content: string) => {
+    const tabId = makeTabId(skillId, filePath)
+    setDrafts((prev) => ({ ...prev, [tabId]: { content, originalContent: content, isNew: true } }))
+    setExpandedFolders((prev) => new Set(prev).add(skillId))
+    openFile(skillId, filePath)
+  }, [openFile])
+
   const openSkill = useCallback((id: string) => {
     openFile(id, SKILL_MD)
-    setExpandedFolders((prev) => {
-      if (prev.has(id)) return prev
-      return new Set(prev).add(id)
-    })
+    setExpandedFolders((prev) => prev.has(id) ? prev : new Set(prev).add(id))
   }, [openFile])
 
   const closeTab = useCallback((tabId: string) => {
@@ -134,59 +173,86 @@ export function useSkillsIDE() {
       const next = prev.filter((t) => t !== tabId)
       if (activeTabId === tabId) {
         const idx = prev.indexOf(tabId)
-        const newActive = next[Math.min(idx, next.length - 1)] ?? null
-        setActiveTabId(newActive)
+        setActiveTabId(next[Math.min(idx, next.length - 1)] ?? null)
       }
       return next
     })
-    setUnsavedIds((prev) => { const n = new Set(prev); n.delete(tabId); return n })
-    setContentBuffers((prev) => { const n = { ...prev }; delete n[tabId]; return n })
+    setDrafts((prev) => {
+      if (!(tabId in prev)) return prev
+      const next = { ...prev }
+      delete next[tabId]
+      return next
+    })
   }, [activeTabId])
 
   const updateContent = useCallback((tabId: string, content: string) => {
-    setContentBuffers((prev) => ({ ...prev, [tabId]: content }))
-    setUnsavedIds((prev) => new Set(prev).add(tabId))
+    setDrafts((prev) => {
+      const existing = prev[tabId]
+      if (existing) return { ...prev, [tabId]: { ...existing, content } }
+      const { skillId, filePath } = parseTabId(tabId)
+      const original = resolveOriginal(librarySkills, skillId, filePath)
+      return { ...prev, [tabId]: { content, originalContent: original, isNew: false } }
+    })
+  }, [librarySkills])
+
+  /** Mark a draft as saved after successful MCP write. */
+  const markSaved = useCallback((tabId: string) => {
+    setDrafts((prev) => {
+      const d = prev[tabId]
+      if (!d) return prev
+      return { ...prev, [tabId]: { ...d, originalContent: d.content, isNew: false } }
+    })
   }, [])
 
-  // Save stages content as a draft (marks unsaved cleared).
-  // Actual persistence to CLI happens via push.
-  const saveSkill = useCallback((id: string) => {
-    const content = contentBuffers[id]
-    if (content === undefined) return
-    // Draft is stored in contentBuffers; clearing unsaved marker means
-    // the edit is acknowledged but not yet pushed to CLI.
-    setUnsavedIds((prev) => { const n = new Set(prev); n.delete(id); return n })
-  }, [contentBuffers])
+  const saveSkill = useCallback((tabId: string) => {
+    const draft = drafts[tabId]
+    if (!draft) return
+    const { skillId, filePath } = parseTabId(tabId)
+    saveMutation.mutate(
+      { skillId, filePath, content: draft.content },
+      { onSuccess: () => markSaved(tabId) },
+    )
+  }, [drafts, saveMutation, markSaved])
 
   const saveAll = useCallback(() => {
-    if (unsavedIds.size === 0) return
-    setUnsavedIds(new Set())
-  }, [unsavedIds])
+    for (const tabId of unsavedIds) {
+      const draft = drafts[tabId]
+      if (!draft) continue
+      const { skillId, filePath } = parseTabId(tabId)
+      saveMutation.mutate(
+        { skillId, filePath, content: draft.content },
+        { onSuccess: () => markSaved(tabId) },
+      )
+    }
+  }, [unsavedIds, drafts, saveMutation, markSaved])
 
   const toggleFolder = useCallback((id: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }, [])
 
+  const collapseAll = useCallback(() => {
+    if (activeTabId) {
+      setExpandedFolders(new Set([parseTabId(activeTabId).skillId]))
+    } else {
+      setExpandedFolders(new Set())
+    }
+  }, [activeTabId])
+
   const createSkill = useCallback((idOrUndefined?: string) => {
-    const ts = Date.now()
-    const id = idOrUndefined ?? `new-skill-${ts}`
+    const id = idOrUndefined ?? `new-skill-${Date.now()}`
     const name = id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     const content = newSkillTemplate(name, id)
-    // New skill creation is a local draft only — not yet pushed
-    setContentBuffers((prev) => ({ ...prev, [id]: content }))
+    const tabId = makeTabId(id, SKILL_MD)
+    setDrafts((prev) => ({ ...prev, [tabId]: { content, originalContent: content, isNew: true } }))
     setExpandedFolders((prev) => new Set(prev).add(id))
     openSkill(id)
-    setUnsavedIds((prev) => new Set(prev).add(id))
   }, [openSkill])
 
-  const deleteSkill = useCallback((id: string) => {
-    closeTab(id)
-  }, [closeTab])
+  const deleteSkill = useCallback((id: string) => { closeTab(id) }, [closeTab])
 
   const filteredSkills = searchQuery
     ? skills.filter((s) => {
@@ -195,42 +261,21 @@ export function useSkillsIDE() {
       })
     : skills
 
-  /** Get the LibrarySkill metadata (origin, usedBy) for a skill ID. */
   const getLibrarySkill = useCallback((id: string): LibrarySkill | undefined => {
-    return librarySkills.find((s) => s.id === id)
-  }, [librarySkills])
+    return skills.find((s) => s.id === id)
+  }, [skills])
 
   const state: IDEState = {
-    openTabIds,
-    activeTabId,
-    expandedFolders,
-    unsavedIds,
-    searchQuery,
-    previewTab,
-    previewOpen,
+    openTabIds, activeTabId, expandedFolders, unsavedIds,
+    searchQuery, previewTab, previewOpen,
   }
 
   return {
-    skills,
-    filteredSkills,
-    state,
-    activeSkill,
-    activeContent,
-    isLoading,
-    isConnected,
-    getLibrarySkill,
-    openSkill,
-    openFile,
-    closeTab,
-    setActiveTabId,
-    updateContent,
-    saveSkill,
-    saveAll,
-    toggleFolder,
-    setSearchQuery,
-    createSkill,
-    deleteSkill,
-    setPreviewTab,
-    setPreviewOpen,
+    skills, filteredSkills, state, activeSkill, activeContent,
+    isLoading, isConnected, isSaving: saveMutation.isPending,
+    getLibrarySkill, openSkill, openFile, addFile, closeTab,
+    setActiveTabId, updateContent, saveSkill, saveAll,
+    toggleFolder, collapseAll, setSearchQuery, createSkill,
+    deleteSkill, setPreviewTab, setPreviewOpen,
   }
 }

@@ -6,15 +6,29 @@ import { useMemo, useState, useEffect } from 'react'
 import { usePullAgents } from '#/features/studio/mcp-queries'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
-import type { Skill, PullSkill } from '@ship/ui'
+import type { Skill, PullSkill, JsonValue } from '@ship/ui'
 
-const CACHE_KEY = 'ship-skills-library-cache'
+const CACHE_KEY = 'ship-skills-library-cache-v2'
 
 export interface LibrarySkill extends Skill {
   /** 'project' = from .ship/, 'library' = from ~/.ship/ */
   origin: 'project' | 'library'
   /** Agent IDs that reference this skill */
   usedBy: string[]
+  /** Canonical storage key from stable-id frontmatter */
+  stableId: string | null
+  /** Tags from frontmatter */
+  tags: string[]
+  /** Authors from frontmatter */
+  authors: string[]
+  /** Raw vars.json schema, null if no vars */
+  varsSchema: JsonValue | null
+  /** All files in the skill directory */
+  files: string[]
+  /** Reference doc content keyed by relative path */
+  referenceDocs: Record<string, string>
+  /** Raw evals.json content, null if no evals */
+  evals: JsonValue | null
 }
 
 export interface UseSkillsLibraryReturn {
@@ -23,18 +37,33 @@ export interface UseSkillsLibraryReturn {
   isConnected: boolean
 }
 
-/** Convert a PullSkill to the Skill shape used by the IDE. */
-function pullSkillToSkill(ps: PullSkill): Skill {
+/** Convert a PullSkill to a LibrarySkill. */
+function pullToLibrarySkill(
+  ps: PullSkill,
+  origin: 'project' | 'library',
+  usedBy: string[],
+): LibrarySkill {
+  const source = (ps.source === 'custom' || ps.source === 'builtin' ||
+           ps.source === 'ai-generated' || ps.source === 'community' ||
+           ps.source === 'imported')
+    ? ps.source
+    : 'custom' as const
   return {
     id: ps.id,
     name: ps.name,
     description: ps.description ?? null,
     content: ps.content,
-    source: (ps.source === 'custom' || ps.source === 'builtin' ||
-             ps.source === 'ai-generated' || ps.source === 'community' ||
-             ps.source === 'imported')
-      ? ps.source
-      : 'custom',
+    source,
+    vars: {},
+    origin,
+    usedBy,
+    stableId: ps.stable_id ?? null,
+    tags: ps.tags ?? [],
+    authors: ps.authors ?? [],
+    varsSchema: ps.vars_schema ?? null,
+    files: ps.files ?? [],
+    referenceDocs: (ps.reference_docs ?? {}) as Record<string, string>,
+    evals: ps.evals ?? null,
   }
 }
 
@@ -57,12 +86,11 @@ export function aggregateSkills(
           existing.usedBy.push(agent.id)
         }
       } else {
-        const skill = pullSkillToSkill(ps)
-        map.set(ps.id, {
-          ...skill,
-          origin: agentOrigin as 'project' | 'library',
-          usedBy: [agent.id],
-        })
+        map.set(ps.id, pullToLibrarySkill(
+          ps,
+          agentOrigin as 'project' | 'library',
+          [agent.id],
+        ))
       }
     }
   }

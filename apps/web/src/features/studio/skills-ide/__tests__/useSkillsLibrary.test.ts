@@ -3,7 +3,7 @@ import { aggregateSkills } from '../useSkillsLibrary'
 import type { PullSkill } from '@ship/ui'
 
 function skill(id: string, name: string, source = 'custom'): PullSkill {
-  return { id, name, description: `${name} description`, content: `# ${name}`, source }
+  return { id, name, description: `${name} description`, content: `# ${name}`, source, tags: [], authors: [], files: [], reference_docs: {} }
 }
 
 describe('aggregateSkills', () => {
@@ -91,7 +91,7 @@ describe('aggregateSkills', () => {
   })
 
   it('handles null description in PullSkill', () => {
-    const ps: PullSkill = { id: 'x', name: 'X', description: null, content: '# X', source: 'custom' }
+    const ps: PullSkill = { id: 'x', name: 'X', description: null, content: '# X', source: 'custom', tags: [], authors: [], files: [], reference_docs: {} }
     const result = aggregateSkills([{ id: 'a', skills: [ps], source: 'project' }])
     expect(result[0].description).toBeNull()
   })

@@ -57,7 +57,7 @@ PORTS=(
   -p 3001:3001   # Ship Studio (alt)
   -p 3002:3002   # Vite HMR websocket
   -p 6006:6006   # Storybook
-  -p 7701:7701   # Ship MCP server (HTTP mode)
+  -p 51741:51741 # Ship MCP server (HTTP mode — Studio default)
 )
 
 cmd_build() {

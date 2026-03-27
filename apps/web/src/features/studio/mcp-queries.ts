@@ -11,7 +11,12 @@ import type {
 
 function useMcpCallTool() {
   const mcp = useLocalMcpContext()
-  if (!mcp) throw new Error('useMcpCallTool requires LocalMcpProvider')
+  if (!mcp) {
+    return {
+      callTool: () => Promise.reject(new Error('No MCP connection')),
+      status: 'disconnected' as const,
+    }
+  }
   return { callTool: mcp.callTool, status: mcp.status }
 }
 
@@ -64,6 +69,33 @@ export function usePushBundle() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
       void queryClient.invalidateQueries({ queryKey: mcpKeys.agents() })
+    },
+  })
+}
+
+/** Write a single skill file to disk via CLI. Invalidates pull on success. */
+export function useSaveSkillFile() {
+  const { callTool } = useMcpCallTool()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      skillId,
+      filePath,
+      content,
+    }: {
+      skillId: string
+      filePath: string
+      content: string
+    }): Promise<string> => {
+      return callTool('write_skill_file', {
+        skill_id: skillId,
+        file_path: filePath,
+        content,
+      })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
     },
   })
 }

@@ -1,9 +1,8 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
-import { useAgents } from '#/features/agents/useAgents'
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -126,15 +125,8 @@ export default function Header() {
   const rawSegments = pathname.split('/').filter(Boolean)
   const isStudio = pathname.startsWith('/studio')
   const isRegistry = pathname.startsWith('/registry')
-  const { getAgent } = useAgents()
-
-  // Resolve agent ID to name in breadcrumb
-  const segments = useMemo(() => rawSegments.map((seg, i) => {
-    if (i === 2 && rawSegments[0] === 'studio' && rawSegments[1] === 'agents') {
-      return getAgent(seg)?.profile.name ?? seg
-    }
-    return seg
-  }), [rawSegments, getAgent])
+  // Breadcrumb segments — agent ID stays as-is (no MCP context outside studio)
+  const segments = rawSegments
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">

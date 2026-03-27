@@ -1,8 +1,12 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use compiler::types::is_valid_skill_name;
 use runtime::{get_skill_vars, list_effective_skills, list_skill_vars, set_skill_var};
 
-use crate::requests::{GetSkillVarsRequest, ListSkillVarsRequest, ListSkillsRequest, SetSkillVarRequest};
+use crate::requests::{
+    DeleteSkillFileRequest, GetSkillVarsRequest, ListSkillVarsRequest, ListSkillsRequest,
+    SetSkillVarRequest, WriteSkillFileRequest,
+};
 
 pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
     let skills = match list_effective_skills(project_dir) {
@@ -100,4 +104,96 @@ pub fn list_skill_vars_tool(ship_dir: &Path, req: ListSkillVarsRequest) -> Strin
         }
     }
     out
+}
+
+/// Validate and resolve a skill file path. Returns the absolute path or an error message.
+fn resolve_skill_file_path(
+    ship_dir: &Path,
+    skill_id: &str,
+    file_path: &str,
+) -> Result<PathBuf, String> {
+    if !is_valid_skill_name(skill_id) {
+        return Err(format!(
+            "Invalid skill_id '{}': must be lowercase alphanumeric with hyphens, 1-64 chars.",
+            skill_id
+        ));
+    }
+    if file_path.is_empty() {
+        return Err("file_path must not be empty.".into());
+    }
+    if file_path.starts_with('/') || file_path.starts_with('\\') {
+        return Err("file_path must be relative, not absolute.".into());
+    }
+    if file_path.contains("..") {
+        return Err("file_path must not contain '..' (path traversal).".into());
+    }
+    let skill_dir = ship_dir.join("skills").join(skill_id);
+    let dest = skill_dir.join(file_path);
+    // Canonicalize the skill_dir base to ensure the resolved path stays within it.
+    // The dest may not exist yet, so we canonicalize the skill_dir (creating it if needed)
+    // and check that the dest starts with it.
+    if skill_dir.exists() {
+        let canon_base = skill_dir
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve skill directory: {e}"))?;
+        // For dest, resolve through parent if the file does not exist yet.
+        let canon_dest = if dest.exists() {
+            dest.canonicalize()
+                .map_err(|e| format!("Cannot resolve file path: {e}"))?
+        } else if let Some(parent) = dest.parent() {
+            if parent.exists() {
+                let canon_parent = parent
+                    .canonicalize()
+                    .map_err(|e| format!("Cannot resolve parent directory: {e}"))?;
+                canon_parent.join(dest.file_name().unwrap())
+            } else {
+                // Parent directories will be created; trust the string checks above.
+                dest.clone()
+            }
+        } else {
+            dest.clone()
+        };
+        if !canon_dest.starts_with(&canon_base) {
+            return Err("file_path resolves outside the skill directory.".into());
+        }
+    }
+    Ok(dest)
+}
+
+/// `write_skill_file` MCP tool — write a file into a skill directory on disk.
+pub fn write_skill_file(ship_dir: &Path, req: WriteSkillFileRequest) -> String {
+    let dest = match resolve_skill_file_path(ship_dir, &req.skill_id, &req.file_path) {
+        Ok(p) => p,
+        Err(e) => return format!("Error: {e}"),
+    };
+    if let Some(parent) = dest.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return format!("Error creating directories: {e}");
+        }
+    }
+    match std::fs::write(&dest, &req.content) {
+        Ok(()) => format!("Wrote {}", dest.display()),
+        Err(e) => format!("Error writing file: {e}"),
+    }
+}
+
+/// `delete_skill_file` MCP tool — delete a single file from a skill directory.
+pub fn delete_skill_file(ship_dir: &Path, req: DeleteSkillFileRequest) -> String {
+    if req.file_path == "SKILL.md" {
+        return "Error: refusing to delete SKILL.md — it defines the skill itself.".into();
+    }
+    let dest = match resolve_skill_file_path(ship_dir, &req.skill_id, &req.file_path) {
+        Ok(p) => p,
+        Err(e) => return format!("Error: {e}"),
+    };
+    if !dest.exists() {
+        return format!(
+            "Error: file '{}' does not exist in skill '{}'.",
+            req.file_path, req.skill_id
+        );
+    }
+    match std::fs::remove_file(&dest) {
+        Ok(()) => format!("Deleted {}", dest.display()),
+        Err(e) => format!("Error deleting file: {e}"),
+    }
 }

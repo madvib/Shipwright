@@ -12,7 +12,10 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{agent, events, project, session, skills, studio, workspace, workspace_ops};
-use skills::{get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool};
+use skills::{
+    delete_skill_file, get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool,
+    write_skill_file,
+};
 
 #[cfg(feature = "unstable")]
 use crate::tools::{adr, job, notes, target};
@@ -283,6 +286,36 @@ impl ShipServer {
             Err(e) => return e,
         };
         list_skill_vars_tool(&project_dir, req)
+    }
+
+    #[tool(
+        description = "Write a file into a skill directory on disk (.ship/skills/<skill_id>/<file_path>). \
+        Creates parent directories as needed. Use for saving skill content from the IDE."
+    )]
+    async fn write_skill_file(
+        &self,
+        Parameters(req): Parameters<WriteSkillFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        write_skill_file(&project_dir, req)
+    }
+
+    #[tool(
+        description = "Delete a single file from a skill directory. \
+        Refuses to delete SKILL.md (the skill definition itself)."
+    )]
+    async fn delete_skill_file(
+        &self,
+        Parameters(req): Parameters<DeleteSkillFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        delete_skill_file(&project_dir, req)
     }
 
     // ---- Events ----
