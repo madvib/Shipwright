@@ -59,9 +59,15 @@ pub(super) fn server_entry(desc: &ProviderDescriptor, s: &McpServerConfig) -> Js
 }
 
 pub(super) fn ship_server_entry(emit_type: bool) -> Json {
+    let ship_global_dir = std::env::var("HOME")
+        .map(|h| format!("{}/.ship", h))
+        .unwrap_or_else(|_| String::from("~/.ship"));
     let mut e = serde_json::json!({
         "command": "ship",
-        "args": ["mcp", "serve"]
+        "args": ["mcp", "serve"],
+        "env": {
+            "SHIP_GLOBAL_DIR": ship_global_dir
+        }
     });
     if emit_type {
         e["type"] = Json::String("stdio".to_string());

@@ -185,7 +185,7 @@ pub(crate) fn merge_json(base: &mut serde_json::Value, patch: &serde_json::Value
 /// Read an existing JSON file (or start with `{}`), merge `patch` in, write back.
 pub(crate) fn merge_json_file(path: &Path, patch: &serde_json::Value) -> Result<()> {
     let mut existing: serde_json::Value = if path.exists() {
-        serde_json::from_str(&std::fs::read_to_string(path)?).unwrap_or(serde_json::json!({}))
+        serde_json::from_str(&std::fs::read_to_string(path)?).map_err(|e| anyhow!("failed to parse existing JSON at {}: {}", path.display(), e))?
     } else {
         serde_json::json!({})
     };
