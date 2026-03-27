@@ -31,3 +31,21 @@ BEFORE UPDATE ON events
 BEGIN
   SELECT RAISE(FAIL, 'events table is immutable -- use append only');
 END;
+
+-- Actor operational table (v0.2.0 kernel)
+-- Status values: created | active | sleeping | stopped | crashed
+
+CREATE TABLE IF NOT EXISTS actors (
+  id               TEXT PRIMARY KEY NOT NULL,
+  kind             TEXT NOT NULL,
+  environment_type TEXT NOT NULL DEFAULT 'local',
+  status           TEXT NOT NULL DEFAULT 'created',
+  workspace_id     TEXT,
+  parent_actor_id  TEXT,
+  restart_count    INTEGER NOT NULL DEFAULT 0,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_actors_workspace ON actors(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_actors_status    ON actors(status);

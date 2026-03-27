@@ -2,6 +2,7 @@
 //!
 //! One file: `~/.ship/platform.db`.  Migrations in `migrations/`.
 
+pub mod actor_events;
 pub mod adrs;
 pub mod agents;
 pub mod branch;
