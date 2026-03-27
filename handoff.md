@@ -1,118 +1,102 @@
-# Session Handoff — Studio v0.1.0 Phase 1 + Architecture Plan
+# Handoff — job/skill-vars
 
-## Branch: `v0.1.0`
-
-## What was done this session
-
-### Phase 1: Delete Lies (COMPLETE)
-Removed all hardcoded/fake/demo data from Studio UI. 341/341 tests passing, TypeScript clean.
-
-**Deleted files:**
-- `features/agents/sections/SettingsSection.tsx` (dead component)
-- `features/agents/sections/McpToolPanel.tsx` (depended on fake registry)
-- `features/registry/mock-data.ts` (12 fake packages)
-
-**Cleaned files:**
-- `SectionShell.tsx` — removed OrangeDot export and showOrangeDot prop
-- `SettingsLayout.tsx` — removed OrangeDot export
-- `types.ts` — removed MCP_TOOL_REGISTRY, GITHUB_TOOLS, McpToolConfig
-- `SkillsPreviewPanel.tsx` — replaced MOCK_AGENTS with real useAgentStore queries
-- `SkillsFileExplorer.tsx` — replaced INSTALLED_SKILLS with empty state
-- `registry-cards.ts` — removed MOCK_CARDS, REGISTRY_CARDS now empty array
-- `RegistryCardGrid.tsx` — replaced OrangeDots with disabled "Coming soon" buttons
-- `ProviderSettingsSection.tsx` — rebuilt as JSON editor per provider
-- `McpSection.tsx` — rebuilt without fake tool list
-- `SettingsForm.tsx` — removed hardcoded CLAUDE_MODELS, added dontAsk to DEFAULT_MODES
-- All provider lists updated to 5 providers: claude, gemini, codex, cursor, opencode
-- `ProviderLogo.tsx` + `ModeHeader.tsx` — added opencode support
-
-**Test fixes:** schema-validation, schema-hints, mcp-client (8 expectations updated)
-
-### State Management Audit (COMPLETE)
-Every store is localStorage-only. Server sync is stubbed (agent-api.ts no-ops, useLibrarySync returns 'idle'). Provider settings and MCP tool permissions are ephemeral component state — data loss bugs.
-
-### Product Direction Decided
-- v0.1.0: CLI-first, KPI = CLI installs. MCP bridge = primary sync.
-- Better Auth + GitHub app: keep code, don't surface in UI.
-- localStorage = "draft state", push to CLI = real persistence.
-- Two local layers: `~/.ship` (global library cache, single DB) and `<project>/.ship` (project declarations + exports).
-- Studio surfaces library vs project as a **filter** in agents/skills pages.
-- v0.1.X: add auth + GitHub publishing.
-- v0.2.0: paid tier, agent cloud, workflows.
+Branch: `job/skill-vars`
+Date: 2026-03-26
+Status: implementation complete, ready for review and merge
 
 ---
 
-## BLOCKER: HTTPS → localhost bridge test
+## What was built
 
-Must validate `fetch('http://localhost:51741/mcp')` works from `https://staging.getship.dev`. Browsers special-case localhost as potentially trustworthy (Chrome, Firefox) but needs live testing before further investment.
+**Smart Skills** — template variables for personalizable skill content. Skills that carry typed, scoped configuration resolved at compile time via MiniJinja.
 
-### Deploy to staging
+### Compiler (`crates/core/compiler`)
+- `src/vars.rs` — MiniJinja template resolver (replaces 373-line custom `%var%` parser). Standard Jinja2: `{{ var }}`, `{% if %}`, `{% else %}`, `{% for %}`. Pure WASM, no I/O, chainable undefined.
+- `src/types/skill.rs` — `vars: HashMap<String, Value>` added to `Skill`.
+- `src/compile/skills.rs` — resolves vars before emitting skill file content.
+- `Cargo.toml` — `minijinja = "2"` added.
 
-```bash
-cd apps/web
-pnpm build
-pnpm wrangler d1 migrations apply ship-auth-staging --remote --env staging
-pnpm wrangler d1 migrations apply ship-registry-staging --remote --env staging
-pnpm wrangler deploy --env staging
-```
+### CLI (`apps/ship-studio-cli`)
+- `src/vars/schema.rs` — `VarDef`, `StorageHint` (Global/Local/Project), `VarType`, `parse_vars_json`, `load_vars_json`. Serde, no custom parser. `label` and `description` fields.
+- `src/vars/state.rs` — `validate_skill_id` path traversal guard, `append_to_array` helper.
+- `src/vars/commands.rs` — `ship vars set/get/append/reset`. `find_vars_json` resolves `assets/vars.json`.
+- `src/loader.rs` — loads `assets/vars.json` + KV state for directory-format skills at compile time.
+- `src/commands.rs` / `cli.rs` / `main.rs` — `ship vars` subcommand wired.
 
-Set secrets (one-time):
-```bash
-pnpm wrangler secret put BETTER_AUTH_SECRET --env staging
-pnpm wrangler secret put BETTER_AUTH_URL --env staging   # https://staging.getship.dev
-pnpm wrangler secret put GITHUB_CLIENT_ID --env staging
-pnpm wrangler secret put GITHUB_CLIENT_SECRET --env staging
-```
+### Runtime (`crates/core/runtime`)
+- `src/skill_vars.rs` — all state in `platform.db` KV. Three namespaces: `skill_vars:{id}` (global), `skill_vars.local:{ctx}:{id}` (local), `skill_vars.project:{ctx}:{id}` (project). Context key = 16-char hex of `DefaultHasher(ship_dir)`.
+- `src/lib.rs` — exports `get_skill_vars`, `set_skill_var`, `list_skill_vars`, `reset_skill_vars`.
 
-DNS: ensure `staging.getship.dev` CNAME exists in Cloudflare zone.
+### Skills
+- `.ship/skills/commit/` — canonical Smart Skill with MiniJinja template, `assets/vars.json`, `evals/evals.json`.
+- All 27 authored skills updated: `stable-id` in frontmatter, 8 skills have `assets/vars.json`, 6 skills have MiniJinja template markers.
 
-**TODO:** Add `"deploy:staging": "pnpm build && wrangler deploy --env staging"` to `apps/web/package.json`.
-
----
-
-## Execution Plan (after bridge test passes)
-
-Full plan: `.ship-session/studio-v010-execution-plan.md`
-
-| Phase | Work | Depends on |
-|-------|------|------------|
-| 1 | Add TransferBundle + pull response types to compiler crate with `#[derive(specta::Type)]` | — |
-| 2 | Regen specta types + rebuild WASM | Phase 1 |
-| 3 | Create useMcpQuery/useMcpMutation hooks (TanStack Query wrapping MCP calls) | Phase 2 |
-| 4 | Fix ephemeral state: provider settings + tool permissions persisted on agent profile | — |
-| 5 | Strip auth/GitHub from Studio UI surfaces | — |
-| 6 | Replace SyncStatus with honest local/CLI status | — |
-| 7 | Library/project filter in agents + skills pages | Phase 3 |
-| 8 | Agent editor schema alignment (hooks section, permissions default_mode, SECTION_DEFS reorder) | — |
-
-Phases 4-6 can run parallel with 1-3.
-
-### MCP bridge type requirement
-TransferBundle, AgentBundle, SkillBundle, PullResponse, ListAgentsResponse must be specta-generated from the compiler crate → flow to @ship/ui. Currently hand-written in `apps/mcp/src/tools/studio_push.rs` with no TypeScript equivalents. Web app constructs bundles inline in CliStatusPopover.tsx with zero type safety.
-
-### TanStack Query requirement
-MCP calls currently use raw `callTool()` → `JSON.parse(raw) as SomeType`. Must wrap with TanStack Query for loading states, caching, invalidation, retry. QueryClient is already set up (`integrations/tanstack-query/root-provider.tsx`) but only used for Registry features.
+### Docs
+- `docs/smart-skills.md` — full spec: directory layout, vars.json schema, KV storage model, stable-id, template syntax, CLI, references/docs/, evals format.
+- `docs/skills-surface.md` — Skills surface roadmap: 0.1.0 shipped / 0.1.X next / future.
 
 ---
 
-## Key files
+## Test counts (all passing)
+- compiler: 391 | runtime: 379 | CLI: 263
+- **Total: 1,043**
 
-| File | What |
-|------|------|
-| `.ship-session/studio-v010-execution-plan.md` | Full execution plan |
-| `apps/web/src/features/agents/useAgentStore.ts` | Agent persistence (localStorage, server sync stubbed) |
-| `apps/web/src/features/compiler/useLibrary.ts` | Library persistence (localStorage only) |
-| `apps/web/src/features/compiler/useLibrarySync.ts` | Dead stub, returns 'idle' |
-| `apps/web/src/features/agents/agent-api.ts` | Server API — all no-ops |
-| `apps/web/src/features/studio/useLocalMcp.ts` | MCP connection hook |
-| `apps/web/src/lib/mcp-client.ts` | Low-level MCP JSON-RPC client |
-| `apps/web/src/features/studio/CliStatusPopover.tsx` | Push/pull UI + untyped bundle construction |
-| `apps/mcp/src/tools/studio_push.rs` | Hand-written TransferBundle (needs specta migration) |
-| `apps/mcp/src/tools/studio.rs` | pull_agents, list_local_agents |
-| `apps/web/wrangler.jsonc` | Cloudflare Workers config with staging env |
+---
 
-## Uncommitted changes
+## Key decisions
 
-All Phase 1 changes on branch `v0.1.0`. Ready to commit — 341 tests pass, TypeScript clean.
+| Decision | Rationale |
+|---|---|
+| MiniJinja | Browser support for skill editor; Jinja2 is known; `{% else %}` included; one parser to maintain |
+| `vars.json` not `vars.yaml` | JSON native; serde; no custom parser |
+| All state in platform.db KV | No scattered state files; three namespaces give global/local/project scoping |
+| `assets/vars.json` path | Schema belongs with assets, not peer to SKILL.md |
+| Context key from path hash | Stable, no path embedded in key, no collisions |
+| `stable-id` in frontmatter | Rename-safe state linkage; orphaning prevented |
+| `skill_id` validation | Path traversal fixed at the API boundary |
+| MiniJinja locked down | No file loader, no custom functions, chainable undefined |
+| `evals/evals.json` | First-class eval loop per agentskills.io spec |
+| "Smart Skills" | Skills that adapt to user and context at compile time |
+| Skills as own surface | Alongside Compiler, Studio, Registry |
 
-Changed: 17 files. Deleted: 3 files. New: 2 plan files in .ship-session/.
+---
+
+## 0.1.X — next agent picks up here
+
+Breaking changes — free to do before anyone publishes against the spec.
+
+**Spec:**
+- `version` required in frontmatter, semver-validated
+- `allowed-tools` structured: `{ required, optional, reason }` with compile-time enforcement
+- `min-runtime-version` field
+- Enum validation at compile time (currently only at `ship vars set`)
+
+**Runtime:**
+- Declarative `migrations.json` — JSON ops (rename, set_default, delete, change_type); applied by `ship install`/`ship update`
+- `ship install` seeds default KV state for new skills, runs pending migrations
+- `ship skill remove` cleans up all KV state
+- MCP tools: `get_skill_vars`, `set_skill_var`, `list_skill_vars`
+
+**Evals:**
+- `ship skill eval` tooling — runs `evals/evals.json` with/without skill, writes `{skill}-workspace/iteration-N/`, produces `benchmark.json`
+
+**Standard:**
+- Extract `crates/skill-vars` — resolver, schema parsing, KV merge logic. Publish to crates.io.
+
+---
+
+## Future
+
+- WASM audit sandbox on registry publish (static scan + sandboxed execution; `ship audit` runs same thing client-side)
+- Studio skill editor — form UI from `vars.json`
+- Computed vars — env injection, git context at compile time
+- Agent-written state — skills accumulate learned preferences via MCP
+- Skills surface added to platform cap map
+
+---
+
+## Open questions
+
+1. **agentskills.io v1 publication** — minimum spec before publishing? Does it wait for `storage-hint` and `stable-id`?
+2. **User state migration** — path from `~/.ship/state/` files to SQLite needs care for existing users
+3. **Registry signal for Smart Skills** — implicit (presence of `assets/vars.json`) or explicit registry field?

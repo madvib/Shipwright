@@ -9,12 +9,12 @@ import { SCOPE_COLORS, extractGitHubOwner } from '#/features/registry/types'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { authClient } from '#/lib/auth-client'
 import type { RegistryPackage, PackageSkill } from '#/features/registry/types'
-import type { Skill } from '#/features/compiler/types'
+import type { Skill } from '@ship/ui'
 
 /** Convert a registry PackageSkill into a Skill for the library. */
 function packageSkillToLibrarySkill(ps: PackageSkill): Skill {
   return {
-    id: ps.skill_id,
+    id: ps.skillId,
     name: ps.name,
     description: ps.description || null,
     content: `# ${ps.name}\n\n${ps.description ?? ''}\n`,
@@ -66,7 +66,7 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
   const installCmd = `ship add ${decodedPath}`
   const colors = SCOPE_COLORS[pkg.scope]
   const isSignedIn = !!session?.user
-  const owner = extractGitHubOwner(pkg.repo_url)
+  const owner = extractGitHubOwner(pkg.repoUrl)
 
   function handleCopy() {
     void navigator.clipboard.writeText(installCmd)
@@ -113,7 +113,7 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
       </Link>
 
       {/* Deprecated banner */}
-      {pkg.deprecated_by && (
+      {pkg.deprecatedBy && (
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
           <AlertTriangle className="size-4 text-amber-500 shrink-0" />
           <div>
@@ -121,10 +121,10 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Replaced by{' '}
               <Link
-                to={`/studio/registry/${encodeURIComponent(pkg.deprecated_by)}` as '/'}
+                to={`/registry/${encodeURIComponent(pkg.deprecatedBy)}` as '/'}
                 className="text-amber-400 underline underline-offset-2"
               >
-                {pkg.deprecated_by}
+                {pkg.deprecatedBy}
               </Link>
             </p>
           </div>
@@ -143,7 +143,7 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
           >
             {owner}
           </a>
-          {pkg.claimed_by && (
+          {pkg.claimedBy && (
             <CheckCircle2 className="size-3.5 text-blue-500" aria-label="Verified owner" />
           )}
         </div>
@@ -156,13 +156,13 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
           <span className={`shrink-0 mt-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}>
             {pkg.scope}
           </span>
-          {pkg.scope === 'unofficial' && !pkg.claimed_by && (
+          {pkg.scope === 'unofficial' && !pkg.claimedBy && (
             <span className="shrink-0 mt-1 flex items-center gap-1 rounded-md bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5">
               <ShieldAlert className="size-3 text-amber-500/70" />
               <span className="text-[10px] font-medium text-amber-500/70">Unverified</span>
             </span>
           )}
-          {pkg.claimed_by && pkg.claimed_by === session?.user?.id && (
+          {pkg.claimedBy && pkg.claimedBy === session?.user?.id && (
             <span className="shrink-0 mt-1 flex items-center gap-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5">
               <Check className="size-3 text-emerald-500" />
               <span className="text-[10px] font-medium text-emerald-400">Claimed by you</span>
@@ -176,21 +176,21 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-3">
           <a
-            href={pkg.repo_url}
+            href={pkg.repoUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors no-underline"
           >
             <ExternalLink className="size-3" />
-            {pkg.repo_url.replace('https://', '')}
+            {pkg.repoUrl.replace('https://', '')}
           </a>
           <div className="flex items-center gap-1 text-muted-foreground/60">
             <Download className="size-3" />
             <span className="text-[11px]">{pkg.installs.toLocaleString()} installs</span>
           </div>
-          {pkg.latest_version && (
+          {pkg.latestVersion && (
             <span className="rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-              v{pkg.latest_version}
+              v{pkg.latestVersion}
             </span>
           )}
         </div>
@@ -228,7 +228,7 @@ export function PackageHeader({ pkg, skills, decodedPath, onClaimClick }: Packag
           {adding ? 'Adding...' : 'Add to project'}
         </button>
 
-        {pkg.scope === 'unofficial' && !pkg.claimed_by && (
+        {pkg.scope === 'unofficial' && !pkg.claimedBy && (
           <button
             onClick={onClaimClick}
             className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-xs font-medium text-amber-400 transition hover:bg-amber-500/10"

@@ -151,6 +151,14 @@ export function useLocalMcp(): UseLocalMcpReturn {
     }
   }, [])
 
+  // Auto-connect on mount when previously connected
+  useEffect(() => {
+    if (hasEverConnected && status === 'disconnected') {
+      const timer = setTimeout(() => void connect(), 500)
+      return () => clearTimeout(timer)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally run once on mount
+
   // Clean up on unmount
   useEffect(() => {
     return () => { clientRef.current = null }

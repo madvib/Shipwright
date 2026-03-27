@@ -1,10 +1,12 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-pub use crate::commands::{AgentCommands, EventsCommands, JobCommands, McpCommands, SkillCommands};
+pub use crate::commands::{AgentCommands, McpCommands, SkillCommands, VarsCommands};
+#[cfg(feature = "unstable")]
+pub use crate::commands::{EventsCommands, JobCommands};
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
-  ship init [--from url] Start here — scaffold .ship/
+  ship init              Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
   ship status            Show active agent
   ship compile           Re-compile after editing config
@@ -30,7 +32,7 @@ const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
 
 #[derive(Parser, Debug)]
 #[command(name = "ship")]
-#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(version = crate::build_version())]
 #[command(about = "Agent configuration compiler — compose, compile, distribute")]
 #[command(after_help = AFTER_HELP)]
 #[command(disable_help_subcommand = true)]
@@ -53,9 +55,6 @@ pub enum Commands {
         /// Overwrite existing .ship/ configuration
         #[arg(long)]
         force: bool,
-        /// Fetch a JSON config bundle from a URL and scaffold .ship/ from it
-        #[arg(long)]
-        from: Option<String>,
     },
 
     /// Authenticate with getship.dev
@@ -100,9 +99,6 @@ pub enum Commands {
         /// Preview output without writing any files
         #[arg(long)]
         dry_run: bool,
-        /// Recompile automatically when agent files change
-        #[arg(long)]
-        watch: bool,
         /// Path to project root (defaults to current directory)
         #[arg(long)]
         path: Option<PathBuf>,
@@ -134,6 +130,12 @@ pub enum Commands {
     Skill {
         #[command(subcommand)]
         action: SkillCommands,
+    },
+
+    /// Read and write skill variable state (set, get, edit, append, reset)
+    Vars {
+        #[command(subcommand)]
+        action: VarsCommands,
     },
 
     /// Manage MCP servers (serve, add, list, remove)
@@ -191,14 +193,14 @@ pub enum Commands {
 
     // ── Inspection ───────────────────────────────────────────────────────────
     /// Query the project event log
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     Events {
         #[command(subcommand)]
         action: EventsCommands,
     },
 
     /// Browse and manage project state in the terminal UI
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     View,
 
     /// Show detailed help for a topic (run `ship docs topics` to list)
@@ -207,26 +209,22 @@ pub enum Commands {
         topic: Option<String>,
     },
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Job {
         #[command(subcommand)]
         action: JobCommands,
     },
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Adrs,
 
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Notes,
 
-    #[cfg(feature = "workflow")]
-    #[command(hide = true)]
-    Migrate,
-
-    #[cfg(feature = "workflow")]
+    #[cfg(feature = "unstable")]
     #[command(hide = true)]
     Diff {
         #[arg(long)]

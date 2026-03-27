@@ -1,22 +1,22 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { useAgentStore } from '#/features/agents/useAgentStore'
-import { useAgentEditor } from '#/features/agents/useAgentEditor'
+import { useState, useCallback, useMemo } from 'react'
+import { useAgents } from '#/features/agents/useAgents'
+import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
+import { makeAgent } from '#/features/agents/make-agent'
 import { AgentActivityBar } from '#/features/agents/AgentActivityBar'
 import { AgentStickyHeader } from '#/features/agents/AgentStickyHeader'
 import { useScrollspy } from '#/features/agents/useScrollspy'
 import { SkillsSection } from '#/features/agents/sections/SkillsSection'
 import { McpSection } from '#/features/agents/sections/McpSection'
 import { PermissionsSection } from '#/features/agents/sections/PermissionsSection'
+import { ProvidersSection } from '#/features/agents/sections/ProvidersSection'
 import { RulesSection } from '#/features/agents/sections/RulesSection'
-import { ModelSection } from '#/features/agents/sections/ModelSection'
 import { AddSkillDialog } from '#/features/agents/dialogs/AddSkillDialog'
 import { AddMcpDialog } from '#/features/agents/dialogs/AddMcpDialog'
 import { EditAgentDialog } from '#/features/agents/dialogs/EditAgentDialog'
 import { PermissionsDialog } from '#/features/agents/dialogs/PermissionsDialog'
 import { RuleEditorDialog } from '#/features/agents/dialogs/RuleEditorDialog'
-import { ProviderModal } from '#/features/agents/dialogs/ProviderModal'
-import type { ToolPermission } from '#/features/agents/types'
+import type { ResolvedAgentProfile, ToolPermission } from '#/features/agents/types'
 import type { Skill, Rule, HookConfig, ProfilePermissions } from '@ship/ui'
 
 import { AgentDetailSkeleton } from '#/features/studio/StudioSkeleton'
@@ -32,188 +32,169 @@ export const Route = createFileRoute('/studio/agents/$id')({
 function AgentDetailPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
-  const store = useAgentStore()
-  const editor = useAgentEditor(id)
+  const { getAgent } = useAgents()
+  const { setDraft, hasDraft, clearDraft } = useAgentDrafts()
+  const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
   const { scrollRef, activeSection, handleSectionClick } = useScrollspy()
+  const isDraft = hasDraft(id)
 
-  // ── beforeunload — panic save dirty state ────────────────────────────
-  useEffect(() => {
-    if (!editor.meta.isDirty) return
-    const handler = (e: BeforeUnloadEvent) => {
-      editor.panicSave()
-      e.preventDefault()
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [editor.meta.isDirty, editor.panicSave])
-
-  // ── Delete ───────────────────────────────────────────────────────────
+  // -- Delete ---------------------------------------------------------------
   const handleDelete = useCallback(() => {
-    if (!confirm(`Delete "${editor.agent.profile.name}"?`)) return
-    store.deleteAgent(id)
+    if (!confirm(`Delete "${profile.profile.name}"?`)) return
     void navigate({ to: '/studio/agents', replace: true })
-  }, [id, editor.agent.profile.name, store, navigate])
+  }, [profile.profile.name, navigate])
 
-  // ── Dialog state ─────────────────────────────────────────────────────
+  const update = useCallback(
+    (patch: Partial<ResolvedAgentProfile>) => setDraft(id, patch),
+    [id, setDraft],
+  )
+
+  const handleDiscard = useCallback(() => clearDraft(id), [id, clearDraft])
+
+  return (
+    <AgentDetailView
+      profile={profile}
+      isDraft={isDraft}
+      activeSection={activeSection}
+      scrollRef={scrollRef}
+      onSectionClick={handleSectionClick}
+      onUpdate={update}
+      onDelete={handleDelete}
+      onDiscard={handleDiscard}
+    />
+  )
+}
+
+// -- Inner view (split to keep AgentDetailPage under 300 lines) -------------
+
+interface ViewProps {
+  profile: ResolvedAgentProfile
+  isDraft: boolean
+  activeSection: string
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  onSectionClick: (section: string) => void
+  onUpdate: (patch: Partial<ResolvedAgentProfile>) => void
+  onDelete: () => void
+  onDiscard: () => void
+}
+
+function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSectionClick, onUpdate, onDelete, onDiscard }: ViewProps) {
+  const removeSkill = useCallback(
+    (skillId: string) => onUpdate({ skills: profile.skills.filter((s) => s.id !== skillId) }),
+    [onUpdate, profile.skills],
+  )
+  const addSkill = useCallback(
+    (skill: Skill) => {
+      if (profile.skills.some((s) => s.id === skill.id)) return
+      onUpdate({ skills: [...profile.skills, skill] })
+    },
+    [onUpdate, profile.skills],
+  )
+  const removeServer = useCallback(
+    (name: string) => onUpdate({ mcpServers: profile.mcpServers.filter((s) => s.name !== name) }),
+    [onUpdate, profile.mcpServers],
+  )
+  const mcpToolStates = profile.toolPermissions ?? {}
+  const setToolPermission = useCallback(
+    (serverName: string, toolName: string, permission: ToolPermission) => {
+      const prev = profile.toolPermissions ?? {}
+      const serverTools = prev[serverName] ?? {}
+      onUpdate({ toolPermissions: { ...prev, [serverName]: { ...serverTools, [toolName]: permission } } })
+    },
+    [onUpdate, profile.toolPermissions],
+  )
+  const setGroupPermission = useCallback(
+    (serverName: string, toolNames: string[], permission: ToolPermission) => {
+      const prev = profile.toolPermissions ?? {}
+      const serverTools = { ...(prev[serverName] ?? {}) }
+      for (const name of toolNames) serverTools[name] = permission
+      onUpdate({ toolPermissions: { ...prev, [serverName]: serverTools } })
+    },
+    [onUpdate, profile.toolPermissions],
+  )
+  const setPermissionPreset = useCallback(
+    (preset: string) => onUpdate({ permissions: { ...profile.permissions, preset } }),
+    [onUpdate, profile.permissions],
+  )
+  const updatePermissions = useCallback(
+    (permissions: ProfilePermissions) => onUpdate({ permissions: { ...permissions, preset: 'custom' } }),
+    [onUpdate],
+  )
+  const addRule = useCallback((rule: Rule) => onUpdate({ rules: [...profile.rules, rule] }), [onUpdate, profile.rules])
+  const updateRule = useCallback(
+    (index: number, rule: Rule) => onUpdate({ rules: profile.rules.map((r, i) => (i === index ? rule : r)) }),
+    [onUpdate, profile.rules],
+  )
+  const removeRule = useCallback((index: number) => onUpdate({ rules: profile.rules.filter((_, i) => i !== index) }), [onUpdate, profile.rules])
+  const setModel = useCallback((model: string | null) => onUpdate({ model }), [onUpdate])
+  const setEnv = useCallback((env: Record<string, string>) => onUpdate({ env }), [onUpdate])
+  const setAvailableModels = useCallback((availableModels: string[]) => onUpdate({ availableModels }), [onUpdate])
+  const setAgentLimits = useCallback(
+    (agentLimits: Record<string, unknown>) => onUpdate({ agentLimits: agentLimits as { max_turns?: number; max_cost_per_session?: number } }),
+    [onUpdate],
+  )
+  const setHooks = useCallback((hooks: HookConfig[]) => onUpdate({ hooks }), [onUpdate])
+  const setProviderSettings = useCallback(
+    (settings: Record<string, Record<string, unknown>>) => onUpdate({ providerSettings: settings }),
+    [onUpdate],
+  )
+
   const [skillOpen, setSkillOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [permsOpen, setPermsOpen] = useState(false)
   const [ruleOpen, setRuleOpen] = useState(false)
   const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: Rule } | null>(null)
-  const [providerModalOpen, setProviderModalOpen] = useState<string | null>(null)
 
-  // ── Navigation guard dialog ──────────────────────────────────────────
-  const [navGuardOpen, setNavGuardOpen] = useState(false)
-  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null)
-
-  const guardedNavigate = useCallback(
-    (navigateFn: () => void) => {
-      if (editor.meta.isDirty) {
-        setPendingNav(() => navigateFn)
-        setNavGuardOpen(true)
-      } else {
-        navigateFn()
-      }
-    },
-    [editor.meta.isDirty],
-  )
-
-  // ── Counts for activity bar ──────────────────────────────────────────
+  // -- Counts for activity bar ----------------------------------------------
   const counts = useMemo(() => ({
-    skills: editor.agent.skills.length,
-    mcp: editor.agent.mcpServers.length,
-    rules: editor.agent.rules.length,
-  }), [editor.agent.skills.length, editor.agent.mcpServers.length, editor.agent.rules.length])
-
-  // ── Provider hooks filtering ─────────────────────────────────────────
-  const getProviderHooks = useCallback(
-    (provider: string): HookConfig[] =>
-      editor.agent.hooks.filter((h) => (h as HookConfig & { provider?: string }).provider === provider || (!(h as HookConfig & { provider?: string }).provider && provider === 'claude')),
-    [editor.agent.hooks],
-  )
-
-  const setProviderHooks = useCallback(
-    (provider: string, newHooks: HookConfig[]) => {
-      // Replace hooks for this provider, keep others
-      const tagged = newHooks.map((h) => ({ ...h, provider } as HookConfig & { provider: string }))
-      const others = editor.agent.hooks.filter((h) => {
-        const p = (h as HookConfig & { provider?: string }).provider
-        return p ? p !== provider : provider !== 'claude'
-      })
-      editor.setHooks([...others, ...tagged] as HookConfig[])
-    },
-    [editor],
-  )
+    skills: profile.skills.length,
+    mcp: profile.mcpServers.length,
+    rules: profile.rules.length,
+    providers: profile.profile.providers?.length ?? 0,
+  }), [profile.skills.length, profile.mcpServers.length, profile.rules.length, profile.profile.providers?.length])
 
   return (
     <>
       <div className="flex h-full min-h-0 overflow-hidden">
-        <AgentActivityBar activeSection={activeSection} onSectionClick={handleSectionClick} counts={counts} />
+        <AgentActivityBar activeSection={activeSection} onSectionClick={onSectionClick} counts={counts} />
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <AgentStickyHeader
-            agent={editor.agent}
-            meta={editor.meta}
-            onSave={editor.save}
-            onNameChange={(name) => editor.updateProfile({ name })}
-            onEdit={() => setEditOpen(true)}
-            onDelete={handleDelete}
-            onOpenProviderModal={setProviderModalOpen}
-          />
+          <AgentStickyHeader profile={profile} onEdit={() => setEditOpen(true)} onDelete={onDelete} onDiscard={isDraft ? onDiscard : undefined} isDraft={isDraft} />
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
             <div id="section-skills">
-              <SkillsSection skills={editor.agent.skills} onRemove={editor.removeSkill} onAdd={() => setSkillOpen(true)} />
+              <SkillsSection skills={profile.skills} onRemove={removeSkill} onAdd={() => setSkillOpen(true)} />
             </div>
             <div id="section-mcp">
-              <McpSection servers={editor.agent.mcpServers} toolStates={editor.agent.toolPermissions ?? {}} onRemove={editor.removeMcpServer} onSetToolPermission={editor.setToolPermission} onSetGroupPermission={editor.setGroupPermission} onAdd={() => setMcpOpen(true)} />
+              <McpSection servers={profile.mcpServers} toolStates={mcpToolStates} onRemove={removeServer} onSetToolPermission={setToolPermission} onSetGroupPermission={setGroupPermission} onAdd={() => setMcpOpen(true)} />
             </div>
             <div id="section-permissions">
               <PermissionsSection
-                permissions={editor.agent.permissions ?? {}}
-                activePreset={editor.agent.permissions?.preset ?? 'ship-standard'}
-                onPresetChange={(preset) => editor.setPermissions({ ...editor.agent.permissions, preset })}
+                permissions={profile.permissions ?? {}}
+                activePreset={profile.permissions?.preset ?? 'ship-standard'}
+                onPresetChange={setPermissionPreset}
                 onEdit={() => setPermsOpen(true)}
               />
             </div>
             <div id="section-rules">
               <RulesSection
-                rules={editor.agent.rules}
+                rules={profile.rules}
                 onAdd={() => { setRuleEdit(null); setRuleOpen(true) }}
-                onEdit={(i) => { setRuleEdit({ index: i, rule: editor.agent.rules[i] }); setRuleOpen(true) }}
-                onRemove={editor.removeRule}
+                onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }}
+                onRemove={removeRule}
               />
             </div>
-            <div id="section-model">
-              <ModelSection
-                model={(editor.agent as ResolvedAgentProfileWithModel)._model ?? ''}
-                onChange={editor.setModel}
-              />
+            <div id="section-providers">
+              <ProvidersSection providers={profile.profile.providers ?? []} model={profile.model} env={profile.env} availableModels={profile.availableModels} agentLimits={profile.agentLimits} hooks={profile.hooks} providerSettings={profile.providerSettings ?? {}} onChangeModel={setModel} onChangeEnv={setEnv} onChangeAvailableModels={setAvailableModels} onChangeAgentLimits={setAgentLimits} onChangeHooks={setHooks} onChangeProviderSettings={setProviderSettings} />
             </div>
             <div className="h-24" />
           </div>
         </div>
       </div>
-
-      <AddSkillDialog open={skillOpen} onOpenChange={setSkillOpen} existingIds={editor.agent.skills.map((s) => s.id)} onAdd={editor.addSkill} />
-      <AddMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} existingNames={editor.agent.mcpServers.map((s) => s.name)} onAdd={editor.addMcpServer} />
-      <EditAgentDialog open={editOpen} onOpenChange={setEditOpen} profile={editor.agent} onSave={(patch) => {
-        if (patch.profile) editor.updateProfile(patch.profile)
-      }} />
-      <PermissionsDialog open={permsOpen} onOpenChange={setPermsOpen} permissions={editor.agent.permissions ?? {}} onSave={(perms) => editor.setPermissions({ ...perms, preset: 'custom' })} />
-      <RuleEditorDialog
-        open={ruleOpen}
-        onOpenChange={setRuleOpen}
-        rule={ruleEdit?.rule ?? null}
-        onSave={(rule) => { if (ruleEdit) editor.updateRule(ruleEdit.index, rule as Rule); else editor.addRule(rule as Rule) }}
-        onDelete={ruleEdit ? () => editor.removeRule(ruleEdit.index) : undefined}
-      />
-
-      {/* Provider modal */}
-      <ProviderModal
-        open={providerModalOpen !== null}
-        onOpenChange={(open) => { if (!open) setProviderModalOpen(null) }}
-        provider={providerModalOpen ?? 'claude'}
-        settings={editor.agent.providerSettings?.[providerModalOpen ?? 'claude'] ?? {}}
-        hooks={getProviderHooks(providerModalOpen ?? 'claude')}
-        onSettingsChange={(s) => editor.setProviderSettings(providerModalOpen ?? 'claude', s)}
-        onHooksChange={(h) => setProviderHooks(providerModalOpen ?? 'claude', h)}
-      />
-
-      {/* Navigation guard dialog */}
-      {navGuardOpen && (
-        <>
-          <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm" />
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <div role="dialog" aria-modal="true" className="w-full max-w-xs rounded-xl border border-border/60 bg-card shadow-2xl p-5 space-y-4">
-              <h3 className="font-display text-sm font-semibold">Unsaved changes</h3>
-              <p className="text-xs text-muted-foreground">You have unsaved changes. What would you like to do?</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setNavGuardOpen(false); pendingNav?.() }}
-                  className="flex-1 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition"
-                >
-                  Discard
-                </button>
-                <button
-                  onClick={() => { editor.save(); setNavGuardOpen(false); pendingNav?.() }}
-                  className="flex-1 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition hover:opacity-90"
-                >
-                  Save & Leave
-                </button>
-              </div>
-              <button
-                onClick={() => { setNavGuardOpen(false); setPendingNav(null) }}
-                className="w-full text-center text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition"
-              >
-                Stay
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      <AddSkillDialog open={skillOpen} onOpenChange={setSkillOpen} existingIds={profile.skills.map((s) => s.id)} onAdd={addSkill} />
+      <AddMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} existingNames={profile.mcpServers.map((s) => s.name)} onAdd={(server) => onUpdate({ mcpServers: [...profile.mcpServers, server] })} />
+      <EditAgentDialog open={editOpen} onOpenChange={setEditOpen} profile={profile} onSave={(patch) => onUpdate(patch)} />
+      <PermissionsDialog open={permsOpen} onOpenChange={setPermsOpen} permissions={profile.permissions ?? {}} onSave={updatePermissions} />
+      <RuleEditorDialog open={ruleOpen} onOpenChange={setRuleOpen} rule={ruleEdit?.rule ?? null} onSave={(rule) => { if (ruleEdit) updateRule(ruleEdit.index, rule); else addRule(rule) }} onDelete={ruleEdit ? () => removeRule(ruleEdit.index) : undefined} />
     </>
   )
 }
-
-// Type hack for the _model virtual field added by the editor
-type ResolvedAgentProfileWithModel = import('#/features/agents/types').ResolvedAgentProfile & { _model?: string }

@@ -27,8 +27,8 @@ tracing-appender = "0.2"
 dirs = "5"
 
 [features]
-workflow = []
+unstable = []
 
 [dev-dependencies]
 tempfile = "3.13"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

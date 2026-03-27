@@ -48,7 +48,7 @@ export function AddSkillDialog({ open, onOpenChange, existingIds, onAdd }: AddSk
       id: result.path,
       name: result.name,
       description: result.description,
-      source: 'registry',
+      source: 'community',
       content: '',
     }
     onAdd(skill)

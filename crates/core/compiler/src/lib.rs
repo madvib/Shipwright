@@ -8,6 +8,7 @@ pub mod permissions;
 pub mod resolve;
 pub mod schemas;
 pub mod types;
+pub mod vars;
 
 // ─── Top-level re-exports ─────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Download, CheckCircle2 } from 'lucide-react'
-import type { RegistryPackage } from './types'
+import type { SearchPackage } from './types'
 import { SCOPE_COLORS, extractGitHubOwner } from './types'
 
 function formatInstalls(n: number): string {
@@ -11,14 +11,14 @@ function formatInstalls(n: number): string {
 }
 
 interface PackageCardProps {
-  pkg: RegistryPackage
+  pkg: SearchPackage
 }
 
 export function PackageCard({ pkg }: PackageCardProps) {
   const colors = SCOPE_COLORS[pkg.scope]
-  const linkPath = `/studio/registry/${encodeURIComponent(pkg.path)}`
-  const owner = extractGitHubOwner(pkg.repo_url)
-  const isVerified = !!pkg.claimed_by
+  const linkPath = `/registry/${encodeURIComponent(pkg.path)}`
+  const owner = extractGitHubOwner(pkg.repoUrl)
+  const isVerified = !!pkg.claimedBy
 
   return (
     <Link
@@ -50,9 +50,9 @@ export function PackageCard({ pkg }: PackageCardProps) {
 
       {/* Bottom row: version + installs */}
       <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/30">
-        {pkg.latest_version ? (
+        {pkg.latestVersion ? (
           <span className="rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-            v{pkg.latest_version}
+            v{pkg.latestVersion}
           </span>
         ) : (
           <span className="text-[10px] text-muted-foreground/40">no release</span>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Search, Plus, Check, Server, BookOpen, X } from 'lucide-react'
 import type { McpServerConfig, Skill } from '@ship/ui'
-import type { ProjectLibrary } from '#/features/compiler/types'
+import type { ProjectLibrary } from '@ship/ui'
 
 interface CuratedMcp {
   id: string

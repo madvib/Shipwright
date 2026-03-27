@@ -1,9 +1,6 @@
 //! Job queue for agent coordination.
 //! Written by `ship agent job` commands; referenced from skills.
 
-pub mod file_ownership;
-pub use file_ownership::{claim_file, get_file_owner};
-
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::Row;
@@ -11,7 +8,22 @@ use sqlx::Row;
 use crate::db::{block_on, open_db};
 use crate::gen_nanoid;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Atomically claim `path` for `job_id`. Returns `true` if the claim was
+/// granted, `false` if another job already owns it.
+pub fn claim_file(job_id: &str, path: &str) -> Result<bool> {
+    match crate::db::file_claims::claim_files(job_id, None, &[path]) {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Return the job_id that currently owns `path`, or `None` if unclaimed.
+pub fn get_file_owner(path: &str) -> Result<Option<String>> {
+    let conflicts = crate::db::file_claims::check_conflicts(&[path])?;
+    Ok(conflicts.into_iter().next().map(|(_, owner)| owner))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Job {
     pub id: String,
     pub kind: String,
@@ -69,7 +81,7 @@ pub fn create_job(
     let scope_str = serde_json::to_string(&file_scope)?;
     block_on(async {
         sqlx::query(
-            "INSERT INTO job \
+            "INSERT INTO jobs \
              (id, kind, status, branch, payload_json, created_by, \
               assigned_to, priority, blocked_by, touched_files, created_at, updated_at, file_scope) \
              VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -122,7 +134,7 @@ pub fn update_job(job_id: &str, patch: JobPatch) -> Result<()> {
     let mut conn = open_db()?;
     block_on(async {
         sqlx::query(
-            "UPDATE job SET status=?, assigned_to=?, priority=?, blocked_by=?, \
+            "UPDATE jobs SET status=?, assigned_to=?, priority=?, blocked_by=?, \
              touched_files=?, file_scope=?, capability_id=?, updated_at=? WHERE id=?",
         )
         .bind(&new_status)
@@ -138,7 +150,7 @@ pub fn update_job(job_id: &str, patch: JobPatch) -> Result<()> {
         .await
     })?;
     if matches!(new_status.as_str(), "complete" | "failed" | "done") {
-        file_ownership::release_job_files(job_id)?;
+        crate::db::file_claims::release_claims(job_id)?;
     }
     Ok(())
 }
@@ -169,7 +181,7 @@ pub fn claim_job(job_id: &str, claimed_by: &str) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
     let rows = block_on(async {
         sqlx::query(
-            "UPDATE job SET status = 'running', claimed_by = ?, updated_at = ?
+            "UPDATE jobs SET status = 'running', claimed_by = ?, updated_at = ?
              WHERE id = ? AND status = 'pending'",
         )
         .bind(claimed_by)
@@ -185,7 +197,7 @@ pub fn update_job_status(job_id: &str, status: &str) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {
-        sqlx::query("UPDATE job SET status = ?, updated_at = ? WHERE id = ?")
+        sqlx::query("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?")
             .bind(status)
             .bind(&now)
             .bind(job_id)
@@ -198,7 +210,7 @@ pub fn update_job_status(job_id: &str, status: &str) -> Result<()> {
 pub fn get_job(job_id: &str) -> Result<Option<Job>> {
     let mut conn = open_db()?;
     let row = block_on(async {
-        sqlx::query(&format!("SELECT {J_COLS} FROM job WHERE id = ?"))
+        sqlx::query(&format!("SELECT {J_COLS} FROM jobs WHERE id = ?"))
             .bind(job_id)
             .fetch_optional(&mut conn)
             .await
@@ -211,7 +223,7 @@ pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>>
     let rows = match (branch, status) {
         (Some(b), Some(s)) => block_on(async {
             sqlx::query(&format!(
-                "SELECT {J_COLS} FROM job WHERE branch = ? AND status = ? ORDER BY created_at DESC"
+                "SELECT {J_COLS} FROM jobs WHERE branch = ? AND status = ? ORDER BY created_at DESC"
             ))
             .bind(b)
             .bind(s)
@@ -220,7 +232,7 @@ pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>>
         })?,
         (Some(b), None) => block_on(async {
             sqlx::query(&format!(
-                "SELECT {J_COLS} FROM job WHERE branch = ? ORDER BY created_at DESC"
+                "SELECT {J_COLS} FROM jobs WHERE branch = ? ORDER BY created_at DESC"
             ))
             .bind(b)
             .fetch_all(&mut conn)
@@ -228,7 +240,7 @@ pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>>
         })?,
         (None, Some(s)) => block_on(async {
             sqlx::query(&format!(
-                "SELECT {J_COLS} FROM job WHERE status = ? ORDER BY created_at DESC"
+                "SELECT {J_COLS} FROM jobs WHERE status = ? ORDER BY created_at DESC"
             ))
             .bind(s)
             .fetch_all(&mut conn)
@@ -236,7 +248,7 @@ pub fn list_jobs(branch: Option<&str>, status: Option<&str>) -> Result<Vec<Job>>
         })?,
         (None, None) => block_on(async {
             sqlx::query(&format!(
-                "SELECT {J_COLS} FROM job ORDER BY created_at DESC"
+                "SELECT {J_COLS} FROM jobs ORDER BY created_at DESC"
             ))
             .fetch_all(&mut conn)
             .await
@@ -258,16 +270,25 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         kind: row.get(1),
         status: row.get(2),
         branch: row.get(3),
-        payload: serde_json::from_str(&payload_str).unwrap_or_default(),
+        payload: serde_json::from_str(&payload_str).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in job.payload_json (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         created_by: row.get(5),
         claimed_by: row.get(6),
-        touched_files: serde_json::from_str(&files_str).unwrap_or_default(),
+        touched_files: serde_json::from_str(&files_str).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in job.touched_files (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         assigned_to: row.get(8),
         priority: row.get(9),
         blocked_by: row.get(10),
         created_at: row.get(11),
         updated_at: row.get(12),
-        file_scope: serde_json::from_str(&scope_str).unwrap_or_default(),
+        file_scope: serde_json::from_str(&scope_str).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in job.file_scope (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         capability_id: row.get(14),
     }
 }

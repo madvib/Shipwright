@@ -6,78 +6,6 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn create_workspace_hydrates_feature_link_from_branch_context() -> Result<()> {
-        let tmp = tempdir()?;
-        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
-        crate::db::branch_context::set_branch_link(
-            "feature/auth-redesign",
-            "feature",
-            "feat-auth",
-        )?;
-
-        let workspace = create_workspace(
-            &ship_dir,
-            CreateWorkspaceRequest {
-                branch: "feature/auth-redesign".to_string(),
-                ..CreateWorkspaceRequest::default()
-            },
-        )?;
-
-        assert_eq!(workspace.feature_id.as_deref(), Some("feat-auth"));
-        Ok(())
-    }
-
-    #[test]
-    fn create_workspace_mixed_branch_links_preserve_target_context() -> Result<()> {
-        let tmp = tempdir()?;
-        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
-
-        crate::db::branch_context::set_branch_link(
-            "feature/mixed",
-            "feature",
-            "feat-mixed",
-        )?;
-
-        let workspace = create_workspace(
-            &ship_dir,
-            CreateWorkspaceRequest {
-                branch: "feature/mixed".to_string(),
-                target_id: Some("target-direct".to_string()),
-                ..CreateWorkspaceRequest::default()
-            },
-        )?;
-
-        assert_eq!(workspace.feature_id.as_deref(), Some("feat-mixed"));
-        assert_eq!(workspace.target_id.as_deref(), Some("target-direct"));
-        let stored_link = get_branch_link("feature/mixed")?;
-        assert_eq!(
-            stored_link,
-            Some(("feature".to_string(), "feat-mixed".to_string()))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn workspace_never_persists_target_as_branch_owner() -> Result<()> {
-        let tmp = tempdir()?;
-        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
-
-        let workspace = create_workspace(
-            &ship_dir,
-            CreateWorkspaceRequest {
-                branch: "service/target-context".to_string(),
-                workspace_type: Some(ShipWorkspaceKind::Feature),
-                target_id: Some("target-only".to_string()),
-                ..CreateWorkspaceRequest::default()
-            },
-        )?;
-
-        assert_eq!(workspace.target_id.as_deref(), Some("target-only"));
-        assert!(get_branch_link("service/target-context")?.is_none());
-        Ok(())
-    }
-
-    #[test]
     fn activating_workspace_keeps_other_workspace_status_when_both_are_feature_workspaces()
     -> Result<()> {
         let tmp = tempdir()?;
@@ -88,7 +16,6 @@ mod tests {
             CreateWorkspaceRequest {
                 branch: "feature/alpha".to_string(),
                 status: Some(WorkspaceStatus::Active),
-                feature_id: Some("feat-alpha".to_string()),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
@@ -99,7 +26,6 @@ mod tests {
             CreateWorkspaceRequest {
                 branch: "feature/beta".to_string(),
                 status: Some(WorkspaceStatus::Active),
-                feature_id: Some("feat-beta".to_string()),
                 ..CreateWorkspaceRequest::default()
             },
         )?;
@@ -123,8 +49,6 @@ mod tests {
 
         let workspace = activate_workspace(&ship_dir, "main")?;
         assert_eq!(workspace.status, WorkspaceStatus::Active);
-        assert!(workspace.feature_id.is_none());
-        assert!(workspace.target_id.is_none());
         assert!(get_branch_link("main")?.is_none());
         Ok(())
     }
@@ -139,7 +63,6 @@ mod tests {
             CreateWorkspaceRequest {
                 branch: "feature/delete-me".to_string(),
                 status: Some(WorkspaceStatus::Active),
-                feature_id: Some("feat-delete".to_string()),
                 ..CreateWorkspaceRequest::default()
             },
         )?;

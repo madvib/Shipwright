@@ -14,6 +14,11 @@ fn should_exclude(rel_path: &str) -> bool {
     if rel_path == "ship.lock" {
         return true;
     }
+    // Exclude .ship/state/ — user/project variable state, not package content.
+    // state files carry local config and must not affect the published content hash.
+    if parts.first() == Some(&"state") {
+        return true;
+    }
     // Exclude OS / editor noise files.
     let filename = parts.last().unwrap_or(&"");
     matches!(*filename, ".DS_Store" | "Thumbs.db") || filename.ends_with(".swp")

@@ -1,5 +1,6 @@
 ---
 name: cmdr-gate
+stable-id: cmdr-gate
 description: Commander GATE mode — reviews completed jobs against acceptance criteria, marks capabilities actual on pass, blocks with specific evidence on fail.
 ---
 

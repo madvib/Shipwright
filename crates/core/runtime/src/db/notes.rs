@@ -153,7 +153,10 @@ fn row_to_note(row: &sqlx::sqlite::SqliteRow) -> Note {
         id: row.get(0),
         title: row.get(1),
         content: row.get(2),
-        tags: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(3)).unwrap_or_default(),
+        tags: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(3)).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in note.tags_json (id={}): {e}", row.get::<String, _>(0));
+            Default::default()
+        }),
         branch: row.get(4),
         synced_at: row.get(5),
         created_at: row.get(6),

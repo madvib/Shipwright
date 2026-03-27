@@ -89,6 +89,8 @@ export const Route = createFileRoute('/api/registry/search')({
               installs: p.installs,
               stars: p.stars,
               deprecatedBy: p.deprecatedBy,
+              repoUrl: p.repoUrl,
+              claimedBy: p.claimedBy,
             })),
             total: cappedTotal,
             ...(hasMore ? { hasMore: true } : {}),

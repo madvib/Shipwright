@@ -1,15 +1,15 @@
 import { Tag } from 'lucide-react'
 import type { PackageVersion } from './types'
 
-function formatDate(iso: string): string {
+function formatDate(ts: number | string): string {
   try {
-    return new Date(iso).toLocaleDateString('en-US', {
+    return new Date(ts).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     })
   } catch {
-    return iso
+    return String(ts)
   }
 }
 
@@ -52,12 +52,12 @@ export function VersionsTable({ versions }: VersionsTableProps) {
                   </span>
                 )}
               </td>
-              <td className="py-2.5 pr-4 text-[11px] font-mono text-muted-foreground">{v.git_tag}</td>
+              <td className="py-2.5 pr-4 text-[11px] font-mono text-muted-foreground">{v.gitTag}</td>
               <td className="py-2.5 pr-4">
-                <span className="text-[11px] font-mono text-muted-foreground/60">{v.commit_sha.slice(0, 7)}</span>
+                <span className="text-[11px] font-mono text-muted-foreground/60">{v.commitSha.slice(0, 7)}</span>
               </td>
               <td className="py-2.5 pr-4 text-[11px] text-muted-foreground">{v.skills.length}</td>
-              <td className="py-2.5 text-[11px] text-muted-foreground/60">{formatDate(v.indexed_at)}</td>
+              <td className="py-2.5 text-[11px] text-muted-foreground/60">{formatDate(v.indexedAt)}</td>
             </tr>
           ))}
         </tbody>

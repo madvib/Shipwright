@@ -29,6 +29,7 @@ pub fn make_skill(id: &str) -> Skill {
     Skill {
         id: id.to_string(),
         name: id.to_string(),
+        stable_id: None,
         description: Some(format!("{} skill", id)),
         license: None,
         compatibility: None,
@@ -36,6 +37,7 @@ pub fn make_skill(id: &str) -> Skill {
         metadata: Default::default(),
         content: format!("# {}\n\nDo the thing.", id),
         source: Default::default(),
+        vars: Default::default(),
     }
 }
 

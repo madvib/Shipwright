@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agentskills.io/schemas/vars/v1.json",
+  "terminal": {
+    "type": "enum",
+    "default": "auto",
+    "storage-hint": "global",
+    "values": ["auto", "iterm", "tmux", "warp", "vscode", "manual"],
+    "label": "Terminal",
+    "description": "Terminal to configure. auto = detect from environment."
+  },
+  "worktree_dir": {
+    "type": "string",
+    "default": "~/dev/ship-worktrees",
+    "storage-hint": "global",
+    "label": "Worktree base directory",
+    "description": "Base directory where git worktrees live."
+  },
+  "pod_emoji": {
+    "type": "bool",
+    "default": true,
+    "storage-hint": "global",
+    "label": "Use emoji in tab names",
+    "description": "Whether to prefix terminal tab names with emoji."
+  }
+}

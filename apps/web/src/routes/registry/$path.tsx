@@ -108,7 +108,7 @@ function PackageDetailPage() {
       <ClaimDialog
         open={claimOpen}
         packagePath={decodedPath}
-        repoUrl={data.package.repo_url}
+        repoUrl={data.package.repoUrl}
         onClose={() => setClaimOpen(false)}
         onClaimed={() => void queryClient.invalidateQueries({ queryKey: registryKeys.detail(decodedPath) })}
       />

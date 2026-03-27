@@ -1,5 +1,6 @@
 ---
 name: no-slop
+stable-id: no-slop
 description: Ten commandments for building software with AI agents. No slop.. Hard-won, opinionated, concise.
 tags: [philosophy, quality, agents, principles]
 authors: [ship]

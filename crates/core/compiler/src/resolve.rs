@@ -505,6 +505,7 @@ mod tests {
         Skill {
             id: id.to_string(),
             name: id.to_string(),
+            stable_id: None,
             description: None,
             license: None,
             compatibility: None,
@@ -512,6 +513,7 @@ mod tests {
             metadata: Default::default(),
             content: String::new(),
             source: Default::default(),
+            vars: Default::default(),
         }
     }
 

@@ -1,5 +1,6 @@
 ---
 name: design-workflow
+stable-id: design-workflow
 description: Use when designing and implementing UI. Full pipeline — brainstorm HTML mockups, preview in browser, extract design spec, dispatch implementation agent. Goes from idea to shipped code.
 tags: [design, ui, workflow, browser]
 authors: [ship]
@@ -18,12 +19,12 @@ Generate a self-contained HTML mockup at `.ship-session/mockup.html`:
 
 Serve it:
 ```bash
-python3 -m http.server 8765 --directory .ship-session &
+python3 -m http.server {{ server_port }} --directory .ship-session &
 ```
 
 **Browse it:**
 ```
-/browse goto http://localhost:8765/mockup.html
+/browse goto http://localhost:{{ server_port }}/mockup.html
 /browse screenshot
 ```
 
@@ -33,7 +34,7 @@ Show the user the screenshot. Iterate on feedback — update the HTML, refresh, 
 
 Once the design is approved at desktop:
 ```
-/browse responsive http://localhost:8765/mockup.html
+/browse responsive http://localhost:{{ server_port }}/mockup.html
 ```
 
 This captures mobile + tablet + desktop viewports. Save to `.ship-session/screenshots/`. Fix any responsive issues in the mockup before moving on.

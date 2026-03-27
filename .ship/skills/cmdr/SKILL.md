@@ -1,5 +1,6 @@
 ---
 name: cmdr
+stable-id: cmdr
 description: Ship Commander identity — role definition, team assembly, and mode-switching logic for the three-role commander pattern.
 ---
 

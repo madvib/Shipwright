@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useLibrary } from '#/features/compiler/useLibrary'
+import { useSkillsLibrary } from './useSkillsLibrary'
+import type { LibrarySkill } from './useSkillsLibrary'
 import type { Skill } from '@ship/ui'
-import { newSkillTemplate, parseFrontmatter } from './skill-frontmatter'
+import { newSkillTemplate } from './skill-frontmatter'
 
 const IDE_STATE_KEY = 'ship-skills-ide-v1'
-const SKILL_FILES_KEY = 'ship-skills-files-v1'
-
 export const SKILL_MD = 'SKILL.md'
 
 /** Composite tab ID: `skillId::filePath` */
@@ -61,24 +60,9 @@ function persistState(state: PersistedIDEState) {
   } catch { /* ignore */ }
 }
 
-/** Extra files per skill (everything except SKILL.md which lives in skill.content). */
-function loadSkillFiles(): Record<string, Record<string, string>> {
-  try {
-    const raw = window.localStorage.getItem(SKILL_FILES_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch { /* ignore */ }
-  return {}
-}
-
-function persistSkillFiles(files: Record<string, Record<string, string>>) {
-  try {
-    window.localStorage.setItem(SKILL_FILES_KEY, JSON.stringify(files))
-  } catch { /* ignore */ }
-}
-
 export function useSkillsIDE() {
-  const { library, updateLibrary } = useLibrary()
-  const skills = library.skills ?? []
+  const { skills: librarySkills, isLoading, isConnected } = useSkillsLibrary()
+  const skills: Skill[] = librarySkills
   const persisted = useRef(loadPersistedState())
 
   const [openTabIds, setOpenTabIds] = useState<string[]>(persisted.current.openTabIds ?? [])
@@ -91,11 +75,8 @@ export function useSkillsIDE() {
   const [previewTab, setPreviewTab] = useState<'metadata' | 'output' | 'used-by'>('metadata')
   const [previewOpen, setPreviewOpen] = useState(true)
 
-  // Local content buffers for unsaved edits (keyed by composite tab ID)
+  // Local content buffers for unsaved edits (drafts)
   const [contentBuffers, setContentBuffers] = useState<Record<string, string>>({})
-
-  // Extra files per skill (not SKILL.md — those live in skill.content)
-  const [skillFiles, setSkillFiles] = useState<Record<string, Record<string, string>>>(loadSkillFiles)
 
   // Persist layout state
   useEffect(() => {
@@ -105,11 +86,6 @@ export function useSkillsIDE() {
       expandedFolders: Array.from(expandedFolders),
     })
   }, [openTabIds, activeTabId, expandedFolders])
-
-  // Persist skill files
-  useEffect(() => {
-    persistSkillFiles(skillFiles)
-  }, [skillFiles])
 
   // If active tab's skill doesn't exist, clear it
   useEffect(() => {
@@ -132,8 +108,8 @@ export function useSkillsIDE() {
   const getFileContent = useCallback((skillId: string, filePath: string): string => {
     const skill = skills.find((s) => s.id === skillId)
     if (filePath === SKILL_MD) return skill?.content ?? ''
-    return skillFiles[skillId]?.[filePath] ?? ''
-  }, [skills, skillFiles])
+    return ''
+  }, [skills])
 
   const activeContent = activeTabId
     ? (contentBuffers[activeTabId] ?? (activeTab ? getFileContent(activeTab.skillId, activeTab.filePath) : ''))
@@ -172,76 +148,20 @@ export function useSkillsIDE() {
     setUnsavedIds((prev) => new Set(prev).add(tabId))
   }, [])
 
-  const saveSkill = useCallback((tabId: string) => {
-    const content = contentBuffers[tabId]
+  // Save stages content as a draft (marks unsaved cleared).
+  // Actual persistence to CLI happens via push.
+  const saveSkill = useCallback((id: string) => {
+    const content = contentBuffers[id]
     if (content === undefined) return
-
-    const { skillId, filePath } = parseTabId(tabId)
-
-    if (filePath === SKILL_MD) {
-      const fm = parseFrontmatter(content)
-      const updated = skills.map((s) => {
-        if (s.id !== skillId) return s
-        return {
-          ...s,
-          content,
-          name: fm.name || s.name,
-          description: fm.description || s.description,
-        }
-      })
-      updateLibrary({ skills: updated })
-    } else {
-      // Save extra file
-      setSkillFiles((prev) => ({
-        ...prev,
-        [skillId]: { ...prev[skillId], [filePath]: content },
-      }))
-    }
-    setUnsavedIds((prev) => { const n = new Set(prev); n.delete(tabId); return n })
-  }, [contentBuffers, skills, updateLibrary])
+    // Draft is stored in contentBuffers; clearing unsaved marker means
+    // the edit is acknowledged but not yet pushed to CLI.
+    setUnsavedIds((prev) => { const n = new Set(prev); n.delete(id); return n })
+  }, [contentBuffers])
 
   const saveAll = useCallback(() => {
     if (unsavedIds.size === 0) return
-
-    // Group unsaved tabs by type
-    const skillUpdates = new Map<string, string>()
-    const fileUpdates = new Map<string, Record<string, string>>()
-
-    for (const tabId of unsavedIds) {
-      const buf = contentBuffers[tabId]
-      if (buf === undefined) continue
-      const { skillId, filePath } = parseTabId(tabId)
-      if (filePath === SKILL_MD) {
-        skillUpdates.set(skillId, buf)
-      } else {
-        const existing = fileUpdates.get(skillId) ?? {}
-        existing[filePath] = buf
-        fileUpdates.set(skillId, existing)
-      }
-    }
-
-    // Save SKILL.md updates to library
-    if (skillUpdates.size > 0) {
-      const updated = skills.map((s) => {
-        const buf = skillUpdates.get(s.id)
-        return buf !== undefined ? { ...s, content: buf } : s
-      })
-      updateLibrary({ skills: updated })
-    }
-
-    // Save extra file updates
-    if (fileUpdates.size > 0) {
-      setSkillFiles((prev) => {
-        const next = { ...prev }
-        for (const [skillId, files] of fileUpdates) {
-          next[skillId] = { ...next[skillId], ...files }
-        }
-        return next
-      })
-    }
-
     setUnsavedIds(new Set())
-  }, [contentBuffers, skills, updateLibrary, unsavedIds])
+  }, [unsavedIds])
 
   const toggleFolder = useCallback((id: string) => {
     setExpandedFolders((prev) => {
@@ -252,68 +172,21 @@ export function useSkillsIDE() {
     })
   }, [])
 
-  const createSkill = useCallback((customId?: string) => {
-    const id = customId || `new-skill-${Date.now()}`
+  const createSkill = useCallback((idOrUndefined?: string) => {
+    const ts = Date.now()
+    const id = idOrUndefined ?? `new-skill-${ts}`
     const name = id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     const content = newSkillTemplate(name, id)
-    const skill: Skill = {
-      id,
-      name,
-      description: null,
-      content,
-      source: 'custom',
-    }
-    updateLibrary({ skills: [...skills, skill] })
+    // New skill creation is a local draft only — not yet pushed
+    setContentBuffers((prev) => ({ ...prev, [id]: content }))
     setExpandedFolders((prev) => new Set(prev).add(id))
-    const tabId = makeTabId(id, SKILL_MD)
-    setOpenTabIds((prev) => (prev.includes(tabId) ? prev : [...prev, tabId]))
-    setActiveTabId(tabId)
-    setContentBuffers((prev) => ({ ...prev, [tabId]: content }))
-  }, [skills, updateLibrary])
-
-  const addFile = useCallback((skillId: string, filePath: string, content = '') => {
-    setSkillFiles((prev) => ({
-      ...prev,
-      [skillId]: { ...prev[skillId], [filePath]: content },
-    }))
-    openFile(skillId, filePath)
-    const tabId = makeTabId(skillId, filePath)
-    setContentBuffers((prev) => ({ ...prev, [tabId]: content }))
-    setUnsavedIds((prev) => new Set(prev).add(tabId))
-  }, [openFile])
-
-  const deleteFile = useCallback((skillId: string, filePath: string) => {
-    if (filePath === SKILL_MD) return // Can't delete primary file
-    setSkillFiles((prev) => {
-      const next = { ...prev }
-      if (next[skillId]) {
-        const files = { ...next[skillId] }
-        delete files[filePath]
-        if (Object.keys(files).length === 0) delete next[skillId]
-        else next[skillId] = files
-      }
-      return next
-    })
-    closeTab(makeTabId(skillId, filePath))
-  }, [closeTab])
+    openSkill(id)
+    setUnsavedIds((prev) => new Set(prev).add(id))
+  }, [openSkill])
 
   const deleteSkill = useCallback((id: string) => {
-    updateLibrary({ skills: skills.filter((s) => s.id !== id) })
-    // Close all tabs for this skill
-    setOpenTabIds((prev) => {
-      const next = prev.filter((tid) => parseTabId(tid).skillId !== id)
-      if (activeTabId && parseTabId(activeTabId).skillId === id) {
-        setActiveTabId(next[0] ?? null)
-      }
-      return next
-    })
-    setSkillFiles((prev) => { const n = { ...prev }; delete n[id]; return n })
-  }, [skills, updateLibrary, activeTabId])
-
-  const getFilesForSkill = useCallback((skillId: string): string[] => {
-    const extra = skillFiles[skillId] ? Object.keys(skillFiles[skillId]) : []
-    return [SKILL_MD, ...extra.sort()]
-  }, [skillFiles])
+    closeTab(id)
+  }, [closeTab])
 
   const filteredSkills = searchQuery
     ? skills.filter((s) => {
@@ -321,6 +194,11 @@ export function useSkillsIDE() {
         return s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
       })
     : skills
+
+  /** Get the LibrarySkill metadata (origin, usedBy) for a skill ID. */
+  const getLibrarySkill = useCallback((id: string): LibrarySkill | undefined => {
+    return librarySkills.find((s) => s.id === id)
+  }, [librarySkills])
 
   const state: IDEState = {
     openTabIds,
@@ -338,7 +216,9 @@ export function useSkillsIDE() {
     state,
     activeSkill,
     activeContent,
-    skillFiles,
+    isLoading,
+    isConnected,
+    getLibrarySkill,
     openSkill,
     openFile,
     closeTab,
@@ -349,10 +229,7 @@ export function useSkillsIDE() {
     toggleFolder,
     setSearchQuery,
     createSkill,
-    addFile,
-    deleteFile,
     deleteSkill,
-    getFilesForSkill,
     setPreviewTab,
     setPreviewOpen,
   }

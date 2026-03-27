@@ -1,13 +1,12 @@
 import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { StudioDock } from '#/features/studio/StudioDock'
-import { SyncStatus, combineSyncStatuses } from '#/features/studio/SyncStatus'
+import { SyncStatus } from '#/features/studio/SyncStatus'
 import type { SyncStatusValue } from '#/features/studio/SyncStatus'
 import { PublishPanel } from '#/features/studio/PublishPanel'
-import { useLibrarySync } from '#/features/compiler/useLibrarySync'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
-import { useAgentStore } from '#/features/agents/useAgentStore'
+import { useAgents } from '#/features/agents/useAgents'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 import { LocalMcpProvider } from '#/features/studio/LocalMcpContext'
@@ -29,17 +28,7 @@ function StudioLayout() {
   )
 }
 
-function agentSyncToStatusValue(
-  status: 'syncing' | 'synced' | 'error' | 'offline',
-): SyncStatusValue {
-  if (status === 'syncing') return 'saving'
-  if (status === 'synced') return 'saved'
-  if (status === 'error') return 'error'
-  return 'idle'
-}
-
 function StudioSyncShell() {
-  const { syncStatus: librarySyncStatus } = useLibrarySync()
   const { library, addSkill } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -60,13 +49,11 @@ function StudioSyncShell() {
     typeof window !== 'undefined' ? window.innerWidth >= 768 : true
   )
 
-  const { getAgent, syncStatus: agentSyncStatus } = useAgentStore()
+  const { getAgent, isConnected } = useAgents()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
 
-  const combinedSyncStatus = combineSyncStatuses(
-    librarySyncStatus,
-    agentSyncToStatusValue(agentSyncStatus.status),
-  )
+  // Derive sync status from MCP connection state
+  const syncStatus: SyncStatusValue = isConnected ? 'saved' : 'idle'
 
   // Build effective library: merge agent config when viewing an agent
   const effectiveLibrary = useMemo(() => {
@@ -112,7 +99,7 @@ function StudioSyncShell() {
         onAddSkill={addSkill}
       />
       <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
-        <SyncStatus status={combinedSyncStatus} />
+        <SyncStatus status={syncStatus} />
       </div>
     </main>
   )

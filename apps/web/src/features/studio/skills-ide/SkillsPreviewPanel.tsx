@@ -1,6 +1,6 @@
 import { X, FileText, AlertTriangle, AlertCircle } from 'lucide-react'
 import type { Skill } from '@ship/ui'
-import { useAgentStore } from '#/features/agents/useAgentStore'
+import { useAgents } from '#/features/agents/useAgents'
 import { parseFrontmatter, validateFrontmatter } from './skill-frontmatter'
 
 interface Props {
@@ -21,7 +21,7 @@ function MetadataTab({ skill, content }: { skill: Skill; content: string }) {
   const fm = parseFrontmatter(content)
   const tools = fm.allowed_tools ?? skill.allowed_tools ?? []
   const warnings = validateFrontmatter(content)
-  const { agents } = useAgentStore()
+  const { agents } = useAgents()
   const attachedAgents = agents.filter((a) => a.skills.some((s) => s.id === skill.id))
 
   return (
@@ -163,7 +163,7 @@ function OutputTab({ skill, content }: { skill: Skill; content: string }) {
 }
 
 function UsedByTab({ skill }: { skill: Skill }) {
-  const { agents } = useAgentStore()
+  const { agents } = useAgents()
   const referencingAgents = agents.filter((a) => a.skills.some((s) => s.id === skill.id))
 
   return (

@@ -1,11 +1,15 @@
+#[cfg(feature = "unstable")]
 pub mod adr;
 pub mod agent;
 pub mod events;
+#[cfg(feature = "unstable")]
 pub mod job;
+#[cfg(feature = "unstable")]
 pub mod notes;
 pub mod project;
 pub mod session;
 pub mod skills;
+#[cfg(feature = "unstable")]
 pub mod target;
 pub mod workspace;
 pub mod studio;

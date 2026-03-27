@@ -1,5 +1,6 @@
 ---
 name: ship-coordination
+stable-id: ship-coordination
 description: Use when logging progress or tracking work status in the Ship project. Covers ship MCP tools for session management and the CLI coordination protocol.
 ---
 

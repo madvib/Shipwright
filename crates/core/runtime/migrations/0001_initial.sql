@@ -1,5 +1,6 @@
 -- 0001_initial: Full platform + workflow schema.
 -- Squashed from schema/platform.rs and schema/workflow.rs constants.
+-- Includes v0.2.0 event-sourcing columns (version, correlation_id, causation_id, synced_at).
 --
 -- PRAGMAs (journal_mode, foreign_keys) are connection-level settings
 -- applied in ensure_db(), not here.
@@ -21,16 +22,11 @@ CREATE TABLE IF NOT EXISTS workspace (
   id                 TEXT,
   workspace_type     TEXT NOT NULL DEFAULT 'feature',
   status             TEXT NOT NULL DEFAULT 'active',
-  environment_id     TEXT,
-  feature_id         TEXT,
-  target_id          TEXT,
   active_agent       TEXT,
   active_preset      TEXT,
   providers_json     TEXT NOT NULL DEFAULT '[]',
   mcp_servers_json   TEXT NOT NULL DEFAULT '[]',
   skills_json        TEXT NOT NULL DEFAULT '[]',
-  plugins_json       TEXT NOT NULL DEFAULT '[]',
-  resolved_at        TEXT,
   is_worktree        INTEGER NOT NULL DEFAULT 0,
   worktree_path      TEXT,
   last_activated_at  TEXT,
@@ -102,20 +98,25 @@ CREATE TABLE IF NOT EXISTS branch_context (
 );
 
 CREATE TABLE IF NOT EXISTS event_log (
-  id            TEXT PRIMARY KEY NOT NULL,
-  actor         TEXT NOT NULL DEFAULT 'ship',
-  entity_type   TEXT NOT NULL,
-  entity_id     TEXT,
-  action        TEXT NOT NULL,
-  detail        TEXT,
-  workspace_id  TEXT,
-  session_id    TEXT,
-  job_id        TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  id             TEXT PRIMARY KEY NOT NULL,
+  actor          TEXT NOT NULL DEFAULT 'ship',
+  entity_type    TEXT NOT NULL,
+  entity_id      TEXT,
+  action         TEXT NOT NULL,
+  detail         TEXT,
+  workspace_id   TEXT,
+  session_id     TEXT,
+  job_id         TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  version        INTEGER,
+  correlation_id TEXT,
+  causation_id   TEXT,
+  synced_at      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_event_workspace ON event_log(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_event_session ON event_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_event_job ON event_log(job_id);
+CREATE INDEX IF NOT EXISTS idx_event_entity ON event_log(entity_type, entity_id);
 
 CREATE TABLE IF NOT EXISTS agent_runtime_settings (
   id              INTEGER PRIMARY KEY CHECK(id = 1),
@@ -205,7 +206,7 @@ CREATE INDEX IF NOT EXISTS capability_milestone_idx ON capability(milestone_id, 
 CREATE INDEX IF NOT EXISTS capability_phase_idx ON capability(target_id, phase, status);
 CREATE INDEX IF NOT EXISTS capability_assignment_idx ON capability(assigned_to, status);
 
-CREATE TABLE IF NOT EXISTS job (
+CREATE TABLE IF NOT EXISTS jobs (
   id            TEXT PRIMARY KEY,
   kind          TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'pending',
@@ -222,15 +223,9 @@ CREATE TABLE IF NOT EXISTS job (
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS job_status_idx ON job(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS job_branch_idx ON job(branch, status);
-
-CREATE TABLE IF NOT EXISTS job_file (
-  path       TEXT PRIMARY KEY,
-  job_id     TEXT NOT NULL,
-  claimed_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS job_file_job_idx ON job_file(job_id);
+CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_branch_idx ON jobs(branch, status);
+CREATE INDEX IF NOT EXISTS idx_jobs_assigned ON jobs(assigned_to, status);
 
 CREATE TABLE IF NOT EXISTS file_claim (
   path         TEXT PRIMARY KEY,

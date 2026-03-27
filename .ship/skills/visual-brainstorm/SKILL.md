@@ -1,5 +1,6 @@
 ---
 name: visual-brainstorm
+stable-id: visual-brainstorm
 description: Use to generate and iterate on HTML mockups for UI design goals. Serves a local preview server, iterates on feedback, and outputs final HTML + intent for handoff to visual-spec.
 tags: [design, ui, mockups, prototyping]
 authors: [ship]
@@ -51,10 +52,10 @@ Create a single self-contained HTML file at `.ship-session/mockup.html`:
 ### 3. Serve locally
 
 ```bash
-python3 -m http.server 8765 --directory .ship-session &
+python3 -m http.server {{ server_port }} --directory .ship-session &
 ```
 
-Print the URL: `http://localhost:8765/mockup.html`
+Print the URL: `http://localhost:{{ server_port }}/mockup.html`
 
 ### 4. Iterate
 

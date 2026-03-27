@@ -1,56 +1,53 @@
+import type { Package } from '#/db/registry-schema'
+
+// ── Enum narrowing ──────────────────────────────────────────────────────────
+
 /** Registry package scope — determines trust level and badge color. */
 export type PackageScope = 'official' | 'community' | 'unofficial'
 
 /** Source type — how the package was indexed. */
 export type PackageSourceType = 'native' | 'imported'
 
-/** A package in the Ship registry. */
-export interface RegistryPackage {
-  id: string
-  path: string
-  name: string
-  description: string
+// ── Package types (derived from Drizzle schema) ─────────────────────────────
+
+/** Full package with narrowed enum fields. Derives from D1 schema. */
+export type RegistryPackage = Omit<Package, 'scope' | 'sourceType'> & {
   scope: PackageScope
-  repo_url: string
-  default_branch: string
-  latest_version: string | null
-  content_hash: string | null
-  source_type: PackageSourceType
-  claimed_by: string | null
-  deprecated_by: string | null
-  stars: number
-  installs: number
-  indexed_at: string
-  updated_at: string
+  sourceType: PackageSourceType
 }
 
-/** A specific version of a package. */
+/** Subset of Package fields returned by the search API. */
+export type SearchPackage = Pick<RegistryPackage,
+  | 'id' | 'path' | 'name' | 'description' | 'scope'
+  | 'latestVersion' | 'updatedAt' | 'installs' | 'stars'
+  | 'deprecatedBy' | 'repoUrl' | 'claimedBy'
+>
+
+// ── API response types (match actual API shapes) ────────────────────────────
+
+/** Version as returned by the detail API (parsed skills/agents arrays). */
 export interface PackageVersion {
   id: string
-  package_id: string
   version: string
-  git_tag: string
-  commit_sha: string
+  gitTag: string
+  commitSha: string
   skills: string[]
   agents: string[]
-  indexed_at: string
+  indexedAt: number
 }
 
-/** A skill exported by a package. */
+/** Skill as returned by the detail API. */
 export interface PackageSkill {
   id: string
-  package_id: string
-  version_id: string
-  skill_id: string
+  skillId: string
   name: string
-  description: string
-  content_hash: string
-  content_length: number
+  description: string | null
+  contentHash: string
 }
 
 /** Search API response shape. */
 export interface RegistrySearchResponse {
-  packages: RegistryPackage[]
+  packages: SearchPackage[]
   total: number
   page: number
 }
@@ -61,6 +58,8 @@ export interface PackageDetailResponse {
   versions: PackageVersion[]
   skills: PackageSkill[]
 }
+
+// ── UI constants ────────────────────────────────────────────────────────────
 
 /** Scope filter option for the browse UI. */
 export type ScopeFilter = 'all' | PackageScope

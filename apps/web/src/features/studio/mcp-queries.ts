@@ -33,9 +33,10 @@ export function useLocalAgentIds() {
   })
 }
 
-/** Pull all resolved agents from CLI (.ship/). */
+/** Pull all resolved agents from CLI (.ship/). Auto-refetches when connected. */
 export function usePullAgents() {
-  const { callTool } = useMcpCallTool()
+  const { callTool, status } = useMcpCallTool()
+  const isConnected = status === 'connected'
 
   return useQuery({
     queryKey: mcpKeys.pull(),
@@ -43,14 +44,15 @@ export function usePullAgents() {
       const raw = await callTool('pull_agents')
       return JSON.parse(raw) as PullResponse
     },
-    enabled: false, // manual-only via refetch()
-    staleTime: 0,
+    enabled: isConnected,
+    refetchInterval: isConnected ? 10_000 : false,
+    staleTime: 5_000,
   })
 }
 
 // ── Mutations ───────────────────────────────────────────────────────────
 
-/** Push a transfer bundle to CLI (.ship/). */
+/** Push a transfer bundle to CLI (.ship/). Invalidates pull query on success. */
 export function usePushBundle() {
   const { callTool } = useMcpCallTool()
   const queryClient = useQueryClient()
@@ -60,6 +62,7 @@ export function usePushBundle() {
       return callTool('push_bundle', { bundle: JSON.stringify(bundle) })
     },
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
       void queryClient.invalidateQueries({ queryKey: mcpKeys.agents() })
     },
   })

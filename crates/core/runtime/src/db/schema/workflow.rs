@@ -55,10 +55,10 @@ CREATE INDEX IF NOT EXISTS capability_phase_idx ON capability(target_id, phase, 
 CREATE INDEX IF NOT EXISTS capability_assignment_idx ON capability(assigned_to, status);
 "#;
 
-/// Job: a unit of work in the agent queue.
+/// Jobs: agent work queue.
 /// Status lifecycle: pending -> running -> complete | failed | done.
-pub const JOB: &str = r#"
-CREATE TABLE IF NOT EXISTS job (
+pub const JOBS: &str = r#"
+CREATE TABLE IF NOT EXISTS jobs (
   id            TEXT PRIMARY KEY,
   kind          TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'pending',
@@ -75,18 +75,9 @@ CREATE TABLE IF NOT EXISTS job (
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS job_status_idx ON job(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS job_branch_idx ON job(branch, status);
-"#;
-
-/// Job file ownership: exclusive file claims per job.
-pub const JOB_FILE: &str = r#"
-CREATE TABLE IF NOT EXISTS job_file (
-  path       TEXT PRIMARY KEY,
-  job_id     TEXT NOT NULL,
-  claimed_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS job_file_job_idx ON job_file(job_id);
+CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_branch_idx ON jobs(branch, status);
+CREATE INDEX IF NOT EXISTS idx_jobs_assigned ON jobs(assigned_to, status);
 "#;
 
 /// File claim: batch-atomic file-path claims for concurrent agent coordination.

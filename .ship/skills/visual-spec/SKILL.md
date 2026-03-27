@@ -1,5 +1,6 @@
 ---
 name: visual-spec
+stable-id: visual-spec
 description: Use to convert a chosen design (HTML file or live URL) into a structured spec that a frontend agent can implement from. Captures screenshots, extracts markup, and writes design-spec/spec.md.
 tags: [design, ui, specification, handoff]
 authors: [ship]

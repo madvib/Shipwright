@@ -1,5 +1,6 @@
 ---
 name: ship-schema-reference
+stable-id: ship-schema-reference
 description: Use when the user asks about Ship configuration format, available fields, valid values, or how to structure their .ship/ directory. Covers ship.jsonc manifest, agent profile JSONC, permissions.jsonc, mcp.jsonc, and ship.lock schemas.
 tags: [reference, schema, configuration, documentation]
 authors: [ship]

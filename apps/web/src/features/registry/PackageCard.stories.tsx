@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { PackageCard } from './PackageCard'
-import type { RegistryPackage } from './types'
+import type { SearchPackage } from './types'
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 
 function WithRouter({ children }: { children: React.ReactNode }) {
@@ -29,23 +29,19 @@ const meta: Meta<typeof PackageCard> = {
 export default meta
 type Story = StoryObj<typeof PackageCard>
 
-const basePkg: RegistryPackage = {
+const basePkg: SearchPackage = {
   id: 'pkg-001',
   path: 'ship-ai/code-review',
   name: 'code-review',
   description: 'Automated code review skill with configurable severity levels and language-specific linting rules.',
   scope: 'official',
-  repo_url: 'https://github.com/ship-ai/skills',
-  default_branch: 'main',
-  latest_version: '1.3.0',
-  content_hash: 'abc123',
-  source_type: 'native',
-  claimed_by: 'ship-ai',
-  deprecated_by: null,
+  repoUrl: 'https://github.com/ship-ai/skills',
+  latestVersion: '1.3.0',
+  claimedBy: 'ship-ai',
+  deprecatedBy: null,
   stars: 142,
   installs: 8_420,
-  indexed_at: '2026-01-15T00:00:00Z',
-  updated_at: '2026-03-10T00:00:00Z',
+  updatedAt: Date.now() - 15 * 86_400_000,
 }
 
 /** Official package with verified owner and GitHub avatar. */
@@ -65,9 +61,9 @@ export const Community: Story = {
       name: 'react-patterns',
       description: 'Common React design patterns including compound components, render props, and custom hooks.',
       scope: 'community',
-      repo_url: 'https://github.com/jsmith/react-patterns',
-      claimed_by: 'jsmith',
-      latest_version: '2.1.0',
+      repoUrl: 'https://github.com/jsmith/react-patterns',
+      claimedBy: 'jsmith',
+      latestVersion: '2.1.0',
       installs: 12_350,
     },
   },
@@ -83,9 +79,9 @@ export const Unofficial: Story = {
       name: 'test-skill',
       description: 'An experimental skill without verification.',
       scope: 'unofficial',
-      repo_url: 'https://github.com/random/test-skill',
-      claimed_by: null,
-      latest_version: '0.0.1',
+      repoUrl: 'https://github.com/random/test-skill',
+      claimedBy: null,
+      latestVersion: '0.0.1',
       installs: 23,
       stars: 1,
     },
@@ -102,9 +98,8 @@ export const NoVersion: Story = {
       name: 'unreleased-skill',
       description: 'A package that has been indexed but has no published version yet.',
       scope: 'community',
-      latest_version: null,
-      content_hash: null,
-      claimed_by: null,
+      latestVersion: null,
+      claimedBy: null,
       installs: 0,
     },
   },
@@ -120,8 +115,8 @@ export const NoGitHubAvatar: Story = {
       name: 'gitlab-hosted-skill',
       description: 'A skill hosted on a non-GitHub platform.',
       scope: 'community',
-      repo_url: 'https://gitlab.com/gitlab-user/my-skill',
-      claimed_by: null,
+      repoUrl: 'https://gitlab.com/gitlab-user/my-skill',
+      claimedBy: null,
       installs: 580,
     },
   },

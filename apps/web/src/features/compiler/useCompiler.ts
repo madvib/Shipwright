@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import type { ProjectLibrary, CompileResult } from './types'
+import type { ProjectLibrary } from '@ship/ui'
+import type { CompileResult } from './types'
 
 type WasmModule = {
   compileLibraryAll: (library_json: string, active_mode?: string | null) => string

@@ -23,8 +23,8 @@ impl ShipServer {
         "create_workspace",
         "complete_workspace",
         "list_stale_worktrees",
-        "set_agent",
         "list_workspaces",
+        "set_agent",
         "start_session",
         "end_session",
         "log_progress",
@@ -35,7 +35,8 @@ impl ShipServer {
         "list_local_agents",
     ];
 
-    const WORKFLOW_TOOLS: &[&str] = &[
+    #[cfg(feature = "unstable")]
+    const UNSTABLE_TOOLS: &[&str] = &[
         "create_note",
         "update_note",
         "create_adr",
@@ -61,8 +62,8 @@ impl ShipServer {
         if Self::PLATFORM_TOOLS.contains(&normalized.as_str()) {
             return true;
         }
-        #[cfg(feature = "workflow")]
-        if Self::WORKFLOW_TOOLS.contains(&normalized.as_str()) {
+        #[cfg(feature = "unstable")]
+        if Self::UNSTABLE_TOOLS.contains(&normalized.as_str()) {
             return true;
         }
         false

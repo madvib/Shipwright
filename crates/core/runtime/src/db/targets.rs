@@ -11,7 +11,7 @@ use crate::gen_nanoid;
 
 // ─── Structs ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Target {
     pub id: String,
     pub kind: String,
@@ -28,7 +28,7 @@ pub struct Target {
 }
 
 /// status: aspirational | in_progress | actual
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Capability {
     pub id: String,
     pub target_id: String,
@@ -78,9 +78,9 @@ const C_COLS: &str = "id, target_id, title, status, evidence, milestone_id, phas
 // ─── Row mapping ──────────────────────────────────────────────────────────────
 
 fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> Target {
+    let id: String = row.get("id");
     let scope: Option<String> = row.get("file_scope_json");
     Target {
-        id: row.get("id"),
         kind: row.get("kind"),
         title: row.get("title"),
         description: row.get("description"),
@@ -89,38 +89,45 @@ fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> Target {
         phase: row.get("phase"),
         due_date: row.get("due_date"),
         body_markdown: row.get("body_markdown"),
-        file_scope: scope
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default(),
+        file_scope: parse_json_or_warn(&id, "file_scope_json", scope.as_deref()),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
+        id,
     }
 }
 
 fn row_to_capability(row: &sqlx::sqlite::SqliteRow) -> Capability {
+    let id: String = row.get("id");
     let ac: Option<String> = row.get("acceptance_criteria");
     let scope: Option<String> = row.get("file_scope");
     Capability {
-        id: row.get("id"),
         target_id: row.get("target_id"),
         title: row.get("title"),
         status: row.get("status"),
         evidence: row.get("evidence"),
         milestone_id: row.get("milestone_id"),
         phase: row.get("phase"),
-        acceptance_criteria: ac
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default(),
-        file_scope: scope
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default(),
+        acceptance_criteria: parse_json_or_warn(&id, "acceptance_criteria", ac.as_deref()),
+        file_scope: parse_json_or_warn(&id, "file_scope", scope.as_deref()),
         assigned_to: row.get("assigned_to"),
         priority: row.try_get("priority").unwrap_or(0),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
+        id,
+    }
+}
+
+fn parse_json_or_warn<T: serde::de::DeserializeOwned + Default>(
+    entity_id: &str,
+    column: &str,
+    raw: Option<&str>,
+) -> T {
+    match raw {
+        None => T::default(),
+        Some(s) => serde_json::from_str(s).unwrap_or_else(|e| {
+            eprintln!("[ship warn] corrupt JSON in {column} (id={entity_id}): {e}");
+            T::default()
+        }),
     }
 }
 

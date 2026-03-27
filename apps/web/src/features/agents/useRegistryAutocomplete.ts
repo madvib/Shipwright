@@ -39,7 +39,7 @@ export function useRegistrySkillSearch(query: string, enabled: boolean) {
           signal: controller.signal,
         })
         if (!res.ok) { setResults([]); return }
-        const data = await res.json()
+        const data: { packages?: RegistrySkillResult[] } = await res.json()
         if (!controller.signal.aborted) {
           setResults(
             (data.packages ?? []).map((p: RegistrySkillResult) => ({
@@ -103,9 +103,9 @@ export function useRegistryMcpSearch(query: string, enabled: boolean) {
           signal: controller.signal,
         })
         if (!res.ok) { setResults([]); return }
-        const data = await res.json()
+        type McpServerJson = { id: string; name: string; description: string | null; command: string | null; args: string[] }
+        const data: { servers?: McpServerJson[] } = await res.json()
         if (!controller.signal.aborted) {
-          type McpServerJson = { id: string; name: string; description: string | null; command: string | null; args: string[] }
           setResults(
             (data.servers ?? []).map((s: McpServerJson) => ({
               id: s.id,

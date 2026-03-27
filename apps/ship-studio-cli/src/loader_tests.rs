@@ -386,3 +386,25 @@ fn skill_metadata_empty_when_absent() {
     let skill = parse_skill("my-skill", raw);
     assert!(skill.metadata.is_empty());
 }
+
+#[test]
+fn skill_parses_stable_id() {
+    let raw = "---\nname: my-skill\nstable-id: commit\ndescription: x\n---\n\nContent.";
+    let skill = parse_skill("my-skill", raw);
+    assert_eq!(skill.stable_id.as_deref(), Some("commit"));
+}
+
+#[test]
+fn skill_stable_id_none_when_absent() {
+    let raw = "---\nname: my-skill\ndescription: x\n---\n\nContent.";
+    let skill = parse_skill("my-skill", raw);
+    assert!(skill.stable_id.is_none());
+}
+
+#[test]
+fn skill_stable_id_invalid_is_ignored() {
+    // Invalid stable-id (path traversal attempt) must be rejected.
+    let raw = "---\nname: my-skill\nstable-id: ../evil\ndescription: x\n---\n\nContent.";
+    let skill = parse_skill("my-skill", raw);
+    assert!(skill.stable_id.is_none());
+}

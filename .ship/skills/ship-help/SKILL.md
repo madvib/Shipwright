@@ -1,5 +1,6 @@
 ---
 name: ship-help
+stable-id: ship-help
 description: Use when troubleshooting Ship issues, diagnosing compilation errors, or answering questions about agent configuration, permissions, and CLI commands.
 tags: [help, troubleshooting, reference]
 authors: [ship]

@@ -328,6 +328,7 @@ fn resolve_dep_skills_deduplicates_against_local() {
     let existing = Skill {
         id: "github.com/owner/pkg/skills/my-skill".to_string(),
         name: "Local".to_string(),
+        stable_id: None,
         description: None,
         license: None,
         compatibility: None,
@@ -335,6 +336,7 @@ fn resolve_dep_skills_deduplicates_against_local() {
         metadata: Default::default(),
         content: "local content".to_string(),
         source: SkillSource::Custom,
+        vars: Default::default(),
     };
 
     let refs = vec!["github.com/owner/pkg/skills/my-skill".to_string()];

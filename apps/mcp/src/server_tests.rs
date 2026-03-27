@@ -56,9 +56,6 @@ async fn mcp_workspace_control_plane_round_trip() {
             branch: "feature/mode-control-plane".to_string(),
             workspace_type: Some(ShipWorkspaceKind::Feature),
             status: None,
-            environment_id: None,
-            feature_id: None,
-            target_id: None,
             active_agent: None,
             providers: None,
             mcp_servers: None,
@@ -146,11 +143,8 @@ fn trims_whitespace() {
 
 #[test]
 fn core_tools_are_recognized() {
-    let core_tools = [
+    let platform_tools = [
         "open_project",
-        "create_note",
-        "update_note",
-        "create_adr",
         "activate_workspace",
         "create_workspace",
         "complete_workspace",
@@ -159,21 +153,8 @@ fn core_tools_are_recognized() {
         "end_session",
         "log_progress",
         "list_skills",
-        "create_job",
-        "update_job",
-        "list_jobs",
-        "provider_matrix",
-        "create_target",
-        "update_target",
-        "list_targets",
-        "get_target",
-        "create_capability",
-        "update_capability",
-        "delete_capability",
-        "mark_capability_actual",
-        "list_capabilities",
     ];
-    for tool in core_tools {
+    for tool in platform_tools {
         assert!(
             ShipServer::is_core_tool(tool),
             "{tool} should be a core tool"
@@ -185,6 +166,34 @@ fn core_tools_are_recognized() {
 fn core_tool_with_prefix_and_suffix() {
     assert!(ShipServer::is_core_tool("ship_create_workspace_tool"));
     assert!(ShipServer::is_core_tool("ship_log_progress_tool"));
+}
+
+#[test]
+#[cfg(feature = "unstable")]
+fn unstable_tools_are_core_when_feature_enabled() {
+    let unstable_tools = [
+        "create_note",
+        "update_note",
+        "create_adr",
+        "create_job",
+        "update_job",
+        "list_jobs",
+        "create_target",
+        "update_target",
+        "list_targets",
+        "get_target",
+        "create_capability",
+        "update_capability",
+        "delete_capability",
+        "mark_capability_actual",
+        "list_capabilities",
+    ];
+    for tool in unstable_tools {
+        assert!(
+            ShipServer::is_core_tool(tool),
+            "{tool} should be a core tool with unstable feature"
+        );
+    }
 }
 
 #[test]
@@ -224,8 +233,88 @@ fn normalization_applied_to_both_sides() {
     ));
 }
 
+// ── tool registration surface ──────────────────────────────────────
+
+#[test]
+fn stable_build_registers_only_platform_tools() {
+    let server = ShipServer::new();
+    let names = server.registered_tool_names();
+    let expected: &[&str] = &[
+        "open_project",
+        "set_agent",
+        "pull_agents",
+        "list_local_agents",
+        "push_bundle",
+        "activate_workspace",
+        "list_workspaces",
+        "create_workspace",
+        "complete_workspace",
+        "list_stale_worktrees",
+        "start_session",
+        "end_session",
+        "log_progress",
+        "list_skills",
+        "get_skill_vars",
+        "set_skill_var",
+        "list_skill_vars",
+        "list_events",
+    ];
+    for tool in expected {
+        assert!(names.iter().any(|n| n == tool), "{tool} missing from router");
+    }
+    #[cfg(not(feature = "unstable"))]
+    assert_eq!(
+        names.len(),
+        expected.len(),
+        "stable build should register exactly {} tools, got: {:?}",
+        expected.len(),
+        names
+    );
+}
+
+#[test]
+#[cfg(feature = "unstable")]
+fn unstable_build_registers_all_tools() {
+    let server = ShipServer::new();
+    let names = server.registered_tool_names();
+    let unstable_tools: &[&str] = &[
+        "create_note",
+        "update_note",
+        "create_adr",
+        "create_target",
+        "update_target",
+        "list_targets",
+        "get_target",
+        "create_capability",
+        "update_capability",
+        "delete_capability",
+        "mark_capability_actual",
+        "list_capabilities",
+        "create_job",
+        "update_job",
+        "list_jobs",
+        "append_job_log",
+        "claim_file",
+        "get_file_owner",
+    ];
+    for tool in unstable_tools {
+        assert!(
+            names.iter().any(|n| n == tool),
+            "{tool} missing from unstable router"
+        );
+    }
+    // 18 stable + 18 unstable
+    assert_eq!(
+        names.len(),
+        36,
+        "unstable build should register 36 tools, got: {:?}",
+        names
+    );
+}
+
 // ── update_target handler ──────────────────────────────────────────
 
+#[cfg(feature = "unstable")]
 #[test]
 fn update_target_patches_fields() {
     let tmp = tempdir().expect("tempdir");
@@ -301,6 +390,7 @@ fn update_target_patches_fields() {
     );
 }
 
+#[cfg(feature = "unstable")]
 #[test]
 fn update_target_nonexistent_returns_error() {
     let tmp = tempdir().expect("tempdir");

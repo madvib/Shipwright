@@ -41,16 +41,16 @@ pub struct ListNotesRequest {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct GetNoteRequest {
-    /// Note filename (e.g. "session-summary.md")
-    pub file_name: String,
+    /// Note ID (nanoid returned by create_note)
+    pub id: String,
     /// Scope: project (default) or user
     pub scope: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 pub struct UpdateNoteRequest {
-    /// Note filename (e.g. "session-summary.md")
-    pub file_name: String,
+    /// Note ID (nanoid returned by create_note)
+    pub id: String,
     /// Full replacement markdown content
     pub content: String,
     /// Scope: project (default) or user
@@ -117,4 +117,26 @@ pub struct SetAgentRequest {
 pub struct PushBundleRequest {
     /// JSON string containing the TransferBundle (agent, skills, dependencies).
     pub bundle: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetSkillVarsRequest {
+    /// Skill id (directory name under .ship/skills/)
+    pub skill_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SetSkillVarRequest {
+    /// Skill id (directory name under .ship/skills/)
+    pub skill_id: String,
+    /// Variable name as declared in vars.json
+    pub key: String,
+    /// New value as a JSON string (e.g. `"\"gitmoji\""`, `"true"`, `"42"`)
+    pub value_json: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListSkillVarsRequest {
+    /// Optional skill id filter — if omitted, lists all skills with vars.json
+    pub skill_id: Option<String>,
 }

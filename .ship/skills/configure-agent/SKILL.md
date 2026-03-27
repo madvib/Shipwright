@@ -1,5 +1,6 @@
 ---
 name: configure-agent
+stable-id: configure-agent
 description: Use when setting up a workspace for a specialist agent — selecting agent, permission tier, scope, and worktree path. Ensures agents are productive (not over-restricted) and safe (not under-restricted).
 tags: [configuration, agents, permissions, worktree]
 authors: [ship]

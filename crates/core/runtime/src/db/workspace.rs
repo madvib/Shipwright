@@ -21,7 +21,6 @@ pub struct Workspace {
     pub providers: Vec<String>,
     pub skills: Vec<String>,
     pub mcp_servers: Vec<String>,
-    pub plugins: Vec<String>,
     pub compiled_at: Option<String>,
     pub compile_error: Option<String>,
     pub created_at: String,
@@ -46,8 +45,8 @@ pub struct WorkspaceSession {
 
 const W_COLS: &str =
     "COALESCE(id, branch), branch, worktree_path, workspace_type, status, active_preset,
-     providers_json, skills_json, mcp_servers_json, plugins_json,
-     compiled_at, compile_error, COALESCE(created_at, resolved_at, ''), COALESCE(updated_at, resolved_at, '')";
+     providers_json, skills_json, mcp_servers_json,
+     compiled_at, compile_error, COALESCE(created_at, ''), COALESCE(updated_at, '')";
 
 const S_COLS: &str = "id, workspace_id, workspace_branch, status, preset_id, primary_provider,
      goal, summary, started_at, ended_at, created_at, updated_at";
@@ -58,14 +57,13 @@ pub fn upsert_workspace(w: &Workspace) -> Result<()> {
     let providers = serde_json::to_string(&w.providers)?;
     let skills = serde_json::to_string(&w.skills)?;
     let mcp = serde_json::to_string(&w.mcp_servers)?;
-    let plugins = serde_json::to_string(&w.plugins)?;
     block_on(async {
         sqlx::query(
             "INSERT INTO workspace
                (branch, id, worktree_path, workspace_type, status, active_preset,
-                providers_json, skills_json, mcp_servers_json, plugins_json,
+                providers_json, skills_json, mcp_servers_json,
                 compiled_at, compile_error, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(branch) DO UPDATE SET
                id               = excluded.id,
                worktree_path    = excluded.worktree_path,
@@ -75,7 +73,6 @@ pub fn upsert_workspace(w: &Workspace) -> Result<()> {
                providers_json   = excluded.providers_json,
                skills_json      = excluded.skills_json,
                mcp_servers_json = excluded.mcp_servers_json,
-               plugins_json     = excluded.plugins_json,
                compiled_at      = excluded.compiled_at,
                compile_error    = excluded.compile_error,
                updated_at       = excluded.updated_at",
@@ -89,7 +86,6 @@ pub fn upsert_workspace(w: &Workspace) -> Result<()> {
         .bind(&providers)
         .bind(&skills)
         .bind(&mcp)
-        .bind(&plugins)
         .bind(&w.compiled_at)
         .bind(&w.compile_error)
         .bind(&w.created_at)
@@ -129,7 +125,7 @@ pub fn list_workspaces() -> Result<Vec<Workspace>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(&format!(
-            "SELECT {W_COLS} FROM workspace ORDER BY COALESCE(created_at, resolved_at) DESC"
+            "SELECT {W_COLS} FROM workspace ORDER BY created_at DESC"
         ))
         .fetch_all(&mut conn)
         .await
@@ -229,11 +225,10 @@ fn row_to_workspace(row: &sqlx::sqlite::SqliteRow) -> Workspace {
         providers: pj(row.get(6)),
         skills: pj(row.get(7)),
         mcp_servers: pj(row.get(8)),
-        plugins: pj(row.get(9)),
-        compiled_at: row.get(10),
-        compile_error: row.get(11),
-        created_at: row.get(12),
-        updated_at: row.get(13),
+        compiled_at: row.get(9),
+        compile_error: row.get(10),
+        created_at: row.get(11),
+        updated_at: row.get(12),
     }
 }
 
@@ -280,7 +275,6 @@ mod tests {
             providers: vec!["claude".to_string()],
             skills: vec![],
             mcp_servers: vec![],
-            plugins: vec![],
             compiled_at: None,
             compile_error: None,
             created_at: now.clone(),

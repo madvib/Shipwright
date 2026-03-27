@@ -5,9 +5,8 @@ use crate::requests::{CompleteWorkspaceRequest, ListStaleWorktreesRequest};
 use crate::util::configured_worktree_dir;
 
 pub fn complete_workspace(project_dir: &Path, req: CompleteWorkspaceRequest) -> String {
-    let Some(project_root) = project_dir.parent() else {
-        return "Error: could not resolve project root from ship dir".to_string();
-    };
+    // project_dir is the project root (parent of .ship), resolved by get_effective_project_dir.
+    let project_root = project_dir;
 
     let workspace_id = req.workspace_id.trim();
     let worktree_path = configured_worktree_dir(project_root).join(workspace_id);
@@ -103,9 +102,8 @@ pub fn complete_workspace(project_dir: &Path, req: CompleteWorkspaceRequest) -> 
 }
 
 pub fn list_stale_worktrees(project_dir: &Path, req: ListStaleWorktreesRequest) -> String {
-    let Some(project_root) = project_dir.parent() else {
-        return "Error: could not resolve project root from ship dir".to_string();
-    };
+    // project_dir is the project root (parent of .ship), resolved by get_effective_project_dir.
+    let project_root = project_dir;
 
     let idle_hours = req.idle_hours.unwrap_or(24);
     let idle_secs = idle_hours as u64 * 3600;

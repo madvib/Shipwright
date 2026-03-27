@@ -1,5 +1,6 @@
 ---
 name: browse
+stable-id: browse
 description: Headless browser for QA testing and site verification. Navigate, interact, screenshot, diff, assert element states. ~100ms per command.
 tags: [qa, testing, browser, screenshots, headless]
 authors: [ship, gstack]
@@ -46,16 +47,16 @@ $B is visible ".dashboard"
 
 ### Visual evidence
 ```bash
-$B snapshot -i -a -o .ship-session/screenshots/annotated.png
-$B screenshot .ship-session/screenshots/page.png
+$B snapshot -i -a -o {{ screenshot_dir }}/annotated.png
+$B screenshot {{ screenshot_dir }}/page.png
 $B console
 ```
 
 ### Responsive layouts
 ```bash
-$B responsive .ship-session/screenshots/layout
+$B responsive {{ screenshot_dir }}/layout
 $B viewport 375x812
-$B screenshot .ship-session/screenshots/mobile.png
+$B screenshot {{ screenshot_dir }}/mobile.png
 ```
 
 ### Assert element states
@@ -114,4 +115,4 @@ After snapshot, use @refs: `$B click @e3`, `$B fill @e4 "value"`, `$B hover @e1`
 | `cookies` | All cookies |
 | `is <prop> <sel>` | State assert (visible/hidden/enabled/disabled/checked) |
 
-All screenshots and artifacts go to `.ship-session/screenshots/`.
+All screenshots and artifacts go to `{{ screenshot_dir }}/`.

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Lock, Wrench, X } from 'lucide-react'
+import { Lock, Wrench, FolderOpen, X } from 'lucide-react'
 import type { ProfilePermissions } from '@ship/ui'
+
+/** Extended permissions including additional_directories from the schema. */
+type ExtendedPermissions = ProfilePermissions & { additional_directories?: string[] }
 
 interface PermissionsDialogProps {
   open: boolean
@@ -10,10 +13,10 @@ interface PermissionsDialogProps {
 }
 
 export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: PermissionsDialogProps) {
-  const [local, setLocal] = useState<ProfilePermissions>({})
+  const [local, setLocal] = useState<ExtendedPermissions>({})
 
   useEffect(() => {
-    if (open) setLocal(structuredClone(permissions))
+    if (open) setLocal(structuredClone(permissions) as ExtendedPermissions)
   }, [open, permissions])
 
   const handleEscape = useCallback(
@@ -76,6 +79,17 @@ export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: P
                 onChange={(v) => setLocal((prev) => ({ ...prev, tools_deny: v }))}
               />
             </DimensionSection>
+            <DimensionSection icon={<FolderOpen className="size-3.5" />} label="Additional Directories">
+              <TagInput
+                label="Directories"
+                variant="neutral"
+                values={local.additional_directories ?? []}
+                onChange={(v) => setLocal((prev) => ({ ...prev, additional_directories: v }))}
+              />
+              <p className="text-[10px] text-muted-foreground/50">
+                Additional directories the agent can access outside the project root.
+              </p>
+            </DimensionSection>
           </div>
 
           {/* Footer */}
@@ -87,7 +101,7 @@ export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: P
               Cancel
             </button>
             <button
-              onClick={() => { onSave(local); onOpenChange(false) }}
+              onClick={() => { onSave(local as ProfilePermissions); onOpenChange(false) }}
               className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:opacity-90"
             >
               Save

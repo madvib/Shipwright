@@ -10,6 +10,7 @@ pub mod plugin;
 pub mod project;
 pub mod registry;
 pub mod security;
+pub mod skill_vars;
 pub mod workspace;
 
 // Backward-compatible module aliases.
@@ -54,6 +55,7 @@ pub use plugin::{Plugin, PluginRegistry};
 // Do not re-export them from the runtime root; this keeps the root API closer
 // to domain-agnostic runtime/engine concerns.
 pub use rule::{Rule, create_rule, delete_rule, get_rule, list_rules, update_rule};
+pub use skill_vars::{get_skill_vars, list_skill_vars, reset_skill_vars, set_skill_var};
 pub use skill::{
     Skill, SkillInstallScope, SkillSource, create_skill, create_user_skill, delete_skill,
     delete_user_skill, get_effective_skill, get_skill, get_user_skill, install_skill_from_source,

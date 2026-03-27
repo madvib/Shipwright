@@ -9,7 +9,7 @@
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["github.com/better-auth/skills/better-auth", "ship-coordination", "visual-brainstorm", "visual-spec"],
+    "refs": ["github.com/better-auth/skills/better-auth", "ship-coordination", "ship-schema-reference", "studio-mcp-bridge", "visual-brainstorm", "visual-spec"],
   },
   "mcp": {
     "servers": ["ship"],

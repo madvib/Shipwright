@@ -95,6 +95,7 @@ fn resolve_single(ref_str: &str, lock: &ShipLock, cache: &Path) -> anyhow::Resul
     Ok(Skill {
         id: ref_str.to_string(),
         name: ref_str.to_string(),
+        stable_id: None,
         description: None,
         license: None,
         compatibility: None,
@@ -102,6 +103,7 @@ fn resolve_single(ref_str: &str, lock: &ShipLock, cache: &Path) -> anyhow::Resul
         metadata: Default::default(),
         content: raw.trim().to_string(),
         source: SkillSource::Community,
+        vars: Default::default(),
     })
 }
 
@@ -338,6 +340,7 @@ fn local_and_dep_skills_both_appear_in_compiled_output() {
     let local = Skill {
         id: "local-skill".into(),
         name: "Local".into(),
+        stable_id: None,
         description: None,
         license: None,
         compatibility: None,
@@ -345,6 +348,7 @@ fn local_and_dep_skills_both_appear_in_compiled_output() {
         metadata: Default::default(),
         content: "Do local things.".into(),
         source: SkillSource::Custom,
+        vars: Default::default(),
     };
     let dep_ref = "github.com/owner/remotepkg/skills/remote-skill".to_string();
     let dep_skills = resolve_deps(

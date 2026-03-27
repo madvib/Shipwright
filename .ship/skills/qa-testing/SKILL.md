@@ -1,5 +1,6 @@
 ---
 name: qa-testing
+stable-id: qa-testing
 description: Use when testing a web application — navigate, interact, screenshot, find bugs. Systematic QA checklist with severity tiers and structured bug reports.
 tags: [qa, testing, browser]
 authors: [ship]
@@ -142,4 +143,4 @@ Run at the level of rigor that matches the moment:
 | **Standard** | + medium | Pre-release |
 | **Exhaustive** | + cosmetic, responsive, perf | Launch, major release |
 
-Default to Standard unless told otherwise.
+Default tier: **{{ default_tier }}** (change with `ship vars set qa-testing default_tier <quick|standard|exhaustive>`).

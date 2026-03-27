@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agentskills.io/schemas/vars/v1.json",
+  "screenshot_dir": {
+    "type": "string",
+    "default": ".ship-session/screenshots",
+    "storage-hint": "global",
+    "label": "Screenshot directory",
+    "description": "Where screenshots and annotated images are saved."
+  }
+}

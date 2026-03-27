@@ -18,6 +18,11 @@ export type ResolvedAgentProfile =
     mcpServers: McpServerConfig[]
     rules: Rule[]
     hooks: HookConfig[]
+    // Agent-level fields compiled per-provider
+    model?: string | null
+    env?: Record<string, string> | null
+    availableModels?: string[] | null
+    agentLimits?: { max_turns?: number; max_cost_per_session?: number } | null
     // UI-only persisted state — not in compiler schema
     providerSettings?: Record<string, Record<string, unknown>>
     toolPermissions?: Record<string, ToolToggleState>

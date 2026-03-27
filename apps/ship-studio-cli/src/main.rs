@@ -11,15 +11,14 @@ mod compile;
 mod config;
 mod convert;
 mod dep_skills;
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 mod diff;
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 mod events_cmd;
 mod help_topics;
 mod init;
-mod init_from_url;
 mod install;
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 mod job;
 mod loader;
 mod logging;
@@ -30,14 +29,23 @@ mod profile;
 mod publish;
 mod skill;
 mod validate;
-#[cfg(feature = "workflow")]
+mod vars;
+#[cfg(feature = "unstable")]
 mod view;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, ConfigCommands, McpCommands, SkillCommands};
-#[cfg(feature = "workflow")]
+use cli::{AgentCommands, Cli, Commands, ConfigCommands, McpCommands, SkillCommands, VarsCommands};
+#[cfg(feature = "unstable")]
 use cli::{EventsCommands, JobCommands};
 use std::path::PathBuf;
+
+pub fn build_version() -> &'static str {
+    if cfg!(feature = "unstable") {
+        concat!(env!("CARGO_PKG_VERSION"), "+unstable")
+    } else {
+        env!("CARGO_PKG_VERSION")
+    }
+}
 
 fn main() -> Result<()> {
     use clap::Parser;
@@ -54,8 +62,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 global,
                 provider,
                 force: _,
-                from,
-            } => init::run(global, provider, from),
+            } => init::run(global, provider),
             Commands::Config { action } => dispatch_config(action),
             Commands::Login => auth::run_login(),
             Commands::Logout => auth::run_logout(),
@@ -70,21 +77,19 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Compile {
                 provider,
                 dry_run,
-                watch,
                 path,
-            } => run_compile_cmd(provider.as_deref(), dry_run, watch, path),
+            } => run_compile_cmd(provider.as_deref(), dry_run, path),
             Commands::Skill { action } => dispatch_skill(action),
+            Commands::Vars { action } => dispatch_vars(action),
             Commands::Mcp { action } => dispatch_mcp(action),
             Commands::Convert { source } => convert::run_convert(&source),
             Commands::Docs { topic } => help_topics::run(topic.as_deref()),
-            #[cfg(feature = "workflow")]
+            #[cfg(feature = "unstable")]
             Commands::Job { action } => dispatch_job(action),
-            #[cfg(feature = "workflow")]
+            #[cfg(feature = "unstable")]
             Commands::Adrs => run_adrs(),
-            #[cfg(feature = "workflow")]
+            #[cfg(feature = "unstable")]
             Commands::Notes => run_notes(),
-            #[cfg(feature = "workflow")]
-            Commands::Migrate => run_migrate(),
             Commands::Publish { dry_run, tag } => {
                 let root = std::env::current_dir()?;
                 publish::run_publish(&root, dry_run, tag.as_deref())
@@ -110,11 +115,11 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                     .unwrap_or_else(|| std::env::current_dir().unwrap());
                 validate::run_validate(agent.as_deref(), json, &root)
             }
-            #[cfg(feature = "workflow")]
+            #[cfg(feature = "unstable")]
             Commands::Diff { milestone } => diff::run(milestone.as_deref()),
-            #[cfg(feature = "workflow")]
+            #[cfg(feature = "unstable")]
             Commands::Events { action } => dispatch_events(action),
-            #[cfg(feature = "workflow")]
+            #[cfg(feature = "unstable")]
             Commands::View => view::run_view(),
             Commands::Help => {
                 use clap::CommandFactory;
@@ -299,7 +304,6 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
 fn run_compile_cmd(
     provider: Option<&str>,
     dry_run: bool,
-    watch: bool,
     path: Option<PathBuf>,
 ) -> Result<()> {
     let project_root = path
@@ -319,17 +323,12 @@ fn run_compile_cmd(
         provider,
         dry_run,
         active_agent: state.active_agent.as_deref(),
-    })?;
-
-    if watch {
-        println!("--watch not yet implemented. Run compile manually after changes.");
-    }
-    Ok(())
+    })
 }
 
 // ── Subcommand dispatchers ────────────────────────────────────────────────────
 
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 fn dispatch_job(action: JobCommands) -> Result<()> {
     match action {
         JobCommands::Create {
@@ -372,6 +371,24 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
     }
 }
 
+fn dispatch_vars(action: VarsCommands) -> Result<()> {
+    let ship_dir = paths::project_ship_dir_required()?;
+    match action {
+        VarsCommands::Set { skill_id, key, value } => {
+            vars::run_vars_set(&ship_dir, &skill_id, &key, &value)
+        }
+        VarsCommands::Get { skill_id, key } => {
+            vars::run_vars_get(&ship_dir, &skill_id, key.as_deref())
+        }
+        VarsCommands::Append { skill_id, key, json } => {
+            vars::run_vars_append(&ship_dir, &skill_id, &key, &json)
+        }
+        VarsCommands::Reset { skill_id } => {
+            vars::run_vars_reset(&ship_dir, &skill_id)
+        }
+    }
+}
+
 fn dispatch_mcp(action: McpCommands) -> Result<()> {
     match action {
         McpCommands::Serve { http, port } => mcp_serve::run(http, port),
@@ -394,7 +411,7 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
 
 // ── Hidden / legacy ──────────────────────────────────────────────────────────
 
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 fn run_adrs() -> Result<()> {
     let _ship_dir = paths::project_ship_dir_required()?;
     let adrs = runtime::db::adrs::list_adrs()?;
@@ -408,7 +425,7 @@ fn run_adrs() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 fn run_notes() -> Result<()> {
     let _ship_dir = paths::project_ship_dir_required()?;
     let notes = runtime::db::notes::list_notes(None)?;
@@ -422,13 +439,7 @@ fn run_notes() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "workflow")]
-fn run_migrate() -> Result<()> {
-    println!("migration infrastructure removed — state_db consolidated into platform.db");
-    Ok(())
-}
-
-#[cfg(feature = "workflow")]
+#[cfg(feature = "unstable")]
 fn dispatch_events(action: EventsCommands) -> Result<()> {
     let ship_dir = paths::project_ship_dir_required()?;
     match action {

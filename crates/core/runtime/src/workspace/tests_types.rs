@@ -124,17 +124,17 @@ mod tests {
     }
 
     #[test]
-    fn inferred_workspace_type_prefers_feature_links_then_prefixes() {
+    fn inferred_workspace_type_uses_branch_prefix() {
         assert_eq!(
-            infer_workspace_type("sandbox/personal", Some("auth-redesign")),
+            infer_workspace_type("sandbox/personal"),
             ShipWorkspaceKind::Feature
         );
         assert_eq!(
-            infer_workspace_type("service/agent-lab", None),
+            infer_workspace_type("service/agent-lab"),
             ShipWorkspaceKind::Feature
         );
         assert_eq!(
-            infer_workspace_type("patch/token", None),
+            infer_workspace_type("patch/token"),
             ShipWorkspaceKind::Patch
         );
     }

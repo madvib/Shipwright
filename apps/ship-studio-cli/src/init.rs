@@ -4,36 +4,12 @@ use anyhow::Result;
 
 use crate::paths;
 
-pub fn run(global: bool, provider: Option<String>, from: Option<String>) -> Result<()> {
+pub fn run(global: bool, provider: Option<String>) -> Result<()> {
     if global {
         run_global()
-    } else if let Some(url) = from {
-        crate::init_from_url::run_from_url(&url)
     } else {
         run_project(provider)
     }
-}
-
-// ── Helpers shared with init_from_url ────────────────────────────────────────
-
-/// Quote a string for TOML output.
-pub(crate) fn quote_toml(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// Replace characters that are not safe in filenames.
-pub(crate) fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
 }
 
 // ── Normal init paths ────────────────────────────────────────────────────────
@@ -236,39 +212,3 @@ fn seed_and_install_deps(ship_dir: &std::path::Path) -> (usize, bool) {
     (seeded, installed)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn init_from_flag_parsed() {
-        use crate::cli::Cli;
-        use clap::Parser;
-        let cli = Cli::parse_from(["ship", "init", "--from", "https://example.com/c.json"]);
-        match cli.command {
-            Some(crate::cli::Commands::Init { from, .. }) => {
-                assert_eq!(from.as_deref(), Some("https://example.com/c.json"));
-            }
-            other => panic!("expected Init, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn init_without_from_flag_parsed() {
-        use crate::cli::Cli;
-        use clap::Parser;
-        let cli = Cli::parse_from(["ship", "init"]);
-        match cli.command {
-            Some(crate::cli::Commands::Init { from, .. }) => assert!(from.is_none()),
-            other => panic!("expected Init, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn sanitize_and_quote() {
-        assert_eq!(sanitize_filename("hello world"), "hello-world");
-        assert_eq!(sanitize_filename("path/name"), "path-name");
-        assert_eq!(quote_toml("simple"), "\"simple\"");
-        assert_eq!(quote_toml("a\"b"), "\"a\\\"b\"");
-    }
-}

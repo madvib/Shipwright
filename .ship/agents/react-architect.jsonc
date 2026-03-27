@@ -9,7 +9,7 @@
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": [],
+    "refs": ["ship-schema-reference", "studio-mcp-bridge"],
   },
   "mcp": {
     "servers": ["ship"],

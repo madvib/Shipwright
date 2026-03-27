@@ -12,25 +12,60 @@ pub struct TransferBundle {
     pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub skills: HashMap<String, SkillBundle>,
+    /// Rule file content keyed by filename (e.g. "code-style.md" → content).
+    #[serde(default)]
+    pub rules: HashMap<String, String>,
 }
 
 /// Agent configuration within a transfer bundle.
+/// Every field the agent.schema.json defines is represented here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AgentBundle {
+    // ── agent section ───────────────────────────────────────────────
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub providers: Option<Vec<String>>,
+
+    // ── top-level fields ────────────────────────────────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_models: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_limits: Option<serde_json::Value>,
+
+    // ── refs (IDs only — content in bundle.skills / bundle.rules) ──
+    /// Skill IDs to activate.
     #[serde(default)]
-    pub skills: Vec<String>,
+    pub skill_refs: Vec<String>,
+    /// Rule file IDs to reference (e.g. "code-style").
     #[serde(default)]
-    pub rules: Vec<String>,
+    pub rule_refs: Vec<String>,
+    /// Inline rules text (appended after file-based rules).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules_inline: Option<String>,
+    /// MCP server names from .ship/mcp.jsonc.
     #[serde(default)]
-    pub mcp_servers: Vec<serde_json::Value>,
+    pub mcp_servers: Vec<String>,
+
+    // ── structured sections (passed through as JSON) ────────────────
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_settings: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hooks: Option<Vec<serde_json::Value>>,
 }
 
 /// Skill files within a transfer bundle.
@@ -50,6 +85,7 @@ pub struct PullResponse {
 }
 
 /// Resolved agent as returned by pull_agents.
+/// Every schema field is present — nothing dropped on pull.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PullAgent {
@@ -58,9 +94,23 @@ pub struct PullAgent {
     #[serde(rename = "mcpServers")]
     pub mcp_servers: Vec<PullMcpServer>,
     pub rules: Vec<PullRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules_inline: Option<String>,
     pub hooks: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permissions: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_models: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_limits: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_settings: Option<serde_json::Value>,
     /// "project" (from .ship/) or "library" (from ~/.ship/).
     #[serde(default = "default_source")]
     pub source: String,
