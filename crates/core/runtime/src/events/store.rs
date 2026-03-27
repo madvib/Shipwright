@@ -96,6 +96,9 @@ impl EventStore for SqliteEventStore {
         if let Some(ref v) = filter.actor_id {
             qb.push(" AND actor_id = ").push_bind(v.clone());
         }
+        if let Some(ref v) = filter.parent_actor_id {
+            qb.push(" AND parent_actor_id = ").push_bind(v.clone());
+        }
         if filter.elevated_only {
             qb.push(" AND elevated = 1");
         }

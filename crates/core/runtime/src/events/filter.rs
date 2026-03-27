@@ -8,6 +8,7 @@ pub struct EventFilter {
     pub session_id: Option<String>,
     pub correlation_id: Option<String>,
     pub actor_id: Option<String>,
+    pub parent_actor_id: Option<String>,
     pub elevated_only: bool,
     pub since: Option<DateTime<Utc>>,
     pub limit: Option<u32>,
