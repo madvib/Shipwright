@@ -107,7 +107,10 @@ pub fn style_md_line(line: &str) -> Line<'static> {
             Style::default().fg(C_BOR),
         ));
     }
-    if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+    if let Some(rest) = trimmed
+        .strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+    {
         return Line::from(vec![
             Span::styled("  \u{2022} ", Style::default().fg(C_PRI)),
             Span::styled(rest.to_string(), Style::default().fg(C_FG)),

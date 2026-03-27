@@ -301,11 +301,7 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
 
 // ── Compile ───────────────────────────────────────────────────────────────────
 
-fn run_compile_cmd(
-    provider: Option<&str>,
-    dry_run: bool,
-    path: Option<PathBuf>,
-) -> Result<()> {
+fn run_compile_cmd(provider: Option<&str>, dry_run: bool, path: Option<PathBuf>) -> Result<()> {
     let project_root = path
         .as_deref()
         .map(std::fs::canonicalize)
@@ -374,18 +370,20 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
 fn dispatch_vars(action: VarsCommands) -> Result<()> {
     let ship_dir = paths::project_ship_dir_required()?;
     match action {
-        VarsCommands::Set { skill_id, key, value } => {
-            vars::run_vars_set(&ship_dir, &skill_id, &key, &value)
-        }
+        VarsCommands::Set {
+            skill_id,
+            key,
+            value,
+        } => vars::run_vars_set(&ship_dir, &skill_id, &key, &value),
         VarsCommands::Get { skill_id, key } => {
             vars::run_vars_get(&ship_dir, &skill_id, key.as_deref())
         }
-        VarsCommands::Append { skill_id, key, json } => {
-            vars::run_vars_append(&ship_dir, &skill_id, &key, &json)
-        }
-        VarsCommands::Reset { skill_id } => {
-            vars::run_vars_reset(&ship_dir, &skill_id)
-        }
+        VarsCommands::Append {
+            skill_id,
+            key,
+            json,
+        } => vars::run_vars_append(&ship_dir, &skill_id, &key, &json),
+        VarsCommands::Reset { skill_id } => vars::run_vars_reset(&ship_dir, &skill_id),
     }
 }
 

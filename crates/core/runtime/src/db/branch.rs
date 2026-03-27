@@ -113,9 +113,7 @@ mod tests {
     fn test_upsert_and_get_branch_config() {
         let (_tmp, _ship_dir) = setup();
         upsert_branch_config(&sample("feat/cli-init", "cli-lane")).unwrap();
-        let got = get_branch_config("feat/cli-init")
-            .unwrap()
-            .unwrap();
+        let got = get_branch_config("feat/cli-init").unwrap().unwrap();
         assert_eq!(got.preset_id, "cli-lane");
         assert_eq!(got.plugins.len(), 1);
     }
@@ -135,10 +133,6 @@ mod tests {
     #[test]
     fn test_get_branch_config_missing_returns_none() {
         let (_tmp, _ship_dir) = setup();
-        assert!(
-            get_branch_config("nonexistent")
-                .unwrap()
-                .is_none()
-        );
+        assert!(get_branch_config("nonexistent").unwrap().is_none());
     }
 }

@@ -92,8 +92,9 @@ pub(super) fn resolve_refs_to_external_ids(
         } else {
             reference.clone()
         };
-        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup,
-        )? && seen.insert(entry.external_id.clone())
+        if let Some(entry) =
+            crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup)?
+            && seen.insert(entry.external_id.clone())
         {
             resolved.push(entry.external_id);
         }
@@ -114,8 +115,9 @@ pub(super) fn resolve_external_ids_to_refs(
         } else {
             id.clone()
         };
-        if let Some(entry) = crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup,
-        )? && seen.insert(entry.uuid.clone())
+        if let Some(entry) =
+            crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup)?
+            && seen.insert(entry.uuid.clone())
         {
             refs.push(entry.uuid);
         }

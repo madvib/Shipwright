@@ -120,10 +120,7 @@ fn convert_from_path(source: &str) -> Result<()> {
     }
 
     let providers = detected.as_list();
-    println!(
-        "Detected providers: {}",
-        providers.join(", ")
-    );
+    println!("Detected providers: {}", providers.join(", "));
 
     let library = compiler::decompile_all(&path);
 
@@ -166,7 +163,10 @@ fn convert_from_path(source: &str) -> Result<()> {
             "mcp": { "servers": servers }
         });
         std::fs::write(&mcp_jsonc, serde_json::to_string_pretty(&mcp_obj)?)?;
-        println!("  wrote .ship/mcp.jsonc ({} servers)", library.mcp_servers.len());
+        println!(
+            "  wrote .ship/mcp.jsonc ({} servers)",
+            library.mcp_servers.len()
+        );
         files_written += 1;
     }
 
@@ -187,8 +187,8 @@ fn convert_from_path(source: &str) -> Result<()> {
             preset["default_mode"] = serde_json::json!(mode);
         }
         // Only emit non-default allow list
-        let non_default_allow = !(p.tools.allow.is_empty()
-            || (p.tools.allow.len() == 1 && p.tools.allow[0] == "*"));
+        let non_default_allow =
+            !(p.tools.allow.is_empty() || (p.tools.allow.len() == 1 && p.tools.allow[0] == "*"));
         if non_default_allow {
             preset["tools_allow"] = serde_json::json!(p.tools.allow);
         }
@@ -229,10 +229,7 @@ fn convert_from_path(source: &str) -> Result<()> {
     // ── .gitignore in .ship/ ─────────────────────────────────────────────────
     let gitignore = ship_dir.join(".gitignore");
     if !gitignore.exists() {
-        std::fs::write(
-            &gitignore,
-            "secrets/\n",
-        )?;
+        std::fs::write(&gitignore, "secrets/\n")?;
     }
 
     if files_written == 0 {

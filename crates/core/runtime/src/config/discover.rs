@@ -1,7 +1,7 @@
+use super::project::ProjectDiscovery;
+use crate::project::SHIP_DIR_NAME;
 use anyhow::Result;
 use std::path::PathBuf;
-use crate::project::SHIP_DIR_NAME;
-use super::project::ProjectDiscovery;
 
 pub fn discover_projects(root: PathBuf) -> Result<Vec<ProjectDiscovery>> {
     let mut projects = Vec::new();

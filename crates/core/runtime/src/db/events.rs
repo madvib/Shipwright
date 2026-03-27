@@ -165,11 +165,7 @@ pub fn list_events_by_workspace(workspace_id: &str) -> Result<Vec<EventRecord>> 
 /// Creates an event with entity=Gate, entity_id=job_id, action=Pass or Fail.
 /// If `passed`, also updates the job status to "complete".
 /// If failed, the job stays "running" so it can be retried.
-pub fn record_gate_outcome(
-    job_id: &str,
-    passed: bool,
-    evidence: &str,
-) -> Result<EventRecord> {
+pub fn record_gate_outcome(job_id: &str, passed: bool, evidence: &str) -> Result<EventRecord> {
     let action = if passed {
         EventAction::Pass
     } else {

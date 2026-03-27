@@ -35,7 +35,11 @@ pub fn run_vars_set(ship_dir: &Path, skill_id: &str, key: &str, value_str: &str)
     let def = var_defs.get(key).ok_or_else(|| {
         let mut known: Vec<&str> = var_defs.keys().map(|s| s.as_str()).collect();
         known.sort();
-        anyhow::anyhow!("unknown variable '{}'. Known vars: {}", key, known.join(", "))
+        anyhow::anyhow!(
+            "unknown variable '{}'. Known vars: {}",
+            key,
+            known.join(", ")
+        )
     })?;
 
     let value = match def.var_type {
@@ -89,12 +93,7 @@ pub fn run_vars_get(ship_dir: &Path, skill_id: &str, key: Option<&str>) -> Resul
 }
 
 /// `ship vars append <skill-id> <key> <json>`
-pub fn run_vars_append(
-    ship_dir: &Path,
-    skill_id: &str,
-    key: &str,
-    json_str: &str,
-) -> Result<()> {
+pub fn run_vars_append(ship_dir: &Path, skill_id: &str, key: &str, json_str: &str) -> Result<()> {
     let var_defs = load_vars_json(&find_vars_json(ship_dir, skill_id)?)?;
 
     let def = var_defs
@@ -117,7 +116,10 @@ pub fn run_vars_append(
 pub fn run_vars_reset(ship_dir: &Path, skill_id: &str) -> Result<()> {
     validate_skill_id(skill_id)?;
     if runtime::skill_vars::reset_skill_vars(ship_dir, skill_id)? {
-        println!("reset state for '{}' — next compile uses defaults", skill_id);
+        println!(
+            "reset state for '{}' — next compile uses defaults",
+            skill_id
+        );
     } else {
         println!("no state found for '{}' (already at defaults)", skill_id);
     }

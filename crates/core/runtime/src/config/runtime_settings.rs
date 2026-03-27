@@ -1,8 +1,10 @@
+use super::project::ProjectConfig;
+use super::types::{
+    AiConfig, GitConfig, HookConfig, LegacyAgentsConfigFile, NamespaceConfig, StatusConfig,
+};
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
-use super::project::ProjectConfig;
-use super::types::{AiConfig, GitConfig, HookConfig, LegacyAgentsConfigFile, NamespaceConfig, StatusConfig};
 
 pub(super) fn normalize_git_config(mut git: GitConfig) -> GitConfig {
     if git.commit.iter().any(|entry| entry == "agents") {

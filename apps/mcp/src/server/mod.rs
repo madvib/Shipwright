@@ -292,10 +292,7 @@ impl ShipServer {
         description = "Write a file into a skill directory on disk (.ship/skills/<skill_id>/<file_path>). \
         Creates parent directories as needed. Use for saving skill content from the IDE."
     )]
-    async fn write_skill_file(
-        &self,
-        Parameters(req): Parameters<WriteSkillFileRequest>,
-    ) -> String {
+    async fn write_skill_file(&self, Parameters(req): Parameters<WriteSkillFileRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
@@ -303,10 +300,8 @@ impl ShipServer {
         write_skill_file(&project_dir, req)
     }
 
-    #[tool(
-        description = "Delete a single file from a skill directory. \
-        Refuses to delete SKILL.md (the skill definition itself)."
-    )]
+    #[tool(description = "Delete a single file from a skill directory. \
+        Refuses to delete SKILL.md (the skill definition itself).")]
     async fn delete_skill_file(
         &self,
         Parameters(req): Parameters<DeleteSkillFileRequest>,

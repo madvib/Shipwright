@@ -262,7 +262,10 @@ fn stable_build_registers_only_platform_tools() {
         "list_events",
     ];
     for tool in expected {
-        assert!(names.iter().any(|n| n == tool), "{tool} missing from router");
+        assert!(
+            names.iter().any(|n| n == tool),
+            "{tool} missing from router"
+        );
     }
     #[cfg(not(feature = "unstable"))]
     assert_eq!(

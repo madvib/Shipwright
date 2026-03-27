@@ -69,9 +69,8 @@ fn base_url_defaults_to_getship() {
     assert_eq!(url, Some("https://getship.dev".to_string()));
 
     // Restore.
-    match prev {
-        Some(val) => unsafe { std::env::set_var("SHIP_REGISTRY_URL", val) },
-        None => {} // already removed
+    if let Some(val) = prev {
+        unsafe { std::env::set_var("SHIP_REGISTRY_URL", val) }
     }
 }
 
@@ -107,12 +106,7 @@ fn base_url_empty_string_opts_out() {
 
 #[test]
 fn check_skipped_when_offline() {
-    let result = check_registry_hash(
-        "github.com/owner/pkg",
-        "v1.0.0",
-        "sha256:abc",
-        true,
-    );
+    let result = check_registry_hash("github.com/owner/pkg", "v1.0.0", "sha256:abc", true);
     assert_eq!(result, None);
 }
 
@@ -122,12 +116,7 @@ fn check_returns_none_when_registry_unavailable() {
     let prev = std::env::var("SHIP_REGISTRY_URL").ok();
     unsafe { std::env::set_var("SHIP_REGISTRY_URL", "http://127.0.0.1:1") };
 
-    let result = check_registry_hash(
-        "github.com/owner/pkg",
-        "v1.0.0",
-        "sha256:abc",
-        false,
-    );
+    let result = check_registry_hash("github.com/owner/pkg", "v1.0.0", "sha256:abc", false);
     assert_eq!(result, None);
 
     match prev {
@@ -141,12 +130,7 @@ fn check_returns_none_when_opted_out() {
     let prev = std::env::var("SHIP_REGISTRY_URL").ok();
     unsafe { std::env::set_var("SHIP_REGISTRY_URL", "") };
 
-    let result = check_registry_hash(
-        "github.com/owner/pkg",
-        "v1.0.0",
-        "sha256:abc",
-        false,
-    );
+    let result = check_registry_hash("github.com/owner/pkg", "v1.0.0", "sha256:abc", false);
     assert_eq!(result, None);
 
     match prev {

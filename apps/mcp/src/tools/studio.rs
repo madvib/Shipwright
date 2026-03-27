@@ -16,7 +16,10 @@ fn collect_agent_ids(agents_dir: &Path) -> Vec<String> {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if let Some(id) = name.strip_suffix(".jsonc").or_else(|| name.strip_suffix(".toml")) {
+            if let Some(id) = name
+                .strip_suffix(".jsonc")
+                .or_else(|| name.strip_suffix(".toml"))
+            {
                 ids.push(id.to_string());
             }
         }
@@ -152,7 +155,10 @@ fn pull_agents_from_dir(
 
         let skill_refs = parsed.skills.map(|s| s.refs).unwrap_or_default();
         let rules_section = parsed.rules;
-        let rule_refs = rules_section.as_ref().map(|r| r.refs.clone()).unwrap_or_default();
+        let rule_refs = rules_section
+            .as_ref()
+            .map(|r| r.refs.clone())
+            .unwrap_or_default();
         let rules_inline = rules_section.and_then(|r| r.inline);
         let mcp_names = parsed.mcp.map(|m| m.servers).unwrap_or_default();
 
@@ -172,7 +178,10 @@ fn pull_agents_from_dir(
                 id: parsed.agent.id.clone(),
                 name: parsed.agent.name.unwrap_or_else(|| parsed.agent.id.clone()),
                 description: parsed.agent.description.unwrap_or_default(),
-                providers: parsed.agent.providers.unwrap_or_else(|| vec!["claude".into()]),
+                providers: parsed
+                    .agent
+                    .providers
+                    .unwrap_or_else(|| vec!["claude".into()]),
                 version: parsed.agent.version.unwrap_or_else(|| "0.1.0".into()),
             },
             skills,
@@ -255,15 +264,15 @@ fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
         let path = entry.path();
         if path.is_dir() {
             collect_files_recursive(root, &path, out);
-        } else if path.is_file() {
-            if let Ok(rel) = path.strip_prefix(root) {
-                let rel_str = rel
-                    .components()
-                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-                    .join("/");
-                out.push(rel_str);
-            }
+        } else if path.is_file()
+            && let Ok(rel) = path.strip_prefix(root)
+        {
+            let rel_str = rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            out.push(rel_str);
         }
     }
 }
@@ -401,7 +410,10 @@ mod tests {
 
         agents.sort_by(|a, b| a.profile.id.cmp(&b.profile.id));
         assert_eq!(agents.len(), 2);
-        let shared = agents.iter().find(|a| a.profile.id == "shared-agent").unwrap();
+        let shared = agents
+            .iter()
+            .find(|a| a.profile.id == "shared-agent")
+            .unwrap();
         assert_eq!(shared.source, "project", "project should shadow library");
         let lib = agents.iter().find(|a| a.profile.id == "lib-only").unwrap();
         assert_eq!(lib.source, "library");

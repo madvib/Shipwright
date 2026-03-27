@@ -65,10 +65,7 @@ pub fn seed_default_dependencies(ship_dir: &Path) -> Result<SeedResult> {
 
     doc.as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("ship.jsonc root is not a JSON object"))?
-        .insert(
-            "dependencies".to_string(),
-            serde_json::Value::Object(deps),
-        );
+        .insert("dependencies".to_string(), serde_json::Value::Object(deps));
 
     let pretty = serde_json::to_string_pretty(&doc).context("serializing ship.jsonc")?;
     crate::fs_util::write_atomic(&jsonc_path, pretty)?;
@@ -111,9 +108,7 @@ pub fn try_install_init_deps(ship_dir: &Path) -> Result<bool> {
         .filter_map(|(k, v)| {
             let version = match v {
                 serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Object(obj) => {
-                    obj.get("version")?.as_str()?.to_string()
-                }
+                serde_json::Value::Object(obj) => obj.get("version")?.as_str()?.to_string(),
                 _ => return None,
             };
             Some((
@@ -157,31 +152,22 @@ mod tests {
     }
 
     fn write_ship_jsonc(ship_dir: &std::path::Path, content: &str) {
-        fs::write(
-            ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-            content,
-        )
-        .unwrap();
+        fs::write(ship_dir.join(crate::config::PRIMARY_CONFIG_FILE), content).unwrap();
     }
 
     #[test]
     fn seed_adds_dependencies_to_empty_manifest() {
         let tmp = tempfile::tempdir().unwrap();
         let ship_dir = init_ship_dir(tmp.path());
-        write_ship_jsonc(
-            &ship_dir,
-            r#"{ "project": { "providers": ["claude"] } }"#,
-        );
+        write_ship_jsonc(&ship_dir, r#"{ "project": { "providers": ["claude"] } }"#);
 
         let result = seed_default_dependencies(&ship_dir).unwrap();
         assert!(!result.already_present);
         assert_eq!(result.added, DEFAULT_INIT_DEPS.len());
 
         // Verify the file now has dependencies.
-        let content = fs::read_to_string(
-            ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-        )
-        .unwrap();
+        let content =
+            fs::read_to_string(ship_dir.join(crate::config::PRIMARY_CONFIG_FILE)).unwrap();
         let doc: serde_json::Value = serde_json::from_str(&content).unwrap();
         let deps = doc.get("dependencies").expect("dependencies key missing");
         assert!(deps.is_object());
@@ -208,10 +194,8 @@ mod tests {
         assert_eq!(result.added, 0);
 
         // Original deps must be unchanged.
-        let content = fs::read_to_string(
-            ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-        )
-        .unwrap();
+        let content =
+            fs::read_to_string(ship_dir.join(crate::config::PRIMARY_CONFIG_FILE)).unwrap();
         let doc: serde_json::Value = serde_json::from_str(&content).unwrap();
         let deps = doc.get("dependencies").unwrap();
         assert_eq!(
@@ -245,10 +229,8 @@ mod tests {
 
         seed_default_dependencies(&ship_dir).unwrap();
 
-        let content = fs::read_to_string(
-            ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-        )
-        .unwrap();
+        let content =
+            fs::read_to_string(ship_dir.join(crate::config::PRIMARY_CONFIG_FILE)).unwrap();
         let doc: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert_eq!(doc.get("id").and_then(|v| v.as_str()), Some("abc123"));
         assert!(doc.get("project").is_some());
@@ -278,10 +260,7 @@ mod tests {
     fn try_install_returns_false_when_no_deps() {
         let tmp = tempfile::tempdir().unwrap();
         let ship_dir = init_ship_dir(tmp.path());
-        write_ship_jsonc(
-            &ship_dir,
-            r#"{ "project": { "providers": ["claude"] } }"#,
-        );
+        write_ship_jsonc(&ship_dir, r#"{ "project": { "providers": ["claude"] } }"#);
 
         let result = try_install_init_deps(&ship_dir).unwrap();
         assert!(!result, "should return false when no dependencies");
@@ -308,6 +287,9 @@ mod tests {
         // @ship/* packages can't resolve via git — this will error.
         let result = try_install_init_deps(&ship_dir);
         // The function returns an error (not a panic) which the caller catches.
-        assert!(result.is_err(), "expected error for unresolvable @ship/* dep");
+        assert!(
+            result.is_err(),
+            "expected error for unresolvable @ship/* dep"
+        );
     }
 }

@@ -20,10 +20,7 @@ pub(super) fn parse_opencode_agent(name: &str, entry: &Json) -> Option<AgentProf
         .get("description")
         .and_then(|v| v.as_str())
         .map(String::from);
-    let prompt = obj
-        .get("prompt")
-        .and_then(|v| v.as_str())
-        .map(String::from);
+    let prompt = obj.get("prompt").and_then(|v| v.as_str()).map(String::from);
     let permissions = obj
         .get("permission")
         .map(parse_agent_permissions)

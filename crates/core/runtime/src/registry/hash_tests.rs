@@ -46,7 +46,10 @@ fn tree_hash_excludes_ds_store_and_thumbs_db() -> anyhow::Result<()> {
     fs::write(dir.path().join(".DS_Store"), "apple noise")?;
     fs::write(dir.path().join("Thumbs.db"), "windows noise")?;
     let h_after = compute_tree_hash(dir.path())?;
-    assert_eq!(h_before, h_after, ".DS_Store and Thumbs.db must be excluded");
+    assert_eq!(
+        h_before, h_after,
+        ".DS_Store and Thumbs.db must be excluded"
+    );
     Ok(())
 }
 
@@ -96,7 +99,10 @@ fn tree_hash_changes_when_content_changes() -> anyhow::Result<()> {
 fn tree_hash_empty_dir() -> anyhow::Result<()> {
     let dir = tempdir()?;
     let hash = compute_tree_hash(dir.path())?;
-    assert!(hash.starts_with("sha256:"), "empty tree still returns valid hash");
+    assert!(
+        hash.starts_with("sha256:"),
+        "empty tree still returns valid hash"
+    );
     Ok(())
 }
 
@@ -111,7 +117,10 @@ fn tree_hash_excludes_state_dir() -> anyhow::Result<()> {
         r#"{"commit_style":"gitmoji"}"#,
     )?;
     let h_after = compute_tree_hash(dir.path())?;
-    assert_eq!(h_before, h_after, "state/ must be excluded from content hash");
+    assert_eq!(
+        h_before, h_after,
+        "state/ must be excluded from content hash"
+    );
     Ok(())
 }
 
@@ -165,7 +174,10 @@ fn export_hashes_missing_skill_dir_fails() {
     let ship_dir = tempdir().unwrap();
     let result = compute_export_hashes(ship_dir.path(), &["skills/missing".into()], &[]);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("not found"), "error should mention 'not found': {msg}");
+    assert!(
+        msg.contains("not found"),
+        "error should mention 'not found': {msg}"
+    );
 }
 
 #[test]
@@ -173,7 +185,10 @@ fn export_hashes_missing_agent_file_fails() {
     let ship_dir = tempdir().unwrap();
     let result = compute_export_hashes(ship_dir.path(), &[], &["agents/missing.md".into()]);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("not found"), "error should mention 'not found': {msg}");
+    assert!(
+        msg.contains("not found"),
+        "error should mention 'not found': {msg}"
+    );
 }
 
 #[test]
@@ -212,7 +227,10 @@ fn combined_hash_changes_when_export_added() -> anyhow::Result<()> {
         &["skills/alpha".into(), "skills/beta".into()],
         &[],
     )?;
-    assert_ne!(r1.combined, r2.combined, "adding an export must change combined hash");
+    assert_ne!(
+        r1.combined, r2.combined,
+        "adding an export must change combined hash"
+    );
     Ok(())
 }
 
@@ -226,7 +244,10 @@ fn combined_hash_changes_when_export_content_changes() -> anyhow::Result<()> {
         r1.per_export["skills/alpha"], r2.per_export["skills/alpha"],
         "content change in skill must change its per-export hash"
     );
-    assert_ne!(r1.combined, r2.combined, "content change must change combined hash");
+    assert_ne!(
+        r1.combined, r2.combined,
+        "content change must change combined hash"
+    );
     Ok(())
 }
 

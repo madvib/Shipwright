@@ -111,12 +111,11 @@ pub fn resolve_and_fetch(
         let in_existing_lock = existing_lock
             .as_ref()
             .is_some_and(|lock| lock.package.iter().any(|p| p.path == dep_path));
-        if !in_existing_lock {
-            if let Some(warning) =
+        if !in_existing_lock
+            && let Some(warning) =
                 check_registry_hash(&dep_path, &resolved.tag, &cached.hash, opts.offline)
-            {
-                eprintln!("{warning}");
-            }
+        {
+            eprintln!("{warning}");
         }
 
         locked.retain(|p| p.path != dep_path);

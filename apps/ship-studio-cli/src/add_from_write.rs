@@ -38,8 +38,7 @@ pub fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<()> {
     }
 
     let profile = build_agent_jsonc(agent);
-    std::fs::write(&dest, profile)
-        .with_context(|| format!("writing agent {}", dest.display()))?;
+    std::fs::write(&dest, profile).with_context(|| format!("writing agent {}", dest.display()))?;
 
     Ok(())
 }

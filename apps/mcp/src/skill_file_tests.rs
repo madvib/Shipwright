@@ -25,7 +25,10 @@ fn write_skill_file_creates_file() {
     assert!(result.starts_with("Wrote "), "unexpected: {result}");
     let written = ship_dir.join("skills/my-skill/SKILL.md");
     assert!(written.exists());
-    assert_eq!(std::fs::read_to_string(&written).unwrap(), "# My Skill\nHello");
+    assert_eq!(
+        std::fs::read_to_string(&written).unwrap(),
+        "# My Skill\nHello"
+    );
 }
 
 #[test]
@@ -79,7 +82,10 @@ fn write_skill_file_rejects_invalid_skill_id() {
         },
     );
     assert!(result.contains("Error"), "expected error: {result}");
-    assert!(result.contains("Invalid skill_id"), "unexpected message: {result}");
+    assert!(
+        result.contains("Invalid skill_id"),
+        "unexpected message: {result}"
+    );
 }
 
 #[test]
@@ -109,7 +115,10 @@ fn write_skill_file_rejects_absolute_path() {
         },
     );
     assert!(result.contains("Error"), "expected error: {result}");
-    assert!(result.contains("relative"), "should mention relative: {result}");
+    assert!(
+        result.contains("relative"),
+        "should mention relative: {result}"
+    );
 }
 
 #[test]
@@ -158,7 +167,10 @@ fn delete_skill_file_refuses_skill_md() {
         },
     );
     assert!(result.contains("Error"), "expected error: {result}");
-    assert!(result.contains("SKILL.md"), "should mention SKILL.md: {result}");
+    assert!(
+        result.contains("SKILL.md"),
+        "should mention SKILL.md: {result}"
+    );
 }
 
 #[test]
@@ -175,7 +187,10 @@ fn delete_skill_file_returns_error_for_missing_file() {
         },
     );
     assert!(result.contains("Error"), "expected error: {result}");
-    assert!(result.contains("does not exist"), "unexpected message: {result}");
+    assert!(
+        result.contains("does not exist"),
+        "unexpected message: {result}"
+    );
 }
 
 #[test]
@@ -203,5 +218,8 @@ fn delete_skill_file_rejects_invalid_skill_id() {
         },
     );
     assert!(result.contains("Error"), "expected error: {result}");
-    assert!(result.contains("Invalid skill_id"), "unexpected message: {result}");
+    assert!(
+        result.contains("Invalid skill_id"),
+        "unexpected message: {result}"
+    );
 }

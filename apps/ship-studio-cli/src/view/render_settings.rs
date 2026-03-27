@@ -6,7 +6,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::data::{ViewData, USER_PREF_KEYS};
+use super::data::{USER_PREF_KEYS, ViewData};
 use super::theme::*;
 
 pub fn draw(frame: &mut Frame, data: &ViewData, area: Rect) {
@@ -14,7 +14,7 @@ pub fn draw(frame: &mut Frame, data: &ViewData, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(10), // project identity
-            Constraint::Min(6),    // user preferences
+            Constraint::Min(6),     // user preferences
         ])
         .split(area);
 

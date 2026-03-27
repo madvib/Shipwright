@@ -24,11 +24,7 @@ pub fn get_branch_link(branch: &str) -> Result<Option<(String, String)>> {
 }
 
 /// Record that `branch` is associated with `link_type` and entity id.
-pub fn set_branch_link(
-    branch: &str,
-    link_type: &str,
-    link_id: &str,
-) -> Result<()> {
+pub fn set_branch_link(branch: &str, link_type: &str, link_id: &str) -> Result<()> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     block_on(async {

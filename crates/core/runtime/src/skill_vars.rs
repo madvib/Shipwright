@@ -99,10 +99,7 @@ fn parse_vars_schema(ship_dir: &Path, skill_id: &str) -> Option<HashMap<String, 
 ///
 /// Returns `None` if the skill has no `assets/vars.json`.
 /// Merge order: defaults → global (KV) → local (KV) → project (KV).
-pub fn get_skill_vars(
-    ship_dir: &Path,
-    skill_id: &str,
-) -> Result<Option<HashMap<String, Value>>> {
+pub fn get_skill_vars(ship_dir: &Path, skill_id: &str) -> Result<Option<HashMap<String, Value>>> {
     let Some(schema) = parse_vars_schema(ship_dir, skill_id) else {
         return Ok(None);
     };
@@ -120,30 +117,30 @@ pub fn get_skill_vars(
     // 2. Global state (machine-wide)
     let ns_global = kv_ns_global(skill_id);
     for (name, meta) in &schema {
-        if meta.storage_hint == StorageHint::Global {
-            if let Ok(Some(val)) = crate::db::kv::get(&ns_global, name) {
-                merged.insert(name.clone(), val);
-            }
+        if meta.storage_hint == StorageHint::Global
+            && let Ok(Some(val)) = crate::db::kv::get(&ns_global, name)
+        {
+            merged.insert(name.clone(), val);
         }
     }
 
     // 3. Local state (this context, not shared)
     let ns_local = kv_ns_local(&ctx, skill_id);
     for (name, meta) in &schema {
-        if meta.storage_hint == StorageHint::Local {
-            if let Ok(Some(val)) = crate::db::kv::get(&ns_local, name) {
-                merged.insert(name.clone(), val);
-            }
+        if meta.storage_hint == StorageHint::Local
+            && let Ok(Some(val)) = crate::db::kv::get(&ns_local, name)
+        {
+            merged.insert(name.clone(), val);
         }
     }
 
     // 4. Project state (this context, intended to be shared)
     let ns_project = kv_ns_project(&ctx, skill_id);
     for (name, meta) in &schema {
-        if meta.storage_hint == StorageHint::Project {
-            if let Ok(Some(val)) = crate::db::kv::get(&ns_project, name) {
-                merged.insert(name.clone(), val);
-            }
+        if meta.storage_hint == StorageHint::Project
+            && let Ok(Some(val)) = crate::db::kv::get(&ns_project, name)
+        {
+            merged.insert(name.clone(), val);
         }
     }
 
@@ -153,12 +150,7 @@ pub fn get_skill_vars(
 /// Set a single variable value for a skill.
 ///
 /// Routes to the appropriate KV namespace based on the var's `storage-hint`.
-pub fn set_skill_var(
-    ship_dir: &Path,
-    skill_id: &str,
-    key: &str,
-    value: Value,
-) -> Result<()> {
+pub fn set_skill_var(ship_dir: &Path, skill_id: &str, key: &str, value: Value) -> Result<()> {
     let schema = parse_vars_schema(ship_dir, skill_id)
         .ok_or_else(|| anyhow::anyhow!("skill '{}' has no assets/vars.json", skill_id))?;
 

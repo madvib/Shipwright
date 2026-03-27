@@ -308,15 +308,9 @@ mod tests {
     fn test_get_workspace_by_branch() {
         let (_tmp, _ship_dir) = setup();
         upsert_workspace(&sample("ws-003", "feat/branch")).unwrap();
-        let got = get_workspace_by_branch("feat/branch")
-            .unwrap()
-            .unwrap();
+        let got = get_workspace_by_branch("feat/branch").unwrap().unwrap();
         assert_eq!(got.id, "ws-003");
-        assert!(
-            get_workspace_by_branch("nonexistent")
-                .unwrap()
-                .is_none()
-        );
+        assert!(get_workspace_by_branch("nonexistent").unwrap().is_none());
     }
 
     #[test]
@@ -331,8 +325,7 @@ mod tests {
     fn test_session_lifecycle() {
         let (_tmp, _ship_dir) = setup();
         upsert_workspace(&sample("ws-s1", "main")).unwrap();
-        let sess =
-            start_session("ws-s1", "main", Some("cli-lane"), Some("build")).unwrap();
+        let sess = start_session("ws-s1", "main", Some("cli-lane"), Some("build")).unwrap();
         assert_eq!(sess.status, "active");
         let active = get_active_session("ws-s1").unwrap().unwrap();
         assert_eq!(active.id, sess.id);

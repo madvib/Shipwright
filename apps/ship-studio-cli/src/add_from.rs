@@ -109,9 +109,9 @@ async fn fetch_bundle(url: &str) -> Result<TransferBundle> {
 
 /// Connect to Studio MCP server, call `transfer_bundle`, parse response.
 async fn fetch_via_mcp(url: &str) -> Result<TransferBundle> {
+    use rmcp::ServiceExt;
     use rmcp::model::{CallToolRequestParams, ClientInfo, Implementation, RawContent};
     use rmcp::transport::StreamableHttpClientTransport;
-    use rmcp::ServiceExt;
 
     let transport = StreamableHttpClientTransport::from_uri(url);
 

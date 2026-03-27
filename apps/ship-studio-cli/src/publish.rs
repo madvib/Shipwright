@@ -8,12 +8,8 @@ use crate::config::Credentials;
 
 /// Compute per-export hashes from the manifest exports.
 fn resolve_hashes(ship_dir: &Path, manifest: &ShipManifest) -> Result<ExportHashes> {
-    compute_export_hashes(
-        ship_dir,
-        &manifest.exports.skills,
-        &manifest.exports.agents,
-    )
-    .context("computing per-export content hashes")
+    compute_export_hashes(ship_dir, &manifest.exports.skills, &manifest.exports.agents)
+        .context("computing per-export content hashes")
 }
 
 /// `ship publish --dry-run` output.

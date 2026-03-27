@@ -44,12 +44,10 @@ pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
 /// `get_skill_vars` MCP tool — return merged variable state for a skill.
 pub fn get_skill_vars_tool(ship_dir: &Path, req: GetSkillVarsRequest) -> String {
     match get_skill_vars(ship_dir, &req.skill_id) {
-        Ok(Some(vars)) => {
-            match serde_json::to_string_pretty(&vars) {
-                Ok(json) => json,
-                Err(e) => format!("Error serializing vars: {e}"),
-            }
-        }
+        Ok(Some(vars)) => match serde_json::to_string_pretty(&vars) {
+            Ok(json) => json,
+            Err(e) => format!("Error serializing vars: {e}"),
+        },
         Ok(None) => format!(
             "Skill '{}' has no vars.json — no variables configured.",
             req.skill_id
@@ -145,7 +143,10 @@ fn resolve_skill_file_path(
                 let canon_parent = parent
                     .canonicalize()
                     .map_err(|e| format!("Cannot resolve parent directory: {e}"))?;
-                canon_parent.join(dest.file_name().unwrap())
+                canon_parent.join(
+                    dest.file_name()
+                        .ok_or_else(|| "file_path has no file name component".to_string())?,
+                )
             } else {
                 // Parent directories will be created; trust the string checks above.
                 dest.clone()
@@ -166,10 +167,10 @@ pub fn write_skill_file(ship_dir: &Path, req: WriteSkillFileRequest) -> String {
         Ok(p) => p,
         Err(e) => return format!("Error: {e}"),
     };
-    if let Some(parent) = dest.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            return format!("Error creating directories: {e}");
-        }
+    if let Some(parent) = dest.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        return format!("Error creating directories: {e}");
     }
     match std::fs::write(&dest, &req.content) {
         Ok(()) => format!("Wrote {}", dest.display()),

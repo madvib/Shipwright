@@ -40,7 +40,10 @@ fn scan_bundle(bundle: &TransferBundle) -> Result<(), String> {
         }
     }
     for (rule_name, content) in &bundle.rules {
-        findings.extend(runtime::security::scan_text(content, &format!("rules/{rule_name}")));
+        findings.extend(runtime::security::scan_text(
+            content,
+            &format!("rules/{rule_name}"),
+        ));
     }
     if runtime::security::has_critical(&findings) {
         let critical: Vec<String> = findings
@@ -97,15 +100,15 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
     if let Some(ref model) = agent.model {
         root.insert("model".into(), serde_json::json!(model));
     }
-    if let Some(ref env) = agent.env {
-        if !env.is_empty() {
-            root.insert("env".into(), serde_json::json!(env));
-        }
+    if let Some(ref env) = agent.env
+        && !env.is_empty()
+    {
+        root.insert("env".into(), serde_json::json!(env));
     }
-    if let Some(ref models) = agent.available_models {
-        if !models.is_empty() {
-            root.insert("available_models".into(), serde_json::json!(models));
-        }
+    if let Some(ref models) = agent.available_models
+        && !models.is_empty()
+    {
+        root.insert("available_models".into(), serde_json::json!(models));
     }
     if let Some(ref limits) = agent.agent_limits {
         root.insert("agent_limits".into(), limits.clone());
@@ -113,12 +116,18 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
 
     // skills section
     if !agent.skill_refs.is_empty() {
-        root.insert("skills".into(), serde_json::json!({ "refs": agent.skill_refs }));
+        root.insert(
+            "skills".into(),
+            serde_json::json!({ "refs": agent.skill_refs }),
+        );
     }
 
     // mcp section
     if !agent.mcp_servers.is_empty() {
-        root.insert("mcp".into(), serde_json::json!({ "servers": agent.mcp_servers }));
+        root.insert(
+            "mcp".into(),
+            serde_json::json!({ "servers": agent.mcp_servers }),
+        );
     }
 
     // plugins section
@@ -139,10 +148,10 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
         if has_refs {
             rules_obj.insert("refs".into(), serde_json::json!(agent.rule_refs));
         }
-        if let Some(ref inline) = agent.rules_inline {
-            if !inline.is_empty() {
-                rules_obj.insert("inline".into(), serde_json::json!(inline));
-            }
+        if let Some(ref inline) = agent.rules_inline
+            && !inline.is_empty()
+        {
+            rules_obj.insert("inline".into(), serde_json::json!(inline));
         }
         root.insert("rules".into(), serde_json::Value::Object(rules_obj));
     }
@@ -153,10 +162,10 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
     }
 
     // hooks section
-    if let Some(ref hooks) = agent.hooks {
-        if !hooks.is_empty() {
-            root.insert("hooks".into(), serde_json::json!(hooks));
-        }
+    if let Some(ref hooks) = agent.hooks
+        && !hooks.is_empty()
+    {
+        root.insert("hooks".into(), serde_json::json!(hooks));
     }
 
     let content = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".into());
@@ -173,8 +182,7 @@ fn write_skill(ship_dir: &Path, skill_id: &str, skill: &SkillBundle) -> Result<(
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&dest, content)
-            .map_err(|e| format!("writing {}: {e}", dest.display()))?;
+        std::fs::write(&dest, content).map_err(|e| format!("writing {}: {e}", dest.display()))?;
     }
     Ok(())
 }
@@ -188,7 +196,6 @@ fn write_rule(ship_dir: &Path, rule_name: &str, content: &str) -> Result<(), Str
         format!("{rule_name}.md")
     };
     let dest = rules_dir.join(&file_name);
-    std::fs::write(&dest, content)
-        .map_err(|e| format!("writing {}: {e}", dest.display()))?;
+    std::fs::write(&dest, content).map_err(|e| format!("writing {}: {e}", dest.display()))?;
     Ok(())
 }

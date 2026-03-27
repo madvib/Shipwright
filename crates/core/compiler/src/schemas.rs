@@ -8,8 +8,7 @@
 //! When a provider publishes a new schema URL, update this file.
 
 /// Claude Code settings JSON Schema (SchemaStore).
-pub const CLAUDE_SCHEMA_URL: &str =
-    "https://www.schemastore.org/claude-code-settings.json";
+pub const CLAUDE_SCHEMA_URL: &str = "https://www.schemastore.org/claude-code-settings.json";
 
 /// OpenAI Codex config JSON Schema (GitHub).
 pub const CODEX_SCHEMA_URL: &str =

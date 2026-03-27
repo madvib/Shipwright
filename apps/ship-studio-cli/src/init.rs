@@ -42,11 +42,7 @@ fn run_project(provider: Option<String>) -> Result<()> {
     let is_fresh = !paths::project_ship_jsonc().exists() && !paths::project_ship_toml().exists();
     let detected = if is_fresh && provider.is_none() {
         let d = compiler::detect_providers(&project_root);
-        if d.any() {
-            Some(d)
-        } else {
-            None
-        }
+        if d.any() { Some(d) } else { None }
     } else {
         None
     };
@@ -57,10 +53,7 @@ fn run_project(provider: Option<String>) -> Result<()> {
     if let Some(ref detected) = detected {
         // Import detected provider configs into .ship/
         let providers = detected.as_list();
-        println!(
-            "Detected existing configs: {}",
-            providers.join(", ")
-        );
+        println!("Detected existing configs: {}", providers.join(", "));
 
         let library = compiler::decompile_all(&project_root);
 
@@ -211,4 +204,3 @@ fn seed_and_install_deps(ship_dir: &std::path::Path) -> (usize, bool) {
 
     (seeded, installed)
 }
-

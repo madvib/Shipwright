@@ -148,7 +148,12 @@
               "properties": {
                 "permissions": false,
                 "hooks": false,
-                "model": false
+                "model": false,
+                "env": false,
+                "availableModels": false,
+                "maxCostPerSession": false,
+                "maxTurns": false,
+                "autoMemoryEnabled": false
               }
             }
           ],

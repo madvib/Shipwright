@@ -203,9 +203,7 @@ fn merge_json(base: &serde_json::Value, override_val: &serde_json::Value) -> ser
         (serde_json::Value::Object(b), serde_json::Value::Object(o)) => {
             let mut merged = b.clone();
             for (k, v) in o {
-                let entry = merged
-                    .entry(k.clone())
-                    .or_insert(serde_json::Value::Null);
+                let entry = merged.entry(k.clone()).or_insert(serde_json::Value::Null);
                 *entry = merge_json(entry, v);
             }
             serde_json::Value::Object(merged)
@@ -1012,14 +1010,13 @@ mod tests {
             "claude".to_string(),
             json!({"theme": "dark", "autoUpdates": true, "nested": {"a": 1, "b": 2}}),
         );
-        defaults.insert(
-            "gemini".to_string(),
-            json!({"yoloMode": false}),
-        );
+        defaults.insert("gemini".to_string(), json!({"yoloMode": false}));
 
         let library = ProjectLibrary {
             provider_defaults: defaults,
-            claude_settings_extra: Some(json!({"theme": "light", "newKey": "hello", "nested": {"b": 99, "c": 3}})),
+            claude_settings_extra: Some(
+                json!({"theme": "light", "newKey": "hello", "nested": {"b": 99, "c": 3}}),
+            ),
             // gemini: no agent override — defaults should pass through
             gemini_settings_extra: None,
             // codex: agent override but no defaults — agent wins

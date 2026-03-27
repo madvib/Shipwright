@@ -50,7 +50,10 @@ mod tests {
     use serde_json::json;
 
     fn v(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
-        pairs.iter().map(|(k, val)| (k.to_string(), val.clone())).collect()
+        pairs
+            .iter()
+            .map(|(k, val)| (k.to_string(), val.clone()))
+            .collect()
     }
 
     #[test]
@@ -80,7 +83,10 @@ mod tests {
     #[test]
     fn bool_conditional_true() {
         let vars = v(&[("flag", json!(true))]);
-        assert_eq!(resolve_template("{% if flag %}yes{% endif %}", &vars), "yes");
+        assert_eq!(
+            resolve_template("{% if flag %}yes{% endif %}", &vars),
+            "yes"
+        );
     }
 
     #[test]
@@ -129,7 +135,10 @@ mod tests {
     fn for_loop_objects() {
         let vars = v(&[("list", json!([{"name": "Alice"}, {"name": "Bob"}]))]);
         assert_eq!(
-            resolve_template("{% for item in list %}- {{ item.name }}\n{% endfor %}", &vars),
+            resolve_template(
+                "{% for item in list %}- {{ item.name }}\n{% endfor %}",
+                &vars
+            ),
             "- Alice\n- Bob\n"
         );
     }

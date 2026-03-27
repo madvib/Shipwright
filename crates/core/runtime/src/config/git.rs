@@ -1,8 +1,8 @@
-use anyhow::Result;
-use std::path::Path;
-use crate::{EventAction, EventEntity, append_event};
 use super::io::{get_config, save_config};
 use super::types::GitConfig;
+use crate::{EventAction, EventEntity, append_event};
+use anyhow::Result;
+use std::path::Path;
 
 pub fn get_git_config(project_dir: &Path) -> Result<GitConfig> {
     let config = get_config(Some(project_dir.to_path_buf()))?;

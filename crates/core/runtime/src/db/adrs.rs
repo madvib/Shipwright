@@ -24,12 +24,7 @@ pub struct AdrRecord {
 const COLS: &str =
     "id, title, status, date, context, decision, tags_json, supersedes_id, created_at, updated_at";
 
-pub fn create_adr(
-    title: &str,
-    context: &str,
-    decision: &str,
-    status: &str,
-) -> Result<AdrRecord> {
+pub fn create_adr(title: &str, context: &str, decision: &str, status: &str) -> Result<AdrRecord> {
     let mut conn = open_db()?;
     let now = Utc::now().to_rfc3339();
     let id = gen_nanoid();
@@ -180,13 +175,7 @@ mod tests {
     #[test]
     fn test_get_adr() {
         let (_tmp, _ship_dir) = setup();
-        let adr = create_adr(
-            "Use Rust",
-            "Performance matters",
-            "Use Rust",
-            "accepted",
-        )
-        .unwrap();
+        let adr = create_adr("Use Rust", "Performance matters", "Use Rust", "accepted").unwrap();
         let got = get_adr(&adr.id).unwrap().unwrap();
         assert_eq!(got.id, adr.id);
         assert_eq!(got.title, "Use Rust");

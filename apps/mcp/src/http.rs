@@ -81,9 +81,18 @@ async fn cors_middleware(req: Request<Body>, next: Next) -> Response {
         let mut res = Response::new(Body::empty());
         let h = res.headers_mut();
         h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
-        h.insert("access-control-allow-methods", HeaderValue::from_static("GET, POST, DELETE, OPTIONS"));
-        h.insert("access-control-allow-headers", HeaderValue::from_static("content-type, authorization, accept, mcp-session-id"));
-        h.insert("access-control-expose-headers", HeaderValue::from_static("mcp-session-id"));
+        h.insert(
+            "access-control-allow-methods",
+            HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
+        );
+        h.insert(
+            "access-control-allow-headers",
+            HeaderValue::from_static("content-type, authorization, accept, mcp-session-id"),
+        );
+        h.insert(
+            "access-control-expose-headers",
+            HeaderValue::from_static("mcp-session-id"),
+        );
         h.insert("access-control-max-age", HeaderValue::from_static("86400"));
         return res;
     }
@@ -91,7 +100,10 @@ async fn cors_middleware(req: Request<Body>, next: Next) -> Response {
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
-    h.insert("access-control-expose-headers", HeaderValue::from_static("mcp-session-id"));
+    h.insert(
+        "access-control-expose-headers",
+        HeaderValue::from_static("mcp-session-id"),
+    );
     res
 }
 

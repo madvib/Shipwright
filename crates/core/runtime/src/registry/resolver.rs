@@ -75,8 +75,8 @@ fn try_static_alias(dep_path: &str) -> Option<String> {
 
 /// Resolve via the registry API.
 fn try_registry_api_alias(dep_path: &str) -> anyhow::Result<String> {
-    let base_url = std::env::var("SHIP_REGISTRY_URL")
-        .unwrap_or_else(|_| "https://getship.dev".to_string());
+    let base_url =
+        std::env::var("SHIP_REGISTRY_URL").unwrap_or_else(|_| "https://getship.dev".to_string());
     let encoded: String = dep_path
         .bytes()
         .flat_map(|b| match b {
