@@ -19,6 +19,7 @@ pub mod session;
 pub mod targets;
 pub mod types;
 pub mod workspace;
+pub mod workspace_events;
 pub mod workspace_state;
 
 use anyhow::{Context, Result, anyhow};

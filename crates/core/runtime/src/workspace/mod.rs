@@ -1,6 +1,7 @@
 pub(crate) mod compile;
 mod context_hash;
 mod crud;
+pub(crate) mod event_upserts;
 pub(crate) mod helpers;
 mod lifecycle;
 mod session;
@@ -12,6 +13,8 @@ pub(crate) mod types_session;
 mod tests_compile;
 #[cfg(test)]
 mod tests_crud;
+#[cfg(test)]
+mod tests_events;
 #[cfg(test)]
 mod tests_session;
 #[cfg(test)]
@@ -30,6 +33,10 @@ pub use types_session::{
 pub use crud::{
     delete_workspace, get_workspace, get_workspace_provider_matrix, list_workspaces,
     repair_workspace, upsert_workspace,
+};
+pub use event_upserts::{
+    upsert_workspace_on_activate, upsert_workspace_on_archived,
+    upsert_workspace_on_compile_failed, upsert_workspace_on_compiled,
 };
 pub use helpers::validate_workspace_transition;
 pub use lifecycle::{

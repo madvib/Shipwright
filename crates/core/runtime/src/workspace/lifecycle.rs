@@ -5,6 +5,7 @@ use std::path::Path;
 
 use super::compile::compile_workspace_context;
 use super::crud::{get_workspace, list_workspaces, upsert_workspace};
+use super::event_upserts::{upsert_workspace_on_activate, upsert_workspace_on_archived};
 use super::helpers::*;
 use super::types::*;
 use super::types_session::*;
@@ -138,18 +139,22 @@ pub fn transition_workspace_status(
     }
 
     workspace.status = next_status;
-    upsert_workspace(ship_dir, &workspace)?;
-    append_event(
-        ship_dir,
-        "ship",
-        EventEntity::Workspace,
-        EventAction::Set,
-        workspace.branch.clone(),
-        Some(format!(
-            "status={} type={}",
-            workspace.status, workspace.workspace_type
-        )),
-    )?;
+    if next_status == WorkspaceStatus::Archived {
+        upsert_workspace_on_archived(ship_dir, &workspace)?;
+    } else {
+        upsert_workspace(ship_dir, &workspace)?;
+        append_event(
+            ship_dir,
+            "ship",
+            EventEntity::Workspace,
+            EventAction::Set,
+            workspace.branch.clone(),
+            Some(format!(
+                "status={} type={}",
+                workspace.status, workspace.workspace_type
+            )),
+        )?;
+    }
     Ok(workspace)
 }
 
@@ -181,17 +186,9 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
     let active_agent = workspace.active_agent.clone();
     compile_workspace_context(ship_dir, &mut workspace, active_agent.as_deref())?;
-    append_event(
-        ship_dir,
-        "ship",
-        EventEntity::Workspace,
-        EventAction::Start,
-        workspace.branch.clone(),
-        Some(format!(
-            "status={} type={} generation={}",
-            workspace.status, workspace.workspace_type, workspace.config_generation
-        )),
-    )?;
+    // Emit workspace.activated (overwrites the compile upsert with the same
+    // data; the transaction guarantees the event is never orphaned).
+    upsert_workspace_on_activate(ship_dir, &workspace)?;
     Ok(workspace)
 }
 

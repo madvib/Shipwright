@@ -4,9 +4,10 @@ use crate::agents::config::{
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use super::context_hash::compute_workspace_context_hash;
-use super::crud::upsert_workspace;
+use super::event_upserts::{upsert_workspace_on_compile_failed, upsert_workspace_on_compiled};
 use super::helpers::*;
 use super::types::*;
 use super::types_session::*;
@@ -165,6 +166,7 @@ pub(crate) fn compile_workspace_context(
     workspace: &mut Workspace,
     agent_id_override: Option<&str>,
 ) -> Result<()> {
+    let started = Instant::now();
     let agent_id = agent_id_override
         .map(|a| a.to_string())
         .or_else(|| workspace.active_agent.clone());
@@ -176,7 +178,9 @@ pub(crate) fn compile_workspace_context(
                 let now = Utc::now();
                 workspace.compiled_at = Some(now);
                 workspace.compile_error = Some(error.to_string());
-                upsert_workspace(ship_dir, workspace)?;
+                upsert_workspace_on_compile_failed(
+                    ship_dir, workspace, &error.to_string(),
+                )?;
                 return Err(error);
             }
         };
@@ -189,7 +193,9 @@ pub(crate) fn compile_workspace_context(
         let now = Utc::now();
         workspace.compiled_at = Some(now);
         workspace.compile_error = Some(error.to_string());
-        upsert_workspace(ship_dir, workspace)?;
+        upsert_workspace_on_compile_failed(
+            ship_dir, workspace, &error.to_string(),
+        )?;
         return Err(error);
     }
 
@@ -211,7 +217,9 @@ pub(crate) fn compile_workspace_context(
             Err(error) => {
                 workspace.compiled_at = Some(now);
                 workspace.compile_error = Some(error.to_string());
-                upsert_workspace(ship_dir, workspace)?;
+                upsert_workspace_on_compile_failed(
+                    ship_dir, workspace, &error.to_string(),
+                )?;
                 return Err(error);
             }
         };
@@ -235,7 +243,9 @@ pub(crate) fn compile_workspace_context(
             workspace.compiled_at = Some(now);
             workspace.compile_error = Some(contextual.to_string());
             workspace.context_hash = Some(next_context_hash.clone());
-                upsert_workspace(ship_dir, workspace)?;
+            upsert_workspace_on_compile_failed(
+                ship_dir, workspace, &contextual.to_string(),
+            )?;
             return Err(contextual);
         }
     }
@@ -244,6 +254,7 @@ pub(crate) fn compile_workspace_context(
     workspace.compiled_at = Some(now);
     workspace.compile_error = None;
     workspace.context_hash = Some(next_context_hash);
-    upsert_workspace(ship_dir, workspace)?;
+    let duration_ms = started.elapsed().as_millis() as u64;
+    upsert_workspace_on_compiled(ship_dir, workspace, duration_ms)?;
     Ok(())
 }
