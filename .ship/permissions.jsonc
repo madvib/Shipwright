@@ -36,9 +36,9 @@
       "mcp__ship__*",
     ],
     "tools_deny": [
-      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
-      "Write(**/migrations/**/*.sql)",
-      "Edit(**/migrations/**/*.sql)",
+      // apps/ migrations are drizzle-generated. Edit schema, run pnpm db:generate.
+      "Write(apps/**/migrations/**/*.sql)",
+      "Edit(apps/**/migrations/**/*.sql)",
     ],
   },
 
@@ -57,9 +57,9 @@
       "Bash(git push*)",
       "Bash(cargo publish*)",
       "Bash(npm publish*)",
-      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
-      "Write(**/migrations/**/*.sql)",
-      "Edit(**/migrations/**/*.sql)",
+      // apps/ migrations are drizzle-generated. Edit schema, run pnpm db:generate.
+      "Write(apps/**/migrations/**/*.sql)",
+      "Edit(apps/**/migrations/**/*.sql)",
     ],
   },
 
@@ -75,9 +75,9 @@
       "Bash(rm -rf *)",
       "Bash(git reset --hard*)",
       "Bash(git push --force*)",
-      // Migrations are drizzle-generated only. Edit schema, run pnpm db:generate.
-      "Write(**/migrations/**/*.sql)",
-      "Edit(**/migrations/**/*.sql)",
+      // apps/ migrations are drizzle-generated. Edit schema, run pnpm db:generate.
+      "Write(apps/**/migrations/**/*.sql)",
+      "Edit(apps/**/migrations/**/*.sql)",
     ],
   },
 }
