@@ -31,7 +31,7 @@ const ADDABLE_FILES = [
   },
   {
     id: 'script',
-    path: 'assets/scripts/run.sh',
+    path: 'scripts/run.sh',
     label: 'Script',
     description: 'Helper script referenced in SKILL.md',
     icon: Terminal,
@@ -90,7 +90,7 @@ export function AddSkillFilePopover({ skill, onAddFile }: Props) {
   const popoverRef = useRef<HTMLDivElement>(null)
   const existingFiles = new Set(skill.files)
 
-  const hasScripts = skill.files.some((f) => f.startsWith('assets/scripts/'))
+  const hasScripts = skill.files.some((f) => f.startsWith('scripts/'))
   const hasTemplates = skill.files.some((f) => f.startsWith('assets/templates/'))
   const hasApiRef = skill.files.some((f) => f.startsWith('references/api/'))
 

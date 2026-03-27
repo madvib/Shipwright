@@ -1,6 +1,6 @@
 import {
   Search, Plus, ChevronRight, ChevronDown, FileText, Zap,
-  FolderOpen, Library, FileJson, BookOpen, FlaskConical, Settings2, ChevronsDownUp,
+  FolderOpen, Library, FileJson, BookOpen, FlaskConical, Settings2, ChevronsDownUp, Terminal,
 } from 'lucide-react'
 import type { Skill } from '@ship/ui'
 import type { LibrarySkill } from './useSkillsLibrary'
@@ -30,10 +30,11 @@ function fileIcon(path: string) {
   return <FileText className="size-3 shrink-0 text-muted-foreground" />
 }
 
-function fileGroup(path: string): 'root' | 'assets' | 'references' | 'evals' {
+function fileGroup(path: string): 'root' | 'assets' | 'references' | 'evals' | 'scripts' {
   if (path.startsWith('assets/')) return 'assets'
   if (path.startsWith('references/')) return 'references'
   if (path.startsWith('evals/')) return 'evals'
+  if (path.startsWith('scripts/')) return 'scripts'
   return 'root'
 }
 
@@ -41,6 +42,7 @@ const GROUP_META: Record<string, { label: string; icon: React.ReactNode }> = {
   assets: { label: 'assets', icon: <Settings2 className="size-2.5 text-muted-foreground" /> },
   references: { label: 'references', icon: <BookOpen className="size-2.5 text-muted-foreground" /> },
   evals: { label: 'evals', icon: <FlaskConical className="size-2.5 text-muted-foreground" /> },
+  scripts: { label: 'scripts', icon: <Terminal className="size-2.5 text-muted-foreground" /> },
 }
 
 export function SkillsFileExplorer({
@@ -184,6 +186,7 @@ function SkillSection({
         const assetFiles = files.filter((f) => fileGroup(f) === 'assets')
         const refFiles = files.filter((f) => fileGroup(f) === 'references')
         const evalFiles = files.filter((f) => fileGroup(f) === 'evals')
+        const scriptFiles = files.filter((f) => fileGroup(f) === 'scripts')
 
         return (
           <div key={skill.id}>
@@ -225,6 +228,9 @@ function SkillSection({
                 )}
                 {evalFiles.length > 0 && (
                   <FileGroup group="evals" files={evalFiles} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} />
+                )}
+                {scriptFiles.length > 0 && (
+                  <FileGroup group="scripts" files={scriptFiles} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} />
                 )}
               </div>
             )}

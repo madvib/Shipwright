@@ -24,8 +24,8 @@ platform.db KV (user state)
   SKILL.md              ← agent instructions (MiniJinja template)
   assets/
     vars.json           ← variable schema and defaults
-    scripts/            ← helper scripts referenced in SKILL.md
     templates/          ← reusable config snippets
+  scripts/              ← helper scripts referenced in SKILL.md
   references/
     docs/               ← human + agent-readable documentation (.mdoc, Markdoc)
     api/                ← API tables, external specs
