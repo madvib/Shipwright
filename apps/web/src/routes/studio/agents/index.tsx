@@ -116,7 +116,7 @@ function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () =>
       </p>
       <div className="mt-4 w-full rounded-lg border border-border bg-card/60 px-4 py-3">
         <code className="text-[11px] font-mono text-emerald-400">
-          curl -fsSL https://ship.dev/install | sh
+          curl -fsSL https://getship.dev/install | sh
         </code>
       </div>
       <div className="mt-4 flex items-center gap-3">

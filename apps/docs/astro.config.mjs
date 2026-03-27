@@ -6,7 +6,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Ship Docs",
-      social: {},
+      social: [],
       sidebar: [
         {
           label: "Getting Started",
