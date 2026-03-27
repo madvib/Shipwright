@@ -9,6 +9,12 @@ export default defineConfig({
       social: {},
       sidebar: [
         {
+          label: "Getting Started",
+          items: [
+            { label: "Introduction", slug: "" },
+          ],
+        },
+        {
           label: "Skills",
           autogenerate: { directory: "skills" },
         },

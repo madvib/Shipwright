@@ -129,7 +129,16 @@ Undefined vars render as empty string. Template errors fall back to original con
 
 ## Reference Docs (references/docs/)
 
-`references/docs/index.md` is the main documentation page. It's for humans browsing the docs site and agents retrieving context on demand.
+`references/docs/index.md` is the main documentation page. Additional pages cover specific concerns. Same source serves humans (docs site) and agents (filesystem reads).
+
+A skill can have multiple doc pages:
+
+```
+references/docs/
+  index.md              <- overview (always create this first)
+  commands.md           <- command reference
+  patterns.md           <- usage patterns
+```
 
 Put here what doesn't belong in SKILL.md:
 - Setup and installation guides
@@ -137,7 +146,21 @@ Put here what doesn't belong in SKILL.md:
 - Variable reference tables
 - Background context and rationale
 
-Format: Markdown with YAML frontmatter (`title`, `description`).
+### Doc frontmatter
+
+```yaml
+---
+title: Page Title
+description: One-line summary.
+audience: public
+section: reference
+order: 1
+---
+```
+
+- `audience`: `public` (default) = docs site + agents. `internal` = agents only. `agent-only` = never on site.
+- `section`: `guide`, `reference`, `tutorial`, `concepts` — groups pages in the sidebar.
+- `order`: sort position within the skill's doc section.
 
 {% if include_evals %}
 ## Evals (evals/evals.json)
