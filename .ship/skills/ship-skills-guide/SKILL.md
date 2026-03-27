@@ -1,14 +1,14 @@
 ---
 name: ship-skills-guide
 stable-id: ship-skills-guide
-description: How to create, structure, and publish Ship skills. Use when users want to write a new skill, understand the SKILL.md format, organize skill directories, add frontmatter metadata, or prepare skills for publishing to the registry. Covers the agentskills.io specification.
+description: How to create, structure, and publish Ship skills. Use when users want to write a new skill, understand the SKILL.md format, organize skill directories, add frontmatter metadata, or prepare skills for publishing to the registry. Covers the getship.dev specification.
 tags: [guide, skills, authoring, documentation]
 authors: [ship]
 ---
 
 # Ship Skills Guide
 
-A skill is a markdown document that teaches an agent how to do something. Skills are compiled into provider-specific config (CLAUDE.md, .cursor/rules, etc.) by `ship use` and loaded at agent startup. Each skill covers one concern: a protocol, a reference, a workflow. Skills follow the [agentskills.io](https://agentskills.io) specification.
+A skill is a markdown document that teaches an agent how to do something. Skills are compiled into provider-specific config (CLAUDE.md, .cursor/rules, etc.) by `ship use` and loaded at agent startup. Each skill covers one concern: a protocol, a reference, a workflow. Skills follow the [getship.dev](https://getship.dev) specification.
 
 ## SKILL.md Format
 
