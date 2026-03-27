@@ -1,13 +1,14 @@
 //! File writing — emitting compiler output to the filesystem.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use compiler::{CompileOutput, get_provider};
 use std::path::Path;
 
 // ── File writer ──────────────────────────────────────────────────────────────
 
 pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> Result<()> {
-    let desc = get_provider(provider_id).expect("provider validated earlier");
+    let desc = get_provider(provider_id)
+        .ok_or_else(|| anyhow!("unknown provider: {}", provider_id))?;
 
     // Context file (CLAUDE.md, GEMINI.md, AGENTS.md)
     if let (Some(content), Some(file_name)) =

@@ -57,6 +57,41 @@ fn compile_writes_mcp_json() {
 }
 
 #[test]
+fn mcp_json_ship_server_args_exact() {
+    // Regression: ship use was generating args: ["mcp"] — missing "serve".
+    // This test verifies the written .mcp.json file on disk, not just the compiler output.
+    let tmp = TempDir::new().unwrap();
+    setup_minimal_project(&tmp);
+    run_compile(CompileOptions {
+        project_root: tmp.path(),
+        output_root: None,
+        provider: Some("claude"),
+        dry_run: false,
+        active_agent: None,
+    })
+    .unwrap();
+    let content = std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let ship = &parsed["mcpServers"]["ship"];
+    assert_eq!(
+        ship["command"].as_str(),
+        Some("ship"),
+        "ship server command must be 'ship'"
+    );
+    let args: Vec<&str> = ship["args"]
+        .as_array()
+        .expect("args must be present in .mcp.json ship entry")
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        args,
+        vec!["mcp", "serve"],
+        "ship server args in .mcp.json must be [\"mcp\", \"serve\"]"
+    );
+}
+
+#[test]
 fn compile_dry_run_writes_nothing() {
     let tmp = TempDir::new().unwrap();
     setup_minimal_project(&tmp);
