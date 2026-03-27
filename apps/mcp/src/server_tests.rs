@@ -254,6 +254,9 @@ fn stable_build_registers_only_platform_tools() {
         "end_session",
         "log_progress",
         "list_skills",
+        "get_skill_vars",
+        "set_skill_var",
+        "list_skill_vars",
         "list_events",
     ];
     for tool in expected {
@@ -300,11 +303,11 @@ fn unstable_build_registers_all_tools() {
             "{tool} missing from unstable router"
         );
     }
-    // 15 stable + 18 unstable
+    // 18 stable + 18 unstable
     assert_eq!(
         names.len(),
-        33,
-        "unstable build should register 33 tools, got: {:?}",
+        36,
+        "unstable build should register 36 tools, got: {:?}",
         names
     );
 }
