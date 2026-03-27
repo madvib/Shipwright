@@ -107,12 +107,6 @@ pub struct Workspace {
     #[serde(default)]
     pub status: WorkspaceStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub environment_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub feature_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub active_agent: Option<String>,
     #[serde(default)]
     pub providers: Vec<String>,
@@ -120,7 +114,6 @@ pub struct Workspace {
     pub mcp_servers: Vec<String>,
     #[serde(default)]
     pub skills: Vec<String>,
-    pub resolved_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_activated_at: Option<DateTime<Utc>>,
     pub is_worktree: bool,

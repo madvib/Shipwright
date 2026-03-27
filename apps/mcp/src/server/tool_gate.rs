@@ -35,6 +35,7 @@ impl ShipServer {
         "list_local_agents",
     ];
 
+    #[cfg(feature = "unstable")]
     const UNSTABLE_TOOLS: &[&str] = &[
         "create_note",
         "update_note",

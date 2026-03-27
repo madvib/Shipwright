@@ -115,8 +115,6 @@ pub(crate) fn build_workspace_provider_matrix(
         agent_id: resolved_agent_id,
         source: if !workspace.providers.is_empty() {
             "workspace".to_string()
-        } else if workspace.feature_id.is_some() {
-            "feature".to_string()
         } else if resolved.active_agent.is_some() {
             "agent/config".to_string()
         } else {
@@ -178,7 +176,6 @@ pub(crate) fn compile_workspace_context(
                 let now = Utc::now();
                 workspace.compiled_at = Some(now);
                 workspace.compile_error = Some(error.to_string());
-                workspace.resolved_at = now;
                 upsert_workspace(ship_dir, workspace)?;
                 return Err(error);
             }
@@ -192,7 +189,6 @@ pub(crate) fn compile_workspace_context(
         let now = Utc::now();
         workspace.compiled_at = Some(now);
         workspace.compile_error = Some(error.to_string());
-        workspace.resolved_at = now;
         upsert_workspace(ship_dir, workspace)?;
         return Err(error);
     }
@@ -215,7 +211,6 @@ pub(crate) fn compile_workspace_context(
             Err(error) => {
                 workspace.compiled_at = Some(now);
                 workspace.compile_error = Some(error.to_string());
-                workspace.resolved_at = now;
                 upsert_workspace(ship_dir, workspace)?;
                 return Err(error);
             }
@@ -240,8 +235,7 @@ pub(crate) fn compile_workspace_context(
             workspace.compiled_at = Some(now);
             workspace.compile_error = Some(contextual.to_string());
             workspace.context_hash = Some(next_context_hash.clone());
-            workspace.resolved_at = now;
-            upsert_workspace(ship_dir, workspace)?;
+                upsert_workspace(ship_dir, workspace)?;
             return Err(contextual);
         }
     }
@@ -250,7 +244,6 @@ pub(crate) fn compile_workspace_context(
     workspace.compiled_at = Some(now);
     workspace.compile_error = None;
     workspace.context_hash = Some(next_context_hash);
-    workspace.resolved_at = now;
     upsert_workspace(ship_dir, workspace)?;
     Ok(())
 }
