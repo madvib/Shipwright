@@ -1,11 +1,15 @@
 use std::path::{Path, PathBuf};
 
 use compiler::types::is_valid_skill_name;
+use compiler::PullSkill;
 use runtime::{get_skill_vars, list_effective_skills, list_skill_vars, set_skill_var};
 
 use crate::requests::{
-    DeleteSkillFileRequest, GetSkillVarsRequest, ListSkillVarsRequest, ListSkillsRequest,
-    SetSkillVarRequest, WriteSkillFileRequest,
+    DeleteSkillFileRequest, GetSkillVarsRequest, ListProjectSkillsRequest, ListSkillVarsRequest,
+    ListSkillsRequest, SetSkillVarRequest, WriteSkillFileRequest,
+};
+use crate::tools::studio::{
+    collect_reference_docs, collect_skill_files, parse_skill_frontmatter,
 };
 
 pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
@@ -39,6 +43,69 @@ pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
         out.push_str(&format!("- {} — {} — {}\n", s.id, s.name, desc));
     }
     out
+}
+
+/// `list_project_skills` MCP tool — scan .ship/skills/ and return all skills as PullSkill objects.
+pub fn list_project_skills(ship_dir: &Path, req: ListProjectSkillsRequest) -> String {
+    let skills_dir = ship_dir.join("skills");
+    let entries = match std::fs::read_dir(&skills_dir) {
+        Ok(e) => e,
+        Err(_) => return serde_json::to_string(&Vec::<PullSkill>::new()).unwrap_or_default(),
+    };
+
+    let mut skills: Vec<PullSkill> = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().to_string();
+        let skill_dir = entry.path();
+        let skill_md = skill_dir.join("SKILL.md");
+        let content = match std::fs::read_to_string(&skill_md) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let fm = parse_skill_frontmatter(&content);
+        let files = collect_skill_files(&skill_dir);
+        let vars_schema = std::fs::read_to_string(skill_dir.join("assets/vars.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok());
+        let evals = std::fs::read_to_string(skill_dir.join("evals/evals.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok());
+        let reference_docs = collect_reference_docs(&skill_dir);
+
+        skills.push(PullSkill {
+            id: id.clone(),
+            name: fm.name.unwrap_or_else(|| id.clone()),
+            description: fm.description,
+            content,
+            source: "project".into(),
+            stable_id: fm.stable_id,
+            tags: fm.tags,
+            authors: fm.authors,
+            vars_schema,
+            files,
+            reference_docs,
+            evals,
+        });
+    }
+
+    if let Some(ref query) = req.query {
+        let q = query.to_ascii_lowercase();
+        skills.retain(|s| {
+            s.id.to_ascii_lowercase().contains(&q)
+                || s.name.to_ascii_lowercase().contains(&q)
+                || s.description
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_ascii_lowercase()
+                    .contains(&q)
+        });
+    }
+
+    skills.sort_by(|a, b| a.id.cmp(&b.id));
+    serde_json::to_string(&skills).unwrap_or_default()
 }
 
 /// `get_skill_vars` MCP tool — return merged variable state for a skill.

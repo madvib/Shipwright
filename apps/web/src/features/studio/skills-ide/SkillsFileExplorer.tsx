@@ -1,3 +1,4 @@
+import { useState, useMemo, useCallback } from 'react'
 import {
   Search, Plus, ChevronRight, ChevronDown, FileText, Zap,
   FolderOpen, Library, FileJson, BookOpen, FlaskConical, Settings2, ChevronsDownUp, Terminal,
@@ -6,6 +7,7 @@ import type { Skill } from '@ship/ui'
 import type { LibrarySkill } from './useSkillsLibrary'
 import { makeTabId, SKILL_MD } from './useSkillsIDE'
 import { AddSkillFilePopover } from './AddSkillFilePopover'
+import { SkillFilterBar, applyFilters, type SkillFilter } from './SkillFilters'
 
 interface Props {
   filteredSkills: Skill[]
@@ -30,7 +32,8 @@ function fileIcon(path: string) {
   return <FileText className="size-3 shrink-0 text-muted-foreground" />
 }
 
-function fileGroup(path: string): 'root' | 'assets' | 'references' | 'evals' | 'scripts' {
+type FileGroupName = 'root' | 'assets' | 'references' | 'evals' | 'scripts'
+function fileGroup(path: string): FileGroupName {
   if (path.startsWith('assets/')) return 'assets'
   if (path.startsWith('references/')) return 'references'
   if (path.startsWith('evals/')) return 'evals'
@@ -60,14 +63,29 @@ export function SkillsFileExplorer({
   onAddFile,
   onCreateSkill,
 }: Props) {
-  const projectSkills = filteredSkills.filter((s) => {
-    const ls = getLibrarySkill(s.id)
-    return !ls || ls.origin === 'project'
-  })
-  const librarySkills = filteredSkills.filter((s) => {
-    const ls = getLibrarySkill(s.id)
-    return ls?.origin === 'library'
-  })
+  const [activeFilter, setActiveFilter] = useState<SkillFilter>('all')
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set())
+
+  const handleTagToggle = useCallback((tag: string) => {
+    setActiveTags((prev) => {
+      const next = new Set(prev)
+      if (next.has(tag)) next.delete(tag); else next.add(tag)
+      return next
+    })
+  }, [])
+
+  // Build LibrarySkill array for filter computation, then apply filters
+  const allLibrarySkills = useMemo(
+    () => filteredSkills.map((s) => getLibrarySkill(s.id)).filter(Boolean) as LibrarySkill[],
+    [filteredSkills, getLibrarySkill],
+  )
+  const finalSkills = useMemo(
+    () => applyFilters(allLibrarySkills, activeFilter, activeTags),
+    [allLibrarySkills, activeFilter, activeTags],
+  )
+
+  const projectSkills = finalSkills.filter((s) => s.origin !== 'library')
+  const librarySkillsList = finalSkills.filter((s) => s.origin === 'library')
 
   return (
     <div className="flex w-60 shrink-0 flex-col border-r border-border bg-card/30">
@@ -87,6 +105,13 @@ export function SkillsFileExplorer({
             </button>
           )}
         </div>
+        <SkillFilterBar
+          allSkills={allLibrarySkills}
+          activeFilter={activeFilter}
+          activeTags={activeTags}
+          onFilterChange={setActiveFilter}
+          onTagToggle={handleTagToggle}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -117,7 +142,7 @@ export function SkillsFileExplorer({
             <SkillSection
               label="Library"
               icon={<Library className="size-3 text-muted-foreground" />}
-              skills={librarySkills}
+              skills={librarySkillsList}
               activeTabId={activeTabId}
               expandedFolders={expandedFolders}
               searchQuery={searchQuery}
@@ -127,7 +152,7 @@ export function SkillsFileExplorer({
               onAddFile={onAddFile}
             />
 
-            {!isConnected && filteredSkills.length === 0 && (
+            {!isConnected && finalSkills.length === 0 && filteredSkills.length === 0 && (
               <div className="px-3.5 py-4 text-center">
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                   Connect to CLI to see your skills
@@ -243,44 +268,31 @@ function SkillSection({
 
 function FileGroup({ group, files, skillId, activeTabId, onOpenFile }: {
   group: string; files: string[]; skillId: string; activeTabId: string | null
-  onOpenFile: (skillId: string, filePath: string) => void
+  onOpenFile: (sid: string, fp: string) => void
 }) {
   const meta = GROUP_META[group]
   if (!meta) return null
-
   return (
     <div>
       <div className="flex items-center gap-1.5 pl-9 pr-3 py-0.5 text-[10px] text-muted-foreground font-medium">
-        {meta.icon}
-        {meta.label}/
+        {meta.icon}{meta.label}/
       </div>
-      {files.map((f) => (
-        <FileEntry key={f} skillId={skillId} filePath={f} activeTabId={activeTabId} indent={1} onOpenFile={onOpenFile} />
-      ))}
+      {files.map((f) => <FileEntry key={f} skillId={skillId} filePath={f} activeTabId={activeTabId} indent={1} onOpenFile={onOpenFile} />)}
     </div>
   )
 }
 
 function FileEntry({ skillId, filePath, activeTabId, indent, onOpenFile }: {
   skillId: string; filePath: string; activeTabId: string | null; indent: number
-  onOpenFile: (skillId: string, filePath: string) => void
+  onOpenFile: (sid: string, fp: string) => void
 }) {
   const tabId = makeTabId(skillId, filePath)
   const isActive = activeTabId === tabId
-  const fileName = filePath.split('/').pop() ?? filePath
   const pl = indent === 0 ? 'pl-9' : 'pl-12'
-
   return (
-    <button
-      onClick={() => onOpenFile(skillId, filePath)}
-      className={`flex w-full items-center gap-1.5 ${pl} pr-3 py-1 text-xs transition-colors border-l-2 ${
-        isActive
-          ? 'border-primary bg-primary/5 text-primary'
-          : 'border-transparent text-foreground/70 hover:text-foreground hover:bg-muted/30'
-      }`}
-    >
+    <button onClick={() => onOpenFile(skillId, filePath)} className={`flex w-full items-center gap-1.5 ${pl} pr-3 py-1 text-xs transition-colors border-l-2 ${isActive ? 'border-primary bg-primary/5 text-primary' : 'border-transparent text-foreground/70 hover:text-foreground hover:bg-muted/30'}`}>
       {fileIcon(filePath)}
-      <span className="truncate">{fileName}</span>
+      <span className="truncate">{filePath.split('/').pop() ?? filePath}</span>
     </button>
   )
 }

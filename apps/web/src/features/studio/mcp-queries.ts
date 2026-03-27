@@ -3,6 +3,7 @@ import { useLocalMcpContext } from './LocalMcpContext'
 import { mcpKeys } from '#/lib/query-keys'
 import type {
   PullResponse,
+  PullSkill,
   ListAgentsResponse,
   TransferBundle,
 } from '@ship/ui'
@@ -51,6 +52,22 @@ export function usePullAgents() {
     },
     enabled: isConnected,
     refetchInterval: isConnected ? 10_000 : false,
+    staleTime: 5_000,
+  })
+}
+
+/** Fetch all project skills from .ship/skills/ regardless of agent references. */
+export function useProjectSkills() {
+  const { callTool, status } = useMcpCallTool()
+
+  return useQuery({
+    queryKey: mcpKeys.projectSkills(),
+    queryFn: async (): Promise<PullSkill[]> => {
+      const raw = await callTool('list_project_skills')
+      return JSON.parse(raw) as PullSkill[]
+    },
+    enabled: status === 'connected',
+    refetchInterval: 10_000,
     staleTime: 5_000,
   })
 }

@@ -44,4 +44,6 @@ pub async fn run() -> Result<()> {
 mod resource_tests;
 
 #[cfg(test)]
+mod project_skills_tests;
+#[cfg(test)]
 mod skill_file_tests;

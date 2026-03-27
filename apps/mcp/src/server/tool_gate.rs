@@ -35,6 +35,7 @@ impl ShipServer {
         "list_local_agents",
         "write_skill_file",
         "delete_skill_file",
+        "list_project_skills",
     ];
 
     #[cfg(feature = "unstable")]

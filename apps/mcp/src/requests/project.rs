@@ -158,3 +158,9 @@ pub struct DeleteSkillFileRequest {
     /// Relative path within the skill directory (e.g. "assets/vars.json")
     pub file_path: String,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListProjectSkillsRequest {
+    /// Optional search filter (substring match on skill id/name/description)
+    pub query: Option<String>,
+}

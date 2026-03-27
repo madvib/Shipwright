@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use crate::requests::*;
 use crate::tools::{agent, events, project, session, skills, studio, workspace, workspace_ops};
 use skills::{
-    delete_skill_file, get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool,
-    write_skill_file,
+    delete_skill_file, get_skill_vars_tool, list_project_skills, list_skill_vars_tool,
+    set_skill_var_tool, write_skill_file,
 };
 
 #[cfg(feature = "unstable")]
@@ -311,6 +311,22 @@ impl ShipServer {
             Err(e) => return e,
         };
         delete_skill_file(&project_dir, req)
+    }
+
+    #[tool(
+        description = "List all skills in .ship/skills/ with full resolved content. \
+        Returns a JSON array of PullSkill objects (same shape as pull_agents skills). \
+        Includes all skills regardless of agent references. Optionally filter by query substring."
+    )]
+    async fn list_project_skills(
+        &self,
+        Parameters(req): Parameters<ListProjectSkillsRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        list_project_skills(&project_dir, req)
     }
 
     // ---- Events ----

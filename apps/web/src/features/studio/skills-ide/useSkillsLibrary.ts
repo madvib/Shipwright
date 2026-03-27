@@ -3,7 +3,7 @@
 // agents reference it and its origin (project vs library).
 
 import { useMemo, useState, useEffect } from 'react'
-import { usePullAgents } from '#/features/studio/mcp-queries'
+import { usePullAgents, useProjectSkills } from '#/features/studio/mcp-queries'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
 import type { Skill, PullSkill, JsonValue } from '@ship/ui'
@@ -98,10 +98,26 @@ export function aggregateSkills(
   return Array.from(map.values())
 }
 
+/** Merge project skills into an agent-derived skill list. Deduplicates by ID. */
+export function mergeProjectSkills(
+  agentSkills: LibrarySkill[],
+  projectPullSkills: PullSkill[],
+): LibrarySkill[] {
+  const map = new Map<string, LibrarySkill>()
+  for (const s of agentSkills) map.set(s.id, s)
+  for (const ps of projectPullSkills) {
+    if (!map.has(ps.id)) {
+      map.set(ps.id, pullToLibrarySkill(ps, 'project', []))
+    }
+  }
+  return Array.from(map.values())
+}
+
 export function useSkillsLibrary(): UseSkillsLibraryReturn {
   const mcp = useLocalMcpContext()
   const isConnected = mcp?.status === 'connected'
   const pullQuery = usePullAgents()
+  const projectQuery = useProjectSkills()
   const [cachedSkills, setCachedSkills] = useState<LibrarySkill[]>([])
 
   // Load cache from IndexedDB on mount (migrate from localStorage if needed)
@@ -137,11 +153,13 @@ export function useSkillsLibrary(): UseSkillsLibraryReturn {
     }
   }, [pulledSkills])
 
+  // Merge project skills (from list_project_skills) into the agent-derived list
   const skills = useMemo(() => {
-    if (pulledSkills.length > 0) return pulledSkills
-    if (!isConnected) return cachedSkills
-    return []
-  }, [pulledSkills, isConnected, cachedSkills])
+    const base = pulledSkills.length > 0 ? pulledSkills : (!isConnected ? cachedSkills : [])
+    const projectSkills = projectQuery.data ?? []
+    if (projectSkills.length === 0) return base
+    return mergeProjectSkills(base, projectSkills)
+  }, [pulledSkills, isConnected, cachedSkills, projectQuery.data])
 
   return {
     skills,

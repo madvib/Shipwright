@@ -246,7 +246,7 @@ fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
 }
 
 /// Collect all file paths in a skill directory, relative to the skill root.
-fn collect_skill_files(skill_dir: &Path) -> Vec<String> {
+pub(crate) fn collect_skill_files(skill_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     if !skill_dir.is_dir() {
         return files;
@@ -256,7 +256,7 @@ fn collect_skill_files(skill_dir: &Path) -> Vec<String> {
     files
 }
 
-fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
+pub(crate) fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -278,7 +278,7 @@ fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
 }
 
 /// Read markdown files from references/docs/ into a map.
-fn collect_reference_docs(skill_dir: &Path) -> HashMap<String, String> {
+pub(crate) fn collect_reference_docs(skill_dir: &Path) -> HashMap<String, String> {
     let docs_dir = skill_dir.join("references").join("docs");
     let mut docs = HashMap::new();
     if !docs_dir.is_dir() {
@@ -295,15 +295,15 @@ fn collect_reference_docs(skill_dir: &Path) -> HashMap<String, String> {
     docs
 }
 
-struct SkillFrontmatter {
-    name: Option<String>,
-    description: Option<String>,
-    stable_id: Option<String>,
-    tags: Vec<String>,
-    authors: Vec<String>,
+pub(crate) struct SkillFrontmatter {
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) stable_id: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) authors: Vec<String>,
 }
 
-fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
+pub(crate) fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
     let mut fm = SkillFrontmatter {
         name: None,
         description: None,

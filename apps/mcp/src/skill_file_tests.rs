@@ -223,3 +223,4 @@ fn delete_skill_file_rejects_invalid_skill_id() {
         "unexpected message: {result}"
     );
 }
+
