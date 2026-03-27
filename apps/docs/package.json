@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "npx tsx scripts/collect-skill-docs.ts",
+    "collect": "npx tsx scripts/collect-skill-docs.ts",
+    "predev": "npm run collect",
     "dev": "astro dev",
-    "prebuild": "npx tsx scripts/collect-skill-docs.ts",
+    "prebuild": "npm run collect",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "build:npm": "npm run collect && npx astro build"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.38.2",
