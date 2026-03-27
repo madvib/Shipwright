@@ -67,6 +67,12 @@ pub fn ensure_db() -> Result<()> {
     Ok(())
 }
 
+/// Open a connection to a specific database path (no migration run).
+/// The database must already be initialized via `ensure_db`.
+pub fn open_db_at(path: &Path) -> Result<SqliteConnection> {
+    connect(path)
+}
+
 fn connect(path: &Path) -> Result<SqliteConnection> {
     let url = sqlite_url(path);
     let opts = SqliteConnectOptions::from_str(&url)

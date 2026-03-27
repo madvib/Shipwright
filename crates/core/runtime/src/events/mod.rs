@@ -1,3 +1,17 @@
+pub mod envelope;
+pub mod filter;
+pub mod store;
+pub mod types;
+
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod tests_actor;
+
+pub use envelope::EventEnvelope;
+pub use filter::EventFilter;
+pub use store::{EventStore, SqliteEventStore};
+
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -242,11 +256,6 @@ pub fn read_recent_events(_ship_dir: &Path, limit: usize) -> Result<Vec<EventRec
 }
 
 /// Record a gate pass/fail outcome as a structured event.
-///
-/// - entity = Gate, entity_id = job_id, action = Pass or Fail
-/// - detail = evidence string
-/// - On pass, job status is set to "complete"
-/// - On fail, job status stays "running" (retryable)
 pub fn record_gate_outcome(
     _ship_dir: &Path,
     job_id: &str,
