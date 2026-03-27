@@ -16,6 +16,9 @@ pub mod managed_state;
 pub mod notes;
 pub mod schema;
 pub mod session;
+pub mod session_events;
+#[cfg(test)]
+pub mod session_events_testutil;
 pub mod targets;
 pub mod types;
 pub mod workspace;

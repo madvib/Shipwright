@@ -18,6 +18,8 @@ mod tests_events;
 #[cfg(test)]
 mod tests_session;
 #[cfg(test)]
+mod tests_session_events;
+#[cfg(test)]
 mod tests_types;
 
 // Re-export all public types so `use runtime::workspace::*` continues to work.

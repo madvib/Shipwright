@@ -1,7 +1,9 @@
 use crate::db::session::{
     get_active_workspace_session_db, get_workspace_session_record_db, list_workspace_sessions_db,
 };
+use crate::db::session_events::insert_session_progress_event;
 use crate::db::types::WorkspaceSessionDb;
+use crate::events::types::SessionProgress;
 use crate::events::{EventAction, EventEntity, append_event};
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
 use anyhow::{Result, anyhow};
@@ -227,6 +229,11 @@ pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &s
     if normalized_note.is_empty() {
         return Err(anyhow!("Session note cannot be empty"));
     }
+
+    let progress_payload = SessionProgress {
+        message: normalized_note.to_string(),
+    };
+    insert_session_progress_event(&active.id, &workspace.id, &progress_payload)?;
 
     append_event(
         ship_dir,

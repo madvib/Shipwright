@@ -1,9 +1,13 @@
 use crate::db::session::{
-    get_active_workspace_session_db, get_workspace_session_db, insert_workspace_session_db,
-    insert_workspace_session_record_db, update_workspace_session_db,
+    get_active_workspace_session_db, get_workspace_session_db,
+    insert_workspace_session_record_db,
+};
+use crate::db::session_events::{
+    insert_session_with_started_event, update_session_with_ended_event,
 };
 use crate::db::types::WorkspaceSessionDb;
 use crate::events::{EventAction, EventEntity, append_event};
+use crate::events::types::{SessionEnded, SessionStarted};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use std::path::Path;
@@ -150,7 +154,8 @@ pub fn start_workspace_session(
         created_at: now.to_rfc3339(),
         updated_at: now.to_rfc3339(),
     };
-    insert_workspace_session_db(&session)?;
+    let started_payload = SessionStarted { goal: session.goal.clone() };
+    insert_session_with_started_event(&session, &started_payload)?;
     let created = get_workspace_session_db(&session.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
     let started = hydrate_workspace_session(created);
@@ -200,7 +205,22 @@ pub fn end_workspace_session(
     active.updated_workspace_ids = request.updated_workspace_ids;
     active.updated_at = now;
 
-    update_workspace_session_db(&active)?;
+    // Compute duration before the transactional update so we can include it in
+    // the session.ended event payload.
+    let started_at = active.started_at.parse::<chrono::DateTime<Utc>>()
+        .map_err(|e| anyhow::anyhow!("invalid started_at '{}': {}", active.started_at, e))?;
+    let ended_ts = active.ended_at.as_deref()
+        .ok_or_else(|| anyhow::anyhow!("ended_at must be set before emitting session.ended"))?
+        .parse::<chrono::DateTime<Utc>>()
+        .map_err(|e| anyhow::anyhow!("invalid ended_at: {}", e))?;
+    let duration_secs_val = (ended_ts - started_at).num_seconds();
+
+    let ended_payload = SessionEnded {
+        summary: active.summary.clone(),
+        duration_secs: Some(duration_secs_val as u64),
+        gate_result: request.gate_result.clone(),
+    };
+    update_session_with_ended_event(&active, &ended_payload)?;
 
     let ended = get_workspace_session_db(&active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;
