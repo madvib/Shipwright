@@ -4,6 +4,7 @@
 set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
+SHIP_GLOBAL_DIR="${SHIP_GLOBAL_DIR:-$HOME/.ship}"
 WORKTREE_BASE="${SHIP_WORKTREE_DIR:-${HOME}/dev/ship-worktrees}"
 BASE_BRANCH=""
 NO_OPEN=false
@@ -67,13 +68,14 @@ TERMINAL=$(detect_terminal)
 # ── Dry run ───────────────────────────────────────────────────────────────────
 if $DRY_RUN; then
   echo "dispatch (dry run):"
-  echo "  slug:      $SLUG"
-  echo "  agent:     $AGENT"
-  echo "  spec:      $SPEC_FILE"
-  echo "  base:      $BASE_BRANCH"
-  echo "  worktree:  $WORKTREE_PATH"
-  echo "  branch:    $BRANCH_NAME"
-  echo "  terminal:  $TERMINAL"
+  echo "  slug:            $SLUG"
+  echo "  agent:           $AGENT"
+  echo "  spec:            $SPEC_FILE"
+  echo "  base:            $BASE_BRANCH"
+  echo "  worktree:        $WORKTREE_PATH"
+  echo "  branch:          $BRANCH_NAME"
+  echo "  terminal:        $TERMINAL"
+  echo "  SHIP_GLOBAL_DIR: $SHIP_GLOBAL_DIR"
   exit 0
 fi
 
@@ -106,13 +108,31 @@ mkdir -p "$(dirname "$DEST_SPEC")"
 cp "$SPEC_FILE" "$DEST_SPEC"
 echo "Job spec written: $DEST_SPEC"
 
-# ── Compile agent ─────────────────────────────────────────────────────────────
-if command -v ship &>/dev/null; then
-  echo "Compiling agent: ship use $AGENT"
-  (cd "$WORKTREE_PATH" && ship use "$AGENT")
-else
-  echo "Warning: ship CLI not found. Run 'ship use $AGENT' manually in the worktree."
+# ── Environment setup (hard stop) ─────────────────────────────────────────────
+export SHIP_GLOBAL_DIR
+
+if ! command -v ship &>/dev/null; then
+  echo "Error: ship CLI not found. Install ship and ensure it is on PATH." >&2
+  exit 1
 fi
+
+echo "Compiling agent: ship use $AGENT (SHIP_GLOBAL_DIR=$SHIP_GLOBAL_DIR)"
+if ! (cd "$WORKTREE_PATH" && SHIP_GLOBAL_DIR="$SHIP_GLOBAL_DIR" ship use "$AGENT"); then
+  echo "Error: 'ship use $AGENT' failed in $WORKTREE_PATH. Agent not launched." >&2
+  exit 1
+fi
+
+# ── Verify MCP config ─────────────────────────────────────────────────────────
+MCP_JSON="$WORKTREE_PATH/.mcp.json"
+if [[ ! -f "$MCP_JSON" ]]; then
+  echo "Error: .mcp.json not found in $WORKTREE_PATH after 'ship use'. Agent not launched." >&2
+  exit 1
+fi
+if ! grep -q "ship mcp serve" "$MCP_JSON"; then
+  echo "Error: .mcp.json does not contain 'ship mcp serve'. MCP not configured. Agent not launched." >&2
+  exit 1
+fi
+echo "MCP config verified: $MCP_JSON"
 
 # ── Detect provider CLI ────────────────────────────────────────────────────────
 PROVIDER_CLI="${SHIP_PROVIDER_CLI:-}"

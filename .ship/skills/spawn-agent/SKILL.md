@@ -32,6 +32,88 @@ Options:
 - `--confirm` — Show spec and ask y/n before launching
 - `--dry-run` — Show what would happen
 
+## Environment setup (mandatory)
+
+Before launching any agent, dispatch verifies:
+
+1. `SHIP_GLOBAL_DIR` is set to `$HOME/.ship`
+2. `ship` CLI is on PATH — hard error if not found
+3. `ship use <agent>` runs in the worktree and exits 0
+4. `.mcp.json` exists in the worktree
+5. `.mcp.json` contains `ship mcp serve` args
+
+**If any check fails, dispatch stops and surfaces the error. The agent is not launched.**
+
+An agent without MCP cannot access the Ship runtime. This is not recoverable after the fact.
+
+## Test/impl separation for feature jobs
+
+When `kind=feature` or the spec describes new behaviour, spawn **two sequential jobs**:
+
+| Job | Slug | Agent | Input | Constraint |
+|-----|------|-------|-------|------------|
+| 1 | `<slug>-tests` | `test-writer` | Spec + interface definition only | No implementation files in scope. Writes failing tests that define the contract. |
+| 2 | `<slug>-impl` | Implementer | Tests as spec | `blocked_by: <slug>-tests`. Makes tests pass. Never writes tests. |
+
+Single-agent feature jobs are permitted only with `single-agent: true` in the spec and a noted reason.
+
+### Example
+
+```bash
+bash scripts/dispatch.sh --slug auth-tokens-tests --agent test-writer --spec /path/to/auth-tokens-spec.md
+bash scripts/dispatch.sh --slug auth-tokens-impl --agent rust-runtime --spec /path/to/auth-tokens-impl-spec.md
+```
+
+The impl spec must reference the test job and list the test files as its authoritative contract.
+
+## Job spec template
+
+Every job spec must include all sections below. Commander fills the architectural context section before dispatch — never omit it.
+
+```markdown
+# Job Spec: <title>
+
+**Branch:** <branch>
+**Agent:** <agent>
+**Mode:** autonomous
+
+## Goal
+
+<one-paragraph description of the outcome>
+
+## File scope
+
+<list the files or directories the agent is allowed to modify>
+
+## What to change
+
+<specific instructions>
+
+## Architectural context
+- Active ADRs: <list relevant ADR IDs, or "none">
+- Key constraints: <from CLAUDE.md or active ADRs, or "none">
+
+## Acceptance criteria
+
+<numbered list of verifiable outcomes>
+
+---
+> If you notice a bug or problem outside your file scope: append to the job log via
+> `mcp__ship__append_job_log`, describe it specifically, continue your work.
+> Never silently leave a noticed problem.
+```
+
+## Agent selection
+
+| Work type | Agent |
+|-----------|---------|
+| Rust runtime / DB / platform | `rust-runtime` |
+| Rust compiler / CLI | `rust-compiler` |
+| Web / React / Studio | `web-lane` |
+| Cloudflare Workers / infra | `cloudflare` |
+| Auth / Better Auth | `better-auth` |
+| Default / mixed | `default` |
+
 ## User preferences
 
 {% if terminal == "auto" %}
@@ -54,17 +136,6 @@ ship vars set spawn-agent terminal <value>        # auto, wt, iterm, tmux, gnome
 ship vars set spawn-agent worktree_dir <path>
 ship vars set spawn-agent confirm_on_dispatch true
 ```
-
-## Agent selection
-
-| Work type | Agent |
-|-----------|---------|
-| Rust runtime / DB / platform | `rust-runtime` |
-| Rust compiler / CLI | `rust-compiler` |
-| Web / React / Studio | `web-lane` |
-| Cloudflare Workers / infra | `cloudflare` |
-| Auth / Better Auth | `better-auth` |
-| Default / mixed | `default` |
 
 ## Stale worktree cleanup
 
