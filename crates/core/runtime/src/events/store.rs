@@ -137,7 +137,7 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
             chrono::DateTime::parse_from_rfc3339(&created_at_str)
                 .map(|dt| dt.with_timezone(&Utc))
         })
-        .unwrap_or_else(|_| Utc::now());
+        .map_err(|e| anyhow::anyhow!("invalid created_at '{}': {}", created_at_str, e))?;
 
     Ok(EventEnvelope {
         id: row.get(0),
