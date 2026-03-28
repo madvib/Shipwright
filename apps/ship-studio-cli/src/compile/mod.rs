@@ -8,6 +8,8 @@ pub(crate) mod output;
 mod tests;
 #[cfg(test)]
 mod tests_agent;
+#[cfg(test)]
+mod tests_worktree;
 
 use anyhow::{Context, Result};
 use compiler::{compile, resolve_library};
