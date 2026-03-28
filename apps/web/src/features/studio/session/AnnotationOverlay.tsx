@@ -1,9 +1,11 @@
-// Transparent overlay that captures clicks and drag-to-draw for annotations.
-// Sits on top of the session canvas iframe and intercepts user interaction
-// when annotation mode is active.
+// Transparent overlay that captures clicks for annotations.
+// Uses onPointerDown so scrolling still works underneath. Only one
+// comment input is open at a time; clicking elsewhere closes it.
 
-import { useState, useCallback, useRef, type RefObject, type MouseEvent } from 'react'
+import { useState, useCallback, useRef, type RefObject } from 'react'
 import { AnnotationMarker } from './AnnotationMarker'
+import { AnnotationInput } from './AnnotationInput'
+import { getCSSSelector, getElementsInRect } from './annotation-helpers'
 import type { Annotation } from './types'
 
 interface AnnotationOverlayProps {
@@ -12,9 +14,11 @@ interface AnnotationOverlayProps {
   activeId: string | null
   annotationMode: boolean
   onAnnotationClick: (id: string) => void
+  onDismissActive: () => void
   onRemoveAnnotation: (id: string) => void
   onAddClick: (selector: string, text: string, note: string, x: number, y: number) => void
   onAddBox: (rect: [number, number, number, number], elements: string[], note: string) => void
+  onAddAction: (action: string, text: string) => void
 }
 
 interface PendingInput {
@@ -27,92 +31,115 @@ interface PendingInput {
   elements?: string[]
 }
 
-function getCSSSelector(el: Element): string {
-  if (el.id) return `#${el.id}`
-  const tag = el.tagName.toLowerCase()
-  if (el.className && typeof el.className === 'string') {
-    const classes = el.className.trim().split(/\s+/).slice(0, 3).join('.')
-    if (classes) return `${tag}.${classes}`
-  }
-  return tag
-}
-
-function getElementsInRect(
-  doc: Document,
-  rect: [number, number, number, number],
-): string[] {
-  const [rx, ry, rw, rh] = rect
-  const selectors: string[] = []
-  const all = doc.querySelectorAll('*')
-  for (const el of all) {
-    const r = el.getBoundingClientRect()
-    if (r.left >= rx && r.top >= ry && r.right <= rx + rw && r.bottom <= ry + rh) {
-      selectors.push(getCSSSelector(el))
-    }
-    if (selectors.length >= 10) break
-  }
-  return selectors
-}
-
 export function AnnotationOverlay({
   iframeRef,
   annotations,
   activeId,
   annotationMode,
   onAnnotationClick,
+  onDismissActive,
   onRemoveAnnotation,
   onAddClick,
   onAddBox,
+  onAddAction,
 }: AnnotationOverlayProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const [pending, setPending] = useState<PendingInput | null>(null)
-  const [noteText, setNoteText] = useState('')
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null)
 
-  const getOverlayPos = useCallback((e: MouseEvent) => {
-    const overlay = overlayRef.current
-    if (!overlay) return { x: 0, y: 0 }
-    const rect = overlay.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  }, [])
+  const getOverlayPos = useCallback(
+    (clientX: number, clientY: number) => {
+      const overlay = overlayRef.current
+      if (!overlay) return { x: 0, y: 0 }
+      const rect = overlay.getBoundingClientRect()
+      return { x: clientX - rect.left, y: clientY - rect.top }
+    },
+    [],
+  )
 
-  const handleMouseDown = useCallback(
-    (e: MouseEvent) => {
+  const cancelNote = useCallback(() => setPending(null), [])
+
+  const confirmNote = useCallback(
+    (noteText: string) => {
+      if (!pending || !noteText.trim()) return
+      if (pending.type === 'click') {
+        onAddClick(pending.selector ?? 'body', pending.elementText ?? '', noteText.trim(), pending.x, pending.y)
+      } else if (pending.rect) {
+        onAddBox(pending.rect, pending.elements ?? [], noteText.trim())
+      }
+      setPending(null)
+    },
+    [pending, onAddClick, onAddBox],
+  )
+
+  const handleOverlayPointerDown = useCallback(
+    (e: React.PointerEvent) => {
       if (!annotationMode) return
+      const target = e.target as HTMLElement
+      if (target.closest('[data-annotation-marker]') || target.closest('[data-annotation-input]')) return
+
+      // Check for data-ship-action buttons in the iframe
+      const pos = getOverlayPos(e.clientX, e.clientY)
+      const iframe = iframeRef.current
+      if (iframe?.contentDocument) {
+        try {
+          const el = iframe.contentDocument.elementFromPoint(pos.x, pos.y)
+          if (el) {
+            const actionEl = el.closest('[data-ship-action]')
+            if (actionEl) {
+              const action = actionEl.getAttribute('data-ship-action')
+              if (action) {
+                e.preventDefault()
+                e.stopPropagation()
+                onAddAction(action, actionEl.textContent?.trim() ?? action)
+                return
+              }
+            }
+          }
+        } catch { /* cross-origin */ }
+      }
+
+      // Close pending input if open
+      if (pending) {
+        cancelNote()
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+      if (activeId) onDismissActive()
+
       e.preventDefault()
-      const pos = getOverlayPos(e)
+      e.stopPropagation()
       setDragStart(pos)
       setDragCurrent(pos)
     },
-    [annotationMode, getOverlayPos],
+    [annotationMode, pending, activeId, cancelNote, onDismissActive, iframeRef, getOverlayPos, onAddAction],
   )
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
       if (!dragStart) return
-      setDragCurrent(getOverlayPos(e))
+      setDragCurrent(getOverlayPos(e.clientX, e.clientY))
     },
     [dragStart, getOverlayPos],
   )
 
-  const handleMouseUp = useCallback(
-    (e: MouseEvent) => {
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
       if (!annotationMode || !dragStart) {
         setDragStart(null)
         setDragCurrent(null)
         return
       }
-
-      const end = getOverlayPos(e)
+      const end = getOverlayPos(e.clientX, e.clientY)
       const dx = Math.abs(end.x - dragStart.x)
       const dy = Math.abs(end.y - dragStart.y)
 
       if (dx < 8 && dy < 8) {
-        // Click — identify element under cursor
-        const iframe = iframeRef.current
         let selector = 'body'
         let text = ''
+        const iframe = iframeRef.current
         if (iframe?.contentDocument) {
           try {
             const el = iframe.contentDocument.elementFromPoint(end.x, end.y)
@@ -120,41 +147,19 @@ export function AnnotationOverlay({
               selector = getCSSSelector(el)
               text = (el.textContent ?? '').trim().slice(0, 80)
             }
-          } catch {
-            // Cross-origin restriction, fall back to body
-          }
+          } catch { /* cross-origin */ }
         }
         setPending({ type: 'click', x: end.x, y: end.y, selector, elementText: text })
       } else {
-        // Box drag
         const x = Math.min(dragStart.x, end.x)
         const y = Math.min(dragStart.y, end.y)
-        const w = dx
-        const h = dy
-        const rect: [number, number, number, number] = [
-          Math.round(x),
-          Math.round(y),
-          Math.round(w),
-          Math.round(h),
-        ]
-
+        const rect: [number, number, number, number] = [Math.round(x), Math.round(y), Math.round(dx), Math.round(dy)]
         let elements: string[] = []
         const iframe = iframeRef.current
         if (iframe?.contentDocument) {
-          try {
-            elements = getElementsInRect(iframe.contentDocument, rect)
-          } catch {
-            // Cross-origin fallback
-          }
+          try { elements = getElementsInRect(iframe.contentDocument, rect) } catch { /* cross-origin */ }
         }
-
-        setPending({
-          type: 'box',
-          x: x + w / 2,
-          y: y + h / 2,
-          rect,
-          elements,
-        })
+        setPending({ type: 'box', x: x + dx / 2, y: y + dy / 2, rect, elements })
       }
 
       setDragStart(null)
@@ -163,106 +168,51 @@ export function AnnotationOverlay({
     [annotationMode, dragStart, getOverlayPos, iframeRef],
   )
 
-  const confirmNote = useCallback(() => {
-    if (!pending || !noteText.trim()) return
-
-    if (pending.type === 'click') {
-      onAddClick(pending.selector ?? 'body', pending.elementText ?? '', noteText.trim(), pending.x, pending.y)
-    } else if (pending.rect) {
-      onAddBox(pending.rect, pending.elements ?? [], noteText.trim())
-    }
-
-    setPending(null)
-    setNoteText('')
-  }, [pending, noteText, onAddClick, onAddBox])
-
-  const cancelNote = useCallback(() => {
-    setPending(null)
-    setNoteText('')
-  }, [])
-
-  // Compute drag rect for visual feedback
-  const dragRect =
-    dragStart && dragCurrent
-      ? {
-          x: Math.min(dragStart.x, dragCurrent.x),
-          y: Math.min(dragStart.y, dragCurrent.y),
-          w: Math.abs(dragCurrent.x - dragStart.x),
-          h: Math.abs(dragCurrent.y - dragStart.y),
-        }
-      : null
+  const dragRect = dragStart && dragCurrent
+    ? {
+        x: Math.min(dragStart.x, dragCurrent.x),
+        y: Math.min(dragStart.y, dragCurrent.y),
+        w: Math.abs(dragCurrent.x - dragStart.x),
+        h: Math.abs(dragCurrent.y - dragStart.y),
+      }
+    : null
 
   return (
     <div
       ref={overlayRef}
       className={`absolute inset-0 z-10 ${annotationMode ? 'cursor-crosshair' : 'pointer-events-none'}`}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      style={annotationMode ? { touchAction: 'pan-y' } : undefined}
+      onPointerDown={handleOverlayPointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
     >
-      {/* Existing annotations */}
-      {annotations.map((ann, i) => (
-        <AnnotationMarker
-          key={ann.id}
-          annotation={ann}
-          index={i}
-          isActive={activeId === ann.id}
-          onClick={() => onAnnotationClick(ann.id)}
-          onRemove={() => onRemoveAnnotation(ann.id)}
-        />
-      ))}
+      {annotations.map((ann, i) => {
+        if (ann.type === 'action') return null
+        return (
+          <AnnotationMarker
+            key={ann.id}
+            annotation={ann}
+            index={i}
+            isActive={activeId === ann.id}
+            onClick={() => onAnnotationClick(ann.id)}
+            onRemove={() => onRemoveAnnotation(ann.id)}
+          />
+        )
+      })}
 
-      {/* Active drag rect */}
       {dragRect && dragRect.w > 4 && dragRect.h > 4 && (
         <div
-          className="absolute border-2 border-dashed border-primary bg-primary/10 rounded"
+          className="absolute border-2 border-dashed border-primary bg-primary/10 rounded pointer-events-none"
           style={{ left: dragRect.x, top: dragRect.y, width: dragRect.w, height: dragRect.h }}
         />
       )}
 
-      {/* Pending note input */}
       {pending && (
-        <div
-          className="absolute z-30 w-64 rounded-lg border border-border bg-popover p-3 shadow-xl"
-          style={{ left: Math.min(pending.x, 200), top: pending.y + 12 }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {pending.type === 'click' && pending.selector && (
-            <p className="text-[10px] font-mono text-muted-foreground mb-1.5 truncate">
-              {pending.selector}
-            </p>
-          )}
-          <textarea
-            autoFocus
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                confirmNote()
-              }
-              if (e.key === 'Escape') cancelNote()
-            }}
-            placeholder="Add note about this element..."
-            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-            rows={2}
-          />
-          <div className="flex justify-end gap-1.5 mt-2">
-            <button
-              onClick={cancelNote}
-              className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmNote}
-              disabled={!noteText.trim()}
-              className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-40"
-            >
-              Add
-            </button>
-          </div>
-        </div>
+        <AnnotationInput
+          pending={pending}
+          onConfirm={confirmNote}
+          onCancel={cancelNote}
+        />
       )}
     </div>
   )

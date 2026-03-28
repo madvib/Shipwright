@@ -34,16 +34,29 @@ function SessionPage() {
 
   const ann = useAnnotations()
 
-  const handleExport = useCallback(() => {
+  // Export annotations to .ship-session/annotations.json via MCP, with
+  // a fallback to browser download if MCP is not connected.
+  const handleExport = useCallback(async () => {
     const json = ann.toExportJSON()
-    const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' })
+    const content = JSON.stringify(json, null, 2)
+
+    if (mcp && isConnected) {
+      try {
+        await mcp.callTool('write_session_file', { path: 'annotations.json', content })
+        return
+      } catch {
+        // Fall through to browser download
+      }
+    }
+
+    const blob = new Blob([content], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = 'annotations.json'
     a.click()
     URL.revokeObjectURL(url)
-  }, [ann])
+  }, [ann, mcp, isConnected])
 
   const handleSelectFile = useCallback((path: string) => {
     setActiveFilePath(path)
@@ -84,10 +97,12 @@ function SessionPage() {
               annotations={ann.annotations}
               activeId={ann.activeId}
               annotationMode={ann.annotationMode}
-              onAnnotationClick={ann.setActiveId}
+              onAnnotationClick={ann.toggleActiveId}
+              onDismissActive={ann.dismissActive}
               onRemoveAnnotation={ann.removeAnnotation}
               onAddClick={ann.addClickAnnotation}
               onAddBox={ann.addBoxAnnotation}
+              onAddAction={ann.addActionAnnotation}
               onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
               onClearAnnotations={ann.clearAnnotations}
               onExport={handleExport}
@@ -105,7 +120,10 @@ function SessionPage() {
               activeFile={effectivePath}
               isLoading={isLoading}
               isConnected={isConnected ?? false}
+              annotations={ann.annotations}
               onSelectFile={handleSelectFile}
+              onRemoveAnnotation={ann.removeAnnotation}
+              onExportAnnotations={handleExport}
               onClose={() => setActivityOpen(false)}
             />
           ) : (

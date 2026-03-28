@@ -21,7 +21,15 @@ export interface BoxAnnotation {
   timestamp: string
 }
 
-export type Annotation = ClickAnnotation | BoxAnnotation
+export interface ActionAnnotation {
+  type: 'action'
+  id: string
+  action: string
+  text: string
+  timestamp: string
+}
+
+export type Annotation = ClickAnnotation | BoxAnnotation | ActionAnnotation
 
 export interface SessionFile {
   name: string

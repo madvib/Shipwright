@@ -2,10 +2,10 @@
 // Click annotations show a numbered pin, box annotations show a colored rect.
 
 import { X } from 'lucide-react'
-import type { Annotation } from './types'
+import type { ClickAnnotation, BoxAnnotation } from './types'
 
 interface AnnotationMarkerProps {
-  annotation: Annotation
+  annotation: ClickAnnotation | BoxAnnotation
   index: number
   isActive: boolean
   onClick: () => void
@@ -16,11 +16,15 @@ export function AnnotationMarker({ annotation, index, isActive, onClick, onRemov
   if (annotation.type === 'click') {
     return (
       <div
-        className="absolute z-10 group"
+        data-annotation-marker
+        className="absolute z-10 group pointer-events-auto"
         style={{ left: annotation.x, top: annotation.y, transform: 'translate(-50%, -50%)' }}
       >
         <button
-          onClick={onClick}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClick()
+          }}
           className={`flex items-center justify-center size-6 rounded-full text-[10px] font-bold shadow-md transition-all ${
             isActive
               ? 'bg-primary text-primary-foreground scale-125'
@@ -31,7 +35,10 @@ export function AnnotationMarker({ annotation, index, isActive, onClick, onRemov
         </button>
 
         {isActive && (
-          <div className="absolute top-8 left-1/2 -translate-x-1/2 w-56 rounded-lg border border-border bg-popover p-3 shadow-xl z-20">
+          <div
+            className="absolute top-8 left-1/2 -translate-x-1/2 w-56 rounded-lg border border-border bg-popover p-3 shadow-xl z-20"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <div className="flex items-start justify-between gap-2 mb-1">
               <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[160px]">
                 {annotation.selector}
@@ -53,9 +60,16 @@ export function AnnotationMarker({ annotation, index, isActive, onClick, onRemov
   // Box annotation
   const [x, y, w, h] = annotation.rect
   return (
-    <div className="absolute z-10" style={{ left: x, top: y, width: w, height: h }}>
+    <div
+      data-annotation-marker
+      className="absolute z-10 pointer-events-auto"
+      style={{ left: x, top: y, width: w, height: h }}
+    >
       <button
-        onClick={onClick}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClick()
+        }}
         className={`w-full h-full border-2 rounded transition-colors ${
           isActive
             ? 'border-primary bg-primary/20'
@@ -73,7 +87,10 @@ export function AnnotationMarker({ annotation, index, isActive, onClick, onRemov
       </span>
 
       {isActive && (
-        <div className="absolute top-full left-0 mt-2 w-56 rounded-lg border border-border bg-popover p-3 shadow-xl z-20">
+        <div
+          className="absolute top-full left-0 mt-2 w-56 rounded-lg border border-border bg-popover p-3 shadow-xl z-20"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <div className="flex items-start justify-between gap-2 mb-1">
             <span className="text-[10px] text-muted-foreground">
               {annotation.elements.length} element{annotation.elements.length !== 1 ? 's' : ''}

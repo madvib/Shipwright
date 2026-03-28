@@ -1,7 +1,8 @@
 // Renders an iframe with the session HTML content and an annotation overlay.
-// The iframe loads HTML via srcdoc to avoid cross-origin restrictions.
+// The iframe loads HTML via srcdoc. Theme is synced from studio to iframe
+// via postMessage so the canvas content respects the current theme.
 
-import { useRef } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { MousePointerClick, Trash2, Download, Square } from 'lucide-react'
 import { AnnotationOverlay } from './AnnotationOverlay'
 import type { Annotation } from './types'
@@ -12,12 +13,41 @@ interface SessionCanvasProps {
   activeId: string | null
   annotationMode: boolean
   onAnnotationClick: (id: string) => void
+  onDismissActive: () => void
   onRemoveAnnotation: (id: string) => void
   onAddClick: (selector: string, text: string, note: string, x: number, y: number) => void
   onAddBox: (rect: [number, number, number, number], elements: string[], note: string) => void
+  onAddAction: (action: string, text: string) => void
   onToggleAnnotationMode: () => void
   onClearAnnotations: () => void
   onExport: () => void
+}
+
+/** Inject a theme listener script into srcdoc HTML so the iframe responds to
+ *  postMessage({ type: 'theme', theme: 'dark' | 'light' }) from the parent. */
+function injectThemeListener(html: string): string {
+  const script = `<script>
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'theme') {
+    var root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(e.data.theme);
+    root.setAttribute('data-theme', e.data.theme);
+    root.style.colorScheme = e.data.theme;
+  }
+});
+</script>`
+  // Insert before </head> if present, otherwise before </html> or at end
+  if (html.includes('</head>')) return html.replace('</head>', script + '</head>')
+  if (html.includes('</html>')) return html.replace('</html>', script + '</html>')
+  return html + script
+}
+
+function getResolvedTheme(): string {
+  const root = document.documentElement
+  if (root.classList.contains('dark')) return 'dark'
+  if (root.classList.contains('light')) return 'light'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 export function SessionCanvas({
@@ -26,14 +56,35 @@ export function SessionCanvas({
   activeId,
   annotationMode,
   onAnnotationClick,
+  onDismissActive,
   onRemoveAnnotation,
   onAddClick,
   onAddBox,
+  onAddAction,
   onToggleAnnotationMode,
   onClearAnnotations,
   onExport,
 }: SessionCanvasProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  const themedContent = useMemo(() => {
+    if (!htmlContent) return ''
+    return injectThemeListener(htmlContent)
+  }, [htmlContent])
+
+  // Sync theme to iframe on load and when theme changes
+  const postTheme = useCallback(() => {
+    const iframe = iframeRef.current
+    if (!iframe?.contentWindow) return
+    iframe.contentWindow.postMessage({ type: 'theme', theme: getResolvedTheme() }, '*')
+  }, [])
+
+  useEffect(() => {
+    // Observe class changes on <html> to detect theme switches
+    const observer = new MutationObserver(() => postTheme())
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] })
+    return () => observer.disconnect()
+  }, [postTheme])
 
   return (
     <div className="flex flex-1 flex-col min-h-0 min-w-0">
@@ -90,10 +141,11 @@ export function SessionCanvas({
           <>
             <iframe
               ref={iframeRef}
-              srcDoc={htmlContent}
+              srcDoc={themedContent}
               title="Session canvas"
               sandbox="allow-same-origin allow-scripts"
               className="absolute inset-0 w-full h-full border-0 bg-white"
+              onLoad={postTheme}
             />
             <AnnotationOverlay
               iframeRef={iframeRef}
@@ -101,9 +153,11 @@ export function SessionCanvas({
               activeId={activeId}
               annotationMode={annotationMode}
               onAnnotationClick={onAnnotationClick}
+              onDismissActive={onDismissActive}
               onRemoveAnnotation={onRemoveAnnotation}
               onAddClick={onAddClick}
               onAddBox={onAddBox}
+              onAddAction={onAddAction}
             />
           </>
         ) : (

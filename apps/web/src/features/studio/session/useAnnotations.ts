@@ -14,6 +14,14 @@ export function useAnnotations() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [annotationMode, setAnnotationMode] = useState(false)
 
+  const toggleActiveId = useCallback((id: string) => {
+    setActiveId((prev) => (prev === id ? null : id))
+  }, [])
+
+  const dismissActive = useCallback(() => {
+    setActiveId(null)
+  }, [])
+
   const addClickAnnotation = useCallback(
     (selector: string, text: string, note: string, x: number, y: number) => {
       const ann: Annotation = {
@@ -48,6 +56,18 @@ export function useAnnotations() {
     [],
   )
 
+  const addActionAnnotation = useCallback((action: string, text: string) => {
+    const ann: Annotation = {
+      type: 'action',
+      id: genId(),
+      action,
+      text,
+      timestamp: new Date().toISOString(),
+    }
+    setAnnotations((prev) => [...prev, ann])
+    return ann.id
+  }, [])
+
   const removeAnnotation = useCallback((id: string) => {
     setAnnotations((prev) => prev.filter((a) => a.id !== id))
     setActiveId((prev) => (prev === id ? null : prev))
@@ -69,6 +89,14 @@ export function useAnnotations() {
           timestamp: a.timestamp,
         }
       }
+      if (a.type === 'action') {
+        return {
+          type: 'action',
+          action: a.action,
+          text: a.text,
+          timestamp: a.timestamp,
+        }
+      }
       return {
         type: 'box',
         rect: a.rect,
@@ -82,11 +110,13 @@ export function useAnnotations() {
   return {
     annotations,
     activeId,
-    setActiveId,
+    toggleActiveId,
+    dismissActive,
     annotationMode,
     setAnnotationMode,
     addClickAnnotation,
     addBoxAnnotation,
+    addActionAnnotation,
     removeAnnotation,
     clearAnnotations,
     toExportJSON,
