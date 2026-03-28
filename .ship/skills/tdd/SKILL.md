@@ -1,8 +1,8 @@
 ---
 name: tdd
 stable-id: tdd
-description: Use when implementing any feature, fix, or behavior change. Enforces the TDD protocol — write the failing test first, then the minimal code to pass it.
-tags: [testing, workflow, engineering]
+description: Use when implementing any feature, fix, or behavior change. Enforces the TDD protocol — write the failing test first, then the minimal code to pass it. Includes interactive spec-building workflow for collaborative test design.
+tags: [testing, workflow, engineering, tdd, spec]
 authors: [ship]
 ---
 
@@ -80,3 +80,7 @@ Run a single test by appending the test name or file to the detected command. Fo
 | pytest | `pytest <file>` | `pytest -v` |
 | go | `go test -run <name> ./...` | `go test -v ./...` |
 | make | `make test` | `make test VERBOSE=1` |
+
+## Interactive Spec-Building
+
+For collaborative test design -- proposing tests one at a time, discussing implications, checkpointing specs -- see `references/docs/interactive-workflow.md`.

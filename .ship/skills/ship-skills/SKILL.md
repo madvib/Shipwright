@@ -1,8 +1,8 @@
 ---
 name: ship-skills
 stable-id: ship-skills
-description: Use when creating, configuring, or understanding Ship smart skills — typed variables, MiniJinja templates, progressive disclosure docs, and the skill directory structure.
-tags: [ship, skills, smart-skills]
+description: Use when creating, configuring, or understanding Ship skills — directory structure, SKILL.md format, typed variables, MiniJinja templates, progressive disclosure docs, publishing, and the getship.dev specification.
+tags: [ship, skills, smart-skills, authoring, guide]
 authors: [ship]
 ---
 
@@ -45,7 +45,7 @@ SKILL.md is a MiniJinja template. Use `{{ var }}` for substitution, `{% if var %
 
 ## Reference docs
 
-Put detailed documentation in `references/docs/`. The `index.md` page is the landing page. Additional pages cover specific concerns. Each page has frontmatter with `title`, `section`, `order`, and optional `audience`.
+Put detailed documentation in `references/docs/`. The `index.md` page is the landing page. Additional pages cover specific concerns. Each page has frontmatter with `group`, `title`, `section`, `order`, and optional `audience`. The `group` field sets the docs site sidebar collection.
 
 SKILL.md stays concise (under 100 lines). Reference docs are retrieved on demand when depth is needed.
 
