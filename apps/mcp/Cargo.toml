@@ -18,6 +18,7 @@ async-trait = "0.1"
 compiler = { path = "../../crates/core/compiler" }
 runtime = { path = "../../crates/core/runtime" }
 anyhow = "1.0"
+base64 = "0.22"
 chrono = "0.4"
 axum = { version = "0.8", features = ["http1", "tokio"] }
 toml = "0.8"

@@ -8,6 +8,7 @@ pub mod job;
 pub mod notes;
 pub mod project;
 pub mod session;
+pub mod session_files;
 pub mod skills;
 pub mod studio;
 pub mod studio_push;

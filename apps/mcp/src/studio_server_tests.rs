@@ -16,6 +16,9 @@ fn studio_server_registers_exactly_studio_tools() {
         "get_skill_vars",
         "set_skill_var",
         "list_skill_vars",
+        "list_session_files",
+        "read_session_file",
+        "write_session_file",
     ];
     for tool in expected {
         assert!(

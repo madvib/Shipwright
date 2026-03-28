@@ -164,3 +164,17 @@ pub struct ListProjectSkillsRequest {
     /// Optional search filter (substring match on skill id/name/description)
     pub query: Option<String>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ReadSessionFileRequest {
+    /// Relative path within .ship-session/ (e.g. "canvas.html", "screenshots/issue-001.png")
+    pub path: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct WriteSessionFileRequest {
+    /// Relative path within .ship-session/ (e.g. "canvas.html", "screenshots/issue-001.png")
+    pub path: String,
+    /// File content (text for text files, base64-encoded string for binary files)
+    pub content: String,
+}

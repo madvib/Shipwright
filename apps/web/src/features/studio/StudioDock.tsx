@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { Users, Zap, Settings, Radio, PanelRightOpen, WifiOff } from 'lucide-react'
+import { Users, Zap, Layers, Settings, Radio, PanelRightOpen, WifiOff } from 'lucide-react'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import type { Skill } from '@ship/ui'
@@ -8,6 +8,7 @@ import type { Skill } from '@ship/ui'
 const NAV_ITEMS = [
   { to: '/studio/agents', icon: Users, label: 'Agents', exact: false },
   { to: '/studio/skills', icon: Zap, label: 'Skills', exact: false },
+  { to: '/studio/session', icon: Layers, label: 'Session', exact: false },
   { to: '/studio/settings', icon: Settings, label: 'Settings', exact: false },
 ] as const
 
