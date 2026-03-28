@@ -20,6 +20,10 @@ fn studio_server_registers_exactly_studio_tools() {
         "read_session_file",
         "write_session_file",
         "delete_session_file",
+        "get_git_status",
+        "get_git_diff",
+        "get_git_log",
+        "list_worktrees",
     ];
     for tool in expected {
         assert!(

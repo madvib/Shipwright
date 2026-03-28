@@ -165,6 +165,26 @@ pub struct ListProjectSkillsRequest {
     pub query: Option<String>,
 }
 
+// ---- Git info ----
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetGitDiffRequest {
+    /// Base ref for diff (default: HEAD for unstaged, or "main" for branch diff)
+    pub base: Option<String>,
+    /// Limit diff to a specific file path
+    pub path: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetGitLogRequest {
+    /// Number of commits to return (default: 20)
+    pub limit: Option<u32>,
+    /// Limit log to a specific file path
+    pub path: Option<String>,
+}
+
+// ---- Session files ----
+
 #[derive(Deserialize, JsonSchema)]
 pub struct ReadSessionFileRequest {
     /// Relative path within .ship-session/ (e.g. "canvas.html", "screenshots/issue-001.png")

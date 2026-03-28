@@ -11,7 +11,7 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{project, session_files, skills, studio};
+use crate::tools::{git_info, project, session_files, skills, studio};
 use skills::{
     delete_skill_file, get_skill_vars_tool, list_project_skills, list_skill_vars_tool,
     set_skill_var_tool, write_skill_file,
@@ -249,6 +249,44 @@ impl StudioServer {
             Err(e) => return e,
         };
         session_files::delete_session_file(&project_dir, &req.path)
+    }
+
+    // ---- Git info ----
+
+    #[tool(description = "Get current branch, clean/dirty status, and a summary of changes.")]
+    async fn get_git_status(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::get_git_status(&project_dir)
+    }
+
+    #[tool(description = "Get a unified diff. Defaults to unstaged changes against HEAD.")]
+    async fn get_git_diff(&self, Parameters(req): Parameters<GetGitDiffRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::get_git_diff(&project_dir, req)
+    }
+
+    #[tool(description = "Get recent git commits with hash, message, author, date, and files changed.")]
+    async fn get_git_log(&self, Parameters(req): Parameters<GetGitLogRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::get_git_log(&project_dir, req)
+    }
+
+    #[tool(description = "List active git worktrees with path, branch, and HEAD commit.")]
+    async fn list_worktrees(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::list_worktrees(&project_dir)
     }
 }
 
