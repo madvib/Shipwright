@@ -128,8 +128,8 @@ if [[ ! -f "$MCP_JSON" ]]; then
   echo "Error: .mcp.json not found in $WORKTREE_PATH after 'ship use'. Agent not launched." >&2
   exit 1
 fi
-if ! grep -q "ship mcp serve" "$MCP_JSON"; then
-  echo "Error: .mcp.json does not contain 'ship mcp serve'. MCP not configured. Agent not launched." >&2
+if ! (grep -q '"command".*"ship"' "$MCP_JSON" && grep -q '"mcp"' "$MCP_JSON" && grep -q '"serve"' "$MCP_JSON"); then
+  echo "Error: .mcp.json missing ship mcp serve config. Agent not launched." >&2
   exit 1
 fi
 echo "MCP config verified: $MCP_JSON"
