@@ -312,20 +312,13 @@ pub fn handle_event_action(action: EventAction, project_dir: &Path) -> Result<()
                 println!("No events found.");
             } else {
                 for event in events {
-                    let details = event
-                        .details
-                        .as_ref()
-                        .map(|details| format!(" — {}", details))
-                        .unwrap_or_default();
                     println!(
-                        "{} {} [{}] {:?}.{:?} {}{}",
+                        "{} {} [{}] {} {}",
                         event.id,
-                        event.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                        event.created_at.format("%Y-%m-%d %H:%M:%S"),
                         event.actor,
-                        event.entity,
-                        event.action,
-                        event.subject,
-                        details
+                        event.event_type,
+                        event.entity_id,
                     );
                 }
             }

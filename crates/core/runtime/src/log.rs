@@ -1,4 +1,8 @@
-use crate::{EventAction, EventEntity, read_events};
+use crate::events::envelope::EventEnvelope;
+use crate::events::filter::EventFilter;
+use crate::events::store::{EventStore, SqliteEventStore};
+use crate::events::types::event_types;
+use crate::events::types::ProjectLog;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -18,19 +22,19 @@ pub fn log_action(project_dir: &std::path::Path, action: &str, details: &str) ->
 }
 
 pub fn log_action_by(
-    project_dir: &std::path::Path,
+    _project_dir: &std::path::Path,
     actor: &str,
     action: &str,
     details: &str,
 ) -> Result<()> {
-    crate::append_event(
-        project_dir,
-        actor,
-        EventEntity::Project,
-        EventAction::Log,
-        action.to_string(),
-        Some(details.to_string()),
-    )?;
+    let store = SqliteEventStore::new()?;
+    let payload = ProjectLog {
+        action: action.to_string(),
+        details: details.to_string(),
+    };
+    let mut envelope = EventEnvelope::new(event_types::PROJECT_LOG, "project", &payload)?;
+    envelope.actor = actor.to_string();
+    store.append(&envelope)?;
     Ok(())
 }
 
@@ -47,15 +51,23 @@ pub fn read_log(project_dir: &std::path::Path) -> Result<String> {
 }
 
 /// Parse log entries from the event stream into structured log rows.
-pub fn read_log_entries(project_dir: &std::path::Path) -> Result<Vec<LogEntry>> {
-    let mut entries: Vec<LogEntry> = read_events(project_dir)?
+pub fn read_log_entries(_project_dir: &std::path::Path) -> Result<Vec<LogEntry>> {
+    let store = SqliteEventStore::new()?;
+    let events = store.query(&EventFilter {
+        event_type: Some(event_types::PROJECT_LOG.to_string()),
+        ..Default::default()
+    })?;
+
+    let mut entries: Vec<LogEntry> = events
         .into_iter()
-        .filter(|event| event.action == EventAction::Log)
-        .map(|event| LogEntry {
-            timestamp: event.timestamp.to_rfc3339(),
-            actor: event.actor,
-            action: event.subject,
-            details: event.details.unwrap_or_default(),
+        .filter_map(|event| {
+            let payload: Option<ProjectLog> = serde_json::from_str(&event.payload_json).ok();
+            payload.map(|p| LogEntry {
+                timestamp: event.created_at.to_rfc3339(),
+                actor: event.actor,
+                action: p.action,
+                details: p.details,
+            })
         })
         .collect();
 

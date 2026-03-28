@@ -1,6 +1,5 @@
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
-use crate::{EventAction, EventEntity, append_event};
 use super::io::{get_config, get_effective_config, save_config};
 use super::runtime_settings::{default_color_for, id_to_name};
 use super::project::{AgentProfile, McpServerConfig};
@@ -13,41 +12,18 @@ pub fn get_project_statuses(project_dir: Option<PathBuf>) -> Result<Vec<String>>
     Ok(config.statuses.iter().map(|s| s.id.clone()).collect())
 }
 
-fn emit_config_event(
-    project_dir: &Option<PathBuf>,
-    action: EventAction,
-    subject: &str,
-    details: Option<String>,
-) -> Result<()> {
-    if let Some(dir) = project_dir {
-        append_event(
-            dir,
-            "logic",
-            EventEntity::Config,
-            action,
-            subject.to_string(),
-            details,
-        )?;
-    }
-    Ok(())
-}
-
-fn emit_mode_event(
-    project_dir: &Option<PathBuf>,
-    action: EventAction,
-    subject: &str,
-    details: Option<String>,
-) -> Result<()> {
-    if let Some(dir) = project_dir {
-        append_event(
-            dir,
-            "logic",
-            EventEntity::Mode,
-            action,
-            subject.to_string(),
-            details,
-        )?;
-    }
+fn emit_config_event(subject: &str, detail: Option<String>) -> Result<()> {
+    use crate::events::envelope::EventEnvelope;
+    use crate::events::store::{EventStore, SqliteEventStore};
+    use crate::events::types::event_types;
+    use crate::events::types::ConfigChanged;
+    let store = SqliteEventStore::new()?;
+    let payload = ConfigChanged {
+        subject: subject.to_string(),
+        detail,
+    };
+    let envelope = EventEnvelope::new(event_types::CONFIG_CHANGED, subject, &payload)?;
+    store.append(&envelope)?;
     Ok(())
 }
 
@@ -61,12 +37,7 @@ pub fn add_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
             color: default_color_for(&sanitized),
         });
         save_config(&config, project_dir.clone())?;
-        emit_config_event(
-            &project_dir,
-            EventAction::Add,
-            "status",
-            Some(format!("id={}", sanitized)),
-        )?;
+        emit_config_event("status", Some(format!("id={}", sanitized)))?;
     }
     Ok(())
 }
@@ -75,12 +46,7 @@ pub fn remove_status(project_dir: Option<PathBuf>, status: &str) -> Result<()> {
     let mut config = get_config(project_dir.clone())?;
     config.statuses.retain(|s| s.id != status);
     save_config(&config, project_dir.clone())?;
-    emit_config_event(
-        &project_dir,
-        EventAction::Remove,
-        "status",
-        Some(format!("id={}", status)),
-    )?;
+    emit_config_event("status", Some(format!("id={}", status)))?;
     Ok(())
 }
 
@@ -155,12 +121,7 @@ pub fn add_agent(project_dir: Option<PathBuf>, mode: AgentProfile) -> Result<()>
     let mode_id = mode.id.clone();
     config.modes.push(mode);
     save_config(&config, project_dir.clone())?;
-    emit_mode_event(
-        &project_dir,
-        EventAction::Add,
-        "mode",
-        Some(format!("id={}", mode_id)),
-    )?;
+    emit_config_event("mode", Some(format!("id={}", mode_id)))?;
     Ok(())
 }
 
@@ -171,12 +132,7 @@ pub fn remove_agent(project_dir: Option<PathBuf>, id: &str) -> Result<()> {
         config.active_agent = None;
     }
     save_config(&config, project_dir.clone())?;
-    emit_mode_event(
-        &project_dir,
-        EventAction::Remove,
-        "mode",
-        Some(format!("id={}", id)),
-    )?;
+    emit_config_event("mode", Some(format!("id={}", id)))?;
     Ok(())
 }
 
@@ -202,13 +158,7 @@ pub fn set_active_agent(project_dir: Option<PathBuf>, id: Option<&str>) -> Resul
     {
         eprintln!("[ship] warning: active mode sync failed: {}", error);
     }
-    emit_mode_event(
-        &project_dir,
-        if id.is_some() {
-            EventAction::Set
-        } else {
-            EventAction::Clear
-        },
+    emit_config_event(
         "active_agent",
         Some(format!("id={}", id.unwrap_or("none"))),
     )?;

@@ -49,3 +49,10 @@ CREATE TABLE IF NOT EXISTS actors (
 
 CREATE INDEX IF NOT EXISTS idx_actors_workspace ON actors(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_actors_status    ON actors(status);
+
+-- Add job correlation and agent metadata columns to events (v0.2.0 consolidation).
+ALTER TABLE events ADD COLUMN job_id TEXT;
+ALTER TABLE events ADD COLUMN agent_id TEXT;
+ALTER TABLE events ADD COLUMN agent_version TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_events_job ON events(job_id);
