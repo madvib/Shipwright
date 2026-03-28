@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
+import { LogOut, Settings, Users, Zap, Server, Upload, FolderOpen, ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
@@ -28,7 +28,7 @@ function NavDropdown({ label, href, items, isActive }: {
         {label}
       </Link>
       {open && (
-        <div className="absolute left-0 top-full pt-1 z-50">
+        <div className="absolute right-0 top-full pt-1 z-50">
           <div className="w-56 rounded-xl border border-border/60 bg-card shadow-lg py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
             {items.map((item) => {
               const Icon = item.icon
@@ -155,6 +155,16 @@ export default function Header() {
                 </span>
               )
             })}
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {isStudio && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-medium text-foreground hover:bg-muted/50 transition-colors cursor-pointer">
+            <FolderOpen className="size-3.5" />
+            <span>Ship</span>
+            <ChevronDown className="size-3 text-muted-foreground" />
           </div>
         )}
 

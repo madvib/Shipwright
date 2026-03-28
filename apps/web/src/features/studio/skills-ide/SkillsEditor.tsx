@@ -255,7 +255,7 @@ function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentCha
 
   // JSON files: editable viewer
   if (fileType === 'json') {
-    return <JsonViewer content={content} tabId={tabId} onContentChange={onContentChange} onSave={onSave} />
+    return <JsonViewer content={content} tabId={tabId} filePath={filePath} onContentChange={onContentChange} onSave={onSave} />
   }
 
   // Script files: read-only viewer
