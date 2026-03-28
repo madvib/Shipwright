@@ -96,8 +96,11 @@ function SessionPage() {
     handleUploadFiles(e.dataTransfer.files)
   }, [isConnected, handleUploadFiles])
 
-  const showCanvas = activeFileType === 'html' || activeFileType == null
-  const showArtifactViewer = activeFile != null && activeFileType !== 'html'
+  // Render HTML, markdown, and images through the canvas iframe (enables annotations)
+  // Only JSON and other text files use ArtifactViewer
+  const canvasTypes = new Set(['html', 'markdown', 'image'])
+  const showCanvas = activeFileType == null || canvasTypes.has(activeFileType ?? '')
+  const showArtifactViewer = activeFile != null && !canvasTypes.has(activeFileType ?? '')
 
   return (
     <>
@@ -133,6 +136,7 @@ function SessionPage() {
           {showCanvas && (
             <SessionCanvas
               htmlContent={fileContent ?? ''}
+              fileType={activeFileType}
               annotations={ann.annotations}
               activeId={ann.activeId}
               annotationMode={ann.annotationMode}
