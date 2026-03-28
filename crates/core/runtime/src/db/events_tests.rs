@@ -1,8 +1,14 @@
-//! Tests for db::events — context columns, entity/action types, migration.
+//! Tests for db::events — typed event queries, gate outcomes, time filtering.
 
-use super::events::*;
+use super::events::{
+    list_all_events, list_events_since_time, list_gate_outcomes, list_recent_events,
+    record_gate_outcome,
+};
 use crate::db::ensure_db;
-use crate::events::{EventAction, EventEntity};
+use crate::events::envelope::EventEnvelope;
+use crate::events::store::{EventStore, SqliteEventStore};
+use crate::events::types::event_types;
+use crate::events::types::{GateFailed, GatePassed, ProjectLog};
 use crate::project::init_project;
 use chrono::Utc;
 use tempfile::tempdir;
@@ -14,90 +20,43 @@ fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
     (tmp, ship_dir)
 }
 
-#[test]
-fn insert_and_read_event() {
-    let (_tmp, _ship_dir) = setup();
-    let record = insert_event(
-        "ship",
-        &EventEntity::Project,
-        Some("my-project"),
-        &EventAction::Init,
-        Some("initialized"),
-        None,
-        None,
-        None,
+fn make_log_event(action: &str) -> EventEnvelope {
+    EventEnvelope::new(
+        event_types::PROJECT_LOG,
+        "project",
+        &ProjectLog {
+            action: action.to_string(),
+            details: String::new(),
+        },
     )
-    .unwrap();
-    assert_eq!(record.entity, EventEntity::Project);
-    assert_eq!(record.subject, "my-project");
-    assert_eq!(record.actor, "ship");
-    assert!(record.workspace_id.is_none());
-
-    let all = list_all_events().unwrap();
-    assert_eq!(all.len(), 1);
-    assert_eq!(all[0].id, record.id);
-    assert_eq!(all[0].entity, EventEntity::Project);
-    assert_eq!(all[0].actor, "ship");
+    .unwrap()
 }
 
 #[test]
-fn append_only_ordering() {
+fn list_all_events_starts_empty() {
     let (_tmp, _ship_dir) = setup();
-    insert_event(
-        "ship",
-        &EventEntity::Workspace,
-        Some("feat/a"),
-        &EventAction::Create,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    insert_event(
-        "agent",
-        &EventEntity::Session,
-        Some("sess-1"),
-        &EventAction::Start,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    insert_event(
-        "logic",
-        &EventEntity::Config,
-        Some("ship.toml"),
-        &EventAction::Update,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
+    let all = list_all_events().unwrap();
+    assert!(all.is_empty());
+}
+
+#[test]
+fn append_and_list_all() {
+    let (_tmp, _ship_dir) = setup();
+    let store = SqliteEventStore::new().unwrap();
+    store.append(&make_log_event("first")).unwrap();
+    store.append(&make_log_event("second")).unwrap();
 
     let all = list_all_events().unwrap();
-    assert_eq!(all.len(), 3);
-    assert_eq!(all[0].entity, EventEntity::Workspace);
-    assert_eq!(all[1].entity, EventEntity::Session);
-    assert_eq!(all[2].entity, EventEntity::Config);
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].event_type, event_types::PROJECT_LOG);
+    assert_eq!(all[1].event_type, event_types::PROJECT_LOG);
 }
 
 #[test]
 fn list_since_filters_by_time() {
     let (_tmp, _ship_dir) = setup();
-    insert_event(
-        "ship",
-        &EventEntity::Project,
-        Some("p1"),
-        &EventAction::Log,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
+    let store = SqliteEventStore::new().unwrap();
+    store.append(&make_log_event("before")).unwrap();
 
     let future = Utc::now() + chrono::Duration::hours(1);
     let filtered = list_events_since_time(&future, None).unwrap();
@@ -109,166 +68,36 @@ fn list_since_filters_by_time() {
 }
 
 #[test]
-fn insert_with_context_ids_and_query_back() {
+fn list_since_with_limit() {
     let (_tmp, _ship_dir) = setup();
-    let rec = insert_event(
-        "agent",
-        &EventEntity::Job,
-        Some("job-1"),
-        &EventAction::Start,
-        Some("started work"),
-        Some("ws-abc"),
-        Some("sess-xyz"),
-        Some("job-1"),
-    )
-    .unwrap();
-    assert_eq!(rec.workspace_id.as_deref(), Some("ws-abc"));
-    assert_eq!(rec.session_id.as_deref(), Some("sess-xyz"));
-    assert_eq!(rec.job_id.as_deref(), Some("job-1"));
-
-    // Query by job
-    let by_job = list_events_by_job("job-1").unwrap();
-    assert_eq!(by_job.len(), 1);
-    assert_eq!(by_job[0].id, rec.id);
-
-    // Query by session
-    let by_sess = list_events_by_session("sess-xyz").unwrap();
-    assert_eq!(by_sess.len(), 1);
-
-    // Query by workspace
-    let by_ws = list_events_by_workspace("ws-abc").unwrap();
-    assert_eq!(by_ws.len(), 1);
-
-    // Unmatched context returns empty
-    let empty = list_events_by_job("no-such-job").unwrap();
-    assert!(empty.is_empty());
+    let store = SqliteEventStore::new().unwrap();
+    let past = Utc::now() - chrono::Duration::hours(1);
+    for i in 0..5 {
+        store.append(&make_log_event(&format!("event-{}", i))).unwrap();
+    }
+    let limited = list_events_since_time(&past, Some(3)).unwrap();
+    assert_eq!(limited.len(), 3);
 }
 
 #[test]
-fn context_columns_round_trip_as_none() {
+fn list_recent_returns_in_asc_order() {
     let (_tmp, _ship_dir) = setup();
-    let rec = insert_event(
-        "ship",
-        &EventEntity::Project,
-        Some("p"),
-        &EventAction::Init,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    assert!(rec.workspace_id.is_none());
-    assert!(rec.session_id.is_none());
-    assert!(rec.job_id.is_none());
-
-    let all = list_all_events().unwrap();
-    assert!(all[0].workspace_id.is_none());
-    assert!(all[0].session_id.is_none());
-    assert!(all[0].job_id.is_none());
+    let store = SqliteEventStore::new().unwrap();
+    let mut inserted_ids = Vec::new();
+    for i in 0..5 {
+        let ev = make_log_event(&format!("event-{}", i));
+        inserted_ids.push(ev.id.clone());
+        store.append(&ev).unwrap();
+    }
+    // Ask for last 3, returned in ascending (oldest-first) order
+    let recent = list_recent_events(3).unwrap();
+    assert_eq!(recent.len(), 3);
+    // The returned slice must be sorted ascending by id
+    let ids: Vec<&str> = recent.iter().map(|e| e.id.as_str()).collect();
+    let mut sorted = ids.clone();
+    sorted.sort_unstable();
+    assert_eq!(ids, sorted, "list_recent_events must return events in ASC order");
 }
-
-#[test]
-fn new_entity_types_serialize_correctly() {
-    let (_tmp, _ship_dir) = setup();
-
-    // Gate entity with Pass action
-    let gate = insert_event(
-        "reviewer",
-        &EventEntity::Gate,
-        Some("gate-1"),
-        &EventAction::Pass,
-        Some("all checks green"),
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(gate.entity, EventEntity::Gate);
-    assert_eq!(gate.action, EventAction::Pass);
-
-    // Capability entity with Complete action
-    let cap = insert_event(
-        "agent",
-        &EventEntity::Capability,
-        Some("cap-1"),
-        &EventAction::Complete,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(cap.entity, EventEntity::Capability);
-    assert_eq!(cap.action, EventAction::Complete);
-
-    // Target entity
-    let tgt = insert_event(
-        "ship",
-        &EventEntity::Target,
-        Some("v0.1"),
-        &EventAction::Create,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(tgt.entity, EventEntity::Target);
-
-    // Job entity with Claim action
-    let job = insert_event(
-        "agent-1",
-        &EventEntity::Job,
-        Some("job-x"),
-        &EventAction::Claim,
-        None,
-        None,
-        None,
-        Some("job-x"),
-    )
-    .unwrap();
-    assert_eq!(job.entity, EventEntity::Job);
-    assert_eq!(job.action, EventAction::Claim);
-
-    // Dispatch action
-    let disp = insert_event(
-        "ship",
-        &EventEntity::Job,
-        Some("job-y"),
-        &EventAction::Dispatch,
-        None,
-        None,
-        None,
-        Some("job-y"),
-    )
-    .unwrap();
-    assert_eq!(disp.action, EventAction::Dispatch);
-
-    // Fail action
-    let fail = insert_event(
-        "reviewer",
-        &EventEntity::Gate,
-        Some("gate-2"),
-        &EventAction::Fail,
-        Some("test failures"),
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(fail.action, EventAction::Fail);
-
-    // All round-trip through DB
-    let all = list_all_events().unwrap();
-    assert_eq!(all.len(), 6);
-    assert_eq!(all[0].entity, EventEntity::Gate);
-    assert_eq!(all[0].action, EventAction::Pass);
-    assert_eq!(all[3].entity, EventEntity::Job);
-    assert_eq!(all[3].action, EventAction::Claim);
-}
-
-// ── Gate outcome tests ────────────────────────────────────────────────────
 
 #[test]
 fn record_gate_pass_creates_event_and_completes_job() {
@@ -287,17 +116,14 @@ fn record_gate_pass_creates_event_and_completes_job() {
     .unwrap();
     crate::db::jobs::update_job_status(&job.id, "running").unwrap();
 
-    let rec = record_gate_outcome(&job.id, true, "all tests green").unwrap();
-    assert_eq!(rec.entity, EventEntity::Gate);
-    assert_eq!(rec.action, EventAction::Pass);
-    assert_eq!(rec.subject, job.id);
-    assert_eq!(rec.details.as_deref(), Some("all tests green"));
-    assert_eq!(rec.job_id.as_deref(), Some(job.id.as_str()));
+    let env = record_gate_outcome(&job.id, true, "all tests green").unwrap();
+    assert_eq!(env.event_type, event_types::GATE_PASSED);
+    assert_eq!(env.entity_id, job.id);
 
-    // Job should now be "complete"
-    let updated = crate::db::jobs::get_job(&job.id)
-        .unwrap()
-        .unwrap();
+    let payload: GatePassed = serde_json::from_str(&env.payload_json).unwrap();
+    assert_eq!(payload.evidence, "all tests green");
+
+    let updated = crate::db::jobs::get_job(&job.id).unwrap().unwrap();
     assert_eq!(updated.status, "complete");
 }
 
@@ -318,15 +144,13 @@ fn record_gate_fail_creates_event_leaves_job_running() {
     .unwrap();
     crate::db::jobs::update_job_status(&job.id, "running").unwrap();
 
-    let rec = record_gate_outcome(&job.id, false, "3 tests failed").unwrap();
-    assert_eq!(rec.entity, EventEntity::Gate);
-    assert_eq!(rec.action, EventAction::Fail);
-    assert_eq!(rec.details.as_deref(), Some("3 tests failed"));
+    let env = record_gate_outcome(&job.id, false, "3 tests failed").unwrap();
+    assert_eq!(env.event_type, event_types::GATE_FAILED);
 
-    // Job should still be "running"
-    let updated = crate::db::jobs::get_job(&job.id)
-        .unwrap()
-        .unwrap();
+    let payload: GateFailed = serde_json::from_str(&env.payload_json).unwrap();
+    assert_eq!(payload.evidence, "3 tests failed");
+
+    let updated = crate::db::jobs::get_job(&job.id).unwrap().unwrap();
     assert_eq!(updated.status, "running");
 }
 
@@ -360,34 +184,23 @@ fn list_gate_outcomes_filters_by_job() {
     crate::db::jobs::update_job_status(&job_a.id, "running").unwrap();
     crate::db::jobs::update_job_status(&job_b.id, "running").unwrap();
 
-    // Record outcomes for both jobs
     record_gate_outcome(&job_a.id, false, "lint errors").unwrap();
     record_gate_outcome(&job_a.id, true, "all clean").unwrap();
     record_gate_outcome(&job_b.id, false, "build broken").unwrap();
 
-    // Also insert an unrelated event to prove filtering works
-    insert_event(
-        "ship",
-        &EventEntity::Job,
-        Some(&job_a.id),
-        &EventAction::Log,
-        Some("noise"),
-        None,
-        None,
-        Some(&job_a.id),
-    )
-    .unwrap();
+    // Non-gate event in the store (no job_id set — must not appear in gate outcomes)
+    let store = SqliteEventStore::new().unwrap();
+    store.append(&make_log_event("noise")).unwrap();
 
     let outcomes_a = list_gate_outcomes(&job_a.id).unwrap();
     assert_eq!(outcomes_a.len(), 2);
-    assert_eq!(outcomes_a[0].action, EventAction::Fail);
-    assert_eq!(outcomes_a[1].action, EventAction::Pass);
+    assert_eq!(outcomes_a[0].event_type, event_types::GATE_FAILED);
+    assert_eq!(outcomes_a[1].event_type, event_types::GATE_PASSED);
 
     let outcomes_b = list_gate_outcomes(&job_b.id).unwrap();
     assert_eq!(outcomes_b.len(), 1);
-    assert_eq!(outcomes_b[0].action, EventAction::Fail);
+    assert_eq!(outcomes_b[0].event_type, event_types::GATE_FAILED);
 
-    // Non-existent job returns empty
     let outcomes_none = list_gate_outcomes("no-such-job").unwrap();
     assert!(outcomes_none.is_empty());
 }

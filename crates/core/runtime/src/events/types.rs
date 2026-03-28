@@ -68,6 +68,59 @@ pub struct ActorCrashed {
     pub restart_count: u32,
 }
 
+// ── Gate aggregate ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GatePassed {
+    pub evidence: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GateFailed {
+    pub evidence: String,
+}
+
+// ── Job aggregate ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobCreated {
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobClaimed {
+    pub agent_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobCompleted {
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobFailed {
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobDispatched {
+    pub agent_id: Option<String>,
+}
+
+// ── Config / Log aggregates ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfigChanged {
+    pub subject: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectLog {
+    pub action: String,
+    pub details: String,
+}
+
 // ── Event type constants ──────────────────────────────────────────────────────
 
 pub mod event_types {
@@ -83,6 +136,15 @@ pub mod event_types {
     pub const ACTOR_SLEPT: &str = "actor.slept";
     pub const ACTOR_STOPPED: &str = "actor.stopped";
     pub const ACTOR_CRASHED: &str = "actor.crashed";
+    pub const GATE_PASSED: &str = "gate.passed";
+    pub const GATE_FAILED: &str = "gate.failed";
+    pub const JOB_CREATED: &str = "job.created";
+    pub const JOB_CLAIMED: &str = "job.claimed";
+    pub const JOB_COMPLETED: &str = "job.completed";
+    pub const JOB_FAILED: &str = "job.failed";
+    pub const JOB_DISPATCHED: &str = "job.dispatched";
+    pub const CONFIG_CHANGED: &str = "config.changed";
+    pub const PROJECT_LOG: &str = "project.log";
 
     pub const ALL: &[&str] = &[
         WORKSPACE_ACTIVATED,
@@ -97,6 +159,15 @@ pub mod event_types {
         ACTOR_SLEPT,
         ACTOR_STOPPED,
         ACTOR_CRASHED,
+        GATE_PASSED,
+        GATE_FAILED,
+        JOB_CREATED,
+        JOB_CLAIMED,
+        JOB_COMPLETED,
+        JOB_FAILED,
+        JOB_DISPATCHED,
+        CONFIG_CHANGED,
+        PROJECT_LOG,
     ];
 }
 
@@ -114,6 +185,6 @@ mod tests {
 
     #[test]
     fn all_constants_have_expected_count() {
-        assert_eq!(ALL.len(), 12, "exactly 12 event type constants required");
+        assert_eq!(ALL.len(), 21, "exactly 21 event type constants required");
     }
 }

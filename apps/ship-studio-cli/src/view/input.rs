@@ -256,14 +256,13 @@ fn open_detail(nav: &mut NavState, data: &ViewData) {
         Panel::EventLog => {
             if let Some(e) = data.events.get(nav.list_selected) {
                 let body = format!(
-                    "**ID:** {}\n**Timestamp:** {}\n**Actor:** {}\n**Entity:** {:?}\n**Action:** {:?}\n**Subject:** {}\n\n{}",
+                    "**ID:** {}\n**Timestamp:** {}\n**Actor:** {}\n**Entity:** {}\n**Type:** {}\n\n{}",
                     e.id,
-                    e.timestamp,
+                    e.created_at,
                     e.actor,
-                    e.entity,
-                    e.action,
-                    e.subject,
-                    e.details.as_deref().unwrap_or(""),
+                    e.entity_id,
+                    e.event_type,
+                    e.payload_json,
                 );
                 nav.enter_detail(format!("Event {}", &e.id[..8.min(e.id.len())]), body);
             }

@@ -177,20 +177,13 @@ pub async fn get_project_info(project_dir: &Path) -> String {
     {
         out.push_str("\n## Recent Events\n");
         for e in events {
-            let details = e
-                .details
-                .as_ref()
-                .map(|d| format!(" — {}", d))
-                .unwrap_or_default();
             out.push_str(&format!(
-                "- {} {} [{}] {:?}.{:?} {}{}\n",
+                "- {} {} [{}] {} {}\n",
                 e.id,
-                e.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                e.created_at.format("%Y-%m-%d %H:%M:%S"),
                 e.actor,
-                e.entity,
-                e.action,
-                e.subject,
-                details
+                e.event_type,
+                e.entity_id,
             ));
         }
     }

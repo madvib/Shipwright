@@ -6,7 +6,6 @@ use crate::db::session_events::{
     insert_session_with_started_event, update_session_with_ended_event,
 };
 use crate::db::types::WorkspaceSessionDb;
-use crate::events::{EventAction, EventEntity, append_event};
 use crate::events::types::{SessionEnded, SessionStarted};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -160,25 +159,6 @@ pub fn start_workspace_session(
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
     let started = hydrate_workspace_session(created);
 
-    let mut details = vec![format!("branch={}", started.workspace_branch)];
-    if let Some(provider) = started.primary_provider.as_deref() {
-        details.push(format!("provider={provider}"));
-    }
-    if let Some(agent_id) = started.agent_id.as_deref() {
-        details.push(format!("agent={agent_id}"));
-    }
-    if let Some(goal) = started.goal.as_deref() {
-        details.push(format!("goal={goal}"));
-    }
-    append_event(
-        ship_dir,
-        "ship",
-        EventEntity::Session,
-        EventAction::Start,
-        started.id.clone(),
-        Some(details.join(" ")),
-    )?;
-
     if let Err(error) = persist_session_artifact(ship_dir, &started, "start") {
         eprintln!("Failed to persist session artifact on start: {}", error);
     }
@@ -225,25 +205,6 @@ pub fn end_workspace_session(
     let ended = get_workspace_session_db(&active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;
     let ended = hydrate_workspace_session(ended);
-
-    let mut details = vec![format!("branch={}", ended.workspace_branch)];
-    if let Some(summary) = ended.summary.as_deref() {
-        details.push(format!("summary={summary}"));
-    }
-    if !ended.updated_workspace_ids.is_empty() {
-        details.push(format!(
-            "updated_features={}",
-            ended.updated_workspace_ids.join(",")
-        ));
-    }
-    append_event(
-        ship_dir,
-        "ship",
-        EventEntity::Session,
-        EventAction::Stop,
-        ended.id.clone(),
-        Some(details.join(" ")),
-    )?;
 
     let duration_secs = ended
         .ended_at

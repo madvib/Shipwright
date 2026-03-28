@@ -4,7 +4,6 @@ use crate::db::session::{
 use crate::db::session_events::insert_session_progress_event;
 use crate::db::types::WorkspaceSessionDb;
 use crate::events::types::SessionProgress;
-use crate::events::{EventAction, EventEntity, append_event};
 use crate::project::{get_global_dir, project_slug_from_ship_dir, sanitize_file_name};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -235,14 +234,6 @@ pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &s
     };
     insert_session_progress_event(&active.id, &workspace.id, &progress_payload)?;
 
-    append_event(
-        ship_dir,
-        "agent",
-        EventEntity::Session,
-        EventAction::Note,
-        active.id.clone(),
-        Some(format!("branch={} {}", workspace.branch, normalized_note)),
-    )?;
     if let Err(error) = append_session_note_artifact(ship_dir, &active.id, normalized_note) {
         eprintln!("Failed to persist session note artifact: {}", error);
     }

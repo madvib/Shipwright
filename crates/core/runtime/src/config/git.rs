@@ -1,6 +1,5 @@
 use anyhow::Result;
 use std::path::Path;
-use crate::{EventAction, EventEntity, append_event};
 use super::io::{get_config, save_config};
 use super::types::GitConfig;
 
@@ -39,18 +38,20 @@ pub fn set_category_committed(project_dir: &Path, category: &str, commit: bool) 
         }
     }
     set_git_config(project_dir, git)?;
-    append_event(
-        project_dir,
-        "logic",
-        EventEntity::Config,
-        if commit {
-            EventAction::Set
-        } else {
-            EventAction::Clear
-        },
-        "git_category",
-        Some(format!("category={}", category)),
-    )?;
+    {
+        use crate::events::envelope::EventEnvelope;
+        use crate::events::store::{EventStore, SqliteEventStore};
+        use crate::events::types::event_types;
+        use crate::events::types::ConfigChanged;
+        let store = SqliteEventStore::new()?;
+        let payload = ConfigChanged {
+            subject: "git_category".to_string(),
+            detail: Some(format!("category={}", category)),
+        };
+        let envelope =
+            EventEnvelope::new(event_types::CONFIG_CHANGED, "git_category", &payload)?;
+        store.append(&envelope)?;
+    }
     Ok(())
 }
 

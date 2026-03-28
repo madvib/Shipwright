@@ -1,4 +1,3 @@
-use crate::events::{EventAction, EventEntity, append_event};
 use anyhow::Result;
 use chrono::Utc;
 use std::path::Path;
@@ -88,38 +87,6 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
 
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
     upsert_workspace(ship_dir, &workspace)?;
-    let action = if existing.is_some() {
-        EventAction::Update
-    } else {
-        EventAction::Create
-    };
-    let mut details = vec![
-        format!("type={}", workspace.workspace_type),
-        format!("status={}", workspace.status),
-    ];
-    if let Some(agent_id) = workspace.active_agent.as_deref() {
-        details.push(format!("agent={agent_id}"));
-    }
-    if !workspace.mcp_servers.is_empty() {
-        details.push(format!("mcp={}", workspace.mcp_servers.len()));
-    }
-    if !workspace.skills.is_empty() {
-        details.push(format!("skills={}", workspace.skills.len()));
-    }
-    if workspace.is_worktree {
-        details.push("worktree=true".to_string());
-        if let Some(path) = workspace.worktree_path.as_deref() {
-            details.push(format!("worktree_path={path}"));
-        }
-    }
-    append_event(
-        ship_dir,
-        "ship",
-        EventEntity::Workspace,
-        action,
-        workspace.branch.clone(),
-        Some(details.join(" ")),
-    )?;
     Ok(workspace)
 }
 
@@ -143,17 +110,6 @@ pub fn transition_workspace_status(
         upsert_workspace_on_archived(ship_dir, &workspace)?;
     } else {
         upsert_workspace(ship_dir, &workspace)?;
-        append_event(
-            ship_dir,
-            "ship",
-            EventEntity::Workspace,
-            EventAction::Set,
-            workspace.branch.clone(),
-            Some(format!(
-                "status={} type={}",
-                workspace.status, workspace.workspace_type
-            )),
-        )?;
     }
     Ok(workspace)
 }

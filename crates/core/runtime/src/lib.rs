@@ -42,8 +42,8 @@ pub use config::{
 };
 
 pub use events::{
-    EventAction, EventContext, EventEntity, EventRecord, append_event, append_event_with_context,
-    list_events_since, list_gate_outcomes, read_events, read_recent_events, record_gate_outcome,
+    EventEnvelope, list_events_since, list_gate_outcomes, read_events, read_recent_events,
+    record_gate_outcome,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
@@ -350,38 +350,38 @@ mod tests {
 
     #[test]
     fn test_event_stream_since() -> anyhow::Result<()> {
+        use crate::events::store::{EventStore, SqliteEventStore};
+        use crate::events::types::{WorkspaceActivated, event_types};
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
         let before = chrono::Utc::now();
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Workspace,
-            EventAction::Create,
+        let store = SqliteEventStore::new()?;
+        store.append(&EventEnvelope::new(
+            event_types::WORKSPACE_ACTIVATED,
             "feat-1",
-            None,
-        )?;
+            &WorkspaceActivated { agent_id: None, providers: vec![] },
+        )?)?;
         let events = list_events_since(&ship_path, &before, None)?;
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].subject, "feat-1");
+        assert_eq!(events[0].entity_id, "feat-1");
         Ok(())
     }
 
     #[test]
     fn test_event_append_and_read() -> anyhow::Result<()> {
+        use crate::events::store::{EventStore, SqliteEventStore};
+        use crate::events::types::{ProjectLog, event_types};
         let tmp = tempdir()?;
         let ship_path = init_project(tmp.path().to_path_buf())?;
-        append_event(
-            &ship_path,
-            "ship",
-            EventEntity::Project,
-            EventAction::Log,
-            "export",
-            None,
-        )?;
+        let store = SqliteEventStore::new()?;
+        store.append(&EventEnvelope::new(
+            event_types::PROJECT_LOG,
+            "project",
+            &ProjectLog { action: "export".to_string(), details: String::new() },
+        )?)?;
         let events = read_events(&ship_path)?;
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].entity, EventEntity::Project);
+        assert_eq!(events[0].event_type, event_types::PROJECT_LOG);
         Ok(())
     }
 

@@ -1,91 +1,41 @@
-//! Append-only event log backed by platform.db.
+//! Typed event queries against the `events` table.
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::Row;
+use ulid::Ulid;
 
-use crate::db::{block_on, open_db};
-use crate::events::{EventAction, EventEntity, EventRecord};
-use crate::gen_nanoid;
+use crate::db::{block_on, db_path, ensure_db, open_db_at};
+use crate::events::envelope::EventEnvelope;
+use crate::events::types::event_types;
+use crate::events::types::{GateFailed, GatePassed};
 
-#[allow(clippy::too_many_arguments)]
-pub fn insert_event(
-    actor: &str,
-    entity: &EventEntity,
-    entity_id: Option<&str>,
-    action: &EventAction,
-    detail: Option<&str>,
-    workspace_id: Option<&str>,
-    session_id: Option<&str>,
-    job_id: Option<&str>,
-) -> Result<EventRecord> {
-    let mut conn = open_db()?;
-    let id = gen_nanoid();
-    let now = Utc::now().to_rfc3339();
-    let entity_type = entity.as_str();
-    let action_str = action.as_str();
+const COLS: &str = "id, event_type, entity_id, actor, payload_json, version, \
+    correlation_id, causation_id, workspace_id, session_id, \
+    actor_id, parent_actor_id, elevated, created_at";
 
-    block_on(async {
-        sqlx::query(
-            "INSERT INTO event_log \
-             (id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(actor)
-        .bind(entity_type)
-        .bind(entity_id)
-        .bind(action_str)
-        .bind(detail)
-        .bind(workspace_id)
-        .bind(session_id)
-        .bind(job_id)
-        .bind(&now)
-        .execute(&mut conn)
-        .await
-    })?;
-
-    Ok(EventRecord {
-        id,
-        timestamp: Utc::now(),
-        actor: actor.to_string(),
-        entity: entity.clone(),
-        action: action.clone(),
-        subject: entity_id.unwrap_or_default().to_string(),
-        details: detail.map(str::to_string),
-        workspace_id: workspace_id.map(str::to_string),
-        session_id: session_id.map(str::to_string),
-        job_id: job_id.map(str::to_string),
-    })
-}
-
-// Column order: 0:id 1:actor 2:entity_type 3:entity_id 4:action 5:detail
-//               6:workspace_id 7:session_id 8:job_id 9:created_at
-const SELECT_COLS: &str = "id, actor, entity_type, entity_id, action, detail, workspace_id, session_id, job_id, created_at";
-
-pub fn list_all_events() -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
+pub fn list_all_events() -> Result<Vec<EventEnvelope>> {
+    ensure_db()?;
+    let mut conn = open_db_at(&db_path()?)?;
     let rows = block_on(async {
-        sqlx::query(&format!(
-            "SELECT {SELECT_COLS} FROM event_log ORDER BY created_at ASC, rowid ASC"
-        ))
-        .fetch_all(&mut conn)
-        .await
+        sqlx::query(&format!("SELECT {COLS} FROM events ORDER BY id ASC"))
+            .fetch_all(&mut conn)
+            .await
     })?;
-    rows.iter().map(row_to_record).collect()
+    rows.iter().map(row_to_envelope).collect()
 }
 
 pub fn list_events_since_time(
     since: &DateTime<Utc>,
     limit: Option<usize>,
-) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
+) -> Result<Vec<EventEnvelope>> {
+    ensure_db()?;
+    let mut conn = open_db_at(&db_path()?)?;
     let since_str = since.to_rfc3339();
     let rows = match limit {
         Some(n) => block_on(async {
             sqlx::query(&format!(
-                "SELECT {SELECT_COLS} FROM event_log
-                 WHERE created_at >= ? ORDER BY created_at ASC, rowid ASC LIMIT ?"
+                "SELECT {COLS} FROM events WHERE created_at >= ? ORDER BY id ASC LIMIT ?"
             ))
             .bind(&since_str)
             .bind(n as i64)
@@ -94,140 +44,147 @@ pub fn list_events_since_time(
         })?,
         None => block_on(async {
             sqlx::query(&format!(
-                "SELECT {SELECT_COLS} FROM event_log
-                 WHERE created_at >= ? ORDER BY created_at ASC, rowid ASC"
+                "SELECT {COLS} FROM events WHERE created_at >= ? ORDER BY id ASC"
             ))
             .bind(&since_str)
             .fetch_all(&mut conn)
             .await
         })?,
     };
-    rows.iter().map(row_to_record).collect()
+    rows.iter().map(row_to_envelope).collect()
 }
 
-pub fn list_recent_events(limit: usize) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
+pub fn list_recent_events(limit: usize) -> Result<Vec<EventEnvelope>> {
+    ensure_db()?;
+    let mut conn = open_db_at(&db_path()?)?;
     let rows = block_on(async {
         sqlx::query(&format!(
-            "SELECT {SELECT_COLS} FROM event_log
-             ORDER BY created_at DESC, rowid DESC LIMIT ?"
+            "SELECT {COLS} FROM events ORDER BY id DESC LIMIT ?"
         ))
         .bind(limit as i64)
         .fetch_all(&mut conn)
         .await
     })?;
-    let mut records: Vec<EventRecord> = rows.iter().map(row_to_record).collect::<Result<_>>()?;
-    records.reverse(); // Return in ASC order
-    Ok(records)
+    let mut envs: Vec<EventEnvelope> = rows.iter().map(row_to_envelope).collect::<Result<_>>()?;
+    envs.reverse();
+    Ok(envs)
 }
 
-pub fn list_events_by_job(job_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
-    let rows = block_on(async {
-        sqlx::query(&format!(
-            "SELECT {SELECT_COLS} FROM event_log WHERE job_id = ? ORDER BY created_at ASC, rowid ASC"
-        ))
-        .bind(job_id)
-        .fetch_all(&mut conn)
-        .await
-    })?;
-    rows.iter().map(row_to_record).collect()
-}
-
-pub fn list_events_by_session(session_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
-    let rows = block_on(async {
-        sqlx::query(&format!(
-            "SELECT {SELECT_COLS} FROM event_log WHERE session_id = ? ORDER BY created_at ASC, rowid ASC"
-        ))
-        .bind(session_id)
-        .fetch_all(&mut conn)
-        .await
-    })?;
-    rows.iter().map(row_to_record).collect()
-}
-
-pub fn list_events_by_workspace(workspace_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
-    let rows = block_on(async {
-        sqlx::query(&format!(
-            "SELECT {SELECT_COLS} FROM event_log WHERE workspace_id = ? ORDER BY created_at ASC, rowid ASC"
-        ))
-        .bind(workspace_id)
-        .fetch_all(&mut conn)
-        .await
-    })?;
-    rows.iter().map(row_to_record).collect()
-}
-
-/// Record a gate pass/fail outcome as an event.
+/// Record a gate pass/fail outcome as a typed event.
 ///
-/// Creates an event with entity=Gate, entity_id=job_id, action=Pass or Fail.
-/// If `passed`, also updates the job status to "complete".
-/// If failed, the job stays "running" so it can be retried.
+/// Writes to the `events` table with the `job_id` column set.
+/// If `passed`, also marks the job as "complete".
 pub fn record_gate_outcome(
     job_id: &str,
     passed: bool,
     evidence: &str,
-) -> Result<EventRecord> {
-    let action = if passed {
-        EventAction::Pass
+) -> Result<EventEnvelope> {
+    ensure_db()?;
+    let mut conn = open_db_at(&db_path()?)?;
+
+    let event_type = if passed {
+        event_types::GATE_PASSED
     } else {
-        EventAction::Fail
+        event_types::GATE_FAILED
     };
-    let record = insert_event(
-        "ship",
-        &EventEntity::Gate,
-        Some(job_id),
-        &action,
-        Some(evidence),
-        None,
-        None,
-        Some(job_id),
-    )?;
+    let payload_json = if passed {
+        serde_json::to_string(&GatePassed {
+            evidence: evidence.to_string(),
+        })?
+    } else {
+        serde_json::to_string(&GateFailed {
+            evidence: evidence.to_string(),
+        })?
+    };
+
+    let id = Ulid::new().to_string();
+    let now = Utc::now();
+    let now_str = now.to_rfc3339();
+
+    block_on(async {
+        sqlx::query(
+            "INSERT INTO events \
+             (id, event_type, entity_id, actor, payload_json, version, \
+              correlation_id, causation_id, workspace_id, session_id, \
+              actor_id, parent_actor_id, elevated, created_at, job_id) \
+             VALUES (?, ?, ?, 'ship', ?, 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, ?)",
+        )
+        .bind(&id)
+        .bind(event_type)
+        .bind(job_id)
+        .bind(&payload_json)
+        .bind(&now_str)
+        .bind(job_id)
+        .execute(&mut conn)
+        .await
+    })?;
+
     if passed {
         crate::db::jobs::update_job_status(job_id, "complete")?;
     }
-    Ok(record)
+
+    Ok(EventEnvelope {
+        id,
+        event_type: event_type.to_string(),
+        entity_id: job_id.to_string(),
+        actor: "ship".to_string(),
+        payload_json,
+        version: 1,
+        correlation_id: None,
+        causation_id: None,
+        workspace_id: None,
+        session_id: None,
+        actor_id: None,
+        parent_actor_id: None,
+        elevated: false,
+        created_at: now,
+    })
 }
 
 /// List gate outcomes (pass/fail events) for a specific job.
-pub fn list_gate_outcomes(job_id: &str) -> Result<Vec<EventRecord>> {
-    let mut conn = open_db()?;
+pub fn list_gate_outcomes(job_id: &str) -> Result<Vec<EventEnvelope>> {
+    ensure_db()?;
+    let mut conn = open_db_at(&db_path()?)?;
     let rows = block_on(async {
         sqlx::query(&format!(
-            "SELECT {SELECT_COLS} FROM event_log \
-             WHERE entity_type = 'gate' AND entity_id = ? \
-             ORDER BY created_at ASC, rowid ASC"
+            "SELECT {COLS} FROM events \
+             WHERE job_id = ? AND event_type IN ('gate.passed', 'gate.failed') \
+             ORDER BY id ASC"
         ))
         .bind(job_id)
         .fetch_all(&mut conn)
         .await
     })?;
-    rows.iter().map(row_to_record).collect()
+    rows.iter().map(row_to_envelope).collect()
 }
 
-fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EventRecord> {
-    let entity_type: String = row.get(2);
-    let action_str: String = row.get(4);
-    let created_at: String = row.get(9);
-    let timestamp = created_at
+fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
+    // Columns: id(0) event_type(1) entity_id(2) actor(3) payload_json(4) version(5)
+    //          correlation_id(6) causation_id(7) workspace_id(8) session_id(9)
+    //          actor_id(10) parent_actor_id(11) elevated(12) created_at(13)
+    let created_at_str: String = row.get(13);
+    let created_at = created_at_str
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
-            chrono::DateTime::parse_from_rfc3339(&created_at).map(|dt| dt.with_timezone(&Utc))
+            chrono::DateTime::parse_from_rfc3339(&created_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
         })
-        .unwrap_or_else(|_| Utc::now());
+        .map_err(|e| anyhow::anyhow!("invalid created_at '{}': {}", created_at_str, e))?;
 
-    Ok(EventRecord {
+    Ok(EventEnvelope {
         id: row.get(0),
-        timestamp,
-        actor: row.get(1),
-        entity: EventEntity::from_db(&entity_type)?,
-        action: EventAction::from_db(&action_str)?,
-        subject: row.get::<Option<String>, _>(3).unwrap_or_default(),
-        details: row.get(5),
-        workspace_id: row.get(6),
-        session_id: row.get(7),
-        job_id: row.get(8),
+        event_type: row.get(1),
+        entity_id: row.get(2),
+        actor: row.get(3),
+        payload_json: row.get(4),
+        version: row.get::<i64, _>(5) as u32,
+        correlation_id: row.get(6),
+        causation_id: row.get(7),
+        workspace_id: row.get(8),
+        session_id: row.get(9),
+        actor_id: row.get(10),
+        parent_actor_id: row.get(11),
+        elevated: row.get::<i64, _>(12) != 0,
+        created_at,
     })
 }
