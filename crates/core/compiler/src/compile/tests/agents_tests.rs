@@ -10,6 +10,7 @@ fn make_profile(id: &str, name: &str, providers: &[&str]) -> AgentProfile {
             version: None,
             description: Some(format!("{name} agent")),
             providers: providers.iter().map(|s| s.to_string()).collect(),
+            icon: None,
         },
         skills: SkillRefs {
             refs: vec!["skill-a".to_string()],

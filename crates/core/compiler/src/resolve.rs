@@ -923,6 +923,7 @@ mod tests {
                     version: None,
                     description: None,
                     providers: vec![],
+                    icon: None,
                 },
                 skills: SkillRefs::default(),
                 mcp: McpRefs::default(),

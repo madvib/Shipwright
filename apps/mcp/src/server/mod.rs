@@ -11,10 +11,10 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{agent, events, project, session, skills, studio, workspace, workspace_ops};
+use crate::tools::{agent, events, project, session, skills, workspace, workspace_ops};
 use skills::{
-    delete_skill_file, get_skill_vars_tool, list_project_skills, list_skill_vars_tool,
-    set_skill_var_tool, write_skill_file,
+    get_skill_vars_tool, list_skill_vars_tool,
+    set_skill_var_tool,
 };
 
 #[cfg(feature = "unstable")]
@@ -103,42 +103,8 @@ impl ShipServer {
 
     // ---- Studio sync ----
 
-    #[tool(
-        description = "Pull all local agents with resolved skills, rules, and MCP configs. \
-        Returns the full agent profiles ready for import into Studio."
-    )]
-    async fn pull_agents(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        studio::pull_agents(&project_dir)
-    }
-
-    #[tool(description = "List agent profile IDs that exist locally in .ship/agents/.")]
-    async fn list_local_agents(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        studio::list_local_agents(&project_dir)
-    }
-
-    #[tool(
-        description = "Receive an agent config bundle from Studio and write it to .ship/. \
-        The bundle parameter is a JSON string containing agent profile, inline skills, and dependencies."
-    )]
-    async fn push_bundle(&self, Parameters(req): Parameters<PushBundleRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let result = studio::push_bundle(&project_dir, &req.bundle);
-        if !result.starts_with("Error") {
-            self.notify_resources_changed().await;
-        }
-        result
-    }
+    // Studio-only tools (pull_agents, list_local_agents, push_bundle) are on
+    // StudioServer, not here. Agents don't need to pull/push their own config.
 
     // ---- Workspace ----
 
@@ -311,54 +277,8 @@ impl ShipServer {
         list_skill_vars_tool(&project_dir, req)
     }
 
-    #[tool(
-        description = "Write a file into a skill directory on disk (.ship/skills/<skill_id>/<file_path>). \
-        Creates parent directories as needed. Use for saving skill content from the IDE."
-    )]
-    async fn write_skill_file(&self, Parameters(req): Parameters<WriteSkillFileRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let result = write_skill_file(&project_dir, req);
-        if !result.starts_with("Error") {
-            self.notify_resources_changed().await;
-        }
-        result
-    }
-
-    #[tool(description = "Delete a single file from a skill directory. \
-        Refuses to delete SKILL.md (the skill definition itself).")]
-    async fn delete_skill_file(
-        &self,
-        Parameters(req): Parameters<DeleteSkillFileRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let result = delete_skill_file(&project_dir, req);
-        if !result.starts_with("Error") {
-            self.notify_resources_changed().await;
-        }
-        result
-    }
-
-    #[tool(
-        description = "List all skills in .ship/skills/ with full resolved content. \
-        Returns a JSON array of PullSkill objects (same shape as pull_agents skills). \
-        Includes all skills regardless of agent references. Optionally filter by query substring."
-    )]
-    async fn list_project_skills(
-        &self,
-        Parameters(req): Parameters<ListProjectSkillsRequest>,
-    ) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        list_project_skills(&project_dir, req)
-    }
+    // Studio-only tools (write_skill_file, delete_skill_file, list_project_skills)
+    // are on StudioServer. Agents use list_skills and skill_vars for their needs.
 
     // ---- Events ----
 
