@@ -1,7 +1,8 @@
 //! Transactional session state + typed event emission.
 //!
-//! Each public function wraps the session DB write and the `events` INSERT
-//! in a single SQLite BEGIN/COMMIT block so they succeed or roll back together.
+//! Session rows (workspace_session) stay in platform.db so session CRUD
+//! functions continue to work. Session lifecycle events are routed to the
+//! per-workspace DB (events.db) when workspace_id is present.
 //!
 //! ADR GHihs2tn: all session lifecycle transitions must emit typed events.
 //! Session is a child actor of its workspace — `parent_actor_id` = workspace ID.
@@ -11,6 +12,7 @@ use chrono::Utc;
 use ulid::Ulid;
 
 use crate::db::types::WorkspaceSessionDb;
+use crate::db::workspace_db::open_workspace_db_for_id;
 use crate::db::{block_on, open_db};
 use crate::events::types::event_types;
 use crate::events::types::{SessionEnded, SessionProgress, SessionStarted};
@@ -90,9 +92,10 @@ impl SessionBind {
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-/// Insert session row and emit `session.started` atomically.
+/// Insert session row (platform.db) and emit `session.started` (workspace DB).
 ///
-/// On failure, both the session INSERT and the event INSERT are rolled back.
+/// The session row always goes to platform.db so session CRUD functions work.
+/// The event is routed to the per-workspace DB so workspace-local queries find it.
 pub fn insert_session_with_started_event(
     session: &WorkspaceSessionDb,
     payload: &SessionStarted,
@@ -103,9 +106,10 @@ pub fn insert_session_with_started_event(
     let event_id = Ulid::new().to_string();
     let event_ts = Utc::now().to_rfc3339();
 
-    let mut conn = open_db()?;
+    // 1. Insert session row in platform.db.
+    let mut platform_conn = open_db()?;
     block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut platform_conn).await?;
 
         let insert_result = sqlx::query(SESSION_INSERT)
             .bind(&sb.session_id)
@@ -124,13 +128,22 @@ pub fn insert_session_with_started_event(
             .bind(sb.config_generation_at_start)
             .bind(&sb.created_at)
             .bind(&sb.updated_at)
-            .execute(&mut conn)
+            .execute(&mut platform_conn)
             .await;
 
         if let Err(e) = insert_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
+            let _ = sqlx::query("ROLLBACK").execute(&mut platform_conn).await;
             return Err(e);
         }
+
+        sqlx::query("COMMIT").execute(&mut platform_conn).await?;
+        Ok(())
+    })?;
+
+    // 2. Emit session.started event to workspace DB.
+    let mut ws_conn = open_workspace_db_for_id(&sb.workspace_id)?;
+    block_on(async {
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut ws_conn).await?;
 
         let ev_result = sqlx::query(EVENT_INSERT)
             .bind(&event_id)
@@ -143,20 +156,20 @@ pub fn insert_session_with_started_event(
             .bind(&sb.workspace_id) // parent_actor_id = workspace ID
             .bind(1_i64)            // elevated = 1
             .bind(&event_ts)
-            .execute(&mut conn)
+            .execute(&mut ws_conn)
             .await;
 
         if let Err(e) = ev_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
+            let _ = sqlx::query("ROLLBACK").execute(&mut ws_conn).await;
             return Err(e);
         }
 
-        sqlx::query("COMMIT").execute(&mut conn).await?;
+        sqlx::query("COMMIT").execute(&mut ws_conn).await?;
         Ok(())
     })
 }
 
-/// Emit `session.progress` event atomically (no session row write).
+/// Emit `session.progress` event to the workspace DB.
 ///
 /// Progress events are not elevated — too noisy to bubble to workspace level.
 pub fn insert_session_progress_event(
@@ -171,7 +184,7 @@ pub fn insert_session_progress_event(
     let session_id = session_id.to_string();
     let workspace_id = workspace_id.to_string();
 
-    let mut conn = open_db()?;
+    let mut conn = open_workspace_db_for_id(&workspace_id)?;
     block_on(async {
         sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
 
@@ -199,9 +212,7 @@ pub fn insert_session_progress_event(
     })
 }
 
-/// Update session row and emit `session.ended` atomically.
-///
-/// On failure, both the session UPDATE and the event INSERT are rolled back.
+/// Update session row (platform.db) and emit `session.ended` (workspace DB).
 pub fn update_session_with_ended_event(
     session: &WorkspaceSessionDb,
     payload: &SessionEnded,
@@ -212,9 +223,10 @@ pub fn update_session_with_ended_event(
     let event_id = Ulid::new().to_string();
     let event_ts = Utc::now().to_rfc3339();
 
-    let mut conn = open_db()?;
+    // 1. Update session row in platform.db.
+    let mut platform_conn = open_db()?;
     block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut platform_conn).await?;
 
         let update_result = sqlx::query(SESSION_UPDATE)
             .bind(&sb.workspace_id)
@@ -233,13 +245,22 @@ pub fn update_session_with_ended_event(
             .bind(&sb.created_at)
             .bind(&sb.updated_at)
             .bind(&sb.session_id)
-            .execute(&mut conn)
+            .execute(&mut platform_conn)
             .await;
 
         if let Err(e) = update_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
+            let _ = sqlx::query("ROLLBACK").execute(&mut platform_conn).await;
             return Err(e);
         }
+
+        sqlx::query("COMMIT").execute(&mut platform_conn).await?;
+        Ok(())
+    })?;
+
+    // 2. Emit session.ended event to workspace DB.
+    let mut ws_conn = open_workspace_db_for_id(&sb.workspace_id)?;
+    block_on(async {
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut ws_conn).await?;
 
         let ev_result = sqlx::query(EVENT_INSERT)
             .bind(&event_id)
@@ -252,16 +273,15 @@ pub fn update_session_with_ended_event(
             .bind(&sb.workspace_id) // parent_actor_id = workspace ID
             .bind(1_i64)            // elevated = 1
             .bind(&event_ts)
-            .execute(&mut conn)
+            .execute(&mut ws_conn)
             .await;
 
         if let Err(e) = ev_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
+            let _ = sqlx::query("ROLLBACK").execute(&mut ws_conn).await;
             return Err(e);
         }
 
-        sqlx::query("COMMIT").execute(&mut conn).await?;
+        sqlx::query("COMMIT").execute(&mut ws_conn).await?;
         Ok(())
     })
 }
-

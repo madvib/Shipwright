@@ -80,6 +80,7 @@ pub use db::types::{
     AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb, WorkspaceSessionDb,
     WorkspaceSessionRecordDb, WorkspaceUpsert,
 };
+pub use db::workspace_db::{open_workspace_db, workspace_db_path};
 pub use db::workspace_state::upsert_workspace_db;
 
 pub use workspace::{
