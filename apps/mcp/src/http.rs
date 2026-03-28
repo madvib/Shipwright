@@ -14,6 +14,7 @@ use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
 use crate::server::ShipServer;
+use crate::studio_server::StudioServer;
 
 /// Read the bearer token from a given config.toml path.
 /// Returns None if the file is absent or has no [auth] token.
@@ -159,6 +160,60 @@ pub async fn run_http_server(port: u16) -> Result<()> {
         .with_graceful_shutdown(async move { ct.cancelled_owned().await })
         .await
         .map_err(|e| anyhow!("HTTP server error: {e}"))?;
+
+    Ok(())
+}
+
+/// Build the axum Router for the Studio MCP HTTP server.
+/// Uses the StudioServer with its reduced tool set and no tool gating.
+pub fn build_studio_app(token: Option<String>, ct: CancellationToken) -> Router {
+    let service: StreamableHttpService<StudioServer, LocalSessionManager> =
+        StreamableHttpService::new(
+            || Ok(StudioServer::new()),
+            Default::default(),
+            StreamableHttpServerConfig {
+                cancellation_token: ct,
+                sse_retry: None,
+                sse_keep_alive: None,
+                ..Default::default()
+            },
+        );
+
+    let mcp_router = Router::new()
+        .nest_service("/mcp", service)
+        .layer(middleware::from_fn(cors_middleware));
+
+    if let Some(tok) = token {
+        mcp_router.route_layer(middleware::from_fn_with_state(tok, bearer_auth))
+    } else {
+        mcp_router
+    }
+}
+
+/// Start the Studio HTTP MCP server on the given port.
+pub async fn run_studio_http_server(port: u16) -> Result<()> {
+    let token = read_auth_token()?;
+
+    let ct = CancellationToken::new();
+
+    if token.is_some() {
+        tracing::info!("ship studio: bearer token auth enabled");
+    } else {
+        tracing::info!(
+            "ship studio: no [auth] token in ~/.ship/config.toml, server is unauthenticated"
+        );
+    }
+
+    let app = build_studio_app(token, ct.child_token());
+
+    let addr = format!("0.0.0.0:{port}");
+    tracing::info!("ship studio: HTTP server listening on {addr}");
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move { ct.cancelled_owned().await })
+        .await
+        .map_err(|e| anyhow!("Studio HTTP server error: {e}"))?;
 
     Ok(())
 }

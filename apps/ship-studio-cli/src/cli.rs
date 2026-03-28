@@ -231,6 +231,16 @@ pub enum Commands {
         milestone: Option<String>,
     },
 
+    /// Launch Ship Studio -- visual IDE for skills and agents
+    Studio {
+        /// HTTP port for the Studio MCP server
+        #[arg(long, default_value_t = 51741)]
+        port: u16,
+        /// Open the Studio in your default browser
+        #[arg(long)]
+        open: bool,
+    },
+
     /// Show help — same as --help
     Help,
 }

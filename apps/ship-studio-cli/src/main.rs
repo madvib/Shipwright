@@ -121,6 +121,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Events { action } => dispatch_events(action),
             #[cfg(feature = "unstable")]
             Commands::View => view::run_view(),
+            Commands::Studio { port, open } => run_studio(port, open),
             Commands::Help => {
                 use clap::CommandFactory;
                 Cli::command().print_help()?;
@@ -128,6 +129,23 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
         },
     }
+}
+
+fn run_studio(port: u16, open: bool) -> Result<()> {
+    eprintln!("Ship Studio MCP listening on http://localhost:{port}/mcp");
+    eprintln!("Open https://getship.dev/studio to connect");
+    if open {
+        let url = "https://getship.dev/studio";
+        #[cfg(target_os = "macos")]
+        let _ = std::process::Command::new("open").arg(url).spawn();
+        #[cfg(target_os = "linux")]
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", url])
+            .spawn();
+    }
+    mcp_serve::run_studio(port)
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
