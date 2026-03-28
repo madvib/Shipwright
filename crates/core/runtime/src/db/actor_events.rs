@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use ulid::Ulid;
 
+use crate::db::workspace_db::open_workspace_db_for_id;
 use crate::db::{block_on, open_db};
 use crate::events::types::event_types;
 use crate::events::types::{ActorCrashed, ActorCreated, ActorSlept, ActorStopped, ActorWoke};
@@ -71,7 +72,10 @@ fn run_status_tx<P: serde::Serialize>(
     let workspace_id = workspace_id.map(str::to_string);
     let parent_actor_id = parent_actor_id.map(str::to_string);
 
-    let mut conn = open_db()?;
+    let mut conn = match workspace_id.as_deref() {
+        Some(ws_id) => open_workspace_db_for_id(ws_id)?,
+        None => open_db()?,
+    };
     block_on(async {
         sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
 
@@ -124,7 +128,10 @@ pub fn insert_actor_created(upsert: &ActorUpsert<'_>, payload: &ActorCreated) ->
     let parent_actor_id = upsert.parent_actor_id.map(str::to_string);
     let restart_count = upsert.restart_count as i64;
 
-    let mut conn = open_db()?;
+    let mut conn = match workspace_id.as_deref() {
+        Some(ws_id) => open_workspace_db_for_id(ws_id)?,
+        None => open_db()?,
+    };
     block_on(async {
         sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
 
@@ -228,7 +235,10 @@ pub fn update_actor_crashed(
     let parent_actor_id = parent_actor_id.map(str::to_string);
     let new_count = restart_count as i64;
 
-    let mut conn = open_db()?;
+    let mut conn = match workspace_id.as_deref() {
+        Some(ws_id) => open_workspace_db_for_id(ws_id)?,
+        None => open_db()?,
+    };
     block_on(async {
         sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
 

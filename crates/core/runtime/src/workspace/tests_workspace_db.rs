@@ -19,7 +19,12 @@ mod tests {
 
     fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempdir().unwrap();
-        let ship_dir = crate::project::init_project(tmp.path().to_path_buf()).unwrap();
+        // Use get_global_dir() as ship_dir so workspace DB paths are consistent
+        // with the routing in insert_actor_created / insert_session_with_started_event
+        // (which also derive ship_dir from get_global_dir()).
+        let ship_dir = crate::project::get_global_dir().unwrap();
+        let base = ship_dir.parent().unwrap().to_path_buf();
+        crate::project::init_project(base).unwrap();
         ensure_db().unwrap();
         (tmp, ship_dir)
     }

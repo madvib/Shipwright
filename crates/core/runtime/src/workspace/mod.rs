@@ -52,3 +52,4 @@ pub use session::{
     record_workspace_session_progress,
 };
 pub use session_lifecycle::{end_workspace_session, start_workspace_session};
+pub use crate::db::workspace_db::{open_workspace_db, workspace_db_path};
