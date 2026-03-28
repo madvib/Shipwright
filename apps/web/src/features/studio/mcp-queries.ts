@@ -114,6 +114,48 @@ export function useSaveSkillFile() {
   })
 }
 
+/** Get merged var values for a skill. Returns Record<string, unknown> or null. */
+export function useSkillVars(skillId: string | null) {
+  const { callTool, status } = useMcpCallTool()
+  return useQuery({
+    queryKey: mcpKeys.skillVars(skillId ?? ''),
+    queryFn: async () => {
+      const raw = await callTool('get_skill_vars', { skill_id: skillId })
+      return JSON.parse(raw) as Record<string, unknown>
+    },
+    enabled: status === 'connected' && skillId != null,
+    staleTime: 5_000,
+  })
+}
+
+/** Set a single skill variable value. Invalidates skill vars on success. */
+export function useSetSkillVar() {
+  const { callTool } = useMcpCallTool()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      skillId,
+      key,
+      valueJson,
+    }: {
+      skillId: string
+      key: string
+      valueJson: string
+    }) => {
+      return callTool('set_skill_var', {
+        skill_id: skillId,
+        key,
+        value_json: valueJson,
+      })
+    },
+    onSuccess: (_, { skillId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: mcpKeys.skillVars(skillId),
+      })
+    },
+  })
+}
+
 /** Delete a single skill file from disk via CLI. Invalidates all MCP queries on success. */
 export function useDeleteSkillFile() {
   const { callTool } = useMcpCallTool()

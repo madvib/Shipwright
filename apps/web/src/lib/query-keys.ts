@@ -16,6 +16,7 @@ export const mcpKeys = {
   pull: () => ['mcp', 'agents', 'pull'] as const,
   skills: () => ['mcp', 'skills'] as const,
   projectSkills: () => ['mcp', 'skills', 'project'] as const,
+  skillVars: (skillId: string) => ['mcp', 'skill-vars', skillId] as const,
 } as const
 
 export const libraryKeys = {
