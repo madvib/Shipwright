@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "collect": "npx tsx scripts/collect-skill-docs.ts",
-    "predev": "npm run collect",
+    "collect": "pnpm exec tsx scripts/collect-skill-docs.ts",
+    "predev": "pnpm run collect",
     "dev": "astro dev",
-    "prebuild": "npm run collect",
+    "prebuild": "pnpm run collect",
     "build": "astro build",
-    "preview": "astro preview",
-    "build:npm": "npm run collect && npx astro build"
+    "preview": "astro preview"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.38.2",
+    "@fontsource-variable/dm-sans": "^5.2.8",
+    "@fontsource-variable/syne": "^5.2.7",
     "astro": "^6.1.1",
     "sharp": "^0.33.0"
   },

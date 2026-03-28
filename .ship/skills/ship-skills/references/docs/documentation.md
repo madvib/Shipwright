@@ -1,7 +1,7 @@
 ---
 group: Smart Skills
 title: Skill Documentation
-description: How to write progressive disclosure documentation for smart skills using references/docs/.
+description: How references/docs/ works, frontmatter fields, audience values, and writing for humans and agents.
 audience: public
 section: reference
 order: 4
@@ -9,32 +9,32 @@ order: 4
 
 # Skill Documentation
 
-Skill documentation lives in `references/docs/` inside the skill directory. It serves two audiences from the same source: humans browsing a docs site and agents retrieving context on demand through filesystem reads.
+Documentation lives in `references/docs/` inside the skill directory. It serves two audiences from the same source: humans browsing a docs site and agents retrieving context on demand through filesystem reads.
 
-## The progressive disclosure model
+## Progressive disclosure
 
-Smart skills use a two-tier information architecture:
+Smart skills use two tiers:
 
 1. **SKILL.md** -- always loaded into the agent's context window. Concise working instructions. Under 100 lines.
-2. **references/docs/** -- retrieved on demand when the agent needs depth. Detailed reference material, examples, troubleshooting.
+2. **references/docs/** -- retrieved on demand. Detailed reference material, examples, troubleshooting.
 
-This keeps the agent's context window lean while making deep information available. The agent gets its instructions automatically; when it needs more, it reads specific doc pages without permanently consuming context.
+This keeps the context window lean while making deep information available. The agent reads specific doc pages only when it needs depth.
 
-## Directory structure
+## Directory layout
 
 ```
 references/docs/
-  index.md              <- landing page (always create first)
+  index.md              <- landing page
   commands.md           <- one concern per page
   patterns.md
   troubleshooting.md
 ```
 
-The `index.md` page is the entry point. It summarizes the skill and links to other pages. Additional pages each cover a single concern.
+`index.md` is the entry point. It summarizes the skill and links to other pages. Additional pages each cover a single concern.
 
 ## File format
 
-Use `.md` (Markdown) or `.mdoc` (Markdoc) extension. Markdoc files support custom tags that are rendered by Starlight at docs site build time. For most skills, plain Markdown is sufficient.
+Use `.md` (Markdown) or `.mdoc` (Markdoc). Markdoc files support custom tags rendered at docs site build time. For most skills, plain Markdown is sufficient.
 
 ## Frontmatter
 
@@ -42,6 +42,7 @@ Every doc page starts with YAML frontmatter:
 
 ```yaml
 ---
+group: My Skill Group
 title: Command Reference
 description: Complete list of commands and their options.
 audience: public
@@ -54,21 +55,22 @@ order: 2
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `title` | string | yes | -- | Page title. Displayed in docs site sidebar and as page heading. |
-| `description` | string | no | -- | One-line summary. Used in docs site meta tags and search results. |
+| `group` | string | yes | -- | Sidebar group in the docs site. All pages in a skill typically share the same group value. |
+| `title` | string | yes | -- | Page title. Displayed in sidebar and as page heading. |
+| `description` | string | no | -- | One-line summary for meta tags and search. |
 | `audience` | string | no | `"public"` | Controls visibility. See audience values below. |
-| `section` | string | no | -- | Grouping hint for the docs site sidebar. See section values below. |
-| `order` | number | no | -- | Sort position within the skill's doc section. Lower numbers appear first. |
+| `section` | string | no | -- | Grouping hint for sidebar organization. |
+| `order` | number | no | -- | Sort position within the group. Lower numbers appear first. |
 
 ### Audience values
 
 | Value | Docs site | Agent reads | Use for |
 |-------|-----------|-------------|---------|
-| `public` | yes | yes | General documentation visible to everyone |
-| `internal` | no | yes | Internal notes for agents, hidden from the public site |
-| `agent-only` | no | yes | Context exclusively for agent consumption, never rendered on site |
+| `public` | visible | yes | General documentation for everyone |
+| `internal` | hidden | yes | Notes for agents, not for human readers |
+| `agent-only` | hidden | yes | Context meaningful only during agent execution |
 
-The default is `public`. Most doc pages should be public. Use `internal` for implementation notes that help agents but would confuse human readers. Use `agent-only` for context that is only meaningful during agent execution.
+The default is `public`. Most pages should be public. Use `internal` for implementation notes that help agents but would confuse humans. Use `agent-only` for context that is only meaningful during agent work.
 
 ### Section values
 
@@ -76,14 +78,18 @@ Sections group pages in the docs site sidebar:
 
 | Section | Use for |
 |---------|---------|
-| `concepts` | Background, architecture, rationale, "how it works" explanations |
+| `concepts` | Background, architecture, rationale |
 | `guide` | How-to walkthroughs for common tasks |
-| `reference` | Tables, parameters, options, CLI commands, API surfaces |
-| `tutorial` | Step-by-step instructions with expected outcomes at each step |
+| `reference` | Tables, parameters, CLI commands, API surfaces |
+| `tutorial` | Step-by-step instructions with expected outcomes |
+
+## The docs site convention
+
+The Ship docs site (Astro/Starlight) collects `references/docs/` pages from all installed skills at build time. The `group` frontmatter field determines the sidebar section. Pages within a group are sorted by `order`.
+
+This means skill documentation is not a separate authoring step -- the same files that agents read from the filesystem are the pages humans see on the site. Write once, serve both audiences.
 
 ## Writing for two audiences
-
-Every doc page is read by both humans and agents. Write content that works for both.
 
 ### Use tables for reference data
 
@@ -95,45 +101,30 @@ Both audiences benefit from concrete examples. Agents follow examples more relia
 
 ### Use headings as retrieval anchors
 
-Agents search doc pages by heading. Make headings specific and descriptive. "Storage scopes" is better than "Details." "CLI commands" is better than "Usage."
+Agents search doc pages by heading. Make headings specific: "Storage scopes" over "Details", "CLI commands" over "Usage".
 
 ### Keep pages focused
 
-One concern per page, not one page per skill. A page about commands should not also cover architecture. A page about variables should not also cover eval writing.
+One concern per page. A page about commands should not also cover architecture. A page about variables should not also cover eval writing.
 
-### Index page structure
+## What belongs where
 
-The index page should:
-
-1. State what the skill does in one sentence.
-2. Explain the key concept or innovation.
-3. List the major topics with brief descriptions.
-4. Link to the relevant reference pages.
-
-## Multi-page organization
-
-For skills with substantial documentation, organize pages by concern:
-
-| Page | Content |
-|------|---------|
-| `index.md` | Overview, key concepts, navigation |
-| `directory-structure.md` | File layout reference |
-| `variables.md` | Variable schema, types, scopes, CLI |
-| `documentation.md` | How to write docs (this pattern) |
-| `commands.md` | CLI command reference |
-| `troubleshooting.md` | Common issues and solutions |
-
-Use the `order` frontmatter field to control sidebar sort order. Number sequentially starting from 1.
-
-## What belongs in docs vs SKILL.md
-
-| Content | Where it goes |
-|---------|--------------|
+| Content | Location |
+|---------|----------|
 | Direct instructions the agent follows every time | SKILL.md |
+| Quick variable summary (3-5 lines) | SKILL.md |
+| Links to reference pages | SKILL.md |
 | Variable reference tables | references/docs/ |
 | Setup and installation guides | references/docs/ |
 | Detailed examples and walkthroughs | references/docs/ |
 | Background context and rationale | references/docs/ |
 | Troubleshooting guides | references/docs/ |
-| Quick variable summary (3-5 lines) | SKILL.md |
-| Links to reference pages | SKILL.md |
+
+## Index page structure
+
+The index page should:
+
+1. State what the skill does in one sentence.
+2. Explain the key concept or approach.
+3. List major topics with brief descriptions.
+4. Link to relevant reference pages.

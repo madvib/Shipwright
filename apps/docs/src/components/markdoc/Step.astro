@@ -1,0 +1,59 @@
+---
+const { title, icon } = Astro.props;
+---
+<div class="ship-step">
+  <div class="ship-step-inner">
+    <div class="ship-step-title">
+      {icon && <span class="ship-step-icon">{icon}</span>}{title}
+    </div>
+    <div class="ship-step-body"><slot /></div>
+  </div>
+  <div class="ship-step-arrow">→</div>
+</div>
+
+<style>
+  .ship-step {
+    flex: 1;
+    min-width: 150px;
+    position: relative;
+    display: flex;
+  }
+  .ship-step-inner {
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .ship-step-title {
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    color: var(--sl-color-accent);
+  }
+  .ship-step-icon {
+    margin-right: 0.25rem;
+  }
+  .ship-step-body {
+    font-size: 0.8rem;
+    color: var(--sl-color-gray-2);
+    flex: 1;
+  }
+  .ship-step-body :global(p) {
+    margin: 0;
+  }
+  .ship-step-arrow {
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--sl-color-gray-3);
+    font-size: 1.2rem;
+    z-index: 1;
+  }
+  .ship-step:last-child .ship-step-arrow {
+    display: none;
+  }
+</style>

@@ -1,242 +1,106 @@
 ---
-group: MCP
-title: Tool Reference
-description: Complete reference for every Ship MCP tool with parameter tables, grouped by domain.
-section: reference
+group: MCP Tools
 order: 2
+title: Tool Reference
+description: Every MCP tool with parameters, grouped by domain. Stable and unstable tools marked.
 ---
 
 # Tool Reference
 
-Every Ship MCP tool with its parameters. Parameter names map directly to JSON fields in tool calls.
+Stable tools are always compiled in. Unstable tools require the `unstable` feature flag.
 
-## Project
+## Project (stable)
 
-### open_project
-Register the active project. Call once per session.
+**open_project** -- `path` (string, required). Set the active project.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `path` | string | yes | Absolute path to the project root |
+**set_agent** -- `id` (string, optional). Activate an agent profile or clear it.
 
-## Notes and ADRs
+## Studio Sync (stable)
 
-### create_note
-Create a project note -- cross-session records for decisions, blockers, or signals.
+**pull_agents** -- no params. Returns all local agents with resolved skills, rules, MCP configs.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `title` | string | yes | Note title |
-| `content` | string | no | Markdown content |
-| `branch` | string | no | Git branch to associate with this note |
+**list_local_agents** -- no params. Returns agent profile IDs in `.ship/agents/`.
 
-### update_note
-Replace the content of an existing note.
+**push_bundle** -- `bundle` (string, required). Write a TransferBundle JSON string to `.ship/`.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | yes | Note ID (nanoid returned by `create_note`) |
-| `content` | string | yes | Full replacement markdown content |
-| `scope` | string | no | `project` (default) or `user` |
+## Workspaces (stable)
 
-### create_adr
-Record an Architecture Decision Record for decisions with real alternatives.
+**create_workspace** -- `name` (string, required), `kind` (string, required: imperative/declarative/service), `branch` (optional, derived from name), `base_branch` (optional, default: main), `file_scope` (optional), `preset_id` (optional).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `title` | string | yes | Short, specific title (e.g. "Use D1 for cloud state") |
-| `decision` | string | yes | Full decision text: context, alternatives, consequences |
+**activate_workspace** -- `branch` (string, required), `agent_id` (optional).
 
-## Workspaces
+**complete_workspace** -- `workspace_id` (string, required), `summary` (string, required, written to handoff.md), `prune_worktree` (boolean, optional, default: true for imperative).
 
-Each workspace corresponds to a git worktree (imperative/declarative) or a standing service branch.
+**list_workspaces** -- `status` (optional: active/idle/archived).
 
-### create_workspace
-Create a new workspace and its git worktree.
+**list_stale_worktrees** -- `idle_hours` (integer, optional, default: 24).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Human-readable workspace name |
-| `kind` | string | yes | `imperative`, `declarative`, or `service` |
-| `branch` | string | no | Branch name (derived from name if omitted) |
-| `base_branch` | string | no | Base branch for worktree (default: `main`) |
-| `file_scope` | string | no | Paths this workspace may edit (e.g. `crates/`) |
-| `preset_id` | string | no | Agent profile to activate in this workspace |
+## Sessions (stable)
 
-### activate_workspace
-Mark a workspace active. `branch` (string, required), optional `agent_id`.
+**start_session** -- `branch` (optional, resolves from git), `goal` (optional), `agent_id` (optional), `provider_id` (optional).
 
-### complete_workspace
-Mark workspace complete. `workspace_id` (required), `summary` (required, written to handoff.md), optional `prune_worktree` (bool, default true for imperative).
+**end_session** -- `branch` (optional), `summary` (optional), `files_changed` (integer, optional), `model` (optional), `gate_result` (optional: pass/fail), `updated_workspace_ids` (string[], optional).
 
-### list_workspaces
-Optional `status` filter: `active`, `idle`, `archived`.
+**log_progress** -- `note` (string, required), `branch` (optional).
 
-### list_stale_worktrees
-Optional `idle_hours` (integer, default: 24).
+## Skills (stable)
 
-### set_agent
-Optional `id` (string) -- omit to clear active agent profile.
+**list_skills** -- `query` (optional substring filter).
 
-## Sessions
+**list_project_skills** -- `query` (optional). Returns all skills in `.ship/skills/` with full resolved content as PullSkill JSON.
 
-One active session per workspace. Sessions track agent activity.
+**write_skill_file** -- `skill_id` (string, required), `file_path` (string, required, relative within skill dir), `content` (string, required).
 
-### start_session
-Begin a session at the start of each agent visit.
+**delete_skill_file** -- `skill_id` (string, required), `file_path` (string, required). Refuses to delete SKILL.md.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `branch` | string | no | Workspace branch (resolves from git if omitted) |
-| `goal` | string | no | What this visit aims to accomplish |
-| `agent_id` | string | no | Agent profile override |
-| `provider_id` | string | no | Provider override (e.g. `claude`, `codex`) |
+**get_skill_vars** -- `skill_id` (string, required). Returns merged variable state.
 
-### end_session
-End the current session with a summary.
+**set_skill_var** -- `skill_id` (string, required), `key` (string, required), `value_json` (string, required, JSON-encoded).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `branch` | string | no | Workspace branch (resolves from git if omitted) |
-| `summary` | string | no | What was accomplished, what changed |
-| `files_changed` | integer | no | Count of files modified |
-| `model` | string | no | Model ID used during the session |
-| `gate_result` | string | no | Gate result: `pass`, `fail`, or null |
+**list_skill_vars** -- `skill_id` (optional). Lists skills with configurable variables.
 
-### log_progress
-Record a progress checkpoint. Requires an active session.
+## Events (stable)
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `note` | string | yes | What you did, decided, or got blocked on |
-| `branch` | string | no | Workspace branch (resolves from git if omitted) |
+**list_events** -- `since` (optional: ISO 8601 or relative like `1h`, `24h`, `7d`), `actor` (optional, substring), `entity` (optional: workspace/session/note/adr/etc.), `action` (optional: create/update/delete/start/stop), `limit` (optional, default 50, max 200).
 
-## Jobs
+## Notes and ADRs (unstable)
 
-The job queue coordinates work across agents and machines.
+**create_note** -- `title` (string, required), `content` (optional), `branch` (optional).
 
-### create_job
-Create a new job in the queue.
+**update_note** -- `id` (string, required, note filename), `content` (string, required), `scope` (optional: project/user).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `kind` | string | yes | `feature`, `fix`, `infra`, `test`, `review`, etc. |
-| `description` | string | yes | What needs to be done |
-| `branch` | string | no | Git branch for this job |
-| `assigned_to` | string | no | Agent id or workspace |
-| `requesting_workspace` | string | no | Workspace that requested this job |
-| `priority` | integer | no | Higher runs first (default 0) |
-| `blocked_by` | string | no | Job id that must complete first |
-| `touched_files` | string[] | no | Files this job intends to touch |
-| `file_scope` | string[] | no | Paths the agent may touch -- enforced by gate |
-| `acceptance_criteria` | string[] | no | Checklist items for the gate |
-| `capability_id` | string | no | Capability this job delivers |
-| `symlink_name` | string | no | Human-readable worktree label |
+**create_adr** -- `title` (string, required), `decision` (string, required).
 
-### update_job
-Update status, assignment, or priority.
+## Targets and Capabilities (unstable)
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | yes | Job id (or unique prefix) |
-| `status` | string | no | `pending`, `running`, `complete`, `failed` |
-| `assigned_to` | string | no | Reassign to a different agent |
-| `priority` | integer | no | Update scheduling priority |
-| `blocked_by` | string | no | Set or clear blocking job id |
-| `touched_files` | string[] | no | Replace the touched files list |
+**create_target** -- `kind` (string, required: milestone/surface), `title` (string, required), `description` (optional), `goal` (optional), `status` (optional: active/planned/complete/frozen), `phase` (optional), `due_date` (optional, ISO 8601), `body_markdown` (optional), `file_scope` (string[], optional).
 
-### list_jobs
-List jobs. Optional filters: `status` (`pending`/`running`/`complete`/`failed`), `branch`.
+**update_target** -- `id` (required), all other target fields optional (patch-style).
 
-### append_job_log
-Append a log message to a job.
+**list_targets** -- `kind` (optional: milestone/surface).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `job_id` | string | yes | Job id |
-| `message` | string | yes | Log message |
-| `level` | string | no | `info`, `warn`, or `error` |
+**get_target** -- `id` (string, required). Returns target with capability progress board.
 
-File ownership shorthand: `append_job_log(job_id, "touched: apps/web/src/foo.ts")` registers that file as owned by this job.
+**create_capability** -- `target_id` (string, required), `title` (string, required), `milestone_id` (optional), `phase` (optional), `acceptance_criteria` (string[], optional), `file_scope` (string[], optional), `assigned_to` (optional), `priority` (integer, optional).
 
-### claim_file
-Claim exclusive file ownership. `job_id` (required), `path` (required, relative to project root). Atomic, first-wins.
+**update_capability** -- `id` (required), optional: `title`, `status` (aspirational/in_progress/actual), `phase`, `acceptance_criteria`, `file_scope`, `assigned_to`, `priority`.
 
-### get_file_owner
-Look up which job owns a file. `path` (string, required).
+**delete_capability** -- `id` (string, required).
 
-## Skills
+**mark_capability_actual** -- `id` (string, required), `evidence` (string, required: test name, commit hash, or behavior).
 
-### list_skills
-List installed skills. Optional `query` (string) -- substring filter on id, name, or description.
+**list_capabilities** -- optional filters: `target_id`, `milestone_id`, `status`, `phase`.
 
-## Targets and Capabilities
+## Jobs (unstable)
 
-Targets are milestones or product surfaces. Capabilities are verifiable features belonging to a target.
+**create_job** -- `kind` (string, required), `description` (string, required), `branch` (optional), `assigned_to` (optional), `requesting_workspace` (optional), `priority` (integer, optional, higher runs first), `blocked_by` (optional, job id), `touched_files` (string[], optional), `file_scope` (string[], optional), `acceptance_criteria` (string[], optional), `capability_id` (optional), `symlink_name` (optional).
 
-### create_target
+**update_job** -- `id` (required), optional: `status` (pending/running/complete/failed), `assigned_to`, `priority`, `blocked_by`, `touched_files`.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `kind` | string | yes | `milestone` or `surface` |
-| `title` | string | yes | Short title |
-| `description` | string | no | Longer description |
-| `goal` | string | no | One-line north star goal |
-| `status` | string | no | `active`, `planned`, `complete`, `frozen` (default: `active`) |
-| `phase` | string | no | Current phase label |
-| `due_date` | string | no | ISO 8601 date (e.g. "2026-06-01") |
-| `body_markdown` | string | no | Long-form markdown body |
-| `file_scope` | string[] | no | File/directory paths owned by this target |
+**list_jobs** -- optional: `branch`, `status`.
 
-### list_targets
-List all targets. Optional `kind` filter: `milestone` or `surface`.
+**append_job_log** -- `job_id` (string, required), `message` (string, required), `level` (optional: info/warn/error).
 
-### get_target
-Get a target with its capability progress board. Takes `id` (string, required).
+**claim_file** -- `job_id` (string, required), `path` (string, required). Atomic, first-wins.
 
-### update_target
-Patch-style update. `id` (required). Optional: `title`, `description`, `goal`, `status`, `phase`, `due_date`, `body_markdown`, `file_scope` (string[]).
-
-### create_capability
-Add a capability to a target.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `target_id` | string | yes | Target this capability belongs to |
-| `title` | string | yes | Capability title |
-| `milestone_id` | string | no | Milestone this is required for |
-| `phase` | string | no | Phase grouping (e.g. "bootstrap", "core") |
-| `acceptance_criteria` | string[] | no | Checklist items that define "done" |
-| `file_scope` | string[] | no | File/directory scope |
-| `assigned_to` | string | no | Agent or workspace id |
-| `priority` | integer | no | Lower numbers run first (default 0) |
-
-### update_capability
-Patch-style update. `id` (required). Optional: `title`, `status` (`aspirational`/`in_progress`/`actual`), `phase`, `priority`, `acceptance_criteria` (string[]), `file_scope` (string[]), `assigned_to`.
-
-### mark_capability_actual
-Mark a capability as delivered. Evidence is required -- never mark without proof.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | yes | Capability id |
-| `evidence` | string | yes | Test name, commit hash, or observable behavior |
-
-### list_capabilities
-Filter by `target_id`, `milestone_id`, `status` (`aspirational`/`in_progress`/`actual`), or `phase`. All optional.
-
-### delete_capability
-Remove a capability. Takes `id` (string, required).
-
-## Events
-
-### list_events
-Query the append-only event log.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `since` | string | no | ISO 8601 or relative: `1h`, `24h`, `7d` |
-| `actor` | string | no | Filter by actor (substring) |
-| `entity` | string | no | `workspace`, `session`, `note`, `adr`, etc. |
-| `action` | string | no | `create`, `update`, `delete`, `start`, `stop`, etc. |
-| `limit` | integer | no | Max results (default 50, max 200) |
+**get_file_owner** -- `path` (string, required). Returns owning job id or "unclaimed".

@@ -1,11 +1,11 @@
 ---
 title: "Variables"
-description: "Complete reference for skill variables — vars.json schema, types, storage scopes, merge order, templates, CLI, and MCP tools."
+description: "vars.json schema, types, storage scopes, merge order, template syntax, CLI, and MCP tools."
 sidebar:
   label: "Variables"
   order: 3
 ---
-Variables make the same skill produce different output for different users and projects. They are declared in `assets/vars.json`, stored in `platform.db` KV, and resolved into SKILL.md at compile time via MiniJinja.
+Variables make the same skill produce different output for different users and projects. Declared in `assets/vars.json`, stored in `platform.db` KV, resolved into SKILL.md at compile time via MiniJinja.
 
 ## vars.json schema
 
@@ -29,16 +29,14 @@ Every key in `vars.json` (except `$schema`) defines one variable. The JSON Schem
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `type` | string | no | `"string"` | Variable type. Determines validation and UI control. |
+| `type` | string | no | `"string"` | Variable type. One of: `string`, `bool`, `enum`, `array`, `object`. |
 | `default` | any | no | none | Value used when no user state exists. Must match the declared type. |
 | `storage-hint` | string | no | `"global"` | Where user values are stored: `global`, `local`, or `project`. |
-| `values` | string[] | enum only | -- | Allowed values for enum type. Validated on set and at compile time. |
-| `label` | string | no | -- | Human-readable name. Shown in Studio UI and CLI output. |
-| `description` | string | no | -- | Longer explanation. Shown in Studio tooltips and the docs site. |
+| `values` | string[] | enum only | -- | Allowed values for enum type. Validated on `ship vars set`. |
+| `label` | string | no | -- | Human-readable name. Shown in Studio and CLI output. |
+| `description` | string | no | -- | Longer explanation. Shown in Studio tooltips and docs site. |
 
-No fields are technically required. A bare `{}` entry creates a string variable with no default.
-
-No additional properties are allowed beyond these six fields.
+No additional properties are allowed beyond these six fields. A bare `{}` entry creates a string variable with no default.
 
 ## Variable types
 
@@ -52,20 +50,22 @@ No additional properties are allowed beyond these six fields.
 
 ## Storage scopes
 
-All variable state lives in `platform.db` as key-value pairs. The `storage-hint` field determines which KV namespace a variable's user state is written to.
+All variable state lives in `platform.db` as key-value pairs. The `storage-hint` field determines which KV namespace receives user state.
 
 | Scope | KV namespace | Semantics | Use for |
 |-------|-------------|-----------|---------|
 | `global` | `skill_vars:{id}` | Machine-wide, all projects | Personal preferences (style, format) |
 | `local` | `skill_vars.local:{ctx}:{id}` | This project, personal only | Individual overrides |
-| `project` | `skill_vars.project:{ctx}:{id}` | This project, team-shared | Team conventions, tool config |
+| `project` | `skill_vars.project:{ctx}:{id}` | This project, team-shared | Team conventions |
 
 - `{id}` is the skill's `stable-id` (or directory name if no stable-id is set).
-- `{ctx}` is a stable 16-character hex token derived from the project path.
+- `{ctx}` is a stable 16-character hex token derived from the `.ship/` directory path.
+
+Each variable is read from and written to exactly the namespace matching its `storage-hint`. A global variable is only stored in the global namespace, a local variable only in the local namespace, and so on.
 
 ### Merge order
 
-Variable state is merged from four layers. Last wins.
+The runtime merges four layers when reading variable state. Last wins.
 
 ```
 defaults (vars.json "default" field)
@@ -74,23 +74,19 @@ defaults (vars.json "default" field)
       -> project (project-team KV)
 ```
 
-A project-scope value overrides everything. A global value overrides only the default.
+A project-scope value overrides everything. A global value overrides only the default. Variables without a default and without user state are absent from the merged result.
 
-## Template syntax (MiniJinja)
+## Template syntax
 
-SKILL.md is rendered as a MiniJinja (Jinja2-compatible) template. The engine is pure WASM with no file loader and no custom functions.
+SKILL.md is rendered as a MiniJinja template (Jinja2-compatible). The engine runs in Rust with chainable undefined behavior -- no file loader, no custom functions.
 
-### Substitution
+**Substitution.** Wrap a variable name in double curly braces to insert its value. Dot-path access works for object variables (e.g., `object_var.field`).
 
-Use double braces for variable substitution: `{{ variable_name }}` and `{{ object_var.field }}`.
+**Conditionals.** Use `if`/`elif`/`else`/`endif` blocks to conditionally include content. Supports boolean checks (render content when a variable is truthy) and equality checks (render content when a variable matches a specific string).
 
-### Conditionals
+**Loops.** Use `for`/`endfor` to iterate array variables. Each iteration has access to the current element.
 
-Use `if`/`elif`/`else`/`endif` blocks to branch on variable values. Example: `if sign_commits` renders signing instructions only when the variable is true. Equality checks like `commit_style == "gitmoji"` select format-specific content.
-
-### Loops
-
-Use `for`/`endfor` to iterate arrays. Example: `for author in co_authors` renders a `Co-Authored-By` trailer for each entry.
+**Note:** Template syntax uses double curly braces for substitution and percent-brace pairs for control flow. These are standard Jinja2 constructs processed by MiniJinja. Do not use these patterns in Markdoc files -- Markdoc will try to parse them.
 
 ### Truthiness
 
@@ -106,7 +102,7 @@ Use `for`/`endfor` to iterate arrays. Example: `for author in co_authors` render
 
 ### Error handling
 
-Undefined variables render as empty string (chainable undefined behavior). Template syntax errors cause the engine to fall back to the original unresolved content. A warning is printed to stderr.
+Undefined variables render as empty string. The engine uses MiniJinja's chainable undefined behavior, so accessing a field on an undefined value also returns empty rather than erroring. Template syntax errors cause the engine to fall back to the original unresolved content with a warning to stderr.
 
 ## CLI commands
 
@@ -114,42 +110,29 @@ The `ship vars` CLI reads and writes variable state with type validation.
 
 | Command | Description |
 |---------|-------------|
-| `ship vars get <skill-id>` | Show merged state for all variables (defaults + user overrides) |
+| `ship vars get <skill-id>` | Show merged state for all variables |
 | `ship vars get <skill-id> <key>` | Show merged value for a single variable |
-| `ship vars set <skill-id> <key> <value>` | Set a variable value. Routes to the correct scope based on `storage-hint`. Validates type and enum constraints. |
-| `ship vars append <skill-id> <key> '<json>'` | Append a value to an array variable |
-| `ship vars reset <skill-id>` | Clear all user state for a skill, reverting to defaults |
-
-Type validation happens on `set`. Enum values are checked against the `values` list. Bool accepts `true`/`false`.
+| `ship vars set <skill-id> <key> <value>` | Set a variable. Routes to correct scope. Validates type and enum constraints. |
+| `ship vars append <skill-id> <key> '<json>'` | Append to an array variable |
+| `ship vars reset <skill-id>` | Clear all user state for the skill across all three scopes, reverting to defaults |
 
 ## MCP tools
 
-Agents interact with variables through these MCP tools. They use the same validation and storage paths as the CLI.
+Agents interact with variables through these MCP tools.
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `get_skill_vars` | `skill_id` | Returns merged variable state for a skill |
 | `set_skill_var` | `skill_id`, `key`, `value` | Writes a single variable value |
-| `list_skill_vars` | (none) | Lists all skills that have configured variables |
+| `list_skill_vars` | (none) | Lists all skills that have `assets/vars.json` with their merged state |
 
 Two additional tools manage skill files on disk:
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `write_skill_file` | `skill_id`, `path`, `content` | Write a file into a skill directory |
-| `delete_skill_file` | `skill_id`, `path` | Delete a file from a skill directory |
+| `delete_skill_file` | `skill_id`, `path` | Delete a file from a skill directory (cannot delete SKILL.md) |
 
 ## Content hashing
 
-When publishing, Ship hashes the skill directory tree (SKILL.md, assets/, references/, evals/). User variable state in `platform.db` KV is explicitly excluded from the hash. This means:
-
-- Changing SKILL.md content or vars.json schema changes the publish hash (new version).
-- A user setting their variable values does NOT change the hash (not a new version).
-
-## Planned features
-
-**Planned -- not yet available in stable releases.**
-
-- **Declarative migrations**: A `migrations.json` file in skill assets with JSON ops (rename, set_default, delete, change_type) applied on `ship install`/`ship update`.
-- **Computed/dynamic vars**: Environment variable injection (`{{ env.ANTHROPIC_MODEL }}`), git context (`{{ git.branch }}`), agent-written state via MCP.
-- **Compile-time enum validation**: Currently enum values are only validated on `ship vars set`. Compile-time validation is planned.
+When publishing, Ship hashes the skill directory tree (SKILL.md, assets/, references/, evals/). User variable state in `platform.db` is excluded from the hash. Changing SKILL.md or vars.json schema produces a new version. Changing user variable values does not.

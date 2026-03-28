@@ -1,0 +1,24 @@
+---
+---
+<div class="ship-cards">
+  <slot />
+</div>
+
+<style is:global>
+  .ship-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .ship-cards > p {
+    display: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  @media (min-width: 768px) {
+    .ship-cards:has(> :nth-child(5)) {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

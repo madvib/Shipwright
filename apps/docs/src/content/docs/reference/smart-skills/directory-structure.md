@@ -1,11 +1,13 @@
 ---
-title: "Skill Directory Structure"
-description: "Complete reference for every file and directory in a Ship smart skill."
+title: "Directory Structure"
+description: "Complete layout of a smart skill directory with every file explained."
 sidebar:
-  label: "Skill Directory Structure"
+  label: "Directory Structure"
   order: 2
 ---
-Every smart skill is a directory under `.ship/skills/`. The directory name is the skill id. The canonical layout:
+Every skill is a directory under `.ship/skills/`. The directory name is the skill id. Additional skill directories can be configured in `ship.jsonc` via `project.skill_paths` (relative to `.ship/`). The default is `skills/`.
+
+## Canonical layout
 
 ```
 .ship/skills/{skill-id}/
@@ -23,99 +25,60 @@ Every smart skill is a directory under `.ship/skills/`. The directory name is th
     evals.json
 ```
 
-## File-by-file reference
+## SKILL.md
 
-### SKILL.md
+The skill's agent instructions. Always loaded into the agent's context window at startup. This is the only required file.
 
-The skill's agent instructions. This file is always loaded into the agent's context window at startup. It is the only required file.
+Starts with YAML frontmatter delimited by `---`. Body is Markdown, optionally with MiniJinja template syntax when `assets/vars.json` is present. Keep under 100 lines.
 
-- Starts with YAML frontmatter (delimited by `---`).
-- Body is Markdown, optionally with MiniJinja template syntax.
-- Keep under 100 lines. Agents lose focus in long prompts.
-
-#### Frontmatter fields
+### Frontmatter fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | yes | Human-readable skill name. Must match the directory name. Lowercase, hyphens, digits, 1-64 chars. |
-| `stable-id` | no | Storage key for variable state. Must match `[a-z0-9][a-z0-9\-]*`. Defaults to directory name if omitted. Survives directory renames. |
-| `description` | yes | One sentence starting with "Use when..." to help trigger matching. Agents scan this to decide relevance. |
-| `tags` | no | Category labels for discovery. Bracket-delimited YAML list. |
-| `authors` | no | Who wrote the skill. Bracket-delimited YAML list. |
-| `license` | no | SPDX license identifier (e.g., `MIT`, `Apache-2.0`). |
-| `compatibility` | no | Comma-separated provider names. Omit for universal compatibility. |
-| `allowed-tools` | no | Space-delimited MCP tool names the skill requires. Used for permission auditing. |
+| `name` | yes | Human-readable name. Lowercase, hyphens, digits, 1-64 chars. |
+| `stable-id` | no | Storage key for variable state. Pattern: `[a-z0-9][a-z0-9\-]*`. Defaults to directory name. Survives renames. |
+| `description` | yes | One sentence starting with "Use when..." for trigger matching. |
+| `tags` | no | Category labels for discovery. YAML list. |
+| `authors` | no | Who wrote the skill. YAML list. |
+| `license` | no | SPDX identifier (e.g., `MIT`, `Apache-2.0`). |
+| `compatibility` | no | Comma-separated provider names. Omit for universal. |
+| `allowed-tools` | no | Space-delimited MCP tool names the skill requires. |
 
-### assets/
+## assets/
 
-Contains bundled resources the skill depends on.
+Bundled resources the skill depends on.
 
-#### assets/vars.json
+### assets/vars.json
 
-Declares typed configuration variables with defaults and storage scopes. The presence of this file activates MiniJinja template resolution for SKILL.md.
+Declares typed configuration variables with defaults and storage scopes. The presence of this file activates MiniJinja template resolution for SKILL.md. See the [Variables](variables.md) reference for the complete schema.
 
-```json
-{
-  "$schema": "https://getship.dev/schemas/vars.schema.json",
-  "variable_name": {
-    "type": "enum",
-    "default": "value",
-    "storage-hint": "global",
-    "values": ["value", "other"],
-    "label": "Human Name",
-    "description": "What this controls."
-  }
-}
-```
+### assets/templates/
 
-See the [Variables](variables.md) reference for the complete schema.
+Reusable config snippets or boilerplate files. Referenced from SKILL.md instructions. Not processed by the template engine -- these are files the agent copies or adapts during work.
 
-#### assets/templates/
+## scripts/
 
-Reusable config snippets or boilerplate files. Referenced from SKILL.md instructions. Not processed by the template engine -- these are files the agent copies or adapts during its work.
+Helper scripts that SKILL.md instructs the agent to run. Shell scripts, Python scripts, or any executable. Referenced by relative path from SKILL.md. The skill directory is self-contained.
 
-### scripts/
-
-Helper scripts that SKILL.md instructs the agent to run. These are executable files (shell scripts, Python scripts, etc.) that support the skill's workflow.
-
-Scripts are referenced by relative path from SKILL.md. The skill directory is self-contained -- everything the skill needs is co-located.
-
-### references/
+## references/
 
 Supporting material not loaded into the agent's context by default.
 
-#### references/docs/
+### references/docs/
 
-Documentation pages in Markdown (`.md`) or Markdoc (`.mdoc`) format. Serves two audiences: humans browsing a docs site and agents retrieving context on demand.
+Documentation pages in Markdown (`.md`) or Markdoc (`.mdoc`). Serves two audiences: humans on a docs site and agents reading from the filesystem. See the [Skill Documentation](documentation.md) reference.
 
 - `index.md` is the landing page. Always create this first.
-- Additional pages cover specific concerns (commands, patterns, troubleshooting).
-- Each page has YAML frontmatter with `title`, `section`, `order`, and optional `audience` and `description`.
+- Additional pages cover one concern each.
+- Each page has YAML frontmatter with `title`, `order`, and optional `group`, `description`, `audience`, `section`.
 
-See the [Skill Documentation](documentation.md) reference for frontmatter details.
+### references/api/
 
-#### references/api/
+API tables, external specs, and machine-readable reference data. For skills that document external APIs or protocols.
 
-API tables, external specs, and machine-readable reference data. Used for skills that document external APIs or protocols.
+## evals/evals.json
 
-### evals/
-
-#### evals/evals.json
-
-Eval test cases that measure whether the skill reliably improves agent output. Each case defines a prompt, expected outcome, and optional assertions.
-
-```json
-{
-  "evals": [
-    {
-      "id": "eval-descriptive-name",
-      "prompt": "Realistic user message",
-      "expected": "Description of successful output",
-      "assertions": ["Verifiable statement about the output"]
-    }
-  ]
-}
-```
+Eval test cases that measure whether the skill improves agent output. Each case defines a prompt, expected outcome, and optional assertions.
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -123,10 +86,9 @@ Eval test cases that measure whether the skill reliably improves agent output. E
 | `prompt` | yes | Realistic user message. |
 | `expected` | yes | Human-readable description of success. |
 | `assertions` | no | Verifiable statements for grading. |
-| `vars` | no | Variable overrides for this eval case. |
 | `input_files` | no | Files needed in the eval workspace (relative paths). |
 
-**Planned -- not yet available in stable releases.** The `evals/evals.json` structure is defined, but `ship skill eval` tooling to run evals automatically is not yet implemented. Until then, evals are run manually or with a subagent per case.
+**Note:** The `evals/evals.json` structure is defined, but `ship skill eval` tooling to run evals automatically is not yet implemented.
 
 ## Minimal skill
 
@@ -141,10 +103,10 @@ Add `assets/vars.json` when the skill needs user configuration. Add `references/
 
 ## Naming rules
 
-Skill ids (directory names) must be:
+Skill ids (directory names) must be lowercase alphanumeric with hyphens, 1-64 characters. No leading, trailing, or consecutive hyphens. Pattern: `[a-z0-9][a-z0-9\-]*`.
 
-- Lowercase alphanumeric with hyphens
-- 1-64 characters
-- No leading or trailing hyphens
-- No consecutive hyphens
-- Pattern: `[a-z0-9][a-z0-9\-]*`
+## Skill discovery
+
+The runtime resolves skill directories from `project.skill_paths` in `ship.jsonc`. Paths are relative to `.ship/`. Absolute paths are rejected. If the field is absent or empty, the default `skills/` is used.
+
+When multiple skill paths are configured, the first directory containing a given skill id wins. This allows layering project-specific skills over shared ones.
