@@ -35,24 +35,6 @@ pub type WorkspaceDbListRow = (
     Option<String>, // 14: compile_error
 );
 
-pub struct WorkspaceUpsert<'a> {
-    pub branch: &'a str,
-    pub workspace_id: &'a str,
-    pub workspace_type: &'a str,
-    pub status: &'a str,
-    pub active_agent: Option<&'a str>,
-    pub providers: &'a [String],
-    pub mcp_servers: &'a [String],
-    pub skills: &'a [String],
-    pub is_worktree: bool,
-    pub worktree_path: Option<&'a str>,
-    pub last_activated_at: Option<&'a str>,
-    pub context_hash: Option<&'a str>,
-    pub config_generation: i64,
-    pub compiled_at: Option<&'a str>,
-    pub compile_error: Option<&'a str>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceSessionDb {
     pub id: String,

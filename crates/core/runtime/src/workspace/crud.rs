@@ -1,8 +1,5 @@
 use crate::db::branch_context::clear_branch_link;
-use crate::db::types::WorkspaceUpsert;
-use crate::db::workspace_state::{
-    delete_workspace_db, get_workspace_db, list_workspaces_db, upsert_workspace_db,
-};
+use crate::db::workspace_state::{delete_workspace_db, get_workspace_db, list_workspaces_db};
 use super::event_upserts::upsert_workspace_on_deleted;
 use anyhow::{Result, anyhow};
 use std::path::Path;
@@ -113,44 +110,12 @@ pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
 
 pub fn delete_workspace(ship_dir: &Path, branch: &str) -> Result<()> {
     let branch = ensure_branch_key(branch)?;
-    upsert_workspace_on_deleted(ship_dir, branch)?;
-    clear_branch_link(branch)?;
+    // Clean up sessions and DB row before emitting the event, since the
+    // projection handler also deletes the workspace row.
     let _ = delete_workspace_db(branch)?;
+    clear_branch_link(branch)?;
+    upsert_workspace_on_deleted(ship_dir, branch)?;
     Ok(())
-}
-
-pub fn upsert_workspace(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
-    let workspace_id = if workspace.id.trim().is_empty() {
-        workspace_id_from_branch(&workspace.branch)
-    } else {
-        workspace.id.clone()
-    };
-
-    let workspace_type = workspace.workspace_type.to_string();
-    let status = workspace.status.to_string();
-    let last_activated_at = workspace
-        .last_activated_at
-        .as_ref()
-        .map(|ts| ts.to_rfc3339());
-    let compiled_at = workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339());
-
-    upsert_workspace_db(WorkspaceUpsert {
-        branch: &workspace.branch,
-        workspace_id: &workspace_id,
-        workspace_type: &workspace_type,
-        status: &status,
-        active_agent: workspace.active_agent.as_deref(),
-        providers: &workspace.providers,
-        mcp_servers: &workspace.mcp_servers,
-        skills: &workspace.skills,
-        is_worktree: workspace.is_worktree,
-        worktree_path: workspace.worktree_path.as_deref(),
-        last_activated_at: last_activated_at.as_deref(),
-        context_hash: workspace.context_hash.as_deref(),
-        config_generation: workspace.config_generation,
-        compiled_at: compiled_at.as_deref(),
-        compile_error: workspace.compile_error.as_deref(),
-    })
 }
 
 // ---- Provider matrix / repair (public) -------------------------------------

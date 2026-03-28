@@ -81,10 +81,9 @@ pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
 pub use db::session::get_workspace_session_record_db;
 pub use db::types::{
     AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb, WorkspaceSessionDb,
-    WorkspaceSessionRecordDb, WorkspaceUpsert,
+    WorkspaceSessionRecordDb,
 };
 pub use db::workspace_db::{open_workspace_db, workspace_db_path};
-pub use db::workspace_state::upsert_workspace_db;
 
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,

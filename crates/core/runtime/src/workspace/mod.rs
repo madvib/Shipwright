@@ -42,7 +42,6 @@ pub use crud::{
     delete_workspace, get_workspace, get_workspace_provider_matrix, list_workspaces,
     repair_workspace,
 };
-pub(crate) use crud::upsert_workspace;
 pub use event_upserts::{
     emit_workspace_archived_event, upsert_workspace_on_activate, upsert_workspace_on_archived,
     upsert_workspace_on_compile_failed, upsert_workspace_on_compiled, upsert_workspace_on_created,

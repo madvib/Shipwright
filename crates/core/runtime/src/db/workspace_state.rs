@@ -3,11 +3,10 @@
 //! These functions are used by `crate::workspace` for all workspace lifecycle
 //! operations.  They write to the unified `workspace` table in platform.db.
 
-use anyhow::{Context, Result};
-use chrono::Utc;
+use anyhow::Result;
 use sqlx::Row;
 
-use super::types::{WorkspaceDbListRow, WorkspaceDbRow, WorkspaceUpsert};
+use super::types::{WorkspaceDbListRow, WorkspaceDbRow};
 use super::{block_on, open_db};
 
 /// Retrieve the workspace record for the given branch, or None if none exists.
@@ -125,63 +124,6 @@ pub fn list_workspaces_db() -> Result<Vec<WorkspaceDbListRow>> {
     Ok(result)
 }
 
-/// Upsert the workspace record for the given branch.
-pub fn upsert_workspace_db(record: WorkspaceUpsert<'_>) -> Result<()> {
-    let mut conn = open_db()?;
-    let now = Utc::now().to_rfc3339();
-    let providers_json = serde_json::to_string(record.providers)
-        .with_context(|| "Failed to serialize workspace providers")?;
-    let mcp_servers_json = serde_json::to_string(record.mcp_servers)
-        .with_context(|| "Failed to serialize workspace mcp servers")?;
-    let skills_json = serde_json::to_string(record.skills)
-        .with_context(|| "Failed to serialize workspace skills")?;
-    block_on(async {
-        sqlx::query(
-            "INSERT INTO workspace (branch, id, workspace_type, status, active_agent, \
-             providers_json, mcp_servers_json, skills_json, is_worktree, worktree_path, \
-             last_activated_at, context_hash, config_generation, compiled_at, compile_error, \
-             created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
-             ON CONFLICT(branch) DO UPDATE SET \
-               id                = excluded.id, \
-               workspace_type    = excluded.workspace_type, \
-               status            = excluded.status, \
-               active_agent      = excluded.active_agent, \
-               providers_json    = excluded.providers_json, \
-               mcp_servers_json  = excluded.mcp_servers_json, \
-               skills_json       = excluded.skills_json, \
-               is_worktree       = excluded.is_worktree, \
-               worktree_path     = excluded.worktree_path, \
-               last_activated_at = excluded.last_activated_at, \
-               context_hash      = excluded.context_hash, \
-               config_generation = excluded.config_generation, \
-               compiled_at       = excluded.compiled_at, \
-               compile_error     = excluded.compile_error, \
-               updated_at        = excluded.updated_at",
-        )
-        .bind(record.branch)
-        .bind(record.workspace_id)
-        .bind(record.workspace_type)
-        .bind(record.status)
-        .bind(record.active_agent)
-        .bind(&providers_json)
-        .bind(&mcp_servers_json)
-        .bind(&skills_json)
-        .bind(if record.is_worktree { 1i64 } else { 0i64 })
-        .bind(record.worktree_path)
-        .bind(record.last_activated_at)
-        .bind(record.context_hash)
-        .bind(record.config_generation)
-        .bind(record.compiled_at)
-        .bind(record.compile_error)
-        .bind(&now)
-        .bind(&now)
-        .execute(&mut conn)
-        .await
-    })?;
-    Ok(())
-}
-
 /// Delete workspace state for a branch, including any session history.
 pub fn delete_workspace_db(branch: &str) -> Result<bool> {
     let mut conn = open_db()?;
@@ -220,7 +162,7 @@ pub fn delete_workspace_db(branch: &str) -> Result<bool> {
 ///
 /// Emits a `workspace.archived` event per demoted workspace.
 pub fn demote_other_active_workspaces_db(active_branch: &str) -> Result<()> {
-    use crate::db::workspace_events::insert_workspace_archived_event;
+    use crate::db::workspace_events::emit_workspace_archived;
 
     let mut conn = open_db()?;
     // Collect branches to demote before mutating.
@@ -242,7 +184,7 @@ pub fn demote_other_active_workspaces_db(active_branch: &str) -> Result<()> {
                 .execute(&mut conn2)
                 .await
         })?;
-        insert_workspace_archived_event(branch)?;
+        emit_workspace_archived(branch, &crate::events::types::WorkspaceArchived {})?;
     }
 
     Ok(())

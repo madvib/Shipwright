@@ -71,6 +71,8 @@ impl Projection for WorkspaceProjection {
 /// workspace.created payload must carry enough to INSERT the full row.
 #[derive(serde::Deserialize)]
 struct CreatedPayload {
+    #[serde(default)]
+    workspace_id: Option<String>,
     workspace_type: String,
     status: String,
     #[serde(default)]
@@ -90,20 +92,32 @@ struct CreatedPayload {
 fn apply_created(entity_id: &str, payload_json: &str, conn: &mut SqliteConnection) -> Result<()> {
     let p: CreatedPayload = serde_json::from_str(payload_json)?;
     let now = chrono::Utc::now().to_rfc3339();
+    let workspace_id = p.workspace_id.as_deref().unwrap_or(entity_id);
     let providers = serde_json::to_string(&p.providers)?;
     let mcp_servers = serde_json::to_string(&p.mcp_servers)?;
     let skills = serde_json::to_string(&p.skills)?;
     block_on(async {
         sqlx::query(
-            "INSERT OR IGNORE INTO workspace \
+            "INSERT INTO workspace \
              (branch, id, workspace_type, status, active_agent, \
               providers_json, mcp_servers_json, skills_json, \
               is_worktree, worktree_path, config_generation, \
               created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?) \
+             ON CONFLICT(branch) DO UPDATE SET \
+               id               = excluded.id, \
+               workspace_type   = excluded.workspace_type, \
+               status           = excluded.status, \
+               active_agent     = excluded.active_agent, \
+               providers_json   = excluded.providers_json, \
+               mcp_servers_json = excluded.mcp_servers_json, \
+               skills_json      = excluded.skills_json, \
+               is_worktree      = excluded.is_worktree, \
+               worktree_path    = excluded.worktree_path, \
+               updated_at       = excluded.updated_at",
         )
         .bind(entity_id)
-        .bind(entity_id) // id = entity_id for now
+        .bind(workspace_id)
         .bind(&p.workspace_type)
         .bind(&p.status)
         .bind(&p.active_agent)

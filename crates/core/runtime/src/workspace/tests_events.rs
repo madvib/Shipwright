@@ -212,17 +212,16 @@ mod tests {
         Ok(())
     }
 
-    // ── test 6: atomicity — event insert failure rolls back workspace write ───
+    // ── test 6: atomicity — event insert failure prevents projection write ───
     //
     // Add a BEFORE INSERT trigger that raises for any event with actor_id equal
     // to "atomicity-sentinel". Pass that string as the branch name so run_tx
-    // sets actor_id to the same value, forcing a failure after the workspace
-    // upsert. The workspace row must not be present after the rollback.
+    // sets actor_id to the same value, forcing a failure. Since the event is
+    // never committed, the projection never runs and no workspace row appears.
 
     #[test]
-    fn event_insert_failure_rolls_back_workspace_write() -> Result<()> {
-        use crate::db::types::WorkspaceUpsert;
-        use crate::db::workspace_events::upsert_workspace_activated;
+    fn event_insert_failure_prevents_workspace_write() -> Result<()> {
+        use crate::db::workspace_events::emit_workspace_activated;
         use crate::events::types::WorkspaceActivated;
 
         let (_tmp, _ship_dir) = setup();
@@ -244,38 +243,19 @@ mod tests {
         drop(conn);
 
         let sentinel_branch = "atomicity-sentinel";
-        let empty: Vec<String> = vec![];
         let payload = WorkspaceActivated {
             agent_id: None,
             providers: vec![],
         };
-        let result = upsert_workspace_activated(
-            WorkspaceUpsert {
-                branch: sentinel_branch,
-                workspace_id: "ws-atomicity-sentinel",
-                workspace_type: "feature",
-                status: "active",
-                active_agent: None,
-                providers: &empty,
-                mcp_servers: &empty,
-                skills: &empty,
-                is_worktree: false,
-                worktree_path: None,
-                last_activated_at: None,
-                context_hash: None,
-                config_generation: 0,
-                compiled_at: None,
-                compile_error: None,
-            },
-            &payload,
-        );
+        let result = emit_workspace_activated(sentinel_branch, &payload);
 
         assert!(
             result.is_err(),
             "transaction must fail when event INSERT is blocked by trigger"
         );
 
-        // The workspace row for the sentinel branch must NOT have been committed.
+        // No workspace row should exist — the event was never committed,
+        // so the projection never ran.
         let mut conn2 = open_db_at(&db)?;
         let count: i64 = block_on(async {
             sqlx::query_scalar("SELECT COUNT(*) FROM workspace WHERE branch = ?")
@@ -285,7 +265,7 @@ mod tests {
         })?;
         assert_eq!(
             count, 0,
-            "workspace row must be rolled back when event INSERT fails; got {count} rows"
+            "workspace row must not exist when event INSERT fails; got {count} rows"
         );
 
         Ok(())

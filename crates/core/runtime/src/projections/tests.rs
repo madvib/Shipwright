@@ -27,6 +27,7 @@ mod tests {
             event_types::WORKSPACE_CREATED,
             branch,
             &serde_json::json!({
+                "workspace_id": branch,
                 "workspace_type": "feature",
                 "status": "active",
                 "active_agent": null,
