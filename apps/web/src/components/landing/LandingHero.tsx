@@ -25,10 +25,7 @@ export function LandingHero() {
         <h1 className="mb-4 font-display text-5xl font-extrabold leading-[1.08] tracking-[-0.03em] sm:text-7xl">
           {"Don't vibe."}
           <br />
-          <span className="text-primary" aria-label="Ship.">
-            <img src="/ship-logos/ship_logo.svg" alt="" className="inline size-12 sm:size-16 mr-2 -mt-2 align-baseline" aria-hidden="true" />
-            {'.'}
-          </span>
+          <span className="text-primary">Ship.</span>
         </h1>
 
         {/* Subhead */}

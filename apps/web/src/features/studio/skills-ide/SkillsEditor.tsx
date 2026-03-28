@@ -98,7 +98,7 @@ export function SkillsEditor({
     return (
       <EmptyState
         icon={<Terminal className="size-10 opacity-50" />}
-        title="Connect to Ship CLI"
+        title="Connect to Ship CLI to manage your skills"
         subtitle="Start the CLI server, then Studio will sync automatically."
       >
         <code className="mt-3 inline-block rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">

@@ -115,7 +115,7 @@ export function SkillsFileExplorer({
         ) : (
           <>
             <SkillSection
-              label="Project"
+              label="Project Skills"
               icon={<FolderOpen className="size-3 text-muted-foreground" />}
               skills={projectSkills}
               activeTabId={activeTabId}
@@ -146,7 +146,7 @@ export function SkillsFileExplorer({
             {!isConnected && finalSkills.length === 0 && filteredSkills.length === 0 && (
               <div className="px-3.5 py-4 text-center">
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Connect to CLI to get started
+                  Connect to CLI to see your skills
                 </p>
               </div>
             )}
@@ -194,7 +194,7 @@ function SkillSection({
 
       {skills.length === 0 && (
         <p className="px-4 py-3 text-[11px] italic text-muted-foreground">
-          {searchQuery ? 'No matches.' : 'None yet.'}
+          {searchQuery ? 'No matches.' : 'No skills yet.'}
         </p>
       )}
 

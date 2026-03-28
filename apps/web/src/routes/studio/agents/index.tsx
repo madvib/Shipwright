@@ -42,9 +42,9 @@ function AgentsListPage() {
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">My Workspace</h1>
+            <h1 className="font-display text-2xl font-bold text-foreground">Agents</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {filtered.length} configured{filter !== 'all' ? ` (${filter})` : ''}
+              {filtered.length} agent{filtered.length !== 1 ? 's' : ''}{filter !== 'all' ? ` (${filter})` : ''}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -89,9 +89,9 @@ function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () =>
   if (isConnected) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <p className="text-sm font-medium text-foreground">No configurations found</p>
+        <p className="text-sm font-medium text-foreground">No agents found</p>
         <p className="mt-1 text-xs text-muted-foreground max-w-xs">
-          Your CLI is connected but no configurations exist yet. Create one to get started.
+          Your CLI is connected but no agents exist yet. Create one to get started.
         </p>
         <button
           onClick={onNew}
@@ -109,9 +109,9 @@ function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () =>
       <div className="flex size-12 items-center justify-center rounded-xl border border-border/60 bg-muted/40 mb-4">
         <Terminal className="size-5 text-muted-foreground" />
       </div>
-      <p className="text-sm font-medium text-foreground">Connect to CLI to get started</p>
+      <p className="text-sm font-medium text-foreground">Connect to CLI to see your agents</p>
       <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-        Configurations live in your local .ship/ directory and sync via the CLI.
+        Agents are configured in your local .ship/ directory and synced via the Ship CLI.
         Install the CLI, then click Connect in the dock.
       </p>
       <div className="mt-4 w-full rounded-lg border border-border bg-card/60 px-4 py-3">

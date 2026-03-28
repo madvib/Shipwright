@@ -4,8 +4,8 @@ import {
   createRootRouteWithContext,
   useRouterState,
 } from '@tanstack/react-router'
+import { lazy, Suspense } from 'react'
 import Footer from '../components/Footer'
-import Header from '../components/Header'
 
 import TanStackQueryProvider from '../integrations/tanstack-query/root-provider'
 
@@ -13,12 +13,13 @@ import appCss from '../styles.css?url'
 
 import type { QueryClient } from '@tanstack/react-query'
 
+const Header = lazy(() => import('../components/Header'))
+
 interface MyRouterContext {
   queryClient: QueryClient
 }
 
 const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='auto')?stored:'auto';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='auto'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);if(mode==='auto'){root.removeAttribute('data-theme')}else{root.setAttribute('data-theme',mode)}root.style.colorScheme=resolved;}catch(e){}})();`
-const WS_ERROR_SUPPRESS_SCRIPT = `(function(){window.onerror=function(msg){if(typeof msg==='string'&&msg.indexOf('WebSocket closed without opened')!==-1)return true;};})();`
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   head: () => ({
@@ -53,12 +54,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        <script dangerouslySetInnerHTML={{ __html: WS_ERROR_SUPPRESS_SCRIPT }} />
         <HeadContent />
       </head>
       <body className={`font-sans antialiased [overflow-wrap:anywhere] ${isStudio ? 'flex flex-col h-screen overflow-hidden' : 'min-h-screen flex flex-col'}`}>
         <TanStackQueryProvider>
-          {!isLanding && <Header />}
+          {!isLanding && (
+            <Suspense fallback={<div className="h-12 border-b border-border/60" />}>
+              <Header />
+            </Suspense>
+          )}
           <div className={isStudio ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'flex-1'}>
             {children}
           </div>

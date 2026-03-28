@@ -57,7 +57,6 @@ export function ThemeToggle({ variant = 'switch', className }: ThemeToggleProps)
   if (variant === 'icon') {
     return (
       <button
-        data-testid="theme-toggle"
         onClick={toggle}
         className={cn(
           'flex items-center justify-center size-8 rounded-md border border-border/60 bg-card text-muted-foreground transition hover:text-foreground hover:border-border',
@@ -71,7 +70,7 @@ export function ThemeToggle({ variant = 'switch', className }: ThemeToggleProps)
   }
 
   return (
-    <div data-testid="theme-toggle" className={cn('flex items-center gap-1 rounded-full border bg-muted/20 p-1', className)}>
+    <div className={cn('flex items-center gap-1 rounded-full border bg-muted/20 p-1', className)}>
       <div
         className={cn(
           'flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 transition-all',

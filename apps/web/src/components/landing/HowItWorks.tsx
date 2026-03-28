@@ -5,7 +5,7 @@ const STEPS = [
     num: '1',
     title: 'Define your agent',
     description:
-      'Pick skills, MCP servers, permissions, and rules in the Studio. Or import from an existing CLAUDE.md.',
+      'Pick skills, MCP servers, permissions, and rules in Ship Studio. Or import from an existing CLAUDE.md.',
   },
   {
     num: '2',
@@ -17,7 +17,7 @@ const STEPS = [
     num: '3',
     title: 'Activate',
     description: 'Run ',
-    cmd: 'agent use <name>',
+    cmd: 'ship use <agent>',
     descriptionAfter:
       ' to compile and emit config files on demand. Switch agents instantly.',
   },
@@ -56,7 +56,7 @@ export function HowItWorks() {
             </p>
             {step.num === '3' && (
               <div className="mt-2.5 rounded-md border border-border/60 bg-background/60 px-2.5 py-2 font-mono text-[10px] text-emerald-400">
-                $ agent use web-lane
+                $ ship use web-lane
               </div>
             )}
             {/* Arrow connector */}
