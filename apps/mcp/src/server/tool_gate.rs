@@ -18,6 +18,7 @@ impl ShipServer {
     }
 
     const PLATFORM_TOOLS: &[&str] = &[
+        "event",
         "open_project",
         "activate_workspace",
         "create_workspace",

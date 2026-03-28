@@ -240,6 +240,7 @@ fn stable_build_registers_only_platform_tools() {
     let server = ShipServer::new();
     let names = server.registered_tool_names();
     let expected: &[&str] = &[
+        "event",
         "open_project",
         "set_agent",
         "pull_agents",
@@ -303,10 +304,10 @@ fn unstable_build_registers_all_tools() {
             "{tool} missing from unstable router"
         );
     }
-    // 18 stable + 18 unstable
+    // 19 stable + 18 unstable
     assert_eq!(
         names.len(),
-        36,
+        37,
         "unstable build should register 36 tools, got: {:?}",
         names
     );

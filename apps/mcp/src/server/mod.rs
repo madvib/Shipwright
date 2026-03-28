@@ -11,7 +11,7 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{agent, events, project, session, skills, studio, workspace, workspace_ops};
+use crate::tools::{agent, event, events, project, session, skills, studio, workspace, workspace_ops};
 use skills::{get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool};
 
 #[cfg(feature = "unstable")]
@@ -286,6 +286,47 @@ impl ShipServer {
     }
 
     // ---- Events ----
+
+    #[tool(
+        description = "Emit a domain event. Reserved types (actor.*, session.*, skill.*, \
+        workspace.*, gate.*, job.*, config.*, project.*) are rejected. \
+        actor_id and workspace_id are injected from connection context — not agent-controlled."
+    )]
+    async fn event(&self, Parameters(req): Parameters<ShipEventRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let actor_id = runtime::get_active_agent(Some(project_dir.clone()))
+            .ok()
+            .flatten()
+            .map(|a| a.id)
+            .unwrap_or_else(|| "mcp".to_string());
+        let workspace_id =
+            tool_gate::current_branch(project_dir.parent().unwrap_or(&project_dir))
+                .unwrap_or_else(|_| "unknown".to_string());
+        let envelope = match event::handle_ship_event(
+            &actor_id,
+            &workspace_id,
+            &req.event_type,
+            req.payload,
+            req.elevated.unwrap_or(false),
+        ) {
+            Ok(e) => e,
+            Err(e) => return format!("Error: {}", e),
+        };
+        let store = match runtime::events::SqliteEventStore::new() {
+            Ok(s) => s,
+            Err(e) => return format!("Error initializing event store: {}", e),
+        };
+        if let Err(e) = runtime::events::EventStore::append(&store, &envelope) {
+            return format!("Error persisting event: {}", e);
+        }
+        match serde_json::to_string(&envelope) {
+            Ok(json) => json,
+            Err(_) => format!("Event emitted: {}", envelope.id),
+        }
+    }
 
     #[tool(
         description = "Query the project event log. Returns JSON array of events. \

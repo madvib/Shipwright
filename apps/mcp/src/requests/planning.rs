@@ -124,6 +124,17 @@ pub struct ListCapabilitiesRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct ShipEventRequest {
+    /// Domain event type, namespaced with a dot (e.g. "deployment.completed").
+    /// Reserved prefixes (actor.*, session.*, skill.*, workspace.*, gate.*, job.*, config.*, project.*) are rejected.
+    pub event_type: String,
+    /// Arbitrary JSON payload for the event.
+    pub payload: serde_json::Value,
+    /// Mark this event as elevated (supervisor-level). Default: false.
+    pub elevated: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct ListEventsRequest {
     /// Show events since this timestamp (ISO 8601) or relative ("1h", "24h", "7d")
     pub since: Option<String>,
