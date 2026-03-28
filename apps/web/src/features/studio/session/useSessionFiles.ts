@@ -5,7 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { sessionKeys } from './query-keys'
-import type { SessionFile } from './types'
+import type { SessionFile, UploadResult } from './types'
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
 
 function classifyFile(name: string): SessionFile['type'] {
   if (/\.html?$/i.test(name)) return 'html'
@@ -115,4 +117,48 @@ export function useSessionTodo() {
     writeTodo,
     isSaving: writeMutation.isPending,
   }
+}
+
+export function useDeleteSessionFile() {
+  const mcp = useLocalMcpContext()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (path: string) => {
+      if (!mcp) throw new Error('Not connected')
+      return mcp.callTool('delete_session_file', { path })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.files() })
+    },
+  })
+}
+
+export function useUploadSessionFile() {
+  const mcp = useLocalMcpContext()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (file: File): Promise<UploadResult> => {
+      if (!mcp) throw new Error('Not connected')
+      if (file.size > MAX_UPLOAD_BYTES) {
+        return { success: false, error: `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 10 MB.` }
+      }
+      const isImage = file.type.startsWith('image/')
+      let content: string
+      if (isImage) {
+        const buffer = await file.arrayBuffer()
+        const bytes = new Uint8Array(buffer)
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+        const base64 = btoa(binary)
+        content = `data:${file.type};base64,${base64}`
+      } else {
+        content = await file.text()
+      }
+      await mcp.callTool('write_session_file', { path: file.name, content })
+      return { success: true }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.files() })
+    },
+  })
 }

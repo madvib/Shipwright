@@ -1,10 +1,12 @@
 // Right sidebar showing session content in tabs: Artifacts, TODO, Annotations.
 // Compact styling with text-xs throughout and scrollable tab content.
 
-import { useState } from 'react'
-import { FileCode, Image, FileText, File, ChevronRight, PanelRightClose } from 'lucide-react'
+import { useState, useRef, useCallback } from 'react'
+import { FileCode, Image, FileText, File, ChevronRight, PanelRightClose, Plus } from 'lucide-react'
 import { SessionTodo } from './SessionTodo'
 import { AnnotationsList } from './AnnotationsList'
+import { ArtifactContextMenu } from './ArtifactContextMenu'
+import type { ArtifactMenuState } from './ArtifactContextMenu'
 import type { Annotation, SessionFile } from './types'
 
 type TabId = 'artifacts' | 'todo' | 'annotations'
@@ -16,6 +18,8 @@ interface SessionActivityProps {
   isConnected: boolean
   annotations: Annotation[]
   onSelectFile: (path: string) => void
+  onDeleteFile: (path: string) => void
+  onUploadFiles: (files: FileList) => void
   onRemoveAnnotation: (id: string) => void
   onExportAnnotations: () => void
   onClose: () => void
@@ -56,11 +60,15 @@ export function SessionActivity({
   isConnected,
   annotations,
   onSelectFile,
+  onDeleteFile,
+  onUploadFiles,
   onRemoveAnnotation,
   onExportAnnotations,
   onClose,
 }: SessionActivityProps) {
   const [activeTab, setActiveTab] = useState<TabId>('artifacts')
+  const [contextMenu, setContextMenu] = useState<ArtifactMenuState | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const sorted = [...files].sort((a, b) => b.modifiedAt - a.modifiedAt)
   const groups = groupByType(sorted)
 
@@ -70,14 +78,43 @@ export function SessionActivity({
     { id: 'annotations', label: 'Notes', count: annotations.length || undefined },
   ]
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, file: SessionFile) => {
+    e.preventDefault()
+    setContextMenu({ file, x: e.clientX, y: e.clientY })
+  }, [])
+
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onUploadFiles(e.target.files)
+      e.target.value = ''
+    }
+  }, [onUploadFiles])
+
   return (
     <div className="w-64 shrink-0 border-l border-border/60 bg-card/30 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border/60 px-2.5 py-1.5 shrink-0">
         <h3 className="text-[11px] font-semibold text-foreground">Activity</h3>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close activity panel">
-          <PanelRightClose className="size-3" />
-        </button>
+        <div className="flex items-center gap-1">
+          {isConnected && (
+            <button
+              onClick={handleUploadClick}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Upload file"
+              title="Upload file to session"
+            >
+              <Plus className="size-3" />
+            </button>
+          )}
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close activity panel">
+            <PanelRightClose className="size-3" />
+          </button>
+        </div>
+        <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileInputChange} multiple />
       </div>
 
       {/* Tab bar */}
@@ -101,19 +138,35 @@ export function SessionActivity({
       {/* Scrollable tab content */}
       <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
         {activeTab === 'artifacts' && (
-          <ArtifactsContent groups={groups} activeFile={activeFile} isLoading={isLoading} isConnected={isConnected} filesCount={files.length} onSelectFile={onSelectFile} />
+          <ArtifactsContent
+            groups={groups}
+            activeFile={activeFile}
+            isLoading={isLoading}
+            isConnected={isConnected}
+            filesCount={files.length}
+            onSelectFile={onSelectFile}
+            onContextMenu={handleContextMenu}
+          />
         )}
         {activeTab === 'todo' && <TodoContent isConnected={isConnected} />}
         {activeTab === 'annotations' && (
           <AnnotationsList annotations={annotations} onRemove={onRemoveAnnotation} onExport={onExportAnnotations} />
         )}
       </div>
+
+      {contextMenu && (
+        <ArtifactContextMenu
+          menu={contextMenu}
+          onDelete={onDeleteFile}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }
 
 function ArtifactsContent({
-  groups, activeFile, isLoading, isConnected, filesCount, onSelectFile,
+  groups, activeFile, isLoading, isConnected, filesCount, onSelectFile, onContextMenu,
 }: {
   groups: Record<SessionFile['type'], SessionFile[]>
   activeFile: string | null
@@ -121,6 +174,7 @@ function ArtifactsContent({
   isConnected: boolean
   filesCount: number
   onSelectFile: (path: string) => void
+  onContextMenu: (e: React.MouseEvent, file: SessionFile) => void
 }) {
   if (!isConnected) {
     return <p className="text-[10px] text-muted-foreground px-1 py-6 text-center">Connect CLI to view session artifacts</p>
@@ -157,6 +211,7 @@ function ArtifactsContent({
                 <button
                   key={file.path}
                   onClick={() => onSelectFile(file.path)}
+                  onContextMenu={(e) => onContextMenu(e, file)}
                   className={`w-full flex items-center gap-1.5 rounded px-1.5 py-1 text-left transition ${
                     activeFile === file.path ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   }`}

@@ -5,9 +5,10 @@ import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
 import { SessionActivity } from '#/features/studio/session/SessionActivity'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
-import { useSessionFiles, useSessionFileContent } from '#/features/studio/session/useSessionFiles'
+import { useSessionFiles, useSessionFileContent, useDeleteSessionFile, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
 import { SessionSkeleton } from '#/features/studio/session/SessionSkeleton'
+import { DropZoneOverlay } from '#/features/studio/session/DropZoneOverlay'
 
 export const Route = createFileRoute('/studio/session')({
   component: SessionPage,
@@ -22,13 +23,17 @@ function SessionPage() {
   const { files, isLoading } = useSessionFiles()
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
   const [activityOpen, setActivityOpen] = useState(true)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const deleteMutation = useDeleteSessionFile()
+  const uploadMutation = useUploadSessionFile()
 
   // Default to canvas.html if it exists and nothing is selected
   const effectivePath = activeFilePath ?? files.find((f) => f.name === 'canvas.html')?.path ?? null
   const activeFile = effectivePath ? files.find((f) => f.path === effectivePath) : null
   const activeFileType = activeFile?.type ?? null
 
-  // Fetch content for the active file (all types — images return as base64 data URI)
+  // Fetch content for the active file (all types -- images return as base64 data URI)
   const { data: fileContent } = useSessionFileContent(effectivePath)
 
   const ann = useAnnotations()
@@ -61,6 +66,36 @@ function SessionPage() {
     setActiveFilePath(path)
   }, [])
 
+  const handleDeleteFile = useCallback((path: string) => {
+    deleteMutation.mutate(path)
+    if (activeFilePath === path) setActiveFilePath(null)
+  }, [deleteMutation, activeFilePath])
+
+  const handleUploadFiles = useCallback((fileList: FileList) => {
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i]
+      uploadMutation.mutate(file)
+    }
+  }, [uploadMutation])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    if (!isConnected || !e.dataTransfer.files.length) return
+    handleUploadFiles(e.dataTransfer.files)
+  }, [isConnected, handleUploadFiles])
+
   const showCanvas = activeFileType === 'html' || activeFileType == null
   const showArtifactViewer = activeFile != null && activeFileType !== 'html'
 
@@ -80,11 +115,16 @@ function SessionPage() {
       </div>
 
       {/* Full layout */}
-      <div className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden">
+      <div
+        className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden relative"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         {!isConnected && (
           <div className="flex items-center gap-2 px-4 py-1.5 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
             <WifiOff className="size-3 shrink-0" />
-            CLI disconnected — session artifacts require a running CLI
+            CLI disconnected -- session artifacts require a running CLI
           </div>
         )}
 
@@ -121,6 +161,8 @@ function SessionPage() {
               isConnected={isConnected ?? false}
               annotations={ann.annotations}
               onSelectFile={handleSelectFile}
+              onDeleteFile={handleDeleteFile}
+              onUploadFiles={handleUploadFiles}
               onRemoveAnnotation={ann.removeAnnotation}
               onExportAnnotations={handleExport}
               onClose={() => setActivityOpen(false)}
@@ -135,6 +177,8 @@ function SessionPage() {
             </button>
           )}
         </div>
+
+        {isDragging && isConnected && <DropZoneOverlay />}
       </div>
     </>
   )

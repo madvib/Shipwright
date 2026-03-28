@@ -38,3 +38,7 @@ export interface SessionFile {
   size: number
   modifiedAt: number
 }
+
+export type UploadResult =
+  | { success: true }
+  | { success: false; error: string }
