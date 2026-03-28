@@ -28,9 +28,8 @@ function SessionPage() {
   const activeFile = effectivePath ? files.find((f) => f.path === effectivePath) : null
   const activeFileType = activeFile?.type ?? null
 
-  // Fetch content for the active file (HTML, markdown, json, text)
-  const shouldFetchContent = effectivePath != null && activeFileType !== 'image'
-  const { data: fileContent } = useSessionFileContent(shouldFetchContent ? effectivePath : null)
+  // Fetch content for the active file (all types — images return as base64 data URI)
+  const { data: fileContent } = useSessionFileContent(effectivePath)
 
   const ann = useAnnotations()
 

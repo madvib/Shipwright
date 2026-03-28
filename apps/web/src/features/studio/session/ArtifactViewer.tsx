@@ -27,19 +27,19 @@ function JsonViewer({ content }: { content: string }) {
   )
 }
 
-function ImageViewer({ file }: { file: SessionFile }) {
-  // Images from .ship-session/ are served via the MCP read_session_file tool,
-  // but we cannot get a direct URL. For now show a placeholder indicating the
-  // file exists. A future iteration could use base64 data URIs.
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-      <ImageIcon className="size-12 text-muted-foreground/40" />
-      <div className="text-center">
-        <p className="text-sm font-medium text-foreground">{file.name}</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Image preview requires direct file access.
-        </p>
+function ImageViewer({ file, content }: { file: SessionFile; content: string }) {
+  // content is a base64 data URI from read_session_file
+  if (!content || !content.startsWith('data:')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+        <ImageIcon className="size-12 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">{file.name}</p>
       </div>
+    )
+  }
+  return (
+    <div className="flex items-center justify-center h-full p-4 overflow-auto bg-black/20">
+      <img src={content} alt={file.name} className="max-w-full max-h-full object-contain rounded" />
     </div>
   )
 }
@@ -60,7 +60,7 @@ function TextViewer({ content, file }: { content: string; file: SessionFile }) {
 
 export function ArtifactViewer({ file, content }: ArtifactViewerProps) {
   if (file.type === 'image') {
-    return <ImageViewer file={file} />
+    return <ImageViewer file={file} content={content} />
   }
 
   if (file.type === 'markdown') {
