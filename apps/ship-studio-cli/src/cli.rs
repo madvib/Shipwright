@@ -157,6 +157,8 @@ pub enum Commands {
 
     /// Publish this package to the Ship registry
     Publish {
+        /// Publish only this export (e.g. agents/skills/tdd, agents/profiles/red-green.toml)
+        export_path: Option<String>,
         /// Preview what would be published without making any network requests
         #[arg(long)]
         dry_run: bool,

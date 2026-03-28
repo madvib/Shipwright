@@ -5,7 +5,7 @@
   "module": {
     "name": "github.com/madvib/ship",
     "version": "0.1.0",
-    "description": "Compiler and package manager for AI agent configuration",
+    "description": "Package manager and runtime for AI agents",
     "license": "MIT",
   },
   "dependencies": {

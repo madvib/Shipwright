@@ -90,9 +90,13 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Adrs => run_adrs(),
             #[cfg(feature = "unstable")]
             Commands::Notes => run_notes(),
-            Commands::Publish { dry_run, tag } => {
+            Commands::Publish {
+                export_path,
+                dry_run,
+                tag,
+            } => {
                 let root = std::env::current_dir()?;
-                publish::run_publish(&root, dry_run, tag.as_deref())
+                publish::run_publish(&root, export_path.as_deref(), dry_run, tag.as_deref())
             }
             Commands::Install { frozen, offline } => {
                 let root = std::env::current_dir()?;
