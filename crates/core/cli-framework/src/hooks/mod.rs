@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use runtime::events::envelope::EventEnvelope;
 use runtime::events::types::{
-    SessionEnded, SkillCompleted, SkillFailed, SkillStarted,
+    SessionEnded, SessionStarted, SkillCompleted, SkillFailed, SkillStarted,
     event_types,
 };
 use serde::Deserialize;
@@ -86,6 +86,22 @@ pub fn handle_after_tool(
     Ok(Some(
         event.with_actor_id(actor_id).with_context(Some(workspace_id), None),
     ))
+}
+
+/// Emits session.started for the current actor.
+/// No stdin parsing needed — session identity comes from env vars, not hook payload.
+pub fn handle_session_start(
+    actor_id: &str,
+    workspace_id: &str,
+) -> Result<EventEnvelope> {
+    let event = EventEnvelope::new(
+        event_types::SESSION_STARTED,
+        actor_id,
+        &SessionStarted { goal: None },
+    )?
+    .with_actor_id(actor_id)
+    .with_context(Some(workspace_id), None);
+    Ok(event)
 }
 
 /// Emits session.ended for the current actor.

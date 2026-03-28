@@ -83,6 +83,14 @@ pub fn write_output(root: &Path, provider_id: &str, output: &CompileOutput) -> R
         println!("  {} .codex/config.toml", provider_id);
     }
 
+    // Codex hooks → .codex/hooks.json
+    if let Some(hooks) = &output.codex_hooks_json {
+        let path = root.join(".codex/hooks.json");
+        ensure_parent(&path)?;
+        std::fs::write(&path, serde_json::to_string_pretty(hooks)?)?;
+        println!("  {} .codex/hooks.json", provider_id);
+    }
+
     // Gemini policy → .gemini/policies/ship.toml
     if let Some(policy) = &output.gemini_policy_patch {
         let path = root.join(".gemini/policies/ship.toml");
@@ -150,6 +158,9 @@ pub(crate) fn print_dry_run(provider_id: &str, output: &CompileOutput) {
     }
     if output.codex_config_patch.is_some() {
         println!("  would write .codex/config.toml");
+    }
+    if output.codex_hooks_json.is_some() {
+        println!("  would write .codex/hooks.json");
     }
     if output.gemini_policy_patch.is_some() {
         println!("  would write .gemini/policies/ship.toml");

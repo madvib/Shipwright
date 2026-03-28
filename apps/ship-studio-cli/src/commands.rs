@@ -2,6 +2,8 @@ use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
 pub enum HookCommands {
+    /// Emit session.started event for the current actor (Codex SessionStart)
+    SessionStart,
     /// Read stdin hook payload and emit skill.started event
     BeforeTool,
     /// Read stdin hook payload and emit skill.completed or skill.failed event

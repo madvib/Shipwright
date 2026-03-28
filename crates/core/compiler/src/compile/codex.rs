@@ -1,5 +1,6 @@
 use crate::resolve::ResolvedConfig;
 use crate::types::McpServerType;
+use serde_json::Value as Json;
 
 // ── Sandbox translation ───────────────────────────────────────────────────────
 
@@ -204,6 +205,37 @@ pub(super) fn build_codex_config_patch(resolved: &ResolvedConfig) -> Option<Stri
     }
 
     toml::to_string(&root).ok()
+}
+
+// ── Codex hooks.json ─────────────────────────────────────────────────────────
+
+/// Build the `.codex/hooks.json` content.
+///
+/// Codex fires hooks for all four lifecycle events. The `SessionStart` hook
+/// runs `ship hook session-start` (no stdin). Tool hooks run `ship hook
+/// before-tool` / `ship hook after-tool` with a JSON payload on stdin.
+/// `Stop` maps to `ship hook session-end`.
+pub(super) fn build_codex_hooks_json() -> Json {
+    serde_json::json!({
+        "hooks": [
+            {
+                "event": "SessionStart",
+                "hooks": [{ "type": "command", "command": "ship hook session-start" }]
+            },
+            {
+                "event": "PreToolUse",
+                "hooks": [{ "type": "command", "command": "ship hook before-tool" }]
+            },
+            {
+                "event": "PostToolUse",
+                "hooks": [{ "type": "command", "command": "ship hook after-tool" }]
+            },
+            {
+                "event": "Stop",
+                "hooks": [{ "type": "command", "command": "ship hook session-end" }]
+            }
+        ]
+    })
 }
 
 // ── JSON → TOML value conversion ─────────────────────────────────────────────

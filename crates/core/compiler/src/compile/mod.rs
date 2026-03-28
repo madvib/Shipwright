@@ -107,6 +107,10 @@ pub struct CompileOutput {
     /// OpenCode-only: full `opencode.json` content (model + MCP + extras).
     /// Only populated for the `opencode` provider.
     pub opencode_config_patch: Option<Json>,
+
+    /// Codex-only: `.codex/hooks.json` content.
+    /// Only populated for the `codex` provider.
+    pub codex_hooks_json: Option<Json>,
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -160,6 +164,7 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
 
     if provider_id == "codex" {
         out.codex_config_patch = codex::build_codex_config_patch(resolved);
+        out.codex_hooks_json = Some(codex::build_codex_hooks_json());
     }
 
     if provider_id == "gemini" {

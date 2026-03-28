@@ -238,3 +238,36 @@ fn compile_opencode_dry_run_writes_nothing() {
     assert!(!tmp.path().join("opencode.json").exists(), "dry-run must not write opencode.json");
     assert!(!tmp.path().join("AGENTS.md").exists(), "dry-run must not write AGENTS.md");
 }
+
+#[test]
+fn compile_codex_writes_hooks_json() {
+    let tmp = TempDir::new().unwrap();
+    setup_minimal_project(&tmp);
+    run_compile(CompileOptions {
+        project_root: tmp.path(),
+        output_root: None,
+        provider: Some("codex"),
+        dry_run: false,
+        active_agent: None,
+    })
+    .unwrap();
+    let path = tmp.path().join(".codex/hooks.json");
+    assert!(path.exists(), ".codex/hooks.json must be written for codex");
+    let content = std::fs::read_to_string(&path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let hooks = parsed["hooks"].as_array().expect("hooks must be an array");
+    let events: Vec<&str> = hooks
+        .iter()
+        .map(|h| h["event"].as_str().expect("each hook entry must have an event field"))
+        .collect();
+    assert!(events.contains(&"SessionStart"), "SessionStart must be present");
+    assert!(events.contains(&"PreToolUse"), "PreToolUse must be present");
+    assert!(events.contains(&"PostToolUse"), "PostToolUse must be present");
+    assert!(events.contains(&"Stop"), "Stop must be present");
+    for entry in hooks {
+        let cmds = entry["hooks"].as_array().expect("each event must have a hooks array");
+        assert!(!cmds.is_empty(), "hooks array must not be empty");
+        let cmd = cmds[0]["command"].as_str().expect("command field must be a string");
+        assert!(cmd.contains("ship hook"), "command must contain 'ship hook': {cmd}");
+    }
+}

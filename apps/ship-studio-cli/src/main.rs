@@ -463,6 +463,7 @@ fn run_notes() -> Result<()> {
 
 fn dispatch_hook(action: HookCommands) -> Result<()> {
     match action {
+        HookCommands::SessionStart => hook::run_session_start(),
         HookCommands::BeforeTool => hook::run_before_tool(),
         HookCommands::AfterTool => hook::run_after_tool(),
         HookCommands::SessionEnd => hook::run_session_end(),
