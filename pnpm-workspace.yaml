@@ -3,7 +3,7 @@ packages:
   - "apps/web"
   - "packages/*"
 
-enableGlobalVirtualStore: true
+enableGlobalVirtualStore: false
 
 ignoredBuiltDependencies:
   - esbuild

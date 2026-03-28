@@ -35,7 +35,7 @@ const FEATURES: FeatureCard[] = [
     icon: Zap,
     iconColor: 'text-emerald-400',
     iconBg: 'bg-emerald-500/10',
-    title: 'Ship Studio',
+    title: 'Agent Studio',
     description:
       'Configure agents visually with live preview. See the compiled output for every provider as you edit. Add skills, set permissions, write rules — all in the browser.',
   },
@@ -75,7 +75,7 @@ export function FeatureGrid() {
     <section className="mx-auto max-w-[62rem] px-6 pb-20 sm:px-10">
       <div className="mb-12 text-center">
         <h2 className="mb-2 font-display text-3xl font-extrabold sm:text-4xl">
-          What Ship gives your agents
+          What your agents get
         </h2>
         <p className="text-[15px] text-muted-foreground">
           Configuration as code. Permissions as policy. Distribution as a service.

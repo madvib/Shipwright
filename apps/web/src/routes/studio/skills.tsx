@@ -28,7 +28,7 @@ function SkillsIDEPage() {
         <div>
           <p className="font-display text-base font-semibold">Best on desktop</p>
           <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-            The Skills IDE is a three-panel editor. Open it on a wider screen for the full experience.
+            The IDE is a three-panel editor. Open it on a wider screen for the full experience.
           </p>
         </div>
       </div>

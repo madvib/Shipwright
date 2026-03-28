@@ -8,9 +8,9 @@ const AGENTS = [
   {
     name: 'web-lane',
     preset: 'autonomous',
-    skills: ['ship-coordination', 'code-review', 'frontend-design'],
+    skills: ['task-coordination', 'code-review', 'frontend-design'],
     mcp: [
-      { name: 'ship', tools: 'all' },
+      { name: 'project', tools: 'all' },
       { name: 'github', tools: '8/18' },
       { name: 'filesystem', tools: '4/8' },
     ],
@@ -24,7 +24,7 @@ const AGENTS = [
     name: 'reviewer',
     preset: 'readonly',
     skills: ['code-review'],
-    mcp: [{ name: 'ship', tools: 'all' }],
+    mcp: [{ name: 'project', tools: 'all' }],
     permissions: {
       allow: ['Read', 'Grep', 'Glob'],
       deny: ['Write(*)', 'Edit(*)', 'Bash(rm*)'],
@@ -34,9 +34,9 @@ const AGENTS = [
   {
     name: 'ops',
     preset: 'elevated',
-    skills: ['ship-coordination', 'deploy-tools', 'monitor'],
+    skills: ['task-coordination', 'deploy-tools', 'monitor'],
     mcp: [
-      { name: 'ship', tools: 'all' },
+      { name: 'project', tools: 'all' },
       { name: 'github', tools: '14/18' },
     ],
     permissions: {
@@ -94,7 +94,7 @@ export function AnimatedShowcase() {
           <span className="size-2.5 rounded-full bg-amber-500/50" />
           <span className="size-2.5 rounded-full bg-emerald-500/50" />
           <span className="flex-1 text-center font-mono text-[11px] text-muted-foreground/50">
-            $ ship use{' '}
+            $ agent use{' '}
             <span className={`transition-opacity duration-300 ${phase === 'compiling' ? 'opacity-40' : ''}`}>
               {agent.name}
             </span>

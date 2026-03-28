@@ -5,7 +5,7 @@ export function LandingCta() {
   return (
     <section className="border-t border-border/40 bg-gradient-to-b from-background to-primary/3 px-6 py-16 text-center sm:px-10 sm:py-20">
       <h2 className="mb-2 font-display text-3xl font-extrabold sm:text-4xl">
-        Start shipping agents
+        Start deploying agents
       </h2>
       <p className="mb-7 text-[15px] text-muted-foreground">
         Open source. Free. No account required.
