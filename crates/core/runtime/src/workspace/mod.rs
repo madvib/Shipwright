@@ -16,6 +16,8 @@ mod tests_crud;
 #[cfg(test)]
 mod tests_workspace_db;
 #[cfg(test)]
+mod tests_workspace_db_routing;
+#[cfg(test)]
 mod tests_events;
 #[cfg(test)]
 mod tests_session;
