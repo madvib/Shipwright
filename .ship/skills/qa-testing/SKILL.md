@@ -1,146 +1,136 @@
 ---
 name: qa-testing
 stable-id: qa-testing
-description: Use when testing a web application — navigate, interact, screenshot, find bugs. Systematic QA checklist with severity tiers and structured bug reports.
+description: Use when testing a web application — navigate, interact, screenshot, find bugs. Outputs to .ship-session/ for live viewing in Ship Studio Session page.
 tags: [qa, testing, browser]
 authors: [ship]
 ---
 
-# QA Workflow
+# QA Testing
 
-Systematic QA testing with agent-dispatched fixes. Test → find → fix → verify loop.
+Systematic QA with results viewable in Ship Studio's Session page. All artifacts go to `.ship-session/` where the Session canvas can render them.
 
-## Protocol
+## Setup
+
+All screenshots and reports go to `.ship-session/qa/`. Create the directory structure:
+
+```bash
+mkdir -p .ship-session/qa/screenshots
+```
+
+## Workflow
 
 ### 1. Target
 
-Ask for the URL and scope:
-- "What URL should I test?"
-- "Any specific flows to focus on?" (skip if they just say "test everything")
+Ask for the URL. Default tier is Standard.
 
-### 2. Discover
+| Tier | Scope |
+|------|-------|
+| Quick | Critical + high only |
+| Standard | + medium |
+| Exhaustive | + cosmetic |
 
-Navigate the app systematically. For each page:
+### 2. Inventory
 
-```bash
-# Use gstack browse or any headless browser
-/browse goto <url>
-/browse screenshot
-```
+Navigate systematically. Write inventory to `.ship-session/qa/inventory.md`:
 
-Build a page inventory:
 ```markdown
-<!-- .ship-session/qa-inventory.md -->
 # QA Inventory
 
 | Page | URL | Status | Issues |
 |------|-----|--------|--------|
-| Landing | / | tested | 2 |
-| Dashboard | /dashboard | tested | 0 |
-| Settings | /settings | pending | - |
+| Landing | / | pending | - |
+| Dashboard | /dashboard | pending | - |
 ```
 
 ### 3. Test each page
 
-For every page, check:
+For every page, take a screenshot with a descriptive name:
 
-**Critical (blocks ship):**
-- Page loads without error
-- Primary action works (submit, save, navigate)
-- Auth-gated pages redirect correctly
+```bash
+$B goto <url>
+$B screenshot .ship-session/qa/screenshots/<page-name>.png
+$B console --errors
+```
 
-**High:**
-- Forms validate and submit
-- Error states render correctly
-- Data loads and displays
+Screenshot naming: `landing.png`, `settings-form-empty.png`, `dashboard-loading.png`. Descriptive, no numbers.
 
-**Medium:**
-- Responsive layout (mobile + desktop)
-- Loading states present
-- Empty states handled
-
-**Cosmetic:**
-- Spacing/alignment consistency
-- Color contrast
-- Typography hierarchy
+Check per page:
+- **Critical**: loads, primary action works, auth correct
+- **High**: forms validate, errors render, data loads
+- **Medium**: responsive, loading states, empty states
+- **Cosmetic**: spacing, contrast, typography
 
 ### 4. File bugs
 
-For each issue, write a structured bug:
+Each bug is a markdown file in `.ship-session/qa/bugs/`:
 
 ```markdown
-<!-- .ship-session/bugs/<id>.md -->
 ---
 severity: critical | high | medium | cosmetic
 page: /settings
-status: open
+screenshot: screenshots/settings-broken-form.png
 ---
 
-# Bug: <title>
+# Form submit button unresponsive
 
-## Repro
+The submit button on the settings page does nothing when clicked.
+
+## Steps to reproduce
 1. Navigate to /settings
-2. Click "Save" without filling required fields
+2. Fill in any field
+3. Click Save
 
 ## Expected
-Validation error shown
+Form submits and shows success message.
 
 ## Actual
-Silent failure, no feedback
-
-## Screenshot
-.ship-session/screenshots/<id>.png
+Nothing happens. No console errors.
 ```
 
-### 5. Dispatch fixes
+### 5. Write report
 
-Group bugs by file scope. For each group:
-
-```bash
-bash .ship/skills/mission-control/dispatch.sh \
-  --slug fix-settings-validation \
-  --agent web-lane \
-  --spec .ship-session/bugs/group-settings.md
-```
-
-The fix agent gets the bug reports as its job spec.
-
-### 6. Verify
-
-After fix agent completes:
-- Re-test the specific pages
-- Take after-screenshots
-- Compare before/after
-- Gate: pass if the bug is fixed, fail if regression
-
-### 7. Report
+Summarize in `.ship-session/qa/report.md`:
 
 ```markdown
-<!-- .ship-session/qa-report.md -->
-# QA Report — <date>
+# QA Report
 
-## Health Score: 7/10
+**URL**: http://localhost:3000
+**Date**: 2026-03-28
+**Tier**: Standard
+**Pages tested**: 8
+**Issues found**: 5
 
 ## Summary
-- Pages tested: 12
-- Bugs found: 5 (1 critical, 2 high, 2 cosmetic)
-- Bugs fixed: 4
-- Remaining: 1 cosmetic (deferred)
 
-## Before/After
-| Bug | Before | After | Status |
-|-----|--------|-------|--------|
-| Settings validation | screenshot | screenshot | Fixed |
+| Severity | Count |
+|----------|-------|
+| Critical | 1 |
+| High | 2 |
+| Medium | 2 |
+| Cosmetic | 0 |
+
+## Top issues
+
+1. **[Critical]** Form submit unresponsive on /settings
+2. **[High]** Missing loading state on /dashboard
+3. **[High]** Console error on /agents detail
+
+## Screenshots
+
+All screenshots in `qa/screenshots/`.
 ```
 
-## Tiers
+### 6. Update TODO
 
-Run at the level of rigor that matches the moment:
+Append unfixed issues to `.ship-session/todo.md` so the Session page TODO tab shows them:
 
-| Tier | Checks | When |
-|------|--------|------|
-| **Quick** | Critical + high only | Pre-merge, CI gate |
-| **Standard** | + medium | Pre-release |
-| **Exhaustive** | + cosmetic, responsive, perf | Launch, major release |
+```markdown
+- [ ] [Critical] Fix form submit on /settings
+- [ ] [High] Add loading state to /dashboard
+- [ ] [High] Fix console error on /agents/$id
+```
 
-Default tier: **{{ default_tier }}** (change with `ship vars set qa-testing default_tier <quick|standard|exhaustive>`).
+## Quality
+
+Every issue needs a screenshot. No exceptions. Use descriptive filenames so they're identifiable in the Session artifacts tab.
