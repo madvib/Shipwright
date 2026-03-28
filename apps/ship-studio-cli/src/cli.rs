@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-pub use crate::commands::{AgentCommands, McpCommands, SkillCommands, VarsCommands};
+pub use crate::commands::{AgentCommands, HookCommands, McpCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
 pub use crate::commands::{EventsCommands, JobCommands};
 
@@ -229,6 +229,13 @@ pub enum Commands {
     Diff {
         #[arg(long)]
         milestone: Option<String>,
+    },
+
+    /// Provider hook integration (before-tool, after-tool, session-end)
+    #[command(hide = true)]
+    Hook {
+        #[command(subcommand)]
+        action: HookCommands,
     },
 
     /// Show help — same as --help

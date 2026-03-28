@@ -41,6 +41,25 @@ pub struct SessionEnded {
     pub gate_result: Option<String>,
 }
 
+// ── Skill aggregate ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillStarted {
+    pub skill_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillCompleted {
+    pub skill_id: String,
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillFailed {
+    pub skill_id: String,
+    pub error: String,
+}
+
 // ── Actor aggregate (v0.2.0 kernel) ──────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,6 +103,10 @@ pub mod event_types {
     pub const ACTOR_STOPPED: &str = "actor.stopped";
     pub const ACTOR_CRASHED: &str = "actor.crashed";
 
+    pub const SKILL_STARTED: &str = "skill.started";
+    pub const SKILL_COMPLETED: &str = "skill.completed";
+    pub const SKILL_FAILED: &str = "skill.failed";
+
     pub const ALL: &[&str] = &[
         WORKSPACE_ACTIVATED,
         WORKSPACE_COMPILED,
@@ -97,6 +120,9 @@ pub mod event_types {
         ACTOR_SLEPT,
         ACTOR_STOPPED,
         ACTOR_CRASHED,
+        SKILL_STARTED,
+        SKILL_COMPLETED,
+        SKILL_FAILED,
     ];
 }
 
@@ -114,6 +140,6 @@ mod tests {
 
     #[test]
     fn all_constants_have_expected_count() {
-        assert_eq!(ALL.len(), 12, "exactly 12 event type constants required");
+        assert_eq!(ALL.len(), 15, "exactly 15 event type constants required");
     }
 }

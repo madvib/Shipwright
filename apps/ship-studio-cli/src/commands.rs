@@ -1,6 +1,16 @@
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
+pub enum HookCommands {
+    /// Read stdin hook payload and emit skill.started event
+    BeforeTool,
+    /// Read stdin hook payload and emit skill.completed or skill.failed event
+    AfterTool,
+    /// Emit session.ended event for the current actor
+    SessionEnd,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum JobCommands {
     /// Create a new job
     Create {

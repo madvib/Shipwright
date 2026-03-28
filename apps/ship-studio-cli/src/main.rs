@@ -16,6 +16,7 @@ mod diff;
 #[cfg(feature = "unstable")]
 mod events_cmd;
 mod help_topics;
+mod hook;
 mod init;
 mod install;
 #[cfg(feature = "unstable")]
@@ -34,7 +35,7 @@ mod vars;
 mod view;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, ConfigCommands, McpCommands, SkillCommands, VarsCommands};
+use cli::{AgentCommands, Cli, Commands, ConfigCommands, HookCommands, McpCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
 use cli::{EventsCommands, JobCommands};
 use std::path::PathBuf;
@@ -121,6 +122,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Events { action } => dispatch_events(action),
             #[cfg(feature = "unstable")]
             Commands::View => view::run_view(),
+            Commands::Hook { action } => dispatch_hook(action),
             Commands::Help => {
                 use clap::CommandFactory;
                 Cli::command().print_help()?;
@@ -437,6 +439,14 @@ fn run_notes() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn dispatch_hook(action: HookCommands) -> Result<()> {
+    match action {
+        HookCommands::BeforeTool => hook::run_before_tool(),
+        HookCommands::AfterTool => hook::run_after_tool(),
+        HookCommands::SessionEnd => hook::run_session_end(),
+    }
 }
 
 #[cfg(feature = "unstable")]
