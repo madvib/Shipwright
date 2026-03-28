@@ -62,26 +62,31 @@ h1, h2, h3,
   height: 1.75rem;
 }
 
-/* Hero centering */
-.hero,
-[data-page-title] .hero {
-  text-align: center;
+/* Hero centering — target Starlight's actual class names */
+.hero {
+  text-align: center !important;
+  align-items: center !important;
 }
-.hero .sl-flex,
-.hero .action {
-  justify-content: center;
+.hero .tagline {
+  margin-inline: auto !important;
+  max-width: 38rem;
 }
-.hero .tagline,
-.hero > * {
-  margin-inline: auto;
-  max-width: 42rem;
-}
-.sl-markdown-content > .hero {
-  text-align: center;
-}
-/* Starlight hero actions */
 .hero .sl-flex.actions {
-  justify-content: center;
+  justify-content: center !important;
+}
+
+/* Flow steps — equal width */
+.ship-flow {
+  gap: 1rem;
+}
+.ship-flow > .ship-step {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Cards — equal sizing, no stray paragraphs */
+.ship-cards > .ship-card {
+  min-height: 0;
 }
 
 /* Code blocks */
