@@ -5,7 +5,11 @@
  * Agent configuration within a transfer bundle.
  * Every field the agent.schema.json defines is represented here.
  */
-export type AgentBundle = { id: string; name?: string | null; description?: string | null; version?: string | null; providers?: string[] | null; model?: string | null; env?: Partial<{ [key in string]: string }> | null; available_models?: string[] | null; agent_limits?: JsonValue | null; 
+export type AgentBundle = { id: string; name?: string | null; description?: string | null; version?: string | null; providers?: string[] | null; 
+/**
+ * Display icon — emoji or icon name.
+ */
+icon?: string | null; model?: string | null; env?: Partial<{ [key in string]: string }> | null; available_models?: string[] | null; agent_limits?: JsonValue | null; 
 /**
  * Skill IDs to activate.
  */
@@ -274,7 +278,11 @@ install: PluginEntry[];
  */
 scope: string }
 
-export type ProfileMeta = { id: string; name: string; version?: string | null; description?: string | null; providers?: string[] }
+export type ProfileMeta = { id: string; name: string; version?: string | null; description?: string | null; providers?: string[]; 
+/**
+ * Display icon — emoji or icon name (e.g. "\ud83e\uddea", "test-tube").
+ */
+icon?: string | null }
 
 export type ProfilePermissions = { 
 /**
@@ -392,7 +400,11 @@ export type PullMcpServer = { name: string; command: string; url?: string | null
 /**
  * Agent profile metadata as returned by pull_agents.
  */
-export type PullProfile = { id: string; name: string; description: string; providers: string[]; version: string }
+export type PullProfile = { id: string; name: string; description: string; providers: string[]; version: string; 
+/**
+ * Display icon — emoji or icon name.
+ */
+icon?: string | null }
 
 /**
  * Response from pull_agents MCP tool.

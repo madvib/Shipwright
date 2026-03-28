@@ -51,6 +51,7 @@ pub(super) fn parse_opencode_agent(name: &str, entry: &Json) -> Option<AgentProf
             version: None,
             description,
             providers: vec![],
+            icon: None,
         },
         skills: SkillRefs::default(),
         mcp: McpRefs::default(),

@@ -142,7 +142,7 @@ function EmptyState({ isConnected, onNew }: { isConnected: boolean; onNew: () =>
 }
 
 function AgentCard({ agent: a, isDraft, isLocal }: { agent: ReturnType<typeof useAgents>['agents'][number]; isDraft: boolean; isLocal: boolean }) {
-  const icon = getAgentIcon(a.profile.id)
+  const icon = getAgentIcon(a.profile.id, (a.profile as { icon?: string }).icon)
   const preset = a.permissions?.preset ?? 'custom'
 
   return (

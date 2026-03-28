@@ -1,9 +1,13 @@
-// Agent icon preferences — stored separately from the agent profile.
-// This is UI-only state (the compiler doesn't need icons).
+// Agent icon resolution — reads from profile first, falls back to localStorage.
+// Icons now persist in .ship/agents/*.jsonc via the `icon` field.
 
 const STORAGE_KEY = 'ship-agent-icons'
 
-export function getAgentIcon(agentId: string): string | null {
+/** Get icon for an agent. Checks profile icon first, then localStorage. */
+export function getAgentIcon(agentId: string, profileIcon?: string | null): string | null {
+  // Profile icon is the source of truth (persists in .jsonc)
+  if (profileIcon) return profileIcon
+  // Fall back to localStorage (legacy, pre-icon-field)
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
@@ -14,6 +18,7 @@ export function getAgentIcon(agentId: string): string | null {
   }
 }
 
+/** Save icon to localStorage (legacy). Prefer setting via agent profile. */
 export function setAgentIcon(agentId: string, icon: string) {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

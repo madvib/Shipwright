@@ -83,6 +83,10 @@ struct AgentJsoncProfile {
     description: Option<String>,
     #[serde(default)]
     providers: Option<Vec<String>>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -120,6 +124,22 @@ pub fn pull_agents(project_dir: &Path) -> String {
 
     agents.sort_by(|a, b| a.profile.id.cmp(&b.profile.id));
     serde_json::to_string(&compiler::PullResponse { agents }).unwrap_or_default()
+}
+
+/// Derive a default icon from agent tags when no explicit icon is set.
+fn icon_from_tags(tags: &[String]) -> Option<String> {
+    for tag in tags {
+        let t = tag.to_lowercase();
+        match t.as_str() {
+            "testing" | "tdd" => return Some("\u{1f9ea}".into()),
+            "review" | "security" => return Some("\u{1f50d}".into()),
+            "design" | "ui" => return Some("\u{1f3a8}".into()),
+            "deploy" | "release" => return Some("\u{1f680}".into()),
+            "coordination" | "commander" => return Some("\u{1f3af}".into()),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn pull_agents_from_dir(
@@ -173,6 +193,11 @@ fn pull_agents_from_dir(
             })
             .collect();
 
+        let icon = parsed
+            .agent
+            .icon
+            .or_else(|| icon_from_tags(&parsed.agent.tags));
+
         agents.push(PullAgent {
             profile: PullProfile {
                 id: parsed.agent.id.clone(),
@@ -183,6 +208,7 @@ fn pull_agents_from_dir(
                     .providers
                     .unwrap_or_else(|| vec!["claude".into()]),
                 version: parsed.agent.version.unwrap_or_else(|| "0.1.0".into()),
+                icon,
             },
             skills,
             mcp_servers,
@@ -612,5 +638,113 @@ mod tests {
         assert_eq!(a.hooks.len(), 1);
         assert_eq!(a.hooks[0]["event"], "onSave");
         assert_eq!(a.hooks[0]["command"], "cargo fmt");
+    }
+
+    #[test]
+    fn icon_from_tags_returns_expected_defaults() {
+        let tags = |s: &[&str]| -> Vec<String> { s.iter().map(|t| t.to_string()).collect() };
+        assert_eq!(icon_from_tags(&tags(&["testing"])), Some("\u{1f9ea}".into()));
+        assert_eq!(icon_from_tags(&tags(&["tdd"])), Some("\u{1f9ea}".into()));
+        assert_eq!(icon_from_tags(&tags(&["review"])), Some("\u{1f50d}".into()));
+        assert_eq!(icon_from_tags(&tags(&["security"])), Some("\u{1f50d}".into()));
+        assert_eq!(icon_from_tags(&tags(&["design"])), Some("\u{1f3a8}".into()));
+        assert_eq!(icon_from_tags(&tags(&["ui"])), Some("\u{1f3a8}".into()));
+        assert_eq!(icon_from_tags(&tags(&["deploy"])), Some("\u{1f680}".into()));
+        assert_eq!(icon_from_tags(&tags(&["release"])), Some("\u{1f680}".into()));
+        assert_eq!(icon_from_tags(&tags(&["coordination"])), Some("\u{1f3af}".into()));
+        assert_eq!(icon_from_tags(&tags(&["commander"])), Some("\u{1f3af}".into()));
+        assert_eq!(icon_from_tags(&tags(&["general"])), None);
+        assert_eq!(icon_from_tags(&[]), None);
+    }
+
+    #[test]
+    fn icon_from_tags_first_match_wins() {
+        let tags: Vec<String> = vec!["deploy".into(), "testing".into()];
+        // "deploy" appears first, so rocket wins
+        assert_eq!(icon_from_tags(&tags), Some("\u{1f680}".into()));
+    }
+
+    #[test]
+    fn pull_explicit_icon_from_agent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        let ship_dir = project.join(".ship");
+        let agents_dir = ship_dir.join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        let content = format!(
+            r#"{{ "agent": {{ "id": "icon-agent", "name": "Icon Agent", "icon": "{}" }} }}"#,
+            "\u{1f525}"
+        );
+        std::fs::write(agents_dir.join("icon-agent.jsonc"), content).unwrap();
+
+        let raw = pull_agents(&project);
+        let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
+        assert_eq!(resp.agents[0].profile.icon.as_deref(), Some("\u{1f525}"));
+    }
+
+    #[test]
+    fn pull_derives_icon_from_tags_when_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        let ship_dir = project.join(".ship");
+        let agents_dir = ship_dir.join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        std::fs::write(
+            agents_dir.join("tdd-agent.jsonc"),
+            r#"{ "agent": { "id": "tdd-agent", "name": "TDD Agent", "tags": ["testing"] } }"#,
+        )
+        .unwrap();
+
+        let raw = pull_agents(&project);
+        let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
+        assert_eq!(resp.agents[0].profile.icon.as_deref(), Some("\u{1f9ea}"));
+    }
+
+    #[test]
+    fn pull_explicit_icon_overrides_tag_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        let ship_dir = project.join(".ship");
+        let agents_dir = ship_dir.join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        let content = format!(
+            r#"{{ "agent": {{ "id": "custom-agent", "name": "Custom", "tags": ["testing"], "icon": "{}" }} }}"#,
+            "\u{2728}"
+        );
+        std::fs::write(agents_dir.join("custom-agent.jsonc"), content).unwrap();
+
+        let raw = pull_agents(&project);
+        let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
+        // Explicit icon wins over tag-derived default
+        assert_eq!(resp.agents[0].profile.icon.as_deref(), Some("\u{2728}"));
+    }
+
+    #[test]
+    fn push_then_pull_round_trips_icon() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join(".ship")).unwrap();
+
+        let icon = "\u{1f9ea}";
+        let bundle = serde_json::json!({
+            "agent": {
+                "id": "icon-rt",
+                "name": "Icon RT",
+                "icon": icon,
+                "skill_refs": [],
+                "rule_refs": [],
+                "mcp_servers": []
+            },
+            "skills": {},
+            "rules": {},
+            "dependencies": {}
+        });
+
+        let result = push_bundle(project, &serde_json::to_string(&bundle).unwrap());
+        assert!(!result.starts_with("Error"), "push failed: {result}");
+
+        let raw = pull_agents(project);
+        let resp: compiler::PullResponse = serde_json::from_str(&raw).unwrap();
+        assert_eq!(resp.agents[0].profile.icon.as_deref(), Some(icon));
     }
 }

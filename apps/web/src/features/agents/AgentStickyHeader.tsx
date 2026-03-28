@@ -14,7 +14,7 @@ interface AgentStickyHeaderProps {
 
 export function AgentStickyHeader({ profile, onEdit, onDelete, onDiscard, isDraft }: AgentStickyHeaderProps) {
   const initial = profile.profile.name.charAt(0).toUpperCase()
-  const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id))
+  const [iconKey, setIconKey] = useState(() => getAgentIcon(profile.profile.id, (profile.profile as { icon?: string }).icon))
   const [pickerOpen, setPickerOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<string>(ICON_CATEGORIES[0].id)
 

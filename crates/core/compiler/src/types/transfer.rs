@@ -32,6 +32,9 @@ pub struct AgentBundle {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub providers: Option<Vec<String>>,
+    /// Display icon — emoji or icon name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 
     // ── top-level fields ────────────────────────────────────────────
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -129,6 +132,9 @@ pub struct PullProfile {
     pub description: String,
     pub providers: Vec<String>,
     pub version: String,
+    /// Display icon — emoji or icon name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 /// Skill with content as returned by pull_agents.

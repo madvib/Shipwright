@@ -12,56 +12,64 @@
 /// - Strings (comments inside strings are preserved)
 pub fn strip_jsonc_comments(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
+    let mut chars = input.char_indices().peekable();
 
-    while i < len {
-        match bytes[i] {
+    while let Some(&(_, ch)) = chars.peek() {
+        match ch {
             // String literal — copy verbatim, handling escapes
-            b'"' => {
+            '"' => {
                 out.push('"');
-                i += 1;
-                while i < len {
-                    if bytes[i] == b'\\' && i + 1 < len {
-                        out.push(bytes[i] as char);
-                        out.push(bytes[i + 1] as char);
-                        i += 2;
-                    } else if bytes[i] == b'"' {
+                chars.next();
+                while let Some(&(_, c)) = chars.peek() {
+                    if c == '\\' {
+                        chars.next();
+                        out.push(c);
+                        if let Some((_, esc)) = chars.next() {
+                            out.push(esc);
+                        }
+                    } else if c == '"' {
                         out.push('"');
-                        i += 1;
+                        chars.next();
                         break;
                     } else {
-                        out.push(bytes[i] as char);
-                        i += 1;
+                        out.push(c);
+                        chars.next();
                     }
                 }
             }
             // Possible comment start
-            b'/' if i + 1 < len => {
-                if bytes[i + 1] == b'/' {
-                    // Line comment — skip to end of line
-                    i += 2;
-                    while i < len && bytes[i] != b'\n' {
-                        i += 1;
+            '/' => {
+                chars.next();
+                match chars.peek().map(|&(_, c)| c) {
+                    Some('/') => {
+                        // Line comment — skip to end of line
+                        chars.next();
+                        while let Some(&(_, c)) = chars.peek() {
+                            if c == '\n' {
+                                break;
+                            }
+                            chars.next();
+                        }
                     }
-                } else if bytes[i + 1] == b'*' {
-                    // Block comment — skip to */
-                    i += 2;
-                    while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                        i += 1;
+                    Some('*') => {
+                        // Block comment — skip to */
+                        chars.next();
+                        let mut prev = '\0';
+                        while let Some((_, c)) = chars.next() {
+                            if prev == '*' && c == '/' {
+                                break;
+                            }
+                            prev = c;
+                        }
                     }
-                    if i + 1 < len {
-                        i += 2; // skip */
+                    _ => {
+                        out.push('/');
                     }
-                } else {
-                    out.push(bytes[i] as char);
-                    i += 1;
                 }
             }
             _ => {
-                out.push(bytes[i] as char);
-                i += 1;
+                out.push(ch);
+                chars.next();
             }
         }
     }
