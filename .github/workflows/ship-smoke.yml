@@ -31,9 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: Swatinem/rust-cache@v2
 
       - name: Build ship binary
@@ -42,7 +40,7 @@ jobs:
       - name: ship init --global
         run: "$SHIP_BIN" init --global
 
-      - name: ship init
+      - name: ship init in temp dir
         run: |
           SMOKE_DIR=$(mktemp -d)
           echo "SMOKE_DIR=$SMOKE_DIR" >> "$GITHUB_ENV"
@@ -53,21 +51,10 @@ jobs:
       - name: Write fixture agent
         run: |
           mkdir -p "$SMOKE_DIR/.ship/agents"
-          cat > "$SMOKE_DIR/.ship/agents/smoke-test.jsonc" <<'JSONC'
-          {
-            "$schema": "../../schemas/agent.schema.json",
-            "agent": {
-              "id": "smoke-test",
-              "name": "Smoke Test",
-              "version": "0.1.0",
-              "providers": ["claude"]
-            },
-            "permissions": { "preset": "ship-standard" }
-          }
-          JSONC
+          printf '{"agent":{"id":"smoke","name":"Smoke","version":"0.1.0","providers":["claude"]},"permissions":{"preset":"ship-standard"}}' > "$SMOKE_DIR/.ship/agents/smoke.jsonc"
 
-      - name: ship use
+      - name: ship use and verify
         run: |
-          "$SHIP_BIN" use smoke-test --path "$SMOKE_DIR"
+          "$SHIP_BIN" use smoke --path "$SMOKE_DIR"
           test -f "$SMOKE_DIR/CLAUDE.md" || { echo "ERROR: CLAUDE.md not written"; exit 1; }
           echo "Smoke passed."
