@@ -39,31 +39,35 @@ jobs:
       - name: Build ship binary
         run: cargo build -p ship-studio-cli
 
-      - name: ship init --global — ensure ~/.ship/ exists for platform.db
+      - name: ship init --global
         run: "$SHIP_BIN" init --global
 
-      - name: ship init — scaffold .ship/ in temp dir
+      - name: ship init
         run: |
           SMOKE_DIR=$(mktemp -d)
           echo "SMOKE_DIR=$SMOKE_DIR" >> "$GITHUB_ENV"
           cd "$SMOKE_DIR"
           "$SHIP_BIN" init
-          test -f "$SMOKE_DIR/.ship/ship.toml" || { echo "ERROR: ship.toml not written"; exit 1; }
+          test -f "$SMOKE_DIR/.ship/ship.jsonc" || { echo "ERROR: ship.jsonc not written"; exit 1; }
 
-      - name: Write fixture profile and rules
+      - name: Write fixture agent
         run: |
-          mkdir -p "$SMOKE_DIR/.ship/agents/profiles"
-          mkdir -p "$SMOKE_DIR/.ship/agents/rules"
-          cat > "$SMOKE_DIR/.ship/agents/profiles/web-lane.toml" <<'TOML'
-[profile]
-name = "Web Lane"
-id = "web-lane"
-providers = ["claude"]
-TOML
-          echo "Follow project conventions." > "$SMOKE_DIR/.ship/agents/rules/smoke.md"
+          mkdir -p "$SMOKE_DIR/.ship/agents"
+          cat > "$SMOKE_DIR/.ship/agents/smoke-test.jsonc" <<'JSONC'
+          {
+            "$schema": "../../schemas/agent.schema.json",
+            "agent": {
+              "id": "smoke-test",
+              "name": "Smoke Test",
+              "version": "0.1.0",
+              "providers": ["claude"]
+            },
+            "permissions": { "preset": "ship-standard" }
+          }
+          JSONC
 
-      - name: ship use — activate profile and verify CLAUDE.md
+      - name: ship use
         run: |
-          "$SHIP_BIN" use web-lane --path "$SMOKE_DIR"
-          test -f "$SMOKE_DIR/CLAUDE.md" || { echo "ERROR: CLAUDE.md not written by ship use"; exit 1; }
-          echo "Smoke passed — CLAUDE.md written."
+          "$SHIP_BIN" use smoke-test --path "$SMOKE_DIR"
+          test -f "$SMOKE_DIR/CLAUDE.md" || { echo "ERROR: CLAUDE.md not written"; exit 1; }
+          echo "Smoke passed."
