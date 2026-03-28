@@ -28,7 +28,7 @@ function StatusBadge({ status }: { status: McpConnectionStatus }) {
 
 function CopyCommand({ port }: { port: number }) {
   const [copied, setCopied] = useState(false)
-  const command = `ship mcp serve --http --port ${port}`
+  const command = `ship studio --port ${port}`
 
   function handleCopy() {
     void navigator.clipboard.writeText(command)

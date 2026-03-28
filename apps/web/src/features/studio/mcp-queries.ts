@@ -35,10 +35,10 @@ export function useLocalAgentIds() {
     },
     enabled: status === 'connected',
     staleTime: 5_000,
-  })
+      })
 }
 
-/** Pull all resolved agents from CLI (.ship/). Auto-refetches when connected. */
+/** Pull all resolved agents from CLI (.ship/). */
 export function usePullAgents() {
   const { callTool, status } = useMcpCallTool()
   const isConnected = status === 'connected'
@@ -51,7 +51,7 @@ export function usePullAgents() {
     },
     enabled: isConnected,
     staleTime: 5_000,
-  })
+      })
 }
 
 /** Fetch all project skills from .ship/skills/ regardless of agent references. */
@@ -66,7 +66,7 @@ export function useProjectSkills() {
     },
     enabled: status === 'connected',
     staleTime: 5_000,
-  })
+      })
 }
 
 // ── Mutations ───────────────────────────────────────────────────────────

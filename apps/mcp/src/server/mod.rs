@@ -47,9 +47,19 @@ impl ShipServer {
             r.merge(Self::unstable_tool_router());
             r
         };
+        // Detect project from CWD at startup
+        let project_dir = runtime::project::get_project_dir(None)
+            .ok()
+            .map(|ship_dir| {
+                if ship_dir.file_name().and_then(|n| n.to_str()) == Some(".ship") {
+                    ship_dir.parent().unwrap_or(&ship_dir).to_path_buf()
+                } else {
+                    ship_dir
+                }
+            });
         Self {
             tool_router: router,
-            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }

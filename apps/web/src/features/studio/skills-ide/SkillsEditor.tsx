@@ -102,7 +102,7 @@ export function SkillsEditor({
         subtitle="Start the CLI server, then Studio will sync automatically."
       >
         <code className="mt-3 inline-block rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">
-          ship mcp serve --http --port 51741
+          ship studio --port 51741
         </code>
       </EmptyState>
     )

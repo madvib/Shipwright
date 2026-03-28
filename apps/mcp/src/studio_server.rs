@@ -32,9 +32,25 @@ pub struct StudioServer {
 impl StudioServer {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        // Detect project from CWD at startup so tools work immediately
+        let project_dir = runtime::project::get_project_dir(None)
+            .ok()
+            .map(|ship_dir| {
+                // get_project_dir returns the .ship dir — resolve to project root
+                if ship_dir.file_name().and_then(|n| n.to_str()) == Some(".ship") {
+                    ship_dir.parent().unwrap_or(&ship_dir).to_path_buf()
+                } else {
+                    ship_dir
+                }
+            });
+        if let Some(ref dir) = project_dir {
+            tracing::info!("ship studio: detected project at {}", dir.display());
+        } else {
+            tracing::warn!("ship studio: no project detected from CWD — tools will require open_project");
+        }
         Self {
             tool_router: Self::tool_router(),
-            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }

@@ -23,15 +23,14 @@ export function useSessionFiles() {
       if (!mcp) return []
       try {
         const raw = await mcp.callTool('list_session_files')
-        const parsed = JSON.parse(raw) as { files: Array<{ name: string; path: string; modified_at: number }> }
-        return parsed.files.map((f) => ({
-          name: f.name,
+        const entries = JSON.parse(raw) as Array<{ path: string; size: number; modified: string; type: string }>
+        return entries.map((f) => ({
+          name: f.path.split('/').pop() ?? f.path,
           path: f.path,
-          type: classifyFile(f.name),
-          modifiedAt: f.modified_at,
+          type: classifyFile(f.path),
+          modifiedAt: new Date(f.modified).getTime(),
         }))
       } catch {
-        // Tool may not exist yet — return empty
         return []
       }
     },
