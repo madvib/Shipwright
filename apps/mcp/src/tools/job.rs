@@ -128,20 +128,21 @@ pub fn append_job_log(project_dir: &Path, req: AppendJobLogRequest) -> String {
     } else {
         req.message.clone()
     };
-    let ship_dir = project_dir.join(".ship");
-    match runtime::append_event_with_context(
-        &ship_dir,
-        "agent",
-        runtime::EventEntity::Job,
-        runtime::EventAction::Log,
-        &req.job_id,
-        Some(message),
-        &runtime::EventContext {
-            job_id: Some(&req.job_id),
-            ..Default::default()
-        },
-    ) {
-        Ok(_) => format!("Log entry appended to job {}", req.job_id),
+    use runtime::events::store::{EventStore, SqliteEventStore};
+    use runtime::events::types::{ProjectLog, event_types};
+    match SqliteEventStore::new().and_then(|store| {
+        let envelope = runtime::EventEnvelope::new(
+            event_types::PROJECT_LOG,
+            &req.job_id,
+            &ProjectLog {
+                action: "job.log".to_string(),
+                details: message,
+            },
+        )?;
+        store.append(&envelope)?;
+        Ok(())
+    }) {
+        Ok(()) => format!("Log entry appended to job {}", req.job_id),
         Err(e) => format!("Error appending job log: {}", e),
     }
 }

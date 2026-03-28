@@ -47,18 +47,18 @@ pub fn list_events(project_dir: &Path, req: ListEventsRequest) -> String {
     };
 
     if let Some(cutoff) = since_cutoff {
-        events.retain(|e| e.timestamp >= cutoff);
+        events.retain(|e| e.created_at >= cutoff);
     }
     if let Some(ref actor_filter) = req.actor {
         events.retain(|e| e.actor.contains(actor_filter.as_str()));
     }
     if let Some(ref entity_filter) = req.entity {
         let ef = entity_filter.to_ascii_lowercase();
-        events.retain(|e| format!("{:?}", e.entity).to_ascii_lowercase().contains(&ef));
+        events.retain(|e| e.event_type.contains(&ef));
     }
     if let Some(ref action_filter) = req.action {
         let af = action_filter.to_ascii_lowercase();
-        events.retain(|e| format!("{:?}", e.action).to_ascii_lowercase().contains(&af));
+        events.retain(|e| e.event_type.contains(&af));
     }
 
     // Keep newest `limit` events (events are ordered ASC by created_at)

@@ -28,7 +28,7 @@ pub fn draw(frame: &mut Frame, nav: &NavState, data: &ViewData, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, e)| {
-            let ts = e.timestamp.format("%m-%d %H:%M").to_string();
+            let ts = e.created_at.format("%m-%d %H:%M").to_string();
             let style = if i == nav.list_selected {
                 selected_style()
             } else {
@@ -38,9 +38,9 @@ pub fn draw(frame: &mut Frame, nav: &NavState, data: &ViewData, area: Rect) {
                 e.id[..8.min(e.id.len())].to_string(),
                 ts,
                 e.actor.clone(),
-                format!("{:?}", e.entity),
-                format!("{:?}", e.action),
-                e.subject.clone(),
+                e.entity_id.clone(),
+                e.event_type.clone(),
+                e.entity_id.clone(),
             ])
             .style(style)
         })

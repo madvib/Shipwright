@@ -8,7 +8,7 @@ pub use runtime::db::adrs::AdrRecord;
 pub use runtime::db::jobs::Job;
 pub use runtime::db::notes::Note;
 pub use runtime::db::targets::{Capability, Target};
-pub use runtime::events::EventRecord;
+pub use runtime::EventEnvelope;
 
 /// All valid ship config keys with human-readable labels.
 pub const USER_PREF_KEYS: &[(&str, &str)] = &[
@@ -41,7 +41,7 @@ pub struct ViewData {
     pub all_jobs: Vec<Job>,
     pub notes: Vec<Note>,
     pub adrs: Vec<AdrRecord>,
-    pub events: Vec<EventRecord>,
+    pub events: Vec<EventEnvelope>,
     pub config: ConfigSnapshot,
 }
 
@@ -80,7 +80,7 @@ fn load_adrs(_ship_dir: &Path) -> Vec<AdrRecord> {
     runtime::db::adrs::list_adrs().unwrap_or_default()
 }
 
-fn load_events(_ship_dir: &Path) -> Vec<EventRecord> {
+fn load_events(_ship_dir: &Path) -> Vec<EventEnvelope> {
     runtime::db::events::list_all_events().unwrap_or_default()
 }
 

@@ -55,18 +55,18 @@ pub fn run_events(
 
     // Apply filters
     if let Some(cutoff) = since_cutoff {
-        events.retain(|e| e.timestamp >= cutoff);
+        events.retain(|e| e.created_at >= cutoff);
     }
     if let Some(ref actor_filter) = actor {
         events.retain(|e| e.actor.contains(actor_filter.as_str()));
     }
     if let Some(ref entity_filter) = entity {
         let ef = entity_filter.to_ascii_lowercase();
-        events.retain(|e| format!("{:?}", e.entity).to_ascii_lowercase().contains(&ef));
+        events.retain(|e| e.event_type.to_ascii_lowercase().contains(&ef));
     }
     if let Some(ref action_filter) = action {
         let af = action_filter.to_ascii_lowercase();
-        events.retain(|e| format!("{:?}", e.action).to_ascii_lowercase().contains(&af));
+        events.retain(|e| e.event_type.to_ascii_lowercase().contains(&af));
     }
 
     // Keep newest N events (take from the end since events are ordered ASC)
@@ -87,20 +87,19 @@ pub fn run_events(
 
     // Table header
     println!(
-        "{:<10} {:<20} {:<16} {:<24} SUBJECT",
-        "ID", "TIMESTAMP", "ACTOR", "ENTITY:ACTION"
+        "{:<10} {:<20} {:<16} {:<28} ENTITY",
+        "ID", "TIMESTAMP", "ACTOR", "EVENT_TYPE"
     );
     println!("{}", "-".repeat(90));
 
     for ev in &events {
-        let entity_action = format!("{:?}:{:?}", ev.entity, ev.action).to_ascii_lowercase();
         println!(
-            "{:<10} {:<20} {:<16} {:<24} {}",
+            "{:<10} {:<20} {:<16} {:<28} {}",
             trunc(&ev.id, 10),
-            fmt_ts(&ev.timestamp),
+            fmt_ts(&ev.created_at),
             trunc(&ev.actor, 16),
-            trunc(&entity_action, 24),
-            trunc(&ev.subject, 40),
+            trunc(&ev.event_type, 28),
+            trunc(&ev.entity_id, 36),
         );
     }
 
