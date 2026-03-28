@@ -241,6 +241,15 @@ impl StudioServer {
         };
         session_files::write_session_file(&project_dir, req)
     }
+
+    #[tool(description = "Delete a file from .ship-session/.")]
+    async fn delete_session_file(&self, Parameters(req): Parameters<ReadSessionFileRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::delete_session_file(&project_dir, &req.path)
+    }
 }
 
 // ---- ServerHandler ----

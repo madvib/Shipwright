@@ -166,6 +166,20 @@ pub fn write_session_file(project_dir: &Path, req: WriteSessionFileRequest) -> S
     }
 }
 
+pub fn delete_session_file(project_dir: &Path, path: &str) -> String {
+    if let Err(e) = validate_path(path) {
+        return format!("Error: {e}");
+    }
+    let file_path = project_dir.join(SESSION_DIR).join(path);
+    if !file_path.is_file() {
+        return format!("Error: file not found: {path}");
+    }
+    match std::fs::remove_file(&file_path) {
+        Ok(()) => format!("Deleted {path}"),
+        Err(e) => format!("Error deleting file: {e}"),
+    }
+}
+
 #[cfg(test)]
 #[path = "session_files_tests.rs"]
 mod tests;

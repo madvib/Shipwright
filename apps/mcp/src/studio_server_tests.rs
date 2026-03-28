@@ -19,6 +19,7 @@ fn studio_server_registers_exactly_studio_tools() {
         "list_session_files",
         "read_session_file",
         "write_session_file",
+        "delete_session_file",
     ];
     for tool in expected {
         assert!(
