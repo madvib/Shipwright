@@ -27,5 +27,6 @@ export interface SessionFile {
   name: string
   path: string
   type: 'html' | 'image' | 'markdown' | 'other'
+  size: number
   modifiedAt: number
 }

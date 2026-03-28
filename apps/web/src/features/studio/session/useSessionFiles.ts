@@ -1,7 +1,8 @@
 // Hook that provides session files from .ship-session/ via MCP.
 // Falls back to placeholder data when CLI is not connected.
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { sessionKeys } from './query-keys'
 import type { SessionFile } from './types'
@@ -28,6 +29,7 @@ export function useSessionFiles() {
           name: f.path.split('/').pop() ?? f.path,
           path: f.path,
           type: classifyFile(f.path),
+          size: f.size,
           modifiedAt: new Date(f.modified).getTime(),
         }))
       } catch {
@@ -65,4 +67,52 @@ export function useSessionFileContent(filePath: string | null) {
     staleTime: 3_000,
     refetchInterval: 5_000,
   })
+}
+
+const TODO_PATH = 'todo.md'
+
+export function useSessionTodo() {
+  const mcp = useLocalMcpContext()
+  const isConnected = mcp?.status === 'connected'
+  const queryClient = useQueryClient()
+
+  const query = useQuery({
+    queryKey: sessionKeys.fileContent(TODO_PATH),
+    queryFn: async (): Promise<string | null> => {
+      if (!mcp) return null
+      try {
+        const raw = await mcp.callTool('read_session_file', { path: TODO_PATH })
+        if (raw.startsWith('Error:')) return null
+        return raw
+      } catch {
+        return null
+      }
+    },
+    enabled: isConnected,
+    staleTime: 3_000,
+    refetchInterval: 10_000,
+  })
+
+  const writeMutation = useMutation({
+    mutationFn: async (content: string) => {
+      if (!mcp) throw new Error('Not connected')
+      await mcp.callTool('write_session_file', { path: TODO_PATH, content })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sessionKeys.fileContent(TODO_PATH) })
+    },
+  })
+
+  const writeTodo = useCallback(
+    (content: string) => writeMutation.mutate(content),
+    [writeMutation],
+  )
+
+  return {
+    content: query.data ?? null,
+    exists: query.data != null,
+    isLoading: query.isLoading,
+    writeTodo,
+    isSaving: writeMutation.isPending,
+  }
 }

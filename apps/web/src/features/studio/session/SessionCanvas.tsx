@@ -112,7 +112,7 @@ export function SessionCanvas({
               <Square className="size-8 mx-auto mb-3 opacity-40" />
               <p className="text-sm font-medium">No canvas loaded</p>
               <p className="text-xs mt-1 max-w-[280px]">
-                Select an HTML file from the timeline, or have an agent write to
+                Select an HTML artifact from the activity panel, or have an agent write to
                 .ship-session/canvas.html
               </p>
             </div>

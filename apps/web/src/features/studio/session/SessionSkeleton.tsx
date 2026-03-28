@@ -31,8 +31,8 @@ export function SessionSkeleton() {
           </div>
         </div>
 
-        {/* Timeline sidebar */}
-        <div className="w-64 shrink-0 border-l border-border/60 p-3 space-y-3">
+        {/* Activity sidebar */}
+        <div className="w-72 shrink-0 border-l border-border/60 p-3 space-y-3">
           <Bone className="h-4 w-16 mb-2" />
           {Array.from({ length: 5 }).map((_, i) => (
             <Bone key={i} className="h-10 w-full rounded-md" />
