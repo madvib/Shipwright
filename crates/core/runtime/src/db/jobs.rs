@@ -115,8 +115,7 @@ pub fn create_job(
 /// Reads current state, merges the patch, writes back, and releases file
 /// claims when the job reaches a terminal status ("complete", "failed", "done").
 pub fn update_job(job_id: &str, patch: JobPatch) -> Result<()> {
-    let current =
-        get_job(job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+    let current = get_job(job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let new_status = patch
         .status
@@ -157,8 +156,7 @@ pub fn update_job(job_id: &str, patch: JobPatch) -> Result<()> {
 
 /// Append a single file path to the job's `touched_files` list (deduplicates).
 pub fn append_touched_file(job_id: &str, path: &str) -> Result<()> {
-    let current =
-        get_job(job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
+    let current = get_job(job_id)?.ok_or_else(|| anyhow::anyhow!("job {job_id} not found"))?;
     let mut files = current.touched_files;
     let path_owned = path.to_string();
     if !files.contains(&path_owned) {
@@ -271,13 +269,19 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         status: row.get(2),
         branch: row.get(3),
         payload: serde_json::from_str(&payload_str).unwrap_or_else(|e| {
-            eprintln!("[ship warn] corrupt JSON in job.payload_json (id={}): {e}", row.get::<String, _>(0));
+            eprintln!(
+                "[ship warn] corrupt JSON in job.payload_json (id={}): {e}",
+                row.get::<String, _>(0)
+            );
             Default::default()
         }),
         created_by: row.get(5),
         claimed_by: row.get(6),
         touched_files: serde_json::from_str(&files_str).unwrap_or_else(|e| {
-            eprintln!("[ship warn] corrupt JSON in job.touched_files (id={}): {e}", row.get::<String, _>(0));
+            eprintln!(
+                "[ship warn] corrupt JSON in job.touched_files (id={}): {e}",
+                row.get::<String, _>(0)
+            );
             Default::default()
         }),
         assigned_to: row.get(8),
@@ -286,7 +290,10 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Job {
         created_at: row.get(11),
         updated_at: row.get(12),
         file_scope: serde_json::from_str(&scope_str).unwrap_or_else(|e| {
-            eprintln!("[ship warn] corrupt JSON in job.file_scope (id={}): {e}", row.get::<String, _>(0));
+            eprintln!(
+                "[ship warn] corrupt JSON in job.file_scope (id={}): {e}",
+                row.get::<String, _>(0)
+            );
             Default::default()
         }),
         capability_id: row.get(14),
@@ -308,18 +315,7 @@ mod tests {
     }
 
     fn mkjob(kind: &str, branch: Option<&str>) -> Job {
-        create_job(
-            kind,
-            branch,
-            None,
-            None,
-            None,
-            0,
-            None,
-            vec![],
-            vec![],
-        )
-        .unwrap()
+        create_job(kind, branch, None, None, None, 0, None, vec![], vec![]).unwrap()
     }
 
     #[test]
@@ -487,8 +483,7 @@ mod tests {
     fn test_capability_id_round_trip() {
         let (_tmp, _ship_dir) = setup();
         // FK is enforced — create a real target + capability first.
-        let t = crate::db::targets::create_target("surface", "test", None, None, None)
-            .unwrap();
+        let t = crate::db::targets::create_target("surface", "test", None, None, None).unwrap();
         let c = crate::db::targets::create_capability(&t.id, "test cap", None).unwrap();
 
         let job = mkjob("compile", None);

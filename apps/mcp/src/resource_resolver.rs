@@ -34,15 +34,12 @@ pub async fn resolve_resource_uri(
         return resolve_adr_list();
     }
     if let Some(id) = uri.strip_prefix("ship://adrs/") {
-        return runtime::db::adrs::get_adr(id)
-            .ok()
-            .flatten()
-            .map(|a| {
-                format!(
-                    "Title: {}\nStatus: {}\nDate: {}\n\n## Context\n\n{}\n\n## Decision\n\n{}",
-                    a.title, a.status, a.date, a.context, a.decision
-                )
-            });
+        return runtime::db::adrs::get_adr(id).ok().flatten().map(|a| {
+            format!(
+                "Title: {}\nStatus: {}\nDate: {}\n\n## Context\n\n{}\n\n## Decision\n\n{}",
+                a.title, a.status, a.date, a.context, a.decision
+            )
+        });
     }
     if uri == "ship://notes" {
         return resolve_notes_list();

@@ -3,14 +3,16 @@ mod requests;
 mod resource_resolver;
 mod resources;
 mod server;
+pub mod studio_server;
 mod tools;
 mod util;
 
 use anyhow::Result;
 use async_trait::async_trait;
 
-pub use http::run_http_server;
+pub use http::{run_http_server, run_studio_http_server};
 pub use server::{ShipServer, run_server};
+pub use studio_server::StudioServer;
 
 pub struct ShipMcpApp;
 
@@ -42,3 +44,8 @@ pub async fn run() -> Result<()> {
 
 #[cfg(test)]
 mod resource_tests;
+
+#[cfg(test)]
+mod project_skills_tests;
+#[cfg(test)]
+mod skill_file_tests;

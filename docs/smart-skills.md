@@ -24,8 +24,8 @@ platform.db KV (user state)
   SKILL.md              ← agent instructions (MiniJinja template)
   assets/
     vars.json           ← variable schema and defaults
-    scripts/            ← helper scripts referenced in SKILL.md
     templates/          ← reusable config snippets
+  scripts/              ← helper scripts referenced in SKILL.md
   references/
     docs/               ← human + agent-readable documentation (.mdoc, Markdoc)
     api/                ← API tables, external specs
@@ -39,7 +39,7 @@ platform.db KV (user state)
 
 ```json
 {
-  "$schema": "https://agentskills.io/schemas/vars/v1.json",
+  "$schema": "https://getship.dev/schemas/vars/v1.json",
   "commit_style": {
     "type": "enum",
     "default": "conventional",
@@ -136,12 +136,41 @@ ship vars reset commit                        # clear all state, revert to defau
 
 ## references/docs/
 
-Rich documentation lives in `references/docs/` as Markdoc (`.mdoc`) files. The main page is `index.mdoc`.
+Documentation lives in `references/docs/` as Markdown (`.md`) or Markdoc (`.mdoc`) files. The main page is `index.md`.
 
-- **Human-readable**: rendered by the Ship documentation site
-- **Agent-discoverable**: exposed as MCP resources, retrieved on demand without consuming context window
+A skill can have multiple doc pages for different concerns:
 
-This keeps `SKILL.md` focused on concise agent instructions. Richer explanations and examples live in docs where they can be retrieved when needed.
+```
+references/docs/
+  index.md              ← overview / landing page
+  commands.md           ← command reference
+  patterns.md           ← usage patterns and examples
+  troubleshooting.md    ← common issues
+```
+
+### Progressive disclosure
+
+`SKILL.md` is always loaded in the agent's context — keep it concise. `references/docs/` pages are retrieved on demand when the agent needs depth. Same source serves humans (docs site) and agents (filesystem).
+
+### Doc frontmatter
+
+```yaml
+---
+title: Command Reference
+description: Complete list of commands and their options.
+audience: public
+section: reference
+order: 2
+---
+```
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `title` | string | Page title (required) |
+| `description` | string | One-line summary |
+| `audience` | `public` (default), `internal`, `agent-only` | `public` = docs site + agents. `internal` = agents only, hidden from site. `agent-only` = never on site. |
+| `section` | `guide`, `reference`, `tutorial`, `concepts` | Grouping hint for the docs site sidebar |
+| `order` | number | Sort position within the skill's doc section |
 
 ---
 
@@ -149,7 +178,7 @@ This keeps `SKILL.md` focused on concise agent instructions. Richer explanations
 
 Every skill should have an eval suite. Evals measure whether the skill produces reliably better outputs than no skill, and give a feedback loop for iterating.
 
-See the full evaluation methodology at [agentskills.io/skill-creation/evaluating-skills](https://agentskills.io/skill-creation/evaluating-skills).
+Eval tooling (`ship skill eval`) is planned for a future release.
 
 ### Format
 

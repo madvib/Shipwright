@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Lock, Wrench, Settings2, FolderOpen, X } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Lock, Wrench, FolderOpen, X } from 'lucide-react'
 import type { ProfilePermissions } from '@ship/ui'
-import { getFieldEnum } from '#/features/agents/schema-hints'
 
 /** Extended permissions including additional_directories from the schema. */
 type ExtendedPermissions = ProfilePermissions & { additional_directories?: string[] }
@@ -60,10 +59,6 @@ export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: P
 
           {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-            <DefaultModeSection
-              value={local.default_mode ?? ''}
-              onChange={(v) => setLocal((prev) => ({ ...prev, default_mode: v || null }))}
-            />
             <DimensionSection icon={<Wrench className="size-3.5" />} label="Tools">
               <TagInput
                 label="Allow"
@@ -115,32 +110,6 @@ export function PermissionsDialog({ open, onOpenChange, permissions, onSave }: P
         </div>
       </div>
     </>
-  )
-}
-
-function DefaultModeSection({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const modes = useMemo(() => getFieldEnum('permissions.default_mode'), [])
-  return (
-    <DimensionSection icon={<Settings2 className="size-3.5" />} label="Default Mode">
-      <div className="flex flex-wrap gap-1.5">
-        {modes.map((mode) => (
-          <button
-            key={mode}
-            onClick={() => onChange(mode === value ? '' : mode)}
-            className={`rounded-md border px-2.5 py-1.5 text-[11px] transition-colors ${
-              value === mode
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-border/40 text-muted-foreground/50 hover:border-border hover:text-muted-foreground'
-            }`}
-          >
-            {mode}
-          </button>
-        ))}
-      </div>
-      <p className="text-[10px] text-muted-foreground/50 mt-1">
-        Permission mode for Claude Code. Click again to clear.
-      </p>
-    </DimensionSection>
   )
 }
 

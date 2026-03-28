@@ -1,0 +1,59 @@
+---
+const { type = 'note', title } = Astro.props;
+const icons = { note: 'ℹ️', tip: '💡', caution: '⚠️', danger: '🚨' };
+const icon = icons[type] || icons.note;
+---
+<div class={`ship-aside ship-aside-${type}`}>
+  {title && <p class="ship-aside-title">{icon} {title}</p>}
+  <div class="ship-aside-body"><slot /></div>
+</div>
+
+<style>
+  .ship-aside {
+    padding: 1rem 1.25rem;
+    border-radius: 0.375rem;
+    margin: 1.25rem 0;
+    border-left: 3px solid;
+  }
+  .ship-aside-title {
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+  }
+  .ship-aside-body {
+    font-size: 0.9rem;
+  }
+  .ship-aside-body :global(p) {
+    margin: 0 0 0.5rem 0;
+  }
+  .ship-aside-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  /* Note — accent color */
+  .ship-aside-note {
+    background: var(--sl-color-accent-low);
+    border-color: var(--sl-color-accent);
+  }
+
+  /* Tip — green */
+  .ship-aside-tip {
+    border-color: #2d8a56;
+  }
+  :root[data-theme="dark"] .ship-aside-tip { background: #0a2e1a; }
+  :root[data-theme="light"] .ship-aside-tip { background: #e8f5ee; }
+
+  /* Caution — amber */
+  .ship-aside-caution {
+    border-color: #b08a2d;
+  }
+  :root[data-theme="dark"] .ship-aside-caution { background: #2e1f0a; }
+  :root[data-theme="light"] .ship-aside-caution { background: #fef8e8; }
+
+  /* Danger — red */
+  .ship-aside-danger {
+    border-color: #b02d2d;
+  }
+  :root[data-theme="dark"] .ship-aside-danger { background: #2e0a0a; }
+  :root[data-theme="light"] .ship-aside-danger { background: #fde8e8; }
+</style>

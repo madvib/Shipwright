@@ -30,9 +30,7 @@ fn parse_workspace_session_row(row: &sqlx::sqlite::SqliteRow) -> WorkspaceSessio
     }
 }
 
-pub fn get_workspace_session_db(
-    session_id: &str,
-) -> Result<Option<WorkspaceSessionDb>> {
+pub fn get_workspace_session_db(session_id: &str) -> Result<Option<WorkspaceSessionDb>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(
@@ -47,9 +45,7 @@ pub fn get_workspace_session_db(
     Ok(row.as_ref().map(parse_workspace_session_row))
 }
 
-pub fn get_active_workspace_session_db(
-    workspace_id: &str,
-) -> Result<Option<WorkspaceSessionDb>> {
+pub fn get_active_workspace_session_db(workspace_id: &str) -> Result<Option<WorkspaceSessionDb>> {
     let mut conn = open_db()?;
     let row = block_on(async {
         sqlx::query(
@@ -181,9 +177,7 @@ pub fn update_workspace_session_db(session: &WorkspaceSessionDb) -> Result<()> {
     Ok(())
 }
 
-pub fn insert_workspace_session_record_db(
-    record: &WorkspaceSessionRecordDb,
-) -> Result<()> {
+pub fn insert_workspace_session_record_db(record: &WorkspaceSessionRecordDb) -> Result<()> {
     let mut conn = open_db()?;
     let updated_workspace_ids_json = serde_json::to_string(&record.updated_workspace_ids)
         .with_context(|| "Failed to serialize workspace session record updated_workspace_ids")?;

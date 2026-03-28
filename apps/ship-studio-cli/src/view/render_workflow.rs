@@ -49,7 +49,10 @@ fn draw_targets(frame: &mut Frame, nav: &NavState, data: &ViewData, area: Rect) 
                     format!(" {} ", status_sym(&t.status)),
                     Style::default().fg(sc),
                 ),
-                Span::styled(format!("{:<32}", truncate(&t.title, 30)), Style::default().fg(C_FG)),
+                Span::styled(
+                    format!("{:<32}", truncate(&t.title, 30)),
+                    Style::default().fg(C_FG),
+                ),
                 Span::styled(format!(" {:<10}", t.kind), Style::default().fg(C_MUT)),
                 Span::styled(t.status.clone(), Style::default().fg(sc)),
             ]))
@@ -98,7 +101,10 @@ fn draw_capabilities(frame: &mut Frame, nav: &NavState, data: &ViewData, area: R
                     format!(" {} ", status_sym(&c.status)),
                     Style::default().fg(sc),
                 ),
-                Span::styled(format!("{:<32}", truncate(&c.title, 30)), Style::default().fg(C_FG)),
+                Span::styled(
+                    format!("{:<32}", truncate(&c.title, 30)),
+                    Style::default().fg(C_FG),
+                ),
                 Span::styled(c.status.clone(), Style::default().fg(sc)),
             ]))
         })

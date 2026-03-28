@@ -3,9 +3,11 @@ import {
   CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem,
 } from '@ship/primitives'
 import { Badge } from '@ship/primitives'
-import { Zap } from 'lucide-react'
+import { Zap, Loader2, Globe } from 'lucide-react'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import type { Skill } from '@ship/ui'
+import { useRegistrySkillSearch } from '../useRegistryAutocomplete'
+import type { RegistrySkillResult } from '../useRegistryAutocomplete'
 
 interface AddSkillDialogProps {
   open: boolean
@@ -19,11 +21,20 @@ export function AddSkillDialog({ open, onOpenChange, existingIds, onAdd }: AddSk
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
 
+  const { results: registryResults, loading: registryLoading } = useRegistrySkillSearch(
+    deferredQuery,
+    open,
+  )
+
   const allSkills = library.skills ?? []
   const available = allSkills.filter(
     (s) => !existingIds.includes(s.id) &&
       (s.name.toLowerCase().includes(deferredQuery.toLowerCase()) ||
        s.id.toLowerCase().includes(deferredQuery.toLowerCase())),
+  )
+
+  const registryFiltered = registryResults.filter(
+    (r) => !existingIds.includes(r.path) && !available.some((s) => s.id === r.path),
   )
 
   const handleSelect = (skill: Skill) => {
@@ -32,19 +43,37 @@ export function AddSkillDialog({ open, onOpenChange, existingIds, onAdd }: AddSk
     setQuery('')
   }
 
+  const handleRegistrySelect = (result: RegistrySkillResult) => {
+    const skill: Skill = {
+      id: result.path,
+      name: result.name,
+      description: result.description,
+      source: 'community',
+      content: '',
+      vars: {},
+    }
+    onAdd(skill)
+    onOpenChange(false)
+    setQuery('')
+  }
+
+  const hasResults = available.length > 0 || registryFiltered.length > 0
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput placeholder="Search skills..." value={query} onValueChange={setQuery} />
       <CommandList>
-        <CommandEmpty>
-          <div className="flex flex-col items-center py-6 text-center">
-            <Zap className="size-5 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No skills found</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Create one in the Skills IDE or browse the registry</p>
-          </div>
-        </CommandEmpty>
+        {!hasResults && !registryLoading && (
+          <CommandEmpty>
+            <div className="flex flex-col items-center py-6 text-center">
+              <Zap className="size-5 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No skills found</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Create one in the Skills IDE or browse the registry</p>
+            </div>
+          </CommandEmpty>
+        )}
         {available.length > 0 && (
-          <CommandGroup heading="Available skills">
+          <CommandGroup heading="Local skills">
             {available.map((skill) => (
               <CommandItem key={skill.id} onSelect={() => handleSelect(skill)} className="flex items-center gap-3">
                 <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -57,6 +86,32 @@ export function AddSkillDialog({ open, onOpenChange, existingIds, onAdd }: AddSk
                   </div>
                   {skill.description && (
                     <p className="text-xs text-muted-foreground truncate">{skill.description}</p>
+                  )}
+                </div>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+        {registryLoading && deferredQuery.length >= 2 && (
+          <div className="flex items-center justify-center gap-2 py-4">
+            <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Searching registry...</span>
+          </div>
+        )}
+        {registryFiltered.length > 0 && (
+          <CommandGroup heading="Registry">
+            {registryFiltered.map((result) => (
+              <CommandItem key={result.path} onSelect={() => handleRegistrySelect(result)} className="flex items-center gap-3">
+                <div className="size-7 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <Globe className="size-3.5 text-blue-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{result.name}</span>
+                    <Badge variant="secondary" className="text-[9px]">{result.scope}</Badge>
+                  </div>
+                  {result.description && (
+                    <p className="text-xs text-muted-foreground truncate">{result.description}</p>
                   )}
                 </div>
               </CommandItem>

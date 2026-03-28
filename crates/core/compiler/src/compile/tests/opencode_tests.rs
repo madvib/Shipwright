@@ -25,11 +25,36 @@ fn opencode_produces_json_patch() {
 #[test]
 fn opencode_patch_only_for_opencode_provider() {
     let r = resolved(vec![make_server("x")]);
-    assert!(compile(&r, "opencode").unwrap().opencode_config_patch.is_some());
-    assert!(compile(&r, "claude").unwrap().opencode_config_patch.is_none());
-    assert!(compile(&r, "codex").unwrap().opencode_config_patch.is_none());
-    assert!(compile(&r, "gemini").unwrap().opencode_config_patch.is_none());
-    assert!(compile(&r, "cursor").unwrap().opencode_config_patch.is_none());
+    assert!(
+        compile(&r, "opencode")
+            .unwrap()
+            .opencode_config_patch
+            .is_some()
+    );
+    assert!(
+        compile(&r, "claude")
+            .unwrap()
+            .opencode_config_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "codex")
+            .unwrap()
+            .opencode_config_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "gemini")
+            .unwrap()
+            .opencode_config_patch
+            .is_none()
+    );
+    assert!(
+        compile(&r, "cursor")
+            .unwrap()
+            .opencode_config_patch
+            .is_none()
+    );
 }
 
 // ── Model ───────────────────────────────────────────────────────────────────
@@ -41,7 +66,10 @@ fn opencode_model_emitted() {
         ..resolved(vec![])
     };
     let patch = opencode_patch(&r);
-    assert_eq!(patch["model"].as_str().unwrap(), "anthropic/claude-sonnet-4-5");
+    assert_eq!(
+        patch["model"].as_str().unwrap(),
+        "anthropic/claude-sonnet-4-5"
+    );
 }
 
 // ── MCP servers ─────────────────────────────────────────────────────────────
@@ -51,7 +79,10 @@ fn opencode_mcp_uses_mcp_key_not_mcpservers() {
     let r = resolved(vec![make_server("github")]);
     let patch = opencode_patch(&r);
     assert!(patch.get("mcp").is_some(), "must use 'mcp' key");
-    assert!(patch.get("mcpServers").is_none(), "must NOT use 'mcpServers' key");
+    assert!(
+        patch.get("mcpServers").is_none(),
+        "must NOT use 'mcpServers' key"
+    );
 }
 
 #[test]
@@ -88,7 +119,11 @@ fn opencode_mcp_local_format() {
     let r = resolved(vec![s]);
     let patch = opencode_patch(&r);
     let entry = &patch["mcp"]["context7"];
-    assert_eq!(entry["type"].as_str().unwrap(), "local", "stdio → type: local");
+    assert_eq!(
+        entry["type"].as_str().unwrap(),
+        "local",
+        "stdio → type: local"
+    );
     // command must be an array [cmd, arg1, arg2, ...]
     let cmd = entry["command"].as_array().unwrap();
     assert_eq!(cmd[0].as_str().unwrap(), "npx");
@@ -121,8 +156,14 @@ fn opencode_mcp_remote_format() {
     let patch = opencode_patch(&r);
     let entry = &patch["mcp"]["remote-api"];
     assert_eq!(entry["type"].as_str().unwrap(), "remote");
-    assert_eq!(entry["url"].as_str().unwrap(), "https://api.example.com/mcp");
-    assert!(entry.get("command").is_none(), "remote must not have command");
+    assert_eq!(
+        entry["url"].as_str().unwrap(),
+        "https://api.example.com/mcp"
+    );
+    assert!(
+        entry.get("command").is_none(),
+        "remote must not have command"
+    );
 }
 
 #[test]
@@ -132,7 +173,10 @@ fn opencode_mcp_environment_not_env() {
     let r = resolved(vec![s]);
     let patch = opencode_patch(&r);
     let entry = &patch["mcp"]["with-env"];
-    assert!(entry.get("environment").is_some(), "must use 'environment' key");
+    assert!(
+        entry.get("environment").is_some(),
+        "must use 'environment' key"
+    );
     assert!(entry.get("env").is_none(), "must NOT use 'env' key");
     assert_eq!(entry["environment"]["API_KEY"].as_str().unwrap(), "secret");
 }
@@ -157,7 +201,10 @@ fn opencode_mcp_disabled_server_excluded() {
     let r = resolved(vec![s]);
     let patch = opencode_patch(&r);
     let mcp = patch["mcp"].as_object().unwrap();
-    assert!(!mcp.contains_key("disabled"), "disabled servers must be excluded");
+    assert!(
+        !mcp.contains_key("disabled"),
+        "disabled servers must be excluded"
+    );
 }
 
 // ── Permissions ─────────────────────────────────────────────────────────────
@@ -245,7 +292,7 @@ fn opencode_settings_extra_merged() {
     };
     let patch = opencode_patch(&r);
     assert_eq!(patch["theme"].as_str().unwrap(), "dark");
-    assert_eq!(patch["autoupdate"].as_bool().unwrap(), false);
+    assert!(!patch["autoupdate"].as_bool().unwrap());
 }
 
 #[test]
@@ -281,14 +328,21 @@ fn opencode_skills_dir_is_opencode() {
 #[test]
 fn opencode_mcp_key_is_mcp() {
     let desc = crate::compile::get_provider("opencode").unwrap();
-    assert_eq!(desc.mcp_key.as_str(), "mcp", "OpenCode uses 'mcp' not 'mcpServers'");
+    assert_eq!(
+        desc.mcp_key.as_str(),
+        "mcp",
+        "OpenCode uses 'mcp' not 'mcpServers'"
+    );
 }
 
 #[test]
 fn opencode_supports_tool_permissions() {
     let desc = crate::compile::get_provider("opencode").unwrap();
     let flags = desc.feature_flags();
-    assert!(flags.supports_tool_permissions, "OpenCode supports tool permissions");
+    assert!(
+        flags.supports_tool_permissions,
+        "OpenCode supports tool permissions"
+    );
     assert!(flags.supports_mcp, "OpenCode supports MCP");
     assert!(flags.supports_memory, "OpenCode supports memory/context");
 }

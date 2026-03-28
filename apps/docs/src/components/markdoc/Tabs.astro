@@ -1,0 +1,51 @@
+---
+---
+<div class="ship-tabs" data-tabs>
+  <slot />
+</div>
+
+<style>
+  .ship-tabs {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    margin: 1.5rem 0;
+  }
+</style>
+
+<script>
+  document.querySelectorAll('[data-tabs]').forEach((tabs) => {
+    const panels = tabs.querySelectorAll('[data-tab]');
+    if (panels.length === 0) return;
+
+    // Create tab bar
+    const bar = document.createElement('div');
+    bar.className = 'ship-tab-bar';
+    bar.style.cssText = 'display:flex;border-bottom:1px solid var(--sl-color-gray-5);background:var(--sl-color-gray-6)';
+
+    panels.forEach((panel, i) => {
+      const btn = document.createElement('button');
+      btn.textContent = panel.getAttribute('data-tab-label') || `Tab ${i + 1}`;
+      btn.style.cssText = 'padding:0.5rem 1rem;font-size:0.85rem;border:none;background:none;color:var(--sl-color-gray-2);cursor:pointer;border-bottom:2px solid transparent';
+      btn.addEventListener('click', () => {
+        panels.forEach(p => p.style.display = 'none');
+        bar.querySelectorAll('button').forEach(b => {
+          b.style.borderBottomColor = 'transparent';
+          b.style.color = 'var(--sl-color-gray-2)';
+        });
+        panel.style.display = 'block';
+        btn.style.borderBottomColor = 'var(--sl-color-accent)';
+        btn.style.color = 'var(--sl-color-white)';
+      });
+      bar.appendChild(btn);
+
+      if (i > 0) panel.style.display = 'none';
+      else {
+        btn.style.borderBottomColor = 'var(--sl-color-accent)';
+        btn.style.color = 'var(--sl-color-white)';
+      }
+    });
+
+    tabs.prepend(bar);
+  });
+</script>

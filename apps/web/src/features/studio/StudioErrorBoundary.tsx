@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { Link, type ErrorComponentProps } from '@tanstack/react-router'
 import { AlertTriangle, RotateCcw, LayoutDashboard, Users } from 'lucide-react'
 import { Button } from '@ship/primitives'
+import { usePanicSave } from '#/features/agents/PanicSaveContext'
 
 /**
  * Checks whether the error represents a "not found" scenario.
@@ -23,6 +25,10 @@ function errorMessage(error: unknown): string {
 }
 
 export function StudioErrorBoundary({ error, reset }: ErrorComponentProps) {
+  // Panic save any unsaved agent edits when an error boundary fires
+  const { saveAll } = usePanicSave()
+  useEffect(() => { saveAll() }, [saveAll])
+
   if (isNotFoundError(error)) {
     return (
       <div className="flex min-h-[60vh] w-full items-center justify-center p-6">

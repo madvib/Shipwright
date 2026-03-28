@@ -116,14 +116,19 @@ function PopoverBody({ mcp }: {
         <div className="space-y-1.5">
           <SyncBtn
             icon={pushBundle.isPending ? <Loader2 className="size-3.5 text-primary animate-spin" /> : <ArrowUpToLine className="size-3.5 text-primary" />}
-            label={pushBundle.isPending ? 'Pushing...' : 'Push to CLI'}
+            label={pushBundle.isPending ? 'Pushing...' : draftAgents.length > 0 ? `Push ${draftAgents.length} agent${draftAgents.length !== 1 ? 's' : ''} to CLI` : 'Push to CLI'}
             desc={draftAgents.length > 0 ? `${draftAgents.length} agent${draftAgents.length !== 1 ? 's' : ''} modified` : 'No changes to push'}
             disabled={draftAgents.length === 0 || pushBundle.isPending}
             primary
             onClick={handlePush}
           />
+          {pushBundle.isError && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[10px] text-destructive leading-snug">
+              {pushBundle.error instanceof Error ? pushBundle.error.message : 'Push failed'}
+            </p>
+          )}
           {lastSyncedLabel && (
-            <p className="text-[9px] text-muted-foreground/50 text-center">
+            <p className="text-[9px] text-muted-foreground text-center">
               Last synced {lastSyncedLabel}
             </p>
           )}
@@ -161,7 +166,7 @@ function PopoverHeader({ mcp, onToggleSettings }: {
         </span>
       </div>
       <div className="flex items-center gap-1">
-        <button onClick={onToggleSettings} className="rounded p-1 text-muted-foreground/40 hover:text-muted-foreground transition">
+        <button onClick={onToggleSettings} className="rounded p-1 text-muted-foreground hover:text-foreground transition">
           <Settings className="size-3" />
         </button>
         {mcp.status === 'connected' ? (
@@ -184,7 +189,7 @@ function PortSettings({ portInput, setPortInput, onSave }: { portInput: string; 
     <div className="rounded-lg border border-border/40 bg-background/60 p-2">
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-muted-foreground whitespace-nowrap">Port</label>
-        <input type="number" value={portInput} onChange={(e) => setPortInput(e.target.value)} onBlur={onSave} onKeyDown={(e) => e.key === 'Enter' && onSave()} className="w-20 rounded border border-border/40 bg-transparent px-1.5 py-0.5 text-[10px] font-mono text-foreground outline-none focus:border-primary/50" />
+        <input type="number" value={portInput} onChange={(e) => setPortInput(e.target.value)} onBlur={onSave} onKeyDown={(e) => e.key === 'Enter' && onSave()} className="w-20 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-mono text-foreground outline-none focus:border-primary/50" />
       </div>
     </div>
   )
@@ -199,17 +204,17 @@ function DisconnectedView({ mcp, startCmd, copied, setCopied }: {
       <div className="rounded-lg border border-border/40 bg-background/60 px-3 py-2">
         <div className="flex items-center gap-1.5">
           <code className="flex-1 text-[10px] font-mono text-emerald-400 truncate">{startCmd}</code>
-          <button onClick={() => { void navigator.clipboard.writeText(startCmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }} className="shrink-0 rounded p-1 text-muted-foreground/40 hover:text-foreground transition">
+          <button onClick={() => { void navigator.clipboard.writeText(startCmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }} className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground transition">
             {copied ? <CheckCheck className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
           </button>
         </div>
       </div>
-      <p className="text-[9px] text-muted-foreground/50">Sync agents and skills between Studio and your local project.</p>
+      <p className="text-[9px] text-muted-foreground">Sync agents and skills between Studio and your local project.</p>
       {!mcp.hasEverConnected && (
         <a href="https://github.com/madvib/Ship#installation" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2 text-left transition hover:border-primary/30 hover:bg-primary/5 no-underline">
           <Terminal className="size-3.5 text-muted-foreground" />
           <span className="flex-1 text-[11px] font-medium text-foreground">Get the CLI</span>
-          <ExternalLink className="size-3 text-muted-foreground/30" />
+          <ExternalLink className="size-3 text-muted-foreground" />
         </a>
       )}
     </>
@@ -224,7 +229,7 @@ function SyncBtn({ icon, label, desc, disabled, primary, onClick }: {
       {icon}
       <div className="flex-1 min-w-0">
         <span className="text-[11px] font-medium text-foreground">{label}</span>
-        <p className="text-[9px] text-muted-foreground/60">{desc}</p>
+        <p className="text-[9px] text-muted-foreground">{desc}</p>
       </div>
     </button>
   )

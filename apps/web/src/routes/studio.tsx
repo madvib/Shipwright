@@ -10,6 +10,7 @@ import { useAgents } from '#/features/agents/useAgents'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 import { LocalMcpProvider } from '#/features/studio/LocalMcpContext'
+import { PanicSaveProvider } from '#/features/agents/PanicSaveContext'
 
 export const Route = createFileRoute('/studio')({
   component: StudioLayout,
@@ -19,9 +20,11 @@ export const Route = createFileRoute('/studio')({
 
 function StudioLayout() {
   return (
-    <LocalMcpProvider>
-      <StudioSyncShell />
-    </LocalMcpProvider>
+    <PanicSaveProvider>
+      <LocalMcpProvider>
+        <StudioSyncShell />
+      </LocalMcpProvider>
+    </PanicSaveProvider>
   )
 }
 
@@ -42,7 +45,9 @@ function StudioSyncShell() {
     return null
   }, [matches])
 
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  )
 
   const { getAgent, isConnected } = useAgents()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
@@ -72,22 +77,28 @@ function StudioSyncShell() {
     }
   }, [panelOpen])
 
+  // Only show compiler output panel on agent detail pages
+  const showCompilerPanel = Boolean(activeAgentId)
+
   return (
     <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative pb-20">
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="flex-1 overflow-auto min-w-0">
           <Outlet />
         </div>
-        {panelOpen && (
-          <PublishPanel
-            library={effectiveLibrary}
-            compileState={compileState}
-            onClose={() => setPanelOpen(false)}
-          />
+        {showCompilerPanel && panelOpen && (
+          <div className="hidden md:block">
+            <PublishPanel
+              library={effectiveLibrary}
+              compileState={compileState}
+              onClose={() => setPanelOpen(false)}
+            />
+          </div>
         )}
       </div>
       <StudioDock
-        previewOpen={panelOpen}
+        previewOpen={showCompilerPanel && panelOpen}
+        showPreviewToggle={showCompilerPanel}
         onTogglePreview={() => setPanelOpen((p) => !p)}
         onAddSkill={addSkill}
       />

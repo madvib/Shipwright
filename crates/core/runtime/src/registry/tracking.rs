@@ -49,18 +49,21 @@ pub fn track_install(package_path: &str, offline: bool) {
         _ => {}
     }
 
-    let base_url = std::env::var("SHIP_REGISTRY_URL")
-        .unwrap_or_else(|_| "https://getship.dev".to_string());
+    let base_url =
+        std::env::var("SHIP_REGISTRY_URL").unwrap_or_else(|_| "https://getship.dev".to_string());
     let encoded = percent_encode(package_path);
     let endpoint = format!("{}/api/registry/{}/install", base_url, encoded);
 
     std::thread::spawn(move || {
         let _ = Command::new("curl")
             .args([
-                "-s",          // silent
-                "-o", "/dev/null", // discard response body
-                "-X", "POST",
-                "--max-time", "5",
+                "-s", // silent
+                "-o",
+                "/dev/null", // discard response body
+                "-X",
+                "POST",
+                "--max-time",
+                "5",
                 &endpoint,
             ])
             .stdin(Stdio::null())

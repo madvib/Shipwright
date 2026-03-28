@@ -16,7 +16,10 @@ fn collect_agent_ids(agents_dir: &Path) -> Vec<String> {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if let Some(id) = name.strip_suffix(".jsonc").or_else(|| name.strip_suffix(".toml")) {
+            if let Some(id) = name
+                .strip_suffix(".jsonc")
+                .or_else(|| name.strip_suffix(".toml"))
+            {
                 ids.push(id.to_string());
             }
         }
@@ -152,7 +155,10 @@ fn pull_agents_from_dir(
 
         let skill_refs = parsed.skills.map(|s| s.refs).unwrap_or_default();
         let rules_section = parsed.rules;
-        let rule_refs = rules_section.as_ref().map(|r| r.refs.clone()).unwrap_or_default();
+        let rule_refs = rules_section
+            .as_ref()
+            .map(|r| r.refs.clone())
+            .unwrap_or_default();
         let rules_inline = rules_section.and_then(|r| r.inline);
         let mcp_names = parsed.mcp.map(|m| m.servers).unwrap_or_default();
 
@@ -172,7 +178,10 @@ fn pull_agents_from_dir(
                 id: parsed.agent.id.clone(),
                 name: parsed.agent.name.unwrap_or_else(|| parsed.agent.id.clone()),
                 description: parsed.agent.description.unwrap_or_default(),
-                providers: parsed.agent.providers.unwrap_or_else(|| vec!["claude".into()]),
+                providers: parsed
+                    .agent
+                    .providers
+                    .unwrap_or_else(|| vec!["claude".into()]),
                 version: parsed.agent.version.unwrap_or_else(|| "0.1.0".into()),
             },
             skills,
@@ -193,44 +202,152 @@ fn pull_agents_from_dir(
 }
 
 fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
-    let skills_dir = ship_dir.join("skills");
+    let skill_dirs = runtime::read_skill_paths(ship_dir);
     refs.iter()
         .filter_map(|r| {
             let id = r.rsplit('/').next().unwrap_or(r);
-            let skill_md = skills_dir.join(id).join("SKILL.md");
+            // Search all configured skill paths; first match wins.
+            let skill_dir = skill_dirs
+                .iter()
+                .map(|d| d.join(id))
+                .find(|d| d.join("SKILL.md").exists())?;
+            let skill_md = skill_dir.join("SKILL.md");
             let content = std::fs::read_to_string(&skill_md).ok()?;
-            let (name, description) = parse_skill_frontmatter(&content);
+            let fm = parse_skill_frontmatter(&content);
+
+            let files = collect_skill_files(&skill_dir);
+
+            let vars_schema = std::fs::read_to_string(skill_dir.join("assets/vars.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok());
+
+            let evals = std::fs::read_to_string(skill_dir.join("evals/evals.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok());
+
+            let reference_docs = collect_reference_docs(&skill_dir);
+
             Some(PullSkill {
                 id: id.to_string(),
-                name: name.unwrap_or_else(|| id.to_string()),
-                description,
+                name: fm.name.unwrap_or_else(|| id.to_string()),
+                description: fm.description,
                 content,
                 source: "imported".into(),
+                stable_id: fm.stable_id,
+                tags: fm.tags,
+                authors: fm.authors,
+                vars_schema,
+                files,
+                reference_docs,
+                evals,
             })
         })
         .collect()
 }
 
-fn parse_skill_frontmatter(content: &str) -> (Option<String>, Option<String>) {
+/// Collect all file paths in a skill directory, relative to the skill root.
+pub(crate) fn collect_skill_files(skill_dir: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    if !skill_dir.is_dir() {
+        return files;
+    }
+    collect_files_recursive(skill_dir, skill_dir, &mut files);
+    files.sort();
+    files
+}
+
+pub(crate) fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_recursive(root, &path, out);
+        } else if path.is_file()
+            && let Ok(rel) = path.strip_prefix(root)
+        {
+            let rel_str = rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            out.push(rel_str);
+        }
+    }
+}
+
+/// Read markdown files from references/docs/ into a map.
+pub(crate) fn collect_reference_docs(skill_dir: &Path) -> HashMap<String, String> {
+    let docs_dir = skill_dir.join("references").join("docs");
+    let mut docs = HashMap::new();
+    if !docs_dir.is_dir() {
+        return docs;
+    }
+    let mut doc_files = Vec::new();
+    collect_files_recursive(skill_dir, &docs_dir, &mut doc_files);
+    for rel_path in doc_files {
+        let full = skill_dir.join(&rel_path);
+        if let Ok(content) = std::fs::read_to_string(&full) {
+            docs.insert(rel_path, content);
+        }
+    }
+    docs
+}
+
+pub(crate) struct SkillFrontmatter {
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) stable_id: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) authors: Vec<String>,
+}
+
+pub(crate) fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
+    let mut fm = SkillFrontmatter {
+        name: None,
+        description: None,
+        stable_id: None,
+        tags: Vec::new(),
+        authors: Vec::new(),
+    };
+
     if !content.starts_with("---") {
-        return (None, None);
+        return fm;
     }
     let rest = &content[3..];
     let end = match rest.find("\n---") {
         Some(i) => i,
-        None => return (None, None),
+        None => return fm,
     };
-    let fm = &rest[..end];
-    let mut name = None;
-    let mut desc = None;
-    for line in fm.lines() {
+    let block = &rest[..end];
+    for line in block.lines() {
         if let Some(v) = line.strip_prefix("name:") {
-            name = Some(v.trim().to_string());
+            fm.name = Some(v.trim().to_string());
         } else if let Some(v) = line.strip_prefix("description:") {
-            desc = Some(v.trim().to_string());
+            fm.description = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("stable-id:") {
+            fm.stable_id = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("tags:") {
+            fm.tags = parse_inline_array(v.trim());
+        } else if let Some(v) = line.strip_prefix("authors:") {
+            fm.authors = parse_inline_array(v.trim());
         }
     }
-    (name, desc)
+    fm
+}
+
+/// Parse `[a, b, c]` into `vec!["a", "b", "c"]`.
+fn parse_inline_array(s: &str) -> Vec<String> {
+    let trimmed = s.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return Vec::new();
+    }
+    trimmed[1..trimmed.len() - 1]
+        .split(',')
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect()
 }
 
 fn resolve_rules(ship_dir: &Path, refs: &[String]) -> Vec<PullRule> {
@@ -293,7 +410,10 @@ mod tests {
 
         agents.sort_by(|a, b| a.profile.id.cmp(&b.profile.id));
         assert_eq!(agents.len(), 2);
-        let shared = agents.iter().find(|a| a.profile.id == "shared-agent").unwrap();
+        let shared = agents
+            .iter()
+            .find(|a| a.profile.id == "shared-agent")
+            .unwrap();
         assert_eq!(shared.source, "project", "project should shadow library");
         let lib = agents.iter().find(|a| a.profile.id == "lib-only").unwrap();
         assert_eq!(lib.source, "library");
@@ -334,6 +454,54 @@ mod tests {
     fn collect_agent_ids_handles_missing_dir() {
         let ids = collect_agent_ids(Path::new("/nonexistent/path"));
         assert!(ids.is_empty());
+    }
+
+    fn write_skill_at(ship_dir: &Path, rel_dir: &str, id: &str, body: &str) {
+        let skill_dir = ship_dir.join(rel_dir).join(id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let content = format!("---\nname: {id}\n---\n{body}");
+        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+    }
+
+    fn write_manifest_skill_paths(ship_dir: &Path, paths: &[&str]) {
+        let arr: Vec<String> = paths.iter().map(|p| format!("\"{}\"", p)).collect();
+        let content = format!(
+            r#"{{"id": "test", "project": {{"skill_paths": [{}]}}}}"#,
+            arr.join(", ")
+        );
+        std::fs::write(ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE), content).unwrap();
+    }
+
+    #[test]
+    fn resolve_skills_finds_across_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        write_manifest_skill_paths(&ship_dir, &["skills/", "docs/"]);
+
+        write_skill_at(&ship_dir, "skills", "tdd", "Write tests first.");
+        write_skill_at(&ship_dir, "docs", "tutorial", "A tutorial skill.");
+
+        let skills = resolve_skills(&ship_dir, &["tdd".to_string(), "tutorial".to_string()]);
+        assert_eq!(skills.len(), 2);
+        let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&"tdd"));
+        assert!(ids.contains(&"tutorial"));
+    }
+
+    #[test]
+    fn resolve_skills_first_path_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        write_manifest_skill_paths(&ship_dir, &["first/", "second/"]);
+
+        write_skill_at(&ship_dir, "first", "dup", "First version.");
+        write_skill_at(&ship_dir, "second", "dup", "Second version.");
+
+        let skills = resolve_skills(&ship_dir, &["dup".to_string()]);
+        assert_eq!(skills.len(), 1);
+        assert!(skills[0].content.contains("First version"));
     }
 
     #[test]

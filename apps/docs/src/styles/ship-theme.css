@@ -1,0 +1,101 @@
+/* Ship brand theme for Starlight */
+@import "@fontsource-variable/syne";
+@import "@fontsource-variable/dm-sans";
+
+:root {
+  /* Typography — Ship fonts */
+  --sl-font: "DM Sans Variable", "DM Sans", "Inter", ui-sans-serif, sans-serif;
+  --sl-font-system: var(--sl-font);
+}
+
+/* Light mode */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fdf3e7;
+  --sl-color-accent: #b06a1f;
+  --sl-color-accent-high: #5a3510;
+  --sl-color-white: #18140f;
+  --sl-color-gray-1: #362e25;
+  --sl-color-gray-2: #55493e;
+  --sl-color-gray-3: #8a7e72;
+  --sl-color-gray-4: #bfb5a8;
+  --sl-color-gray-5: #e8ddd0;
+  --sl-color-gray-6: #f4efe8;
+  --sl-color-black: #faf7f3;
+}
+
+/* Dark mode */
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #2a1a08;
+  --sl-color-accent: #c67b2e;
+  --sl-color-accent-high: #f5d4a8;
+  --sl-color-white: #f8f4ef;
+  --sl-color-gray-1: #e8ddd0;
+  --sl-color-gray-2: #bfb5a8;
+  --sl-color-gray-3: #8a7e72;
+  --sl-color-gray-4: #55493e;
+  --sl-color-gray-5: #362e25;
+  --sl-color-gray-6: #231d17;
+  --sl-color-black: #18140f;
+}
+
+/* Display headings use Syne */
+h1, h2, h3,
+.site-title,
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  font-family: "Syne Variable", "Syne", "Inter", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Site title in header — match Ship branding */
+.site-title {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 1.1rem;
+}
+
+/* Logo sizing */
+.site-title img {
+  height: 1.75rem;
+}
+
+/* Hero centering — target Starlight's actual class names */
+.hero {
+  text-align: center !important;
+  align-items: center !important;
+}
+.hero .tagline {
+  margin-inline: auto !important;
+  max-width: 38rem;
+}
+.hero .sl-flex.actions {
+  justify-content: center !important;
+}
+
+/* Flow steps — equal width */
+.ship-flow {
+  gap: 1rem;
+}
+.ship-flow > .ship-step {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Cards — equal sizing, no stray paragraphs */
+.ship-cards > .ship-card {
+  min-height: 0;
+}
+
+/* Code blocks */
+pre {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}
+
+/* Tighter sidebar spacing */
+nav.sidebar .top-level > li {
+  margin-top: 0.25rem;
+}

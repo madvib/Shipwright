@@ -23,11 +23,7 @@ pub struct FileClaim {
 /// If ANY path is already claimed by a *different* job, the entire operation
 /// fails with an error listing all conflicts. Re-claiming paths already owned
 /// by the same `job_id` is a no-op (idempotent).
-pub fn claim_files(
-    job_id: &str,
-    workspace_id: Option<&str>,
-    paths: &[&str],
-) -> Result<()> {
+pub fn claim_files(job_id: &str, workspace_id: Option<&str>, paths: &[&str]) -> Result<()> {
     if paths.is_empty() {
         return Ok(());
     }
@@ -132,10 +128,7 @@ pub fn list_claims(job_id: Option<&str>) -> Result<Vec<FileClaim>> {
 
 /// Like `check_conflicts`, but excludes paths owned by `job_id` itself
 /// (those are idempotent re-claims, not conflicts).
-fn check_conflicts_for_job(
-    job_id: &str,
-    paths: &[&str],
-) -> Result<Vec<(String, String)>> {
+fn check_conflicts_for_job(job_id: &str, paths: &[&str]) -> Result<Vec<(String, String)>> {
     if paths.is_empty() {
         return Ok(vec![]);
     }

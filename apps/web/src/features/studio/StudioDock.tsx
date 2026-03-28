@@ -13,11 +13,12 @@ const NAV_ITEMS = [
 
 interface StudioDockProps {
   previewOpen?: boolean
+  showPreviewToggle?: boolean
   onTogglePreview?: () => void
   onAddSkill: (skill: Skill) => void
 }
 
-export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioDockProps) {
+export function StudioDock({ previewOpen, showPreviewToggle = true, onTogglePreview, onAddSkill }: StudioDockProps) {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -28,7 +29,7 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
       <nav
         aria-label="Studio navigation"
-        className="flex items-center gap-1 rounded-2xl border border-border/50 bg-card/80 px-2 py-1.5 shadow-lg shadow-foreground/[0.04] backdrop-blur-xl"
+        className="flex items-center gap-1 rounded-2xl border border-border bg-card/80 px-2 py-1.5 shadow-lg shadow-foreground/[0.04] backdrop-blur-xl"
       >
         {NAV_ITEMS.map((item, i) => {
           const isActive = item.exact
@@ -62,7 +63,7 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
                 <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-primary" />
               )}
               {hoverIdx === i && (
-                <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[11px] font-semibold text-popover-foreground shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150 pointer-events-none">
+                <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[11px] font-semibold text-foreground shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150 pointer-events-none">
                   {item.label}
                 </span>
               )}
@@ -87,25 +88,27 @@ export function StudioDock({ previewOpen, onTogglePreview, onAddSkill }: StudioD
         {/* CLI status */}
         <CliStatusPopover onAddSkill={onAddSkill} />
 
-        {/* Preview panel toggle */}
-        <button
-          onClick={onTogglePreview}
-          className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-            previewOpen
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-primary/10 text-primary hover:bg-primary/20'
-          }`}
-        >
-          {previewOpen ? (
-            <PanelRightOpen className="size-3.5" />
-          ) : (
-            <>
-              <Radio className="size-3 animate-pulse" />
-              <span>Preview</span>
-            </>
-          )}
-          {previewOpen && 'Preview'}
-        </button>
+        {/* Compiler output toggle — only on agent detail pages */}
+        {showPreviewToggle && (
+          <button
+            onClick={onTogglePreview}
+            className={`hidden md:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+              previewOpen
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-primary/10 text-primary hover:bg-primary/20'
+            }`}
+          >
+            {previewOpen ? (
+              <PanelRightOpen className="size-3.5" />
+            ) : (
+              <>
+                <Radio className="size-3 animate-pulse" />
+                <span>Preview</span>
+              </>
+            )}
+            {previewOpen && 'Preview'}
+          </button>
+        )}
       </nav>
     </div>
   )

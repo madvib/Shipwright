@@ -203,9 +203,7 @@ impl NavState {
             Some(current) => {
                 let idx = relevant.iter().position(|s| s == current);
                 match idx {
-                    Some(i) if i + 1 < relevant.len() => {
-                        Some(relevant[i + 1].to_string())
-                    }
+                    Some(i) if i + 1 < relevant.len() => Some(relevant[i + 1].to_string()),
                     _ => None,
                 }
             }

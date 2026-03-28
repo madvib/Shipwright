@@ -10,9 +10,9 @@ pub mod notes;
 pub mod project;
 pub mod session;
 pub mod skills;
+pub mod studio;
+pub mod studio_push;
 #[cfg(feature = "unstable")]
 pub mod target;
 pub mod workspace;
-pub mod studio;
-pub mod studio_push;
 pub mod workspace_ops;

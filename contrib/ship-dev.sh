@@ -56,8 +56,9 @@ PORTS=(
   -p 3000:3000   # Ship Studio (Vite dev)
   -p 3001:3001   # Ship Studio (alt)
   -p 3002:3002   # Vite HMR websocket
+  -p 4321:4321   # Astro docs site (dev)
   -p 6006:6006   # Storybook
-  -p 7701:7701   # Ship MCP server (HTTP mode)
+  -p 51741:51741 # Ship MCP server (HTTP mode — Studio default)
 )
 
 cmd_build() {
@@ -95,6 +96,9 @@ cmd_start() {
   podman exec -it "$CONTAINER_NAME" bash -c '
     cd /workspaces/ship
     eval "$($HOME/.local/bin/fnm env)"
+
+    # Ensure pnpm global virtual store is disabled (Astro build incompatible)
+    pnpm config set enable-global-virtual-store false 2>/dev/null
 
     # pnpm install (skip if node_modules looks fresh)
     if [[ ! -d node_modules/.pnpm ]]; then

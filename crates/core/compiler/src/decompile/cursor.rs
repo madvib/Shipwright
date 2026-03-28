@@ -7,10 +7,8 @@ use std::path::Path;
 
 use serde_json::Value as Json;
 
-use crate::types::{
-    HookConfig, HookTrigger, McpServerConfig, McpServerType, Rule,
-};
 use crate::ProjectLibrary;
+use crate::types::{HookConfig, HookTrigger, McpServerConfig, McpServerType, Rule};
 
 use super::cursor_helpers::{parse_cursor_cli, parse_mdc_frontmatter};
 use super::json_string_array;

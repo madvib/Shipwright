@@ -2,6 +2,7 @@
 name = "mcp"
 version = "0.1.0"
 edition = "2024"
+publish = false
 
 [lib]
 name = "mcp"
@@ -31,4 +32,5 @@ unstable = []
 
 [dev-dependencies]
 tempfile = "3.13"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rmcp = { version = "0.16.0", features = ["server", "client", "transport-io"] }

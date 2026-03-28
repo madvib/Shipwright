@@ -3,7 +3,7 @@
   "$schema": "../../schemas/agent.schema.json",
   "agent": {
     "id": "cli-lane",
-    "name": "CLI Lane — feat/cli-init",
+    "name": "CLI Lane",
     "version": "0.1.0",
     "description": "Active context for the CLI lane agent",
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],

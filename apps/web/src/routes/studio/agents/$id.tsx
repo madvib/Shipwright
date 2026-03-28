@@ -1,8 +1,8 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { useState, useCallback, useMemo } from 'react'
+import { ArrowLeft, SearchX } from 'lucide-react'
 import { useAgents } from '#/features/agents/useAgents'
 import { useAgentDrafts } from '#/features/agents/useAgentDrafts'
-import { makeAgent } from '#/features/agents/make-agent'
 import { AgentActivityBar } from '#/features/agents/AgentActivityBar'
 import { AgentStickyHeader } from '#/features/agents/AgentStickyHeader'
 import { useScrollspy } from '#/features/agents/useScrollspy'
@@ -29,26 +29,52 @@ export const Route = createFileRoute('/studio/agents/$id')({
   ssr: false,
 })
 
+function AgentNotFound({ id }: { id: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="flex size-12 items-center justify-center rounded-xl border border-border bg-muted/40 mb-4">
+        <SearchX className="size-5 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Agent not found</p>
+      <p className="mt-1 text-xs text-muted-foreground max-w-xs">
+        No agent with ID "{id}" exists in this project.
+      </p>
+      <Link
+        to="/studio/agents"
+        className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition no-underline"
+      >
+        <ArrowLeft className="size-3" />
+        Back to agents
+      </Link>
+    </div>
+  )
+}
+
 function AgentDetailPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
-  const { getAgent } = useAgents()
+  const { getAgent, isLoading } = useAgents()
   const { setDraft, hasDraft, clearDraft } = useAgentDrafts()
-  const profile = getAgent(id) ?? makeAgent({ profile: { id, name: id } })
+  const profile = getAgent(id)
   const { scrollRef, activeSection, handleSectionClick } = useScrollspy()
   const isDraft = hasDraft(id)
 
-  const handleDelete = useCallback(() => {
+  if (isLoading && !profile) {
+    return <AgentDetailSkeleton />
+  }
+
+  if (!profile) {
+    return <AgentNotFound id={id} />
+  }
+
+  // -- Delete ---------------------------------------------------------------
+  const handleDelete = () => {
     if (!confirm(`Delete "${profile.profile.name}"?`)) return
     void navigate({ to: '/studio/agents', replace: true })
-  }, [profile.profile.name, navigate])
+  }
 
-  const update = useCallback(
-    (patch: Partial<ResolvedAgentProfile>) => setDraft(id, patch),
-    [id, setDraft],
-  )
-
-  const handleDiscard = useCallback(() => clearDraft(id), [id, clearDraft])
+  const update = (patch: Partial<ResolvedAgentProfile>) => setDraft(id, patch)
+  const handleDiscard = () => clearDraft(id)
 
   return (
     <AgentDetailView
@@ -64,7 +90,7 @@ function AgentDetailPage() {
   )
 }
 
-// ── Inner view (split to keep AgentDetailPage under 300 lines) ──────────
+// -- Inner view (split to keep AgentDetailPage under 300 lines) -------------
 
 interface ViewProps {
   profile: ResolvedAgentProfile
@@ -145,6 +171,7 @@ function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSection
   const [ruleOpen, setRuleOpen] = useState(false)
   const [ruleEdit, setRuleEdit] = useState<{ index: number; rule: Rule } | null>(null)
 
+  // -- Counts for activity bar ----------------------------------------------
   const counts = useMemo(() => ({
     skills: profile.skills.length,
     mcp: profile.mcpServers.length,
@@ -166,10 +193,20 @@ function AgentDetailView({ profile, isDraft, activeSection, scrollRef, onSection
               <McpSection servers={profile.mcpServers} toolStates={mcpToolStates} onRemove={removeServer} onSetToolPermission={setToolPermission} onSetGroupPermission={setGroupPermission} onAdd={() => setMcpOpen(true)} />
             </div>
             <div id="section-permissions">
-              <PermissionsSection permissions={profile.permissions ?? {}} activePreset={profile.permissions?.preset ?? 'ship-standard'} onPresetChange={setPermissionPreset} onEdit={() => setPermsOpen(true)} />
+              <PermissionsSection
+                permissions={profile.permissions ?? {}}
+                activePreset={profile.permissions?.preset ?? 'ship-standard'}
+                onPresetChange={setPermissionPreset}
+                onEdit={() => setPermsOpen(true)}
+              />
             </div>
             <div id="section-rules">
-              <RulesSection rules={profile.rules} onAdd={() => { setRuleEdit(null); setRuleOpen(true) }} onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }} onRemove={removeRule} />
+              <RulesSection
+                rules={profile.rules}
+                onAdd={() => { setRuleEdit(null); setRuleOpen(true) }}
+                onEdit={(i) => { setRuleEdit({ index: i, rule: profile.rules[i] }); setRuleOpen(true) }}
+                onRemove={removeRule}
+              />
             </div>
             <div id="section-providers">
               <ProvidersSection providers={profile.profile.providers ?? []} model={profile.model} env={profile.env} availableModels={profile.availableModels} agentLimits={profile.agentLimits} hooks={profile.hooks} providerSettings={profile.providerSettings ?? {}} onChangeModel={setModel} onChangeEnv={setEnv} onChangeAvailableModels={setAvailableModels} onChangeAgentLimits={setAgentLimits} onChangeHooks={setHooks} onChangeProviderSettings={setProviderSettings} />

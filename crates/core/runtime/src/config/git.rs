@@ -1,7 +1,7 @@
-use anyhow::Result;
-use std::path::Path;
 use super::io::{get_config, save_config};
 use super::types::GitConfig;
+use anyhow::Result;
+use std::path::Path;
 
 pub fn get_git_config(project_dir: &Path) -> Result<GitConfig> {
     let config = get_config(Some(project_dir.to_path_buf()))?;

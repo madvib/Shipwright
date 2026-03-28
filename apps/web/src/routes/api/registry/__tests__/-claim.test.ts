@@ -72,6 +72,7 @@ function makeRepos(overrides: Record<string, unknown> = {}) {
     incrementStars: vi.fn(),
     deprecatePackage: vi.fn(),
     deletePackageSkillsByVersion: vi.fn(),
+    updatePackageVersionHash: vi.fn(),
     ...overrides,
   }
 }

@@ -3,18 +3,32 @@
 // agents reference it and its origin (project vs library).
 
 import { useMemo, useState, useEffect } from 'react'
-import { usePullAgents } from '#/features/studio/mcp-queries'
+import { usePullAgents, useProjectSkills } from '#/features/studio/mcp-queries'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
-import type { Skill, PullSkill } from '@ship/ui'
+import type { Skill, PullSkill, JsonValue } from '@ship/ui'
 
-const CACHE_KEY = 'ship-skills-library-cache'
+const CACHE_KEY = 'ship-skills-library-cache-v2'
 
 export interface LibrarySkill extends Skill {
   /** 'project' = from .ship/, 'library' = from ~/.ship/ */
   origin: 'project' | 'library'
   /** Agent IDs that reference this skill */
   usedBy: string[]
+  /** Canonical storage key from stable-id frontmatter */
+  stableId: string | null
+  /** Tags from frontmatter */
+  tags: string[]
+  /** Authors from frontmatter */
+  authors: string[]
+  /** Raw vars.json schema, null if no vars */
+  varsSchema: JsonValue | null
+  /** All files in the skill directory */
+  files: string[]
+  /** Reference doc content keyed by relative path */
+  referenceDocs: Record<string, string>
+  /** Raw evals.json content, null if no evals */
+  evals: JsonValue | null
 }
 
 export interface UseSkillsLibraryReturn {
@@ -23,18 +37,33 @@ export interface UseSkillsLibraryReturn {
   isConnected: boolean
 }
 
-/** Convert a PullSkill to the Skill shape used by the IDE. */
-function pullSkillToSkill(ps: PullSkill): Skill {
+/** Convert a PullSkill to a LibrarySkill. */
+function pullToLibrarySkill(
+  ps: PullSkill,
+  origin: 'project' | 'library',
+  usedBy: string[],
+): LibrarySkill {
+  const source = (ps.source === 'custom' || ps.source === 'builtin' ||
+           ps.source === 'ai-generated' || ps.source === 'community' ||
+           ps.source === 'imported')
+    ? ps.source
+    : 'custom' as const
   return {
     id: ps.id,
     name: ps.name,
     description: ps.description ?? null,
     content: ps.content,
-    source: (ps.source === 'custom' || ps.source === 'builtin' ||
-             ps.source === 'ai-generated' || ps.source === 'community' ||
-             ps.source === 'imported')
-      ? ps.source
-      : 'custom',
+    source,
+    vars: {},
+    origin,
+    usedBy,
+    stableId: ps.stable_id ?? null,
+    tags: ps.tags ?? [],
+    authors: ps.authors ?? [],
+    varsSchema: ps.vars_schema ?? null,
+    files: ps.files ?? [],
+    referenceDocs: (ps.reference_docs ?? {}) as Record<string, string>,
+    evals: ps.evals ?? null,
   }
 }
 
@@ -57,12 +86,11 @@ export function aggregateSkills(
           existing.usedBy.push(agent.id)
         }
       } else {
-        const skill = pullSkillToSkill(ps)
-        map.set(ps.id, {
-          ...skill,
-          origin: agentOrigin as 'project' | 'library',
-          usedBy: [agent.id],
-        })
+        map.set(ps.id, pullToLibrarySkill(
+          ps,
+          agentOrigin as 'project' | 'library',
+          [agent.id],
+        ))
       }
     }
   }
@@ -70,10 +98,26 @@ export function aggregateSkills(
   return Array.from(map.values())
 }
 
+/** Merge project skills into an agent-derived skill list. Deduplicates by ID. */
+export function mergeProjectSkills(
+  agentSkills: LibrarySkill[],
+  projectPullSkills: PullSkill[],
+): LibrarySkill[] {
+  const map = new Map<string, LibrarySkill>()
+  for (const s of agentSkills) map.set(s.id, s)
+  for (const ps of projectPullSkills) {
+    if (!map.has(ps.id)) {
+      map.set(ps.id, pullToLibrarySkill(ps, 'project', []))
+    }
+  }
+  return Array.from(map.values())
+}
+
 export function useSkillsLibrary(): UseSkillsLibraryReturn {
   const mcp = useLocalMcpContext()
   const isConnected = mcp?.status === 'connected'
   const pullQuery = usePullAgents()
+  const projectQuery = useProjectSkills()
   const [cachedSkills, setCachedSkills] = useState<LibrarySkill[]>([])
 
   // Load cache from IndexedDB on mount (migrate from localStorage if needed)
@@ -109,11 +153,37 @@ export function useSkillsLibrary(): UseSkillsLibraryReturn {
     }
   }, [pulledSkills])
 
+  // Build a usedBy lookup from agent data so we can enrich project skills.
+  const agentUsageMap = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (!pullQuery.data?.agents) return map
+    for (const agent of pullQuery.data.agents) {
+      for (const skill of agent.skills) {
+        const existing = map.get(skill.id)
+        if (existing) {
+          if (!existing.includes(agent.profile.id)) existing.push(agent.profile.id)
+        } else {
+          map.set(skill.id, [agent.profile.id])
+        }
+      }
+    }
+    return map
+  }, [pullQuery.data])
+
+  // Primary source: list_project_skills. This is the canonical skill list.
+  // Agent data enriches skills with usedBy metadata but does not define the list.
+  // Fall back to agent-derived skills only when project skills haven't loaded yet.
   const skills = useMemo(() => {
-    if (pulledSkills.length > 0) return pulledSkills
-    if (!isConnected) return cachedSkills
-    return []
-  }, [pulledSkills, isConnected, cachedSkills])
+    const projectSkills = projectQuery.data ?? []
+    if (projectSkills.length > 0) {
+      return projectSkills.map((ps) =>
+        pullToLibrarySkill(ps, 'project', agentUsageMap.get(ps.id) ?? []),
+      )
+    }
+    // Fallback: use agent-derived skills or cache while project query loads
+    const base = pulledSkills.length > 0 ? pulledSkills : cachedSkills
+    return base
+  }, [projectQuery.data, agentUsageMap, pulledSkills, cachedSkills])
 
   return {
     skills,

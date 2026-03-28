@@ -37,7 +37,10 @@ fn draw_notes(frame: &mut Frame, nav: &NavState, data: &ViewData, area: Rect) {
             let ts = truncate_ts(&n.updated_at);
             ListItem::new(Line::from(vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(format!("{:<32}", truncate(&n.title, 30)), Style::default().fg(C_FG)),
+                Span::styled(
+                    format!("{:<32}", truncate(&n.title, 30)),
+                    Style::default().fg(C_FG),
+                ),
                 Span::styled(format!(" {:<14}", branch), Style::default().fg(C_MUT)),
                 Span::styled(ts, Style::default().fg(C_MUT)),
             ]))
@@ -87,7 +90,10 @@ fn draw_adrs(frame: &mut Frame, nav: &NavState, data: &ViewData, area: Rect) {
                     format!(" {} ", status_sym(&a.status)),
                     Style::default().fg(sc),
                 ),
-                Span::styled(format!("{:<32}", truncate(&a.title, 30)), Style::default().fg(C_FG)),
+                Span::styled(
+                    format!("{:<32}", truncate(&a.title, 30)),
+                    Style::default().fg(C_FG),
+                ),
                 Span::styled(format!(" {:<10}", a.status), Style::default().fg(sc)),
                 Span::styled(ts, Style::default().fg(C_MUT)),
             ]))

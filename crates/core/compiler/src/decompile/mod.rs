@@ -90,10 +90,8 @@ pub fn detect_providers(project_root: &Path) -> DetectedProviders {
         claude: project_root.join(".claude").is_dir()
             || project_root.join("CLAUDE.md").exists()
             || project_root.join(".mcp.json").exists(),
-        codex: project_root.join(".codex").is_dir()
-            || project_root.join("AGENTS.md").exists(),
-        gemini: project_root.join(".gemini").is_dir()
-            || project_root.join("GEMINI.md").exists(),
+        codex: project_root.join(".codex").is_dir() || project_root.join("AGENTS.md").exists(),
+        gemini: project_root.join(".gemini").is_dir() || project_root.join("GEMINI.md").exists(),
         cursor: project_root.join(".cursor").is_dir(),
         opencode: project_root.join(".opencode").is_dir()
             || project_root.join("opencode.json").exists(),
@@ -226,10 +224,7 @@ fn merge_into(target: &mut ProjectLibrary, source: ProjectLibrary, provider_id: 
 }
 
 /// Merge source permissions into target. Appends tool lists rather than replacing.
-fn merge_permissions(
-    target: &mut crate::types::Permissions,
-    source: &crate::types::Permissions,
-) {
+fn merge_permissions(target: &mut crate::types::Permissions, source: &crate::types::Permissions) {
     // Tool lists — append unique entries
     for p in &source.tools.allow {
         if !target.tools.allow.contains(p) {

@@ -1060,8 +1060,8 @@ pub fn init_project_with_registry(base_dir: PathBuf) -> Result<InitWithRegistryR
 
     // Best-effort install. Failure is not an error — bare scaffold skills
     // remain as the offline fallback.
-    let registry_installed = crate::registry::init_deps::try_install_init_deps(&ship_dir)
-        .unwrap_or_default();
+    let registry_installed =
+        crate::registry::init_deps::try_install_init_deps(&ship_dir).unwrap_or_default();
 
     Ok(InitWithRegistryResult {
         ship_dir,
@@ -1280,9 +1280,7 @@ mod tests {
         );
 
         // Dependencies should be seeded in ship.jsonc.
-        let content = fs::read_to_string(
-            result.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-        )?;
+        let content = fs::read_to_string(result.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE))?;
         let doc: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)?;
         assert!(
             doc.get("dependencies").is_some(),
@@ -1312,9 +1310,7 @@ mod tests {
         assert_eq!(r1.ship_dir, r2.ship_dir);
 
         // ship.jsonc should still have dependencies from first init.
-        let content = fs::read_to_string(
-            r2.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-        )?;
+        let content = fs::read_to_string(r2.ship_dir.join(crate::config::PRIMARY_CONFIG_FILE))?;
         let doc: serde_json::Value = compiler::jsonc::from_jsonc_str(&content)?;
         assert!(doc.get("dependencies").is_some());
         Ok(())

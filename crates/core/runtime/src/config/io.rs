@@ -1,16 +1,18 @@
-use anyhow::Result;
-use std::fs;
-use std::path::PathBuf;
 use super::mcp::{get_mcp_config, save_mcp_config};
-use super::merge::{merge_hooks, merge_mcp_servers, merge_modes, merge_string_lists, write_project_core_config};
+use super::merge::{
+    merge_hooks, merge_mcp_servers, merge_modes, merge_string_lists, write_project_core_config,
+};
 use super::modes::{get_modes_config, save_modes_config};
 use super::project::{ProjectConfig, default_providers};
 use super::runtime_settings::{
-    get_legacy_agents_config, get_runtime_settings, migrate_json_config,
-    normalize_git_config, remove_legacy_agents_config, save_runtime_settings,
+    get_legacy_agents_config, get_runtime_settings, migrate_json_config, normalize_git_config,
+    remove_legacy_agents_config, save_runtime_settings,
 };
-use super::types::{PRIMARY_CONFIG_FILE, LEGACY_CONFIG_FILE};
+use super::types::{LEGACY_CONFIG_FILE, PRIMARY_CONFIG_FILE};
 use crate::project::get_global_dir;
+use anyhow::Result;
+use std::fs;
+use std::path::PathBuf;
 
 pub fn get_config(project_dir: Option<PathBuf>) -> Result<ProjectConfig> {
     let is_project = project_dir.is_some();
@@ -177,4 +179,3 @@ pub fn save_config(config: &ProjectConfig, project_dir: Option<PathBuf>) -> Resu
     write_project_core_config(&path, &effective)?;
     Ok(())
 }
-

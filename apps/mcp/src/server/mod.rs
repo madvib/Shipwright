@@ -4,7 +4,7 @@ mod tool_gate;
 use anyhow::{Result, anyhow};
 use rmcp::transport::stdio;
 use rmcp::{
-    ServiceExt,
+    Peer, RoleServer, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     tool, tool_router,
 };
@@ -12,7 +12,10 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{agent, event, events, project, session, skills, studio, workspace, workspace_ops};
-use skills::{get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool};
+use skills::{
+    delete_skill_file, get_skill_vars_tool, list_project_skills, list_skill_vars_tool,
+    set_skill_var_tool, write_skill_file,
+};
 
 #[cfg(feature = "unstable")]
 use crate::tools::{adr, job, notes, target};
@@ -28,6 +31,7 @@ use target::{
 pub struct ShipServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
+    pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
 }
 
 // ---- Stable tool registration ----
@@ -46,11 +50,22 @@ impl ShipServer {
         Self {
             tool_router: router,
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
         project::get_effective_project_dir(&self.active_project).await
+    }
+
+    pub async fn store_peer(&self, peer: Peer<RoleServer>) {
+        *self.notification_peer.lock().await = Some(peer);
+    }
+
+    async fn notify_resources_changed(&self) {
+        if let Some(peer) = self.notification_peer.lock().await.as_ref() {
+            let _ = peer.notify_resource_list_changed().await;
+        }
     }
 
     #[cfg(test)]
@@ -66,7 +81,10 @@ impl ShipServer {
 
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
-        let (msg, _) = project::open_project(&req.path, &self.active_project).await;
+        let (msg, resolved) = project::open_project(&req.path, &self.active_project).await;
+        if resolved.is_some() {
+            self.notify_resources_changed().await;
+        }
         msg
     }
 
@@ -115,7 +133,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        studio::push_bundle(&project_dir, &req.bundle)
+        let result = studio::push_bundle(&project_dir, &req.bundle);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     // ---- Workspace ----
@@ -270,7 +292,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        set_skill_var_tool(&project_dir, req)
+        let result = set_skill_var_tool(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     #[tool(
@@ -283,6 +309,55 @@ impl ShipServer {
             Err(e) => return e,
         };
         list_skill_vars_tool(&project_dir, req)
+    }
+
+    #[tool(
+        description = "Write a file into a skill directory on disk (.ship/skills/<skill_id>/<file_path>). \
+        Creates parent directories as needed. Use for saving skill content from the IDE."
+    )]
+    async fn write_skill_file(&self, Parameters(req): Parameters<WriteSkillFileRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let result = write_skill_file(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
+    }
+
+    #[tool(description = "Delete a single file from a skill directory. \
+        Refuses to delete SKILL.md (the skill definition itself).")]
+    async fn delete_skill_file(
+        &self,
+        Parameters(req): Parameters<DeleteSkillFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let result = delete_skill_file(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
+    }
+
+    #[tool(
+        description = "List all skills in .ship/skills/ with full resolved content. \
+        Returns a JSON array of PullSkill objects (same shape as pull_agents skills). \
+        Includes all skills regardless of agent references. Optionally filter by query substring."
+    )]
+    async fn list_project_skills(
+        &self,
+        Parameters(req): Parameters<ListProjectSkillsRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        list_project_skills(&project_dir, req)
     }
 
     // ---- Events ----

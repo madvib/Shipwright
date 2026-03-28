@@ -5,10 +5,8 @@ use std::path::Path;
 
 use serde_json::Value as Json;
 
-use crate::types::{
-    AgentLimits, HookConfig, HookTrigger, Permissions, Rule, ToolPermissions,
-};
 use crate::ProjectLibrary;
+use crate::types::{AgentLimits, HookConfig, HookTrigger, Permissions, Rule, ToolPermissions};
 
 use super::claude_mcp::parse_mcp_json;
 use super::json_string_array;

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "test_runner": {
+    "type": "enum",
+    "default": "auto",
+    "storage-hint": "project",
+    "values": ["auto", "cargo", "vitest", "jest", "pytest", "go", "make"],
+    "label": "Test runner",
+    "description": "Test framework to use. 'auto' detects from project files (Cargo.toml, package.json, etc)."
+  },
+  "commit_at_green": {
+    "type": "bool",
+    "default": true,
+    "storage-hint": "global",
+    "label": "Commit at green",
+    "description": "Whether to commit automatically after each test passes."
+  }
+}

@@ -29,7 +29,7 @@ const FEATURES: FeatureCard[] = [
     iconBg: 'bg-blue-500/10',
     title: 'Granular permissions',
     description:
-      'Five permission dimensions — tools, filesystem, commands, network, and agent limits. Scope each MCP server down to individual tool-level allow, ask, or deny.',
+      'Control which tools each agent can use — allow, ask, or deny at the individual tool level. Scope MCP servers per-agent with different access for different roles.',
   },
   {
     icon: Zap,
@@ -37,7 +37,7 @@ const FEATURES: FeatureCard[] = [
     iconBg: 'bg-emerald-500/10',
     title: 'Ship Studio',
     description:
-      'Configure agents visually with live preview. See the compiled output for every provider as you edit. Create skills in a built-in IDE. Publish to the registry.',
+      'Configure agents visually with live preview. See the compiled output for every provider as you edit. Add skills, set permissions, write rules — all in the browser.',
   },
   {
     icon: Code2,

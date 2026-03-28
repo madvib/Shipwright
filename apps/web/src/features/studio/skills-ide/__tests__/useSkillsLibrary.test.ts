@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { aggregateSkills } from '../useSkillsLibrary'
+import { aggregateSkills, mergeProjectSkills } from '../useSkillsLibrary'
+import type { LibrarySkill } from '../useSkillsLibrary'
 import type { PullSkill } from '@ship/ui'
 
 function skill(id: string, name: string, source = 'custom'): PullSkill {
-  return { id, name, description: `${name} description`, content: `# ${name}`, source }
+  return { id, name, description: `${name} description`, content: `# ${name}`, source, tags: [], authors: [], files: [], reference_docs: {} }
 }
 
 describe('aggregateSkills', () => {
@@ -91,7 +92,7 @@ describe('aggregateSkills', () => {
   })
 
   it('handles null description in PullSkill', () => {
-    const ps: PullSkill = { id: 'x', name: 'X', description: null, content: '# X', source: 'custom' }
+    const ps: PullSkill = { id: 'x', name: 'X', description: null, content: '# X', source: 'custom', tags: [], authors: [], files: [], reference_docs: {} }
     const result = aggregateSkills([{ id: 'a', skills: [ps], source: 'project' }])
     expect(result[0].description).toBeNull()
   })
@@ -102,5 +103,46 @@ describe('aggregateSkills', () => {
     ]
     const result = aggregateSkills(agents)
     expect(result[0].origin).toBe('project')
+  })
+})
+
+function librarySkill(id: string, name: string): LibrarySkill {
+  return {
+    id, name, description: null, content: `# ${name}`, source: 'custom',
+    vars: {}, origin: 'project', usedBy: [], stableId: null,
+    tags: [], authors: [], varsSchema: null, files: ['SKILL.md'],
+    referenceDocs: {}, evals: null,
+  }
+}
+
+describe('mergeProjectSkills', () => {
+  it('returns agent skills when no project skills', () => {
+    const agent = [librarySkill('tdd', 'TDD')]
+    const result = mergeProjectSkills(agent, [])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('tdd')
+  })
+
+  it('adds project skills not in agent list', () => {
+    const agent = [librarySkill('tdd', 'TDD')]
+    const project = [skill('browse', 'Browse')]
+    const result = mergeProjectSkills(agent, project)
+    expect(result).toHaveLength(2)
+    expect(result.map((s) => s.id).sort()).toEqual(['browse', 'tdd'])
+  })
+
+  it('deduplicates by ID, preferring agent skills', () => {
+    const agent = [librarySkill('tdd', 'TDD (agent)')]
+    const project = [skill('tdd', 'TDD (project)')]
+    const result = mergeProjectSkills(agent, project)
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('TDD (agent)')
+  })
+
+  it('returns only project skills when agent list is empty', () => {
+    const project = [skill('deploy', 'Deploy'), skill('tdd', 'TDD')]
+    const result = mergeProjectSkills([], project)
+    expect(result).toHaveLength(2)
+    expect(result.every((s) => s.origin === 'project')).toBe(true)
   })
 })

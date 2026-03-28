@@ -88,9 +88,7 @@ mod tests {
     fn test_set_and_get() {
         let (_tmp, _ship_dir) = setup();
         set("agent", "active_workspace", &json!("ws-001")).unwrap();
-        let val = get("agent", "active_workspace")
-            .unwrap()
-            .unwrap();
+        let val = get("agent", "active_workspace").unwrap().unwrap();
         assert_eq!(val, json!("ws-001"));
     }
 

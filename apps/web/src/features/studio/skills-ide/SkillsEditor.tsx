@@ -1,6 +1,14 @@
-import { useRef, useCallback, useMemo } from 'react'
-import { X, AlignLeft, Eye, Clock, Zap } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus, Eye, Code2 } from 'lucide-react'
 import type { Skill } from '@ship/ui'
+import { parseTabId } from './useSkillsIDE'
+import { TextEditor } from './TextEditor'
+import { MarkdownPreview } from './MarkdownPreview'
+import { JsonViewer } from './JsonViewer'
+import { ScriptViewer } from './ScriptViewer'
+
+type ViewMode = 'source' | 'preview'
+type ScriptLang = 'sh' | 'py' | 'js' | 'ts'
 
 interface Props {
   skills: Skill[]
@@ -8,84 +16,71 @@ interface Props {
   activeTabId: string | null
   unsavedIds: Set<string>
   content: string
+  isConnected: boolean
+  isLoading: boolean
+  previewOpen?: boolean
   onTabSelect: (id: string) => void
   onTabClose: (id: string) => void
   onContentChange: (id: string, content: string) => void
   onSave: (id: string) => void
+  onTogglePreview?: () => void
+  onCreateSkill?: () => void
 }
 
-/** Split content into lines and apply simple syntax classes. */
-function highlightLines(content: string) {
-  const lines = content.split('\n')
-  let inFrontmatter = false
-  let fenceCount = 0
-
-  return lines.map((line) => {
-    if (line.trim() === '---') {
-      fenceCount++
-      inFrontmatter = fenceCount === 1
-      return { text: line, className: 'text-muted-foreground/40' }
-    }
-
-    if (inFrontmatter && fenceCount === 1) {
-      const colonIdx = line.indexOf(':')
-      if (colonIdx > 0) {
-        const key = line.slice(0, colonIdx)
-        const val = line.slice(colonIdx + 1)
-        return {
-          text: line,
-          className: '',
-          fragments: [
-            { text: key, className: 'text-sky-300' },
-            { text: ':', className: 'text-muted-foreground/40' },
-            { text: val, className: 'text-emerald-300' },
-          ],
-        }
-      }
-      return { text: line, className: 'text-emerald-300' }
-    }
-
-    if (line.startsWith('# ')) return { text: line, className: 'text-foreground font-bold text-sm' }
-    if (line.startsWith('## ')) return { text: line, className: 'text-foreground/90 font-semibold' }
-    if (line.startsWith('### ')) return { text: line, className: 'text-muted-foreground font-semibold' }
-    if (line.startsWith('- ') || line.startsWith('* ')) return { text: line, className: 'text-muted-foreground/60' }
-    if (/^\d+\.\s/.test(line)) return { text: line, className: 'text-muted-foreground/60' }
-    if (line.trim() === '') return { text: ' ', className: '' }
-    return { text: line, className: 'text-muted-foreground/70' }
-  })
+function getFileType(path: string): 'markdown' | 'json' | 'script' | 'text' {
+  if (path.endsWith('.md')) return 'markdown'
+  if (path.endsWith('.json')) return 'json'
+  if (/\.(sh|py|js|ts)$/.test(path)) return 'script'
+  return 'text'
 }
 
-/** Render inline code spans within a text line. */
-function renderInlineCode(text: string) {
-  const parts = text.split(/(`[^`]+`)/)
-  if (parts.length === 1) return text
-  return parts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return (
-        <span key={i} className="bg-muted/60 px-1 rounded text-primary text-[11px]">
-          {part.slice(1, -1)}
-        </span>
-      )
-    }
-    return part
-  })
+function getScriptLang(path: string): ScriptLang {
+  if (path.endsWith('.py')) return 'py'
+  if (path.endsWith('.sh')) return 'sh'
+  if (path.endsWith('.ts')) return 'ts'
+  return 'js'
+}
+
+function EditorSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 shrink-0">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="h-6 w-20 animate-pulse rounded bg-muted" />
+        ))}
+      </div>
+      <div className="flex-1 p-4 space-y-2">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} className="h-4 animate-pulse rounded bg-muted" style={{ width: `${40 + (i * 7) % 50}%` }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function EmptyState({ icon, title, subtitle, children }: {
+  icon: React.ReactNode; title: string; subtitle: string; children?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground min-w-0 px-6">
+      {icon}
+      <div>
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+        {children}
+      </div>
+    </div>
+  )
 }
 
 export function SkillsEditor({
-  skills,
-  openTabIds,
-  activeTabId,
-  unsavedIds,
-  content,
-  onTabSelect,
-  onTabClose,
-  onContentChange,
-  onSave,
+  skills, openTabIds, activeTabId, unsavedIds, content,
+  isConnected, isLoading, previewOpen,
+  onTabSelect, onTabClose, onContentChange, onSave, onTogglePreview, onCreateSkill,
 }: Props) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const activeSkill = skills.find((s) => s.id === activeTabId)
-  const lines = useMemo(() => highlightLines(content), [content])
+  const [viewMode, setViewMode] = useState<ViewMode>('source')
+  const activeTab = activeTabId ? parseTabId(activeTabId) : null
+  const activeSkill = activeTab ? skills.find((s) => s.id === activeTab.skillId) : undefined
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -97,51 +92,132 @@ export function SkillsEditor({
     [activeTabId, onSave],
   )
 
-  if (!activeTabId || !activeSkill) {
+  if (isLoading && skills.length === 0) return <EditorSkeleton />
+
+  if (!isConnected && skills.length === 0 && !activeTabId) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground/30 min-w-0">
-        <Zap className="size-10 opacity-30" />
-        <div>
-          <p className="text-sm font-medium text-muted-foreground/50">No file open</p>
-          <p className="mt-1 text-xs text-muted-foreground/30">
-            Select a skill from the explorer to start editing.
-          </p>
-        </div>
-      </div>
+      <EmptyState
+        icon={<Terminal className="size-10 opacity-50" />}
+        title="Connect to Ship CLI to manage your skills"
+        subtitle="Start the CLI server, then Studio will sync automatically."
+      >
+        <code className="mt-3 inline-block rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">
+          ship mcp serve --http --port 51741
+        </code>
+      </EmptyState>
     )
   }
 
-  const breadcrumb = `skills / ${activeSkill.name || activeSkill.id} / SKILL.md`
+  if (isConnected && skills.length === 0 && !activeTabId) {
+    return (
+      <EmptyState
+        icon={<Zap className="size-10 opacity-50" />}
+        title="No skills found in this project"
+        subtitle="Create one to get started."
+      >
+        {onCreateSkill && (
+          <button
+            onClick={onCreateSkill}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            <Plus className="size-3.5" />
+            Create skill
+          </button>
+        )}
+      </EmptyState>
+    )
+  }
+
+  if (!activeTabId || !activeSkill) {
+    return (
+      <EmptyState
+        icon={<Zap className="size-10 opacity-50" />}
+        title="No file open"
+        subtitle="Select a skill from the explorer to start editing."
+      />
+    )
+  }
+
+  const activeFilePath = activeTab?.filePath ?? 'SKILL.md'
+  const fileType = getFileType(activeFilePath)
+  const breadcrumbParts = ['skills', activeSkill.name || activeSkill.id, ...activeFilePath.split('/')]
+  const showDisconnectBanner = !isConnected && unsavedIds.size > 0
+  const isMarkdown = fileType === 'markdown'
 
   return (
-    <div className="flex flex-1 flex-col min-w-0">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-border/30 bg-card/20 px-2 h-8 shrink-0 overflow-x-auto">
-        {openTabIds.map((id) => {
-          const skill = skills.find((s) => s.id === id)
+    <div className="flex flex-1 flex-col min-w-0" onKeyDown={handleKeyDown}>
+      {showDisconnectBanner && (
+        <div className="flex items-center gap-2 px-4 py-1 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
+          <WifiOff className="size-3 shrink-0" />
+          CLI disconnected — changes are saved locally
+        </div>
+      )}
+
+      {/* Breadcrumb toolbar */}
+      <div className="flex items-center justify-between px-4 py-1.5 border-b border-border bg-background/50 shrink-0">
+        <div className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+          {breadcrumbParts.map((part, i, arr) => (
+            <span key={i} className="flex items-center">
+              {i > 0 && <span className="mx-1 text-muted-foreground">/</span>}
+              <span className={i === arr.length - 1 ? 'text-foreground/80 font-medium' : ''}>{part}</span>
+            </span>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          {isMarkdown && (
+            <div className="flex items-center rounded border border-border text-[11px] mr-1">
+              <button
+                onClick={() => setViewMode('source')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-l transition-colors ${viewMode === 'source' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Code2 className="size-3" />
+                Source
+              </button>
+              <button
+                onClick={() => setViewMode('preview')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-r transition-colors ${viewMode === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Eye className="size-3" />
+                Preview
+              </button>
+            </div>
+          )}
+          {unsavedIds.has(activeTabId) && (
+            <button onClick={() => onSave(activeTabId)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-primary/15 text-primary hover:bg-primary/25 transition-colors" title="Save (Cmd+S)">
+              <Save className="size-3" />
+              <span>Save</span>
+            </button>
+          )}
+          <button
+            onClick={onTogglePreview}
+            className={`p-1 rounded transition-colors ${previewOpen ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
+            title={previewOpen ? 'Hide detail panel' : 'Show detail panel'}
+          >
+            <PanelRight className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* File tabs */}
+      <div className="flex items-center border-b border-border bg-card/20 px-2 h-8 shrink-0 overflow-x-auto">
+        {openTabIds.map((tabId) => {
+          const { skillId, filePath } = parseTabId(tabId)
+          const skill = skills.find((s) => s.id === skillId)
           if (!skill) return null
-          const isActive = id === activeTabId
-          const isUnsaved = unsavedIds.has(id)
+          const isActive = tabId === activeTabId
+          const isUnsaved = unsavedIds.has(tabId)
+          const fileName = filePath.split('/').pop() ?? filePath
           return (
             <button
-              key={id}
-              onClick={() => onTabSelect(id)}
+              key={tabId}
+              onClick={() => onTabSelect(tabId)}
               className={`group flex items-center gap-1.5 px-3 py-1 text-xs whitespace-nowrap border-b-2 transition-colors ${
-                isActive
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground/50 hover:text-muted-foreground'
+                isActive ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {isUnsaved && (
-                <span className="size-1.5 rounded-full bg-primary shrink-0" />
-              )}
-              <span className="truncate max-w-[140px]">
-                {skill.name || skill.id}/SKILL.md
-              </span>
-              <span
-                onClick={(e) => { e.stopPropagation(); onTabClose(id) }}
-                className="ml-1 text-muted-foreground/30 hover:text-destructive transition-colors"
-              >
+              {isUnsaved && <span className="size-1.5 rounded-full bg-primary shrink-0" />}
+              <span className="truncate max-w-[140px]">{fileName}</span>
+              <span onClick={(e) => { e.stopPropagation(); onTabClose(tabId) }} className="ml-1 text-muted-foreground hover:text-destructive transition-colors">
                 <X className="size-3" />
               </span>
             </button>
@@ -149,77 +225,51 @@ export function SkillsEditor({
         })}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-b border-border/20 bg-background/50 shrink-0">
-        <div className="text-[11px] text-muted-foreground/40 flex items-center gap-1">
-          {breadcrumb.split(' / ').map((part, i, arr) => (
-            <span key={i}>
-              {i > 0 && <span className="mx-1 text-muted-foreground/20">/</span>}
-              <span className={i === arr.length - 1 ? 'text-muted-foreground/60' : ''}>
-                {part}
-              </span>
-            </span>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          {[
-            { icon: AlignLeft, label: 'Format' },
-            { icon: Eye, label: 'Preview' },
-            { icon: Clock, label: 'History' },
-          ].map(({ icon: Icon, label }) => (
-            <button
-              key={label}
-              className="p-1 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
-              title={label}
-            >
-              <Icon className="size-3.5" />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Editor area with line numbers */}
-      <div className="flex flex-1 min-h-0 overflow-auto" onKeyDown={handleKeyDown}>
-        {/* Line numbers */}
-        <div className="shrink-0 w-10 pt-4 pb-4 text-right pr-2 font-mono text-[11px] leading-[1.7] text-muted-foreground/20 select-none border-r border-border/10">
-          {lines.map((_, i) => (
-            <div key={i}>{i + 1}</div>
-          ))}
-        </div>
-
-        {/* Content overlay + textarea */}
-        <div className="flex-1 relative min-w-0">
-          {/* Syntax-highlighted overlay */}
-          <div
-            className="absolute inset-0 px-4 pt-4 pb-4 font-mono text-xs leading-[1.7] pointer-events-none whitespace-pre-wrap break-words overflow-hidden"
-            aria-hidden="true"
-          >
-            {lines.map((line, i) => (
-              <div key={i} className={line.className}>
-                {'fragments' in line && line.fragments ? (
-                  line.fragments.map((f, fi) => (
-                    <span key={fi} className={f.className}>
-                      {renderInlineCode(f.text)}
-                    </span>
-                  ))
-                ) : (
-                  renderInlineCode(line.text)
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Transparent textarea for editing */}
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => onContentChange(activeTabId, e.target.value)}
-            className="absolute inset-0 w-full h-full px-4 pt-4 pb-4 font-mono text-xs leading-[1.7] text-transparent caret-foreground bg-transparent resize-none focus:outline-none whitespace-pre-wrap break-words"
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </div>
-      </div>
+      {/* Editor area — dispatched by file type */}
+      <EditorBody
+        tabId={activeTabId}
+        content={content}
+        fileType={fileType}
+        filePath={activeFilePath}
+        viewMode={viewMode}
+        onContentChange={onContentChange}
+        onSave={onSave}
+      />
     </div>
+  )
+}
+
+function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentChange, onSave }: {
+  tabId: string; content: string; fileType: 'markdown' | 'json' | 'script' | 'text'
+  filePath: string; viewMode: ViewMode
+  onContentChange: (id: string, content: string) => void; onSave: (id: string) => void
+}) {
+  // Markdown in preview mode
+  if (fileType === 'markdown' && viewMode === 'preview') {
+    return (
+      <div className="flex-1 min-h-0 overflow-auto">
+        <MarkdownPreview content={content} />
+      </div>
+    )
+  }
+
+  // JSON files: editable viewer
+  if (fileType === 'json') {
+    return <JsonViewer content={content} tabId={tabId} filePath={filePath} onContentChange={onContentChange} onSave={onSave} />
+  }
+
+  // Script files: read-only viewer
+  if (fileType === 'script') {
+    return <ScriptViewer content={content} language={getScriptLang(filePath)} />
+  }
+
+  // Default: editable text editor (markdown source, plain text, etc.)
+  return (
+    <TextEditor
+      tabId={tabId}
+      content={content}
+      onContentChange={onContentChange}
+      onSave={onSave}
+    />
   )
 }

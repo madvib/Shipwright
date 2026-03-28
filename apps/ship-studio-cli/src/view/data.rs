@@ -203,30 +203,12 @@ mod tests {
     #[test]
     fn all_jobs_includes_done() {
         let (_tmp, ship_dir) = setup();
-        let _j1 = runtime::db::jobs::create_job(
-            "build",
-            None,
-            None,
-            None,
-            None,
-            0,
-            None,
-            vec![],
-            vec![],
-        )
-        .unwrap();
-        let j2 = runtime::db::jobs::create_job(
-            "test",
-            None,
-            None,
-            None,
-            None,
-            0,
-            None,
-            vec![],
-            vec![],
-        )
-        .unwrap();
+        let _j1 =
+            runtime::db::jobs::create_job("build", None, None, None, None, 0, None, vec![], vec![])
+                .unwrap();
+        let j2 =
+            runtime::db::jobs::create_job("test", None, None, None, None, 0, None, vec![], vec![])
+                .unwrap();
         runtime::db::jobs::update_job_status(&j2.id, "done").unwrap();
 
         let all = load_all_jobs(&ship_dir);

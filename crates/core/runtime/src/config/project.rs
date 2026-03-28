@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
-use specta::Type;
-use std::collections::HashMap;
-use std::path::PathBuf;
 use super::types::{
     AgentLayerConfig, AiConfig, GitConfig, HookConfig, NamespaceConfig, PermissionConfig,
     StatusConfig, is_agent_layer_empty,
 };
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 // ─── Agent / MCP / Project types ─────────────────────────────────────────────
 

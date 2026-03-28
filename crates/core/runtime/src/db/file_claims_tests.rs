@@ -12,19 +12,9 @@ fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
 }
 
 fn mkjob() -> String {
-    create_job(
-        "build",
-        None,
-        None,
-        None,
-        None,
-        0,
-        None,
-        vec![],
-        vec![],
-    )
-    .unwrap()
-    .id
+    create_job("build", None, None, None, None, 0, None, vec![], vec![])
+        .unwrap()
+        .id
 }
 
 #[test]

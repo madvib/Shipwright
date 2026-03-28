@@ -91,9 +91,13 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Adrs => run_adrs(),
             #[cfg(feature = "unstable")]
             Commands::Notes => run_notes(),
-            Commands::Publish { dry_run, tag } => {
+            Commands::Publish {
+                export_path,
+                dry_run,
+                tag,
+            } => {
                 let root = std::env::current_dir()?;
-                publish::run_publish(&root, dry_run, tag.as_deref())
+                publish::run_publish(&root, export_path.as_deref(), dry_run, tag.as_deref())
             }
             Commands::Install { frozen, offline } => {
                 let root = std::env::current_dir()?;
@@ -123,6 +127,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             #[cfg(feature = "unstable")]
             Commands::View => view::run_view(),
             Commands::Hook { action } => dispatch_hook(action),
+            Commands::Studio { port, open } => run_studio(port, open),
             Commands::Help => {
                 use clap::CommandFactory;
                 Cli::command().print_help()?;
@@ -130,6 +135,23 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
         },
     }
+}
+
+fn run_studio(port: u16, open: bool) -> Result<()> {
+    eprintln!("Ship Studio MCP listening on http://localhost:{port}/mcp");
+    eprintln!("Open https://getship.dev/studio to connect");
+    if open {
+        let url = "https://getship.dev/studio";
+        #[cfg(target_os = "macos")]
+        let _ = std::process::Command::new("open").arg(url).spawn();
+        #[cfg(target_os = "linux")]
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", url])
+            .spawn();
+    }
+    mcp_serve::run_studio(port)
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -303,11 +325,7 @@ fn dispatch_agent(action: AgentCommands) -> Result<()> {
 
 // ── Compile ───────────────────────────────────────────────────────────────────
 
-fn run_compile_cmd(
-    provider: Option<&str>,
-    dry_run: bool,
-    path: Option<PathBuf>,
-) -> Result<()> {
+fn run_compile_cmd(provider: Option<&str>, dry_run: bool, path: Option<PathBuf>) -> Result<()> {
     let project_root = path
         .as_deref()
         .map(std::fs::canonicalize)
@@ -376,18 +394,20 @@ fn dispatch_skill(action: SkillCommands) -> Result<()> {
 fn dispatch_vars(action: VarsCommands) -> Result<()> {
     let ship_dir = paths::project_ship_dir_required()?;
     match action {
-        VarsCommands::Set { skill_id, key, value } => {
-            vars::run_vars_set(&ship_dir, &skill_id, &key, &value)
-        }
+        VarsCommands::Set {
+            skill_id,
+            key,
+            value,
+        } => vars::run_vars_set(&ship_dir, &skill_id, &key, &value),
         VarsCommands::Get { skill_id, key } => {
             vars::run_vars_get(&ship_dir, &skill_id, key.as_deref())
         }
-        VarsCommands::Append { skill_id, key, json } => {
-            vars::run_vars_append(&ship_dir, &skill_id, &key, &json)
-        }
-        VarsCommands::Reset { skill_id } => {
-            vars::run_vars_reset(&ship_dir, &skill_id)
-        }
+        VarsCommands::Append {
+            skill_id,
+            key,
+            json,
+        } => vars::run_vars_append(&ship_dir, &skill_id, &key, &json),
+        VarsCommands::Reset { skill_id } => vars::run_vars_reset(&ship_dir, &skill_id),
     }
 }
 

@@ -141,6 +141,27 @@ pub struct PullSkill {
     pub description: Option<String>,
     pub content: String,
     pub source: String,
+    /// Canonical storage key from `stable-id:` frontmatter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stable_id: Option<String>,
+    /// Tags from frontmatter `tags: [a, b]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Authors from frontmatter `authors: [ship]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    /// Raw `assets/vars.json` content (unparsed JSON). `None` if absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vars_schema: Option<serde_json::Value>,
+    /// All files in the skill directory, relative paths (e.g. `["SKILL.md", "assets/vars.json"]`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+    /// Content of reference docs keyed by relative path (e.g. `"references/docs/index.md"` -> content).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub reference_docs: HashMap<String, String>,
+    /// Raw `evals/evals.json` content. `None` if absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evals: Option<serde_json::Value>,
 }
 
 /// MCP server reference as returned by pull_agents.

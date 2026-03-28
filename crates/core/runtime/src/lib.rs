@@ -11,6 +11,7 @@ pub mod plugin;
 pub mod project;
 pub mod registry;
 pub mod security;
+pub mod skill_paths;
 pub mod skill_vars;
 pub mod workspace;
 
@@ -36,9 +37,9 @@ pub use config::{
     McpServerType, NamespaceConfig, PermissionConfig, ProjectConfig, StatusConfig, add_agent,
     add_hook, add_mcp_server, add_status, ensure_registered_namespaces, generate_gitignore,
     get_active_agent, get_config, get_effective_config, get_git_config, get_project_statuses,
-    is_category_committed, list_hooks, list_mcp_servers, remove_agent,
-    remove_hook, remove_mcp_server, remove_status, save_config, set_active_agent,
-    set_category_committed, set_git_config,
+    is_category_committed, list_hooks, list_mcp_servers, remove_agent, remove_hook,
+    remove_mcp_server, remove_status, save_config, set_active_agent, set_category_committed,
+    set_git_config,
 };
 
 pub use events::{
@@ -56,12 +57,13 @@ pub use plugin::{Plugin, PluginRegistry};
 // Do not re-export them from the runtime root; this keeps the root API closer
 // to domain-agnostic runtime/engine concerns.
 pub use rule::{Rule, create_rule, delete_rule, get_rule, list_rules, update_rule};
-pub use skill_vars::{get_skill_vars, list_skill_vars, reset_skill_vars, set_skill_var};
 pub use skill::{
     Skill, SkillInstallScope, SkillSource, create_skill, create_user_skill, delete_skill,
     delete_user_skill, get_effective_skill, get_skill, get_user_skill, install_skill_from_source,
     list_effective_skills, list_skills, list_user_skills, update_skill, update_user_skill,
 };
+pub use skill_paths::read_skill_paths;
+pub use skill_vars::{get_skill_vars, list_skill_vars, reset_skill_vars, set_skill_var};
 
 // ─── Re-exports from db (formerly state_db) ────────────────────────────────
 pub use db::agents::{

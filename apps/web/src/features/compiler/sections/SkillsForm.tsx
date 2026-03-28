@@ -13,6 +13,7 @@ const EMPTY: Skill = {
   content: '',
   description: null,
   source: 'custom',
+  vars: {},
 }
 
 function skillSlug(skill: Skill): string {

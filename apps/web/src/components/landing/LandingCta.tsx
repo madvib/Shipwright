@@ -8,7 +8,7 @@ export function LandingCta() {
         Start shipping agents
       </h2>
       <p className="mb-7 text-[15px] text-muted-foreground">
-        Open source. Free forever for personal use.
+        Open source. Free. No account required.
       </p>
       <div className="mb-5 flex flex-wrap items-center justify-center gap-3">
         <Link

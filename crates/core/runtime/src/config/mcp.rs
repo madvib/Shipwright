@@ -1,9 +1,9 @@
-use anyhow::Result;
+use super::project::{McpConfig, McpSection, McpServerConfig};
 use crate::fs_util::write_atomic;
+use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use super::project::{McpConfig, McpSection, McpServerConfig};
 
 pub fn get_mcp_config(ship_dir: &Path) -> Result<Vec<McpServerConfig>> {
     let path = crate::project::mcp_config_path(ship_dir);

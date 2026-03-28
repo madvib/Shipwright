@@ -3,6 +3,8 @@
 //! stdio mode (default): Claude Code spawns `ship mcp serve` directly.
 //! HTTP mode (--http):   a long-running daemon for CI/CD or remote agents.
 //!
+//! `ship studio` — run the Studio-only MCP server (HTTP, reduced tool set).
+//!
 //! Logging is already initialised by the CLI before this is called;
 //! everything writes to ~/.ship/logs/ship.log via the tracing subscriber.
 
@@ -18,4 +20,11 @@ pub fn run(http: bool, port: u16) -> Result<()> {
     } else {
         rt.block_on(mcp::run())
     }
+}
+
+pub fn run_studio(port: u16) -> Result<()> {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(mcp::run_studio_http_server(port))
 }

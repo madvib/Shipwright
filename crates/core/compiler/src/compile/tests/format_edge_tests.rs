@@ -57,7 +57,10 @@ fn codex_settings_extra_null_value_dropped() {
     let patch = out.codex_config_patch.as_ref().unwrap();
     let parsed: toml::Table = toml::from_str(patch).expect("must be valid TOML");
     assert!(parsed.contains_key("keep"));
-    assert!(!parsed.contains_key("drop"), "null values must not appear in TOML");
+    assert!(
+        !parsed.contains_key("drop"),
+        "null values must not appear in TOML"
+    );
 }
 
 #[test]

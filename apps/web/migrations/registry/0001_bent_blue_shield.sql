@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `pkg_versions_package_tag` ON `package_versions` (`package_id`,`git_tag`);

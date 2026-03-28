@@ -117,10 +117,7 @@ impl FormState {
             .iter()
             .enumerate()
             .map(|(i, (_key, label))| {
-                let value = prefs
-                    .get(i)
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or_default();
+                let value = prefs.get(i).map(|(_, v)| v.clone()).unwrap_or_default();
                 FormField {
                     label: label.to_string(),
                     value,

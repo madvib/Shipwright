@@ -208,7 +208,7 @@ fn workspace_state_active_profile_round_trip() {
     let tmp = TempDir::new().unwrap();
     // Use init_project so ship.toml gets a stable unique nanoid — avoids
     // the "tmp-test-test" slug collision that would occur with a hardcoded id.
-    let ship_dir = init_project(tmp.path().to_path_buf()).expect("init_project must succeed");
+    let _ship_dir = init_project(tmp.path().to_path_buf()).expect("init_project must succeed");
 
     db::ensure_db().expect("ensure_db must succeed");
 

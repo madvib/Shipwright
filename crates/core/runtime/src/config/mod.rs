@@ -18,18 +18,22 @@ mod tests_io;
 // ─── Public API — mirrors the original config.rs public surface ───────────────
 
 pub use types::{
-    AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, NamespaceConfig,
-    PermissionConfig, StatusConfig, PRIMARY_CONFIG_FILE, LEGACY_CONFIG_FILE,
+    AgentLayerConfig, AiConfig, GitConfig, HookConfig, HookTrigger, LEGACY_CONFIG_FILE,
+    NamespaceConfig, PRIMARY_CONFIG_FILE, PermissionConfig, StatusConfig,
 };
 
-pub use project::{AgentProfile, McpConfig, McpSection, McpServerConfig, McpServerType, ProjectConfig, ProjectDiscovery};
+pub use project::{
+    AgentProfile, McpConfig, McpSection, McpServerConfig, McpServerType, ProjectConfig,
+    ProjectDiscovery,
+};
 
 pub use mcp::get_mcp_config;
 
 pub use io::{get_config, get_effective_config, save_config};
 
 pub use git::{
-    generate_gitignore, get_git_config, is_category_committed, set_category_committed, set_git_config,
+    generate_gitignore, get_git_config, is_category_committed, set_category_committed,
+    set_git_config,
 };
 
 pub use crud::{

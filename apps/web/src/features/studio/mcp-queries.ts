@@ -3,6 +3,7 @@ import { useLocalMcpContext } from './LocalMcpContext'
 import { mcpKeys } from '#/lib/query-keys'
 import type {
   PullResponse,
+  PullSkill,
   ListAgentsResponse,
   TransferBundle,
 } from '@ship/ui'
@@ -11,7 +12,12 @@ import type {
 
 function useMcpCallTool() {
   const mcp = useLocalMcpContext()
-  if (!mcp) throw new Error('useMcpCallTool requires LocalMcpProvider')
+  if (!mcp) {
+    return {
+      callTool: () => Promise.reject(new Error('No MCP connection')),
+      status: 'disconnected' as const,
+    }
+  }
   return { callTool: mcp.callTool, status: mcp.status }
 }
 
@@ -28,7 +34,6 @@ export function useLocalAgentIds() {
       return JSON.parse(raw) as ListAgentsResponse
     },
     enabled: status === 'connected',
-    refetchInterval: 10_000,
     staleTime: 5_000,
   })
 }
@@ -45,7 +50,21 @@ export function usePullAgents() {
       return JSON.parse(raw) as PullResponse
     },
     enabled: isConnected,
-    refetchInterval: isConnected ? 10_000 : false,
+    staleTime: 5_000,
+  })
+}
+
+/** Fetch all project skills from .ship/skills/ regardless of agent references. */
+export function useProjectSkills() {
+  const { callTool, status } = useMcpCallTool()
+
+  return useQuery({
+    queryKey: mcpKeys.projectSkills(),
+    queryFn: async (): Promise<PullSkill[]> => {
+      const raw = await callTool('list_project_skills')
+      return JSON.parse(raw) as PullSkill[]
+    },
+    enabled: status === 'connected',
     staleTime: 5_000,
   })
 }
@@ -64,6 +83,90 @@ export function usePushBundle() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
       void queryClient.invalidateQueries({ queryKey: mcpKeys.agents() })
+    },
+  })
+}
+
+/** Write a single skill file to disk via CLI. Invalidates pull on success. */
+export function useSaveSkillFile() {
+  const { callTool } = useMcpCallTool()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      skillId,
+      filePath,
+      content,
+    }: {
+      skillId: string
+      filePath: string
+      content: string
+    }): Promise<string> => {
+      return callTool('write_skill_file', {
+        skill_id: skillId,
+        file_path: filePath,
+        content,
+      })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
+    },
+  })
+}
+
+/** Get merged var values for a skill. Returns Record<string, unknown> or null. */
+export function useSkillVars(skillId: string | null) {
+  const { callTool, status } = useMcpCallTool()
+  return useQuery({
+    queryKey: mcpKeys.skillVars(skillId ?? ''),
+    queryFn: async () => {
+      const raw = await callTool('get_skill_vars', { skill_id: skillId })
+      return JSON.parse(raw) as Record<string, unknown>
+    },
+    enabled: status === 'connected' && skillId != null,
+    staleTime: 5_000,
+  })
+}
+
+/** Set a single skill variable value. Invalidates skill vars on success. */
+export function useSetSkillVar() {
+  const { callTool } = useMcpCallTool()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      skillId,
+      key,
+      valueJson,
+    }: {
+      skillId: string
+      key: string
+      valueJson: string
+    }) => {
+      return callTool('set_skill_var', {
+        skill_id: skillId,
+        key,
+        value_json: valueJson,
+      })
+    },
+    onSuccess: (_, { skillId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: mcpKeys.skillVars(skillId),
+      })
+    },
+  })
+}
+
+/** Delete a single skill file from disk via CLI. Invalidates all MCP queries on success. */
+export function useDeleteSkillFile() {
+  const { callTool } = useMcpCallTool()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ skillId, filePath }: { skillId: string; filePath: string }) => {
+      return callTool('delete_skill_file', { skill_id: skillId, file_path: filePath })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
     },
   })
 }

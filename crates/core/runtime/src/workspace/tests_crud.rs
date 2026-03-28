@@ -68,26 +68,24 @@ mod tests {
         )?;
 
         let now = chrono::Utc::now().to_rfc3339();
-        crate::db::session::insert_workspace_session_db(
-            &crate::db::types::WorkspaceSessionDb {
-                id: "session-delete-me".to_string(),
-                workspace_id: workspace.id.clone(),
-                workspace_branch: workspace.branch.clone(),
-                status: WorkspaceSessionStatus::Ended.to_string(),
-                started_at: now.clone(),
-                ended_at: Some(now.clone()),
-                agent_id: None,
-                primary_provider: None,
-                goal: None,
-                summary: Some("done".to_string()),
-                updated_workspace_ids: Vec::new(),
-                compiled_at: None,
-                compile_error: None,
-                config_generation_at_start: None,
-                created_at: now.clone(),
-                updated_at: now,
-            },
-        )?;
+        crate::db::session::insert_workspace_session_db(&crate::db::types::WorkspaceSessionDb {
+            id: "session-delete-me".to_string(),
+            workspace_id: workspace.id.clone(),
+            workspace_branch: workspace.branch.clone(),
+            status: WorkspaceSessionStatus::Ended.to_string(),
+            started_at: now.clone(),
+            ended_at: Some(now.clone()),
+            agent_id: None,
+            primary_provider: None,
+            goal: None,
+            summary: Some("done".to_string()),
+            updated_workspace_ids: Vec::new(),
+            compiled_at: None,
+            compile_error: None,
+            config_generation_at_start: None,
+            created_at: now.clone(),
+            updated_at: now,
+        })?;
         assert_eq!(list_workspace_sessions(&ship_dir, None, 10)?.len(), 1);
 
         delete_workspace(&ship_dir, "feature/delete-me")?;

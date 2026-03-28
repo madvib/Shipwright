@@ -6,7 +6,7 @@ use rmcp::{
         ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, ResourceContents,
         ServerCapabilities, ServerInfo, Tool,
     },
-    service::RequestContext,
+    service::{NotificationContext, RequestContext},
 };
 use runtime::{get_active_agent, workspace::get_active_workspace_type};
 use std::path::Path;
@@ -34,6 +34,7 @@ impl ServerHandler for ShipServer {
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_resources_list_changed()
                 .build(),
             server_info: Implementation {
                 name: "Ship Project Tracker".into(),
@@ -52,6 +53,10 @@ impl ServerHandler for ShipServer {
                     .into(),
             ),
         }
+    }
+
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        self.store_peer(context.peer).await;
     }
 
     async fn call_tool(
