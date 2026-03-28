@@ -93,7 +93,7 @@ export function FeatureGrid() {
             >
               <f.icon className={`size-5 ${f.iconColor}`} />
             </div>
-            <h3 className="mb-1.5 text-base font-bold">{f.title}</h3>
+            <h3 className="mb-1.5 text-lg font-bold">{f.title}</h3>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               {f.description}
             </p>
@@ -107,7 +107,7 @@ export function FeatureGrid() {
               <div className="mb-3.5 flex size-10 items-center justify-center rounded-lg bg-primary/10">
                 <Lock className="size-5 text-primary" />
               </div>
-              <h3 className="mb-1.5 text-base font-bold">
+              <h3 className="mb-1.5 text-lg font-bold">
                 Per-tool scoping in action
               </h3>
               <p className="text-[13px] leading-relaxed text-muted-foreground">

@@ -44,7 +44,7 @@ export function HowItWorks() {
             <div className="mb-3 flex size-7 items-center justify-center rounded-lg bg-primary/10 text-[13px] font-bold text-primary">
               {step.num}
             </div>
-            <h3 className="mb-1.5 text-sm font-semibold">{step.title}</h3>
+            <h3 className="mb-1.5 text-base font-semibold">{step.title}</h3>
             <p className="text-xs leading-relaxed text-muted-foreground">
               {step.description}
               {step.cmd && (
