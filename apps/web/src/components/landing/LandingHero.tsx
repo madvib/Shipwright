@@ -12,7 +12,7 @@ const PROVIDERS = [
 
 export function LandingHero() {
   return (
-    <section className="relative overflow-hidden px-6 pb-10 pt-36 text-center sm:px-10 sm:pt-40">
+    <section className="relative overflow-hidden px-6 pb-6 pt-24 text-center sm:px-10 sm:pt-28">
       <DotGrid className="z-0" />
       <div className="relative z-10 mx-auto max-w-[56rem]">
         {/* Badge */}
@@ -59,7 +59,7 @@ export function LandingHero() {
       </div>
 
       {/* Provider strip */}
-      <div className="relative z-10 mt-10 flex flex-wrap items-center justify-center gap-8 sm:gap-10">
+      <div className="relative z-10 mt-6 flex flex-wrap items-center justify-center gap-8 sm:gap-10">
         {PROVIDERS.map((p) => (
           <div
             key={p.id}
