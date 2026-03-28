@@ -24,6 +24,8 @@ function SessionPage() {
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
   const [activityOpen, setActivityOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
+  const [openCanvasTabs, setOpenCanvasTabs] = useState<string[]>([])
+  const [activeCanvasTab, setActiveCanvasTab] = useState<string | null>(null)
 
   const deleteMutation = useDeleteSessionFile()
   const uploadMutation = useUploadSessionFile()
@@ -63,6 +65,27 @@ function SessionPage() {
   }, [ann, mcp, isConnected])
 
   const handleSelectFile = useCallback((path: string) => {
+    setActiveFilePath(path)
+    const file = files.find((f) => f.path === path)
+    if (file?.type === 'html') {
+      setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
+      setActiveCanvasTab(path)
+    }
+  }, [files])
+
+  const handleCloseCanvasTab = useCallback((path: string) => {
+    setOpenCanvasTabs((prev) => {
+      const next = prev.filter((p) => p !== path)
+      if (activeCanvasTab === path) {
+        setActiveCanvasTab(next.length > 0 ? next[next.length - 1] : null)
+        if (next.length === 0) setActiveFilePath(null)
+      }
+      return next
+    })
+  }, [activeCanvasTab])
+
+  const handleSelectCanvasTab = useCallback((path: string) => {
+    setActiveCanvasTab(path)
     setActiveFilePath(path)
   }, [])
 
@@ -140,6 +163,10 @@ function SessionPage() {
               annotations={ann.annotations}
               activeId={ann.activeId}
               annotationMode={ann.annotationMode}
+              openTabs={openCanvasTabs}
+              activeTab={activeCanvasTab}
+              onTabSelect={handleSelectCanvasTab}
+              onTabClose={handleCloseCanvasTab}
               onAnnotationClick={ann.toggleActiveId}
               onDismissActive={ann.dismissActive}
               onRemoveAnnotation={ann.removeAnnotation}

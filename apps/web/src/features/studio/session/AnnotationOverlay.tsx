@@ -2,7 +2,7 @@
 // Uses onPointerDown so scrolling still works underneath. Only one
 // comment input is open at a time; clicking elsewhere closes it.
 
-import { useState, useCallback, useRef, type RefObject } from 'react'
+import { useState, useCallback, useRef, useEffect, type RefObject } from 'react'
 import { AnnotationMarker } from './AnnotationMarker'
 import { AnnotationInput } from './AnnotationInput'
 import { getCSSSelector, getElementsInRect } from './annotation-helpers'
@@ -47,16 +47,39 @@ export function AnnotationOverlay({
   const [pending, setPending] = useState<PendingInput | null>(null)
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null)
+  const [iframeScroll, setIframeScroll] = useState({ top: 0, left: 0 })
 
-  const getOverlayPos = useCallback(
-    (clientX: number, clientY: number) => {
-      const overlay = overlayRef.current
-      if (!overlay) return { x: 0, y: 0 }
-      const rect = overlay.getBoundingClientRect()
-      return { x: clientX - rect.left, y: clientY - rect.top }
-    },
-    [],
-  )
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+    const attach = () => {
+      const doc = iframe.contentDocument
+      if (!doc) return
+      const handler = () => setIframeScroll({ top: doc.documentElement.scrollTop, left: doc.documentElement.scrollLeft })
+      doc.addEventListener('scroll', handler, { passive: true })
+      return () => doc.removeEventListener('scroll', handler)
+    }
+    const cleanup = attach()
+    iframe.addEventListener('load', attach)
+    return () => { cleanup?.(); iframe.removeEventListener('load', attach) }
+  }, [iframeRef])
+
+  const getOverlayPos = useCallback((clientX: number, clientY: number) => {
+    const overlay = overlayRef.current
+    if (!overlay) return { x: 0, y: 0 }
+    const rect = overlay.getBoundingClientRect()
+    return { x: clientX - rect.left, y: clientY - rect.top }
+  }, [])
+
+  const getIframeScroll = useCallback(() => {
+    const doc = iframeRef.current?.contentDocument
+    return { top: doc?.documentElement.scrollTop ?? 0, left: doc?.documentElement.scrollLeft ?? 0 }
+  }, [iframeRef])
+
+  const toContentPos = useCallback((pos: { x: number; y: number }) => {
+    const s = getIframeScroll()
+    return { x: pos.x + s.left, y: pos.y + s.top }
+  }, [getIframeScroll])
 
   const cancelNote = useCallback(() => setPending(null), [])
 
@@ -137,6 +160,7 @@ export function AnnotationOverlay({
       const dy = Math.abs(end.y - dragStart.y)
 
       if (dx < 8 && dy < 8) {
+        // elementFromPoint needs viewport-relative coords (end.x/y is correct)
         let selector = 'body'
         let text = ''
         const iframe = iframeRef.current
@@ -149,10 +173,14 @@ export function AnnotationOverlay({
             }
           } catch { /* cross-origin */ }
         }
-        setPending({ type: 'click', x: end.x, y: end.y, selector, elementText: text })
+        // Store content-relative coordinates so markers follow scroll
+        const contentPos = toContentPos(end)
+        setPending({ type: 'click', x: contentPos.x, y: contentPos.y, selector, elementText: text })
       } else {
-        const x = Math.min(dragStart.x, end.x)
-        const y = Math.min(dragStart.y, end.y)
+        // Store content-relative rect coordinates
+        const scroll = getIframeScroll()
+        const x = Math.min(dragStart.x, end.x) + scroll.left
+        const y = Math.min(dragStart.y, end.y) + scroll.top
         const rect: [number, number, number, number] = [Math.round(x), Math.round(y), Math.round(dx), Math.round(dy)]
         let elements: string[] = []
         const iframe = iframeRef.current
@@ -165,7 +193,7 @@ export function AnnotationOverlay({
       setDragStart(null)
       setDragCurrent(null)
     },
-    [annotationMode, dragStart, getOverlayPos, iframeRef],
+    [annotationMode, dragStart, getOverlayPos, iframeRef, toContentPos, getIframeScroll],
   )
 
   const dragRect = dragStart && dragCurrent
@@ -194,6 +222,8 @@ export function AnnotationOverlay({
             annotation={ann}
             index={i}
             isActive={activeId === ann.id}
+            scrollTop={iframeScroll.top}
+            scrollLeft={iframeScroll.left}
             onClick={() => onAnnotationClick(ann.id)}
             onRemove={() => onRemoveAnnotation(ann.id)}
           />
@@ -209,7 +239,7 @@ export function AnnotationOverlay({
 
       {pending && (
         <AnnotationInput
-          pending={pending}
+          pending={{ ...pending, x: pending.x - iframeScroll.left, y: pending.y - iframeScroll.top }}
           onConfirm={confirmNote}
           onCancel={cancelNote}
         />

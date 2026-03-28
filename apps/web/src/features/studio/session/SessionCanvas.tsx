@@ -1,10 +1,10 @@
 // Renders an iframe with the session HTML content and an annotation overlay.
-// The iframe loads HTML via srcdoc. Theme is synced from studio to iframe
-// via postMessage so the canvas content respects the current theme.
+// Theme is synced both via srcdoc injection (initial) and postMessage (updates).
 
 import { useRef, useEffect, useCallback, useMemo } from 'react'
-import { MousePointerClick, Trash2, Download, Square, Maximize } from 'lucide-react'
+import { MousePointerClick, Trash2, Download, Square, Maximize, X } from 'lucide-react'
 import { AnnotationOverlay } from './AnnotationOverlay'
+import { getResolvedTheme, injectThemeListener, injectThemeAttribute, wrapContent } from './canvas-helpers'
 import type { Annotation } from './types'
 
 interface SessionCanvasProps {
@@ -13,6 +13,10 @@ interface SessionCanvasProps {
   annotations: Annotation[]
   activeId: string | null
   annotationMode: boolean
+  openTabs: string[]
+  activeTab: string | null
+  onTabSelect: (path: string) => void
+  onTabClose: (path: string) => void
   onAnnotationClick: (id: string) => void
   onDismissActive: () => void
   onRemoveAnnotation: (id: string) => void
@@ -24,79 +28,16 @@ interface SessionCanvasProps {
   onExport: () => void
 }
 
-/** Inject a theme listener script into srcdoc HTML so the iframe responds to
- *  postMessage({ type: 'theme', theme: 'dark' | 'light' }) from the parent. */
-function injectThemeListener(html: string): string {
-  const script = `<script>
-window.addEventListener('message', function(e) {
-  if (e.data && e.data.type === 'theme') {
-    var root = document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(e.data.theme);
-    root.setAttribute('data-theme', e.data.theme);
-    root.style.colorScheme = e.data.theme;
-  }
-});
-</script>`
-  // Insert before </head> if present, otherwise before </html> or at end
-  if (html.includes('</head>')) return html.replace('</head>', script + '</head>')
-  if (html.includes('</html>')) return html.replace('</html>', script + '</html>')
-  return html + script
-}
-
-function getResolvedTheme(): string {
-  const root = document.documentElement
-  if (root.classList.contains('dark')) return 'dark'
-  if (root.classList.contains('light')) return 'light'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-/** Wrap non-HTML content in a styled HTML shell for iframe rendering */
-function wrapContent(content: string, fileType?: string | null): string {
-  if (!content) return ''
-  if (fileType === 'image') {
-    // base64 data URI — render as zoomable image
-    return `<!DOCTYPE html><html><head><style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #1a1a1a; display: flex; align-items: center; justify-content: center; min-height: 100vh; overflow: auto; }
-      img { max-width: 100%; cursor: zoom-in; transition: transform 0.2s; }
-      img.zoomed { cursor: zoom-out; transform: scale(2); transform-origin: center; }
-    </style></head><body>
-      <img src="${content}" onclick="this.classList.toggle('zoomed')" />
-    </body></html>`
-  }
-  if (fileType === 'markdown') {
-    // Simple markdown-to-HTML for iframe rendering
-    const html = content
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/^(?!<[hulo])/gm, '<p>')
-    return `<!DOCTYPE html><html><head><style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: -apple-system, sans-serif; padding: 2rem; max-width: 48rem; margin: 0 auto; line-height: 1.6; color: #e8e0d6; background: #18140f; }
-      h1, h2, h3 { margin: 1.5rem 0 0.75rem; font-weight: 700; }
-      h1 { font-size: 1.75rem; } h2 { font-size: 1.35rem; } h3 { font-size: 1.1rem; }
-      p { margin: 0.5rem 0; } code { background: #2a2520; padding: 0.15rem 0.4rem; border-radius: 0.25rem; font-size: 0.9em; }
-      ul { padding-left: 1.5rem; margin: 0.5rem 0; } li { margin: 0.25rem 0; }
-      strong { font-weight: 600; }
-    </style></head><body>${html}</body></html>`
-  }
-  // Default: treat as HTML
-  return content
-}
-
 export function SessionCanvas({
   htmlContent,
   fileType,
   annotations,
   activeId,
   annotationMode,
+  openTabs,
+  activeTab,
+  onTabSelect,
+  onTabClose,
   onAnnotationClick,
   onDismissActive,
   onRemoveAnnotation,
@@ -112,7 +53,8 @@ export function SessionCanvas({
   const themedContent = useMemo(() => {
     if (!htmlContent) return ''
     const wrapped = wrapContent(htmlContent, fileType)
-    return injectThemeListener(wrapped)
+    const withTheme = injectThemeAttribute(wrapped)
+    return injectThemeListener(withTheme)
   }, [htmlContent, fileType])
 
   // Sync theme to iframe on load and when theme changes
@@ -184,6 +126,33 @@ export function SessionCanvas({
           <Maximize className="size-3" />
         </button>
       </div>
+
+      {/* Canvas tabs */}
+      {openTabs.length > 1 && (
+        <div className="flex items-center border-b border-border bg-card/20 px-2 h-8 shrink-0 overflow-x-auto">
+          {openTabs.map((tabPath) => {
+            const fileName = tabPath.split('/').pop() ?? tabPath
+            const isActive = tabPath === activeTab
+            return (
+              <button
+                key={tabPath}
+                onClick={() => onTabSelect(tabPath)}
+                className={`group flex items-center gap-1.5 px-3 py-1 text-xs whitespace-nowrap border-b-2 transition-colors ${
+                  isActive ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span className="truncate max-w-[140px]">{fileName}</span>
+                <span
+                  onClick={(e) => { e.stopPropagation(); onTabClose(tabPath) }}
+                  className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <X className="size-3" />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Canvas area */}
       <div className="relative flex-1 min-h-0 overflow-hidden bg-muted/30">

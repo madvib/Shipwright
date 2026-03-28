@@ -8,17 +8,19 @@ interface AnnotationMarkerProps {
   annotation: ClickAnnotation | BoxAnnotation
   index: number
   isActive: boolean
+  scrollTop: number
+  scrollLeft: number
   onClick: () => void
   onRemove: () => void
 }
 
-export function AnnotationMarker({ annotation, index, isActive, onClick, onRemove }: AnnotationMarkerProps) {
+export function AnnotationMarker({ annotation, index, isActive, scrollTop, scrollLeft, onClick, onRemove }: AnnotationMarkerProps) {
   if (annotation.type === 'click') {
     return (
       <div
         data-annotation-marker
         className="absolute z-10 group pointer-events-auto"
-        style={{ left: annotation.x, top: annotation.y, transform: 'translate(-50%, -50%)' }}
+        style={{ left: annotation.x - scrollLeft, top: annotation.y - scrollTop, transform: 'translate(-50%, -50%)' }}
       >
         <button
           onClick={(e) => {
@@ -63,7 +65,7 @@ export function AnnotationMarker({ annotation, index, isActive, onClick, onRemov
     <div
       data-annotation-marker
       className="absolute z-10 pointer-events-auto"
-      style={{ left: x, top: y, width: w, height: h }}
+      style={{ left: x - scrollLeft, top: y - scrollTop, width: w, height: h }}
     >
       <button
         onClick={(e) => {
