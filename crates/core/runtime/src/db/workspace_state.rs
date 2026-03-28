@@ -175,15 +175,9 @@ pub fn demote_other_active_workspaces_db(active_branch: &str) -> Result<()> {
         .await
     })?;
 
-    // Demote each workspace individually so we can emit a per-workspace event.
+    // Emit workspace.archived for each demoted workspace.
+    // The WorkspaceProjection handler updates the workspace row.
     for branch in &branches_to_demote {
-        let mut conn2 = open_db()?;
-        block_on(async {
-            sqlx::query("UPDATE workspace SET status = 'archived' WHERE branch = ?")
-                .bind(branch)
-                .execute(&mut conn2)
-                .await
-        })?;
         emit_workspace_archived(branch, &crate::events::types::WorkspaceArchived {})?;
     }
 
