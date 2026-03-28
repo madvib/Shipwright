@@ -13,6 +13,7 @@ pub mod registry;
 pub mod security;
 pub mod skill_paths;
 pub mod skill_vars;
+pub mod projections;
 pub mod workspace;
 
 // Backward-compatible module aliases.
@@ -93,7 +94,7 @@ pub use workspace::{
     get_workspace, get_workspace_provider_matrix, get_workspace_session_record,
     list_workspace_sessions, list_workspaces, record_workspace_session_progress, repair_workspace,
     set_workspace_active_agent, start_workspace_session, sync_workspace,
-    transition_workspace_status, upsert_workspace, validate_workspace_transition,
+    transition_workspace_status, validate_workspace_transition,
 };
 
 pub fn gen_nanoid() -> String {

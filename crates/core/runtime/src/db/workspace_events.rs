@@ -13,7 +13,8 @@ use crate::db::types::WorkspaceUpsert;
 use crate::db::{block_on, open_db};
 use crate::events::types::event_types;
 use crate::events::types::{
-    WorkspaceActivated, WorkspaceArchived, WorkspaceCompileFailed, WorkspaceCompiled,
+    WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
+    WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceStatusChanged,
 };
 
 // ── SQL constants ─────────────────────────────────────────────────────────────
@@ -202,4 +203,106 @@ pub fn upsert_workspace_archived(
     payload: &WorkspaceArchived,
 ) -> Result<()> {
     run_tx(WsBind::from_upsert(record)?, event_types::WORKSPACE_ARCHIVED, payload)
+}
+
+/// Upsert workspace + emit `workspace.created` atomically.
+pub fn upsert_workspace_created(
+    record: WorkspaceUpsert<'_>,
+    payload: &WorkspaceCreated,
+) -> Result<()> {
+    run_tx(WsBind::from_upsert(record)?, event_types::WORKSPACE_CREATED, payload)
+}
+
+/// Upsert workspace + emit `workspace.status_changed` atomically.
+pub fn upsert_workspace_status_changed(
+    record: WorkspaceUpsert<'_>,
+    payload: &WorkspaceStatusChanged,
+) -> Result<()> {
+    run_tx(WsBind::from_upsert(record)?, event_types::WORKSPACE_STATUS_CHANGED, payload)
+}
+
+/// Emit `workspace.deleted` for a branch that is about to be (or was) deleted.
+///
+/// Only inserts the event row; does NOT touch the workspace table.
+pub fn insert_workspace_deleted_event(branch: &str) -> Result<()> {
+    let payload = WorkspaceDeleted { branch: branch.to_string() };
+    let payload_json = serde_json::to_string(&payload)
+        .context("failed to serialise workspace.deleted payload")?;
+    let event_id = Ulid::new().to_string();
+    let event_ts = Utc::now().to_rfc3339();
+    let branch = branch.to_string();
+    let mut conn = open_db()?;
+    block_on(async {
+        sqlx::query(EVENT_INSERT)
+            .bind(&event_id)
+            .bind(event_types::WORKSPACE_DELETED)
+            .bind(&branch)
+            .bind(&payload_json)
+            .bind(&branch)
+            .bind(&branch)
+            .bind(&event_ts)
+            .execute(&mut conn)
+            .await
+    })?;
+    Ok(())
+}
+
+/// Upsert workspace + emit `workspace.agent_changed` atomically.
+pub fn upsert_workspace_agent_changed(
+    record: WorkspaceUpsert<'_>,
+    payload: &WorkspaceAgentChanged,
+) -> Result<()> {
+    run_tx(WsBind::from_upsert(record)?, event_types::WORKSPACE_AGENT_CHANGED, payload)
+}
+
+/// Emit `workspace.agent_changed` for a branch without touching the workspace row.
+///
+/// Used when the active workspace path handles its own upsert (via compile).
+pub fn insert_workspace_agent_changed_event(branch: &str, agent_id: Option<&str>) -> Result<()> {
+    let payload = WorkspaceAgentChanged { agent_id: agent_id.map(str::to_string) };
+    let payload_json = serde_json::to_string(&payload)
+        .context("failed to serialise workspace.agent_changed payload")?;
+    let event_id = Ulid::new().to_string();
+    let event_ts = Utc::now().to_rfc3339();
+    let branch = branch.to_string();
+    let mut conn = open_db()?;
+    block_on(async {
+        sqlx::query(EVENT_INSERT)
+            .bind(&event_id)
+            .bind(event_types::WORKSPACE_AGENT_CHANGED)
+            .bind(&branch)
+            .bind(&payload_json)
+            .bind(&branch)
+            .bind(&branch)
+            .bind(&event_ts)
+            .execute(&mut conn)
+            .await
+    })?;
+    Ok(())
+}
+
+/// Emit `workspace.archived` for a branch that was bulk-demoted (no upsert).
+///
+/// Reads the existing workspace row to build the payload, then inserts the event.
+pub fn insert_workspace_archived_event(branch: &str) -> Result<()> {
+    let payload = WorkspaceArchived {};
+    let payload_json = serde_json::to_string(&payload)
+        .context("failed to serialise workspace.archived payload")?;
+    let event_id = Ulid::new().to_string();
+    let event_ts = Utc::now().to_rfc3339();
+    let branch = branch.to_string();
+    let mut conn = open_db()?;
+    block_on(async {
+        sqlx::query(EVENT_INSERT)
+            .bind(&event_id)
+            .bind(event_types::WORKSPACE_ARCHIVED)
+            .bind(&branch)
+            .bind(&payload_json)
+            .bind(&branch)
+            .bind(&branch)
+            .bind(&event_ts)
+            .execute(&mut conn)
+            .await
+    })?;
+    Ok(())
 }

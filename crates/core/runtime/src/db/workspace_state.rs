@@ -216,16 +216,34 @@ pub fn delete_workspace_db(branch: &str) -> Result<bool> {
     Ok(deleted)
 }
 
-/// Mark any currently active workspace as idle except `active_branch`.
+/// Mark any currently active workspace as archived except `active_branch`.
+///
+/// Emits a `workspace.archived` event per demoted workspace.
 pub fn demote_other_active_workspaces_db(active_branch: &str) -> Result<()> {
+    use crate::db::workspace_events::insert_workspace_archived_event;
+
     let mut conn = open_db()?;
-    block_on(async {
-        sqlx::query(
-            "UPDATE workspace SET status = 'archived' WHERE status = 'active' AND branch != ?",
+    // Collect branches to demote before mutating.
+    let branches_to_demote: Vec<String> = block_on(async {
+        sqlx::query_scalar::<_, String>(
+            "SELECT branch FROM workspace WHERE status = 'active' AND branch != ?",
         )
         .bind(active_branch)
-        .execute(&mut conn)
+        .fetch_all(&mut conn)
         .await
     })?;
+
+    // Demote each workspace individually so we can emit a per-workspace event.
+    for branch in &branches_to_demote {
+        let mut conn2 = open_db()?;
+        block_on(async {
+            sqlx::query("UPDATE workspace SET status = 'archived' WHERE branch = ?")
+                .bind(branch)
+                .execute(&mut conn2)
+                .await
+        })?;
+        insert_workspace_archived_event(branch)?;
+    }
+
     Ok(())
 }

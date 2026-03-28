@@ -3,8 +3,12 @@ use chrono::Utc;
 use std::path::Path;
 
 use super::compile::compile_workspace_context;
-use super::crud::{get_workspace, list_workspaces, upsert_workspace};
-use super::event_upserts::{upsert_workspace_on_activate, upsert_workspace_on_archived};
+use super::crud::{get_workspace, list_workspaces};
+use super::event_upserts::{
+    emit_workspace_agent_changed_event, upsert_workspace_on_activate,
+    upsert_workspace_on_agent_changed, upsert_workspace_on_archived, upsert_workspace_on_created,
+    upsert_workspace_on_status_changed,
+};
 use super::helpers::*;
 use super::types::*;
 use super::types_session::*;
@@ -86,7 +90,7 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     }
 
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
-    upsert_workspace(ship_dir, &workspace)?;
+    upsert_workspace_on_created(ship_dir, &workspace)?;
     Ok(workspace)
 }
 
@@ -100,16 +104,18 @@ pub fn transition_workspace_status(
 
     validate_workspace_transition(workspace.workspace_type, workspace.status, next_status)?;
 
+    let old_status = workspace.status.to_string();
     let now = Utc::now();
     if next_status == WorkspaceStatus::Active {
         workspace.last_activated_at = Some(now);
     }
 
     workspace.status = next_status;
+    let new_status = workspace.status.to_string();
     if next_status == WorkspaceStatus::Archived {
         upsert_workspace_on_archived(ship_dir, &workspace)?;
     } else {
-        upsert_workspace(ship_dir, &workspace)?;
+        upsert_workspace_on_status_changed(ship_dir, &workspace, &old_status, &new_status)?;
     }
     Ok(workspace)
 }
@@ -164,9 +170,10 @@ pub fn set_workspace_active_agent(
     };
     if workspace.status == WorkspaceStatus::Active {
         let active_agent = workspace.active_agent.clone();
+        emit_workspace_agent_changed_event(ship_dir, &workspace.branch, active_agent.as_deref())?;
         compile_workspace_context(ship_dir, &mut workspace, active_agent.as_deref())?;
     } else {
-        upsert_workspace(ship_dir, &workspace)?;
+        upsert_workspace_on_agent_changed(ship_dir, &workspace)?;
     }
     Ok(workspace)
 }
@@ -205,7 +212,7 @@ pub fn seed_service_workspace(ship_dir: &Path) -> Result<()> {
     workspace.status = WorkspaceStatus::Active;
     workspace.last_activated_at = Some(now);
 
-    upsert_workspace(ship_dir, &workspace)?;
+    upsert_workspace_on_created(ship_dir, &workspace)?;
 
     Ok(())
 }

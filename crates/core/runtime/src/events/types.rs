@@ -3,6 +3,23 @@ use serde::{Deserialize, Serialize};
 // ── Workspace aggregate ───────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceCreated {
+    pub workspace_type: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceDeleted {
+    pub branch: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceStatusChanged {
+    pub old_status: String,
+    pub new_status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceActivated {
     pub agent_id: Option<String>,
     pub providers: Vec<String>,
@@ -21,6 +38,11 @@ pub struct WorkspaceCompileFailed {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceArchived {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceAgentChanged {
+    pub agent_id: Option<String>,
+}
 
 // ── Session aggregate ─────────────────────────────────────────────────────────
 
@@ -143,10 +165,14 @@ pub struct ProjectLog {
 // ── Event type constants ──────────────────────────────────────────────────────
 
 pub mod event_types {
+    pub const WORKSPACE_CREATED: &str = "workspace.created";
+    pub const WORKSPACE_DELETED: &str = "workspace.deleted";
+    pub const WORKSPACE_STATUS_CHANGED: &str = "workspace.status_changed";
     pub const WORKSPACE_ACTIVATED: &str = "workspace.activated";
     pub const WORKSPACE_COMPILED: &str = "workspace.compiled";
     pub const WORKSPACE_COMPILE_FAILED: &str = "workspace.compile_failed";
     pub const WORKSPACE_ARCHIVED: &str = "workspace.archived";
+    pub const WORKSPACE_AGENT_CHANGED: &str = "workspace.agent_changed";
     pub const SESSION_STARTED: &str = "session.started";
     pub const SESSION_PROGRESS: &str = "session.progress";
     pub const SESSION_ENDED: &str = "session.ended";
@@ -170,10 +196,14 @@ pub mod event_types {
     pub const SKILL_FAILED: &str = "skill.failed";
 
     pub const ALL: &[&str] = &[
+        WORKSPACE_CREATED,
+        WORKSPACE_DELETED,
+        WORKSPACE_STATUS_CHANGED,
         WORKSPACE_ACTIVATED,
         WORKSPACE_COMPILED,
         WORKSPACE_COMPILE_FAILED,
         WORKSPACE_ARCHIVED,
+        WORKSPACE_AGENT_CHANGED,
         SESSION_STARTED,
         SESSION_PROGRESS,
         SESSION_ENDED,
@@ -211,6 +241,6 @@ mod tests {
 
     #[test]
     fn all_constants_have_expected_count() {
-        assert_eq!(ALL.len(), 24, "exactly 24 event type constants required");
+        assert_eq!(ALL.len(), 28, "exactly 28 event type constants required");
     }
 }

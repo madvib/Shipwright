@@ -25,6 +25,8 @@ mod tests_session;
 mod tests_session_events;
 #[cfg(test)]
 mod tests_types;
+#[cfg(test)]
+mod tests_event_sourcing;
 
 // Re-export all public types so `use runtime::workspace::*` continues to work.
 pub use types::{
@@ -38,11 +40,13 @@ pub use types_session::{
 // Re-export all public functions.
 pub use crud::{
     delete_workspace, get_workspace, get_workspace_provider_matrix, list_workspaces,
-    repair_workspace, upsert_workspace,
+    repair_workspace,
 };
+pub(crate) use crud::upsert_workspace;
 pub use event_upserts::{
-    upsert_workspace_on_activate, upsert_workspace_on_archived,
-    upsert_workspace_on_compile_failed, upsert_workspace_on_compiled,
+    emit_workspace_archived_event, upsert_workspace_on_activate, upsert_workspace_on_archived,
+    upsert_workspace_on_compile_failed, upsert_workspace_on_compiled, upsert_workspace_on_created,
+    upsert_workspace_on_deleted, upsert_workspace_on_status_changed,
 };
 pub use helpers::validate_workspace_transition;
 pub use lifecycle::{

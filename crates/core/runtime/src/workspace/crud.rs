@@ -3,6 +3,7 @@ use crate::db::types::WorkspaceUpsert;
 use crate::db::workspace_state::{
     delete_workspace_db, get_workspace_db, list_workspaces_db, upsert_workspace_db,
 };
+use super::event_upserts::upsert_workspace_on_deleted;
 use anyhow::{Result, anyhow};
 use std::path::Path;
 
@@ -110,8 +111,9 @@ pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
     Ok(workspaces)
 }
 
-pub fn delete_workspace(_ship_dir: &Path, branch: &str) -> Result<()> {
+pub fn delete_workspace(ship_dir: &Path, branch: &str) -> Result<()> {
     let branch = ensure_branch_key(branch)?;
+    upsert_workspace_on_deleted(ship_dir, branch)?;
     clear_branch_link(branch)?;
     let _ = delete_workspace_db(branch)?;
     Ok(())
