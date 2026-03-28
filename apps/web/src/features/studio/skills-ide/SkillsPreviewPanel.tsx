@@ -8,7 +8,6 @@ type PreviewTab = 'vars' | 'info' | 'used-by'
 
 interface Props {
   skill: LibrarySkill | null
-  content: string
   activeTab: string
   onTabChange: (tab: PreviewTab) => void
   onClose: () => void
@@ -23,9 +22,11 @@ const TABS: { id: PreviewTab; label: string }[] = [
 
 // -- Info Tab -----------------------------------------------------------------
 
-function InfoTab({ skill, content }: { skill: LibrarySkill; content: string }) {
-  const fm = parseFrontmatter(content)
-  const warnings = validateFrontmatter(content)
+function InfoTab({ skill }: { skill: LibrarySkill }) {
+  // Always validate the skill's SKILL.md content, not the active editor file
+  const skillContent = skill.content
+  const fm = parseFrontmatter(skillContent)
+  const warnings = validateFrontmatter(skillContent)
   const tags = skill.tags.length > 0 ? skill.tags : (Array.isArray(fm.tags) ? fm.tags : [])
 
   return (
@@ -128,7 +129,7 @@ function UsedByTab({ skill }: { skill: LibrarySkill }) {
 
 // -- Panel --------------------------------------------------------------------
 
-export function SkillsPreviewPanel({ skill, content, activeTab, onTabChange, onClose, onAddFile }: Props) {
+export function SkillsPreviewPanel({ skill, activeTab, onTabChange, onClose, onAddFile }: Props) {
   if (!skill) return null
 
   const tab = (activeTab === 'vars' || activeTab === 'info' || activeTab === 'used-by') ? activeTab : 'vars'
@@ -179,7 +180,7 @@ export function SkillsPreviewPanel({ skill, content, activeTab, onTabChange, onC
             } : undefined}
           />
         )}
-        {tab === 'info' && <InfoTab skill={skill} content={content} />}
+        {tab === 'info' && <InfoTab skill={skill} />}
         {tab === 'used-by' && <UsedByTab skill={skill} />}
       </div>
     </div>

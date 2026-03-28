@@ -45,50 +45,42 @@ pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
     out
 }
 
-/// `list_project_skills` MCP tool — scan .ship/skills/ and return all skills as PullSkill objects.
-pub fn list_project_skills(ship_dir: &Path, req: ListProjectSkillsRequest) -> String {
-    let skills_dir = ship_dir.join("skills");
-    let entries = match std::fs::read_dir(&skills_dir) {
-        Ok(e) => e,
-        Err(_) => return serde_json::to_string(&Vec::<PullSkill>::new()).unwrap_or_default(),
+/// `list_project_skills` MCP tool — scan skill directories and return all skills as PullSkill objects.
+///
+/// Reads `project.skill_paths` from the manifest to determine which directories to scan.
+/// Falls back to `.ship/skills/` when the field is absent. First-seen ID wins when
+/// duplicate skill IDs exist across paths.
+pub fn list_project_skills(project_dir: &Path, req: ListProjectSkillsRequest) -> String {
+    // project_dir is the project root (e.g. /workspaces/ship).
+    // read_skill_paths expects the .ship directory.
+    let ship_dir = if project_dir.join(".ship").is_dir() {
+        project_dir.join(".ship")
+    } else {
+        project_dir.to_path_buf()
     };
-
+    let skill_dirs = runtime::read_skill_paths(&ship_dir);
+    tracing::info!("list_project_skills: ship_dir={}, skill_dirs={:?}", ship_dir.display(), skill_dirs);
     let mut skills: Vec<PullSkill> = Vec::new();
-    for entry in entries.flatten() {
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let id = entry.file_name().to_string_lossy().to_string();
-        let skill_dir = entry.path();
-        let skill_md = skill_dir.join("SKILL.md");
-        let content = match std::fs::read_to_string(&skill_md) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let fm = parse_skill_frontmatter(&content);
-        let files = collect_skill_files(&skill_dir);
-        let vars_schema = std::fs::read_to_string(skill_dir.join("assets/vars.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok());
-        let evals = std::fs::read_to_string(skill_dir.join("evals/evals.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok());
-        let reference_docs = collect_reference_docs(&skill_dir);
+    let mut seen_ids = std::collections::HashSet::new();
 
-        skills.push(PullSkill {
-            id: id.clone(),
-            name: fm.name.unwrap_or_else(|| id.clone()),
-            description: fm.description,
-            content,
-            source: "project".into(),
-            stable_id: fm.stable_id,
-            tags: fm.tags,
-            authors: fm.authors,
-            vars_schema,
-            files,
-            reference_docs,
-            evals,
-        });
+    for skills_dir in &skill_dirs {
+        let entries = match std::fs::read_dir(skills_dir) {
+            Ok(e) => e,
+            Err(e) => { tracing::warn!("cannot read {}: {e}", skills_dir.display()); continue; }
+        };
+        for entry in entries.flatten() {
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let id = entry.file_name().to_string_lossy().to_string();
+            if !seen_ids.insert(id.clone()) {
+                continue; // first path wins
+            }
+            let skill_dir = entry.path();
+            if let Some(skill) = read_skill_from_dir(&id, &skill_dir) {
+                skills.push(skill);
+            }
+        }
     }
 
     if let Some(ref query) = req.query {
@@ -106,6 +98,36 @@ pub fn list_project_skills(ship_dir: &Path, req: ListProjectSkillsRequest) -> St
 
     skills.sort_by(|a, b| a.id.cmp(&b.id));
     serde_json::to_string(&skills).unwrap_or_default()
+}
+
+/// Read a single skill from a directory. Returns `None` if `SKILL.md` is missing.
+fn read_skill_from_dir(id: &str, skill_dir: &Path) -> Option<PullSkill> {
+    let skill_md = skill_dir.join("SKILL.md");
+    let content = std::fs::read_to_string(&skill_md).ok()?;
+    let fm = parse_skill_frontmatter(&content);
+    let files = collect_skill_files(skill_dir);
+    let vars_schema = std::fs::read_to_string(skill_dir.join("assets/vars.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let evals = std::fs::read_to_string(skill_dir.join("evals/evals.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let reference_docs = collect_reference_docs(skill_dir);
+
+    Some(PullSkill {
+        id: id.to_string(),
+        name: fm.name.unwrap_or_else(|| id.to_string()),
+        description: fm.description,
+        content,
+        source: "project".into(),
+        stable_id: fm.stable_id,
+        tags: fm.tags,
+        authors: fm.authors,
+        vars_schema,
+        files,
+        reference_docs,
+        evals,
+    })
 }
 
 /// `get_skill_vars` MCP tool — return merged variable state for a skill.
@@ -192,7 +214,12 @@ fn resolve_skill_file_path(
     if file_path.contains("..") {
         return Err("file_path must not contain '..' (path traversal).".into());
     }
-    let skill_dir = ship_dir.join("skills").join(skill_id);
+    // Write to the first configured skill_path (default: "skills/")
+    let write_base = runtime::read_skill_paths(ship_dir)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| ship_dir.join("skills"));
+    let skill_dir = write_base.join(skill_id);
     let dest = skill_dir.join(file_path);
     // Canonicalize the skill_dir base to ensure the resolved path stays within it.
     // The dest may not exist yet, so we canonicalize the skill_dir (creating it if needed)

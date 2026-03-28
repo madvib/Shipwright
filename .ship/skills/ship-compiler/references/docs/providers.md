@@ -1,4 +1,5 @@
 ---
+group: Compiler
 title: Provider Outputs
 section: reference
 order: 3

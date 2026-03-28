@@ -1,4 +1,5 @@
 ---
+group: Compiler
 title: Ship Compiler
 section: concepts
 order: 1

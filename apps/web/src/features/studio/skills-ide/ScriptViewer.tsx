@@ -77,7 +77,7 @@ function tokenizeLine(line: string, lang: string): Token[] {
         i++
       }
       if (i < line.length) { str += line[i]; i++ }
-      tokens.push({ text: str, className: 'text-emerald-400' })
+      tokens.push({ text: str, className: 'text-green-600 dark:text-green-400' })
       continue
     }
 
@@ -90,7 +90,7 @@ function tokenizeLine(line: string, lang: string): Token[] {
       }
       tokens.push({
         text: word,
-        className: kwSet.has(word) ? 'text-sky-400 font-medium' : '',
+        className: kwSet.has(word) ? 'text-blue-400 dark:text-blue-300 font-medium' : '',
       })
       continue
     }
@@ -102,7 +102,7 @@ function tokenizeLine(line: string, lang: string): Token[] {
         num += line[i]
         i++
       }
-      tokens.push({ text: num, className: 'text-amber-400' })
+      tokens.push({ text: num, className: 'text-orange-500 dark:text-orange-400' })
       continue
     }
 

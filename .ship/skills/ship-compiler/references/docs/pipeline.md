@@ -1,4 +1,5 @@
 ---
+group: Compiler
 title: Compilation Pipeline
 section: reference
 order: 2
@@ -126,12 +127,12 @@ The compiler uses MiniJinja (Jinja2-compatible). Supported constructs:
 
 - `{{ var }}` -- scalar substitution
 - `{{ obj.field }}` -- dot-path into objects
-- `{% if var %}...{% endif %}` -- conditionals
-- `{% if var == "val" %}...{% elif %}...{% else %}...{% endif %}` -- branches
-- `{% for x in arr %}...{% endfor %}` -- loops
+- `if`/`endif` blocks for conditionals
+- `if`/`elif`/`else`/`endif` for branching on variable values
+- `for`/`endfor` for iterating arrays
 
 Undefined variables render as empty string (chainable undefined behavior). Template syntax errors fall back to the original content with a warning to stderr.
 
 ### No File Loader
 
-The template environment has no source or file loader configured. `{% include %}` and `{% extends %}` are disabled. Each skill template is self-contained.
+The template environment has no source or file loader. Include and extends directives are disabled. Each skill template is self-contained.

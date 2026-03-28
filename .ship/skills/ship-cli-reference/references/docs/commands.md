@@ -1,4 +1,5 @@
 ---
+group: CLI
 title: Command Reference
 description: Complete reference for every Ship CLI command with flags, arguments, and examples.
 section: reference

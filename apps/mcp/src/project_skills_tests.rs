@@ -17,6 +17,28 @@ fn write_skill(ship_dir: &std::path::Path, id: &str, frontmatter: &str, body: &s
     std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
 }
 
+/// Write a skill to an arbitrary subdirectory relative to `.ship/`.
+fn write_skill_at(ship_dir: &std::path::Path, rel_dir: &str, id: &str, frontmatter: &str, body: &str) {
+    let skill_dir = ship_dir.join(rel_dir).join(id);
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    let content = format!("---\n{frontmatter}\n---\n{body}");
+    std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+}
+
+/// Write a manifest with `project.skill_paths` to `.ship/ship.jsonc`.
+fn write_manifest_with_skill_paths(ship_dir: &std::path::Path, paths: &[&str]) {
+    let paths_json: Vec<String> = paths.iter().map(|p| format!("\"{}\"", p)).collect();
+    let content = format!(
+        r#"{{"id": "test123", "project": {{"skill_paths": [{}]}}}}"#,
+        paths_json.join(", ")
+    );
+    std::fs::write(
+        ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE),
+        content,
+    )
+    .unwrap();
+}
+
 #[test]
 fn returns_all_skills() {
     let (_tmp, ship_dir) = setup();
@@ -113,4 +135,56 @@ fn includes_vars_and_files() {
     assert!(skills[0].files.contains(&"SKILL.md".to_string()));
     assert!(skills[0].files.contains(&"assets/vars.json".to_string()));
     assert_eq!(skills[0].source, "project");
+}
+
+// ── skill_paths multi-directory tests ──────────────────────────────────────
+
+#[test]
+fn discovers_skills_from_multiple_paths() {
+    let tmp = tempdir().unwrap();
+    let ship_dir = tmp.path().join(".ship");
+    std::fs::create_dir_all(&ship_dir).unwrap();
+    write_manifest_with_skill_paths(&ship_dir, &["skills/", "docs/"]);
+
+    write_skill_at(&ship_dir, "skills", "alpha", "name: Alpha", "Alpha skill");
+    write_skill_at(&ship_dir, "docs", "beta", "name: Beta", "Beta skill");
+
+    let result = list_project_skills(&ship_dir, ListProjectSkillsRequest { query: None });
+    let skills: Vec<PullSkill> = serde_json::from_str(&result).unwrap();
+    let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+    assert!(ids.contains(&"alpha"), "should find skill in skills/");
+    assert!(ids.contains(&"beta"), "should find skill in docs/");
+    assert_eq!(skills.len(), 2);
+}
+
+#[test]
+fn default_no_skill_paths_scans_skills_only() {
+    let (_tmp, ship_dir) = setup();
+    // init_project creates a manifest without skill_paths — only skills/ is scanned.
+    // Write a skill in a non-default directory to prove it is NOT found.
+    write_skill(&ship_dir, "found-skill", "name: Found", "This is found.");
+    write_skill_at(&ship_dir, "extra", "hidden", "name: Hidden", "Not found.");
+
+    let result = list_project_skills(&ship_dir, ListProjectSkillsRequest { query: None });
+    let skills: Vec<PullSkill> = serde_json::from_str(&result).unwrap();
+    let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+    assert!(ids.contains(&"found-skill"));
+    assert!(!ids.contains(&"hidden"), "skills in non-configured dirs should be invisible");
+}
+
+#[test]
+fn duplicate_skill_id_first_path_wins() {
+    let tmp = tempdir().unwrap();
+    let ship_dir = tmp.path().join(".ship");
+    std::fs::create_dir_all(&ship_dir).unwrap();
+    write_manifest_with_skill_paths(&ship_dir, &["first/", "second/"]);
+
+    write_skill_at(&ship_dir, "first", "dup", "name: First Version", "First body");
+    write_skill_at(&ship_dir, "second", "dup", "name: Second Version", "Second body");
+
+    let result = list_project_skills(&ship_dir, ListProjectSkillsRequest { query: None });
+    let skills: Vec<PullSkill> = serde_json::from_str(&result).unwrap();
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].name, "First Version", "first path should win");
+    assert!(skills[0].content.contains("First body"));
 }

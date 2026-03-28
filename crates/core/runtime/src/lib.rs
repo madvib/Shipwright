@@ -10,6 +10,7 @@ pub mod plugin;
 pub mod project;
 pub mod registry;
 pub mod security;
+pub mod skill_paths;
 pub mod skill_vars;
 pub mod workspace;
 
@@ -60,6 +61,7 @@ pub use skill::{
     delete_user_skill, get_effective_skill, get_skill, get_user_skill, install_skill_from_source,
     list_effective_skills, list_skills, list_user_skills, update_skill, update_user_skill,
 };
+pub use skill_paths::read_skill_paths;
 pub use skill_vars::{get_skill_vars, list_skill_vars, reset_skill_vars, set_skill_var};
 
 // ─── Re-exports from db (formerly state_db) ────────────────────────────────

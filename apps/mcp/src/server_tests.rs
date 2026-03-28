@@ -89,6 +89,24 @@ async fn mcp_workspace_control_plane_round_trip() {
     );
 }
 
+// ── notification peer lifecycle ─────────────────────────────────────
+
+#[tokio::test]
+async fn notification_peer_starts_as_none() {
+    let server = ShipServer::new();
+    assert!(
+        server.notification_peer.lock().await.is_none(),
+        "notification_peer should be None after construction"
+    );
+}
+
+#[tokio::test]
+async fn notify_resources_changed_is_noop_without_peer() {
+    let server = ShipServer::new();
+    // Should not panic when no peer is stored
+    server.notify_resources_changed().await;
+}
+
 // ── normalize_mode_tool_id ──────────────────────────────────────────
 
 #[test]

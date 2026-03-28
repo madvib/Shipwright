@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useSkillsLibrary } from './useSkillsLibrary'
 import type { LibrarySkill } from './useSkillsLibrary'
 import { newSkillTemplate } from './skill-frontmatter'
-import { useSaveSkillFile } from '#/features/studio/mcp-queries'
+import { useSaveSkillFile, useDeleteSkillFile } from '#/features/studio/mcp-queries'
 import { idbGet, idbSet } from '#/lib/idb-cache'
 import {
   SKILL_MD,
@@ -73,6 +73,7 @@ export function useSkillsIDE() {
   const { skills: librarySkills, isLoading, isConnected } = useSkillsLibrary()
   const persisted = useRef(loadPersistedState())
   const saveMutation = useSaveSkillFile()
+  const deleteMutation = useDeleteSkillFile()
 
   const [openTabIds, setOpenTabIds] = useState<string[]>(persisted.current.openTabIds ?? [])
   const [activeTabId, setActiveTabId] = useState<string | null>(persisted.current.activeTabId ?? null)
@@ -133,13 +134,17 @@ export function useSkillsIDE() {
     } catch { /* ignore */ }
   }, [openTabIds, activeTabId, expandedFolders])
 
-  // Clear active tab if its skill was removed
+  // Clean up stale tabs whose skill no longer exists
   useEffect(() => {
-    if (!activeTabId) return
-    const { skillId } = parseTabId(activeTabId)
-    if (!skills.some((s) => s.id === skillId)) {
-      const fallback = openTabIds.find((tid) => skills.some((s) => s.id === parseTabId(tid).skillId))
-      setActiveTabId(fallback ?? null)
+    if (skills.length === 0) return
+    const skillIds = new Set(skills.map((s) => s.id))
+    const validTabs = openTabIds.filter((tid) => skillIds.has(parseTabId(tid).skillId))
+    if (validTabs.length !== openTabIds.length) {
+      setOpenTabIds(validTabs)
+    }
+    if (activeTabId && !skillIds.has(parseTabId(activeTabId).skillId)) {
+      const fallback = validTabs[0] ?? null
+      setActiveTabId(fallback)
     }
   }, [skills, activeTabId, openTabIds])
 
@@ -254,6 +259,14 @@ export function useSkillsIDE() {
 
   const deleteSkill = useCallback((id: string) => { closeTab(id) }, [closeTab])
 
+  const deleteFile = useCallback((skillId: string, filePath: string) => {
+    const tabId = makeTabId(skillId, filePath)
+    // Close the tab if open
+    closeTab(tabId)
+    // Delete from server
+    deleteMutation.mutate({ skillId, filePath })
+  }, [closeTab, deleteMutation])
+
   const filteredSkills = searchQuery
     ? skills.filter((s) => {
         const q = searchQuery.toLowerCase()
@@ -276,6 +289,6 @@ export function useSkillsIDE() {
     getLibrarySkill, openSkill, openFile, addFile, closeTab,
     setActiveTabId, updateContent, saveSkill, saveAll,
     toggleFolder, collapseAll, setSearchQuery, createSkill,
-    deleteSkill, setPreviewTab, setPreviewOpen,
+    deleteSkill, deleteFile, setPreviewTab, setPreviewOpen,
   }
 }

@@ -1,4 +1,5 @@
 ---
+group: Studio
 title: Ship Studio
 section: guide
 order: 1

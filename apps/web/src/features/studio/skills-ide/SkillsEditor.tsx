@@ -140,7 +140,7 @@ export function SkillsEditor({
 
   const activeFilePath = activeTab?.filePath ?? 'SKILL.md'
   const fileType = getFileType(activeFilePath)
-  const breadcrumbParts = ['skills', activeSkill.name || activeSkill.id, activeFilePath]
+  const breadcrumbParts = ['skills', activeSkill.name || activeSkill.id, ...activeFilePath.split('/')]
   const showDisconnectBanner = !isConnected && unsavedIds.size > 0
   const isMarkdown = fileType === 'markdown'
 
@@ -253,9 +253,9 @@ function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentCha
     )
   }
 
-  // JSON files: read-only viewer
+  // JSON files: editable viewer
   if (fileType === 'json') {
-    return <JsonViewer content={content} />
+    return <JsonViewer content={content} tabId={tabId} onContentChange={onContentChange} onSave={onSave} />
   }
 
   // Script files: read-only viewer

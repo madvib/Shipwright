@@ -1,4 +1,5 @@
 ---
+group: Studio
 title: Skills IDE
 section: guide
 order: 2

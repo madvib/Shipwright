@@ -202,29 +202,29 @@ fn pull_agents_from_dir(
 }
 
 fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
-    let skills_dir = ship_dir.join("skills");
+    let skill_dirs = runtime::read_skill_paths(ship_dir);
     refs.iter()
         .filter_map(|r| {
             let id = r.rsplit('/').next().unwrap_or(r);
-            let skill_dir = skills_dir.join(id);
+            // Search all configured skill paths; first match wins.
+            let skill_dir = skill_dirs
+                .iter()
+                .map(|d| d.join(id))
+                .find(|d| d.join("SKILL.md").exists())?;
             let skill_md = skill_dir.join("SKILL.md");
             let content = std::fs::read_to_string(&skill_md).ok()?;
             let fm = parse_skill_frontmatter(&content);
 
-            // Collect all files in the skill directory
             let files = collect_skill_files(&skill_dir);
 
-            // Read assets/vars.json
             let vars_schema = std::fs::read_to_string(skill_dir.join("assets/vars.json"))
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok());
 
-            // Read evals/evals.json
             let evals = std::fs::read_to_string(skill_dir.join("evals/evals.json"))
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok());
 
-            // Read reference docs
             let reference_docs = collect_reference_docs(&skill_dir);
 
             Some(PullSkill {
@@ -454,6 +454,58 @@ mod tests {
     fn collect_agent_ids_handles_missing_dir() {
         let ids = collect_agent_ids(Path::new("/nonexistent/path"));
         assert!(ids.is_empty());
+    }
+
+    fn write_skill_at(ship_dir: &Path, rel_dir: &str, id: &str, body: &str) {
+        let skill_dir = ship_dir.join(rel_dir).join(id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let content = format!("---\nname: {id}\n---\n{body}");
+        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+    }
+
+    fn write_manifest_skill_paths(ship_dir: &Path, paths: &[&str]) {
+        let arr: Vec<String> = paths.iter().map(|p| format!("\"{}\"", p)).collect();
+        let content = format!(
+            r#"{{"id": "test", "project": {{"skill_paths": [{}]}}}}"#,
+            arr.join(", ")
+        );
+        std::fs::write(
+            ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE),
+            content,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn resolve_skills_finds_across_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        write_manifest_skill_paths(&ship_dir, &["skills/", "docs/"]);
+
+        write_skill_at(&ship_dir, "skills", "tdd", "Write tests first.");
+        write_skill_at(&ship_dir, "docs", "tutorial", "A tutorial skill.");
+
+        let skills = resolve_skills(&ship_dir, &["tdd".to_string(), "tutorial".to_string()]);
+        assert_eq!(skills.len(), 2);
+        let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&"tdd"));
+        assert!(ids.contains(&"tutorial"));
+    }
+
+    #[test]
+    fn resolve_skills_first_path_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ship_dir = tmp.path().join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        write_manifest_skill_paths(&ship_dir, &["first/", "second/"]);
+
+        write_skill_at(&ship_dir, "first", "dup", "First version.");
+        write_skill_at(&ship_dir, "second", "dup", "Second version.");
+
+        let skills = resolve_skills(&ship_dir, &["dup".to_string()]);
+        assert_eq!(skills.len(), 1);
+        assert!(skills[0].content.contains("First version"));
     }
 
     #[test]

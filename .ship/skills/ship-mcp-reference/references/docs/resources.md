@@ -1,4 +1,5 @@
 ---
+group: MCP
 title: Resources
 description: MCP resources reference -- the ship:// URI scheme for read-only access to project state.
 section: reference

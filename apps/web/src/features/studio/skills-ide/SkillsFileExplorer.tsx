@@ -6,7 +6,7 @@ import {
 import type { Skill } from '@ship/ui'
 import type { LibrarySkill } from './useSkillsLibrary'
 import { makeTabId, SKILL_MD } from './useSkillsIDE'
-import { AddSkillFilePopover } from './AddSkillFilePopover'
+import { SkillContextMenu, type ContextMenuState } from './SkillContextMenu'
 import { SkillFilterBar, applyFilters, type SkillFilter } from './SkillFilters'
 
 interface Props {
@@ -22,6 +22,7 @@ interface Props {
   onCollapseAll: () => void
   onOpenFile: (skillId: string, filePath: string) => void
   onAddFile: (skillId: string, filePath: string, content: string) => void
+  onDeleteFile: (skillId: string, filePath: string) => void
   onCreateSkill: () => void
 }
 
@@ -49,22 +50,13 @@ const GROUP_META: Record<string, { label: string; icon: React.ReactNode }> = {
 }
 
 export function SkillsFileExplorer({
-  filteredSkills,
-  activeTabId,
-  expandedFolders,
-  searchQuery,
-  isConnected,
-  isLoading,
-  getLibrarySkill,
-  onSearchChange,
-  onToggleFolder,
-  onCollapseAll,
-  onOpenFile,
-  onAddFile,
-  onCreateSkill,
+  filteredSkills, activeTabId, expandedFolders, searchQuery,
+  isConnected, isLoading, getLibrarySkill,
+  onSearchChange, onToggleFolder, onCollapseAll, onOpenFile, onAddFile, onDeleteFile, onCreateSkill,
 }: Props) {
   const [activeFilter, setActiveFilter] = useState<SkillFilter>('all')
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set())
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   const handleTagToggle = useCallback((tag: string) => {
     setActiveTags((prev) => {
@@ -74,7 +66,6 @@ export function SkillsFileExplorer({
     })
   }, [])
 
-  // Build LibrarySkill array for filter computation, then apply filters
   const allLibrarySkills = useMemo(
     () => filteredSkills.map((s) => getLibrarySkill(s.id)).filter(Boolean) as LibrarySkill[],
     [filteredSkills, getLibrarySkill],
@@ -133,7 +124,7 @@ export function SkillsFileExplorer({
               getLibrarySkill={getLibrarySkill}
               onToggleFolder={onToggleFolder}
               onOpenFile={onOpenFile}
-              onAddFile={onAddFile}
+              onContextMenu={setContextMenu}
               action={<button onClick={onCreateSkill} className="text-muted-foreground hover:text-primary transition-colors" title="New skill"><Plus className="size-3.5" /></button>}
             />
 
@@ -149,7 +140,7 @@ export function SkillsFileExplorer({
               getLibrarySkill={getLibrarySkill}
               onToggleFolder={onToggleFolder}
               onOpenFile={onOpenFile}
-              onAddFile={onAddFile}
+              onContextMenu={setContextMenu}
             />
 
             {!isConnected && finalSkills.length === 0 && filteredSkills.length === 0 && (
@@ -162,6 +153,15 @@ export function SkillsFileExplorer({
           </>
         )}
       </div>
+
+      {contextMenu && (
+        <SkillContextMenu
+          menu={contextMenu}
+          onAddFile={onAddFile}
+          onDeleteFile={onDeleteFile}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }
@@ -172,12 +172,12 @@ interface SectionProps {
   getLibrarySkill: (id: string) => LibrarySkill | undefined
   onToggleFolder: (id: string) => void
   onOpenFile: (skillId: string, filePath: string) => void
-  onAddFile: (skillId: string, filePath: string, content: string) => void
+  onContextMenu: (state: ContextMenuState) => void
 }
 
 function SkillSection({
   label, icon, skills, activeTabId, expandedFolders, searchQuery,
-  getLibrarySkill, onToggleFolder, onOpenFile, onAddFile, action,
+  getLibrarySkill, onToggleFolder, onOpenFile, onContextMenu, action,
 }: SectionProps) {
   return (
     <div className="py-1.5">
@@ -208,20 +208,20 @@ function SkillSection({
         const hasRefs = Object.keys(ls?.referenceDocs ?? {}).length > 0
 
         const rootFiles = files.filter((f) => fileGroup(f) === 'root')
-        const assetFiles = files.filter((f) => fileGroup(f) === 'assets')
-        const refFiles = files.filter((f) => fileGroup(f) === 'references')
-        const evalFiles = files.filter((f) => fileGroup(f) === 'evals')
-        const scriptFiles = files.filter((f) => fileGroup(f) === 'scripts')
+        const groups: FileGroupName[] = ['assets', 'references', 'evals', 'scripts']
 
         return (
           <div key={skill.id}>
             <button
               onClick={() => onToggleFolder(skill.id)}
+              onContextMenu={(e) => {
+                if (!ls) return
+                e.preventDefault()
+                onContextMenu({ mode: 'folder', skill: ls, x: e.clientX, y: e.clientY })
+              }}
               className="flex w-full items-center gap-1.5 px-3 py-1 text-xs text-foreground/70 hover:text-foreground transition-colors"
             >
-              {expanded
-                ? <ChevronDown className="size-3 shrink-0" />
-                : <ChevronRight className="size-3 shrink-0" />}
+              {expanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
               <Zap className="size-3 shrink-0 text-primary/80" />
               <span className="truncate font-medium">{skill.name || skill.id}</span>
               <span className="ml-auto flex items-center gap-1">
@@ -230,33 +230,18 @@ function SkillSection({
                 {hasEvals && <span className="size-1.5 rounded-full bg-violet-400" title="Has evals" />}
               </span>
               {originLabel && (
-                <span className="text-[9px] text-violet-400 bg-violet-500/15 px-1.5 rounded">
-                  {originLabel}
-                </span>
+                <span className="text-[9px] text-violet-400 bg-violet-500/15 px-1.5 rounded">{originLabel}</span>
               )}
             </button>
-
             {expanded && ls && (
               <div className="pb-1">
                 {rootFiles.map((f) => (
-                  <FileEntry key={f} skillId={skill.id} filePath={f} activeTabId={activeTabId} indent={0} onOpenFile={onOpenFile} />
+                  <FileEntry key={f} skill={ls} skillId={skill.id} filePath={f} activeTabId={activeTabId} indent={0} onOpenFile={onOpenFile} onContextMenu={onContextMenu} />
                 ))}
-                {/* Add file button */}
-                <div className="pl-9 pr-3 py-0.5">
-                  <AddSkillFilePopover skill={ls} onAddFile={onAddFile} />
-                </div>
-                {assetFiles.length > 0 && (
-                  <FileGroup group="assets" files={assetFiles} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} />
-                )}
-                {refFiles.length > 0 && (
-                  <FileGroup group="references" files={refFiles} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} />
-                )}
-                {evalFiles.length > 0 && (
-                  <FileGroup group="evals" files={evalFiles} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} />
-                )}
-                {scriptFiles.length > 0 && (
-                  <FileGroup group="scripts" files={scriptFiles} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} />
-                )}
+                {groups.map((g) => {
+                  const gFiles = files.filter((f) => fileGroup(f) === g)
+                  return gFiles.length > 0 ? <FileGroup key={g} group={g} files={gFiles} skill={ls} skillId={skill.id} activeTabId={activeTabId} onOpenFile={onOpenFile} onContextMenu={onContextMenu} /> : null
+                })}
               </div>
             )}
           </div>
@@ -266,9 +251,10 @@ function SkillSection({
   )
 }
 
-function FileGroup({ group, files, skillId, activeTabId, onOpenFile }: {
-  group: string; files: string[]; skillId: string; activeTabId: string | null
+function FileGroup({ group, files, skill, skillId, activeTabId, onOpenFile, onContextMenu }: {
+  group: string; files: string[]; skill: LibrarySkill; skillId: string; activeTabId: string | null
   onOpenFile: (sid: string, fp: string) => void
+  onContextMenu: (state: ContextMenuState) => void
 }) {
   const meta = GROUP_META[group]
   if (!meta) return null
@@ -277,20 +263,28 @@ function FileGroup({ group, files, skillId, activeTabId, onOpenFile }: {
       <div className="flex items-center gap-1.5 pl-9 pr-3 py-0.5 text-[10px] text-muted-foreground font-medium">
         {meta.icon}{meta.label}/
       </div>
-      {files.map((f) => <FileEntry key={f} skillId={skillId} filePath={f} activeTabId={activeTabId} indent={1} onOpenFile={onOpenFile} />)}
+      {files.map((f) => <FileEntry key={f} skill={skill} skillId={skillId} filePath={f} activeTabId={activeTabId} indent={1} onOpenFile={onOpenFile} onContextMenu={onContextMenu} />)}
     </div>
   )
 }
 
-function FileEntry({ skillId, filePath, activeTabId, indent, onOpenFile }: {
-  skillId: string; filePath: string; activeTabId: string | null; indent: number
+function FileEntry({ skill, skillId, filePath, activeTabId, indent, onOpenFile, onContextMenu }: {
+  skill: LibrarySkill; skillId: string; filePath: string; activeTabId: string | null; indent: number
   onOpenFile: (sid: string, fp: string) => void
+  onContextMenu: (state: ContextMenuState) => void
 }) {
   const tabId = makeTabId(skillId, filePath)
   const isActive = activeTabId === tabId
   const pl = indent === 0 ? 'pl-9' : 'pl-12'
   return (
-    <button onClick={() => onOpenFile(skillId, filePath)} className={`flex w-full items-center gap-1.5 ${pl} pr-3 py-1 text-xs transition-colors border-l-2 ${isActive ? 'border-primary bg-primary/5 text-primary' : 'border-transparent text-foreground/70 hover:text-foreground hover:bg-muted/30'}`}>
+    <button
+      onClick={() => onOpenFile(skillId, filePath)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        onContextMenu({ mode: 'file', skill, filePath, x: e.clientX, y: e.clientY })
+      }}
+      className={`flex w-full items-center gap-1.5 ${pl} pr-3 py-1 text-xs transition-colors border-l-2 ${isActive ? 'border-primary bg-primary/5 text-primary' : 'border-transparent text-foreground/70 hover:text-foreground hover:bg-muted/30'}`}
+    >
       {fileIcon(filePath)}
       <span className="truncate">{filePath.split('/').pop() ?? filePath}</span>
     </button>

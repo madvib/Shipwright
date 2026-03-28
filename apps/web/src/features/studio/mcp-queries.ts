@@ -34,7 +34,6 @@ export function useLocalAgentIds() {
       return JSON.parse(raw) as ListAgentsResponse
     },
     enabled: status === 'connected',
-    refetchInterval: 10_000,
     staleTime: 5_000,
   })
 }
@@ -51,7 +50,6 @@ export function usePullAgents() {
       return JSON.parse(raw) as PullResponse
     },
     enabled: isConnected,
-    refetchInterval: isConnected ? 10_000 : false,
     staleTime: 5_000,
   })
 }
@@ -67,7 +65,6 @@ export function useProjectSkills() {
       return JSON.parse(raw) as PullSkill[]
     },
     enabled: status === 'connected',
-    refetchInterval: 10_000,
     staleTime: 5_000,
   })
 }
@@ -113,6 +110,21 @@ export function useSaveSkillFile() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
+    },
+  })
+}
+
+/** Delete a single skill file from disk via CLI. Invalidates all MCP queries on success. */
+export function useDeleteSkillFile() {
+  const { callTool } = useMcpCallTool()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ skillId, filePath }: { skillId: string; filePath: string }) => {
+      return callTool('delete_skill_file', { skill_id: skillId, file_path: filePath })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
     },
   })
 }

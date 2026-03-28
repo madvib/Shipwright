@@ -56,6 +56,7 @@ function SkillsIDEPage() {
             onCollapseAll={ide.collapseAll}
             onOpenFile={ide.openFile}
             onAddFile={ide.addFile}
+            onDeleteFile={ide.deleteFile}
             onCreateSkill={() => setCreateOpen(true)}
           />
 
@@ -79,7 +80,6 @@ function SkillsIDEPage() {
           {ide.state.previewOpen && (
             <SkillsPreviewPanel
               skill={ide.activeSkill}
-              content={ide.activeContent}
               activeTab={ide.state.previewTab}
               onTabChange={ide.setPreviewTab}
               onClose={() => ide.setPreviewOpen(false)}

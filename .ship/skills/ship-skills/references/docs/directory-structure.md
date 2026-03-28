@@ -1,4 +1,5 @@
 ---
+group: Smart Skills
 title: Skill Directory Structure
 description: Complete reference for every file and directory in a Ship smart skill.
 audience: public

@@ -1,4 +1,5 @@
 ---
+group: CLI
 title: Provider Output
 description: Reference for what each Ship provider generates — file paths, formats, and compilation behavior.
 section: reference

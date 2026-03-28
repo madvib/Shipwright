@@ -1,6 +1,7 @@
 /** Filter bar for the Skills IDE file explorer. */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { Check, Search, X } from 'lucide-react'
 import type { LibrarySkill } from './useSkillsLibrary'
 
 export type SkillFilter = 'all' | 'smart' | 'documented'
@@ -92,40 +93,139 @@ export function SkillFilterBar({ allSkills, activeFilter, activeTags, onFilterCh
           )
         })}
         {sortedTags.length > 0 && (
-          <button
-            onClick={() => setShowTags((p) => !p)}
-            className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
-              activeTags.size > 0
-                ? 'border-primary/50 bg-primary/10 text-primary font-medium'
-                : 'border-border text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Tags{activeTags.size > 0 ? ` (${activeTags.size})` : ''}
-          </button>
+          <TagsPopoverButton
+            sortedTags={sortedTags}
+            activeTags={activeTags}
+            open={showTags}
+            onOpenChange={setShowTags}
+            onTagToggle={onTagToggle}
+          />
         )}
       </div>
-
-      {showTags && sortedTags.length > 0 && (
-        <div className="flex flex-wrap gap-1 pt-0.5">
-          {sortedTags.map(([tag, count]) => {
-            const isActive = activeTags.has(tag)
-            return (
-              <button
-                key={tag}
-                onClick={() => onTagToggle(tag)}
-                className={`px-1.5 py-px text-[9px] rounded border transition-colors ${
-                  isActive
-                    ? 'border-sky-500/50 bg-sky-500/15 text-sky-400'
-                    : 'border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tag}
-                <span className="ml-0.5 opacity-50">{count}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
     </div>
+  )
+}
+
+// -- Tags Popover -------------------------------------------------------------
+
+interface TagsPopoverProps {
+  sortedTags: [string, number][]
+  activeTags: Set<string>
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onTagToggle: (tag: string) => void
+}
+
+function TagsPopoverButton({ sortedTags, activeTags, open, onOpenChange, onTagToggle }: TagsPopoverProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [search, setSearch] = useState('')
+
+  // Position popover below the trigger button
+  useEffect(() => {
+    if (!open || !triggerRef.current || !popoverRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const pop = popoverRef.current
+    pop.style.top = `${rect.bottom + 4}px`
+    pop.style.left = `${Math.max(8, rect.left)}px`
+  }, [open])
+
+  // Reset search when closing
+  useEffect(() => {
+    if (!open) setSearch('')
+  }, [open])
+
+  const filteredTags = search
+    ? sortedTags.filter(([tag]) => tag.toLowerCase().includes(search.toLowerCase()))
+    : sortedTags
+
+  const clearAll = () => {
+    for (const tag of activeTags) onTagToggle(tag)
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={() => onOpenChange(!open)}
+        className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+          activeTags.size > 0
+            ? 'border-primary/50 bg-primary/10 text-primary font-medium'
+            : 'border-border text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        Tags{activeTags.size > 0 ? ` (${activeTags.size})` : ''}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => onOpenChange(false)} />
+          <div
+            ref={popoverRef}
+            className="fixed z-50 w-52 rounded-lg border border-border bg-popover shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
+          >
+            {/* Search input */}
+            <div className="px-2 py-1.5 border-b border-border">
+              <div className="flex items-center gap-1.5 rounded border border-border bg-background/80 px-2 py-1 focus-within:border-primary/50 transition-colors">
+                <Search className="size-3 text-muted-foreground shrink-0" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Filter tags..."
+                  className="min-w-0 flex-1 bg-transparent text-[10px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  autoFocus
+                  spellCheck={false}
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} className="text-muted-foreground hover:text-foreground">
+                    <X className="size-2.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Tag list */}
+            <div className="max-h-[300px] overflow-y-auto p-1">
+              {filteredTags.length === 0 ? (
+                <p className="px-2 py-3 text-center text-[10px] text-muted-foreground">No matching tags</p>
+              ) : (
+                filteredTags.map(([tag, count]) => {
+                  const isActive = activeTags.has(tag)
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => onTagToggle(tag)}
+                      className={`flex items-center gap-2 w-full px-2 py-1 rounded text-left transition-colors ${
+                        isActive ? 'bg-primary/10 text-primary' : 'text-foreground/70 hover:bg-muted/50 hover:text-foreground'
+                      }`}
+                    >
+                      <span className={`flex size-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
+                        isActive ? 'border-primary bg-primary' : 'border-border'
+                      }`}>
+                        {isActive && <Check className="size-2.5 text-primary-foreground" />}
+                      </span>
+                      <span className="flex-1 truncate text-[10px]">{tag}</span>
+                      <span className="text-[9px] text-muted-foreground tabular-nums">({count})</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Clear all */}
+            {activeTags.size > 0 && (
+              <div className="border-t border-border px-2 py-1.5">
+                <button
+                  onClick={clearAll}
+                  className="w-full text-center text-[10px] text-muted-foreground hover:text-foreground transition-colors py-0.5"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
   )
 }

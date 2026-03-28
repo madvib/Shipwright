@@ -1,4 +1,5 @@
 ---
+group: Smart Skills
 title: Variables
 description: Complete reference for skill variables — vars.json schema, types, storage scopes, merge order, templates, CLI, and MCP tools.
 audience: public
@@ -85,34 +86,15 @@ SKILL.md is rendered as a MiniJinja (Jinja2-compatible) template. The engine is 
 
 ### Substitution
 
-```
-{{ variable_name }}
-{{ object_var.field }}
-```
+Use double braces for variable substitution: `{{ variable_name }}` and `{{ object_var.field }}`.
 
 ### Conditionals
 
-```
-{% if sign_commits %}
-Always sign commits with GPG.
-{% endif %}
-
-{% if commit_style == "gitmoji" %}
-Start every message with the appropriate emoji.
-{% elif commit_style == "conventional" %}
-Use type(scope): format.
-{% else %}
-Use plain descriptive messages.
-{% endif %}
-```
+Use `if`/`elif`/`else`/`endif` blocks to branch on variable values. Example: `if sign_commits` renders signing instructions only when the variable is true. Equality checks like `commit_style == "gitmoji"` select format-specific content.
 
 ### Loops
 
-```
-{% for author in co_authors %}
-Co-Authored-By: {{ author }}
-{% endfor %}
-```
+Use `for`/`endfor` to iterate arrays. Example: `for author in co_authors` renders a `Co-Authored-By` trailer for each entry.
 
 ### Truthiness
 

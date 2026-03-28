@@ -1,4 +1,5 @@
 ---
+group: Smart Skills
 title: Smart Skills
 description: Overview of Ship's smart skills system — typed variables, template resolution, and personalized agent output.
 audience: public
@@ -24,7 +25,7 @@ platform.db KV (user state)
 
 A skill becomes smart when it has `assets/vars.json`. That file declares typed variables with defaults, storage scopes, and metadata. The compiler detects the presence of vars.json and activates template resolution for SKILL.md.
 
-Without vars.json, a skill is plain markdown. With it, SKILL.md becomes a MiniJinja template where `{{ var }}` references, `{% if %}` conditionals, and `{% for %}` loops resolve against the user's variable state.
+Without vars.json, a skill is plain markdown. With it, SKILL.md becomes a MiniJinja template where variable references, conditionals, and loops resolve against the user's variable state at compile time.
 
 ## How resolution works
 

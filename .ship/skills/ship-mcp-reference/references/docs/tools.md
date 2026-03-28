@@ -1,4 +1,5 @@
 ---
+group: MCP
 title: Tool Reference
 description: Complete reference for every Ship MCP tool with parameter tables, grouped by domain.
 section: reference

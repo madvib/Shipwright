@@ -1,4 +1,5 @@
 ---
+group: Smart Skills
 title: Skill Documentation
 description: How to write progressive disclosure documentation for smart skills using references/docs/.
 audience: public

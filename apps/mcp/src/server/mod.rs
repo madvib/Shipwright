@@ -4,7 +4,7 @@ mod tool_gate;
 use anyhow::{Result, anyhow};
 use rmcp::transport::stdio;
 use rmcp::{
-    ServiceExt,
+    Peer, RoleServer, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     tool, tool_router,
 };
@@ -31,6 +31,7 @@ use target::{
 pub struct ShipServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
+    pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
 }
 
 // ---- Stable tool registration ----
@@ -49,11 +50,22 @@ impl ShipServer {
         Self {
             tool_router: router,
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
         project::get_effective_project_dir(&self.active_project).await
+    }
+
+    pub async fn store_peer(&self, peer: Peer<RoleServer>) {
+        *self.notification_peer.lock().await = Some(peer);
+    }
+
+    async fn notify_resources_changed(&self) {
+        if let Some(peer) = self.notification_peer.lock().await.as_ref() {
+            let _ = peer.notify_resource_list_changed().await;
+        }
     }
 
     #[cfg(test)]
@@ -69,7 +81,10 @@ impl ShipServer {
 
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
-        let (msg, _) = project::open_project(&req.path, &self.active_project).await;
+        let (msg, resolved) = project::open_project(&req.path, &self.active_project).await;
+        if resolved.is_some() {
+            self.notify_resources_changed().await;
+        }
         msg
     }
 
@@ -118,7 +133,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        studio::push_bundle(&project_dir, &req.bundle)
+        let result = studio::push_bundle(&project_dir, &req.bundle);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     // ---- Workspace ----
@@ -273,7 +292,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        set_skill_var_tool(&project_dir, req)
+        let result = set_skill_var_tool(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     #[tool(
@@ -297,7 +320,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        write_skill_file(&project_dir, req)
+        let result = write_skill_file(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     #[tool(description = "Delete a single file from a skill directory. \
@@ -310,7 +337,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        delete_skill_file(&project_dir, req)
+        let result = delete_skill_file(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     #[tool(

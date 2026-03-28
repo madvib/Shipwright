@@ -28,13 +28,13 @@ export function highlightLines(content: string): HighlightedLine[] {
           text: line,
           className: '',
           fragments: [
-            { text: key, className: 'text-sky-500 dark:text-sky-300' },
+            { text: key, className: 'text-blue-400 dark:text-blue-300' },
             { text: ':', className: 'text-muted-foreground' },
-            { text: val, className: 'text-emerald-600 dark:text-emerald-300' },
+            { text: val, className: 'text-green-600 dark:text-green-400' },
           ],
         }
       }
-      return { text: line, className: 'text-emerald-600 dark:text-emerald-300' }
+      return { text: line, className: 'text-green-600 dark:text-green-400' }
     }
 
     if (line.startsWith('# ')) return { text: line, className: 'text-foreground font-bold text-sm' }

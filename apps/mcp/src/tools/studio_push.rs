@@ -175,7 +175,12 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
 }
 
 fn write_skill(ship_dir: &Path, skill_id: &str, skill: &SkillBundle) -> Result<(), String> {
-    let skill_dir = ship_dir.join("skills").join(skill_id);
+    // Write to the first configured skill_path (default: "skills/")
+    let write_base = runtime::read_skill_paths(ship_dir)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| ship_dir.join("skills"));
+    let skill_dir = write_base.join(skill_id);
     std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
     for (rel_path, content) in &skill.files {
         let dest = skill_dir.join(rel_path);

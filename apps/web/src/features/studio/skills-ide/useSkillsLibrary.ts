@@ -153,13 +153,37 @@ export function useSkillsLibrary(): UseSkillsLibraryReturn {
     }
   }, [pulledSkills])
 
-  // Merge project skills (from list_project_skills) into the agent-derived list
+  // Build a usedBy lookup from agent data so we can enrich project skills.
+  const agentUsageMap = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (!pullQuery.data?.agents) return map
+    for (const agent of pullQuery.data.agents) {
+      for (const skill of agent.skills) {
+        const existing = map.get(skill.id)
+        if (existing) {
+          if (!existing.includes(agent.profile.id)) existing.push(agent.profile.id)
+        } else {
+          map.set(skill.id, [agent.profile.id])
+        }
+      }
+    }
+    return map
+  }, [pullQuery.data])
+
+  // Primary source: list_project_skills. This is the canonical skill list.
+  // Agent data enriches skills with usedBy metadata but does not define the list.
+  // Fall back to agent-derived skills only when project skills haven't loaded yet.
   const skills = useMemo(() => {
-    const base = pulledSkills.length > 0 ? pulledSkills : (!isConnected ? cachedSkills : [])
     const projectSkills = projectQuery.data ?? []
-    if (projectSkills.length === 0) return base
-    return mergeProjectSkills(base, projectSkills)
-  }, [pulledSkills, isConnected, cachedSkills, projectQuery.data])
+    if (projectSkills.length > 0) {
+      return projectSkills.map((ps) =>
+        pullToLibrarySkill(ps, 'project', agentUsageMap.get(ps.id) ?? []),
+      )
+    }
+    // Fallback: use agent-derived skills or cache while project query loads
+    const base = pulledSkills.length > 0 ? pulledSkills : cachedSkills
+    return base
+  }, [projectQuery.data, agentUsageMap, pulledSkills, cachedSkills])
 
   return {
     skills,

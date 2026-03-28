@@ -1,4 +1,5 @@
 ---
+group: CLI
 title: Ship CLI
 description: Overview of the Ship CLI — a compiler for AI agent configuration that turns declarative .ship/ directories into provider-native config files.
 section: guide

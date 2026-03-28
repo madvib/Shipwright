@@ -1,4 +1,5 @@
 ---
+group: MCP
 title: Workflow Patterns
 description: The three-mode workflow -- Planning, Orchestration, and Gate -- and how workspaces, sessions, and jobs fit together.
 section: guide

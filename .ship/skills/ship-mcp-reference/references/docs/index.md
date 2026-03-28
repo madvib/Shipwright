@@ -1,4 +1,5 @@
 ---
+group: MCP
 title: Ship MCP Tools
 description: Overview of the Ship MCP server, how to start it, and the three-stage workflow for agent-platform interaction.
 section: guide
