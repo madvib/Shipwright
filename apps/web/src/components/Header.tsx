@@ -21,7 +21,7 @@ function NavDropdown({ label, href, items, isActive }: {
       <Link
         to={href as string}
         onClick={() => setOpen(false)}
-        className={`rounded-md px-3 py-1.5 text-sm transition select-none no-underline ${
+        className={`rounded-md px-3 py-2.5 text-sm transition select-none no-underline ${
           isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
         }`}
       >
