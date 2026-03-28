@@ -104,6 +104,22 @@ fn ship_event_actor_id_cannot_be_overridden() {
 }
 
 #[test]
+fn ship_event_rejects_reserved_gate_type() {
+    let result = handle_ship_event("actor-1", "ws-1", "gate.passed", json!({}), false);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("reserved"), "error must mention 'reserved': {msg}");
+}
+
+#[test]
+fn ship_event_rejects_reserved_job_type() {
+    let result = handle_ship_event("actor-1", "ws-1", "job.created", json!({}), false);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("reserved"), "error must mention 'reserved': {msg}");
+}
+
+#[test]
 fn reserved_type_list_is_complete() {
     let required = [
         "actor.", "session.", "skill.", "workspace.",
