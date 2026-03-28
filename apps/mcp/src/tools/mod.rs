@@ -1,6 +1,7 @@
 #[cfg(feature = "unstable")]
 pub mod adr;
 pub mod agent;
+pub mod event;
 pub mod events;
 #[cfg(feature = "unstable")]
 pub mod job;
