@@ -18,7 +18,13 @@ fn write_skill(ship_dir: &std::path::Path, id: &str, frontmatter: &str, body: &s
 }
 
 /// Write a skill to an arbitrary subdirectory relative to `.ship/`.
-fn write_skill_at(ship_dir: &std::path::Path, rel_dir: &str, id: &str, frontmatter: &str, body: &str) {
+fn write_skill_at(
+    ship_dir: &std::path::Path,
+    rel_dir: &str,
+    id: &str,
+    frontmatter: &str,
+    body: &str,
+) {
     let skill_dir = ship_dir.join(rel_dir).join(id);
     std::fs::create_dir_all(&skill_dir).unwrap();
     let content = format!("---\n{frontmatter}\n---\n{body}");
@@ -32,11 +38,7 @@ fn write_manifest_with_skill_paths(ship_dir: &std::path::Path, paths: &[&str]) {
         r#"{{"id": "test123", "project": {{"skill_paths": [{}]}}}}"#,
         paths_json.join(", ")
     );
-    std::fs::write(
-        ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE),
-        content,
-    )
-    .unwrap();
+    std::fs::write(ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE), content).unwrap();
 }
 
 #[test]
@@ -44,7 +46,12 @@ fn returns_all_skills() {
     let (_tmp, ship_dir) = setup();
     write_skill(&ship_dir, "tdd", "name: TDD", "Write tests first.");
     write_skill(&ship_dir, "browse", "name: Browse", "Browse the web.");
-    write_skill(&ship_dir, "code-review", "name: Code Review", "Review code.");
+    write_skill(
+        &ship_dir,
+        "code-review",
+        "name: Code Review",
+        "Review code.",
+    );
 
     let result = list_project_skills(&ship_dir, ListProjectSkillsRequest { query: None });
     let skills: Vec<PullSkill> = serde_json::from_str(&result).unwrap();
@@ -169,7 +176,10 @@ fn default_no_skill_paths_scans_skills_only() {
     let skills: Vec<PullSkill> = serde_json::from_str(&result).unwrap();
     let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
     assert!(ids.contains(&"found-skill"));
-    assert!(!ids.contains(&"hidden"), "skills in non-configured dirs should be invisible");
+    assert!(
+        !ids.contains(&"hidden"),
+        "skills in non-configured dirs should be invisible"
+    );
 }
 
 #[test]
@@ -179,8 +189,20 @@ fn duplicate_skill_id_first_path_wins() {
     std::fs::create_dir_all(&ship_dir).unwrap();
     write_manifest_with_skill_paths(&ship_dir, &["first/", "second/"]);
 
-    write_skill_at(&ship_dir, "first", "dup", "name: First Version", "First body");
-    write_skill_at(&ship_dir, "second", "dup", "name: Second Version", "Second body");
+    write_skill_at(
+        &ship_dir,
+        "first",
+        "dup",
+        "name: First Version",
+        "First body",
+    );
+    write_skill_at(
+        &ship_dir,
+        "second",
+        "dup",
+        "name: Second Version",
+        "Second body",
+    );
 
     let result = list_project_skills(&ship_dir, ListProjectSkillsRequest { query: None });
     let skills: Vec<PullSkill> = serde_json::from_str(&result).unwrap();

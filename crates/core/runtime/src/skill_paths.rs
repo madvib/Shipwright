@@ -67,11 +67,7 @@ mod tests {
 
     fn write_manifest(ship_dir: &Path, content: &str) {
         fs::create_dir_all(ship_dir).unwrap();
-        fs::write(
-            ship_dir.join(crate::config::PRIMARY_CONFIG_FILE),
-            content,
-        )
-        .unwrap();
+        fs::write(ship_dir.join(crate::config::PRIMARY_CONFIG_FILE), content).unwrap();
     }
 
     #[test]

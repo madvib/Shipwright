@@ -1,16 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use compiler::types::is_valid_skill_name;
 use compiler::PullSkill;
+use compiler::types::is_valid_skill_name;
 use runtime::{get_skill_vars, list_effective_skills, list_skill_vars, set_skill_var};
 
 use crate::requests::{
     DeleteSkillFileRequest, GetSkillVarsRequest, ListProjectSkillsRequest, ListSkillVarsRequest,
     ListSkillsRequest, SetSkillVarRequest, WriteSkillFileRequest,
 };
-use crate::tools::studio::{
-    collect_reference_docs, collect_skill_files, parse_skill_frontmatter,
-};
+use crate::tools::studio::{collect_reference_docs, collect_skill_files, parse_skill_frontmatter};
 
 pub fn list_skills(project_dir: &Path, req: ListSkillsRequest) -> String {
     let skills = match list_effective_skills(project_dir) {
@@ -59,14 +57,21 @@ pub fn list_project_skills(project_dir: &Path, req: ListProjectSkillsRequest) ->
         project_dir.to_path_buf()
     };
     let skill_dirs = runtime::read_skill_paths(&ship_dir);
-    tracing::info!("list_project_skills: ship_dir={}, skill_dirs={:?}", ship_dir.display(), skill_dirs);
+    tracing::info!(
+        "list_project_skills: ship_dir={}, skill_dirs={:?}",
+        ship_dir.display(),
+        skill_dirs
+    );
     let mut skills: Vec<PullSkill> = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
     for skills_dir in &skill_dirs {
         let entries = match std::fs::read_dir(skills_dir) {
             Ok(e) => e,
-            Err(e) => { tracing::warn!("cannot read {}: {e}", skills_dir.display()); continue; }
+            Err(e) => {
+                tracing::warn!("cannot read {}: {e}", skills_dir.display());
+                continue;
+            }
         };
         for entry in entries.flatten() {
             if !entry.path().is_dir() {

@@ -41,8 +41,7 @@ fn resolve_hashes(
             manifest.exports.agents.clone(),
         ),
     };
-    compute_export_hashes(ship_dir, &skills, &agents)
-        .context("computing per-export content hashes")
+    compute_export_hashes(ship_dir, &skills, &agents).context("computing per-export content hashes")
 }
 
 /// `ship publish --dry-run` output.
@@ -182,7 +181,10 @@ pub fn run_publish(
     }
 
     let label = match export_path {
-        Some(path) => format!("{}@{} [{}]", manifest.module.name, manifest.module.version, path),
+        Some(path) => format!(
+            "{}@{} [{}]",
+            manifest.module.name, manifest.module.version, path
+        ),
         None => format!("{}@{}", manifest.module.name, manifest.module.version),
     };
     println!("Published {} ({})", label, hashes.combined);

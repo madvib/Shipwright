@@ -142,10 +142,8 @@ impl StudioServer {
         skills::list_skills(&project_dir, req)
     }
 
-    #[tool(
-        description = "Write a file into a skill directory on disk \
-        (.ship/skills/<skill_id>/<file_path>). Creates parent directories as needed."
-    )]
+    #[tool(description = "Write a file into a skill directory on disk \
+        (.ship/skills/<skill_id>/<file_path>). Creates parent directories as needed.")]
     async fn write_skill_file(&self, Parameters(req): Parameters<WriteSkillFileRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -261,9 +259,7 @@ impl ServerHandler for StudioServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(
-            self.tool_router.list_all(),
-        ))
+        Ok(ListToolsResult::with_all_items(self.tool_router.list_all()))
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {

@@ -469,11 +469,7 @@ mod tests {
             r#"{{"id": "test", "project": {{"skill_paths": [{}]}}}}"#,
             arr.join(", ")
         );
-        std::fs::write(
-            ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE),
-            content,
-        )
-        .unwrap();
+        std::fs::write(ship_dir.join(runtime::config::PRIMARY_CONFIG_FILE), content).unwrap();
     }
 
     #[test]

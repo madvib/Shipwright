@@ -112,11 +112,7 @@ async fn state_modifying_tool_sends_resource_notification() {
     );
 
     // Wait for the resource list changed notification
-    let received = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        signal.notified(),
-    )
-    .await;
+    let received = tokio::time::timeout(std::time::Duration::from_secs(2), signal.notified()).await;
 
     assert!(
         received.is_ok(),

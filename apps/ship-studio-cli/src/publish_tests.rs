@@ -189,12 +189,7 @@ fn build_payload_filters_to_single_skill() {
 fn build_payload_filters_to_single_agent() {
     let manifest = multi_export_manifest();
     let hashes = sample_hashes();
-    let payload = build_payload(
-        &manifest,
-        &hashes,
-        None,
-        Some("agents/profiles/bar.toml"),
-    );
+    let payload = build_payload(&manifest, &hashes, None, Some("agents/profiles/bar.toml"));
     assert_eq!(payload["exports_agents"][0], "agents/profiles/bar.toml");
     assert!(
         payload.get("exports_skills").is_none(),
