@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
+import { createFileRoute, Outlet, useMatches, useRouterState } from '@tanstack/react-router'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { StudioDock } from '#/features/studio/StudioDock'
 import { SyncStatus } from '#/features/studio/SyncStatus'
@@ -80,13 +80,17 @@ function StudioSyncShell() {
   // Only show compiler output panel on agent detail pages
   const showCompilerPanel = Boolean(activeAgentId)
 
+  // Session page is full-screen — no dock, no bottom padding
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isSession = pathname.startsWith('/studio/session')
+
   return (
-    <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative pb-20">
+    <main className={`flex-1 overflow-hidden min-w-0 flex flex-col relative ${isSession ? '' : 'pb-20'}`}>
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="flex-1 overflow-auto min-w-0">
           <Outlet />
         </div>
-        {showCompilerPanel && panelOpen && (
+        {showCompilerPanel && panelOpen && !isSession && (
           <div className="hidden md:block">
             <PublishPanel
               library={effectiveLibrary}
@@ -96,15 +100,19 @@ function StudioSyncShell() {
           </div>
         )}
       </div>
-      <StudioDock
-        previewOpen={showCompilerPanel && panelOpen}
-        showPreviewToggle={showCompilerPanel}
-        onTogglePreview={() => setPanelOpen((p) => !p)}
-        onAddSkill={addSkill}
-      />
-      <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
-        <SyncStatus status={syncStatus} />
-      </div>
+      {!isSession && (
+        <StudioDock
+          previewOpen={showCompilerPanel && panelOpen}
+          showPreviewToggle={showCompilerPanel}
+          onTogglePreview={() => setPanelOpen((p) => !p)}
+          onAddSkill={addSkill}
+        />
+      )}
+      {!isSession && (
+        <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
+          <SyncStatus status={syncStatus} />
+        </div>
+      )}
     </main>
   )
 }

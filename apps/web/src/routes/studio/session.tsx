@@ -33,7 +33,7 @@ function SessionPage() {
   const activeFile = effectivePath ? files.find((f) => f.path === effectivePath) : null
   const activeFileType = activeFile?.type ?? null
 
-  // Fetch content for the active file (all types -- images return as base64 data URI)
+  // Fetch content for the active file (all types — images return as base64 data URI)
   const { data: fileContent } = useSessionFileContent(effectivePath)
 
   const ann = useAnnotations()
@@ -124,7 +124,7 @@ function SessionPage() {
         {!isConnected && (
           <div className="flex items-center gap-2 px-4 py-1.5 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
             <WifiOff className="size-3 shrink-0" />
-            CLI disconnected -- session artifacts require a running CLI
+            CLI disconnected — session artifacts require a running CLI
           </div>
         )}
 

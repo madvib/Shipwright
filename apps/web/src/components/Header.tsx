@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut, Settings, Users, Zap, Server, Upload, FolderOpen, ChevronDown } from 'lucide-react'
+import { LogOut, Settings, Users, Zap, Server, Upload, FolderOpen, ChevronDown, Layers } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
@@ -107,6 +107,7 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
 const STUDIO_ITEMS = [
   { icon: Users, label: 'My Agents', href: '/studio/agents', desc: 'Configure your AI agents' },
   { icon: Zap, label: 'Skills IDE', href: '/studio/skills', desc: 'Create and edit skills' },
+  { icon: Layers, label: 'Session', href: '/studio/session', desc: 'Canvas, artifacts, and annotations' },
   { icon: Settings, label: 'Settings', href: '/studio/settings', desc: 'Account and defaults' },
 ]
 
