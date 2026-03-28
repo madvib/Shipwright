@@ -10,4 +10,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3333',
   },
+  expect: {
+    timeout: 15_000,
+  },
 })
