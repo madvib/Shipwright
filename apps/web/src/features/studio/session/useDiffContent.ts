@@ -1,5 +1,6 @@
-// Hook that reads .ship-session/diff.txt via MCP for the diff viewer.
-// Returns the raw diff text or null if unavailable.
+// Hook that reads diff content from two sources:
+// 1. get_git_diff MCP tool (preferred, live working tree diff)
+// 2. .ship-session/diff.txt fallback (manual or agent-generated)
 
 import { useQuery } from '@tanstack/react-query'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
@@ -15,6 +16,18 @@ export function useDiffContent() {
     queryKey: sessionKeys.diff(),
     queryFn: async (): Promise<string | null> => {
       if (!mcp) return null
+
+      // Try get_git_diff first
+      try {
+        const raw = await mcp.callTool('get_git_diff')
+        if (raw && !raw.startsWith('Error:') && raw.trim().length > 0) {
+          return raw
+        }
+      } catch {
+        // Tool may not exist -- fall through
+      }
+
+      // Fall back to diff.txt
       try {
         const raw = await mcp.callTool('read_session_file', { path: DIFF_PATH })
         if (raw.startsWith('Error:')) return null

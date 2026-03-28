@@ -1,8 +1,17 @@
 // Artifacts tab content: file browser grouped by directory with collapsible folders.
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { FileCode, Image, FileText, File, ChevronRight, ChevronDown, FolderOpen } from 'lucide-react'
 import type { SessionFile } from './types'
+
+const TYPE_GROUP_LABELS: Record<SessionFile['type'], string> = {
+  html: 'HTML',
+  markdown: 'Markdown',
+  image: 'Images',
+  other: 'Other',
+}
+
+const TYPE_GROUP_ORDER: SessionFile['type'][] = ['html', 'markdown', 'image', 'other']
 
 const TYPE_CONFIG = {
   html: { icon: FileCode, color: 'text-orange-500' },
@@ -85,6 +94,16 @@ export function ArtifactsContent({
   const rootFiles = dirGroups[''] ?? []
   const folderKeys = Object.keys(dirGroups).filter((k) => k !== '').sort()
 
+  // Group root files by type for organized display
+  const rootTypeGroups = useMemo(() => {
+    const groups: Partial<Record<SessionFile['type'], SessionFile[]>> = {}
+    for (const file of rootFiles) {
+      if (!groups[file.type]) groups[file.type] = []
+      groups[file.type]!.push(file)
+    }
+    return groups
+  }, [rootFiles])
+
   const toggleDir = (dir: string) => {
     setCollapsedDirs((prev) => {
       const next = new Set(prev)
@@ -97,16 +116,28 @@ export function ArtifactsContent({
   return (
     <div className="space-y-1">
       {rootFiles.length > 0 && (
-        <div className="space-y-px">
-          {rootFiles.map((file) => (
-            <FileRow
-              key={file.path}
-              file={file}
-              isActive={activeFile === file.path}
-              onSelect={() => onSelectFile(file.path)}
-              onContextMenu={(e) => onContextMenu(e, file)}
-            />
-          ))}
+        <div className="space-y-2">
+          <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1">Session</p>
+          {TYPE_GROUP_ORDER.map((type) => {
+            const group = rootTypeGroups[type]
+            if (!group || group.length === 0) return null
+            return (
+              <div key={type}>
+                <p className="text-[9px] text-muted-foreground/60 px-1.5 mb-0.5">{TYPE_GROUP_LABELS[type]}</p>
+                <div className="space-y-px">
+                  {group.map((file) => (
+                    <FileRow
+                      key={file.path}
+                      file={file}
+                      isActive={activeFile === file.path}
+                      onSelect={() => onSelectFile(file.path)}
+                      onContextMenu={(e) => onContextMenu(e, file)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
       {folderKeys.map((dir) => {

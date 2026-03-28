@@ -35,31 +35,20 @@ function SessionPage() {
   const uploadMutation = useUploadSessionFile()
   const { diffText } = useDiffContent()
 
-  // Default to canvas.html if it exists and nothing is selected
   const effectivePath = activeFilePath ?? files.find((f) => f.name === 'canvas.html')?.path ?? null
   const activeFile = effectivePath ? files.find((f) => f.path === effectivePath) : null
   const activeFileType = activeFile?.type ?? null
-
-  // Fetch content for the active file (all types — images return as base64 data URI)
   const { data: fileContent } = useSessionFileContent(effectivePath)
-
   const ann = useAnnotations()
 
-  // Export annotations to .ship-session/annotations.json via MCP, with
-  // a fallback to browser download if MCP is not connected.
   const handleExport = useCallback(async () => {
-    const json = ann.toExportJSON()
-    const content = JSON.stringify(json, null, 2)
-
+    const content = JSON.stringify(ann.toExportJSON(), null, 2)
     if (mcp && isConnected) {
       try {
         await mcp.callTool('write_session_file', { path: 'annotations.json', content })
         return
-      } catch {
-        // Fall through to browser download
-      }
+      } catch { /* Fall through to browser download */ }
     }
-
     const blob = new Blob([content], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -72,9 +61,12 @@ function SessionPage() {
   const handleSelectFile = useCallback((path: string) => {
     setActiveFilePath(path)
     const file = files.find((f) => f.path === path)
-    if (file?.type === 'html') {
-      setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
-      setActiveCanvasTab(path)
+    const canvasFileTypes = new Set(['html', 'markdown', 'image'])
+    if (file && canvasFileTypes.has(file.type)) {
+      if (file.type === 'html') {
+        setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
+        setActiveCanvasTab(path)
+      }
       setViewMode('canvas')
     } else {
       setViewMode('artifact')
@@ -128,7 +120,6 @@ function SessionPage() {
     handleUploadFiles(e.dataTransfer.files)
   }, [isConnected, handleUploadFiles])
 
-  // Determine what to show in main area
   const canvasTypes = new Set(['html', 'markdown', 'image'])
   const showCanvas = viewMode === 'canvas' && (activeFileType == null || canvasTypes.has(activeFileType ?? ''))
   const showDiff = viewMode === 'diff'
@@ -136,20 +127,16 @@ function SessionPage() {
 
   return (
     <>
-      {/* Mobile fallback */}
       <div className="flex md:hidden flex-col items-center justify-center gap-4 px-8 py-20 text-center min-h-[60vh]">
         <div className="flex size-12 items-center justify-center rounded-xl border border-border bg-muted/40">
           <Layers className="size-5 text-muted-foreground" />
         </div>
-        <div>
-          <p className="font-display text-base font-semibold">Best on desktop</p>
-          <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-            The Session viewer is a multi-panel canvas. Open it on a wider screen for the full experience.
-          </p>
-        </div>
+        <p className="font-display text-base font-semibold">Best on desktop</p>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          The Session viewer is a multi-panel canvas. Open it on a wider screen for the full experience.
+        </p>
       </div>
 
-      {/* Full layout */}
       <div
         className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden relative"
         onDragOver={handleDragOver}

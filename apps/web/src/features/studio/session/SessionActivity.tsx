@@ -1,10 +1,11 @@
-// Right sidebar with four tabs: Canvas, Diff, Artifacts, Notes.
+// Right sidebar with four tabs: Preview, Diff, Artifacts, Notes.
 
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { PanelRightClose, Plus, GitCompareArrows, FileText, Layers, StickyNote } from 'lucide-react'
-import { SessionTodo } from './SessionTodo'
-import { AnnotationsList } from './AnnotationsList'
+import { PreviewTabContent } from './PreviewTabContent'
+import { DiffTabContent } from './DiffTabContent'
 import { ArtifactsContent } from './ArtifactsContent'
+import { NotesTabContent } from './NotesTabContent'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 import type { ArtifactMenuState } from './ArtifactContextMenu'
 import type { Annotation, SessionFile, ViewMode } from './types'
@@ -71,7 +72,7 @@ export function SessionActivity({
   const dirGroups = useMemo(() => groupByDirectory(sorted), [sorted])
 
   const tabs: { id: TabId; label: string; icon: typeof Layers; count?: number }[] = [
-    { id: 'canvas', label: 'Canvas', icon: Layers },
+    { id: 'canvas', label: 'Preview', icon: Layers },
     { id: 'diff', label: 'Diff', icon: GitCompareArrows },
     { id: 'artifacts', label: 'Artifacts', icon: FileText, count: files.length || undefined },
     { id: 'notes', label: 'Notes', icon: StickyNote, count: annotations.length || undefined },
@@ -97,19 +98,26 @@ export function SessionActivity({
     <div className="w-64 shrink-0 border-l border-border/60 bg-card/30 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border/60 px-2.5 py-1.5 shrink-0">
-        <h3 className="text-[11px] font-semibold text-foreground">Activity</h3>
-        <div className="flex items-center gap-1">
+        <h3 className="text-[11px] font-semibold text-foreground">Session</h3>
+        <div className="flex items-center gap-0.5">
           {isConnected && (
-            <button
-              onClick={handleUploadClick}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Upload file"
-              title="Upload file to session"
-            >
-              <Plus className="size-3" />
-            </button>
+            <>
+              <button
+                onClick={handleUploadClick}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                aria-label="Upload file"
+                title="Upload file to session"
+              >
+                <Plus className="size-3" />
+              </button>
+              <div className="w-px h-3 bg-border/60 mx-0.5" />
+            </>
           )}
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close activity panel">
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            aria-label="Close activity panel"
+          >
             <PanelRightClose className="size-3" />
           </button>
         </div>
@@ -142,7 +150,7 @@ export function SessionActivity({
       {/* Scrollable tab content */}
       <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
         {activeTab === 'canvas' && (
-          <CanvasTabContent
+          <PreviewTabContent
             openTabs={openCanvasTabs}
             activeTab={activeCanvasTab}
             annotationMode={annotationMode}
@@ -187,108 +195,6 @@ export function SessionActivity({
           onClose={() => setContextMenu(null)}
         />
       )}
-    </div>
-  )
-}
-
-function CanvasTabContent({ openTabs, activeTab, annotationMode, viewMode, onSelectTab, onToggleAnnotationMode, onSetViewMode }: {
-  openTabs: string[]
-  activeTab: string | null
-  annotationMode: boolean
-  viewMode: ViewMode
-  onSelectTab: (path: string) => void
-  onToggleAnnotationMode: () => void
-  onSetViewMode: (mode: ViewMode) => void
-}) {
-  return (
-    <div className="space-y-3">
-      {viewMode !== 'canvas' && (
-        <button
-          onClick={() => onSetViewMode('canvas')}
-          className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/10 rounded-md transition"
-        >
-          <Layers className="size-3" />
-          Switch to canvas view
-        </button>
-      )}
-      <button
-        onClick={onToggleAnnotationMode}
-        className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium rounded-md transition ${
-          annotationMode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-        }`}
-      >
-        {annotationMode ? 'Annotating...' : 'Toggle annotations'}
-      </button>
-      <div>
-        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Open tabs</p>
-        {openTabs.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground px-1">No canvas tabs open</p>
-        ) : (
-          <div className="space-y-px">
-            {openTabs.map((path) => {
-              const name = path.split('/').pop() ?? path
-              return (
-                <button
-                  key={path}
-                  onClick={() => onSelectTab(path)}
-                  className={`w-full flex items-center gap-1.5 rounded px-1.5 py-1 text-left transition text-[10px] ${
-                    activeTab === path ? 'bg-primary/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  <Layers className="size-2.5 shrink-0" />
-                  <span className="truncate">{name}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function DiffTabContent({ hasDiff, isActive, onShowDiff }: {
-  hasDiff: boolean; isActive: boolean; onShowDiff: () => void
-}) {
-  if (!hasDiff) {
-    return (
-      <div className="text-center py-6 px-2">
-        <GitCompareArrows className="size-6 mx-auto mb-2 text-muted-foreground/40" />
-        <p className="text-[10px] text-muted-foreground">
-          No diff available. Run <code className="text-[9px] bg-muted px-1 rounded">/diff</code> to generate one.
-        </p>
-      </div>
-    )
-  }
-  return (
-    <button
-      onClick={onShowDiff}
-      className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium rounded-md transition ${
-        isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-      }`}
-    >
-      <GitCompareArrows className="size-3" />
-      {isActive ? 'Viewing diff' : 'View diff'}
-    </button>
-  )
-}
-
-function NotesTabContent({ isConnected, annotations, onRemoveAnnotation, onExportAnnotations }: {
-  isConnected: boolean; annotations: Annotation[]
-  onRemoveAnnotation: (id: string) => void; onExportAnnotations: () => void
-}) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">TODO</p>
-        {isConnected ? <SessionTodo /> : (
-          <p className="text-[10px] text-muted-foreground px-1">Connect CLI for TODO management</p>
-        )}
-      </div>
-      <div>
-        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Annotations</p>
-        <AnnotationsList annotations={annotations} onRemove={onRemoveAnnotation} onExport={onExportAnnotations} />
-      </div>
     </div>
   )
 }
