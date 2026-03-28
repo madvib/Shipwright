@@ -1,15 +1,15 @@
-// Right sidebar showing session content in tabs: Artifacts, TODO, Annotations.
+// Right sidebar with four tabs: Canvas, Diff, Artifacts, Notes.
 
 import { useState, useRef, useCallback, useMemo } from 'react'
-import { PanelRightClose, Plus } from 'lucide-react'
+import { PanelRightClose, Plus, GitCompareArrows, FileText, Layers, StickyNote } from 'lucide-react'
 import { SessionTodo } from './SessionTodo'
 import { AnnotationsList } from './AnnotationsList'
 import { ArtifactsContent } from './ArtifactsContent'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 import type { ArtifactMenuState } from './ArtifactContextMenu'
-import type { Annotation, SessionFile } from './types'
+import type { Annotation, SessionFile, ViewMode } from './types'
 
-type TabId = 'artifacts' | 'todo' | 'annotations'
+type TabId = 'canvas' | 'diff' | 'artifacts' | 'notes'
 
 interface SessionActivityProps {
   files: SessionFile[]
@@ -17,12 +17,20 @@ interface SessionActivityProps {
   isLoading: boolean
   isConnected: boolean
   annotations: Annotation[]
+  viewMode: ViewMode
+  hasDiff: boolean
+  openCanvasTabs: string[]
+  activeCanvasTab: string | null
+  annotationMode: boolean
   onSelectFile: (path: string) => void
   onDeleteFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
   onRemoveAnnotation: (id: string) => void
   onExportAnnotations: () => void
   onClose: () => void
+  onSetViewMode: (mode: ViewMode) => void
+  onSelectCanvasTab: (path: string) => void
+  onToggleAnnotationMode: () => void
 }
 
 function groupByDirectory(files: SessionFile[]): Record<string, SessionFile[]> {
@@ -41,12 +49,20 @@ export function SessionActivity({
   isLoading,
   isConnected,
   annotations,
+  viewMode,
+  hasDiff,
+  openCanvasTabs,
+  activeCanvasTab,
+  annotationMode,
   onSelectFile,
   onDeleteFile,
   onUploadFiles,
   onRemoveAnnotation,
   onExportAnnotations,
   onClose,
+  onSetViewMode,
+  onSelectCanvasTab,
+  onToggleAnnotationMode,
 }: SessionActivityProps) {
   const [activeTab, setActiveTab] = useState<TabId>('artifacts')
   const [contextMenu, setContextMenu] = useState<ArtifactMenuState | null>(null)
@@ -54,10 +70,11 @@ export function SessionActivity({
   const sorted = useMemo(() => [...files].sort((a, b) => b.modifiedAt - a.modifiedAt), [files])
   const dirGroups = useMemo(() => groupByDirectory(sorted), [sorted])
 
-  const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: 'artifacts', label: 'Artifacts', count: files.length || undefined },
-    { id: 'todo', label: 'TODO' },
-    { id: 'annotations', label: 'Notes', count: annotations.length || undefined },
+  const tabs: { id: TabId; label: string; icon: typeof Layers; count?: number }[] = [
+    { id: 'canvas', label: 'Canvas', icon: Layers },
+    { id: 'diff', label: 'Diff', icon: GitCompareArrows },
+    { id: 'artifacts', label: 'Artifacts', icon: FileText, count: files.length || undefined },
+    { id: 'notes', label: 'Notes', icon: StickyNote, count: annotations.length || undefined },
   ]
 
   const handleContextMenu = useCallback((e: React.MouseEvent, file: SessionFile) => {
@@ -101,24 +118,47 @@ export function SessionActivity({
 
       {/* Tab bar */}
       <div className="flex border-b border-border/60 shrink-0">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 px-2 py-1.5 text-[10px] font-medium transition border-b-2 ${
-              activeTab === tab.id
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-            {tab.count != null && <span className="ml-1 text-[9px] opacity-60">{tab.count}</span>}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 text-[10px] font-medium transition border-b-2 ${
+                activeTab === tab.id
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+              title={tab.label}
+            >
+              <Icon className="size-3" />
+              <span className="hidden xl:inline">{tab.label}</span>
+              {tab.count != null && <span className="text-[9px] opacity-60">{tab.count}</span>}
+            </button>
+          )
+        })}
       </div>
 
       {/* Scrollable tab content */}
       <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
+        {activeTab === 'canvas' && (
+          <CanvasTabContent
+            openTabs={openCanvasTabs}
+            activeTab={activeCanvasTab}
+            annotationMode={annotationMode}
+            viewMode={viewMode}
+            onSelectTab={(path) => { onSelectCanvasTab(path); onSetViewMode('canvas') }}
+            onToggleAnnotationMode={onToggleAnnotationMode}
+            onSetViewMode={onSetViewMode}
+          />
+        )}
+        {activeTab === 'diff' && (
+          <DiffTabContent
+            hasDiff={hasDiff}
+            isActive={viewMode === 'diff'}
+            onShowDiff={() => onSetViewMode('diff')}
+          />
+        )}
         {activeTab === 'artifacts' && (
           <ArtifactsContent
             dirGroups={dirGroups}
@@ -130,9 +170,13 @@ export function SessionActivity({
             onContextMenu={handleContextMenu}
           />
         )}
-        {activeTab === 'todo' && <TodoContent isConnected={isConnected} />}
-        {activeTab === 'annotations' && (
-          <AnnotationsList annotations={annotations} onRemove={onRemoveAnnotation} onExport={onExportAnnotations} />
+        {activeTab === 'notes' && (
+          <NotesTabContent
+            isConnected={isConnected}
+            annotations={annotations}
+            onRemoveAnnotation={onRemoveAnnotation}
+            onExportAnnotations={onExportAnnotations}
+          />
         )}
       </div>
 
@@ -147,9 +191,104 @@ export function SessionActivity({
   )
 }
 
-function TodoContent({ isConnected }: { isConnected: boolean }) {
-  if (!isConnected) {
-    return <p className="text-[10px] text-muted-foreground px-1 py-6 text-center">Connect CLI for TODO management</p>
+function CanvasTabContent({ openTabs, activeTab, annotationMode, viewMode, onSelectTab, onToggleAnnotationMode, onSetViewMode }: {
+  openTabs: string[]
+  activeTab: string | null
+  annotationMode: boolean
+  viewMode: ViewMode
+  onSelectTab: (path: string) => void
+  onToggleAnnotationMode: () => void
+  onSetViewMode: (mode: ViewMode) => void
+}) {
+  return (
+    <div className="space-y-3">
+      {viewMode !== 'canvas' && (
+        <button
+          onClick={() => onSetViewMode('canvas')}
+          className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/10 rounded-md transition"
+        >
+          <Layers className="size-3" />
+          Switch to canvas view
+        </button>
+      )}
+      <button
+        onClick={onToggleAnnotationMode}
+        className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium rounded-md transition ${
+          annotationMode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+        }`}
+      >
+        {annotationMode ? 'Annotating...' : 'Toggle annotations'}
+      </button>
+      <div>
+        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Open tabs</p>
+        {openTabs.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground px-1">No canvas tabs open</p>
+        ) : (
+          <div className="space-y-px">
+            {openTabs.map((path) => {
+              const name = path.split('/').pop() ?? path
+              return (
+                <button
+                  key={path}
+                  onClick={() => onSelectTab(path)}
+                  className={`w-full flex items-center gap-1.5 rounded px-1.5 py-1 text-left transition text-[10px] ${
+                    activeTab === path ? 'bg-primary/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  <Layers className="size-2.5 shrink-0" />
+                  <span className="truncate">{name}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DiffTabContent({ hasDiff, isActive, onShowDiff }: {
+  hasDiff: boolean; isActive: boolean; onShowDiff: () => void
+}) {
+  if (!hasDiff) {
+    return (
+      <div className="text-center py-6 px-2">
+        <GitCompareArrows className="size-6 mx-auto mb-2 text-muted-foreground/40" />
+        <p className="text-[10px] text-muted-foreground">
+          No diff available. Run <code className="text-[9px] bg-muted px-1 rounded">/diff</code> to generate one.
+        </p>
+      </div>
+    )
   }
-  return <SessionTodo />
+  return (
+    <button
+      onClick={onShowDiff}
+      className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium rounded-md transition ${
+        isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+      }`}
+    >
+      <GitCompareArrows className="size-3" />
+      {isActive ? 'Viewing diff' : 'View diff'}
+    </button>
+  )
+}
+
+function NotesTabContent({ isConnected, annotations, onRemoveAnnotation, onExportAnnotations }: {
+  isConnected: boolean; annotations: Annotation[]
+  onRemoveAnnotation: (id: string) => void; onExportAnnotations: () => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">TODO</p>
+        {isConnected ? <SessionTodo /> : (
+          <p className="text-[10px] text-muted-foreground px-1">Connect CLI for TODO management</p>
+        )}
+      </div>
+      <div>
+        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Annotations</p>
+        <AnnotationsList annotations={annotations} onRemove={onRemoveAnnotation} onExport={onExportAnnotations} />
+      </div>
+    </div>
+  )
 }

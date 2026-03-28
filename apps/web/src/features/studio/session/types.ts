@@ -42,3 +42,6 @@ export interface SessionFile {
 export type UploadResult =
   | { success: true }
   | { success: false; error: string }
+
+// Main content area display mode
+export type ViewMode = 'canvas' | 'diff' | 'artifact'

@@ -5,10 +5,13 @@ import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
 import { SessionActivity } from '#/features/studio/session/SessionActivity'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
+import { DiffViewer } from '#/features/studio/session/DiffViewer'
 import { useSessionFiles, useSessionFileContent, useDeleteSessionFile, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
+import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { SessionSkeleton } from '#/features/studio/session/SessionSkeleton'
 import { DropZoneOverlay } from '#/features/studio/session/DropZoneOverlay'
+import type { ViewMode } from '#/features/studio/session/types'
 
 export const Route = createFileRoute('/studio/session')({
   component: SessionPage,
@@ -26,9 +29,11 @@ function SessionPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [openCanvasTabs, setOpenCanvasTabs] = useState<string[]>([])
   const [activeCanvasTab, setActiveCanvasTab] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('canvas')
 
   const deleteMutation = useDeleteSessionFile()
   const uploadMutation = useUploadSessionFile()
+  const { diffText } = useDiffContent()
 
   // Default to canvas.html if it exists and nothing is selected
   const effectivePath = activeFilePath ?? files.find((f) => f.name === 'canvas.html')?.path ?? null
@@ -70,6 +75,9 @@ function SessionPage() {
     if (file?.type === 'html') {
       setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
       setActiveCanvasTab(path)
+      setViewMode('canvas')
+    } else {
+      setViewMode('artifact')
     }
   }, [files])
 
@@ -87,6 +95,7 @@ function SessionPage() {
   const handleSelectCanvasTab = useCallback((path: string) => {
     setActiveCanvasTab(path)
     setActiveFilePath(path)
+    setViewMode('canvas')
   }, [])
 
   const handleDeleteFile = useCallback((path: string) => {
@@ -119,11 +128,11 @@ function SessionPage() {
     handleUploadFiles(e.dataTransfer.files)
   }, [isConnected, handleUploadFiles])
 
-  // Render HTML, markdown, and images through the canvas iframe (enables annotations)
-  // Only JSON and other text files use ArtifactViewer
+  // Determine what to show in main area
   const canvasTypes = new Set(['html', 'markdown', 'image'])
-  const showCanvas = activeFileType == null || canvasTypes.has(activeFileType ?? '')
-  const showArtifactViewer = activeFile != null && !canvasTypes.has(activeFileType ?? '')
+  const showCanvas = viewMode === 'canvas' && (activeFileType == null || canvasTypes.has(activeFileType ?? ''))
+  const showDiff = viewMode === 'diff'
+  const showArtifactViewer = viewMode === 'artifact' && activeFile != null && !canvasTypes.has(activeFileType ?? '')
 
   return (
     <>
@@ -155,7 +164,7 @@ function SessionPage() {
         )}
 
         <div className="flex flex-1 min-h-0">
-          {/* Main area: canvas or artifact viewer */}
+          {/* Main area: canvas, diff, or artifact viewer */}
           {showCanvas && (
             <SessionCanvas
               htmlContent={fileContent ?? ''}
@@ -178,9 +187,38 @@ function SessionPage() {
               onExport={handleExport}
             />
           )}
-          {showArtifactViewer && (
+          {showDiff && (
+            <div className="flex flex-1 flex-col min-h-0 min-w-0">
+              {diffText ? (
+                <DiffViewer diffText={diffText} />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <p className="text-sm font-medium">No diff available</p>
+                    <p className="text-xs mt-1 max-w-[280px]">
+                      Run <code className="text-[10px] bg-muted px-1 rounded">/diff</code> to generate one,
+                      or have an agent write to .ship-session/diff.txt
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {showArtifactViewer && activeFile && (
             <div className="flex flex-1 flex-col min-h-0 min-w-0">
               <ArtifactViewer file={activeFile} content={fileContent ?? ''} />
+            </div>
+          )}
+          {/* Fallback when nothing matches (e.g. artifact mode with no file) */}
+          {!showCanvas && !showDiff && !showArtifactViewer && (
+            <div className="flex flex-1 items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <Layers className="size-8 mx-auto mb-3 opacity-40" />
+                <p className="text-sm font-medium">Select a file or view</p>
+                <p className="text-xs mt-1 max-w-[280px]">
+                  Use the sidebar to open a canvas, view a diff, or browse artifacts.
+                </p>
+              </div>
             </div>
           )}
 
@@ -191,12 +229,20 @@ function SessionPage() {
               isLoading={isLoading}
               isConnected={isConnected ?? false}
               annotations={ann.annotations}
+              viewMode={viewMode}
+              hasDiff={diffText != null}
+              openCanvasTabs={openCanvasTabs}
+              activeCanvasTab={activeCanvasTab}
+              annotationMode={ann.annotationMode}
               onSelectFile={handleSelectFile}
               onDeleteFile={handleDeleteFile}
               onUploadFiles={handleUploadFiles}
               onRemoveAnnotation={ann.removeAnnotation}
               onExportAnnotations={handleExport}
               onClose={() => setActivityOpen(false)}
+              onSetViewMode={setViewMode}
+              onSelectCanvasTab={handleSelectCanvasTab}
+              onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
             />
           ) : (
             <button
