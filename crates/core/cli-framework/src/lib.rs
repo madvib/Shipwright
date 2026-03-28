@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 mod core_primitives;
+pub mod hooks;
 
 pub use core_primitives::{
     EventAction, McpAction, ModeAction, ProviderAction, SkillAction, SkillReadScope,
