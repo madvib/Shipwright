@@ -14,6 +14,8 @@ mod tests_compile;
 #[cfg(test)]
 mod tests_crud;
 #[cfg(test)]
+mod tests_workspace_db;
+#[cfg(test)]
 mod tests_events;
 #[cfg(test)]
 mod tests_session;
