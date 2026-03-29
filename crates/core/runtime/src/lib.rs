@@ -16,6 +16,9 @@ pub mod skill_vars;
 pub mod projections;
 pub mod workspace;
 
+#[cfg(feature = "unstable")]
+pub mod sync;
+
 // Backward-compatible module aliases.
 // Canonical implementation lives under `runtime::agents::*`.
 pub use agents::config as agent_config;
@@ -44,8 +47,8 @@ pub use config::{
 };
 
 pub use events::{
-    EventEnvelope, list_events_since, list_gate_outcomes, read_events, read_recent_events,
-    record_gate_outcome,
+    EventEnvelope, list_events_since, list_gate_outcomes, query_events_since, read_events,
+    read_recent_events, record_gate_outcome,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};

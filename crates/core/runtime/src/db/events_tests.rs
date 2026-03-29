@@ -2,7 +2,7 @@
 
 use super::events::{
     list_all_events, list_events_since_time, list_gate_outcomes, list_recent_events,
-    record_gate_outcome,
+    query_events_since, record_gate_outcome,
 };
 use crate::db::ensure_db;
 use crate::events::envelope::EventEnvelope;
@@ -167,4 +167,61 @@ fn list_gate_outcomes_filters_by_job() {
 
     let outcomes_none = list_gate_outcomes("no-such-job").unwrap();
     assert!(outcomes_none.is_empty());
+}
+
+#[test]
+fn query_events_since_no_cursor_returns_all() {
+    let (_tmp, _ship_dir) = setup();
+    let store = SqliteEventStore::new().unwrap();
+    store.append(&make_log_event("a")).unwrap();
+    store.append(&make_log_event("b")).unwrap();
+    let all = query_events_since(None, false).unwrap();
+    assert_eq!(all.len(), 2);
+}
+
+#[test]
+fn query_events_since_cursor_returns_later_events() {
+    let (_tmp, _ship_dir) = setup();
+    let store = SqliteEventStore::new().unwrap();
+    let ev1 = make_log_event("first");
+    let cursor = ev1.id.clone();
+    store.append(&ev1).unwrap();
+    store.append(&make_log_event("second")).unwrap();
+    store.append(&make_log_event("third")).unwrap();
+    let after = query_events_since(Some(&cursor), false).unwrap();
+    assert_eq!(after.len(), 2);
+}
+
+#[test]
+fn query_events_since_latest_cursor_returns_empty() {
+    let (_tmp, _ship_dir) = setup();
+    let store = SqliteEventStore::new().unwrap();
+    let ev = make_log_event("only");
+    let cursor = ev.id.clone();
+    store.append(&ev).unwrap();
+    let after = query_events_since(Some(&cursor), false).unwrap();
+    assert!(after.is_empty());
+}
+
+#[test]
+fn query_events_since_elevated_only() {
+    use crate::events::types::{WorkspaceActivated, event_types as et};
+    let (_tmp, _ship_dir) = setup();
+    let store = SqliteEventStore::new().unwrap();
+    // Non-elevated event
+    store.append(&make_log_event("noise")).unwrap();
+    // Elevated event
+    let elevated = EventEnvelope::new(
+        et::WORKSPACE_ACTIVATED,
+        "ws-1",
+        &WorkspaceActivated { agent_id: None, providers: vec![] },
+    )
+    .unwrap()
+    .elevate();
+    store.append(&elevated).unwrap();
+    let all = query_events_since(None, false).unwrap();
+    assert_eq!(all.len(), 2);
+    let elevated_only = query_events_since(None, true).unwrap();
+    assert_eq!(elevated_only.len(), 1);
+    assert_eq!(elevated_only[0].event_type, et::WORKSPACE_ACTIVATED);
 }

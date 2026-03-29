@@ -141,6 +141,58 @@ pub fn record_gate_outcome(
     })
 }
 
+/// Query events with ID greater than the given cursor.
+///
+/// Used by the sync client to find events that haven't been pushed yet.
+/// If `cursor` is None, returns all matching events.
+/// If `elevated_only` is true, only returns elevated events (platform-scope).
+pub fn query_events_since(
+    cursor: Option<&str>,
+    elevated_only: bool,
+) -> Result<Vec<EventEnvelope>> {
+    ensure_db()?;
+    let mut conn = open_db_at(&db_path()?)?;
+    let query = match (cursor, elevated_only) {
+        (Some(c), true) => {
+            block_on(async {
+                sqlx::query(&format!(
+                    "SELECT {COLS} FROM events WHERE id > ? AND elevated = 1 ORDER BY id ASC"
+                ))
+                .bind(c)
+                .fetch_all(&mut conn)
+                .await
+            })?
+        }
+        (Some(c), false) => {
+            block_on(async {
+                sqlx::query(&format!(
+                    "SELECT {COLS} FROM events WHERE id > ? ORDER BY id ASC"
+                ))
+                .bind(c)
+                .fetch_all(&mut conn)
+                .await
+            })?
+        }
+        (None, true) => {
+            block_on(async {
+                sqlx::query(&format!(
+                    "SELECT {COLS} FROM events WHERE elevated = 1 ORDER BY id ASC"
+                ))
+                .fetch_all(&mut conn)
+                .await
+            })?
+        }
+        (None, false) => {
+            block_on(async {
+                sqlx::query(&format!("SELECT {COLS} FROM events ORDER BY id ASC"))
+                    .fetch_all(&mut conn)
+                    .await
+            })?
+        }
+    };
+    query.iter().map(row_to_envelope).collect()
+}
+
 /// List gate outcomes (pass/fail events) for a specific job.
 pub fn list_gate_outcomes(job_id: &str) -> Result<Vec<EventEnvelope>> {
     ensure_db()?;

@@ -46,3 +46,14 @@ pub fn record_gate_outcome(
 pub fn list_gate_outcomes(_ship_dir: &Path, job_id: &str) -> Result<Vec<EventEnvelope>> {
     crate::db::events::list_gate_outcomes(job_id)
 }
+
+/// Query events with ID greater than the given cursor.
+///
+/// Used by the sync client to find events that haven't been pushed yet.
+/// If `elevated_only` is true, only returns elevated events (platform-scope).
+pub fn query_events_since(
+    cursor: Option<&str>,
+    elevated_only: bool,
+) -> Result<Vec<EventEnvelope>> {
+    crate::db::events::query_events_since(cursor, elevated_only)
+}

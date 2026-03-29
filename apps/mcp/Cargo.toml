@@ -28,7 +28,7 @@ tracing-appender = "0.2"
 dirs = "5"
 
 [features]
-unstable = []
+unstable = ["runtime/unstable"]
 
 [dev-dependencies]
 tempfile = "3.13"
