@@ -84,16 +84,15 @@ function SessionPage() {
 
   const handleSelectFile = useCallback((path: string) => {
     setActiveFilePath(path)
-    setSelectedCommitHash(null) // clear commit diff when selecting a file
+    setSelectedCommitHash(null)
     const file = files.find((f) => f.path === path)
-    const canvasFileTypes = new Set(['html', 'markdown', 'image'])
-    if (file && canvasFileTypes.has(file.type)) {
-      if (file.type === 'html') {
-        setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
-        setActiveCanvasTab(path)
-      }
+    if (file?.type === 'html') {
+      // Only HTML goes through SessionCanvas (iframe + annotations)
+      setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
+      setActiveCanvasTab(path)
       setViewMode('canvas')
     } else {
+      // Markdown, images, JSON, text → ArtifactViewer
       setViewMode('artifact')
     }
   }, [files])
@@ -151,10 +150,10 @@ function SessionPage() {
   }, [isConnected, handleUploadFiles])
 
   // ── View routing ──
-  const canvasTypes = new Set(['html', 'markdown', 'image'])
-  const showCanvas = viewMode === 'canvas' && (activeFileType == null || canvasTypes.has(activeFileType ?? ''))
+  // Canvas = HTML only (iframe + annotations). Everything else = ArtifactViewer.
+  const showCanvas = viewMode === 'canvas' && (activeFileType == null || activeFileType === 'html')
   const showDiff = viewMode === 'diff'
-  const showArtifactViewer = viewMode === 'artifact' && activeFile != null && !canvasTypes.has(activeFileType ?? '')
+  const showArtifactViewer = viewMode === 'artifact' && activeFile != null
   const activeDiffText = selectedCommitHash ? commitDiff : diffText
 
   return (
