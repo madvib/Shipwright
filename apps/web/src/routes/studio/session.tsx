@@ -1,19 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
-import { Layers, PanelRight, WifiOff } from 'lucide-react'
+import { Layers, WifiOff, X } from 'lucide-react'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
 import { DiffViewer } from '#/features/studio/session/DiffViewer'
 import { SessionSidebar } from '#/features/studio/session/SessionSidebar'
-import { SessionInfoPanel } from '#/features/studio/session/SessionInfoPanel'
 import { useSessionFiles, useSessionFileContent, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
 import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { useGitStatus, useGitLog, useGitDiff } from '#/features/studio/session/useGitInfo'
 import { SessionSkeleton } from '#/features/studio/session/SessionSkeleton'
 import { DropZoneOverlay } from '#/features/studio/session/DropZoneOverlay'
-import type { ViewMode } from '#/features/studio/session/types'
 
 export const Route = createFileRoute('/studio/session')({
   component: SessionPage,
@@ -21,11 +19,19 @@ export const Route = createFileRoute('/studio/session')({
   ssr: false,
 })
 
+type ViewMode = 'file' | 'diff'
+
+interface OpenTab {
+  path: string
+  name: string
+  type: string
+}
+
 function SessionPage() {
   const mcp = useLocalMcpContext()
   const isConnected = mcp?.status === 'connected'
 
-  // ── All hooks called unconditionally at the top level ──
+  // ── All hooks unconditionally at top level ──
   const { files } = useSessionFiles()
   const uploadMutation = useUploadSessionFile()
   const { diffText } = useDiffContent()
@@ -33,45 +39,68 @@ function SessionPage() {
   const { data: gitLog } = useGitLog(5)
   const ann = useAnnotations()
 
-  // ── UI state ──
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
-  const [infoPanelOpen, setInfoPanelOpen] = useState(true)
-  const [isDragging, setIsDragging] = useState(false)
-  const [openCanvasTabs, setOpenCanvasTabs] = useState<string[]>([])
-  const [activeCanvasTab, setActiveCanvasTab] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('canvas')
+  // ── Tab state: ALL file types ──
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([])
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('file')
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
 
-  // Commit-specific diff (only fetches when a commit is selected)
   const { data: commitDiff } = useGitDiff(
     selectedCommitHash ? `${selectedCommitHash}^..${selectedCommitHash}` : undefined,
   )
 
   // ── Auto-open canvas.html on first load ──
   useEffect(() => {
-    if (openCanvasTabs.length > 0 || files.length === 0) return
+    if (openTabs.length > 0 || files.length === 0) return
     const canvasFile = files.find((f) => f.name === 'canvas.html')
     if (canvasFile) {
-      setOpenCanvasTabs([canvasFile.path])
-      setActiveCanvasTab(canvasFile.path)
-      setActiveFilePath(canvasFile.path)
+      setOpenTabs([{ path: canvasFile.path, name: canvasFile.name, type: canvasFile.type }])
+      setActiveTabPath(canvasFile.path)
     }
-  }, [files]) // eslint-disable-line react-hooks/exhaustive-deps -- run when files first load
+  }, [files]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Derived state ──
-  const effectivePath = activeFilePath ?? files.find((f) => f.name === 'canvas.html')?.path ?? null
-  const activeFile = effectivePath ? files.find((f) => f.path === effectivePath) : null
-  const activeFileType = activeFile?.type ?? null
-  const { data: fileContent } = useSessionFileContent(effectivePath)
+  // ── Derived ──
+  const activeTab = openTabs.find((t) => t.path === activeTabPath) ?? null
+  const activeFile = activeTabPath ? files.find((f) => f.path === activeTabPath) : null
+  const { data: fileContent } = useSessionFileContent(activeTabPath)
 
   // ── Callbacks ──
+  const openFile = useCallback((path: string) => {
+    const file = files.find((f) => f.path === path)
+    if (!file) return
+    setSelectedCommitHash(null)
+    setViewMode('file')
+    setActiveTabPath(path)
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.path === path)) return prev
+      return [...prev, { path, name: file.name, type: file.type }]
+    })
+  }, [files])
+
+  const closeTab = useCallback((path: string) => {
+    setOpenTabs((prev) => {
+      const next = prev.filter((t) => t.path !== path)
+      if (activeTabPath === path) {
+        setActiveTabPath(next.length > 0 ? next[next.length - 1].path : null)
+      }
+      return next
+    })
+  }, [activeTabPath])
+
+  const selectTab = useCallback((path: string) => {
+    setActiveTabPath(path)
+    setSelectedCommitHash(null)
+    setViewMode('file')
+  }, [])
+
   const handleExport = useCallback(async () => {
     const content = JSON.stringify(ann.toExportJSON(), null, 2)
     if (mcp && isConnected) {
       try {
         await mcp.callTool('write_session_file', { path: 'annotations.json', content })
         return
-      } catch { /* Fall through to browser download */ }
+      } catch { /* fall through */ }
     }
     const blob = new Blob([content], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -82,47 +111,12 @@ function SessionPage() {
     URL.revokeObjectURL(url)
   }, [ann, mcp, isConnected])
 
-  const handleSelectFile = useCallback((path: string) => {
-    setActiveFilePath(path)
-    setSelectedCommitHash(null)
-    const file = files.find((f) => f.path === path)
-    if (file?.type === 'html') {
-      // Only HTML goes through SessionCanvas (iframe + annotations)
-      setOpenCanvasTabs((prev) => prev.includes(path) ? prev : [...prev, path])
-      setActiveCanvasTab(path)
-      setViewMode('canvas')
-    } else {
-      // Markdown, images, JSON, text → ArtifactViewer
-      setViewMode('artifact')
-    }
-  }, [files])
-
-  const handleCloseCanvasTab = useCallback((path: string) => {
-    setOpenCanvasTabs((prev) => {
-      const next = prev.filter((p) => p !== path)
-      if (activeCanvasTab === path) {
-        setActiveCanvasTab(next.length > 0 ? next[next.length - 1] : null)
-        if (next.length === 0) setActiveFilePath(null)
-      }
-      return next
-    })
-  }, [activeCanvasTab])
-
-  const handleSelectCanvasTab = useCallback((path: string) => {
-    setActiveCanvasTab(path)
-    setActiveFilePath(path)
-    setSelectedCommitHash(null)
-    setViewMode('canvas')
-  }, [])
-
   const handleUploadFiles = useCallback((fileList: FileList) => {
-    for (let i = 0; i < fileList.length; i++) {
-      uploadMutation.mutate(fileList[i])
-    }
+    for (let i = 0; i < fileList.length; i++) uploadMutation.mutate(fileList[i])
   }, [uploadMutation])
 
   const handleShowDiff = useCallback(() => {
-    setSelectedCommitHash(null) // show working-tree diff
+    setSelectedCommitHash(null)
     setViewMode('diff')
   }, [])
 
@@ -135,13 +129,9 @@ function SessionPage() {
     e.preventDefault()
     if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
   }, [])
-
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
-      setIsDragging(false)
-    }
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false)
   }, [])
-
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
@@ -150,10 +140,10 @@ function SessionPage() {
   }, [isConnected, handleUploadFiles])
 
   // ── View routing ──
-  // Canvas = HTML only (iframe + annotations). Everything else = ArtifactViewer.
-  const showCanvas = viewMode === 'canvas' && (activeFileType == null || activeFileType === 'html')
+  const isHtml = activeTab?.type === 'html'
+  const showCanvas = viewMode === 'file' && isHtml
+  const showArtifact = viewMode === 'file' && activeFile != null && !isHtml
   const showDiff = viewMode === 'diff'
-  const showArtifactViewer = viewMode === 'artifact' && activeFile != null
   const activeDiffText = selectedCommitHash ? commitDiff : diffText
 
   return (
@@ -169,7 +159,7 @@ function SessionPage() {
         </p>
       </div>
 
-      {/* Desktop 3-panel layout */}
+      {/* Desktop layout */}
       <div
         className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden relative"
         onDragOver={handleDragOver}
@@ -187,10 +177,10 @@ function SessionPage() {
           {/* Left sidebar */}
           <SessionSidebar
             files={files}
-            activeFile={effectivePath}
+            activeFile={activeTabPath}
             annotations={ann.annotations}
             isConnected={isConnected ?? false}
-            onSelectFile={handleSelectFile}
+            onSelectFile={openFile}
             onUploadFiles={handleUploadFiles}
             onShowDiff={handleShowDiff}
             onSelectCommit={handleSelectCommit}
@@ -198,81 +188,99 @@ function SessionPage() {
             gitLog={gitLog}
           />
 
-          {/* Center: SessionCanvas handles its own tabs + toolbar */}
+          {/* Center content */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            {showCanvas && (
-              <SessionCanvas
-                htmlContent={fileContent ?? ''}
-                fileType={activeFileType}
-                annotations={ann.annotations}
-                activeId={ann.activeId}
-                annotationMode={ann.annotationMode}
-                openTabs={openCanvasTabs}
-                activeTab={activeCanvasTab}
-                onTabSelect={handleSelectCanvasTab}
-                onTabClose={handleCloseCanvasTab}
-                onAnnotationClick={ann.toggleActiveId}
-                onDismissActive={ann.dismissActive}
-                onRemoveAnnotation={ann.removeAnnotation}
-                onAddClick={ann.addClickAnnotation}
-                onAddBox={ann.addBoxAnnotation}
-                onAddAction={ann.addActionAnnotation}
-                onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
-                onClearAnnotations={ann.clearAnnotations}
-                onExport={handleExport}
-              />
-            )}
-            {showDiff && (
-              activeDiffText ? (
-                <DiffViewer diffText={activeDiffText} />
-              ) : (
+            {/* Tab bar — always visible, manages ALL open files */}
+            <div className="flex items-center border-b border-border bg-card/20 px-1 h-9 shrink-0 overflow-x-auto">
+              {openTabs.map((tab) => {
+                const isActive = viewMode === 'file' && tab.path === activeTabPath
+                return (
+                  <button
+                    key={tab.path}
+                    onClick={() => selectTab(tab.path)}
+                    className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap border-b-2 transition-colors ${
+                      isActive
+                        ? 'border-primary text-foreground font-medium'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span className="truncate max-w-[140px]">{tab.name}</span>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); closeTab(tab.path) }}
+                      className="size-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition"
+                    >
+                      <X className="size-3" />
+                    </span>
+                  </button>
+                )
+              })}
+
+              {/* Diff pseudo-tab */}
+              {showDiff && (
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap border-b-2 border-primary text-foreground font-medium"
+                >
+                  {selectedCommitHash ? `Diff ${selectedCommitHash.slice(0, 7)}` : 'Diff'}
+                </button>
+              )}
+
+              {openTabs.length === 0 && !showDiff && (
+                <span className="px-3 py-1.5 text-xs text-muted-foreground/40">No files open</span>
+              )}
+            </div>
+
+            {/* Content area */}
+            <div className="flex-1 flex flex-col min-h-0 min-w-0">
+              {showCanvas && (
+                <SessionCanvas
+                  htmlContent={fileContent ?? ''}
+                  fileType={activeFile?.type}
+                  annotations={ann.annotations}
+                  activeId={ann.activeId}
+                  annotationMode={ann.annotationMode}
+                  openTabs={activeTabPath ? [activeTabPath] : []}
+                  activeTab={activeTabPath}
+                  onTabSelect={selectTab}
+                  onTabClose={closeTab}
+                  onAnnotationClick={ann.toggleActiveId}
+                  onDismissActive={ann.dismissActive}
+                  onRemoveAnnotation={ann.removeAnnotation}
+                  onAddClick={ann.addClickAnnotation}
+                  onAddBox={ann.addBoxAnnotation}
+                  onAddAction={ann.addActionAnnotation}
+                  onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
+                  onClearAnnotations={ann.clearAnnotations}
+                  onExport={handleExport}
+                />
+              )}
+              {showArtifact && activeFile && (
+                <ArtifactViewer file={activeFile} content={fileContent ?? ''} />
+              )}
+              {showDiff && (
+                activeDiffText ? (
+                  <DiffViewer diffText={activeDiffText} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <div className="text-center">
+                      <p className="text-sm font-medium">No diff available</p>
+                      <p className="text-xs mt-1">
+                        {selectedCommitHash ? `Loading ${selectedCommitHash.slice(0, 7)}...` : 'No changes to show'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+              {!showCanvas && !showArtifact && !showDiff && (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   <div className="text-center">
-                    <p className="text-sm font-medium">No diff available</p>
-                    <p className="text-xs mt-1 max-w-[280px]">
-                      {selectedCommitHash
-                        ? `Loading diff for ${selectedCommitHash.slice(0, 7)}...`
-                        : <>Run <code className="text-[10px] bg-muted px-1 rounded">/diff</code> to generate one</>
-                      }
-                    </p>
+                    <Layers className="size-8 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm font-medium">No file open</p>
+                    <p className="text-xs mt-1">Select a file from the sidebar</p>
                   </div>
                 </div>
-              )
-            )}
-            {showArtifactViewer && activeFile && (
-              <ArtifactViewer file={activeFile} content={fileContent ?? ''} />
-            )}
-            {!showCanvas && !showDiff && !showArtifactViewer && (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                <div className="text-center">
-                  <Layers className="size-8 mx-auto mb-3 opacity-40" />
-                  <p className="text-sm font-medium">No file open</p>
-                  <p className="text-xs mt-1 max-w-[280px]">
-                    Select a file from the sidebar to start editing.
-                  </p>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-
-          {/* Right panel */}
-          {infoPanelOpen ? (
-            <SessionInfoPanel
-              gitStatus={gitStatus}
-              gitLog={gitLog}
-              onClose={() => setInfoPanelOpen(false)}
-              onShowDiff={handleShowDiff}
-              onSelectCommit={handleSelectCommit}
-            />
-          ) : (
-            <button
-              onClick={() => setInfoPanelOpen(true)}
-              className="shrink-0 border-l border-border px-2 py-3 text-muted-foreground hover:text-foreground hover:bg-muted/30 transition"
-              aria-label="Open session panel"
-            >
-              <PanelRight className="size-4" />
-            </button>
-          )}
         </div>
 
         {isDragging && isConnected && <DropZoneOverlay />}

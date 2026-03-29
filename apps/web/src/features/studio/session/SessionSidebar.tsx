@@ -154,7 +154,7 @@ export function SessionSidebar({
                   <div key={dir} className="mt-1">
                     <button
                       onClick={() => toggleFolder(dir)}
-                      className="flex items-center gap-1.5 w-full px-2 py-1 text-[10px] font-medium text-muted-foreground/60 hover:text-muted-foreground transition"
+                      className="flex items-center gap-1.5 w-full px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition"
                     >
                       {expandedFolders.has(dir) ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
                       {dir}/
