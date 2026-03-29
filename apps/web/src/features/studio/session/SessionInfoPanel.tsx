@@ -9,9 +9,10 @@ interface SessionInfoPanelProps {
   gitLog: GitLogEntry[] | null | undefined
   onClose: () => void
   onShowDiff: () => void
+  onSelectCommit: (hash: string) => void
 }
 
-export function SessionInfoPanel({ gitStatus, gitLog, onClose, onShowDiff }: SessionInfoPanelProps) {
+export function SessionInfoPanel({ gitStatus, gitLog, onClose, onShowDiff, onSelectCommit }: SessionInfoPanelProps) {
   const modifiedCount = (gitStatus?.modified?.length ?? 0) + (gitStatus?.staged?.length ?? 0)
   const untrackedCount = gitStatus?.untracked?.length ?? 0
   const toPath = (f: unknown): string => (typeof f === 'string' ? f : (f as { path?: string })?.path ?? '')
@@ -131,7 +132,11 @@ export function SessionInfoPanel({ gitStatus, gitLog, onClose, onShowDiff }: Ses
             </div>
             <div className="space-y-2">
               {gitLog.slice(0, 5).map((entry) => (
-                <div key={entry.hash} className="group cursor-pointer">
+                <div
+                  key={entry.hash}
+                  onClick={() => onSelectCommit(entry.hash)}
+                  className="group cursor-pointer rounded px-1 -mx-1 py-0.5 hover:bg-muted/30 transition"
+                >
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-mono text-[9px] text-primary/60">
                       {entry.hash.slice(0, 7)}

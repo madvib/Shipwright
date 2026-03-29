@@ -87,7 +87,7 @@ function StudioSyncShell() {
   return (
     <main className={`flex-1 overflow-hidden min-w-0 flex flex-col relative ${isSession ? '' : 'pb-20'}`}>
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        <div className="flex-1 overflow-auto min-w-0">
+        <div className={`flex-1 min-w-0 ${isSession ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
           <Outlet />
         </div>
         {showCompilerPanel && panelOpen && !isSession && (
