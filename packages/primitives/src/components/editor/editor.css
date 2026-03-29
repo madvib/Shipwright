@@ -1,173 +1,221 @@
-@import "@milkdown/crepe/theme/common/style.css";
-@import "@milkdown/crepe/theme/classic.css";
+/* ── Tiptap Editor Shell ── */
 
-.ship-milkdown-shell {
+.ship-tiptap-shell {
   height: 100%;
   overflow: hidden;
 }
 
-.ship-milkdown-shell .milkdown {
+.ship-tiptap-shell .tiptap {
   height: 100%;
   overflow: auto;
-  background: var(--card);
-  color: var(--foreground);
-  font-family: var(--font-body-app);
+  padding: 1rem 1.25rem 2rem;
   font-size: 0.95rem;
-
-  --crepe-color-background: var(--card);
-  --crepe-color-on-background: var(--foreground);
-  --crepe-color-surface: var(--muted);
-  --crepe-color-surface-low: var(--muted);
-  --crepe-color-on-surface: var(--foreground);
-  --crepe-color-on-surface-variant: var(--muted-foreground);
-  --crepe-color-outline: color-mix(in oklch, var(--foreground) 58%, var(--background));
-  --crepe-color-primary: var(--primary);
-  --crepe-color-secondary: var(--secondary);
-  --crepe-color-on-secondary: var(--secondary-foreground);
-  --crepe-color-inverse: var(--foreground);
-  --crepe-color-on-inverse: var(--background);
-  --crepe-color-inline-code: var(--primary);
-  --crepe-color-error: var(--destructive);
-  --crepe-color-hover: var(--muted);
-  --crepe-color-selected: color-mix(in oklch, var(--primary) 20%, transparent);
-  --crepe-color-inline-area: var(--muted);
-  --crepe-font-title: var(--font-body-app);
-  --crepe-font-default: var(--font-body-app);
-  --crepe-font-code: var(--font-mono);
+  line-height: 1.7;
+  color: var(--foreground);
+  font-family: var(--font-body-app, sans-serif);
+  outline: none;
 }
 
-/* Remove default Crepe top padding that creates massive gaps */
-.ship-milkdown-shell .milkdown>div {
-  max-width: none !important;
-  padding-top: 0 !important;
-}
-
-.ship-milkdown-shell .milkdown .ProseMirror {
-  min-height: 100%;
-  padding: 0 1.25rem 2rem;
-  line-height: 1.6;
-  caret-color: var(--crepe-color-on-background);
-}
-
-.ship-milkdown-shell .milkdown .ProseMirror>*:first-child {
+.ship-tiptap-shell .tiptap > *:first-child {
   margin-top: 0 !important;
 }
 
-.ship-milkdown-shell .milkdown .ProseMirror ::selection,
-.ship-milkdown-shell .milkdown .ProseMirror *::selection {
-  background: color-mix(in oklch, var(--primary) 30%, transparent) !important;
-  color: inherit !important;
+.ship-tiptap-shell .tiptap ::selection,
+.ship-tiptap-shell .tiptap *::selection {
+  background: color-mix(in oklch, var(--primary) 30%, transparent);
+  color: inherit;
 }
 
-.ship-milkdown-shell .milkdown .ProseMirror-focused {
-  --prosemirror-virtual-cursor-color: var(--crepe-color-on-background);
+/* ── Typography ── */
+
+.ship-tiptap-shell .tiptap h1 { font-size: 1.6rem; font-weight: 700; margin: 1.5rem 0 0.5rem; line-height: 1.25; }
+.ship-tiptap-shell .tiptap h2 { font-size: 1.3rem; font-weight: 650; margin: 1.25rem 0 0.4rem; line-height: 1.3; }
+.ship-tiptap-shell .tiptap h3 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.35rem; line-height: 1.35; }
+.ship-tiptap-shell .tiptap h4, .ship-tiptap-shell .tiptap h5, .ship-tiptap-shell .tiptap h6 {
+  font-size: 1rem; font-weight: 600; margin: 0.75rem 0 0.25rem;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-slash-menu {
-  max-width: min(92vw, 380px);
-  min-width: 260px;
-  animation: ship-slash-fade 120ms ease-out 90ms both;
+.ship-tiptap-shell .tiptap p { margin: 0 0 0.65rem; }
+.ship-tiptap-shell .tiptap ul { list-style: disc; padding-left: 1.4rem; margin: 0 0 0.65rem; }
+.ship-tiptap-shell .tiptap ol { list-style: decimal; padding-left: 1.4rem; margin: 0 0 0.65rem; }
+.ship-tiptap-shell .tiptap li { margin: 0.15rem 0; }
+.ship-tiptap-shell .tiptap li p { margin: 0; }
+
+.ship-tiptap-shell .tiptap blockquote {
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups {
-  max-height: min(56vh, 320px);
+.ship-tiptap-shell .tiptap hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
-  min-width: 0;
-  padding: 10px 10px;
+/* ── Inline ── */
+
+.ship-tiptap-shell .tiptap code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  background: var(--muted);
+  padding: 0.15em 0.35em;
+  border-radius: 0.3rem;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups .menu-group li.active,
-.ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover {
-  background: color-mix(in oklch, var(--primary) 18%, var(--muted));
+.ship-tiptap-shell .tiptap a,
+.ship-tiptap-link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-slash-menu .menu-groups .menu-group li>span {
-  font-size: 13px;
+/* ── Code Blocks (lowlight) ── */
+
+.ship-tiptap-shell .tiptap pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+}
+
+.ship-tiptap-shell .tiptap pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
   color: var(--foreground);
 }
 
-/* Prevent toolbar from causing layout shift.
-   The toolbar is position:absolute inside .milkdown (position:relative from reset.css).
-   contain:layout on ProseMirror prevents its reflow from propagating.
-   contain:layout on the toolbar ensures its own sizing is isolated. */
-.ship-milkdown-shell .milkdown .ProseMirror {
-  contain: layout style;
+/* lowlight syntax highlighting */
+.ship-tiptap-shell .tiptap pre .hljs-comment,
+.ship-tiptap-shell .tiptap pre .hljs-quote { color: var(--muted-foreground); font-style: italic; }
+.ship-tiptap-shell .tiptap pre .hljs-keyword,
+.ship-tiptap-shell .tiptap pre .hljs-selector-tag,
+.ship-tiptap-shell .tiptap pre .hljs-built_in { color: oklch(0.65 0.15 280); }
+.ship-tiptap-shell .tiptap pre .hljs-string,
+.ship-tiptap-shell .tiptap pre .hljs-attr { color: oklch(0.65 0.15 150); }
+.ship-tiptap-shell .tiptap pre .hljs-number,
+.ship-tiptap-shell .tiptap pre .hljs-literal { color: oklch(0.65 0.15 40); }
+.ship-tiptap-shell .tiptap pre .hljs-title,
+.ship-tiptap-shell .tiptap pre .hljs-function { color: oklch(0.7 0.12 230); }
+
+/* ── Tables ── */
+
+.ship-tiptap-shell .tiptap table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-toolbar {
-  contain: layout;
+.ship-tiptap-shell .tiptap th,
+.ship-tiptap-shell .tiptap td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
 }
 
-.ship-milkdown-shell .milkdown .milkdown-toolbar .toolbar-item.active,
-.ship-milkdown-shell .milkdown .milkdown-toolbar .toolbar-item:active {
-  background: color-mix(in oklch, var(--primary) 18%, var(--muted));
+.ship-tiptap-shell .tiptap th {
+  font-weight: 600;
+  background: var(--muted);
 }
 
-.ship-milkdown-shell .milkdown .milkdown-toolbar .toolbar-item.active svg {
-  color: var(--foreground);
-  fill: var(--foreground);
+/* ── Task Lists ── */
+
+.ship-tiptap-shell .tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
 }
 
-.ship-milkdown-shell .milkdown .crepe-line-number {
+.ship-tiptap-shell .tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.ship-tiptap-shell .tiptap ul[data-type="taskList"] li label {
+  margin-top: 0.2rem;
+}
+
+.ship-tiptap-shell .tiptap ul[data-type="taskList"] li label input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+
+.ship-tiptap-shell .tiptap ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* ── Placeholder ── */
+
+.ship-tiptap-shell .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
   color: var(--muted-foreground);
   opacity: 0.5;
+  pointer-events: none;
+  height: 0;
 }
 
-.ship-milkdown-shell .milkdown .crepe-line-number.crepe-line-number-active {
-  color: var(--primary);
-  background: oklch(var(--primary) / 0.1);
-  opacity: 1;
-  font-weight: 700;
+/* ── Images ── */
+
+.ship-tiptap-shell .tiptap img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
 }
 
-/* Theme-aware CodeMirror overrides for code blocks */
-.ship-milkdown-shell .milkdown .cm-editor {
-  background: var(--muted) !important;
+/* ── Bubble Menu (selection toolbar) ── */
+
+.ship-tiptap-bubble {
+  display: flex;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
 }
 
-.ship-milkdown-shell .milkdown .cm-editor .cm-content {
-  color: var(--foreground) !important;
+.ship-tiptap-bubble button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 100ms, color 100ms;
 }
 
-.ship-milkdown-shell .milkdown .cm-editor .cm-line {
-  color: var(--foreground) !important;
+.ship-tiptap-bubble button:hover {
+  background: var(--muted);
+  color: var(--foreground);
 }
 
-.ship-milkdown-shell .milkdown .cm-editor .cm-gutters {
-  background: var(--muted) !important;
-  color: var(--muted-foreground) !important;
-  border-color: var(--border) !important;
+.ship-tiptap-bubble button.is-active {
+  background: color-mix(in oklch, var(--primary) 18%, var(--muted));
+  color: var(--foreground);
 }
 
-.ship-milkdown-shell .milkdown .cm-editor .cm-activeLine {
-  background: color-mix(in oklch, var(--primary) 5%, transparent) !important;
+.ship-tiptap-bubble-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 2px;
 }
 
-.ship-milkdown-shell .milkdown .cm-editor .cm-cursor {
-  border-left-color: var(--foreground) !important;
-}
-
-.ship-milkdown-shell .milkdown .cm-editor .cm-selectionBackground {
-  background: color-mix(in oklch, var(--primary) 25%, transparent) !important;
-}
-
-.ship-milkdown-shell .milkdown .cm-editor.cm-focused .cm-selectionBackground {
-  background: color-mix(in oklch, var(--primary) 30%, transparent) !important;
-}
-
-@keyframes ship-slash-fade {
-  from {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* ── Markdown Preview (read-only mode) ── */
 
 .ship-markdown-preview {
   color: var(--foreground);
@@ -209,65 +257,23 @@
   font-size: inherit;
 }
 
-.ship-markdown-preview>*:first-child {
-  margin-top: 0;
-}
+.ship-markdown-preview > *:first-child { margin-top: 0; }
+.ship-markdown-preview > *:last-child { margin-bottom: 0; }
 
-.ship-markdown-preview>*:last-child {
-  margin-bottom: 0;
-}
-
-.ship-markdown-preview h1 {
-  font-size: 1.3rem;
-  font-weight: 700;
-  line-height: 1.25;
-  margin: 0 0 0.9rem;
-}
-
-.ship-markdown-preview h2 {
-  font-size: 1.12rem;
-  font-weight: 650;
-  line-height: 1.3;
-  margin: 1.25rem 0 0.65rem;
-}
-
-.ship-markdown-preview h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.35;
-  margin: 1rem 0 0.5rem;
-}
+.ship-markdown-preview h1 { font-size: 1.3rem; font-weight: 700; line-height: 1.25; margin: 0 0 0.9rem; }
+.ship-markdown-preview h2 { font-size: 1.12rem; font-weight: 650; line-height: 1.3; margin: 1.25rem 0 0.65rem; }
+.ship-markdown-preview h3 { font-size: 1rem; font-weight: 600; line-height: 1.35; margin: 1rem 0 0.5rem; }
 
 .ship-markdown-preview p,
 .ship-markdown-preview ul,
 .ship-markdown-preview ol,
-.ship-markdown-preview blockquote {
-  margin: 0 0 0.7rem;
-  line-height: 1.6;
-}
+.ship-markdown-preview blockquote { margin: 0 0 0.7rem; line-height: 1.6; }
 
-.ship-markdown-preview ul,
-.ship-markdown-preview ol {
-  padding-left: 1.2rem;
-}
-
-.ship-markdown-preview ul {
-  list-style: disc;
-}
-
-.ship-markdown-preview ol {
-  list-style: decimal;
-}
-
-.ship-markdown-preview li {
-  margin: 0.25rem 0;
-}
-
-.ship-markdown-preview hr {
-  border: 0;
-  border-top: 1px solid var(--border);
-  margin: 1rem 0;
-}
+.ship-markdown-preview ul, .ship-markdown-preview ol { padding-left: 1.2rem; }
+.ship-markdown-preview ul { list-style: disc; }
+.ship-markdown-preview ol { list-style: decimal; }
+.ship-markdown-preview li { margin: 0.25rem 0; }
+.ship-markdown-preview hr { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
 
 .ship-markdown-preview blockquote {
   border-left: 3px solid var(--border);
@@ -275,87 +281,18 @@
   padding-left: 0.75rem;
 }
 
-.ship-markdown-preview a {
-  color: var(--primary);
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1px;
-  text-decoration-line: underline;
-}
+.ship-markdown-preview a { color: var(--primary); text-underline-offset: 3px; text-decoration-thickness: 1px; text-decoration-line: underline; }
+.ship-markdown-preview a:hover { color: var(--primary); }
 
-.ship-markdown-preview a:hover {
-  color: var(--primary);
-}
+.ship-markdown-preview code { font-family: var(--font-mono); font-size: 0.85rem; padding: 0.12rem 0.33rem; border-radius: 0.35rem; background: var(--muted); }
+.ship-markdown-preview pre { overflow: auto; border-radius: 0.5rem; border: 1px solid var(--border); background: var(--muted); padding: 0.7rem; margin: 0 0 0.9rem; }
+.ship-markdown-preview pre code { background: transparent; border: 0; padding: 0; font-size: 0.82rem; }
 
-.ship-markdown-preview code {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  padding: 0.12rem 0.33rem;
-  border-radius: 0.35rem;
-  background: var(--muted);
-}
+.ship-markdown-preview table { width: 100%; border-collapse: collapse; margin: 0 0 0.9rem; font-size: 0.9rem; }
+.ship-markdown-preview th, .ship-markdown-preview td { border: 1px solid var(--border); padding: 0.42rem 0.55rem; text-align: left; vertical-align: top; }
+.ship-markdown-preview th { font-weight: 600; background: var(--muted); }
 
-.ship-markdown-preview pre {
-  overflow: auto;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--muted);
-  padding: 0.7rem;
-  margin: 0 0 0.9rem;
-}
-
-.ship-markdown-preview pre code {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  font-size: 0.82rem;
-}
-
-.ship-markdown-preview table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0 0 0.9rem;
-  font-size: 0.9rem;
-}
-
-.ship-markdown-preview th,
-.ship-markdown-preview td {
-  border: 1px solid var(--border);
-  padding: 0.42rem 0.55rem;
-  text-align: left;
-  vertical-align: top;
-}
-
-.ship-markdown-preview th {
-  font-weight: 600;
-  background: var(--muted);
-}
-
-/* ── Selection Comment Tooltip ── */
-
-.ship-comment-tooltip {
-  animation: ship-comment-fade 120ms ease-out;
-}
-
-.ship-comment-tooltip-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  white-space: nowrap;
-  transition: background 120ms;
-}
-
-.ship-comment-tooltip-btn:hover {
-  background: var(--muted);
-}
+/* ── Comment Tooltip ── */
 
 .ship-comment-tooltip-expanded {
   width: 280px;
@@ -390,10 +327,7 @@
   line-height: 1.5;
 }
 
-.ship-comment-tooltip-input::placeholder {
-  color: var(--muted-foreground);
-  opacity: 0.6;
-}
+.ship-comment-tooltip-input::placeholder { color: var(--muted-foreground); opacity: 0.6; }
 
 .ship-comment-tooltip-actions {
   display: flex;
@@ -413,12 +347,9 @@
   color: var(--muted-foreground);
   font-size: 11px;
   cursor: pointer;
-  transition: color 120ms;
 }
 
-.ship-comment-tooltip-cancel:hover {
-  color: var(--foreground);
-}
+.ship-comment-tooltip-cancel:hover { color: var(--foreground); }
 
 .ship-comment-tooltip-submit {
   display: flex;
@@ -432,25 +363,8 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: opacity 120ms;
 }
 
-.ship-comment-tooltip-submit:hover {
-  opacity: 0.9;
-}
-
-.ship-comment-tooltip-submit:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.ship-comment-tooltip-submit kbd {
-  font-size: 9px;
-  opacity: 0.7;
-  font-family: inherit;
-}
-
-@keyframes ship-comment-fade {
-  from { opacity: 0; transform: translate(-50%, -100%) scale(0.95); }
-  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
-}
+.ship-comment-tooltip-submit:hover { opacity: 0.9; }
+.ship-comment-tooltip-submit:disabled { opacity: 0.4; cursor: default; }
+.ship-comment-tooltip-submit kbd { font-size: 9px; opacity: 0.7; font-family: inherit; }
