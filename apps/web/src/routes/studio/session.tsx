@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Layers, PanelRight, WifiOff, Maximize2, Minimize2 } from 'lucide-react'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
@@ -41,6 +41,17 @@ function SessionPage() {
   const [activeCanvasTab, setActiveCanvasTab] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('canvas')
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // ── Auto-open canvas.html on first load ──
+  useEffect(() => {
+    if (openCanvasTabs.length > 0 || files.length === 0) return
+    const canvasFile = files.find((f) => f.name === 'canvas.html')
+    if (canvasFile) {
+      setOpenCanvasTabs([canvasFile.path])
+      setActiveCanvasTab(canvasFile.path)
+      setActiveFilePath(canvasFile.path)
+    }
+  }, [files]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional: run when files first load
 
   // ── Derived state ──
   const effectivePath = activeFilePath ?? files.find((f) => f.name === 'canvas.html')?.path ?? null
@@ -168,6 +179,8 @@ function SessionPage() {
               isConnected={isConnected ?? false}
               onSelectFile={handleSelectFile}
               onUploadFiles={handleUploadFiles}
+              gitStatus={gitStatus}
+              gitLog={gitLog}
             />
           )}
 

@@ -7,6 +7,7 @@ import {
   Plus, MapPin,
 } from 'lucide-react'
 import type { SessionFile, Annotation } from './types'
+import type { GitStatusResult, GitLogEntry } from './useGitInfo'
 
 type SidebarTab = 'files' | 'git' | 'sessions'
 
@@ -17,6 +18,8 @@ interface SessionSidebarProps {
   isConnected: boolean
   onSelectFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
+  gitStatus: GitStatusResult | null | undefined
+  gitLog: GitLogEntry[] | null | undefined
 }
 
 const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: string }> = {
@@ -32,7 +35,7 @@ function isTodoFile(name: string): boolean {
 
 export function SessionSidebar({
   files, activeFile, annotations, isConnected,
-  onSelectFile, onUploadFiles,
+  onSelectFile, onUploadFiles, gitStatus, gitLog,
 }: SessionSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('files')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -181,10 +184,69 @@ export function SessionSidebar({
         )}
 
         {tab === 'git' && (
-          <div className="px-3 pt-3 text-xs text-muted-foreground">
-            <p className="text-[10px] text-muted-foreground/60">
-              Git info is shown in the right panel.
-            </p>
+          <div className="px-3 pt-3">
+            {gitStatus && (
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-medium font-mono">{gitStatus.branch}</span>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                      gitStatus.clean
+                        ? 'bg-emerald-500/10 text-emerald-500'
+                        : 'bg-amber-500/10 text-amber-500'
+                    }`}
+                  >
+                    {gitStatus.clean ? 'clean' : 'dirty'}
+                  </span>
+                </div>
+                {!gitStatus.clean && (
+                  <div className="space-y-0.5">
+                    {(gitStatus.staged ?? []).map((f) => (
+                      <div key={f.path} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
+                        <span className="text-[9px] font-mono px-1 rounded bg-emerald-500/10 text-emerald-500 font-bold">S</span>
+                        <span className="truncate">{f.path.split('/').pop()}</span>
+                      </div>
+                    ))}
+                    {(gitStatus.modified ?? []).map((f) => (
+                      <div key={f.path} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
+                        <span className="text-[9px] font-mono px-1 rounded bg-amber-500/10 text-amber-500 font-bold">M</span>
+                        <span className="truncate">{f.path.split('/').pop()}</span>
+                      </div>
+                    ))}
+                    {(gitStatus.untracked ?? []).map((f) => (
+                      <div key={f.path} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
+                        <span className="text-[9px] font-mono px-1 rounded bg-red-500/10 text-red-500 font-bold">?</span>
+                        <span className="truncate">{f.path.split('/').pop()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {gitLog && gitLog.length > 0 && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">
+                  Recent Commits
+                </div>
+                <div className="space-y-1.5">
+                  {gitLog.slice(0, 8).map((entry) => (
+                    <div key={entry.hash} className="group cursor-pointer">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-mono text-[9px] text-primary/60 shrink-0">
+                          {entry.hash.slice(0, 7)}
+                        </span>
+                        <span className="truncate text-muted-foreground group-hover:text-foreground transition">
+                          {entry.subject}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!gitStatus && (
+              <p className="text-[10px] text-muted-foreground/60">Connect CLI to see git info.</p>
+            )}
           </div>
         )}
 
