@@ -134,6 +134,11 @@ function SessionPage() {
     URL.revokeObjectURL(url)
   }, [ann, mcp, isConnected])
 
+  const handleComment = useCallback((selectedText: string, comment: string) => {
+    // Store highlight comments as action annotations
+    ann.addActionAnnotation(`comment: ${comment}`, selectedText)
+  }, [ann])
+
   const handleUploadFiles = useCallback((fileList: FileList) => {
     for (let i = 0; i < fileList.length; i++) uploadMutation.mutate(fileList[i])
   }, [uploadMutation])
@@ -286,6 +291,7 @@ function SessionPage() {
                   isDirty={drafts.isDirty(activeFile.path)}
                   onContentChange={drafts.updateContent}
                   onSave={drafts.saveFile}
+                  onComment={handleComment}
                 />
               )}
               {showDiff && (

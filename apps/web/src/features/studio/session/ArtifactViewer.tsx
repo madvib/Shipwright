@@ -18,6 +18,8 @@ interface ArtifactViewerProps {
   onContentChange?: (path: string, content: string) => void
   /** Called when the user saves (Cmd+S or button) */
   onSave?: (path: string) => void
+  /** Called when user highlights text and adds a comment */
+  onComment?: (selectedText: string, comment: string) => void
 }
 
 // ── Image Viewer with zoom ──
@@ -67,7 +69,7 @@ function ImageViewer({ file, content }: { file: SessionFile; content: string }) 
 // ── Markdown Editor (milkdown with draft support) ──
 
 function MarkdownFileEditor({
-  file, content, draftContent, isDirty, onContentChange, onSave,
+  file, content, draftContent, isDirty, onContentChange, onSave, onComment,
 }: {
   file: SessionFile
   content: string
@@ -75,6 +77,7 @@ function MarkdownFileEditor({
   isDirty?: boolean
   onContentChange?: (path: string, content: string) => void
   onSave?: (path: string) => void
+  onComment?: (selectedText: string, comment: string) => void
 }) {
   const editable = onContentChange != null
   const displayContent = draftContent ?? content
@@ -118,6 +121,7 @@ function MarkdownFileEditor({
           fillHeight
           showStats={false}
           showAiActions={false}
+          onComment={onComment}
         />
       </div>
     </div>
@@ -163,7 +167,7 @@ function TextViewer({ content, file }: { content: string; file: SessionFile }) {
 
 // ── Router ──
 
-export function ArtifactViewer({ file, content, draftContent, isDirty, onContentChange, onSave }: ArtifactViewerProps) {
+export function ArtifactViewer({ file, content, draftContent, isDirty, onContentChange, onSave, onComment }: ArtifactViewerProps) {
   if (file.type === 'image') return <ImageViewer file={file} content={content} />
   if (file.type === 'markdown') {
     return (
@@ -174,6 +178,7 @@ export function ArtifactViewer({ file, content, draftContent, isDirty, onContent
         isDirty={isDirty}
         onContentChange={onContentChange}
         onSave={onSave}
+        onComment={onComment}
       />
     )
   }

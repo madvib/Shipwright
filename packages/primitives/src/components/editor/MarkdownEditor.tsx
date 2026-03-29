@@ -46,6 +46,8 @@ export interface MarkdownEditorProps {
     frontmatterPanel?: ReactNode | unknown;
     showAiActions?: boolean;
     onTransformText?: (instruction: string, text: string) => Promise<string>;
+    /** Called when user highlights text and submits a comment via the selection menu */
+    onComment?: (selectedText: string, comment: string) => void;
 }
 
 function normalizeMode(defaultMode?: EditorMode | LegacyEditorMode): EditorMode {
@@ -74,6 +76,7 @@ export default function MarkdownEditor({
     editorClassName,
     showAiActions = true,
     onTransformText,
+    onComment,
 }: MarkdownEditorProps) {
     const onChangeRef = useRef(onChange);
     const internalMarkdownRef = useRef(value);
@@ -272,6 +275,7 @@ export default function MarkdownEditor({
                                 fillHeight={fillHeight}
                                 minHeightPx={minHeightPx}
                                 className={editorClassName}
+                                onComment={onComment}
                             />
                         </div>
                     </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { replaceAll } from '@milkdown/kit/utils';
 import { cn } from '@/lib/utils';
+import { SelectionCommentTooltip } from './SelectionCommentTooltip';
 import './editor.css';
 
 export interface CustomMilkdownEditorProps {
@@ -11,6 +12,8 @@ export interface CustomMilkdownEditorProps {
     fillHeight?: boolean;
     minHeightPx?: number;
     className?: string;
+    /** Called when user highlights text and submits a comment */
+    onComment?: (selectedText: string, comment: string) => void;
 }
 
 export default function CustomMilkdownEditor({
@@ -20,6 +23,7 @@ export default function CustomMilkdownEditor({
     fillHeight = false,
     minHeightPx = 320,
     className,
+    onComment,
 }: CustomMilkdownEditorProps) {
     const rootRef = useRef<HTMLDivElement | null>(null);
     const crepeRef = useRef<Crepe | null>(null);
@@ -146,6 +150,9 @@ export default function CustomMilkdownEditor({
             style={fillHeight ? undefined : { height: `${minHeightPx}px` }}
         >
             <div ref={rootRef} className="ship-milkdown-shell h-full w-full" />
+            {onComment && (
+                <SelectionCommentTooltip containerRef={rootRef} onComment={onComment} />
+            )}
         </div>
     );
 }

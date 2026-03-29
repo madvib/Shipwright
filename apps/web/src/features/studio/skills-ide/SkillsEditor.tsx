@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus, Eye, Code2 } from 'lucide-react'
 import type { Skill } from '@ship/ui'
+import { MarkdownEditor } from '@ship/primitives'
 import { parseTabId } from './useSkillsIDE'
 import { TextEditor } from './TextEditor'
 import { MarkdownPreview } from './MarkdownPreview'
@@ -81,6 +82,12 @@ export function SkillsEditor({
   const [viewMode, setViewMode] = useState<ViewMode>('source')
   const activeTab = activeTabId ? parseTabId(activeTabId) : null
   const activeSkill = activeTab ? skills.find((s) => s.id === activeTab.skillId) : undefined
+
+  // Highlight-to-comment: store feedback for local AI review
+  const handleComment = useCallback((selectedText: string, comment: string) => {
+    console.info('[skills-ide] comment:', { selectedText: selectedText.slice(0, 100), comment, tabId: activeTabId })
+    // Future: write to .ship-session/skill-feedback.json or annotations system
+  }, [activeTabId])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -234,21 +241,37 @@ export function SkillsEditor({
         viewMode={viewMode}
         onContentChange={onContentChange}
         onSave={onSave}
+        onComment={handleComment}
       />
     </div>
   )
 }
 
-function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentChange, onSave }: {
+function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentChange, onSave, onComment }: {
   tabId: string; content: string; fileType: 'markdown' | 'json' | 'script' | 'text'
   filePath: string; viewMode: ViewMode
   onContentChange: (id: string, content: string) => void; onSave: (id: string) => void
+  onComment?: (selectedText: string, comment: string) => void
 }) {
-  // Markdown in preview mode
-  if (fileType === 'markdown' && viewMode === 'preview') {
+  // Markdown: milkdown editor (source) or preview
+  if (fileType === 'markdown') {
+    if (viewMode === 'preview') {
+      return (
+        <div className="flex-1 min-h-0 overflow-auto">
+          <MarkdownPreview content={content} />
+        </div>
+      )
+    }
     return (
-      <div className="flex-1 min-h-0 overflow-auto">
-        <MarkdownPreview content={content} />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <MarkdownEditor
+          value={content}
+          onChange={(v) => onContentChange(tabId, v)}
+          fillHeight
+          showStats={false}
+          showAiActions={false}
+          onComment={onComment}
+        />
       </div>
     )
   }
@@ -263,7 +286,7 @@ function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentCha
     return <ScriptViewer content={content} language={getScriptLang(filePath)} />
   }
 
-  // Default: editable text editor (markdown source, plain text, etc.)
+  // Default: editable text editor (plain text, etc.)
   return (
     <TextEditor
       tabId={tabId}
