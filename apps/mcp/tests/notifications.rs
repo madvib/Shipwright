@@ -56,7 +56,7 @@ async fn state_modifying_tool_sends_resource_notification() {
 
     let (server_transport, client_transport) = tokio::io::duplex(65536);
 
-    let server = mcp::ShipServer::new();
+    let server = mcp::StudioServer::new();
     *server.active_project.lock().await = Some(project_dir.clone());
 
     tokio::spawn(async move {

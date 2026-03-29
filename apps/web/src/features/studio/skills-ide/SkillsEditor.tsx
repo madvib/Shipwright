@@ -1,13 +1,18 @@
-import { useState, useCallback } from 'react'
-import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus, Eye, Code2 } from 'lucide-react'
+import { useCallback, lazy, Suspense } from 'react'
+import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus } from 'lucide-react'
 import type { Skill } from '@ship/ui'
+import type { FrontmatterEntry } from '@ship/primitives'
 import { parseTabId } from './useSkillsIDE'
 import { TextEditor } from './TextEditor'
-import { MarkdownPreview } from './MarkdownPreview'
+
+// Lazy-load tiptap to avoid SSR/worker crashes (uses browser DOM APIs)
+const MarkdownEditor = lazy(() =>
+  import('@ship/primitives').then((m) => ({ default: m.MarkdownEditor }))
+)
 import { JsonViewer } from './JsonViewer'
 import { ScriptViewer } from './ScriptViewer'
+import { EditorSkeleton, EmptyState } from './EditorStates'
 
-type ViewMode = 'source' | 'preview'
 type ScriptLang = 'sh' | 'py' | 'js' | 'ts'
 
 interface Props {
@@ -25,6 +30,8 @@ interface Props {
   onSave: (id: string) => void
   onTogglePreview?: () => void
   onCreateSkill?: () => void
+  onComment?: (selectedText: string, comment: string, skillName: string, tabId: string) => void
+  onFrontmatterParsed?: (entries: FrontmatterEntry[], raw: string | null) => void
 }
 
 function getFileType(path: string): 'markdown' | 'json' | 'script' | 'text' {
@@ -41,46 +48,23 @@ function getScriptLang(path: string): ScriptLang {
   return 'js'
 }
 
-function EditorSkeleton() {
-  return (
-    <div className="flex flex-1 flex-col min-w-0">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 shrink-0">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="h-6 w-20 animate-pulse rounded bg-muted" />
-        ))}
-      </div>
-      <div className="flex-1 p-4 space-y-2">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div key={i} className="h-4 animate-pulse rounded bg-muted" style={{ width: `${40 + (i * 7) % 50}%` }} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({ icon, title, subtitle, children }: {
-  icon: React.ReactNode; title: string; subtitle: string; children?: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground min-w-0 px-6">
-      {icon}
-      <div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-        {children}
-      </div>
-    </div>
-  )
-}
-
 export function SkillsEditor({
   skills, openTabIds, activeTabId, unsavedIds, content,
   isConnected, isLoading, previewOpen,
   onTabSelect, onTabClose, onContentChange, onSave, onTogglePreview, onCreateSkill,
+  onComment: onCommentProp,
+  onFrontmatterParsed: onFrontmatterParsedProp,
 }: Props) {
-  const [viewMode, setViewMode] = useState<ViewMode>('source')
   const activeTab = activeTabId ? parseTabId(activeTabId) : null
   const activeSkill = activeTab ? skills.find((s) => s.id === activeTab.skillId) : undefined
+
+  // Highlight-to-comment: write feedback via MCP or log locally
+  const handleComment = useCallback((selectedText: string, comment: string) => {
+    const skillName = activeSkill?.name ?? activeSkill?.id ?? 'unknown'
+    if (onCommentProp && activeTabId) {
+      onCommentProp(selectedText, comment, skillName, activeTabId)
+    }
+  }, [activeTabId, activeSkill, onCommentProp])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -102,7 +86,7 @@ export function SkillsEditor({
         subtitle="Start the CLI server, then Studio will sync automatically."
       >
         <code className="mt-3 inline-block rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">
-          ship mcp serve --http --port 51741
+          ship studio --port 51741
         </code>
       </EmptyState>
     )
@@ -142,7 +126,6 @@ export function SkillsEditor({
   const fileType = getFileType(activeFilePath)
   const breadcrumbParts = ['skills', activeSkill.name || activeSkill.id, ...activeFilePath.split('/')]
   const showDisconnectBanner = !isConnected && unsavedIds.size > 0
-  const isMarkdown = fileType === 'markdown'
 
   return (
     <div className="flex flex-1 flex-col min-w-0" onKeyDown={handleKeyDown}>
@@ -164,24 +147,6 @@ export function SkillsEditor({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          {isMarkdown && (
-            <div className="flex items-center rounded border border-border text-[11px] mr-1">
-              <button
-                onClick={() => setViewMode('source')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-l transition-colors ${viewMode === 'source' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Code2 className="size-3" />
-                Source
-              </button>
-              <button
-                onClick={() => setViewMode('preview')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-r transition-colors ${viewMode === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Eye className="size-3" />
-                Preview
-              </button>
-            </div>
-          )}
           {unsavedIds.has(activeTabId) && (
             <button onClick={() => onSave(activeTabId)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-primary/15 text-primary hover:bg-primary/25 transition-colors" title="Save (Cmd+S)">
               <Save className="size-3" />
@@ -231,24 +196,36 @@ export function SkillsEditor({
         content={content}
         fileType={fileType}
         filePath={activeFilePath}
-        viewMode={viewMode}
         onContentChange={onContentChange}
         onSave={onSave}
+        onComment={handleComment}
+        onFrontmatterParsed={onFrontmatterParsedProp}
       />
     </div>
   )
 }
 
-function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentChange, onSave }: {
+function EditorBody({ tabId, content, fileType, filePath, onContentChange, onSave, onComment, onFrontmatterParsed }: {
   tabId: string; content: string; fileType: 'markdown' | 'json' | 'script' | 'text'
-  filePath: string; viewMode: ViewMode
+  filePath: string
   onContentChange: (id: string, content: string) => void; onSave: (id: string) => void
+  onComment?: (selectedText: string, comment: string) => void
+  onFrontmatterParsed?: (entries: FrontmatterEntry[], raw: string | null) => void
 }) {
-  // Markdown in preview mode
-  if (fileType === 'markdown' && viewMode === 'preview') {
+  // Markdown: tiptap handles edit/read mode internally
+  if (fileType === 'markdown') {
     return (
-      <div className="flex-1 min-h-0 overflow-auto">
-        <MarkdownPreview content={content} />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading editor...</div>}>
+          <MarkdownEditor
+            value={content}
+            onChange={(v) => onContentChange(tabId, v)}
+            fillHeight
+            hideChrome
+            onComment={onComment}
+            onFrontmatterParsed={onFrontmatterParsed}
+          />
+        </Suspense>
       </div>
     )
   }
@@ -263,7 +240,7 @@ function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentCha
     return <ScriptViewer content={content} language={getScriptLang(filePath)} />
   }
 
-  // Default: editable text editor (markdown source, plain text, etc.)
+  // Default: editable text editor (plain text, etc.)
   return (
     <TextEditor
       tabId={tabId}

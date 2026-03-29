@@ -11,7 +11,7 @@
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["tdd-workflow", "tdd", "spawn-agent", "no-slop"],
+    "refs": ["tdd", "spawn-agent", "no-slop"],
   },
   "mcp": {
     "servers": [],

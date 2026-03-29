@@ -43,6 +43,10 @@
           "items": { "type": "string" },
           "description": "Searchable tags for registry discovery (e.g. workflow, review, testing, frontend)."
         },
+        "icon": {
+          "type": "string",
+          "description": "Display icon — emoji or icon name (e.g. '\ud83e\uddea', 'test-tube')."
+        },
         "providers": {
           "type": "array",
           "items": {

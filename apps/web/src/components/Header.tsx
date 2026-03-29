@@ -1,8 +1,9 @@
-import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut, Settings, Users, Zap, Server, Upload, FolderOpen, ChevronDown } from 'lucide-react'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { LogOut, Settings, Users, Zap, Server, Upload, Layers } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
+import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -21,7 +22,7 @@ function NavDropdown({ label, href, items, isActive }: {
       <Link
         to={href as string}
         onClick={() => setOpen(false)}
-        className={`rounded-md px-3 py-1.5 text-sm transition select-none no-underline ${
+        className={`rounded-md px-3 py-2.5 text-sm transition select-none no-underline ${
           isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
         }`}
       >
@@ -107,8 +108,49 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
 const STUDIO_ITEMS = [
   { icon: Users, label: 'My Agents', href: '/studio/agents', desc: 'Configure your AI agents' },
   { icon: Zap, label: 'Skills IDE', href: '/studio/skills', desc: 'Create and edit skills' },
+  { icon: Layers, label: 'Session', href: '/studio/session', desc: 'Canvas, artifacts, and annotations' },
   { icon: Settings, label: 'Settings', href: '/studio/settings', desc: 'Account and defaults' },
 ]
+
+const STUDIO_NAV = [
+  { to: '/studio/agents', icon: Users, label: 'Agents' },
+  { to: '/studio/skills', icon: Zap, label: 'Skills' },
+  { to: '/studio/session', icon: Layers, label: 'Session' },
+  { to: '/studio/settings', icon: Settings, label: 'Settings' },
+] as const
+
+function StudioNav({ pathname }: { pathname: string }) {
+  const navigate = useNavigate()
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  return (
+    <nav aria-label="Studio navigation" className="flex items-center gap-1">
+      {STUDIO_NAV.map((item, i) => {
+        const isActive = pathname.startsWith(item.to)
+        const Icon = item.icon
+        return (
+          <button
+            key={item.to}
+            onClick={() => void navigate({ to: item.to as string })}
+            onMouseEnter={() => setHoverIdx(i)}
+            onMouseLeave={() => setHoverIdx(null)}
+            className={`relative flex items-center justify-center size-8 rounded-lg transition-colors ${
+              isActive
+                ? 'text-primary bg-primary/10'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+            }`}
+          >
+            <Icon className="size-4" strokeWidth={isActive ? 2.2 : 1.8} />
+            {hoverIdx === i && (
+              <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[11px] font-medium text-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-150 pointer-events-none z-50">
+                {item.label}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
 
 const REGISTRY_ITEMS = [
   { icon: Zap, label: 'Skills', href: '/registry', desc: 'Browse agent skills' },
@@ -161,10 +203,8 @@ export default function Header() {
         <div className="flex-1" />
 
         {isStudio && (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-medium text-foreground hover:bg-muted/50 transition-colors cursor-pointer">
-            <FolderOpen className="size-3.5" />
-            <span>Ship</span>
-            <ChevronDown className="size-3 text-muted-foreground" />
+          <div className="hidden sm:flex items-center">
+            <StudioNav pathname={pathname} />
           </div>
         )}
 
@@ -176,7 +216,7 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* GitHub sign-in hidden until OAuth is configured */}
+          {isStudio && <CliStatusPopover onAddSkill={() => {}} />}
           {user && <UserMenu user={{ name: user.name, email: user.email, image: user.image }} />}
           <ThemeToggle variant="icon" />
         </div>

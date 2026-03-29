@@ -48,8 +48,8 @@ export function ProviderLogo({ provider, size = 'sm', className = '' }: Props) {
   if (provider === 'opencode') {
     return (
       <>
-        <img src="/opencode-icon-light.svg" alt="OpenCode" className={`${cls} object-contain dark:hidden ${className}`} />
-        <img src="/opencode-icon-dark.svg" alt="OpenCode" className={`${cls} object-contain hidden dark:block ${className}`} />
+        <img src="/provider-logos/opencode-logo-light.svg" alt="OpenCode" className={`${cls} object-contain dark:hidden ${className}`} />
+        <img src="/provider-logos/opencode-logo-dark.svg" alt="OpenCode" className={`${cls} object-contain hidden dark:block ${className}`} />
       </>
     )
   }

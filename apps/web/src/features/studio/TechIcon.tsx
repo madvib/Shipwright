@@ -27,7 +27,7 @@ export const TECH_STACKS = {
   typescript: { slug: 'typescript',     fg: '#fff',    bg: '#3178c6', border: '#3178c666' },
   javascript: { slug: 'javascript',     fg: '#000',    bg: '#f7df1e', border: '#f7df1e66' },
   python:     { slug: 'python',         fg: '#fff',    bg: '#3776ab', border: '#3776ab66' },
-  rust:       { slug: 'rust',           fg: '#ce422b', bg: '#1a0a08', border: '#ce422b33' },
+  rust:       { slug: 'rust',           fg: '#ce422b', bg: '#ce422b18', border: '#ce422b33' },
   go:         { slug: 'go',             fg: '#00acd7', bg: '#00acd722', border: '#00acd733' },
   java:       { slug: 'openjdk',        fg: '#fff',    bg: '#ed8b00', border: '#ed8b0066' },
   swift:      { slug: 'swift',          fg: '#fff',    bg: '#f05138', border: '#f0513866' },
@@ -37,8 +37,8 @@ export const TECH_STACKS = {
   elixir:     { slug: 'elixir',         fg: '#fff',    bg: '#4b275f', border: '#4b275f66' },
 
   // ── Frameworks ─────────────────────────────────────────────────────────
-  react:      { slug: 'react',          fg: '#61dafb', bg: '#20232a', border: '#61dafb33' },
-  nextjs:     { slug: 'nextdotjs',      fg: '#fff',    bg: '#000',    border: '#ffffff22' },
+  react:      { slug: 'react',          fg: '#61dafb', bg: '#61dafb22', border: '#61dafb33' },
+  nextjs:     { slug: 'nextdotjs',      fg: '#000',    bg: '#00000012', border: '#00000022' },
   vue:        { slug: 'vuedotjs',       fg: '#fff',    bg: '#42b883', border: '#42b88366' },
   svelte:     { slug: 'svelte',         fg: '#fff',    bg: '#ff3e00', border: '#ff3e0066' },
   angular:    { slug: 'angular',        fg: '#fff',    bg: '#dd0031', border: '#dd003166' },
@@ -46,7 +46,7 @@ export const TECH_STACKS = {
   tailwind:   { slug: 'tailwindcss',    fg: '#fff',    bg: '#06b6d4', border: '#06b6d466' },
   django:     { slug: 'django',         fg: '#fff',    bg: '#092e20', border: '#09434066' },
   rails:      { slug: 'rubyonrails',    fg: '#fff',    bg: '#d30001', border: '#d3000166' },
-  flask:      { slug: 'flask',          fg: '#fff',    bg: '#000',    border: '#ffffff22' },
+  flask:      { slug: 'flask',          fg: '#000',    bg: '#00000012', border: '#00000022' },
   fastapi:    { slug: 'fastapi',        fg: '#fff',    bg: '#009688', border: '#00968866' },
 
   // ── Infrastructure ─────────────────────────────────────────────────────
@@ -108,6 +108,16 @@ export const ICON_CATEGORIES = [
   { id: 'ai', label: 'AI', keys: ['anthropic','pytorch','tensorflow'] },
 ] as const
 
+/** Relative luminance (0=black, 1=white) from a hex color string (no #) */
+function hexLuminance(hex: string): number {
+  const r = parseInt(hex.slice(0, 2), 16) / 255
+  const g = parseInt(hex.slice(2, 4), 16) / 255
+  const b = parseInt(hex.slice(4, 6), 16) / 255
+  // sRGB relative luminance
+  const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+}
+
 interface TechIconProps {
   stack: string
   size?: number
@@ -119,7 +129,13 @@ export function TechIcon({ stack, size = 36, className = '', style }: TechIconPr
   const [imgFailed, setImgFailed] = useState(false)
   const tech = TECH_STACKS[stack as TechStack] ?? TECH_STACKS.custom
   const iconSize = Math.round(size * 0.55)
-  const fg = tech.fg.replace('#', '')
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  // Programmatic contrast: if fg is too light for light mode or too dark for dark mode, swap
+  const fgHex = tech.fg.replace('#', '')
+  const fgLuminance = hexLuminance(fgHex)
+  const needsSwap = isDark ? fgLuminance < 0.15 : fgLuminance > 0.7
+  const resolvedFgHex = needsSwap ? (isDark ? 'e0e0e0' : '333333') : fgHex
+  const resolvedFgColor = `#${resolvedFgHex}`
   const showImg = tech.slug && !imgFailed
 
   return (
@@ -136,7 +152,7 @@ export function TechIcon({ stack, size = 36, className = '', style }: TechIconPr
     >
       {showImg ? (
         <img
-          src={`https://cdn.simpleicons.org/${tech.slug}/${fg}`}
+          src={`https://cdn.simpleicons.org/${tech.slug}/${resolvedFgHex}`}
           alt=""
           width={iconSize}
           height={iconSize}
@@ -146,7 +162,7 @@ export function TechIcon({ stack, size = 36, className = '', style }: TechIconPr
       ) : 'lucide' in tech && tech.lucide && LUCIDE_ICONS[tech.lucide] ? (
         (() => {
           const Icon = LUCIDE_ICONS[tech.lucide]
-          return <Icon style={{ width: iconSize, height: iconSize, color: tech.fg }} />
+          return <Icon style={{ width: iconSize, height: iconSize, color: resolvedFgColor }} />
         })()
       ) : (
         <span
@@ -154,7 +170,7 @@ export function TechIcon({ stack, size = 36, className = '', style }: TechIconPr
             fontSize: size <= 24 ? 8 : size <= 32 ? 10 : 12,
             fontFamily: 'monospace',
             fontWeight: 700,
-            color: tech.fg,
+            color: resolvedFgColor,
             letterSpacing: '-0.03em',
           }}
         >

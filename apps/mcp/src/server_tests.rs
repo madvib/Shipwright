@@ -261,9 +261,6 @@ fn stable_build_registers_only_platform_tools() {
         "event",
         "open_project",
         "set_agent",
-        "pull_agents",
-        "list_local_agents",
-        "push_bundle",
         "activate_workspace",
         "list_workspaces",
         "create_workspace",
@@ -276,10 +273,9 @@ fn stable_build_registers_only_platform_tools() {
         "get_skill_vars",
         "set_skill_var",
         "list_skill_vars",
-        "write_skill_file",
-        "delete_skill_file",
-        "list_project_skills",
         "list_events",
+        // Studio-only tools NOT here: pull_agents, list_local_agents,
+        // push_bundle, write/delete_skill_file, list_project_skills
     ];
     for tool in expected {
         assert!(
@@ -328,11 +324,11 @@ fn unstable_build_registers_all_tools() {
             "{tool} missing from unstable router"
         );
     }
-    // 22 stable + 18 unstable
+    // 16 stable + 18 unstable
     assert_eq!(
         names.len(),
-        40,
-        "unstable build should register 40 tools, got: {:?}",
+        34,
+        "unstable build should register 34 tools, got: {:?}",
         names
     );
 }

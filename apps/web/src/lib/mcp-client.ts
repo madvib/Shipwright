@@ -1,5 +1,5 @@
 // Minimal MCP client for Streamable HTTP transport.
-// Speaks JSON-RPC 2.0 over POST to a local `ship mcp serve --http` endpoint.
+// Speaks JSON-RPC 2.0 over POST to a local `ship studio` endpoint.
 // No SDK dependency — just fetch.
 
 export interface McpClientOptions {

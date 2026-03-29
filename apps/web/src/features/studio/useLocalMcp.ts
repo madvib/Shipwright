@@ -1,4 +1,4 @@
-// React hook for connecting to a local `ship mcp serve --http` instance.
+// React hook for connecting to a local `ship studio` instance.
 // Manages connection lifecycle, exposes tool calls, and tracks status.
 // Listens for server-pushed notifications via SSE to reactively invalidate
 // React Query caches instead of polling.
@@ -21,6 +21,7 @@ interface McpConfig {
 }
 
 function loadConfig(): McpConfig {
+  if (typeof window === 'undefined') return { port: DEFAULT_PORT }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as McpConfig
@@ -56,7 +57,7 @@ export function useLocalMcp(): UseLocalMcpReturn {
   const [localAgentIds, setLocalAgentIds] = useState<Set<string>>(new Set())
   const [config, setConfig] = useState<McpConfig>(loadConfig)
   const [hasEverConnected, setHasEverConnected] = useState(
-    () => localStorage.getItem(EVER_CONNECTED_KEY) === 'true',
+    () => typeof window !== 'undefined' && localStorage.getItem(EVER_CONNECTED_KEY) === 'true',
   )
   const clientRef = useRef<McpClient | null>(null)
   const queryClient = useQueryClient()
@@ -140,7 +141,7 @@ export function useLocalMcp(): UseLocalMcpReturn {
         err instanceof McpClientError
           ? err.message
           : err instanceof TypeError
-            ? `Cannot reach localhost:${config.port} — is \`ship mcp serve --http\` running?`
+            ? `Cannot reach localhost:${config.port} — is \`ship studio\` running?`
             : 'Connection failed'
       setError(msg)
       setStatus('error')
@@ -201,7 +202,7 @@ export function useLocalMcp(): UseLocalMcpReturn {
         if (result.content.some((c) =>
           c.type === 'text' && c.text && /no active project|project.not.(found|set|open)/i.test(c.text),
         )) {
-          setError('No active project. Run `ship mcp serve --http` from your project directory.')
+          setError('No active project. Run `ship studio` from your project directory.')
         }
 
         return text

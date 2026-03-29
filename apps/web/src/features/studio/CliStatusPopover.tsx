@@ -59,7 +59,7 @@ function PopoverBody({ mcp }: {
   const [confirmPush, setConfirmPush] = useState(false)
   const { agents } = useAgents()
   const { drafts, clearDraft } = useAgentDrafts()
-  const startCmd = `ship mcp serve --http --port ${mcp.port}`
+  const startCmd = `ship studio --port ${mcp.port}`
   const isIdle = mcp.status !== 'connected' && mcp.status !== 'connecting'
   const isConnected = mcp.status === 'connected'
 

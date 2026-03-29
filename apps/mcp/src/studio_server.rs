@@ -11,7 +11,7 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{project, skills, studio};
+use crate::tools::{git_info, project, session_files, skills, studio};
 use skills::{
     delete_skill_file, get_skill_vars_tool, list_project_skills, list_skill_vars_tool,
     set_skill_var_tool, write_skill_file,
@@ -32,9 +32,25 @@ pub struct StudioServer {
 impl StudioServer {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        // Detect project from CWD at startup so tools work immediately
+        let project_dir = runtime::project::get_project_dir(None)
+            .ok()
+            .map(|ship_dir| {
+                // get_project_dir returns the .ship dir — resolve to project root
+                if ship_dir.file_name().and_then(|n| n.to_str()) == Some(".ship") {
+                    ship_dir.parent().unwrap_or(&ship_dir).to_path_buf()
+                } else {
+                    ship_dir
+                }
+            });
+        if let Some(ref dir) = project_dir {
+            tracing::info!("ship studio: detected project at {}", dir.display());
+        } else {
+            tracing::warn!("ship studio: no project detected from CWD — tools will require open_project");
+        }
         Self {
             tool_router: Self::tool_router(),
-            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -75,10 +91,7 @@ impl StudioServer {
 
     // ---- Studio sync ----
 
-    #[tool(
-        description = "Pull all local agents with resolved skills, rules, and MCP configs. \
-        Returns the full agent profiles ready for import into Studio."
-    )]
+    #[tool(description = "Pull all local agents with resolved skills, rules, and MCP configs.")]
     async fn pull_agents(&self) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -96,11 +109,7 @@ impl StudioServer {
         studio::list_local_agents(&project_dir)
     }
 
-    #[tool(
-        description = "Receive an agent config bundle from Studio and write it to .ship/. \
-        The bundle parameter is a JSON string containing agent profile, inline skills, \
-        and dependencies."
-    )]
+    #[tool(description = "Receive an agent config bundle from Studio and write it to .ship/.")]
     async fn push_bundle(&self, Parameters(req): Parameters<PushBundleRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -115,10 +124,7 @@ impl StudioServer {
 
     // ---- Skills ----
 
-    #[tool(
-        description = "List all skills in .ship/skills/ with full resolved content. \
-        Returns a JSON array of PullSkill objects. Optionally filter by query substring."
-    )]
+    #[tool(description = "List all skills in .ship/skills/ with full resolved content.")]
     async fn list_project_skills(
         &self,
         Parameters(req): Parameters<ListProjectSkillsRequest>,
@@ -130,10 +136,7 @@ impl StudioServer {
         list_project_skills(&project_dir, req)
     }
 
-    #[tool(
-        description = "List skills available to the active project. Optionally filter by \
-        search query."
-    )]
+    #[tool(description = "List skills available to the active project. Optionally filter by query.")]
     async fn list_skills(&self, Parameters(req): Parameters<ListSkillsRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -142,8 +145,7 @@ impl StudioServer {
         skills::list_skills(&project_dir, req)
     }
 
-    #[tool(description = "Write a file into a skill directory on disk \
-        (.ship/skills/<skill_id>/<file_path>). Creates parent directories as needed.")]
+    #[tool(description = "Write a file into a skill directory (.ship/skills/<skill_id>/<path>).")]
     async fn write_skill_file(&self, Parameters(req): Parameters<WriteSkillFileRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -156,8 +158,7 @@ impl StudioServer {
         result
     }
 
-    #[tool(description = "Delete a single file from a skill directory. \
-        Refuses to delete SKILL.md (the skill definition itself).")]
+    #[tool(description = "Delete a file from a skill directory. Refuses to delete SKILL.md.")]
     async fn delete_skill_file(
         &self,
         Parameters(req): Parameters<DeleteSkillFileRequest>,
@@ -175,10 +176,7 @@ impl StudioServer {
 
     // ---- Vars ----
 
-    #[tool(
-        description = "Get the merged variable state for a skill (defaults + user state + \
-        project state). Returns JSON object of var name to current value."
-    )]
+    #[tool(description = "Get the merged variable state for a skill (defaults + user + project).")]
     async fn get_skill_vars(&self, Parameters(req): Parameters<GetSkillVarsRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -187,10 +185,7 @@ impl StudioServer {
         get_skill_vars_tool(&project_dir, req)
     }
 
-    #[tool(
-        description = "Set a skill variable value. Pass value_json as a JSON-encoded string. \
-        The variable must be declared in the skill's vars.json."
-    )]
+    #[tool(description = "Set a skill variable value. The variable must be declared in vars.json.")]
     async fn set_skill_var(&self, Parameters(req): Parameters<SetSkillVarRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
@@ -203,16 +198,95 @@ impl StudioServer {
         result
     }
 
-    #[tool(
-        description = "List all skills that have configurable variables (vars.json). \
-        Optionally filter to a single skill_id. Shows current value for each var."
-    )]
+    #[tool(description = "List skills with configurable variables. Optionally filter by skill_id.")]
     async fn list_skill_vars(&self, Parameters(req): Parameters<ListSkillVarsRequest>) -> String {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(e) => return e,
         };
         list_skill_vars_tool(&project_dir, req)
+    }
+
+    // ---- Session Files ----
+
+    #[tool(description = "List all files in .ship-session/ with path, size, modified, and type.")]
+    async fn list_session_files(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::list_session_files(&project_dir)
+    }
+
+    #[tool(description = "Read a file from .ship-session/. Returns data URI for images.")]
+    async fn read_session_file(
+        &self,
+        Parameters(req): Parameters<ReadSessionFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::read_session_file(&project_dir, req)
+    }
+
+    #[tool(description = "Write a file to .ship-session/. Creates parent directories as needed.")]
+    async fn write_session_file(
+        &self,
+        Parameters(req): Parameters<WriteSessionFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::write_session_file(&project_dir, req)
+    }
+
+    #[tool(description = "Delete a file from .ship-session/.")]
+    async fn delete_session_file(&self, Parameters(req): Parameters<ReadSessionFileRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::delete_session_file(&project_dir, &req.path)
+    }
+
+    // ---- Git info ----
+
+    #[tool(description = "Get current branch, clean/dirty status, and a summary of changes.")]
+    async fn get_git_status(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::get_git_status(&project_dir)
+    }
+
+    #[tool(description = "Get a unified diff. Defaults to unstaged changes against HEAD.")]
+    async fn get_git_diff(&self, Parameters(req): Parameters<GetGitDiffRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::get_git_diff(&project_dir, req)
+    }
+
+    #[tool(description = "Get recent git commits with hash, message, author, date, and files changed.")]
+    async fn get_git_log(&self, Parameters(req): Parameters<GetGitLogRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::get_git_log(&project_dir, req)
+    }
+
+    #[tool(description = "List active git worktrees with path, branch, and HEAD commit.")]
+    async fn list_worktrees(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        git_info::list_worktrees(&project_dir)
     }
 }
 

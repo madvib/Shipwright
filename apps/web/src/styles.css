@@ -143,6 +143,10 @@
     box-sizing: border-box;
   }
 
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
   html,
   body,
   #root {
@@ -240,6 +244,9 @@
 .md-preview .md-ul { list-style-type: disc; }
 .md-preview .md-ol { list-style-type: decimal; }
 .md-preview .md-ul li, .md-preview .md-ol li { margin: 0.15rem 0; }
+.md-preview .md-todo { list-style: none; display: flex; align-items: baseline; gap: 0.4rem; margin-left: -1.25rem; }
+.md-preview .md-todo input[type="checkbox"] { accent-color: var(--primary); margin: 0; transform: translateY(1px); }
+.md-preview .md-todo-done { text-decoration: line-through; opacity: 0.6; }
 .md-preview .md-link { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
 .md-preview .md-link:hover { opacity: 0.8; }
 .md-preview .md-hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }

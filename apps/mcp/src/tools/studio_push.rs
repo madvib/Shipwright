@@ -94,6 +94,9 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
     if let Some(ref providers) = agent.providers {
         agent_obj.insert("providers".into(), serde_json::json!(providers));
     }
+    if let Some(ref icon) = agent.icon {
+        agent_obj.insert("icon".into(), serde_json::json!(icon));
+    }
     root.insert("agent".into(), serde_json::Value::Object(agent_obj));
 
     // top-level optional fields

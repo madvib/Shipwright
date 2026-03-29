@@ -1,23 +1,16 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Minimize2, Sparkles, Wand2, Type, AlignLeft, CheckCircle } from 'lucide-react';
+import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { Button } from '../button';
 import { Label } from '../label';
 import { Tabs, TabsList, TabsTrigger } from '../tabs';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuGroup,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '../dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip';
-import CustomMilkdownEditor from './CustomMilkdownEditor';
-import { stripAllFrontmatter } from './frontmatter';
+import TiptapEditor from './TiptapEditor';
+import { AiActionsMenu, INSTRUCTION_MAP } from './AiActionsMenu';
+import type { AiAction } from './AiActionsMenu';
+import { stripAllFrontmatter, splitFrontmatterDocument, composeFrontmatterDocument, parseFrontmatterEntries } from './frontmatter';
+import type { FrontmatterEntry } from './frontmatter';
 
 type EditorMode = 'edit' | 'read';
 type LegacyEditorMode = 'doc' | 'raw' | 'preview' | 'split' | 'edit' | 'read';
@@ -35,17 +28,20 @@ export interface MarkdownEditorProps {
     onMcpSample?: () => Promise<string | null | undefined> | string | null | undefined;
     sampleLabel?: string;
     sampleRequiresMcp?: boolean;
-    sampleInline?: boolean;
     showStats?: boolean;
     fillHeight?: boolean;
     fullWidth?: boolean;
     editorClassName?: string;
-    /** @deprecated No-op — frontmatter display is YAGNI until rich field components exist */
-    showFrontmatter?: boolean;
-    /** @deprecated No-op — metadata panels should manage frontmatter directly */
-    frontmatterPanel?: ReactNode | unknown;
     showAiActions?: boolean;
     onTransformText?: (instruction: string, text: string) => Promise<string>;
+    /** Called when user highlights text and submits a comment via the selection menu */
+    onComment?: (selectedText: string, comment: string) => void;
+    /** Hide the wrapper chrome (label, Edit/Read tabs, stats). Just render the editor. */
+    hideChrome?: boolean;
+    /** Called when user highlights text and requests AI generation */
+    onGenerate?: (selectedText: string) => void;
+    /** Called with parsed frontmatter when the document has frontmatter */
+    onFrontmatterParsed?: (entries: FrontmatterEntry[], raw: string | null) => void;
 }
 
 function normalizeMode(defaultMode?: EditorMode | LegacyEditorMode): EditorMode {
@@ -74,6 +70,10 @@ export default function MarkdownEditor({
     editorClassName,
     showAiActions = true,
     onTransformText,
+    onComment,
+    hideChrome = false,
+    onGenerate,
+    onFrontmatterParsed,
 }: MarkdownEditorProps) {
     const onChangeRef = useRef(onChange);
     const internalMarkdownRef = useRef(value);
@@ -96,19 +96,34 @@ export default function MarkdownEditor({
         internalMarkdownRef.current = value;
     }, [value]);
 
+    // Split frontmatter from body — tiptap only edits the body
+    const fmDoc = useMemo(() => splitFrontmatterDocument(internalMarkdown), [internalMarkdown]);
+    const fmEntries = useMemo(() => parseFrontmatterEntries(fmDoc.frontmatter), [fmDoc.frontmatter]);
+
+    // Notify parent of frontmatter entries
+    const onFrontmatterParsedRef = useRef(onFrontmatterParsed);
+    useEffect(() => { onFrontmatterParsedRef.current = onFrontmatterParsed; }, [onFrontmatterParsed]);
+    useEffect(() => {
+        onFrontmatterParsedRef.current?.(fmEntries, fmDoc.frontmatter);
+    }, [fmEntries, fmDoc.frontmatter]);
+
     const wordCount = useMemo(() => {
-        const trimmed = stripAllFrontmatter(internalMarkdown).trim();
+        const trimmed = fmDoc.body.trim();
         return trimmed ? trimmed.split(/\s+/).length : 0;
-    }, [internalMarkdown]);
+    }, [fmDoc.body]);
 
     const resolvedSampleLabel = sampleLabel ?? (sampleRequiresMcp ? 'Generate Draft' : 'Insert Template');
     const sampleDisabled = sampling || !onMcpSample || (sampleRequiresMcp && !mcpEnabled);
 
     const handleEditorChange = (next: string) => {
-        if (next === internalMarkdownRef.current) return;
-        internalMarkdownRef.current = next;
-        setInternalMarkdown(next);
-        onChangeRef.current(next);
+        // Recompose frontmatter + edited body
+        const full = fmDoc.frontmatter
+            ? composeFrontmatterDocument(fmDoc.frontmatter, next, fmDoc.delimiter ?? '---')
+            : next;
+        if (full === internalMarkdownRef.current) return;
+        internalMarkdownRef.current = full;
+        setInternalMarkdown(full);
+        onChangeRef.current(full);
     };
 
     const triggerSample = async () => {
@@ -133,18 +148,12 @@ export default function MarkdownEditor({
         setSampleUndoState(null);
     };
 
-    const handleAiAction = async (action: 'polish' | 'shorten' | 'expand' | 'fix_grammar') => {
+    const handleAiAction = async (action: AiAction) => {
         if (!internalMarkdown.trim() || !onTransformText) return;
         setAiActionError(null);
         setSampling(true);
         try {
-            const instructionMap = {
-                polish: 'Polish the writing to be more professional and clear',
-                shorten: 'Make the text more concise and remove jargon',
-                expand: 'Add more relevant details and context',
-                fix_grammar: 'Fix any grammar or spelling issues',
-            };
-            const res = await onTransformText(instructionMap[action], internalMarkdown);
+            const res = await onTransformText(INSTRUCTION_MAP[action], internalMarkdown);
             handleEditorChange(res);
         } catch (err) {
             console.error(`AI Action failed: ${err}`);
@@ -157,14 +166,15 @@ export default function MarkdownEditor({
     return (
         <div
             className={cn(
-                fillHeight ? 'flex h-full min-h-0 flex-col gap-1' : 'space-y-1',
+                fillHeight ? 'flex h-full min-h-0 flex-col' : 'space-y-1',
+                !hideChrome && 'gap-1',
                 fullWidth && 'w-full',
                 expanded && 'fixed inset-0 z-[120] bg-background p-1 shadow-2xl md:p-2',
                 className
             )}
         >
-            {/* Toolbar */}
-            <div className="flex items-center gap-1 overflow-x-auto">
+            {/* Toolbar — not rendered when hideChrome is true */}
+            {!hideChrome && <div className="flex items-center gap-1 overflow-x-auto">
                 {(label || toolbarStart) && (
                     <div className="flex shrink-0 items-center gap-1">
                         {label && <Label>{label}</Label>}
@@ -195,46 +205,7 @@ export default function MarkdownEditor({
                     )}
 
                     {showAiActions && mode === 'edit' && onTransformText && (
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger render={
-                                        <Button variant="outline" size="xs" disabled={sampling}>
-                                            <Wand2 className="size-3.5" />
-                                            Create with AI
-                                        </Button>
-                                    } />
-                                    <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
-                                        <DropdownMenuGroup>
-                                            <DropdownMenuLabel className="px-2 pb-2 opacity-50 uppercase text-[9px] tracking-[0.2em] font-black">
-                                                Transform Text
-                                            </DropdownMenuLabel>
-                                        </DropdownMenuGroup>
-                                        <DropdownMenuSeparator className="opacity-50" />
-                                        <div className="space-y-0.5">
-                                            <DropdownMenuItem onClick={() => handleAiAction('polish')} className="flex items-center gap-2 rounded-md">
-                                                <Sparkles className="size-3.5 text-amber-500" />
-                                                <span className="text-sm">Polish Writing</span>
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleAiAction('shorten')} className="flex items-center gap-2 rounded-md">
-                                                <AlignLeft className="size-3.5 text-blue-500" />
-                                                <span className="text-sm">Make Concise</span>
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleAiAction('expand')} className="flex items-center gap-2 rounded-md">
-                                                <Type className="size-3.5 text-indigo-500" />
-                                                <span className="text-sm">Expand Details</span>
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator className="opacity-50" />
-                                            <DropdownMenuItem onClick={() => handleAiAction('fix_grammar')} className="flex items-center gap-2 rounded-md">
-                                                <CheckCircle className="size-3.5 text-emerald-500" />
-                                                <span className="text-sm">Fix Grammar</span>
-                                            </DropdownMenuItem>
-                                        </div>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </TooltipTrigger>
-                            <TooltipContent>Refine, polish, or transform your text using AI.</TooltipContent>
-                        </Tooltip>
+                        <AiActionsMenu disabled={sampling} onAction={handleAiAction} />
                     )}
 
                     {showStats && mode === 'edit' && (
@@ -254,7 +225,7 @@ export default function MarkdownEditor({
                         {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
                     </Button>
                 </div>
-            </div>
+            </div>}
 
             {aiActionError && (
                 <p className="text-[11px] text-destructive">AI action failed: {aiActionError}</p>
@@ -265,13 +236,15 @@ export default function MarkdownEditor({
                 {mode === 'edit' && (
                     <div className={cn(fillHeight ? 'flex h-full min-h-0 flex-col' : 'space-y-1')}>
                         <div className={cn(fillHeight ? 'min-h-0 flex-1' : 'h-full')}>
-                            <CustomMilkdownEditor
-                                value={internalMarkdown}
+                            <TiptapEditor
+                                value={fmDoc.body}
                                 onChange={handleEditorChange}
                                 placeholder={placeholder}
                                 fillHeight={fillHeight}
                                 minHeightPx={minHeightPx}
                                 className={editorClassName}
+                                onComment={onComment}
+                                onGenerate={onGenerate}
                             />
                         </div>
                     </div>

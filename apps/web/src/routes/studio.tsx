@@ -1,15 +1,11 @@
-import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
+import { createFileRoute, Outlet, useMatches, useRouterState } from '@tanstack/react-router'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { StudioDock } from '#/features/studio/StudioDock'
-import { SyncStatus } from '#/features/studio/SyncStatus'
-import type { SyncStatusValue } from '#/features/studio/SyncStatus'
 import { PublishPanel } from '#/features/studio/PublishPanel'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
 import { useAgents } from '#/features/agents/useAgents'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
-import { LocalMcpProvider } from '#/features/studio/LocalMcpContext'
 import { PanicSaveProvider } from '#/features/agents/PanicSaveContext'
 
 export const Route = createFileRoute('/studio')({
@@ -21,15 +17,13 @@ export const Route = createFileRoute('/studio')({
 function StudioLayout() {
   return (
     <PanicSaveProvider>
-      <LocalMcpProvider>
-        <StudioSyncShell />
-      </LocalMcpProvider>
+      <StudioSyncShell />
     </PanicSaveProvider>
   )
 }
 
 function StudioSyncShell() {
-  const { library, addSkill } = useLibrary()
+  const { library } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -49,11 +43,8 @@ function StudioSyncShell() {
     typeof window !== 'undefined' ? window.innerWidth >= 768 : true
   )
 
-  const { getAgent, isConnected } = useAgents()
+  const { getAgent } = useAgents()
   const activeAgent = activeAgentId ? getAgent(activeAgentId) : undefined
-
-  // Derive sync status from MCP connection state
-  const syncStatus: SyncStatusValue = isConnected ? 'saved' : 'idle'
 
   // Build effective library: merge agent config when viewing an agent
   const effectiveLibrary = useMemo(() => {
@@ -80,13 +71,17 @@ function StudioSyncShell() {
   // Only show compiler output panel on agent detail pages
   const showCompilerPanel = Boolean(activeAgentId)
 
+  // Session page is full-screen — no padding
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isSession = pathname.startsWith('/studio/session')
+
   return (
-    <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative pb-20">
+    <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative">
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        <div className="flex-1 overflow-auto min-w-0">
+        <div className={`flex-1 min-w-0 ${isSession ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
           <Outlet />
         </div>
-        {showCompilerPanel && panelOpen && (
+        {showCompilerPanel && panelOpen && !isSession && (
           <div className="hidden md:block">
             <PublishPanel
               library={effectiveLibrary}
@@ -95,15 +90,6 @@ function StudioSyncShell() {
             />
           </div>
         )}
-      </div>
-      <StudioDock
-        previewOpen={showCompilerPanel && panelOpen}
-        showPreviewToggle={showCompilerPanel}
-        onTogglePreview={() => setPanelOpen((p) => !p)}
-        onAddSkill={addSkill}
-      />
-      <div className="fixed bottom-16 right-4 z-40 pointer-events-none">
-        <SyncStatus status={syncStatus} />
       </div>
     </main>
   )
