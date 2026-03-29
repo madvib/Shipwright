@@ -320,7 +320,7 @@ mod tests {
 
         let sentinel_session_id = "sess-atomicity-sentinel";
         let sentinel_workspace_id = "ws-atomicity-sentinel";
-        let payload = SessionStarted { goal: None };
+        let payload = SessionStarted { goal: None, ..Default::default() };
 
         let result = insert_session_started_event(
             sentinel_session_id,

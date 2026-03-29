@@ -18,7 +18,7 @@ fn setup() -> (tempfile::TempDir, SqliteEventStore) {
 #[test]
 fn test_actor_fields_round_trip() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
-    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "ws-1", &SessionStarted { goal: None })?
+    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "ws-1", &SessionStarted { goal: None, ..Default::default() })?
         .with_actor_id("actor-ws-001")
         .with_parent_actor_id("actor-system-000")
         .elevate();
@@ -67,7 +67,7 @@ fn test_elevated_filter() -> anyhow::Result<()> {
         store.append(&ev)?;
     }
     // session.ended — elevated (bubbles to workspace)
-    let ev_end = EventEnvelope::new(event_types::SESSION_ENDED, entity, &SessionEnded { summary: None, duration_secs: None, gate_result: None })?
+    let ev_end = EventEnvelope::new(event_types::SESSION_ENDED, entity, &SessionEnded { summary: None, duration_secs: None, gate_result: None, ..Default::default() })?
         .elevate();
     store.append(&ev_end)?;
     // workspace.activated — elevated
@@ -95,14 +95,14 @@ fn supervisor_queries_elevated_child_events_by_parent_actor_id() -> anyhow::Resu
     store.append(&parent_ev)?;
 
     // Child 1 — elevated, parent_actor_id="supervisor-1"
-    let child1 = EventEnvelope::new(event_types::SESSION_STARTED, "child-entity-1", &SessionStarted { goal: None })?
+    let child1 = EventEnvelope::new(event_types::SESSION_STARTED, "child-entity-1", &SessionStarted { goal: None, ..Default::default() })?
         .with_actor_id("child-actor-1")
         .with_parent_actor_id("supervisor-1")
         .elevate();
     store.append(&child1)?;
 
     // Child 2 — elevated, parent_actor_id="supervisor-1"
-    let child2 = EventEnvelope::new(event_types::SESSION_ENDED, "child-entity-2", &crate::events::types::SessionEnded { summary: None, duration_secs: None, gate_result: None })?
+    let child2 = EventEnvelope::new(event_types::SESSION_ENDED, "child-entity-2", &crate::events::types::SessionEnded { summary: None, duration_secs: None, gate_result: None, ..Default::default() })?
         .with_actor_id("child-actor-2")
         .with_parent_actor_id("supervisor-1")
         .elevate();
@@ -136,7 +136,7 @@ fn test_hierarchy_traversal_via_parent_actor_id() -> anyhow::Result<()> {
     store.append(&ws_ev)?;
 
     // Session actor emits under workspace
-    let sess_ev = EventEnvelope::new(event_types::SESSION_STARTED, "sess-entity", &SessionStarted { goal: None })?
+    let sess_ev = EventEnvelope::new(event_types::SESSION_STARTED, "sess-entity", &SessionStarted { goal: None, ..Default::default() })?
         .with_actor_id("actor-sess-1")
         .with_parent_actor_id("actor-ws-1");
     store.append(&sess_ev)?;

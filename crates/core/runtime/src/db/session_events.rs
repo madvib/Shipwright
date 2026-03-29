@@ -1,38 +1,29 @@
 //! Transactional session state + typed event emission.
 //!
-//! Session rows (workspace_session) stay in platform.db so session CRUD
-//! functions continue to work. Session lifecycle events are routed to the
-//! per-workspace DB (events.db) when workspace_id is present.
+//! Session lifecycle events (started, ended) are written to platform.db where
+//! the global EventBus dispatches them to SessionProjection, which maintains the
+//! workspace_session row. The same events are also written to the per-workspace
+//! DB for workspace-scoped event queries.
+//!
+//! Progress events go only to the workspace DB — they are not elevated.
 //!
 //! ADR GHihs2tn: all session lifecycle transitions must emit typed events.
 //! Session is a child actor of its workspace — `parent_actor_id` = workspace ID.
+
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
 use ulid::Ulid;
 
-use crate::db::types::WorkspaceSessionDb;
 use crate::db::workspace_db::open_workspace_db_for_id;
 use crate::db::{block_on, open_db};
 use crate::events::types::event_types;
 use crate::events::types::{SessionEnded, SessionProgress, SessionStarted};
+use crate::events::EventEnvelope;
+use crate::projections::{EventBus, SessionProjection};
 
 // ── SQL constants ─────────────────────────────────────────────────────────────
-
-const SESSION_INSERT: &str =
-    "INSERT INTO workspace_session \
-     (id, workspace_id, workspace_branch, status, started_at, ended_at, agent_id, \
-      primary_provider, goal, summary, updated_workspace_ids_json, compiled_at, \
-      compile_error, config_generation_at_start, created_at, updated_at) \
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-const SESSION_UPDATE: &str =
-    "UPDATE workspace_session \
-     SET workspace_id = ?, workspace_branch = ?, status = ?, started_at = ?, \
-         ended_at = ?, agent_id = ?, primary_provider = ?, goal = ?, summary = ?, \
-         updated_workspace_ids_json = ?, compiled_at = ?, compile_error = ?, \
-         config_generation_at_start = ?, created_at = ?, updated_at = ? \
-     WHERE id = ?";
 
 // entity_id, workspace_id, session_id, actor_id, and parent_actor_id are all
 // set explicitly per-event. `elevated` is passed as a bind parameter.
@@ -43,118 +34,88 @@ const EVENT_INSERT: &str =
       actor_id, parent_actor_id, elevated, created_at) \
      VALUES (?, ?, ?, 'ship', ?, 1, NULL, NULL, ?, ?, ?, ?, ?, ?)";
 
-// ── owned bind parameter bundle ───────────────────────────────────────────────
+// ── global event bus (session) ───────────────────────────────────────────────
 
-struct SessionBind {
-    session_id: String,
-    workspace_id: String,
-    workspace_branch: String,
-    status: String,
-    started_at: String,
-    ended_at: Option<String>,
-    agent_id: Option<String>,
-    primary_provider: Option<String>,
-    goal: Option<String>,
-    summary: Option<String>,
-    updated_workspace_ids_json: String,
-    compiled_at: Option<String>,
-    compile_error: Option<String>,
-    config_generation_at_start: Option<i64>,
-    created_at: String,
-    updated_at: String,
+static SESSION_BUS: OnceLock<EventBus> = OnceLock::new();
+
+fn session_bus() -> &'static EventBus {
+    SESSION_BUS.get_or_init(|| {
+        let mut bus = EventBus::new();
+        bus.register(Box::new(SessionProjection::new()));
+        bus
+    })
 }
 
-impl SessionBind {
-    fn from_db(session: &WorkspaceSessionDb) -> Result<Self> {
-        let updated_workspace_ids_json =
-            serde_json::to_string(&session.updated_workspace_ids)
-                .context("failed to serialise updated_workspace_ids")?;
-        Ok(Self {
-            session_id: session.id.clone(),
-            workspace_id: session.workspace_id.clone(),
-            workspace_branch: session.workspace_branch.clone(),
-            status: session.status.clone(),
-            started_at: session.started_at.clone(),
-            ended_at: session.ended_at.clone(),
-            agent_id: session.agent_id.clone(),
-            primary_provider: session.primary_provider.clone(),
-            goal: session.goal.clone(),
-            summary: session.summary.clone(),
-            updated_workspace_ids_json,
-            compiled_at: session.compiled_at.clone(),
-            compile_error: session.compile_error.clone(),
-            config_generation_at_start: session.config_generation_at_start,
-            created_at: session.created_at.clone(),
-            updated_at: session.updated_at.clone(),
-        })
-    }
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/// Build a session event envelope.
+fn session_envelope<P: serde::Serialize>(
+    event_type: &str,
+    session_id: &str,
+    workspace_id: &str,
+    payload: &P,
+) -> Result<EventEnvelope> {
+    Ok(EventEnvelope::new(event_type, session_id, payload)?
+        .with_context(Some(workspace_id), Some(session_id))
+        .with_actor_id(session_id)
+        .with_parent_actor_id(workspace_id)
+        .elevate())
 }
 
-// ── public API ────────────────────────────────────────────────────────────────
+/// Insert event into platform.db and dispatch to session projection.
+fn write_platform_event(envelope: &EventEnvelope) -> Result<()> {
+    let event_ts = envelope.created_at.to_rfc3339();
 
-/// Insert session row (platform.db) and emit `session.started` (workspace DB).
-///
-/// The session row always goes to platform.db so session CRUD functions work.
-/// The event is routed to the per-workspace DB so workspace-local queries find it.
-pub fn insert_session_with_started_event(
-    session: &WorkspaceSessionDb,
-    payload: &SessionStarted,
-) -> Result<()> {
-    let sb = SessionBind::from_db(session)?;
-    let payload_json = serde_json::to_string(payload)
-        .context("failed to serialise SessionStarted payload")?;
-    let event_id = Ulid::new().to_string();
-    let event_ts = Utc::now().to_rfc3339();
-
-    // 1. Insert session row in platform.db.
-    let mut platform_conn = open_db()?;
+    let mut conn = open_db()?;
     block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut platform_conn).await?;
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
 
-        let insert_result = sqlx::query(SESSION_INSERT)
-            .bind(&sb.session_id)
-            .bind(&sb.workspace_id)
-            .bind(&sb.workspace_branch)
-            .bind(&sb.status)
-            .bind(&sb.started_at)
-            .bind(&sb.ended_at)
-            .bind(&sb.agent_id)
-            .bind(&sb.primary_provider)
-            .bind(&sb.goal)
-            .bind(&sb.summary)
-            .bind(&sb.updated_workspace_ids_json)
-            .bind(&sb.compiled_at)
-            .bind(&sb.compile_error)
-            .bind(sb.config_generation_at_start)
-            .bind(&sb.created_at)
-            .bind(&sb.updated_at)
-            .execute(&mut platform_conn)
+        let ev_result = sqlx::query(EVENT_INSERT)
+            .bind(&envelope.id)
+            .bind(&envelope.event_type)
+            .bind(&envelope.entity_id)
+            .bind(&envelope.payload_json)
+            .bind(&envelope.workspace_id)
+            .bind(&envelope.session_id)
+            .bind(&envelope.actor_id)
+            .bind(&envelope.parent_actor_id)
+            .bind(1_i64) // elevated
+            .bind(&event_ts)
+            .execute(&mut conn)
             .await;
 
-        if let Err(e) = insert_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut platform_conn).await;
+        if let Err(e) = ev_result {
+            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
             return Err(e);
         }
 
-        sqlx::query("COMMIT").execute(&mut platform_conn).await?;
+        sqlx::query("COMMIT").execute(&mut conn).await?;
         Ok(())
     })?;
 
-    // 2. Emit session.started event to workspace DB.
-    let mut ws_conn = open_workspace_db_for_id(&sb.workspace_id)?;
+    // Dispatch to session projection after successful commit.
+    session_bus().dispatch(envelope, &mut conn);
+    Ok(())
+}
+
+/// Insert event into the per-workspace DB for local event queries.
+fn write_workspace_event(envelope: &EventEnvelope, workspace_id: &str) -> Result<()> {
+    let event_ts = envelope.created_at.to_rfc3339();
+
+    let mut ws_conn = open_workspace_db_for_id(workspace_id)?;
     block_on(async {
         sqlx::query("BEGIN IMMEDIATE").execute(&mut ws_conn).await?;
 
         let ev_result = sqlx::query(EVENT_INSERT)
-            .bind(&event_id)
-            .bind(event_types::SESSION_STARTED)
-            .bind(&sb.session_id)   // entity_id = session ID
-            .bind(&payload_json)
-            .bind(&sb.workspace_id) // workspace_id
-            .bind(&sb.session_id)   // session_id
-            .bind(&sb.session_id)   // actor_id = session ID
-            .bind(&sb.workspace_id) // parent_actor_id = workspace ID
-            .bind(1_i64)            // elevated = 1
+            .bind(&envelope.id)
+            .bind(&envelope.event_type)
+            .bind(&envelope.entity_id)
+            .bind(&envelope.payload_json)
+            .bind(&envelope.workspace_id)
+            .bind(&envelope.session_id)
+            .bind(&envelope.actor_id)
+            .bind(&envelope.parent_actor_id)
+            .bind(1_i64) // elevated
             .bind(&event_ts)
             .execute(&mut ws_conn)
             .await;
@@ -169,7 +130,27 @@ pub fn insert_session_with_started_event(
     })
 }
 
-/// Emit `session.progress` event to the workspace DB.
+// ── public API ────────────────────────────────────────────────────────────────
+
+/// Emit `session.started` to platform.db (projection inserts row) and workspace DB.
+pub fn insert_session_with_started_event(
+    session_id: &str,
+    workspace_id: &str,
+    payload: &SessionStarted,
+) -> Result<()> {
+    let envelope = session_envelope(
+        event_types::SESSION_STARTED,
+        session_id,
+        workspace_id,
+        payload,
+    )?;
+
+    write_platform_event(&envelope)?;
+    write_workspace_event(&envelope, workspace_id)?;
+    Ok(())
+}
+
+/// Emit `session.progress` event to the workspace DB only.
 ///
 /// Progress events are not elevated — too noisy to bubble to workspace level.
 pub fn insert_session_progress_event(
@@ -212,76 +193,20 @@ pub fn insert_session_progress_event(
     })
 }
 
-/// Update session row (platform.db) and emit `session.ended` (workspace DB).
+/// Emit `session.ended` to platform.db (projection updates row) and workspace DB.
 pub fn update_session_with_ended_event(
-    session: &WorkspaceSessionDb,
+    session_id: &str,
+    workspace_id: &str,
     payload: &SessionEnded,
 ) -> Result<()> {
-    let sb = SessionBind::from_db(session)?;
-    let payload_json = serde_json::to_string(payload)
-        .context("failed to serialise SessionEnded payload")?;
-    let event_id = Ulid::new().to_string();
-    let event_ts = Utc::now().to_rfc3339();
+    let envelope = session_envelope(
+        event_types::SESSION_ENDED,
+        session_id,
+        workspace_id,
+        payload,
+    )?;
 
-    // 1. Update session row in platform.db.
-    let mut platform_conn = open_db()?;
-    block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut platform_conn).await?;
-
-        let update_result = sqlx::query(SESSION_UPDATE)
-            .bind(&sb.workspace_id)
-            .bind(&sb.workspace_branch)
-            .bind(&sb.status)
-            .bind(&sb.started_at)
-            .bind(&sb.ended_at)
-            .bind(&sb.agent_id)
-            .bind(&sb.primary_provider)
-            .bind(&sb.goal)
-            .bind(&sb.summary)
-            .bind(&sb.updated_workspace_ids_json)
-            .bind(&sb.compiled_at)
-            .bind(&sb.compile_error)
-            .bind(sb.config_generation_at_start)
-            .bind(&sb.created_at)
-            .bind(&sb.updated_at)
-            .bind(&sb.session_id)
-            .execute(&mut platform_conn)
-            .await;
-
-        if let Err(e) = update_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut platform_conn).await;
-            return Err(e);
-        }
-
-        sqlx::query("COMMIT").execute(&mut platform_conn).await?;
-        Ok(())
-    })?;
-
-    // 2. Emit session.ended event to workspace DB.
-    let mut ws_conn = open_workspace_db_for_id(&sb.workspace_id)?;
-    block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut ws_conn).await?;
-
-        let ev_result = sqlx::query(EVENT_INSERT)
-            .bind(&event_id)
-            .bind(event_types::SESSION_ENDED)
-            .bind(&sb.session_id)   // entity_id = session ID
-            .bind(&payload_json)
-            .bind(&sb.workspace_id) // workspace_id
-            .bind(&sb.session_id)   // session_id
-            .bind(&sb.session_id)   // actor_id = session ID
-            .bind(&sb.workspace_id) // parent_actor_id = workspace ID
-            .bind(1_i64)            // elevated = 1
-            .bind(&event_ts)
-            .execute(&mut ws_conn)
-            .await;
-
-        if let Err(e) = ev_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut ws_conn).await;
-            return Err(e);
-        }
-
-        sqlx::query("COMMIT").execute(&mut ws_conn).await?;
-        Ok(())
-    })
+    write_platform_event(&envelope)?;
+    write_workspace_event(&envelope, workspace_id)?;
+    Ok(())
 }

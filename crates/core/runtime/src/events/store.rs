@@ -165,8 +165,11 @@ impl EventStore for SqliteEventStore {
             }
         }
 
-        // Re-sort by ULID id (encodes insertion time).
+        // Re-sort by ULID id (encodes insertion time) and deduplicate.
+        // Events written to both platform.db and workspace DBs share the same
+        // ID, so dedup removes the duplicates.
         results.sort_by(|a, b| a.id.cmp(&b.id));
+        results.dedup_by(|a, b| a.id == b.id);
         Ok(results)
     }
 

@@ -21,7 +21,7 @@ fn test_round_trip() -> anyhow::Result<()> {
     let ev = EventEnvelope::new(
         event_types::SESSION_STARTED,
         "entity-a",
-        &SessionStarted { goal: Some("build the thing".into()) },
+        &SessionStarted { goal: Some("build the thing".into()), ..Default::default() },
     )?
     .with_correlation("corr-1")
     .with_context(Some("ws-1"), Some("sess-1"));
@@ -61,8 +61,8 @@ fn test_ordering() -> anyhow::Result<()> {
 #[test]
 fn test_filter_by_entity_id() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
-    let ev_a = EventEnvelope::new(event_types::SESSION_STARTED, "entity-a", &SessionStarted { goal: None })?;
-    let ev_b = EventEnvelope::new(event_types::SESSION_STARTED, "entity-b", &SessionStarted { goal: None })?;
+    let ev_a = EventEnvelope::new(event_types::SESSION_STARTED, "entity-a", &SessionStarted { goal: None, ..Default::default() })?;
+    let ev_b = EventEnvelope::new(event_types::SESSION_STARTED, "entity-b", &SessionStarted { goal: None, ..Default::default() })?;
     store.append(&ev_a)?;
     store.append(&ev_b)?;
 
@@ -77,7 +77,7 @@ fn test_filter_by_event_type() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
     let entity = "filter-type-entity";
     store.append(&EventEnvelope::new(event_types::WORKSPACE_ACTIVATED, entity, &WorkspaceActivated { agent_id: None, providers: vec![] })?)?;
-    store.append(&EventEnvelope::new(event_types::SESSION_STARTED, entity, &SessionStarted { goal: None })?)?;
+    store.append(&EventEnvelope::new(event_types::SESSION_STARTED, entity, &SessionStarted { goal: None, ..Default::default() })?)?;
     store.append(&EventEnvelope::new(event_types::WORKSPACE_COMPILED, entity, &WorkspaceCompiled { config_generation: 1, duration_ms: 50 })?)?;
 
     let ws = store.query(&EventFilter { entity_id: Some(entity.into()), event_type: Some(event_types::WORKSPACE_ACTIVATED.into()), ..Default::default() })?;
@@ -93,10 +93,10 @@ fn test_filter_by_event_type() -> anyhow::Result<()> {
 #[test]
 fn test_filter_by_workspace_id() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
-    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "e1", &SessionStarted { goal: None })?
+    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "e1", &SessionStarted { goal: None, ..Default::default() })?
         .with_context(Some("ws-scoped"), None);
     store.append(&ev)?;
-    store.append(&EventEnvelope::new(event_types::SESSION_STARTED, "e2", &SessionStarted { goal: None })?)?;
+    store.append(&EventEnvelope::new(event_types::SESSION_STARTED, "e2", &SessionStarted { goal: None, ..Default::default() })?)?;
 
     let results = store.query(&EventFilter { workspace_id: Some("ws-scoped".into()), ..Default::default() })?;
     assert_eq!(results.len(), 1);
@@ -126,9 +126,9 @@ fn test_correlation_chain() -> anyhow::Result<()> {
 #[test]
 fn test_causation_chain() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
-    let ev_a = EventEnvelope::new(event_types::SESSION_STARTED, "cause-entity", &SessionStarted { goal: None })?;
+    let ev_a = EventEnvelope::new(event_types::SESSION_STARTED, "cause-entity", &SessionStarted { goal: None, ..Default::default() })?;
     store.append(&ev_a)?;
-    let ev_b = EventEnvelope::new(event_types::SESSION_ENDED, "cause-entity", &SessionEnded { summary: None, duration_secs: None, gate_result: None })?
+    let ev_b = EventEnvelope::new(event_types::SESSION_ENDED, "cause-entity", &SessionEnded { summary: None, duration_secs: None, gate_result: None, ..Default::default() })?
         .with_causation(&ev_a.id);
     store.append(&ev_b)?;
 
@@ -140,7 +140,7 @@ fn test_causation_chain() -> anyhow::Result<()> {
 #[test]
 fn test_immutability() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
-    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "immut-entity", &SessionStarted { goal: None })?;
+    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "immut-entity", &SessionStarted { goal: None, ..Default::default() })?;
     store.append(&ev)?;
 
     let db_p = crate::db::db_path()?;
@@ -172,9 +172,9 @@ fn test_payload_round_trip() -> anyhow::Result<()> {
     rt!(event_types::WORKSPACE_COMPILED,    WorkspaceCompiled { config_generation: 3, duration_ms: 200 });
     rt!(event_types::WORKSPACE_COMPILE_FAILED, WorkspaceCompileFailed { error: "bad syntax".into() });
     rt!(event_types::WORKSPACE_ARCHIVED,    WorkspaceArchived {});
-    rt!(event_types::SESSION_STARTED,       SessionStarted { goal: Some("deploy".into()) });
+    rt!(event_types::SESSION_STARTED,       SessionStarted { goal: Some("deploy".into()), ..Default::default() });
     rt!(event_types::SESSION_PROGRESS,      SessionProgress { message: "halfway".into() });
-    rt!(event_types::SESSION_ENDED,         SessionEnded { summary: Some("done".into()), duration_secs: Some(120), gate_result: Some("pass".into()) });
+    rt!(event_types::SESSION_ENDED,         SessionEnded { summary: Some("done".into()), duration_secs: Some(120), gate_result: Some("pass".into()), ..Default::default() });
     rt!(event_types::ACTOR_CREATED,         ActorCreated { kind: "worker".into(), environment_type: "cli".into(), workspace_id: None, parent_actor_id: None, restart_count: 0 });
     rt!(event_types::ACTOR_WOKE,            ActorWoke {});
     rt!(event_types::ACTOR_SLEPT,           ActorSlept { idle_secs: 45 });
@@ -200,7 +200,7 @@ fn test_concurrent_appends() -> anyhow::Result<()> {
             let ev = EventEnvelope::new(
                 event_types::SESSION_STARTED,
                 &entity,
-                &SessionStarted { goal: None },
+                &SessionStarted { goal: None, ..Default::default() },
             )
             .expect("create envelope");
             store.append(&ev).expect("append");
@@ -236,14 +236,14 @@ fn test_version_field() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
 
     // Default version is 1
-    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "ver-entity", &SessionStarted { goal: None })?;
+    let ev = EventEnvelope::new(event_types::SESSION_STARTED, "ver-entity", &SessionStarted { goal: None, ..Default::default() })?;
     assert_eq!(ev.version, 1);
     store.append(&ev)?;
     let got = store.get(&ev.id)?.unwrap();
     assert_eq!(got.version, 1);
 
     // Explicit version
-    let mut ev2 = EventEnvelope::new(event_types::SESSION_ENDED, "ver-entity", &SessionEnded { summary: None, duration_secs: None, gate_result: None })?;
+    let mut ev2 = EventEnvelope::new(event_types::SESSION_ENDED, "ver-entity", &SessionEnded { summary: None, duration_secs: None, gate_result: None, ..Default::default() })?;
     ev2.version = 2;
     store.append(&ev2)?;
     let got2 = store.get(&ev2.id)?.unwrap();

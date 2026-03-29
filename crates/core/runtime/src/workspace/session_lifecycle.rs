@@ -5,7 +5,6 @@ use crate::db::session::{
 use crate::db::session_events::{
     insert_session_with_started_event, update_session_with_ended_event,
 };
-use crate::db::types::WorkspaceSessionDb;
 use crate::events::types::{SessionEnded, SessionStarted};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -134,28 +133,18 @@ pub fn start_workspace_session(
 
     compile_workspace_context(ship_dir, &mut workspace, agent_id.as_deref())?;
 
-    let now = Utc::now();
-    let session = WorkspaceSessionDb {
-        id: crate::gen_nanoid(),
+    let session_id = crate::gen_nanoid();
+    let started_payload = SessionStarted {
+        goal: normalize_optional_text(goal),
         workspace_id: workspace.id.clone(),
         workspace_branch: workspace.branch.clone(),
-        status: WorkspaceSessionStatus::Active.to_string(),
-        started_at: now.to_rfc3339(),
-        ended_at: None,
         agent_id,
         primary_provider: Some(primary_provider),
-        goal: normalize_optional_text(goal),
-        summary: None,
-        updated_workspace_ids: Vec::new(),
-        compiled_at: workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339()),
-        compile_error: workspace.compile_error.clone(),
         config_generation_at_start: Some(workspace.config_generation),
-        created_at: now.to_rfc3339(),
-        updated_at: now.to_rfc3339(),
+        compiled_at: workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339()),
     };
-    let started_payload = SessionStarted { goal: session.goal.clone() };
-    insert_session_with_started_event(&session, &started_payload)?;
-    let created = get_workspace_session_db(&session.id)?
+    insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
+    let created = get_workspace_session_db(&session_id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
     let started = hydrate_workspace_session(created);
 
@@ -199,8 +188,10 @@ pub fn end_workspace_session(
         summary: active.summary.clone(),
         duration_secs: Some(duration_secs_val as u64),
         gate_result: request.gate_result.clone(),
+        updated_workspace_ids: active.updated_workspace_ids.clone(),
+        compile_error: active.compile_error.clone(),
     };
-    update_session_with_ended_event(&active, &ended_payload)?;
+    update_session_with_ended_event(&active.id, &active.workspace_id, &ended_payload)?;
 
     let ended = get_workspace_session_db(&active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;

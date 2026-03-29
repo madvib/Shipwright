@@ -7,7 +7,6 @@
 mod tests {
     use crate::actor::create_actor;
     use crate::db::session_events::insert_session_with_started_event;
-    use crate::db::types::WorkspaceSessionDb;
     use crate::db::{block_on, db_path, ensure_db, open_db_at};
     use crate::events::types::event_types;
     use crate::events::types::SessionStarted;
@@ -66,31 +65,18 @@ mod tests {
     // ── test 7: session events route to workspace DB, not platform.db ─────────
 
     #[test]
-    fn session_event_writes_to_workspace_db_not_platform() -> Result<()> {
+    fn session_event_writes_to_both_platform_and_workspace_db() -> Result<()> {
         let (_tmp, ship_dir) = setup();
         let ws_id = "ws-test-session";
         let session_id = "sess-ws-routing-test";
 
-        let now = chrono::Utc::now().to_rfc3339();
-        let session = WorkspaceSessionDb {
-            id: session_id.to_string(),
+        let payload = SessionStarted {
+            goal: None,
             workspace_id: ws_id.to_string(),
             workspace_branch: "feature/ws-routing".to_string(),
-            status: "active".to_string(),
-            started_at: now.clone(),
-            ended_at: None,
-            agent_id: None,
-            primary_provider: None,
-            goal: None,
-            summary: None,
-            updated_workspace_ids: vec![],
-            compiled_at: None,
-            compile_error: None,
-            config_generation_at_start: None,
-            created_at: now.clone(),
-            updated_at: now,
+            ..Default::default()
         };
-        insert_session_with_started_event(&session, &SessionStarted { goal: None })?;
+        insert_session_with_started_event(session_id, ws_id, &payload)?;
 
         // Must appear in workspace DB
         let mut ws_conn = open_workspace_db(&ship_dir, ws_id)?;
@@ -105,7 +91,7 @@ mod tests {
         })?;
         assert_eq!(ws_count, 1, "session.started must be in workspace DB");
 
-        // Must NOT appear in platform.db
+        // Must ALSO appear in platform.db (elevated for SessionProjection)
         let mut platform_conn = open_db_at(&db_path()?)?;
         let platform_count: i64 = block_on(async {
             sqlx::query_scalar(
@@ -116,7 +102,7 @@ mod tests {
             .fetch_one(&mut platform_conn)
             .await
         })?;
-        assert_eq!(platform_count, 0, "session.started must NOT be in platform.db");
+        assert_eq!(platform_count, 1, "session.started must be in platform.db");
 
         Ok(())
     }

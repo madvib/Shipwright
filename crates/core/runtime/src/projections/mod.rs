@@ -9,13 +9,17 @@
 
 mod actor;
 mod registry;
+mod session;
 mod workspace;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_actor;
+#[cfg(test)]
+mod tests_session;
 
 pub use actor::ActorProjection;
 pub use registry::{EventBus, Projection};
+pub use session::SessionProjection;
 pub use workspace::WorkspaceProjection;

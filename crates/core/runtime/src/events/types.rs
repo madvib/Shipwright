@@ -59,9 +59,21 @@ pub struct WorkspaceAgentChanged {
 
 // ── Session aggregate ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SessionStarted {
     pub goal: Option<String>,
+    #[serde(default)]
+    pub workspace_id: String,
+    #[serde(default)]
+    pub workspace_branch: String,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub primary_provider: Option<String>,
+    #[serde(default)]
+    pub config_generation_at_start: Option<i64>,
+    #[serde(default)]
+    pub compiled_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,11 +81,15 @@ pub struct SessionProgress {
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SessionEnded {
     pub summary: Option<String>,
     pub duration_secs: Option<u64>,
     pub gate_result: Option<String>,
+    #[serde(default)]
+    pub updated_workspace_ids: Vec<String>,
+    #[serde(default)]
+    pub compile_error: Option<String>,
 }
 
 // ── Skill aggregate ───────────────────────────────────────────────────────────

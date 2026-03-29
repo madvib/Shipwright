@@ -97,7 +97,10 @@ pub fn handle_session_start(
     let event = EventEnvelope::new(
         event_types::SESSION_STARTED,
         actor_id,
-        &SessionStarted { goal: None },
+        &SessionStarted {
+            workspace_id: workspace_id.to_string(),
+            ..Default::default()
+        },
     )?
     .with_actor_id(actor_id)
     .with_context(Some(workspace_id), None);
@@ -112,7 +115,7 @@ pub fn handle_session_end(
     let event = EventEnvelope::new(
         event_types::SESSION_ENDED,
         actor_id,
-        &SessionEnded { summary: None, duration_secs: None, gate_result: None },
+        &SessionEnded::default(),
     )?
     .with_actor_id(actor_id)
     .with_context(Some(workspace_id), None);

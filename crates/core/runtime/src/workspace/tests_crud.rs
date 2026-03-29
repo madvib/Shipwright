@@ -67,25 +67,29 @@ mod tests {
             },
         )?;
 
-        let now = chrono::Utc::now().to_rfc3339();
-        crate::db::session::insert_workspace_session_db(&crate::db::types::WorkspaceSessionDb {
-            id: "session-delete-me".to_string(),
+        let started = crate::events::types::SessionStarted {
+            goal: None,
             workspace_id: workspace.id.clone(),
             workspace_branch: workspace.branch.clone(),
-            status: WorkspaceSessionStatus::Ended.to_string(),
-            started_at: now.clone(),
-            ended_at: Some(now.clone()),
-            agent_id: None,
-            primary_provider: None,
-            goal: None,
+            ..Default::default()
+        };
+        crate::db::session_events::insert_session_with_started_event(
+            "session-delete-me",
+            &workspace.id,
+            &started,
+        )?;
+        let ended = crate::events::types::SessionEnded {
             summary: Some("done".to_string()),
+            duration_secs: Some(0),
+            gate_result: None,
             updated_workspace_ids: Vec::new(),
-            compiled_at: None,
             compile_error: None,
-            config_generation_at_start: None,
-            created_at: now.clone(),
-            updated_at: now,
-        })?;
+        };
+        crate::db::session_events::update_session_with_ended_event(
+            "session-delete-me",
+            &workspace.id,
+            &ended,
+        )?;
         assert_eq!(list_workspace_sessions(&ship_dir, None, 10)?.len(), 1);
 
         delete_workspace(&ship_dir, "feature/delete-me")?;

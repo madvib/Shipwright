@@ -17,7 +17,7 @@ use crate::events::types::{
     WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceStatusChanged,
 };
 use crate::events::EventEnvelope;
-use crate::projections::{EventBus, WorkspaceProjection};
+use crate::projections::{EventBus, SessionProjection, WorkspaceProjection};
 
 // ── SQL constants ─────────────────────────────────────────────────────────────
 
@@ -36,6 +36,7 @@ fn global_bus() -> &'static EventBus {
     EVENT_BUS.get_or_init(|| {
         let mut bus = EventBus::new();
         bus.register(Box::new(WorkspaceProjection::new()));
+        bus.register(Box::new(SessionProjection::new()));
         bus
     })
 }
