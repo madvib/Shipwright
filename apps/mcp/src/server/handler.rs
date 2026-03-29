@@ -4,7 +4,7 @@ use rmcp::{
         CallToolRequestParams, CallToolResult, Content, Implementation,
         ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
         ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, ResourceContents,
-        ServerCapabilities, ServerInfo, Tool,
+        ServerCapabilities, ServerInfo, SubscribeRequestParams, Tool, UnsubscribeRequestParams,
     },
     service::{NotificationContext, RequestContext},
 };
@@ -35,6 +35,7 @@ impl ServerHandler for ShipServer {
                 .enable_tools()
                 .enable_resources()
                 .enable_resources_list_changed()
+                .enable_resources_subscribe()
                 .build(),
             server_info: Implementation {
                 name: "Ship Project Tracker".into(),
@@ -145,6 +146,26 @@ impl ServerHandler for ShipServer {
         let Ok(dir) = self.get_effective_project_dir().await else {
             return Err(ErrorData::internal_error("No active project", None));
         };
+
+        // Handle ship://session/* resources — read files from .ship-session/
+        if let Some(rel_path) = request.uri.strip_prefix("ship://session/") {
+            let session_dir = dir.join(".ship-session");
+            let file_path = session_dir.join(rel_path);
+            // Prevent path traversal
+            if !file_path.starts_with(&session_dir) {
+                return Err(ErrorData::invalid_params("Path traversal not allowed", None));
+            }
+            return match std::fs::read_to_string(&file_path) {
+                Ok(content) => Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(content, &request.uri)],
+                }),
+                Err(_) => Err(ErrorData::resource_not_found(
+                    format!("Session file not found: {}", rel_path),
+                    None,
+                )),
+            };
+        }
+
         match self.resolve_resource_uri(&request.uri, &dir).await {
             Some(text) => Ok(ReadResourceResult {
                 contents: vec![ResourceContents::text(text, &request.uri)],
@@ -154,5 +175,23 @@ impl ServerHandler for ShipServer {
                 None,
             )),
         }
+    }
+
+    async fn subscribe(
+        &self,
+        request: SubscribeRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        self.subscriptions.lock().await.insert(request.uri);
+        Ok(())
+    }
+
+    async fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        self.subscriptions.lock().await.remove(&request.uri);
+        Ok(())
     }
 }

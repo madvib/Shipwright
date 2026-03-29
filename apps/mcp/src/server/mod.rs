@@ -11,7 +11,9 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{agent, event, events, project, session, skills, workspace, workspace_ops};
+use crate::tools::{
+    agent, event, events, project, session, session_files, skills, workspace, workspace_ops,
+};
 use skills::{
     get_skill_vars_tool, list_skill_vars_tool,
     set_skill_var_tool,
@@ -32,6 +34,8 @@ pub struct ShipServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
+    /// URIs the client has subscribed to via resources/subscribe
+    pub subscriptions: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 // ---- Stable tool registration ----
@@ -61,6 +65,9 @@ impl ShipServer {
             tool_router: router,
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            subscriptions: std::sync::Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashSet::new(),
+            )),
         }
     }
 
@@ -75,6 +82,20 @@ impl ShipServer {
     async fn notify_resources_changed(&self) {
         if let Some(peer) = self.notification_peer.lock().await.as_ref() {
             let _ = peer.notify_resource_list_changed().await;
+        }
+    }
+
+    /// Push a resource update notification if the client is subscribed to this URI.
+    pub async fn notify_resource_updated(&self, uri: &str) {
+        let subscribed = self.subscriptions.lock().await.contains(uri);
+        if subscribed {
+            if let Some(peer) = self.notification_peer.lock().await.as_ref() {
+                let _ = peer
+                    .notify_resource_updated(rmcp::model::ResourceUpdatedNotificationParam {
+                        uri: uri.to_string(),
+                    })
+                    .await;
+            }
         }
     }
 
@@ -289,6 +310,56 @@ impl ShipServer {
 
     // Studio-only tools (write_skill_file, delete_skill_file, list_project_skills)
     // are on StudioServer. Agents use list_skills and skill_vars for their needs.
+
+    // ---- Session Files ----
+
+    #[tool(
+        description = "Write a file to .ship-session/. Fires a resource update notification \
+        so subscribed clients (Studio, agents) react immediately. \
+        Path is relative to .ship-session/ (e.g. 'canvas.html', 'vitest/report.html')."
+    )]
+    async fn write_session_file(
+        &self,
+        Parameters(req): Parameters<WriteSessionFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let path = req.path.clone();
+        let result = session_files::write_session_file(&project_dir, req);
+        if !result.starts_with("Error") {
+            let uri = format!("ship://session/{}", path);
+            self.notify_resource_updated(&uri).await;
+            self.notify_resources_changed().await;
+        }
+        result
+    }
+
+    #[tool(
+        description = "Read a file from .ship-session/. Returns text content or base64 for binary files."
+    )]
+    async fn read_session_file(
+        &self,
+        Parameters(req): Parameters<ReadSessionFileRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::read_session_file(&project_dir, req)
+    }
+
+    #[tool(
+        description = "List all files in .ship-session/ with metadata (name, path, type, size)."
+    )]
+    async fn list_session_files(&self) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session_files::list_session_files(&project_dir)
+    }
 
     // ---- Events ----
 

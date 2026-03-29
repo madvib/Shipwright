@@ -35,6 +35,11 @@ fn tmpl(uri: &str, name: &str, mime: &str) -> rmcp::model::Annotated<RawResource
 
 pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResourceTemplate>> {
     vec![
+        tmpl(
+            "ship://session/{path}",
+            "Session File",
+            "application/octet-stream",
+        ),
         tmpl("ship://specs/{id}", "Spec", "text/markdown"),
         tmpl("ship://adrs/{id}", "ADR", "text/markdown"),
         tmpl("ship://notes/{id}", "Note", "text/markdown"),
