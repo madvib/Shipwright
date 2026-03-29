@@ -16,6 +16,7 @@ export interface GitStatusResult {
   staged: GitStatusFile[]
   modified: GitStatusFile[]
   untracked: GitStatusFile[]
+  workingDirectory?: string
 }
 
 export interface GitLogEntry {

@@ -17,7 +17,8 @@ import {
 } from '../dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip';
 import CustomMilkdownEditor from './CustomMilkdownEditor';
-import { stripAllFrontmatter } from './frontmatter';
+import { stripAllFrontmatter, splitFrontmatterDocument, composeFrontmatterDocument, parseFrontmatterEntries } from './frontmatter';
+import type { FrontmatterEntry } from './frontmatter';
 
 type EditorMode = 'edit' | 'read';
 type LegacyEditorMode = 'doc' | 'raw' | 'preview' | 'split' | 'edit' | 'read';
@@ -52,6 +53,8 @@ export interface MarkdownEditorProps {
     hideChrome?: boolean;
     /** Called when user highlights text and requests AI generation */
     onGenerate?: (selectedText: string) => void;
+    /** Called with parsed frontmatter when the document has frontmatter */
+    onFrontmatterParsed?: (entries: FrontmatterEntry[], raw: string | null) => void;
 }
 
 function normalizeMode(defaultMode?: EditorMode | LegacyEditorMode): EditorMode {
@@ -83,6 +86,7 @@ export default function MarkdownEditor({
     onComment,
     hideChrome = false,
     onGenerate,
+    onFrontmatterParsed,
 }: MarkdownEditorProps) {
     const onChangeRef = useRef(onChange);
     const internalMarkdownRef = useRef(value);
@@ -105,19 +109,34 @@ export default function MarkdownEditor({
         internalMarkdownRef.current = value;
     }, [value]);
 
+    // Split frontmatter from body — milkdown only edits the body
+    const fmDoc = useMemo(() => splitFrontmatterDocument(internalMarkdown), [internalMarkdown]);
+    const fmEntries = useMemo(() => parseFrontmatterEntries(fmDoc.frontmatter), [fmDoc.frontmatter]);
+
+    // Notify parent of frontmatter entries
+    const onFrontmatterParsedRef = useRef(onFrontmatterParsed);
+    useEffect(() => { onFrontmatterParsedRef.current = onFrontmatterParsed; }, [onFrontmatterParsed]);
+    useEffect(() => {
+        onFrontmatterParsedRef.current?.(fmEntries, fmDoc.frontmatter);
+    }, [fmEntries, fmDoc.frontmatter]);
+
     const wordCount = useMemo(() => {
-        const trimmed = stripAllFrontmatter(internalMarkdown).trim();
+        const trimmed = fmDoc.body.trim();
         return trimmed ? trimmed.split(/\s+/).length : 0;
-    }, [internalMarkdown]);
+    }, [fmDoc.body]);
 
     const resolvedSampleLabel = sampleLabel ?? (sampleRequiresMcp ? 'Generate Draft' : 'Insert Template');
     const sampleDisabled = sampling || !onMcpSample || (sampleRequiresMcp && !mcpEnabled);
 
     const handleEditorChange = (next: string) => {
-        if (next === internalMarkdownRef.current) return;
-        internalMarkdownRef.current = next;
-        setInternalMarkdown(next);
-        onChangeRef.current(next);
+        // Recompose frontmatter + edited body
+        const full = fmDoc.frontmatter
+            ? composeFrontmatterDocument(fmDoc.frontmatter, next, fmDoc.delimiter ?? '---')
+            : next;
+        if (full === internalMarkdownRef.current) return;
+        internalMarkdownRef.current = full;
+        setInternalMarkdown(full);
+        onChangeRef.current(full);
     };
 
     const triggerSample = async () => {
@@ -166,14 +185,15 @@ export default function MarkdownEditor({
     return (
         <div
             className={cn(
-                fillHeight ? 'flex h-full min-h-0 flex-col gap-1' : 'space-y-1',
+                fillHeight ? 'flex h-full min-h-0 flex-col' : 'space-y-1',
+                !hideChrome && 'gap-1',
                 fullWidth && 'w-full',
                 expanded && 'fixed inset-0 z-[120] bg-background p-1 shadow-2xl md:p-2',
                 className
             )}
         >
-            {/* Toolbar — hidden when hideChrome is true */}
-            <div className={cn("flex items-center gap-1 overflow-x-auto", hideChrome && "hidden")}>
+            {/* Toolbar — not rendered when hideChrome is true */}
+            {!hideChrome && <div className="flex items-center gap-1 overflow-x-auto">
                 {(label || toolbarStart) && (
                     <div className="flex shrink-0 items-center gap-1">
                         {label && <Label>{label}</Label>}
@@ -263,7 +283,7 @@ export default function MarkdownEditor({
                         {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
                     </Button>
                 </div>
-            </div>
+            </div>}
 
             {aiActionError && (
                 <p className="text-[11px] text-destructive">AI action failed: {aiActionError}</p>
@@ -275,7 +295,7 @@ export default function MarkdownEditor({
                     <div className={cn(fillHeight ? 'flex h-full min-h-0 flex-col' : 'space-y-1')}>
                         <div className={cn(fillHeight ? 'min-h-0 flex-1' : 'h-full')}>
                             <CustomMilkdownEditor
-                                value={internalMarkdown}
+                                value={fmDoc.body}
                                 onChange={handleEditorChange}
                                 placeholder={placeholder}
                                 fillHeight={fillHeight}

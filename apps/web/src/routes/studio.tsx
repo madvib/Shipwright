@@ -1,6 +1,5 @@
 import { createFileRoute, Outlet, useMatches, useRouterState } from '@tanstack/react-router'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { StudioDock } from '#/features/studio/StudioDock'
 import { PublishPanel } from '#/features/studio/PublishPanel'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
@@ -27,7 +26,7 @@ function StudioLayout() {
 }
 
 function StudioSyncShell() {
-  const { library, addSkill } = useLibrary()
+  const { library } = useLibrary()
   const { state: compileState, compile } = useCompiler()
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -75,21 +74,12 @@ function StudioSyncShell() {
   // Only show compiler output panel on agent detail pages
   const showCompilerPanel = Boolean(activeAgentId)
 
-  // Session page is full-screen — no dock, no bottom padding
+  // Session page is full-screen — no padding
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isSession = pathname.startsWith('/studio/session')
 
   return (
     <main className="flex-1 overflow-hidden min-w-0 flex flex-col relative">
-      {/* Top sub-nav (replaces bottom dock) */}
-      {!isSession && (
-        <StudioDock
-          previewOpen={showCompilerPanel && panelOpen}
-          showPreviewToggle={showCompilerPanel}
-          onTogglePreview={() => setPanelOpen((p) => !p)}
-          onAddSkill={addSkill}
-        />
-      )}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className={`flex-1 min-w-0 ${isSession ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
           <Outlet />

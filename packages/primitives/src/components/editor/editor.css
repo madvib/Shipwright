@@ -88,6 +88,11 @@
   color: var(--foreground);
 }
 
+/* Prevent toolbar from causing layout shift */
+.ship-milkdown-shell .milkdown .ProseMirror {
+  contain: layout style;
+}
+
 .ship-milkdown-shell .milkdown .milkdown-toolbar .toolbar-item.active,
 .ship-milkdown-shell .milkdown .milkdown-toolbar .toolbar-item:active {
   background: color-mix(in oklch, var(--primary) 18%, var(--muted));

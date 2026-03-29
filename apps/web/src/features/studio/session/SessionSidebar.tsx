@@ -4,10 +4,12 @@
 import { useState, useRef, useCallback } from 'react'
 import {
   FileText, CheckSquare, Image, ChevronDown, ChevronRight,
-  Plus, MapPin, GitCompareArrows, Circle, Layers, FileCode,
+  Plus, MapPin, Layers, FileCode,
 } from 'lucide-react'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
+import { GitTab } from './GitTab'
+import { SessionsTab } from './SessionsTab'
 import type { ArtifactMenuState } from './ArtifactContextMenu'
 import type { SessionFile, Annotation } from './types'
 import type { GitStatusResult, GitLogEntry } from './useGitInfo'
@@ -124,174 +126,28 @@ export function SessionSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* ═══ FILES TAB ═══ */}
         {tab === 'files' && (
-          <div className="px-3 pt-3 pb-2">
-            {/* Todo */}
-            {todo && (
-              <div className="mb-3">
-                <FileEntry
-                  file={todo}
-                  isActive={activeFile === todo.path}
-                  onClick={() => onSelectFile(todo.path)}
-                  onContextMenu={(e) => handleContextMenu(e, todo)}
-                  isTodo
-                />
-              </div>
-            )}
-
-            {/* Smart groups */}
-            {groups.map((group) => {
-              const collapsed = collapsedGroups.has(group.label)
-              const GroupIcon = group.icon
-              return (
-                <div key={group.label} className="mb-2">
-                  <div className="flex items-center gap-1 mb-1">
-                    <button
-                      onClick={() => toggleGroup(group.label)}
-                      className="flex items-center gap-1.5 flex-1 min-w-0"
-                    >
-                      {collapsed
-                        ? <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" />
-                        : <ChevronDown className="size-3 text-muted-foreground/40 shrink-0" />
-                      }
-                      <GroupIcon className={`size-3.5 ${group.iconColor} shrink-0`} />
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        {group.label}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground/50">{group.files.length}</span>
-                    </button>
-                    {group.label === 'Canvas' && (
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={!isConnected}
-                        className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground transition disabled:opacity-40"
-                      >
-                        <Plus className="size-3" />
-                      </button>
-                    )}
-                  </div>
-                  {!collapsed && (
-                    <div className="space-y-0.5">
-                      {group.files.map((f) => (
-                        <FileEntry
-                          key={f.path}
-                          file={f}
-                          isActive={activeFile === f.path}
-                          onClick={() => onSelectFile(f.path)}
-                          onContextMenu={(e) => handleContextMenu(e, f)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.length) onUploadFiles(e.target.files)
-                e.target.value = ''
-              }}
-            />
-
-            {/* Annotations */}
-            {annotations.length > 0 && (
-              <>
-                <div className="my-3 border-t border-border/40" />
-                <SectionHeader label="Annotations" count={annotations.length} open={annotationsOpen} onToggle={() => setAnnotationsOpen(!annotationsOpen)} />
-                {annotationsOpen && (
-                  <div className="mt-1 space-y-0.5">
-                    {annotations.map((ann, i) => (
-                      <div key={ann.id} className="flex items-center gap-2 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer transition">
-                        <MapPin className="size-3 text-primary shrink-0" />
-                        <span className="truncate">{ann.type === 'click' ? ann.note || ann.text : ann.type === 'box' ? ann.note : ann.text}</span>
-                        <span className="ml-auto text-[9px] text-muted-foreground/40">#{i + 1}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <FilesTab
+            todo={todo}
+            groups={groups}
+            activeFile={activeFile}
+            annotations={annotations}
+            annotationsOpen={annotationsOpen}
+            collapsedGroups={collapsedGroups}
+            isConnected={isConnected}
+            fileInputRef={fileInputRef}
+            onSelectFile={onSelectFile}
+            onUploadFiles={onUploadFiles}
+            onToggleGroup={toggleGroup}
+            onToggleAnnotations={() => setAnnotationsOpen(!annotationsOpen)}
+            onContextMenu={handleContextMenu}
+          />
         )}
-
-        {/* ═══ GIT TAB ═══ */}
         {tab === 'git' && (
-          <div className="px-3 pt-3">
-            {gitStatus && (
-              <div className="mb-3">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span className="text-xs font-medium font-mono">{gitStatus.branch}</span>
-                  <Circle className={`size-1.5 shrink-0 ${gitStatus.clean ? 'fill-emerald-500 text-emerald-500' : 'fill-amber-500 text-amber-500'}`} />
-                </div>
-                {!gitStatus.clean && (
-                  <>
-                    <div className="flex gap-3 text-[10px] text-muted-foreground mb-2.5">
-                      {(gitStatus.staged?.length ?? 0) > 0 && (
-                        <span className="flex items-center gap-1"><Circle className="size-1.5 fill-emerald-500 text-emerald-500" />{gitStatus.staged!.length} staged</span>
-                      )}
-                      {(gitStatus.modified?.length ?? 0) > 0 && (
-                        <span className="flex items-center gap-1"><Circle className="size-1.5 fill-amber-500 text-amber-500" />{gitStatus.modified!.length} modified</span>
-                      )}
-                      {(gitStatus.untracked?.length ?? 0) > 0 && (
-                        <span className="flex items-center gap-1"><Circle className="size-1.5 fill-red-500 text-red-500" />{gitStatus.untracked!.length} untracked</span>
-                      )}
-                    </div>
-                    <div className="space-y-0.5 mb-2">
-                      {[
-                        ...((gitStatus.staged ?? []) as unknown[]).map((f) => ({ f, badge: 'S', cls: 'bg-emerald-500/10 text-emerald-500' })),
-                        ...((gitStatus.modified ?? []) as unknown[]).map((f) => ({ f, badge: 'M', cls: 'bg-amber-500/10 text-amber-500' })),
-                        ...((gitStatus.untracked ?? []) as unknown[]).map((f) => ({ f, badge: '?', cls: 'bg-red-500/10 text-red-500' })),
-                      ].map(({ f, badge, cls }, i) => {
-                        const p = typeof f === 'string' ? f : (f as { path?: string })?.path ?? ''
-                        return (
-                          <div key={p || i} className="flex items-center gap-2 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer transition">
-                            <span className={`text-[9px] font-mono px-1 rounded font-bold ${cls}`}>{badge}</span>
-                            <span className="truncate">{p.split('/').pop()}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <button onClick={onShowDiff} className="w-full flex items-center justify-center gap-1.5 text-[10px] text-primary font-medium py-1.5 rounded-md border border-primary/20 hover:bg-primary/5 transition">
-                      <GitCompareArrows className="size-3" />View diff
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-            {gitLog && gitLog.length > 0 && (
-              <>
-                {gitStatus && <div className="border-t border-border/40 mb-3" />}
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">Recent Commits</div>
-                <div className="space-y-0.5">
-                  {gitLog.slice(0, 10).map((entry) => (
-                    <div key={entry.hash} onClick={() => onSelectCommit(entry.hash)} className="group cursor-pointer rounded px-2 py-1.5 -mx-1 hover:bg-muted/30 transition">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-mono text-[9px] text-primary/60 shrink-0">{entry.hash.slice(0, 7)}</span>
-                        <span className="truncate text-muted-foreground group-hover:text-foreground transition">{entry.subject}</span>
-                      </div>
-                      <div className="text-[9px] text-muted-foreground/40 mt-0.5 pl-[52px]">{entry.date}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            {!gitStatus && <p className="text-[10px] text-muted-foreground/60">Connect CLI to see git info.</p>}
-          </div>
+          <GitTab gitStatus={gitStatus} gitLog={gitLog} onShowDiff={onShowDiff} onSelectCommit={onSelectCommit} />
         )}
-
-        {/* ═══ SESSIONS TAB ═══ */}
         {tab === 'sessions' && (
-          <div className="px-3 pt-3 text-xs text-muted-foreground">
-            <p className="text-[10px] text-muted-foreground/60">
-              Workspace and session history will appear here when workspaces are active.
-            </p>
-          </div>
+          <SessionsTab isConnected={isConnected} gitStatus={gitStatus} />
         )}
       </div>
 
@@ -304,6 +160,82 @@ export function SessionSidebar({
         <ArtifactContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onDelete={() => setContextMenu(null)} />
       )}
     </aside>
+  )
+}
+
+// ── Files Tab ──
+
+function FilesTab({ todo, groups, activeFile, annotations, annotationsOpen, collapsedGroups, isConnected, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onToggleAnnotations, onContextMenu }: {
+  todo: SessionFile | null
+  groups: FileGroup[]
+  activeFile: string | null
+  annotations: Annotation[]
+  annotationsOpen: boolean
+  collapsedGroups: Set<string>
+  isConnected: boolean
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  onSelectFile: (path: string) => void
+  onUploadFiles: (files: FileList) => void
+  onToggleGroup: (label: string) => void
+  onToggleAnnotations: () => void
+  onContextMenu: (e: React.MouseEvent, file: SessionFile) => void
+}) {
+  return (
+    <div className="px-3 pt-3 pb-2">
+      {todo && (
+        <div className="mb-3">
+          <FileEntry file={todo} isActive={activeFile === todo.path} onClick={() => onSelectFile(todo.path)} onContextMenu={(e) => onContextMenu(e, todo)} isTodo />
+        </div>
+      )}
+      {groups.map((group) => {
+        const collapsed = collapsedGroups.has(group.label)
+        const GroupIcon = group.icon
+        return (
+          <div key={group.label} className="mb-2">
+            <button onClick={() => onToggleGroup(group.label)} className="flex items-center gap-1.5 w-full px-0 py-2">
+              <GroupIcon className={`size-3.5 ${group.iconColor} shrink-0`} />
+              <span className="text-xs font-semibold text-muted-foreground">{group.label}</span>
+              <span className="text-[10px] text-muted-foreground/50">{group.files.length}</span>
+              <div className="flex-1" />
+              {collapsed ? <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" /> : <ChevronDown className="size-3 text-muted-foreground/40 shrink-0" />}
+            </button>
+            {!collapsed && (
+              <div className="space-y-0.5">
+                {group.files.map((f) => (
+                  <FileEntry key={f.path} file={f} isActive={activeFile === f.path} onClick={() => onSelectFile(f.path)} onContextMenu={(e) => onContextMenu(e, f)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={!isConnected}
+        className="flex items-center gap-1.5 w-full mt-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Plus className="size-3.5" />
+        <span>Add files</span>
+      </button>
+      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) onUploadFiles(e.target.files); e.target.value = '' }} />
+      {annotations.length > 0 && (
+        <>
+          <div className="my-3 border-t border-border/40" />
+          <SectionHeader label="Annotations" count={annotations.length} open={annotationsOpen} onToggle={onToggleAnnotations} />
+          {annotationsOpen && (
+            <div className="mt-1 space-y-0.5">
+              {annotations.map((ann, i) => (
+                <div key={ann.id} className="flex items-center gap-2 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer transition">
+                  <MapPin className="size-3 text-primary shrink-0" />
+                  <span className="truncate">{ann.type === 'click' ? ann.note || ann.text : ann.type === 'box' ? ann.note : ann.text}</span>
+                  <span className="ml-auto text-[9px] text-muted-foreground/40">#{i + 1}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 
