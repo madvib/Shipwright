@@ -54,13 +54,21 @@ function markdownToHtml(md: string): string {
   // Horizontal rules
   html = html.replace(/^---$/gm, '<hr class="md-hr" />')
 
-  // Unordered lists (consecutive - or * lines)
+  // Unordered lists (consecutive - or * lines), with TODO checkbox support
   html = html.replace(
     /^(?:[-*]\s+.+\n?)+/gm,
     (block) => {
-      const items = block.trim().split('\n').map((line) =>
-        `<li>${line.replace(/^[-*]\s+/, '')}</li>`,
-      )
+      const items = block.trim().split('\n').map((line) => {
+        const text = line.replace(/^[-*]\s+/, '')
+        // TODO checkboxes: - [ ] unchecked, - [x] checked
+        if (text.startsWith('[ ] ')) {
+          return `<li class="md-todo"><input type="checkbox" disabled />${text.slice(4)}</li>`
+        }
+        if (text.startsWith('[x] ') || text.startsWith('[X] ')) {
+          return `<li class="md-todo md-todo-done"><input type="checkbox" checked disabled />${text.slice(4)}</li>`
+        }
+        return `<li>${text}</li>`
+      })
       return `<ul class="md-ul">${items.join('\n')}</ul>`
     },
   )

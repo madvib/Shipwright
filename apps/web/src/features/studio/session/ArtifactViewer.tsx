@@ -1,14 +1,23 @@
-// Viewer for non-HTML artifacts: markdown (with source/preview toggle),
-// images (with click-to-zoom), JSON, and text files.
+// Viewer for non-HTML artifacts: markdown (milkdown editor),
+// images (click-to-zoom), JSON, and text files.
 
 import { useMemo, useState } from 'react'
-import { FileText, Image as ImageIcon, File, Eye, Code2, ZoomIn, ZoomOut } from 'lucide-react'
+import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save } from 'lucide-react'
+import { MarkdownEditor } from '@ship/primitives'
 import { MarkdownPreview } from '#/features/studio/skills-ide/MarkdownPreview'
 import type { SessionFile } from './types'
 
 interface ArtifactViewerProps {
   file: SessionFile
   content: string
+  /** Draft content (from useSessionDrafts). Falls back to `content` if undefined. */
+  draftContent?: string
+  /** Whether the draft is dirty */
+  isDirty?: boolean
+  /** Called when the user edits content */
+  onContentChange?: (path: string, content: string) => void
+  /** Called when the user saves (Cmd+S or button) */
+  onSave?: (path: string) => void
 }
 
 // ── Image Viewer with zoom ──
@@ -39,7 +48,10 @@ function ImageViewer({ file, content }: { file: SessionFile; content: string }) 
           {zoomed ? 'Fit' : 'Zoom'}
         </button>
       </div>
-      <div className={`flex-1 overflow-auto bg-black/5 dark:bg-black/20 ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`} onClick={() => setZoomed(!zoomed)}>
+      <div
+        className={`flex-1 overflow-auto bg-black/5 dark:bg-black/20 ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+        onClick={() => setZoomed(!zoomed)}
+      >
         <div className={`flex items-center justify-center ${zoomed ? 'p-4' : 'h-full p-4'}`}>
           <img
             src={content}
@@ -52,46 +64,61 @@ function ImageViewer({ file, content }: { file: SessionFile; content: string }) 
   )
 }
 
-// ── Markdown Viewer with source/preview toggle ──
+// ── Markdown Editor (milkdown with draft support) ──
 
-function MarkdownViewer({ file, content }: { file: SessionFile; content: string }) {
-  const [mode, setMode] = useState<'preview' | 'source'>('preview')
+function MarkdownFileEditor({
+  file, content, draftContent, isDirty, onContentChange, onSave,
+}: {
+  file: SessionFile
+  content: string
+  draftContent?: string
+  isDirty?: boolean
+  onContentChange?: (path: string, content: string) => void
+  onSave?: (path: string) => void
+}) {
+  const editable = onContentChange != null
+  const displayContent = draftContent ?? content
+
+  if (!editable) {
+    // Read-only fallback
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 shrink-0 bg-card/30">
+          <FileText className="size-3.5 text-emerald-500" />
+          <span className="text-xs font-medium text-foreground">{file.name}</span>
+        </div>
+        <div className="flex-1 overflow-auto">
+          <MarkdownPreview content={displayContent} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 shrink-0 bg-card/30">
         <FileText className="size-3.5 text-emerald-500" />
         <span className="text-xs font-medium text-foreground">{file.name}</span>
+        {isDirty && <span className="size-1.5 rounded-full bg-primary" title="Unsaved changes" />}
         <div className="flex-1" />
-        <div className="flex items-center rounded-md border border-border bg-muted/30 p-0.5">
+        {isDirty && onSave && (
           <button
-            onClick={() => setMode('preview')}
-            className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
-              mode === 'preview' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            onClick={() => onSave(file.path)}
+            className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 transition"
           >
-            <Eye className="size-3" />
-            Preview
+            <Save className="size-3" />
+            Save
           </button>
-          <button
-            onClick={() => setMode('source')}
-            className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
-              mode === 'source' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Code2 className="size-3" />
-            Source
-          </button>
-        </div>
-      </div>
-      <div className="flex-1 overflow-auto">
-        {mode === 'preview' ? (
-          <MarkdownPreview content={content} />
-        ) : (
-          <pre className="px-6 py-4 text-xs font-mono text-foreground leading-relaxed whitespace-pre-wrap break-words">
-            {content}
-          </pre>
         )}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <MarkdownEditor
+          value={displayContent}
+          onChange={(v) => onContentChange(file.path, v)}
+          fillHeight
+          showStats={false}
+          showAiActions={false}
+        />
       </div>
     </div>
   )
@@ -136,9 +163,20 @@ function TextViewer({ content, file }: { content: string; file: SessionFile }) {
 
 // ── Router ──
 
-export function ArtifactViewer({ file, content }: ArtifactViewerProps) {
+export function ArtifactViewer({ file, content, draftContent, isDirty, onContentChange, onSave }: ArtifactViewerProps) {
   if (file.type === 'image') return <ImageViewer file={file} content={content} />
-  if (file.type === 'markdown') return <MarkdownViewer file={file} content={content} />
+  if (file.type === 'markdown') {
+    return (
+      <MarkdownFileEditor
+        file={file}
+        content={content}
+        draftContent={draftContent}
+        isDirty={isDirty}
+        onContentChange={onContentChange}
+        onSave={onSave}
+      />
+    )
+  }
   if (file.name.endsWith('.json')) return <JsonViewer content={content} file={file} />
   return <TextViewer content={content} file={file} />
 }

@@ -7,6 +7,7 @@ import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
 import { DiffViewer } from '#/features/studio/session/DiffViewer'
 import { SessionSidebar } from '#/features/studio/session/SessionSidebar'
 import { useSessionFiles, useSessionFileContent, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
+import { useSessionDrafts } from '#/features/studio/session/useSessionDrafts'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
 import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { useGitStatus, useGitLog, useGitDiff } from '#/features/studio/session/useGitInfo'
@@ -38,6 +39,7 @@ function SessionPage() {
   const { data: gitStatus } = useGitStatus()
   const { data: gitLog } = useGitLog(5)
   const ann = useAnnotations()
+  const drafts = useSessionDrafts()
 
   // ── Tab state: ALL file types ──
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([])
@@ -64,6 +66,27 @@ function SessionPage() {
   const activeTab = openTabs.find((t) => t.path === activeTabPath) ?? null
   const activeFile = activeTabPath ? files.find((f) => f.path === activeTabPath) : null
   const { data: fileContent } = useSessionFileContent(activeTabPath)
+
+  // Initialize draft when server content arrives for open file
+  useEffect(() => {
+    if (activeTabPath && fileContent != null) {
+      drafts.openFile(activeTabPath, fileContent)
+    }
+  }, [activeTabPath, fileContent]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cmd+S to save active file
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        if (activeTabPath && drafts.isDirty(activeTabPath)) {
+          drafts.saveFile(activeTabPath)
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [activeTabPath, drafts])
 
   // ── Callbacks ──
   const openFile = useCallback((path: string) => {
@@ -194,6 +217,7 @@ function SessionPage() {
             <div className="flex items-center border-b border-border bg-card/20 px-1 h-9 shrink-0 overflow-x-auto">
               {openTabs.map((tab) => {
                 const isActive = viewMode === 'file' && tab.path === activeTabPath
+                const unsaved = drafts.unsavedPaths.has(tab.path)
                 return (
                   <button
                     key={tab.path}
@@ -204,6 +228,7 @@ function SessionPage() {
                         : 'border-transparent text-muted-foreground hover:text-foreground'
                     }`}
                   >
+                    {unsaved && <span className="size-1.5 rounded-full bg-primary shrink-0" title="Unsaved" />}
                     <span className="truncate max-w-[140px]">{tab.name}</span>
                     <span
                       onClick={(e) => { e.stopPropagation(); closeTab(tab.path) }}
@@ -254,7 +279,14 @@ function SessionPage() {
                 />
               )}
               {showArtifact && activeFile && (
-                <ArtifactViewer file={activeFile} content={fileContent ?? ''} />
+                <ArtifactViewer
+                  file={activeFile}
+                  content={fileContent ?? ''}
+                  draftContent={drafts.getDraft(activeFile.path)}
+                  isDirty={drafts.isDirty(activeFile.path)}
+                  onContentChange={drafts.updateContent}
+                  onSave={drafts.saveFile}
+                />
               )}
               {showDiff && (
                 activeDiffText ? (
