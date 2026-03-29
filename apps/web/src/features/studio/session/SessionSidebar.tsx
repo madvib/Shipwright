@@ -201,24 +201,33 @@ export function SessionSidebar({
                 </div>
                 {!gitStatus.clean && (
                   <div className="space-y-0.5">
-                    {(gitStatus.staged ?? []).map((f) => (
-                      <div key={f.path} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
-                        <span className="text-[9px] font-mono px-1 rounded bg-emerald-500/10 text-emerald-500 font-bold">S</span>
-                        <span className="truncate">{f.path.split('/').pop()}</span>
-                      </div>
-                    ))}
-                    {(gitStatus.modified ?? []).map((f) => (
-                      <div key={f.path} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
-                        <span className="text-[9px] font-mono px-1 rounded bg-amber-500/10 text-amber-500 font-bold">M</span>
-                        <span className="truncate">{f.path.split('/').pop()}</span>
-                      </div>
-                    ))}
-                    {(gitStatus.untracked ?? []).map((f) => (
-                      <div key={f.path} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
-                        <span className="text-[9px] font-mono px-1 rounded bg-red-500/10 text-red-500 font-bold">?</span>
-                        <span className="truncate">{f.path.split('/').pop()}</span>
-                      </div>
-                    ))}
+                    {(gitStatus.staged ?? []).map((f, i) => {
+                      const p = typeof f === 'string' ? f : f.path ?? ''
+                      return (
+                        <div key={p || i} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
+                          <span className="text-[9px] font-mono px-1 rounded bg-emerald-500/10 text-emerald-500 font-bold">S</span>
+                          <span className="truncate">{p.split('/').pop()}</span>
+                        </div>
+                      )
+                    })}
+                    {(gitStatus.modified ?? []).map((f, i) => {
+                      const p = typeof f === 'string' ? f : f.path ?? ''
+                      return (
+                        <div key={p || i} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
+                          <span className="text-[9px] font-mono px-1 rounded bg-amber-500/10 text-amber-500 font-bold">M</span>
+                          <span className="truncate">{p.split('/').pop()}</span>
+                        </div>
+                      )
+                    })}
+                    {(gitStatus.untracked ?? []).map((f, i) => {
+                      const p = typeof f === 'string' ? f : f.path ?? ''
+                      return (
+                        <div key={p || i} className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition">
+                          <span className="text-[9px] font-mono px-1 rounded bg-red-500/10 text-red-500 font-bold">?</span>
+                          <span className="truncate">{p.split('/').pop()}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

@@ -14,10 +14,11 @@ interface SessionInfoPanelProps {
 export function SessionInfoPanel({ gitStatus, gitLog, onClose, onShowDiff }: SessionInfoPanelProps) {
   const modifiedCount = (gitStatus?.modified?.length ?? 0) + (gitStatus?.staged?.length ?? 0)
   const untrackedCount = gitStatus?.untracked?.length ?? 0
+  const toPath = (f: unknown): string => (typeof f === 'string' ? f : (f as { path?: string })?.path ?? '')
   const allChanged = [
-    ...(gitStatus?.staged ?? []).map((f) => ({ path: f.path, status: 'S' as const })),
-    ...(gitStatus?.modified ?? []).map((f) => ({ path: f.path, status: 'M' as const })),
-    ...(gitStatus?.untracked ?? []).map((f) => ({ path: f.path, status: 'A' as const })),
+    ...(gitStatus?.staged ?? []).map((f) => ({ path: toPath(f), status: 'S' as const })),
+    ...(gitStatus?.modified ?? []).map((f) => ({ path: toPath(f), status: 'M' as const })),
+    ...(gitStatus?.untracked ?? []).map((f) => ({ path: toPath(f), status: 'A' as const })),
   ]
 
   return (
