@@ -1,14 +1,16 @@
-import { useState, useCallback } from 'react'
-import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus, Eye, Code2 } from 'lucide-react'
+import { useCallback, lazy, Suspense } from 'react'
+import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus } from 'lucide-react'
 import type { Skill } from '@ship/ui'
-import { MarkdownEditor } from '@ship/primitives'
 import { parseTabId } from './useSkillsIDE'
 import { TextEditor } from './TextEditor'
-import { MarkdownPreview } from './MarkdownPreview'
+
+// Lazy-load milkdown to avoid SSR/worker crashes (uses browser DOM APIs)
+const MarkdownEditor = lazy(() =>
+  import('@ship/primitives').then((m) => ({ default: m.MarkdownEditor }))
+)
 import { JsonViewer } from './JsonViewer'
 import { ScriptViewer } from './ScriptViewer'
 
-type ViewMode = 'source' | 'preview'
 type ScriptLang = 'sh' | 'py' | 'js' | 'ts'
 
 interface Props {
@@ -79,7 +81,6 @@ export function SkillsEditor({
   isConnected, isLoading, previewOpen,
   onTabSelect, onTabClose, onContentChange, onSave, onTogglePreview, onCreateSkill,
 }: Props) {
-  const [viewMode, setViewMode] = useState<ViewMode>('source')
   const activeTab = activeTabId ? parseTabId(activeTabId) : null
   const activeSkill = activeTab ? skills.find((s) => s.id === activeTab.skillId) : undefined
 
@@ -149,7 +150,6 @@ export function SkillsEditor({
   const fileType = getFileType(activeFilePath)
   const breadcrumbParts = ['skills', activeSkill.name || activeSkill.id, ...activeFilePath.split('/')]
   const showDisconnectBanner = !isConnected && unsavedIds.size > 0
-  const isMarkdown = fileType === 'markdown'
 
   return (
     <div className="flex flex-1 flex-col min-w-0" onKeyDown={handleKeyDown}>
@@ -171,24 +171,6 @@ export function SkillsEditor({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          {isMarkdown && (
-            <div className="flex items-center rounded border border-border text-[11px] mr-1">
-              <button
-                onClick={() => setViewMode('source')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-l transition-colors ${viewMode === 'source' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Code2 className="size-3" />
-                Source
-              </button>
-              <button
-                onClick={() => setViewMode('preview')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-r transition-colors ${viewMode === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Eye className="size-3" />
-                Preview
-              </button>
-            </div>
-          )}
           {unsavedIds.has(activeTabId) && (
             <button onClick={() => onSave(activeTabId)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-primary/15 text-primary hover:bg-primary/25 transition-colors" title="Save (Cmd+S)">
               <Save className="size-3" />
@@ -238,7 +220,6 @@ export function SkillsEditor({
         content={content}
         fileType={fileType}
         filePath={activeFilePath}
-        viewMode={viewMode}
         onContentChange={onContentChange}
         onSave={onSave}
         onComment={handleComment}
@@ -247,31 +228,25 @@ export function SkillsEditor({
   )
 }
 
-function EditorBody({ tabId, content, fileType, filePath, viewMode, onContentChange, onSave, onComment }: {
+function EditorBody({ tabId, content, fileType, filePath, onContentChange, onSave, onComment }: {
   tabId: string; content: string; fileType: 'markdown' | 'json' | 'script' | 'text'
-  filePath: string; viewMode: ViewMode
+  filePath: string
   onContentChange: (id: string, content: string) => void; onSave: (id: string) => void
   onComment?: (selectedText: string, comment: string) => void
 }) {
-  // Markdown: milkdown editor (source) or preview
+  // Markdown: milkdown handles edit/read mode internally
   if (fileType === 'markdown') {
-    if (viewMode === 'preview') {
-      return (
-        <div className="flex-1 min-h-0 overflow-auto">
-          <MarkdownPreview content={content} />
-        </div>
-      )
-    }
     return (
       <div className="flex-1 min-h-0 overflow-hidden">
-        <MarkdownEditor
-          value={content}
-          onChange={(v) => onContentChange(tabId, v)}
-          fillHeight
-          showStats={false}
-          showAiActions={false}
-          onComment={onComment}
-        />
+        <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading editor...</div>}>
+          <MarkdownEditor
+            value={content}
+            onChange={(v) => onContentChange(tabId, v)}
+            fillHeight
+            hideChrome
+            onComment={onComment}
+          />
+        </Suspense>
       </div>
     )
   }

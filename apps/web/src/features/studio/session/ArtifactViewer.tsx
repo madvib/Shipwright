@@ -1,10 +1,13 @@
 // Viewer for non-HTML artifacts: markdown (milkdown editor),
 // images (click-to-zoom), JSON, and text files.
 
-import { useMemo, useState } from 'react'
-import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save } from 'lucide-react'
-import { MarkdownEditor } from '@ship/primitives'
+import { useMemo, useState, lazy, Suspense } from 'react'
+import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save, Maximize } from 'lucide-react'
 import { MarkdownPreview } from '#/features/studio/skills-ide/MarkdownPreview'
+
+const MarkdownEditor = lazy(() =>
+  import('@ship/primitives').then((m) => ({ default: m.MarkdownEditor }))
+)
 import type { SessionFile } from './types'
 
 interface ArtifactViewerProps {
@@ -48,6 +51,13 @@ function ImageViewer({ file, content }: { file: SessionFile; content: string }) 
         >
           {zoomed ? <ZoomOut className="size-3" /> : <ZoomIn className="size-3" />}
           {zoomed ? 'Fit' : 'Zoom'}
+        </button>
+        <button
+          onClick={() => document.documentElement.requestFullscreen?.()}
+          className="flex items-center justify-center rounded size-6 text-muted-foreground hover:text-foreground hover:bg-muted transition"
+          title="Fullscreen"
+        >
+          <Maximize className="size-3" />
         </button>
       </div>
       <div
@@ -113,16 +123,24 @@ function MarkdownFileEditor({
             Save
           </button>
         )}
+        <button
+          onClick={() => document.documentElement.requestFullscreen?.()}
+          className="flex items-center justify-center rounded size-6 text-muted-foreground hover:text-foreground hover:bg-muted transition"
+          title="Fullscreen (Esc to exit)"
+        >
+          <Maximize className="size-3" />
+        </button>
       </div>
       <div className="flex-1 overflow-hidden">
-        <MarkdownEditor
-          value={displayContent}
-          onChange={(v) => onContentChange(file.path, v)}
-          fillHeight
-          showStats={false}
-          showAiActions={false}
-          onComment={onComment}
-        />
+        <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading editor...</div>}>
+          <MarkdownEditor
+            value={displayContent}
+            onChange={(v) => onContentChange(file.path, v)}
+            fillHeight
+            hideChrome
+            onComment={onComment}
+          />
+        </Suspense>
       </div>
     </div>
   )

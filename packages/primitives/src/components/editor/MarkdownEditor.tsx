@@ -48,6 +48,10 @@ export interface MarkdownEditorProps {
     onTransformText?: (instruction: string, text: string) => Promise<string>;
     /** Called when user highlights text and submits a comment via the selection menu */
     onComment?: (selectedText: string, comment: string) => void;
+    /** Hide the wrapper chrome (label, Edit/Read tabs, stats). Just render the editor. */
+    hideChrome?: boolean;
+    /** Called when user highlights text and requests AI generation */
+    onGenerate?: (selectedText: string) => void;
 }
 
 function normalizeMode(defaultMode?: EditorMode | LegacyEditorMode): EditorMode {
@@ -77,6 +81,8 @@ export default function MarkdownEditor({
     showAiActions = true,
     onTransformText,
     onComment,
+    hideChrome = false,
+    onGenerate,
 }: MarkdownEditorProps) {
     const onChangeRef = useRef(onChange);
     const internalMarkdownRef = useRef(value);
@@ -166,8 +172,8 @@ export default function MarkdownEditor({
                 className
             )}
         >
-            {/* Toolbar */}
-            <div className="flex items-center gap-1 overflow-x-auto">
+            {/* Toolbar — hidden when hideChrome is true */}
+            <div className={cn("flex items-center gap-1 overflow-x-auto", hideChrome && "hidden")}>
                 {(label || toolbarStart) && (
                     <div className="flex shrink-0 items-center gap-1">
                         {label && <Label>{label}</Label>}
@@ -276,6 +282,7 @@ export default function MarkdownEditor({
                                 minHeightPx={minHeightPx}
                                 className={editorClassName}
                                 onComment={onComment}
+                                onGenerate={onGenerate}
                             />
                         </div>
                     </div>

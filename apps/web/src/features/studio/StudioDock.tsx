@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Users, Zap, Layers, Settings, Radio, PanelRightOpen, WifiOff } from 'lucide-react'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
@@ -22,95 +21,70 @@ interface StudioDockProps {
 export function StudioDock({ previewOpen, showPreviewToggle = true, onTogglePreview, onAddSkill }: StudioDockProps) {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const mcp = useLocalMcpContext()
   const isConnected = mcp?.status === 'connected'
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-      <nav
-        aria-label="Studio navigation"
-        className="flex items-center gap-1 rounded-2xl border border-border bg-card/80 px-2 py-1.5 shadow-lg shadow-foreground/[0.04] backdrop-blur-xl"
-      >
-        {NAV_ITEMS.map((item, i) => {
+    <div className="flex items-center border-b border-border bg-card/30 px-4 shrink-0">
+      <nav aria-label="Studio navigation" className="flex items-center gap-0.5">
+        {NAV_ITEMS.map((item) => {
           const isActive = item.exact
             ? pathname === item.to || pathname === item.to + '/'
             : pathname.startsWith(item.to)
           const Icon = item.icon
-
-          let scale = 1
-          if (hoverIdx !== null) {
-            const dist = Math.abs(i - hoverIdx)
-            if (dist === 0) scale = 1.12
-            else if (dist === 1) scale = 1.04
-          }
 
           return (
             <button
               key={item.to}
               aria-label={item.label}
               onClick={() => void navigate({ to: item.to as string })}
-              onMouseEnter={() => setHoverIdx(i)}
-              onMouseLeave={() => setHoverIdx(null)}
-              className={`group relative flex items-center justify-center size-9 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all duration-200 ease-out ${
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
                 isActive
-                  ? 'bg-primary/12 text-primary'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'
               }`}
-              style={{ transform: `scale(${scale})` }}
             >
-              <Icon className="size-[17px]" strokeWidth={isActive ? 2.2 : 1.8} />
-              {isActive && (
-                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-primary" />
-              )}
-              {hoverIdx === i && (
-                <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[11px] font-semibold text-foreground shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150 pointer-events-none">
-                  {item.label}
-                </span>
-              )}
+              <Icon className="size-3.5" strokeWidth={isActive ? 2.2 : 1.8} />
+              {item.label}
             </button>
           )
         })}
-
-        {/* Separator */}
-        <div className="h-6 w-px bg-border/60 mx-1" />
-
-        {/* Offline indicator */}
-        {!isConnected && (
-          <div
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-amber-500 font-medium"
-            title="Working offline — data may be stale"
-          >
-            <WifiOff className="size-3" />
-            <span className="hidden sm:inline">Offline</span>
-          </div>
-        )}
-
-        {/* CLI status */}
-        <CliStatusPopover onAddSkill={onAddSkill} />
-
-        {/* Compiler output toggle — only on agent detail pages */}
-        {showPreviewToggle && (
-          <button
-            onClick={onTogglePreview}
-            className={`hidden md:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-              previewOpen
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-primary/10 text-primary hover:bg-primary/20'
-            }`}
-          >
-            {previewOpen ? (
-              <PanelRightOpen className="size-3.5" />
-            ) : (
-              <>
-                <Radio className="size-3 animate-pulse" />
-                <span>Preview</span>
-              </>
-            )}
-            {previewOpen && 'Preview'}
-          </button>
-        )}
       </nav>
+
+      <div className="flex-1" />
+
+      {/* Offline indicator */}
+      {!isConnected && (
+        <div className="flex items-center gap-1 px-2 py-1 text-[10px] text-amber-500 font-medium">
+          <WifiOff className="size-3" />
+          <span className="hidden sm:inline">Offline</span>
+        </div>
+      )}
+
+      {/* CLI status */}
+      <CliStatusPopover onAddSkill={onAddSkill} />
+
+      {/* Compiler output toggle */}
+      {showPreviewToggle && (
+        <button
+          onClick={onTogglePreview}
+          className={`hidden md:flex items-center gap-1.5 rounded-md px-3 py-1.5 ml-2 text-xs font-semibold transition ${
+            previewOpen
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-primary/10 text-primary hover:bg-primary/20'
+          }`}
+        >
+          {previewOpen ? (
+            <PanelRightOpen className="size-3.5" />
+          ) : (
+            <>
+              <Radio className="size-3 animate-pulse" />
+              <span>Preview</span>
+            </>
+          )}
+          {previewOpen && 'Preview'}
+        </button>
+      )}
     </div>
   )
 }

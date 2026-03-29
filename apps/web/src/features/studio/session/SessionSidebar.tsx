@@ -1,10 +1,10 @@
 // Left sidebar for Session page: Files, Git, Sessions tabs.
-// Mirrors the Skills IDE SkillsFileExplorer pattern (w-60, border-r, file tree).
+// Files are grouped by purpose (canvas, specs, screenshots, etc).
 
 import { useState, useRef, useCallback } from 'react'
 import {
   FileText, CheckSquare, Image, ChevronDown, ChevronRight,
-  Plus, MapPin, GitCompareArrows, Circle,
+  Plus, MapPin, GitCompareArrows, Circle, Layers, FileCode,
 } from 'lucide-react'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
@@ -14,12 +14,7 @@ import type { GitStatusResult, GitLogEntry } from './useGitInfo'
 
 type SidebarTab = 'files' | 'git' | 'sessions'
 
-// Files that are internal state — hide from the artifact tree
 const HIDDEN_FILES = new Set(['diff.txt', 'annotations.json'])
-
-function isTodoFile(name: string): boolean {
-  return /^todo\.md$/i.test(name)
-}
 
 interface SessionSidebarProps {
   files: SessionFile[]
@@ -34,6 +29,50 @@ interface SessionSidebarProps {
   gitLog: GitLogEntry[] | null | undefined
 }
 
+// ── Smart file grouping by purpose ──
+
+interface FileGroup {
+  label: string
+  icon: typeof FileText
+  iconColor: string
+  files: SessionFile[]
+}
+
+function categorizeFiles(files: SessionFile[]): { todo: SessionFile | null; groups: FileGroup[] } {
+  const todo = files.find((f) => /^todo\.md$/i.test(f.name)) ?? null
+  const visible = files.filter((f) => !HIDDEN_FILES.has(f.name) && !/^todo\.md$/i.test(f.name))
+
+  const canvas: SessionFile[] = []
+  const specs: SessionFile[] = []
+  const screenshots: SessionFile[] = []
+  const other: SessionFile[] = []
+
+  for (const f of visible) {
+    const name = f.name.toLowerCase()
+    const path = f.path.toLowerCase()
+
+    if (name.startsWith('canvas') || name === 'mockup.html' || path.includes('mockup')) {
+      canvas.push(f)
+    } else if (name.includes('spec') || name.includes('plan') || name.includes('vision') || name.includes('checklist') || name.includes('critique') || name.includes('handoff') || name.startsWith('job-spec')) {
+      specs.push(f)
+    } else if (f.type === 'image' || path.includes('screenshot')) {
+      screenshots.push(f)
+    } else {
+      other.push(f)
+    }
+  }
+
+  const groups: FileGroup[] = []
+  if (canvas.length > 0) groups.push({ label: 'Canvas', icon: Layers, iconColor: 'text-sky-500', files: canvas })
+  if (specs.length > 0) groups.push({ label: 'Specs & Plans', icon: FileCode, iconColor: 'text-violet-500', files: specs })
+  if (screenshots.length > 0) groups.push({ label: 'Screenshots', icon: Image, iconColor: 'text-amber-500', files: screenshots })
+  if (other.length > 0) groups.push({ label: 'Other', icon: FileText, iconColor: 'text-muted-foreground', files: other })
+
+  return { todo, groups }
+}
+
+// ── File type icons ──
+
 const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: string }> = {
   html: { icon: FileText, color: 'text-sky-500' },
   markdown: { icon: FileText, color: 'text-emerald-500' },
@@ -47,17 +86,15 @@ export function SessionSidebar({
   gitStatus, gitLog,
 }: SessionSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('files')
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-  const [todoOpen, setTodoOpen] = useState(true)
-  const [artifactsOpen, setArtifactsOpen] = useState(true)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [annotationsOpen, setAnnotationsOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<ArtifactMenuState | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const toggleFolder = (folder: string) => {
-    setExpandedFolders((prev) => {
+  const toggleGroup = (label: string) => {
+    setCollapsedGroups((prev) => {
       const next = new Set(prev)
-      next.has(folder) ? next.delete(folder) : next.add(folder)
+      next.has(label) ? next.delete(label) : next.add(label)
       return next
     })
   }
@@ -67,10 +104,7 @@ export function SessionSidebar({
     setContextMenu({ x: e.clientX, y: e.clientY, file })
   }, [])
 
-  // Split files: todo, visible artifacts (no hidden state files), folders
-  const todoFile = files.find((f) => isTodoFile(f.name))
-  const visibleFiles = files.filter((f) => !HIDDEN_FILES.has(f.name) && !isTodoFile(f.name))
-  const { rootFiles, folders } = groupFiles(visibleFiles)
+  const { todo, groups } = categorizeFiles(files)
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/30">
@@ -93,40 +127,67 @@ export function SessionSidebar({
         {/* ═══ FILES TAB ═══ */}
         {tab === 'files' && (
           <div className="px-3 pt-3 pb-2">
-            {/* TODO section */}
-            {todoFile && (
-              <>
-                <SectionHeader label="Todo" open={todoOpen} onToggle={() => setTodoOpen(!todoOpen)} />
-                {todoOpen && (
-                  <div className="mt-1 mb-2">
-                    <FileEntry
-                      file={todoFile}
-                      isActive={activeFile === todoFile.path}
-                      onClick={() => onSelectFile(todoFile.path)}
-                      onContextMenu={(e) => handleContextMenu(e, todoFile)}
-                      isTodo
-                    />
-                  </div>
-                )}
-              </>
+            {/* Todo */}
+            {todo && (
+              <div className="mb-3">
+                <FileEntry
+                  file={todo}
+                  isActive={activeFile === todo.path}
+                  onClick={() => onSelectFile(todo.path)}
+                  onContextMenu={(e) => handleContextMenu(e, todo)}
+                  isTodo
+                />
+              </div>
             )}
 
-            {/* Artifacts section */}
-            <SectionHeader
-              label="Artifacts"
-              count={visibleFiles.length}
-              open={artifactsOpen}
-              onToggle={() => setArtifactsOpen(!artifactsOpen)}
-              action={
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!isConnected}
-                  className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground transition disabled:opacity-40"
-                >
-                  <Plus className="size-3" />
-                </button>
-              }
-            />
+            {/* Smart groups */}
+            {groups.map((group) => {
+              const collapsed = collapsedGroups.has(group.label)
+              const GroupIcon = group.icon
+              return (
+                <div key={group.label} className="mb-2">
+                  <div className="flex items-center gap-1 mb-1">
+                    <button
+                      onClick={() => toggleGroup(group.label)}
+                      className="flex items-center gap-1.5 flex-1 min-w-0"
+                    >
+                      {collapsed
+                        ? <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" />
+                        : <ChevronDown className="size-3 text-muted-foreground/40 shrink-0" />
+                      }
+                      <GroupIcon className={`size-3.5 ${group.iconColor} shrink-0`} />
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {group.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/50">{group.files.length}</span>
+                    </button>
+                    {group.label === 'Canvas' && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={!isConnected}
+                        className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground transition disabled:opacity-40"
+                      >
+                        <Plus className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                  {!collapsed && (
+                    <div className="space-y-0.5">
+                      {group.files.map((f) => (
+                        <FileEntry
+                          key={f.path}
+                          file={f}
+                          isActive={activeFile === f.path}
+                          onClick={() => onSelectFile(f.path)}
+                          onContextMenu={(e) => handleContextMenu(e, f)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
             <input
               ref={fileInputRef}
               type="file"
@@ -138,47 +199,7 @@ export function SessionSidebar({
               }}
             />
 
-            {artifactsOpen && (
-              <div className="mt-1 space-y-0.5">
-                {rootFiles.map((f) => (
-                  <FileEntry
-                    key={f.path}
-                    file={f}
-                    isActive={activeFile === f.path}
-                    onClick={() => onSelectFile(f.path)}
-                    onContextMenu={(e) => handleContextMenu(e, f)}
-                  />
-                ))}
-
-                {Object.entries(folders).map(([dir, dirFiles]) => (
-                  <div key={dir} className="mt-1">
-                    <button
-                      onClick={() => toggleFolder(dir)}
-                      className="flex items-center gap-1.5 w-full px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition"
-                    >
-                      {expandedFolders.has(dir) ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                      {dir}/
-                      <span className="ml-auto text-[9px]">{dirFiles.length}</span>
-                    </button>
-                    {expandedFolders.has(dir) && (
-                      <div className="pl-4 space-y-0.5">
-                        {dirFiles.map((f) => (
-                          <FileEntry
-                            key={f.path}
-                            file={f}
-                            isActive={activeFile === f.path}
-                            onClick={() => onSelectFile(f.path)}
-                            onContextMenu={(e) => handleContextMenu(e, f)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Annotations section */}
+            {/* Annotations */}
             {annotations.length > 0 && (
               <>
                 <div className="my-3 border-t border-border/40" />
@@ -208,32 +229,19 @@ export function SessionSidebar({
                   <span className="text-xs font-medium font-mono">{gitStatus.branch}</span>
                   <Circle className={`size-1.5 shrink-0 ${gitStatus.clean ? 'fill-emerald-500 text-emerald-500' : 'fill-amber-500 text-amber-500'}`} />
                 </div>
-
                 {!gitStatus.clean && (
                   <>
-                    {/* Summary counts */}
                     <div className="flex gap-3 text-[10px] text-muted-foreground mb-2.5">
                       {(gitStatus.staged?.length ?? 0) > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Circle className="size-1.5 fill-emerald-500 text-emerald-500" />
-                          {gitStatus.staged!.length} staged
-                        </span>
+                        <span className="flex items-center gap-1"><Circle className="size-1.5 fill-emerald-500 text-emerald-500" />{gitStatus.staged!.length} staged</span>
                       )}
                       {(gitStatus.modified?.length ?? 0) > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Circle className="size-1.5 fill-amber-500 text-amber-500" />
-                          {gitStatus.modified!.length} modified
-                        </span>
+                        <span className="flex items-center gap-1"><Circle className="size-1.5 fill-amber-500 text-amber-500" />{gitStatus.modified!.length} modified</span>
                       )}
                       {(gitStatus.untracked?.length ?? 0) > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Circle className="size-1.5 fill-red-500 text-red-500" />
-                          {gitStatus.untracked!.length} untracked
-                        </span>
+                        <span className="flex items-center gap-1"><Circle className="size-1.5 fill-red-500 text-red-500" />{gitStatus.untracked!.length} untracked</span>
                       )}
                     </div>
-
-                    {/* Changed files */}
                     <div className="space-y-0.5 mb-2">
                       {[
                         ...((gitStatus.staged ?? []) as unknown[]).map((f) => ({ f, badge: 'S', cls: 'bg-emerald-500/10 text-emerald-500' })),
@@ -249,30 +257,20 @@ export function SessionSidebar({
                         )
                       })}
                     </div>
-
-                    <button
-                      onClick={onShowDiff}
-                      className="w-full flex items-center justify-center gap-1.5 text-[10px] text-primary font-medium py-1.5 rounded-md border border-primary/20 hover:bg-primary/5 transition"
-                    >
-                      <GitCompareArrows className="size-3" />
-                      View diff
+                    <button onClick={onShowDiff} className="w-full flex items-center justify-center gap-1.5 text-[10px] text-primary font-medium py-1.5 rounded-md border border-primary/20 hover:bg-primary/5 transition">
+                      <GitCompareArrows className="size-3" />View diff
                     </button>
                   </>
                 )}
               </div>
             )}
-
             {gitLog && gitLog.length > 0 && (
               <>
                 {gitStatus && <div className="border-t border-border/40 mb-3" />}
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">Recent Commits</div>
                 <div className="space-y-0.5">
                   {gitLog.slice(0, 10).map((entry) => (
-                    <div
-                      key={entry.hash}
-                      onClick={() => onSelectCommit(entry.hash)}
-                      className="group cursor-pointer rounded px-2 py-1.5 -mx-1 hover:bg-muted/30 transition"
-                    >
+                    <div key={entry.hash} onClick={() => onSelectCommit(entry.hash)} className="group cursor-pointer rounded px-2 py-1.5 -mx-1 hover:bg-muted/30 transition">
                       <div className="flex items-center gap-2 text-xs">
                         <span className="font-mono text-[9px] text-primary/60 shrink-0">{entry.hash.slice(0, 7)}</span>
                         <span className="truncate text-muted-foreground group-hover:text-foreground transition">{entry.subject}</span>
@@ -283,10 +281,7 @@ export function SessionSidebar({
                 </div>
               </>
             )}
-
-            {!gitStatus && (
-              <p className="text-[10px] text-muted-foreground/60">Connect CLI to see git info.</p>
-            )}
+            {!gitStatus && <p className="text-[10px] text-muted-foreground/60">Connect CLI to see git info.</p>}
           </div>
         )}
 
@@ -306,90 +301,44 @@ export function SessionSidebar({
       </div>
 
       {contextMenu && (
-        <ArtifactContextMenu
-          menu={contextMenu}
-          onClose={() => setContextMenu(null)}
-          onDelete={() => setContextMenu(null)}
-        />
+        <ArtifactContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onDelete={() => setContextMenu(null)} />
       )}
     </aside>
   )
 }
 
-// ── Collapsible section header ──
+// ── Helpers ──
 
-function SectionHeader({
-  label, count, open, onToggle, action,
-}: {
-  label: string
-  count?: number
-  open: boolean
-  onToggle: () => void
-  action?: React.ReactNode
+function SectionHeader({ label, count, open, onToggle }: {
+  label: string; count?: number; open: boolean; onToggle: () => void
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <button onClick={onToggle} className="flex items-center gap-1 flex-1 min-w-0">
-        {open ? <ChevronDown className="size-3 text-muted-foreground/40 shrink-0" /> : <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" />}
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</span>
-        {count != null && (
-          <span className="text-[9px] text-muted-foreground/40">{count}</span>
-        )}
-      </button>
-      {action}
-    </div>
+    <button onClick={onToggle} className="flex items-center gap-1 w-full">
+      {open ? <ChevronDown className="size-3 text-muted-foreground/40 shrink-0" /> : <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" />}
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</span>
+      {count != null && <span className="text-[9px] text-muted-foreground/40 bg-muted/50 px-1.5 py-0.5 rounded">{count}</span>}
+    </button>
   )
 }
 
-// ── File entry ──
-
-function FileEntry({
-  file, isActive, onClick, onContextMenu, isTodo,
-}: {
-  file: SessionFile
-  isActive: boolean
-  onClick: () => void
-  onContextMenu: (e: React.MouseEvent) => void
-  isTodo?: boolean
+function FileEntry({ file, isActive, onClick, onContextMenu, isTodo }: {
+  file: SessionFile; isActive: boolean; onClick: () => void
+  onContextMenu: (e: React.MouseEvent) => void; isTodo?: boolean
 }) {
   const { icon: Icon, color } = FILE_ICONS[file.type]
-
   return (
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
       className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition ${
-        isActive
-          ? 'border-l-2 border-primary bg-primary/5 text-primary font-medium'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+        isActive ? 'border-l-2 border-primary bg-primary/5 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
       }`}
     >
-      {isTodo ? (
-        <CheckSquare className={`size-3.5 shrink-0 ${isActive ? 'text-primary' : 'text-emerald-500'}`} />
-      ) : (
-        <Icon className={`size-3.5 shrink-0 ${isActive ? 'text-primary' : color}`} />
-      )}
+      {isTodo
+        ? <CheckSquare className={`size-3.5 shrink-0 ${isActive ? 'text-primary' : 'text-emerald-500'}`} />
+        : <Icon className={`size-3.5 shrink-0 ${isActive ? 'text-primary' : color}`} />
+      }
       <span className="truncate text-left">{file.name}</span>
     </button>
   )
-}
-
-// ── Helpers ──
-
-function groupFiles(files: SessionFile[]): { rootFiles: SessionFile[]; folders: Record<string, SessionFile[]> } {
-  const rootFiles: SessionFile[] = []
-  const folders: Record<string, SessionFile[]> = {}
-
-  for (const f of files) {
-    const parts = f.path.split('/')
-    if (parts.length === 1) {
-      rootFiles.push(f)
-    } else {
-      const dir = parts.slice(0, -1).join('/')
-      if (!folders[dir]) folders[dir] = []
-      folders[dir].push(f)
-    }
-  }
-
-  return { rootFiles, folders }
 }
